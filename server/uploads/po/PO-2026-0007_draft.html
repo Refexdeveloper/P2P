@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Purchase Order - PO-2026-0007</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12.5px;
+    color: #1a1a1a;
+    max-width: 850px;
+    margin: 0 auto;
+    padding: 30px 25px;
+    line-height: 1.4;
+  }
+  .page { padding-bottom: 40px; border-bottom: 1px dashed #ccc; margin-bottom: 40px; page-break-after: always; }
+  .page:last-child { border-bottom: none; page-break-after: auto; }
+  .header { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+  .logo { font-size: 30px; font-weight: 800; font-style: italic; letter-spacing: -1px; }
+  .logo .r1 { color: #2e3192; } .logo .e1 { color: #27aae1; } .logo .f { color: #39b54a; }
+  .logo .e2 { color: #8dc63f; } .logo .x { color: #f7941d; }
+  .title { text-align: center; font-weight: bold; font-size: 16px; letter-spacing: 1px; margin: 10px 0 14px 0; }
+  .po-meta { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 10px; font-size: 13px; }
+  .info-box { border: 1px solid #000; padding: 10px 14px; margin-bottom: 16px; }
+  .info-box p { margin: 3px 0; }
+  .info-box a { color: #1155cc; text-decoration: underline; }
+  table.price { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+  table.price caption { border: 1px solid #000; border-bottom: none; padding: 5px; font-weight: bold; text-align: center; background: #f2f2f2; }
+  table.price th, table.price td { border: 1px solid #000; padding: 6px 8px; vertical-align: top; font-size: 12px; }
+  table.price th { background: #f2f2f2; text-align: center; }
+  table.price td.center { text-align: center; }
+  table.price td.right { text-align: right; }
+  table.price tr.total td { font-weight: bold; }
+  table.price .spec-block p { margin: 6px 0; }
+  .amount-words { border: 1px solid #000; border-top: none; padding: 8px 10px; display: flex; justify-content: space-between; font-size: 12.5px; }
+  .amount-words .label { font-weight: bold; white-space: nowrap; margin-right: 10px; }
+  .amount-words .value { font-weight: bold; text-align: right; }
+  table.terms { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  table.terms caption { font-weight: bold; padding: 6px; border: 1px solid #000; border-bottom: none; background: #f2f2f2; }
+  table.terms th, table.terms td { border: 1px solid #000; padding: 7px 9px; vertical-align: top; text-align: left; }
+  table.terms th { background: #f2f2f2; }
+  table.terms td.head-col, table.terms th.head-col { width: 15%; font-weight: bold; }
+  table.terms td.sno-col, table.terms th.sno-col { width: 6%; text-align: center; }
+  table.terms tr, table.price tr { page-break-inside: avoid; break-inside: avoid; }
+  table.terms thead, table.price thead { display: table-header-group; }
+  .footer { text-align: center; margin-top: 24px; padding-top: 10px; page-break-inside: avoid; break-inside: avoid; }
+  .footer .brand { font-weight: bold; color: #2e3192; font-size: 14px; }
+  .footer .sub { font-size: 11px; color: #333; margin-bottom: 6px; }
+  .footer .cin-bar { display: inline-block; background: linear-gradient(90deg,#2e3192,#27aae1,#39b54a,#f7941d); color: #fff; padding: 3px 14px; border-radius: 12px; font-size: 11px; font-weight: bold; margin: 6px 0; }
+  .footer .reg { font-size: 10.5px; color: #333; margin-top: 4px; }
+  .footer .pagenum { text-align: center; font-size: 11px; margin-top: 8px; }
+  .footer hr { border: none; border-top: 2px solid #27aae1; margin: 6px 0; }
+  h2.annexure-title { text-align: center; margin: 0 0 4px 0; font-size: 15px; }
+  h3.annexure-sub { text-align: center; margin: 0 0 14px 0; font-size: 13px; }
+  .special-notes, .ack-box { border: 1px solid #000; padding: 12px 16px; }
+  .special-notes p, .ack-box p { margin: 6px 0; }
+  .special-notes .lbl { font-weight: bold; }
+  .sig-space { min-height: 60px; margin: 8px 0 12px; }
+  .sig-space .sig-img {
+    max-height: 70px;
+    max-width: 220px;
+    object-fit: contain;
+    display: block;
+  }
+  .ack-box .sig-gap { height: 70px; }
+  .letterhead-block { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+  <div class="page">
+    <div class="header"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>
+    <div class="title">PURCHASE ORDER</div>
+    <div class="po-meta">
+      <span>Purchase Order No. &nbsp;PO-2026-0007</span>
+      <span>Date: 04/08/2026</span>
+    </div>
+    
+    <div class="info-box">
+      <p><strong>To</strong></p>
+      <p><strong>Global Supplies Inc,</strong></p>
+      <p>Address not available</p>
+      <p><strong>GST No:</strong>—</p>
+      <p><strong>PAN No:</strong>—</p>
+      <p><strong>Email:</strong> <a href="mailto:sathishkumar.r@refex.co.in">sathishkumar.r@refex.co.in</a></p>
+      <p><strong>Phone:</strong> —</p>
+      <p>&nbsp;</p>
+      <p><strong>Ref.No/Date.</strong> PR: PR-2026-0021, Date: 04/08/2026</p>
+      <p>&nbsp;</p>
+      <p><strong>Subject:</strong> For  Laptop  Purchase</p>
+      <p>&nbsp;</p>
+      <p><strong>PO Type:</strong> Short PO</p>
+      <p><strong>Department:</strong> IT &amp; Technology</p>
+      <p><strong>Requester:</strong> Sathishkumar R</p>
+    </div>
+    
+  <table class="price">
+    <caption>PRICE SCHEDULE</caption>
+    <tr>
+      <th style="width:6%">SI.No</th>
+      <th>Description Of Work</th>
+      <th style="width:8%">UOM</th>
+      <th style="width:6%">Qty</th>
+      <th style="width:14%">Unit Rate Rs.</th>
+      <th style="width:14%">TOTAL Amt Rs.</th>
+    </tr>
+    
+    <tr>
+      <td class="center">1</td>
+      <td><div class="spec-block"><p>For  Laptop  Purchase</p><p><strong>Category:</strong> Software Licenses</p></div></td>
+      <td class="center">Software Licenses</td>
+      <td class="center">3</td>
+      <td class="right">25,000.00</td>
+      <td class="right">75,000.00</td>
+    </tr>
+    <tr class="total"><td colspan="5">SubTotal</td><td class="right">75,000.00</td></tr>
+    <tr class="total"><td colspan="5">Add: GST@18% Extra</td><td class="right">13,500.00</td></tr>
+    <tr class="total"><td colspan="5">GrandTotal</td><td class="right">88,500.00</td></tr>
+  </table>
+  <div class="amount-words">
+    <span class="label">Amount In Words:</span>
+    <span class="value">Eighty Eight Thousand Five Hundred Rupees and Zero Paisa Only.</span>
+  </div>
+    
+  <div class="footer">
+    <div class="brand">Refex Green Mobility Limited</div>
+    <div class="sub">(Wholly-Owned Subsidiary of Refex Industries Limited)</div>
+    <hr>
+    <div class="cin-bar">CIN:U74909TN2023PLC158849</div>
+    <div class="reg"><strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
+    P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in</div>
+    <div class="pagenum">1</div>
+  </div>
+  </div>
+
+  <div class="page">
+    <div class="header"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>
+    <table class="terms">
+      <caption>Terms and Conditions</caption>
+      
+    <tr>
+      <th class="head-col">Delivery sechdule</th>
+      <td>For first<br><br><br></td>
+    </tr>
+    <tr>
+      <th class="head-col">test</th>
+      <td>test descrition</td>
+    </tr>
+    <tr>
+      <th class="head-col">test2</th>
+      <td>test 3</td>
+    </tr>
+    <tr>
+      <th class="head-col">test 4</th>
+      <td>test 4</td>
+    </tr>
+    </table>
+    
+  <div class="footer">
+    <div class="brand">Refex Green Mobility Limited</div>
+    <div class="sub">(Wholly-Owned Subsidiary of Refex Industries Limited)</div>
+    <hr>
+    <div class="cin-bar">CIN:U74909TN2023PLC158849</div>
+    <div class="reg"><strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
+    P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in</div>
+    <div class="pagenum">Terms</div>
+  </div>
+  </div>
+
+
+  <div class="page">
+    <div class="header"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>
+    <div class="special-notes">
+      <p><strong>SPECIAL NOTES (if any):</strong></p>
+      <p><span class="lbl">Site Address:</span>Plot No. 42, Industrial Area Phase II, Chandigarh - 160002</p>
+      
+      <p><span class="lbl">PR Reference:</span> PR-2026-0021</p>
+      <p><span class="lbl">Department:</span> IT &amp; Technology</p>
+      <p><span class="lbl">Requester:</span> Sathishkumar R</p>
+      <p><span class="lbl">Payment Terms:</span> Net 30</p>
+      <p><span class="lbl">Incoterms:</span> yes</p>
+      <p><span class="lbl">Expected Delivery:</span> 2026-08-19</p>
+      
+      <p><strong>FOR Refex Group of Companies,</strong></p>
+      <div class="sig-space"></div>
+      <p><strong>Authorized Signatory</strong><br>
+      Name: ____________________<br>
+      Designation: Head – SCM</p>
+    </div>
+    
+  <div class="footer">
+    <div class="brand">Refex Green Mobility Limited</div>
+    <div class="sub">(Wholly-Owned Subsidiary of Refex Industries Limited)</div>
+    <hr>
+    <div class="cin-bar">CIN:U74909TN2023PLC158849</div>
+    <div class="reg"><strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
+    P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in</div>
+    <div class="pagenum">Special Notes</div>
+  </div>
+  </div>
+
+  <div class="page">
+    <div class="header"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>
+    <div class="ack-box">
+      <p><strong>Acknowledgment and Acceptance by Seller/Supplier</strong></p>
+      <p>We received, read, and understood the terms and conditions mentioned in this order. We hereby acknowledge, confirm and accept the above terms and conditions and the same shall be binding on us as &ldquo;Seller&rdquo;.</p>
+      <p><strong>FOR Global Supplies Inc,</strong></p>
+      <div class="sig-gap"></div>
+      <p><strong>Authorized Signatory</strong><br>
+      <strong>Dated:</strong><br>
+      <strong>Place:</strong></p>
+    </div>
+    
+  <div class="footer">
+    <div class="brand">Refex Green Mobility Limited</div>
+    <div class="sub">(Wholly-Owned Subsidiary of Refex Industries Limited)</div>
+    <hr>
+    <div class="cin-bar">CIN:U74909TN2023PLC158849</div>
+    <div class="reg"><strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
+    P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in</div>
+    <div class="pagenum">Acknowledgment</div>
+  </div>
+  </div>
+</body>
+</html>

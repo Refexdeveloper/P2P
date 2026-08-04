@@ -1,0 +1,355 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import pool from '../config/db.js';
+import { formatDate } from '../utils/constants.js';
+import { parseCsv, rowsToCsv, normalizeHeaderKey } from '../utils/csv.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+export const VENDOR_UPLOAD_DIR = path.join(__dirname, '../../uploads/vendors');
+
+function ensureVendorDir() {
+  if (!fs.existsSync(VENDOR_UPLOAD_DIR)) {
+    fs.mkdirSync(VENDOR_UPLOAD_DIR, { recursive: true });
+  }
+}
+
+async function generateVendorCode() {
+  const year = new Date().getFullYear();
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS cnt FROM vendors WHERE YEAR(created_at) = ?`,
+    [year]
+  );
+  const seq = String(Number(rows[0].cnt) + 1).padStart(4, '0');
+  return `VND-${year}-${seq}`;
+}
+
+async function getVendorDocuments(vendorId) {
+  const [rows] = await pool.query(
+    `SELECT * FROM vendor_documents WHERE vendor_id = ? ORDER BY doc_type`,
+    [vendorId]
+  );
+  return rows.map((d) => ({
+    id: d.id,
+    docType: d.doc_type,
+    fileName: d.file_name,
+    uploadedAt: formatDate(d.uploaded_at),
+  }));
+}
+
+function mapVendor(row, documents = []) {
+  return {
+    id: row.id,
+    vendorCode: row.vendor_code,
+    name: row.name,
+    vendorType: row.vendor_type,
+    gstNumber: row.gst_number || '',
+    panNumber: row.pan_number || '',
+    email: row.email,
+    phone: row.phone || '',
+    address: row.address || '',
+    category: row.category || '',
+    accountNumber: row.account_number || '',
+    ifscCode: row.ifsc_code || '',
+    bankName: row.bank_name || '',
+    branch: row.branch || '',
+    status: row.status,
+    createdAt: formatDate(row.created_at),
+    documents,
+  };
+}
+
+function saveVendorDocument(vendorId, docType, fileName, base64Data) {
+  if (!base64Data || !fileName) return null;
+
+  ensureVendorDir();
+  const safeName = `${vendorId}_${docType}_${path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const fullPath = path.join(VENDOR_UPLOAD_DIR, safeName);
+  const buffer = Buffer.from(base64Data, 'base64');
+  fs.writeFileSync(fullPath, buffer);
+
+  return { fileName: path.basename(fileName), filePath: safeName };
+}
+
+async function upsertVendorDocument(vendorId, docType, fileName, base64Data) {
+  const saved = saveVendorDocument(vendorId, docType, fileName, base64Data);
+  if (!saved) return;
+
+  await pool.query(
+    `INSERT INTO vendor_documents (vendor_id, doc_type, file_name, file_path)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE file_name = VALUES(file_name), file_path = VALUES(file_path), uploaded_at = NOW()`,
+    [vendorId, docType, saved.fileName, saved.filePath]
+  );
+}
+
+export async function listVendors({ search, includeInactive = false } = {}) {
+  let sql = includeInactive
+    ? `SELECT * FROM vendors WHERE 1=1`
+    : `SELECT * FROM vendors WHERE status = 'active'`;
+  const params = [];
+
+  if (search?.trim()) {
+    sql += ` AND (name LIKE ? OR email LIKE ? OR vendor_code LIKE ? OR category LIKE ?)`;
+    const q = `%${search.trim()}%`;
+    params.push(q, q, q, q);
+  }
+
+  sql += ` ORDER BY created_at DESC`;
+  const [rows] = await pool.query(sql, params);
+  return rows.map((row) => mapVendor(row));
+}
+
+export async function createVendor(user, body) {
+  const name = body.vendorName?.trim() || body.name?.trim();
+  const email = body.email?.trim();
+
+  if (!name) throw new Error('Vendor name is required');
+  if (!email) throw new Error('Email is required');
+
+  const [existing] = await pool.query(`SELECT id FROM vendors WHERE email = ?`, [email]);
+  if (existing.length) throw new Error('A vendor with this email already exists');
+
+  const vendorCode = await generateVendorCode();
+
+  const [result] = await pool.query(
+    `INSERT INTO vendors (
+      vendor_code, name, vendor_type, gst_number, pan_number, email, phone, address,
+      category, account_number, ifsc_code, bank_name, branch, created_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      vendorCode,
+      name,
+      body.vendorType || 'Company',
+      body.gstNumber?.trim() || null,
+      body.panNumber?.trim() || null,
+      email,
+      body.phone?.trim() || null,
+      body.address?.trim() || null,
+      body.category?.trim() || null,
+      body.accountNumber?.trim() || null,
+      body.ifscCode?.trim() || null,
+      body.bankName?.trim() || null,
+      body.branch?.trim() || null,
+      user?.id || null,
+    ]
+  );
+
+  const vendorId = result.insertId;
+
+  const fileFields = [
+    { docType: 'gst', file: body.gstFile, name: body.gstFileName },
+    { docType: 'pan', file: body.panFile, name: body.panFileName },
+    { docType: 'cheque', file: body.chequeFile, name: body.chequeFileName },
+  ];
+
+  for (const { docType, file, name } of fileFields) {
+    if (file && name) {
+      await upsertVendorDocument(vendorId, docType, name, file);
+    }
+  }
+
+  return getVendorById(vendorId);
+}
+
+export async function updateVendor(vendorId, body) {
+  const [rows] = await pool.query(`SELECT * FROM vendors WHERE id = ?`, [vendorId]);
+  if (!rows.length) throw new Error('Vendor not found');
+
+  const name = body.vendorName?.trim() || body.name?.trim();
+  const email = body.email?.trim();
+
+  if (!name) throw new Error('Vendor name is required');
+  if (!email) throw new Error('Email is required');
+
+  const [existing] = await pool.query(`SELECT id FROM vendors WHERE email = ? AND id != ?`, [email, vendorId]);
+  if (existing.length) throw new Error('A vendor with this email already exists');
+
+  await pool.query(
+    `UPDATE vendors SET
+      name = ?, vendor_type = ?, gst_number = ?, pan_number = ?, email = ?, phone = ?, address = ?,
+      category = ?, account_number = ?, ifsc_code = ?, bank_name = ?, branch = ?, updated_at = NOW()
+     WHERE id = ?`,
+    [
+      name,
+      body.vendorType || 'Company',
+      body.gstNumber?.trim() || null,
+      body.panNumber?.trim() || null,
+      email,
+      body.phone?.trim() || null,
+      body.address?.trim() || null,
+      body.category?.trim() || null,
+      body.accountNumber?.trim() || null,
+      body.ifscCode?.trim() || null,
+      body.bankName?.trim() || null,
+      body.branch?.trim() || null,
+      vendorId,
+    ]
+  );
+
+  const fileFields = [
+    { docType: 'gst', file: body.gstFile, name: body.gstFileName },
+    { docType: 'pan', file: body.panFile, name: body.panFileName },
+    { docType: 'cheque', file: body.chequeFile, name: body.chequeFileName },
+  ];
+
+  for (const { docType, file, name } of fileFields) {
+    if (file && name) {
+      await upsertVendorDocument(vendorId, docType, name, file);
+    }
+  }
+
+  return getVendorById(vendorId);
+}
+
+export async function getVendorById(vendorId) {
+  const [rows] = await pool.query(`SELECT * FROM vendors WHERE id = ?`, [vendorId]);
+  if (!rows.length) return null;
+  const documents = await getVendorDocuments(vendorId);
+  return mapVendor(rows[0], documents);
+}
+
+export async function getVendorDocumentFile(vendorId, docType) {
+  const allowed = ['gst', 'pan', 'cheque'];
+  if (!allowed.includes(docType)) throw new Error('Invalid document type');
+
+  const [rows] = await pool.query(
+    `SELECT * FROM vendor_documents WHERE vendor_id = ? AND doc_type = ?`,
+    [vendorId, docType]
+  );
+  if (!rows.length) throw new Error('Document not found');
+
+  const fullPath = path.join(VENDOR_UPLOAD_DIR, rows[0].file_path);
+  if (!fs.existsSync(fullPath)) throw new Error('File not found on server');
+
+  return { fullPath, fileName: rows[0].file_name };
+}
+
+const VENDOR_HEADERS = [
+  'vendorCode',
+  'name',
+  'vendorType',
+  'email',
+  'phone',
+  'gstNumber',
+  'panNumber',
+  'address',
+  'category',
+  'accountNumber',
+  'ifscCode',
+  'bankName',
+  'branch',
+  'status',
+];
+
+export async function exportVendorsCsv() {
+  const rows = await listVendors({ includeInactive: true });
+  return rowsToCsv(
+    VENDOR_HEADERS,
+    rows.map((r) => ({
+      vendorCode: r.vendorCode,
+      name: r.name,
+      vendorType: r.vendorType,
+      email: r.email,
+      phone: r.phone,
+      gstNumber: r.gstNumber,
+      panNumber: r.panNumber,
+      address: r.address,
+      category: r.category,
+      accountNumber: r.accountNumber,
+      ifscCode: r.ifscCode,
+      bankName: r.bankName,
+      branch: r.branch,
+      status: r.status,
+    }))
+  );
+}
+
+export function getVendorImportTemplateCsv() {
+  return rowsToCsv(VENDOR_HEADERS, [
+    {
+      vendorCode: '',
+      name: 'Sample Vendor Pvt Ltd',
+      vendorType: 'Company',
+      email: 'vendor@example.com',
+      phone: '9876543210',
+      gstNumber: '',
+      panNumber: '',
+      address: 'Chennai',
+      category: 'IT',
+      accountNumber: '',
+      ifscCode: '',
+      bankName: '',
+      branch: '',
+      status: 'active',
+    },
+  ]);
+}
+
+export async function importVendorsFromCsv(user, csvText) {
+  const parsed = parseCsv(csvText);
+  if (!parsed.length) throw new Error('CSV has no data rows');
+
+  let created = 0;
+  let updated = 0;
+  const errors = [];
+
+  for (let i = 0; i < parsed.length; i++) {
+    const rowNum = i + 2;
+    const mapped = normalizeHeaderKey(parsed[i], {
+      vendorCode: ['vendorcode', 'vendor_code', 'code'],
+      name: ['name', 'vendorname', 'vendor'],
+      vendorType: ['vendortype', 'vendor_type', 'type'],
+      email: ['email', 'mail'],
+      phone: ['phone', 'mobile', 'contact'],
+      gstNumber: ['gstnumber', 'gst', 'gst_number'],
+      panNumber: ['pannumber', 'pan', 'pan_number'],
+      address: ['address'],
+      category: ['category'],
+      accountNumber: ['accountnumber', 'account_number', 'account'],
+      ifscCode: ['ifsccode', 'ifsc', 'ifsc_code'],
+      bankName: ['bankname', 'bank', 'bank_name'],
+      branch: ['branch'],
+      status: ['status'],
+    });
+    try {
+      if (!mapped.name) throw new Error('name is required');
+      if (!mapped.email) throw new Error('email is required');
+
+      const payload = {
+        name: mapped.name,
+        vendorName: mapped.name,
+        vendorType: mapped.vendorType === 'Individual' ? 'Individual' : 'Company',
+        email: mapped.email,
+        phone: mapped.phone || '',
+        gstNumber: mapped.gstNumber || '',
+        panNumber: mapped.panNumber || '',
+        address: mapped.address || '',
+        category: mapped.category || '',
+        accountNumber: mapped.accountNumber || '',
+        ifscCode: mapped.ifscCode || '',
+        bankName: mapped.bankName || '',
+        branch: mapped.branch || '',
+      };
+
+      const [existing] = await pool.query(`SELECT id FROM vendors WHERE email = ?`, [mapped.email]);
+      if (existing.length) {
+        await updateVendor(existing[0].id, payload);
+        if (mapped.status === 'inactive' || mapped.status === 'active') {
+          await pool.query(`UPDATE vendors SET status = ? WHERE id = ?`, [mapped.status, existing[0].id]);
+        }
+        updated += 1;
+      } else {
+        const createdVendor = await createVendor(user, payload);
+        if (mapped.status === 'inactive') {
+          await pool.query(`UPDATE vendors SET status = 'inactive' WHERE id = ?`, [createdVendor.id]);
+        }
+        created += 1;
+      }
+    } catch (err) {
+      errors.push(`Row ${rowNum}: ${err.message}`);
+    }
+  }
+
+  return { created, updated, failed: errors.length, errors };
+}

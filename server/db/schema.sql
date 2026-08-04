@@ -1,0 +1,346 @@
+CREATE TABLE IF NOT EXISTS departments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  code VARCHAR(50) NULL,
+  description TEXT NULL,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  budget_allocated DECIMAL(15, 2) DEFAULT 0,
+  budget_utilized DECIMAL(15, 2) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(150) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(50) NOT NULL,
+  department_id INT NULL,
+  is_active TINYINT(1) DEFAULT 1,
+  refexone_user_id VARCHAR(36) NULL UNIQUE,
+  supervisor_email VARCHAR(150) NULL,
+  supervisor_name VARCHAR(120) NULL,
+  l2_manager_email VARCHAR(150) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS purchase_requests (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pr_number VARCHAR(40) NOT NULL UNIQUE,
+  title VARCHAR(255) NOT NULL,
+  request_type ENUM('Capex', 'Opex', 'Service') NOT NULL DEFAULT 'Opex',
+  department_id INT NOT NULL,
+  entity_id INT NULL,
+  requester_id INT NOT NULL,
+  priority ENUM('Low', 'Medium', 'High', 'Critical') DEFAULT 'Medium',
+  justification TEXT,
+  required_date DATE NULL,
+  total_amount DECIMAL(15, 2) DEFAULT 0,
+  status VARCHAR(50) NOT NULL DEFAULT 'DRAFT',
+  vendor_selection ENUM('own', 'scm') NOT NULL DEFAULT 'scm',
+  current_stage VARCHAR(50) NULL,
+  submitted_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (department_id) REFERENCES departments(id),
+  FOREIGN KEY (requester_id) REFERENCES users(id),
+  INDEX idx_pr_status (status),
+  INDEX idx_pr_requester (requester_id)
+);
+
+CREATE TABLE IF NOT EXISTS pr_line_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pr_id INT NOT NULL,
+  category VARCHAR(100),
+  description VARCHAR(255) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  unit_cost DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  total DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS pr_approvals (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pr_id INT NOT NULL,
+  stage VARCHAR(50) NOT NULL,
+  approver_id INT NULL,
+  action VARCHAR(30) NOT NULL,
+  remarks TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
+  FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS workflow_tasks (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pr_id INT NOT NULL,
+  task_type VARCHAR(50) DEFAULT 'PR_APPROVAL',
+  assigned_role VARCHAR(50) NOT NULL,
+  assigned_user_id INT NULL,
+  status ENUM('pending', 'completed', 'cancelled') DEFAULT 'pending',
+  due_date DATE NULL,
+  completed_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
+  INDEX idx_task_role_status (assigned_role, status)
+);
+
+CREATE TABLE IF NOT EXISTS rfq_invitations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pr_id INT NOT NULL,
+  vendor_name VARCHAR(150) NOT NULL,
+  vendor_email VARCHAR(150) NOT NULL,
+  access_token VARCHAR(64) NOT NULL UNIQUE,
+  round INT DEFAULT 1,
+  status ENUM('invited', 'submitted', 'sent_back', 'accepted') DEFAULT 'invited',
+  send_back_reason TEXT NULL,
+  send_back_fields JSON NULL,
+  created_by INT NOT NULL,
+  invite_mode ENUM('email', 'manual') NOT NULL DEFAULT 'email',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
+  INDEX idx_rfq_pr (pr_id),
+  INDEX idx_rfq_token (access_token)
+);
+
+CREATE TABLE IF NOT EXISTS vendor_quotation_submissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  rfq_invitation_id INT NOT NULL,
+  round INT NOT NULL,
+  quoted_price DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  lead_time_days INT DEFAULT 0,
+  payment_terms VARCHAR(100) DEFAULT 'Standard',
+  compliance TINYINT(1) DEFAULT 1,
+  vendor_notes TEXT,
+  warranty VARCHAR(100) NULL,
+  delivery_terms VARCHAR(100) NULL,
+  quotation_file_name VARCHAR(255) NULL,
+  quotation_file_path VARCHAR(500) NULL,
+  custom_fields JSON NULL,
+  requester_fields JSON NULL,
+  status ENUM('submitted', 'sent_back', 'accepted') DEFAULT 'submitted',
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (rfq_invitation_id) REFERENCES rfq_invitations(id) ON DELETE CASCADE,
+  INDEX idx_vq_invitation (rfq_invitation_id)
+);
+
+CREATE TABLE IF NOT EXISTS rfq_configs (
+  pr_id INT PRIMARY KEY,
+  field_definitions JSON NOT NULL,
+  recommended_invitation_id INT NULL,
+  max_rounds INT NULL,
+  requester_submitted_at TIMESTAMP NULL,
+  finalized_at TIMESTAMP NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  po_number VARCHAR(40) NOT NULL UNIQUE,
+  reference_po_number VARCHAR(30) NULL,
+  pr_id INT NOT NULL,
+  vendor_name VARCHAR(150) NOT NULL,
+  vendor_email VARCHAR(150) NOT NULL,
+  rfq_invitation_id INT NULL,
+  created_by INT NOT NULL,
+  delivery_address TEXT,
+  expected_delivery_date DATE NULL,
+  payment_terms VARCHAR(100) DEFAULT 'Net 30 Days',
+  incoterms VARCHAR(50) DEFAULT 'DDP',
+  special_instructions TEXT,
+  po_type ENUM('short_po', 'long_po') NOT NULL DEFAULT 'short_po',
+  letterhead_header LONGTEXT NULL,
+  entity VARCHAR(255) NULL,
+  header_logo LONGTEXT NULL,
+  footer_logo LONGTEXT NULL,
+  letterhead_id INT NULL,
+  terms_clauses JSON NULL,
+  annexure_clauses JSON NULL,
+  gst_percentage DECIMAL(5, 2) DEFAULT 18,
+  subtotal DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  tax_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  grand_total DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  status ENUM('draft', 'pending_approval', 'approved', 'rejected', 'sent_to_vendor') DEFAULT 'draft',
+  pdf_path VARCHAR(500) NULL,
+  signed_pdf_path VARCHAR(500) NULL,
+  signer_id INT NULL,
+  signature_name VARCHAR(150) NULL,
+  signature_image_path VARCHAR(500) NULL,
+  signer_comments TEXT NULL,
+  signed_at TIMESTAMP NULL,
+  vendor_notified_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id),
+  FOREIGN KEY (signer_id) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_po_pr (pr_id),
+  INDEX idx_po_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS user_signatures (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  label VARCHAR(100) NULL,
+  image_path VARCHAR(500) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_user_signatures_user (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS po_line_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  po_id INT NOT NULL,
+  category VARCHAR(100),
+  description VARCHAR(255) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  unit_price DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  total DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL UNIQUE,
+  request_type ENUM('Capex', 'Opex', 'Service', 'All') NOT NULL DEFAULT 'All',
+  description TEXT NULL,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_category_status (status),
+  INDEX idx_category_request_type (request_type)
+);
+
+CREATE TABLE IF NOT EXISTS items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  item_code VARCHAR(30) NOT NULL UNIQUE,
+  name VARCHAR(200) NOT NULL,
+  description TEXT NULL,
+  category_id INT NULL,
+  unit VARCHAR(50) NOT NULL DEFAULT 'Nos',
+  hsn_code VARCHAR(20) NULL,
+  gst_percentage DECIMAL(5, 2) NOT NULL DEFAULT 18,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+  INDEX idx_item_status (status),
+  INDEX idx_item_category (category_id)
+);
+
+CREATE TABLE IF NOT EXISTS vendors (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  vendor_code VARCHAR(30) NOT NULL UNIQUE,
+  name VARCHAR(150) NOT NULL,
+  vendor_type ENUM('Company', 'Individual') NOT NULL DEFAULT 'Company',
+  gst_number VARCHAR(15) NULL,
+  pan_number VARCHAR(10) NULL,
+  email VARCHAR(150) NOT NULL,
+  phone VARCHAR(20) NULL,
+  address TEXT NULL,
+  category VARCHAR(100) NULL,
+  account_number VARCHAR(50) NULL,
+  ifsc_code VARCHAR(11) NULL,
+  bank_name VARCHAR(100) NULL,
+  branch VARCHAR(100) NULL,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  created_by INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_vendor_email (email),
+  INDEX idx_vendor_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS po_letterhead_masters (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  po_type ENUM('short_po', 'long_po') NOT NULL UNIQUE,
+  title VARCHAR(200) NOT NULL DEFAULT 'Purchase Order',
+  entity VARCHAR(255) NULL,
+  letterhead_header LONGTEXT NULL,
+  header_logo LONGTEXT NULL,
+  footer_logo LONGTEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS po_letterhead_clauses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  master_id INT NOT NULL,
+  section_type ENUM('terms', 'annexure') NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  terms_header VARCHAR(255) NOT NULL,
+  terms_description LONGTEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (master_id) REFERENCES po_letterhead_masters(id) ON DELETE CASCADE,
+  INDEX idx_letterhead_section (master_id, section_type, sort_order)
+);
+
+CREATE TABLE IF NOT EXISTS letterhead_branding (
+  id INT PRIMARY KEY,
+  entity VARCHAR(255) NULL,
+  header_logo LONGTEXT NULL,
+  footer_logo LONGTEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS letterhead_masters (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  entity VARCHAR(255) NULL,
+  header_logo LONGTEXT NULL,
+  footer_logo LONGTEXT NULL,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_letterhead_status (status),
+  INDEX idx_letterhead_name (name)
+);
+
+CREATE TABLE IF NOT EXISTS entity_masters (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(200) NOT NULL UNIQUE,
+  code VARCHAR(20) NULL,
+  cost_center VARCHAR(100) NOT NULL,
+  description TEXT NULL,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_entity_status (status),
+  INDEX idx_entity_cost_center (cost_center),
+  INDEX idx_entity_code (code)
+);
+
+CREATE TABLE IF NOT EXISTS vendor_documents (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  vendor_id INT NOT NULL,
+  doc_type ENUM('gst', 'pan', 'cheque') NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_path VARCHAR(500) NOT NULL,
+  uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+  UNIQUE KEY uniq_vendor_doc (vendor_id, doc_type)
+);
+
+CREATE TABLE IF NOT EXISTS navigation_permissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(80) NOT NULL UNIQUE,
+  label VARCHAR(120) NOT NULL,
+  path VARCHAR(200) NOT NULL,
+  icon VARCHAR(80) NOT NULL DEFAULT 'ri-link',
+  nav_group VARCHAR(80) NULL,
+  sort_order INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS user_permissions (
+  user_id INT NOT NULL,
+  permission_code VARCHAR(80) NOT NULL,
+  PRIMARY KEY (user_id, permission_code),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

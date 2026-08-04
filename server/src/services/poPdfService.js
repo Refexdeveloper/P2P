@@ -1,0 +1,109 @@
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { fileURLToPath } from 'url';
+import puppeteer from 'puppeteer-core';
+import { buildPoDocumentHtml } from '../templates/poDocumentTemplate.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+export const PO_UPLOAD_DIR = path.join(__dirname, '../../uploads/po');
+
+const CHROME_PATHS = {
+  win32: [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  ],
+  darwin: [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  ],
+  linux: [
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+  ],
+};
+
+function ensurePoDir() {
+  if (!fs.existsSync(PO_UPLOAD_DIR)) {
+    fs.mkdirSync(PO_UPLOAD_DIR, { recursive: true });
+  }
+}
+
+function resolveBrowserExecutable() {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  const candidates = CHROME_PATHS[os.platform()] || CHROME_PATHS.linux;
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+export function buildPoHtml(po, options = {}) {
+  return buildPoDocumentHtml(po, options);
+}
+
+export async function htmlToPdf(html, filePath) {
+  const executablePath = resolveBrowserExecutable();
+  if (!executablePath) {
+    throw new Error(
+      'Chrome/Edge not found for PDF generation. Install Google Chrome or set PUPPETEER_EXECUTABLE_PATH.'
+    );
+  }
+
+  const browser = await puppeteer.launch({
+    executablePath,
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
+    await page.pdf({
+      path: filePath,
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '12mm', right: '10mm', bottom: '12mm', left: '10mm' },
+    });
+  } finally {
+    await browser.close();
+  }
+}
+
+export async function generatePoPdf(po, options = {}) {
+  ensurePoDir();
+  const baseName = options.fileName || `${po.poNumber}_${options.signed ? 'signed' : 'draft'}`;
+  const fileName = baseName.endsWith('.pdf') ? baseName : `${baseName}.pdf`;
+  const htmlFileName = fileName.replace(/\.pdf$/i, '.html');
+  const filePath = path.join(PO_UPLOAD_DIR, fileName);
+  const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
+
+  const html = buildPoHtml(po, options);
+  fs.writeFileSync(htmlPath, html, 'utf8');
+
+  try {
+    await htmlToPdf(html, filePath);
+    return { filePath, fileName, htmlFileName, htmlPath };
+  } catch (err) {
+    console.warn('HTML-to-PDF failed, HTML document saved:', err.message);
+    return { filePath: htmlPath, fileName: htmlFileName, htmlFileName, htmlPath, htmlOnly: true };
+  }
+}
+
+export function resolvePoDocumentPath(po) {
+  const fileName = po.signedPdfPath || po.pdfPath;
+  if (!fileName) throw new Error('Document not generated');
+  const fullPath = path.join(PO_UPLOAD_DIR, path.basename(fileName));
+  if (!fs.existsSync(fullPath)) {
+    const htmlName = path.basename(fileName).replace(/\.pdf$/i, '.html');
+    const htmlPath = path.join(PO_UPLOAD_DIR, htmlName);
+    if (fs.existsSync(htmlPath)) {
+      return { fullPath: htmlPath, fileName: htmlName, isHtml: true };
+    }
+    throw new Error('PO document file not found');
+  }
+  const isHtml = fullPath.toLowerCase().endsWith('.html');
+  return { fullPath, fileName: path.basename(fileName), isHtml };
+}

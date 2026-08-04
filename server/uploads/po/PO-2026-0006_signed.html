@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Purchase Order - PO-2026-0006</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12.5px;
+    color: #1a1a1a;
+    max-width: 850px;
+    margin: 0 auto;
+    padding: 30px 25px;
+    line-height: 1.4;
+  }
+  .page { padding-bottom: 40px; border-bottom: 1px dashed #ccc; margin-bottom: 40px; page-break-after: always; }
+  .page:last-child { border-bottom: none; page-break-after: auto; }
+  .header { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+  .logo { font-size: 30px; font-weight: 800; font-style: italic; letter-spacing: -1px; }
+  .logo .r1 { color: #2e3192; } .logo .e1 { color: #27aae1; } .logo .f { color: #39b54a; }
+  .logo .e2 { color: #8dc63f; } .logo .x { color: #f7941d; }
+  .title { text-align: center; font-weight: bold; font-size: 16px; letter-spacing: 1px; margin: 10px 0 14px 0; }
+  .po-meta { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 10px; font-size: 13px; }
+  .info-box { border: 1px solid #000; padding: 10px 14px; margin-bottom: 16px; }
+  .info-box p { margin: 3px 0; }
+  .info-box a { color: #1155cc; text-decoration: underline; }
+  table.price { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+  table.price caption { border: 1px solid #000; border-bottom: none; padding: 5px; font-weight: bold; text-align: center; background: #f2f2f2; }
+  table.price th, table.price td { border: 1px solid #000; padding: 6px 8px; vertical-align: top; font-size: 12px; }
+  table.price th { background: #f2f2f2; text-align: center; }
+  table.price td.center { text-align: center; }
+  table.price td.right { text-align: right; }
+  table.price tr.total td { font-weight: bold; }
+  table.price .spec-block p { margin: 6px 0; }
+  .amount-words { border: 1px solid #000; border-top: none; padding: 8px 10px; display: flex; justify-content: space-between; font-size: 12.5px; }
+  .amount-words .label { font-weight: bold; white-space: nowrap; margin-right: 10px; }
+  .amount-words .value { font-weight: bold; text-align: right; }
+  table.terms { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  table.terms caption { font-weight: bold; padding: 6px; border: 1px solid #000; border-bottom: none; background: #f2f2f2; }
+  table.terms th, table.terms td { border: 1px solid #000; padding: 7px 9px; vertical-align: top; text-align: left; }
+  table.terms th { background: #f2f2f2; }
+  table.terms td.head-col, table.terms th.head-col { width: 15%; font-weight: bold; }
+  table.terms td.sno-col, table.terms th.sno-col { width: 6%; text-align: center; }
+  table.terms tr, table.price tr { page-break-inside: avoid; break-inside: avoid; }
+  table.terms thead, table.price thead { display: table-header-group; }
+  .footer { text-align: center; margin-top: 24px; padding-top: 10px; page-break-inside: avoid; break-inside: avoid; }
+  .footer .brand { font-weight: bold; color: #2e3192; font-size: 14px; }
+  .footer .sub { font-size: 11px; color: #333; margin-bottom: 6px; }
+  .footer .cin-bar { display: inline-block; background: linear-gradient(90deg,#2e3192,#27aae1,#39b54a,#f7941d); color: #fff; padding: 3px 14px; border-radius: 12px; font-size: 11px; font-weight: bold; margin: 6px 0; }
+  .footer .reg { font-size: 10.5px; color: #333; margin-top: 4px; }
+  .footer .pagenum { text-align: center; font-size: 11px; margin-top: 8px; }
+  .footer hr { border: none; border-top: 2px solid #27aae1; margin: 6px 0; }
+  h2.annexure-title { text-align: center; margin: 0 0 4px 0; font-size: 15px; }
+  h3.annexure-sub { text-align: center; margin: 0 0 14px 0; font-size: 13px; }
+  .special-notes, .ack-box { border: 1px solid #000; padding: 12px 16px; }
+  .special-notes p, .ack-box p { margin: 6px 0; }
+  .special-notes .lbl { font-weight: bold; }
+  .sig-space { min-height: 60px; margin: 8px 0 12px; }
+  .sig-space .sig-img {
+    max-height: 70px;
+    max-width: 220px;
+    object-fit: contain;
+    display: block;
+  }
+  .ack-box .sig-gap { height: 70px; }
+  .letterhead-block { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+  <div class="page">
+    <div class="header"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>
+    <div class="title">PURCHASE ORDER</div>
+    <div class="po-meta">
+      <span>Purchase Order No. &nbsp;PO-2026-0006</span>
+      <span>Date: 04/08/2026</span>
+    </div>
+    
+    <div class="info-box">
+      <p><strong>To</strong></p>
+      <p><strong>Tech Solutions Ltd,</strong></p>
+      <p>Address not available</p>
+      <p><strong>GST No:</strong>—</p>
+      <p><strong>PAN No:</strong>—</p>
+      <p><strong>Email:</strong> <a href="mailto:sathishkumar.r@refex.co.in">sathishkumar.r@refex.co.in</a></p>
+      <p><strong>Phone:</strong> —</p>
+      <p>&nbsp;</p>
+      <p><strong>Ref.No/Date.</strong> PR: PR-2026-0009, Date: 04/08/2026</p>
+      <p>&nbsp;</p>
+      <p><strong>Subject:</strong> Test HOD Approval</p>
+      <p>&nbsp;</p>
+      <p><strong>PO Type:</strong> Short PO</p>
+      <p><strong>Department:</strong> IT &amp; Technology</p>
+      <p><strong>Requester:</strong> Rajesh Kumar</p>
+    </div>
+    
+  <table class="price">
+    <caption>PRICE SCHEDULE</caption>
+    <tr>
+      <th style="width:6%">SI.No</th>
+      <th>Description Of Work</th>
+      <th style="width:8%">UOM</th>
+      <th style="width:6%">Qty</th>
+      <th style="width:14%">Unit Rate Rs.</th>
+      <th style="width:14%">TOTAL Amt Rs.</th>
+    </tr>
+    
+    <tr>
+      <td class="center">1</td>
+      <td><div class="spec-block"><p>Laptop</p><p><strong>Category:</strong> IT</p></div></td>
+      <td class="center">IT</td>
+      <td class="center">1</td>
+      <td class="right">50,000.00</td>
+      <td class="right">50,000.00</td>
+    </tr>
+    <tr class="total"><td colspan="5">SubTotal</td><td class="right">50,000.00</td></tr>
+    <tr class="total"><td colspan="5">Add: GST@18% Extra</td><td class="right">9,000.00</td></tr>
+    <tr class="total"><td colspan="5">GrandTotal</td><td class="right">59,000.00</td></tr>
+  </table>
+  <div class="amount-words">
+    <span class="label">Amount In Words:</span>
+    <span class="value">Fifty Nine Thousand Rupees and Zero Paisa Only.</span>
+  </div>
+    
+  <div class="footer">
+    <div class="brand">Refex Green Mobility Limited</div>
+    <div class="sub">(Wholly-Owned Subsidiary of Refex Industries Limited)</div>
+    <hr>
+    <div class="cin-bar">CIN:U74909TN2023PLC158849</div>
+    <div class="reg"><strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
+    P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in</div>
+    <div class="pagenum">1</div>
+  </div>
+  </div>
+
+  <div class="page">
+    <div class="header"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>
+    <table class="terms">
+      <caption>Terms and Conditions</caption>
+      
+    <tr>
+      <th class="head-col">Delivery sechdule</th>
+      <td>For first<br><br><br></td>
+    </tr>
+    <tr>
+      <th class="head-col">test</th>
+      <td>test descrition</td>
+    </tr>
+    <tr>
+      <th class="head-col">test2</th>
+      <td>test 3</td>
+    </tr>
+    <tr>
+      <th class="head-col">test 4</th>
+      <td>test 4</td>
+    </tr>
+    </table>
+    
+  <div class="footer">
+    <div class="brand">Refex Green Mobility Limited</div>
+    <div class="sub">(Wholly-Owned Subsidiary of Refex Industries Limited)</div>
+    <hr>
+    <div class="cin-bar">CIN:U74909TN2023PLC158849</div>
+    <div class="reg"><strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
+    P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in</div>
+    <div class="pagenum">Terms</div>
+  </div>
+  </div>
+
+
+  <div class="page">
+    <div class="header"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>
+    <div class="special-notes">
+      <p><strong>SPECIAL NOTES (if any):</strong></p>
+      <p><span class="lbl">Site Address:</span>Plot No. 42, Industrial Area Phase II, Chandigarh - 160002</p>
+      
+      <p><span class="lbl">PR Reference:</span> PR-2026-0009</p>
+      <p><span class="lbl">Department:</span> IT &amp; Technology</p>
+      <p><span class="lbl">Requester:</span> Rajesh Kumar</p>
+      <p><span class="lbl">Payment Terms:</span> Net 30</p>
+      <p><span class="lbl">Incoterms:</span> DDP</p>
+      <p><span class="lbl">Expected Delivery:</span> 2026-08-13</p>
+      
+      <p><strong>FOR Refex Group of Companies,</strong></p>
+      <div class="sig-space">
+        <img class="sig-img" src="data:image/png;base64,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" alt="Authorized Signature" />
+      </div>
+      <p>04/08/2026, 09:00 am<br>
+      <strong>Authorized Signatory</strong><br>
+      Name: Vikram Singh<br>
+      Designation: SCM Manager<br>Comments: for apporval</p>
+    </div>
+    
+  <div class="footer">
+    <div class="brand">Refex Green Mobility Limited</div>
+    <div class="sub">(Wholly-Owned Subsidiary of Refex Industries Limited)</div>
+    <hr>
+    <div class="cin-bar">CIN:U74909TN2023PLC158849</div>
+    <div class="reg"><strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
+    P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in</div>
+    <div class="pagenum">Special Notes</div>
+  </div>
+  </div>
+
+  <div class="page">
+    <div class="header"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>
+    <div class="ack-box">
+      <p><strong>Acknowledgment and Acceptance by Seller/Supplier</strong></p>
+      <p>We received, read, and understood the terms and conditions mentioned in this order. We hereby acknowledge, confirm and accept the above terms and conditions and the same shall be binding on us as &ldquo;Seller&rdquo;.</p>
+      <p><strong>FOR Tech Solutions Ltd,</strong></p>
+      <div class="sig-gap"></div>
+      <p><strong>Authorized Signatory</strong><br>
+      <strong>Dated:</strong><br>
+      <strong>Place:</strong></p>
+    </div>
+    
+  <div class="footer">
+    <div class="brand">Refex Green Mobility Limited</div>
+    <div class="sub">(Wholly-Owned Subsidiary of Refex Industries Limited)</div>
+    <hr>
+    <div class="cin-bar">CIN:U74909TN2023PLC158849</div>
+    <div class="reg"><strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
+    P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in</div>
+    <div class="pagenum">Acknowledgment</div>
+  </div>
+  </div>
+</body>
+</html>
