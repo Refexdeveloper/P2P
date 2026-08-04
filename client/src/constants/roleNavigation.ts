@@ -1,0 +1,342 @@
+import type { NavItem } from '../services/api';
+
+/** Mirrors server ROLE_DEFAULT_PERMISSIONS → NAV_ITEMS for sidebar fallback */
+const NAV_BY_CODE: Record<string, NavItem> = {
+  'nav.requester_dashboard': {
+    code: 'nav.requester_dashboard',
+    label: 'Dashboard',
+    path: '/requester/dashboard',
+    icon: 'ri-dashboard-line',
+    group: 'Requester',
+  },
+  'nav.create_pr': {
+    code: 'nav.create_pr',
+    label: 'Create PR',
+    path: '/requester/create-pr',
+    icon: 'ri-add-circle-line',
+    group: 'Requester',
+  },
+  'nav.rfq_entry': {
+    code: 'nav.rfq_entry',
+    label: 'RFQ Entry',
+    path: '/requester/rfq-entry',
+    icon: 'ri-file-edit-line',
+    group: 'Requester',
+  },
+  'nav.track_pr': {
+    code: 'nav.track_pr',
+    label: 'Track PR',
+    path: '/requester/track-pr',
+    icon: 'ri-search-line',
+    group: 'Requester',
+  },
+  'nav.pr_manager_dashboard': {
+    code: 'nav.pr_manager_dashboard',
+    label: 'Dashboard',
+    path: '/pr-manager/dashboard',
+    icon: 'ri-dashboard-line',
+    group: 'PR Manager',
+  },
+  'nav.rfq_approval': {
+    code: 'nav.rfq_approval',
+    label: 'RFQ Approval',
+    path: '/rfq-approval',
+    icon: 'ri-bar-chart-box-line',
+    group: 'Approvals',
+  },
+  'nav.tasks': {
+    code: 'nav.tasks',
+    label: 'My Tasks',
+    path: '/tasks',
+    icon: 'ri-task-line',
+    group: 'General',
+  },
+  'nav.cfo_dashboard': {
+    code: 'nav.cfo_dashboard',
+    label: 'Dashboard',
+    path: '/cfo/dashboard',
+    icon: 'ri-dashboard-line',
+    group: 'CFO',
+  },
+  'nav.purchase_requests': {
+    code: 'nav.purchase_requests',
+    label: 'Dashboard',
+    path: '/scm/purchase-requests',
+    icon: 'ri-dashboard-line',
+    group: 'SCM',
+  },
+  'nav.create_po': {
+    code: 'nav.create_po',
+    label: 'Create PO',
+    path: '/scm/create-po',
+    icon: 'ri-shopping-cart-2-line',
+    group: 'SCM',
+  },
+  'nav.item_master': {
+    code: 'nav.item_master',
+    label: 'Item Master',
+    path: '/scm/item-master',
+    icon: 'ri-box-3-line',
+    group: 'Masters',
+  },
+  'nav.vendor_master': {
+    code: 'nav.vendor_master',
+    label: 'Vendor Master',
+    path: '/scm/vendor-master',
+    icon: 'ri-store-2-line',
+    group: 'Masters',
+  },
+  'nav.category_master': {
+    code: 'nav.category_master',
+    label: 'Category Master',
+    path: '/scm/category-master',
+    icon: 'ri-price-tag-3-line',
+    group: 'Masters',
+  },
+  'nav.entity_master': {
+    code: 'nav.entity_master',
+    label: 'Entity Master',
+    path: '/scm/entity-master',
+    icon: 'ri-building-2-line',
+    group: 'Masters',
+  },
+  'nav.department_master': {
+    code: 'nav.department_master',
+    label: 'Department Master',
+    path: '/scm/department-master',
+    icon: 'ri-organization-chart',
+    group: 'Masters',
+  },
+  'nav.po_letterhead_master': {
+    code: 'nav.po_letterhead_master',
+    label: 'PO Type Master',
+    path: '/scm/po-type-master',
+    icon: 'ri-file-list-3-line',
+    group: 'Masters',
+  },
+  'nav.letterhead_master': {
+    code: 'nav.letterhead_master',
+    label: 'Letterhead Master',
+    path: '/scm/letterhead-master',
+    icon: 'ri-layout-top-2-line',
+    group: 'Masters',
+  },
+  'nav.scm_rfq_entry': {
+    code: 'nav.scm_rfq_entry',
+    label: 'RFQ Entry',
+    path: '/scm/rfq-entry',
+    icon: 'ri-file-list-line',
+    group: 'SCM',
+  },
+  'nav.vendor_quotation': {
+    code: 'nav.vendor_quotation',
+    label: 'Vendor Quotation Portal',
+    path: '/scm/vendor-quotation-portal',
+    icon: 'ri-price-tag-3-line',
+    group: 'SCM',
+  },
+  'nav.vendor_comparison': {
+    code: 'nav.vendor_comparison',
+    label: 'Vendor Comparison',
+    path: '/scm/vendor-comparison',
+    icon: 'ri-bar-chart-box-line',
+    group: 'SCM',
+  },
+  'nav.technical_clearance': {
+    code: 'nav.technical_clearance',
+    label: 'Technical Clearance',
+    path: '/scm/technical-clearance',
+    icon: 'ri-shield-check-line',
+    group: 'SCM',
+  },
+  'nav.po_approval': {
+    code: 'nav.po_approval',
+    label: 'PO Approval',
+    path: '/scm/po-approval',
+    icon: 'ri-checkbox-circle-line',
+    group: 'SCM',
+  },
+  'nav.vendor_po_acceptance': {
+    code: 'nav.vendor_po_acceptance',
+    label: 'Vendor PO Acceptance',
+    path: '/scm/vendor-po-acceptance',
+    icon: 'ri-shake-hands-line',
+    group: 'SCM',
+  },
+  'nav.vendor_invoice': {
+    code: 'nav.vendor_invoice',
+    label: 'Vendor Invoice',
+    path: '/scm/vendor-invoice',
+    icon: 'ri-file-invoice-line',
+    group: 'SCM',
+  },
+  'nav.grn': {
+    code: 'nav.grn',
+    label: 'GRN',
+    path: '/grn',
+    icon: 'ri-truck-line',
+    group: 'SCM',
+  },
+  'nav.invoice_verification': {
+    code: 'nav.invoice_verification',
+    label: 'Invoice Verification',
+    path: '/accounts/invoice-verification',
+    icon: 'ri-file-check-2-line',
+    group: 'Accounts',
+  },
+  'nav.payment': {
+    code: 'nav.payment',
+    label: 'Payment',
+    path: '/accounts/payment',
+    icon: 'ri-money-rupee-circle-line',
+    group: 'Accounts',
+  },
+  'nav.payment_authorization': {
+    code: 'nav.payment_authorization',
+    label: 'Payment Authorization',
+    path: '/accounts/scm-payment-approval',
+    icon: 'ri-shield-check-line',
+    group: 'SCM Manager',
+  },
+  'nav.functional_evaluate': {
+    code: 'nav.functional_evaluate',
+    label: 'Evaluate PR',
+    path: '/functional/evaluate-pr',
+    icon: 'ri-dashboard-line',
+    group: 'Functional',
+  },
+  'nav.tech_evaluation': {
+    code: 'nav.tech_evaluation',
+    label: 'Technical Evaluation',
+    path: '/tech-evaluator/rfq-evaluation',
+    icon: 'ri-star-line',
+    group: 'Tech',
+  },
+  'nav.vendor_dashboard': {
+    code: 'nav.vendor_dashboard',
+    label: 'Dashboard',
+    path: '/vendor/dashboard',
+    icon: 'ri-dashboard-line',
+    group: 'Vendor',
+  },
+  'nav.admin_users': {
+    code: 'nav.admin_users',
+    label: 'User Permissions',
+    path: '/admin/user-permissions',
+    icon: 'ri-shield-user-line',
+    group: 'Admin',
+  },
+};
+
+const MASTER_NAV_CODES = [
+  'nav.item_master',
+  'nav.vendor_master',
+  'nav.category_master',
+  'nav.entity_master',
+  'nav.department_master',
+  'nav.po_letterhead_master',
+  'nav.letterhead_master',
+] as const;
+
+const ROLE_DEFAULT_CODES: Record<string, string[]> = {
+  Requester: ['nav.requester_dashboard', 'nav.create_pr', 'nav.rfq_entry', 'nav.track_pr'],
+  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.tasks'],
+  CFO: ['nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks'],
+  'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
+  'SCM Buyer': [
+    'nav.purchase_requests',
+    'nav.rfq_approval',
+    'nav.create_po',
+    'nav.item_master',
+    'nav.vendor_master',
+    'nav.category_master',
+    'nav.entity_master',
+    'nav.department_master',
+    'nav.po_letterhead_master',
+    'nav.letterhead_master',
+    'nav.scm_rfq_entry',
+    'nav.vendor_quotation',
+    'nav.vendor_comparison',
+    'nav.technical_clearance',
+    'nav.po_approval',
+    'nav.vendor_po_acceptance',
+    'nav.vendor_invoice',
+    'nav.grn',
+  ],
+  'SCM Manager': [
+    'nav.po_approval',
+    'nav.rfq_approval',
+    'nav.payment_authorization',
+    'nav.tasks',
+    'nav.item_master',
+    'nav.vendor_master',
+    'nav.category_master',
+    'nav.entity_master',
+    'nav.department_master',
+    'nav.po_letterhead_master',
+    'nav.letterhead_master',
+  ],
+  'Accounts Payable': ['nav.invoice_verification', 'nav.payment'],
+  'Accounts Manager': ['nav.invoice_verification', 'nav.payment', 'nav.payment_authorization'],
+  'Functional Team': ['nav.functional_evaluate', 'nav.tasks'],
+  'Tech Evaluator': ['nav.tech_evaluation'],
+  Vendor: ['nav.vendor_dashboard', 'nav.vendor_quotation', 'nav.vendor_po_acceptance', 'nav.vendor_invoice'],
+  'Super Admin': ['nav.admin_users'],
+};
+
+export function getDefaultNavigationForRole(role?: string | null): NavItem[] {
+  if (!role) return [];
+  const codes = ROLE_DEFAULT_CODES[role] || [];
+  return codes.map((code) => NAV_BY_CODE[code]).filter(Boolean);
+}
+
+function isMastersNavCode(code?: string) {
+  return Boolean(code && (MASTER_NAV_CODES as readonly string[]).includes(code));
+}
+
+export function ensureNavigation(role: string | undefined | null, navigation?: NavItem[] | null): NavItem[] {
+  const base = navigation?.length
+    ? navigation.map((item) => {
+        const catalog = NAV_BY_CODE[item.code];
+        if (!catalog) return item;
+        // Catalog group wins for Masters so cached "SCM" group does not hide the submenu
+        return {
+          ...item,
+          ...catalog,
+          label: item.label || catalog.label,
+          path: item.path || catalog.path,
+          icon: item.icon || catalog.icon,
+          group: catalog.group || item.group,
+        };
+      })
+    : getDefaultNavigationForRole(role);
+
+  // SCM roles always get Item / Vendor / Category Master entries
+  if (role === 'SCM Buyer' || role === 'SCM Manager') {
+    const codes = new Set(base.map((n) => n.code));
+    const merged = [...base];
+    for (const code of MASTER_NAV_CODES) {
+      if (!codes.has(code) && NAV_BY_CODE[code]) {
+        merged.push(NAV_BY_CODE[code]);
+      }
+    }
+    return merged;
+  }
+
+  return base;
+}
+
+export function isMastersNavItem(item: Pick<NavItem, 'code' | 'group' | 'path'>) {
+  return (
+    item.group === 'Masters' ||
+    isMastersNavCode(item.code) ||
+    item.path === '/scm/item-master' ||
+    item.path === '/scm/vendor-master' ||
+    item.path === '/scm/category-master' ||
+    item.path === '/scm/entity-master' ||
+    item.path === '/scm/department-master' ||
+    item.path === '/scm/po-type-master' ||
+    item.path === '/scm/letterhead-master' ||
+    item.path === '/scm/po-letterhead-master'
+  );
+}
