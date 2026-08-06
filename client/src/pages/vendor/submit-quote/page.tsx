@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, FormEvent, ChangeEvent } from 'react';
 import { useParams } from 'react-router-dom';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = (import.meta.env.VITE_API_URL || 'https://p2p-backend-645830234926.asia-south1.run.app').replace(
+  /\/$/,
+  ''
+);
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);

@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const LIVE_API = 'https://p2p-backend-645830234926.asia-south1.run.app';
+const API_URL = (import.meta.env.VITE_API_URL || LIVE_API).replace(/\/$/, '');
+
 
 export class ApiError extends Error {
   status: number;
@@ -306,7 +308,7 @@ export interface VendorComparisonData {
   matrix: Record<string, { values: Record<number, { raw: unknown; display: string }>; bestVendorId: number | null }>;
 }
 
-const PO_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const PO_API_URL = API_URL;
 
 export const poApi = {
   getCreateContext: (prId: number) =>

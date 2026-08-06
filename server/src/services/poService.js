@@ -417,19 +417,21 @@ async function resolvePoDraftContent(prId, body) {
   let resolvedTerms = terms;
   let resolvedAnnexure = annexure;
 
-  // Branding from selected Letterhead Master (entity + logos) for PO PDF
+  // Branding from selected Letterhead Master (entity + logos) for PO PDF.
+  // Always take latest logos/entity from master when letterheadId is set,
+  // so Letterhead Master updates (header/footer) apply on create/update.
   try {
     if (resolvedLetterheadId) {
       const selected = await getLetterheadMasterById(resolvedLetterheadId);
-      resolvedEntity = resolvedEntity || selected.entity || '';
-      resolvedHeaderLogo = resolvedHeaderLogo || selected.headerLogo || '';
-      resolvedFooterLogo = resolvedFooterLogo || selected.footerLogo || '';
+      resolvedEntity = selected.entity || resolvedEntity || '';
+      resolvedHeaderLogo = selected.headerLogo || '';
+      resolvedFooterLogo = selected.footerLogo || '';
     } else {
       const branding = await getActiveLetterheadBranding();
       if (branding.id) resolvedLetterheadId = branding.id;
-      resolvedEntity = resolvedEntity || branding.entity || '';
-      resolvedHeaderLogo = resolvedHeaderLogo || branding.headerLogo || '';
-      resolvedFooterLogo = resolvedFooterLogo || branding.footerLogo || '';
+      resolvedEntity = branding.entity || resolvedEntity || '';
+      resolvedHeaderLogo = branding.headerLogo || resolvedHeaderLogo || '';
+      resolvedFooterLogo = branding.footerLogo || resolvedFooterLogo || '';
     }
   } catch (err) {
     if (resolvedLetterheadId) throw err;

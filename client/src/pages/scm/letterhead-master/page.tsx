@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { letterheadMasterApi, LetterheadMasterRecord } from '../../../services/api';
+import {
+  letterheadMasterApi,
+  masterApi,
+  LetterheadMasterRecord,
+  EntityRecord,
+} from '../../../services/api';
 
 type MediaMode = 'url' | 'upload' | 'html';
 
@@ -186,6 +191,7 @@ function logoPreview(value: string) {
 
 export default function LetterheadMasterPage() {
   const [rows, setRows] = useState<LetterheadMasterRecord[]>([]);
+  const [entities, setEntities] = useState<EntityRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -196,6 +202,7 @@ export default function LetterheadMasterPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const [loadingRecord, setLoadingRecord] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -216,6 +223,23 @@ export default function LetterheadMasterPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    masterApi
+      .listEntities({ status: 'active' })
+      .then((res) => setEntities(res.data || []))
+      .catch(() => setEntities([]));
+  }, []);
+
+  const fillFormFromRecord = (row: LetterheadMasterRecord) => {
+    setForm({
+      name: row.name || '',
+      entity: row.entity || '',
+      headerLogo: row.headerLogo || '',
+      footerLogo: row.footerLogo || '',
+      status: row.status || 'active',
+    });
+  };
+
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
@@ -223,28 +247,39 @@ export default function LetterheadMasterPage() {
     setShowForm(true);
   };
 
-  const openEdit = (row: LetterheadMasterRecord) => {
-    setEditing(row);
-    setForm({
-      name: row.name,
-      entity: row.entity || '',
-      headerLogo: row.headerLogo || '',
-      footerLogo: row.footerLogo || '',
-      status: row.status || 'active',
-    });
+  /** Always fetch full record so logo/footer LONGTEXT is present when editing */
+  const openEdit = async (row: LetterheadMasterRecord) => {
     setError('');
+    setLoadingRecord(true);
     setShowForm(true);
+    setEditing(row);
+    fillFormFromRecord(row);
+    try {
+      const res = await letterheadMasterApi.get(row.id);
+      setEditing(res.data);
+      fillFormFromRecord(res.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load letterhead');
+    } finally {
+      setLoadingRecord(false);
+    }
   };
 
-  const openView = (row: LetterheadMasterRecord) => {
+  const openView = async (row: LetterheadMasterRecord) => {
     setViewing(row);
+    try {
+      const res = await letterheadMasterApi.get(row.id);
+      setViewing(res.data);
+    } catch {
+      /* keep list row */
+    }
   };
 
   const openEditFromView = () => {
     if (!viewing) return;
     const row = viewing;
     setViewing(null);
-    openEdit(row);
+    void openEdit(row);
   };
 
   const renderLogoDetail = (label: string, value: string) => {
@@ -518,38 +553,78 @@ export default function LetterheadMasterPage() {
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">Letterhead Name *</label>
                 <input
                   value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder="e.g. Refex Default Letterhead"
+                  disabled={loadingRecord}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Entity</label>
-                <input
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Entity (from Entity Master)
+                </label>
+                <select
                   value={form.entity}
-                  onChange={(e) => setForm({ ...form, entity: e.target.value })}
-                  placeholder="e.g. Refex Green Mobility Limited"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                  onChange={(e) => setForm((prev) => ({ ...prev, entity: e.target.value }))}
+                  disabled={loadingRecord}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
+                >
+                  <option value="">Select entity</option>
+                  {entities.map((ent) => (
+                    <option key={ent.id} value={ent.name}>
+                      {ent.code ? `${ent.code} — ${ent.name}` : ent.name}
+                    </option>
+                  ))}
+                </select>
+                {form.entity && !entities.some((e) => e.name === form.entity) && (
+                  <input
+                    value={form.entity}
+                    onChange={(e) => setForm((prev) => ({ ...prev, entity: e.target.value }))}
+                    className="mt-2 w-full px-3 py-2.5 border border-amber-200 rounded-lg text-sm bg-amber-50"
+                    placeholder="Custom entity name"
+                  />
+                )}
+                {!entities.length && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    No entities in Entity Master — add entities first, or type a custom name below.
+                  </p>
+                )}
+                {!entities.length && (
+                  <input
+                    value={form.entity}
+                    onChange={(e) => setForm((prev) => ({ ...prev, entity: e.target.value }))}
+                    placeholder="Entity name"
+                    className="mt-2 w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
+                  />
+                )}
               </div>
-              <MediaField
-                label="Header Logo"
-                fieldKey={`hdr-${editing?.id || 'new'}`}
-                value={form.headerLogo}
-                onChange={(headerLogo) => setForm({ ...form, headerLogo })}
-              />
-              <MediaField
-                label="Footer Logo"
-                fieldKey={`ftr-${editing?.id || 'new'}`}
-                value={form.footerLogo}
-                onChange={(footerLogo) => setForm({ ...form, footerLogo })}
-              />
+              {loadingRecord ? (
+                <p className="text-sm text-gray-500">Loading logo & footer…</p>
+              ) : (
+                <>
+                  <MediaField
+                    label="Header Logo"
+                    fieldKey={`hdr-${editing?.id || 'new'}`}
+                    value={form.headerLogo}
+                    onChange={(headerLogo) => setForm((prev) => ({ ...prev, headerLogo }))}
+                  />
+                  <MediaField
+                    label="Footer Logo"
+                    fieldKey={`ftr-${editing?.id || 'new'}`}
+                    value={form.footerLogo}
+                    onChange={(footerLogo) => setForm((prev) => ({ ...prev, footerLogo }))}
+                  />
+                </>
+              )}
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
                 <select
                   value={form.status}
                   onChange={(e) =>
-                    setForm({ ...form, status: e.target.value as 'active' | 'inactive' })
+                    setForm((prev) => ({
+                      ...prev,
+                      status: e.target.value as 'active' | 'inactive',
+                    }))
                   }
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
                 >

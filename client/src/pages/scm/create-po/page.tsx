@@ -310,23 +310,33 @@ export default function CreatePOPage() {
     };
   }, [isEditMode, applyLetterheadBranding]);
 
+  /** Keep logos/entity in sync with Letterhead Master when id is set */
   useEffect(() => {
     if (!letterheadId) return;
-    if (letterheadOptions.some((o) => o.id === letterheadId)) return;
     let cancelled = false;
-    letterheadMasterApi
-      .get(Number(letterheadId))
-      .then((res) => {
+    (async () => {
+      try {
+        const match = letterheadOptions.find((o) => o.id === letterheadId);
+        if (match?.headerLogo || match?.footerLogo || match?.entity) {
+          if (!cancelled) applyLetterheadBranding(match);
+          return;
+        }
+        const res = await letterheadMasterApi.get(Number(letterheadId));
         if (cancelled) return;
         setLetterheadOptions((prev) =>
-          prev.some((p) => p.id === res.data.id) ? prev : [...prev, res.data]
+          prev.some((p) => p.id === res.data.id) ? prev.map((p) => (p.id === res.data.id ? res.data : p)) : [...prev, res.data]
         );
-      })
-      .catch(() => undefined);
+        applyLetterheadBranding(res.data);
+      } catch {
+        /* keep existing snapshot */
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [letterheadId, letterheadOptions]);
+    // Only re-run when letterheadId or options list identity changes meaningfully
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [letterheadId, letterheadOptions.length]);
 
   useEffect(() => {
     if (letterheadLocked) return;
