@@ -1,0 +1,104 @@
+# Cloud Run service definition for p2p-backend (asia-south1).
+# Apply only after creating Secret Manager secrets and IAM bindings (see comments below).
+# Do NOT put SMTP_USER / SMTP_PASSWORD plaintext in this file.
+#
+# Prerequisites (one-time, project master-diorama-489103-u2):
+#   echo -n 'support@refexone.com' | gcloud secrets create SMTP_USER --data-file=- --project=master-diorama-489103-u2
+#   printf '%s' 'YOUR_GMAIL_APP_PASSWORD' | gcloud secrets create SMTP_PASSWORD --data-file=- --project=master-diorama-489103-u2
+#   gcloud secrets add-iam-policy-binding SMTP_USER \
+#     --member=serviceAccount:p2p-app-sa@master-diorama-489103-u2.iam.gserviceaccount.com \
+#     --role=roles/secretmanager.secretAccessor --project=master-diorama-489103-u2
+#   gcloud secrets add-iam-policy-binding SMTP_PASSWORD \
+#     --member=serviceAccount:p2p-app-sa@master-diorama-489103-u2.iam.gserviceaccount.com \
+#     --role=roles/secretmanager.secretAccessor --project=master-diorama-489103-u2
+#
+# Apply (creates a new revision; does not auto-run from this chat):
+#   gcloud run services replace deploy/p2p-backend.cloudrun.yaml --region=asia-south1 --project=master-diorama-489103-u2
+#
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: p2p-backend
+  labels:
+    cloud.googleapis.com/location: asia-south1
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+    run.googleapis.com/maxScale: '20'
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '5'
+        run.googleapis.com/cloudsql-instances: master-diorama-489103-u2:asia-south1:p2p-mysql
+        run.googleapis.com/startup-cpu-boost: 'true'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      serviceAccountName: p2p-app-sa@master-diorama-489103-u2.iam.gserviceaccount.com
+      containers:
+        - image: asia-south1-docker.pkg.dev/master-diorama-489103-u2/cloud-run-source-deploy/p2p-backend@sha256:122decabb749c5809880126553d81b187c2a1eb952a4ad3a685df2b13afa1c51
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: SERVE_CLIENT
+              value: 'true'
+            - name: DB_NAME
+              value: p2p_system
+            - name: DB_USER
+              value: p2p_app
+            - name: INSTANCE_CONNECTION_NAME
+              value: master-diorama-489103-u2:asia-south1:p2p-mysql
+            - name: CORS_ORIGIN
+              value: '*'
+            - name: REFEXONE_LOGIN_ENABLED
+              value: 'false'
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: p2p-db-password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: p2p-jwt-secret
+
+            # --- Gmail SMTP (non-secret) ---
+            - name: SMTP_HOST
+              value: smtp.gmail.com
+            - name: SMTP_PORT
+              value: '587'
+            - name: SMTP_SECURE
+              value: 'false'
+            - name: SMTP_FROM
+              value: Refex P2P <support@refexone.com>
+
+            # --- Gmail SMTP (Secret Manager) ---
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SMTP_USER
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SMTP_PASSWORD
+
+          resources:
+            limits:
+              cpu: '1'
+              memory: 1Gi
+          startupProbe:
+            timeoutSeconds: 240
+            periodSeconds: 240
+            failureThreshold: 1
+            tcpSocket:
+              port: 8080
+  traffic:
+    - percent: 100
+      latestRevision: true
