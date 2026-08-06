@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS pr_line_items (
   FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
   INDEX idx_pr_line_pr (pr_id)
 );
+
+CREATE TABLE IF NOT EXISTS pr_approvals (
   id INT AUTO_INCREMENT PRIMARY KEY,
   pr_id INT NOT NULL,
   stage VARCHAR(50) NOT NULL,
@@ -78,6 +80,8 @@ CREATE TABLE IF NOT EXISTS pr_line_items (
   INDEX idx_pr_approvals_pr (pr_id),
   INDEX idx_pr_approvals_pr_created (pr_id, created_at)
 );
+
+CREATE TABLE IF NOT EXISTS workflow_tasks (
   id INT AUTO_INCREMENT PRIMARY KEY,
   pr_id INT NOT NULL,
   task_type VARCHAR(50) DEFAULT 'PR_APPROVAL',

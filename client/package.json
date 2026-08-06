@@ -8,6 +8,7 @@
     "dev:server": "npm run dev --prefix server",
     "db:init": "npm run db:init --prefix server",
     "build": "vite build",
+    "build:live": "vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit --project tsconfig.app.json"
