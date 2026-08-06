@@ -4,26 +4,53 @@ import { promisify } from 'util';
 const inflateRaw = promisify(zlib.inflateRaw);
 const inflate = promisify(zlib.inflate);
 
+/** Live Cloud Run backend (SPA + API). Override with APP_URL / API_PUBLIC_URL in env. */
+const LIVE_APP_URL = 'https://p2p-backend-645830234926.asia-south1.run.app';
+
+function isUsablePublicBase(url) {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim().replace(/\/$/, '');
+  if (!trimmed || trimmed === '*') return false;
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  // Cloud Run sets PORT=8080; never advertise localhost ACS to RefexOne there
+  if (process.env.K_SERVICE && /localhost|127\.0\.0\.1/i.test(trimmed)) return false;
+  return true;
+}
+
+function publicBase(...candidates) {
+  for (const c of candidates) {
+    if (!c) continue;
+    const base = String(c).trim().replace(/\/$/, '');
+    if (isUsablePublicBase(base)) return base;
+  }
+  return LIVE_APP_URL;
+}
+
 function appUrl(path = '') {
-  const base = (process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:3000').replace(/\/$/, '');
-  if (!path) return base;
-  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+  const safeBase = publicBase(
+    process.env.APP_URL,
+    process.env.CORS_ORIGIN,
+    LIVE_APP_URL
+  );
+  if (!path) return safeBase;
+  return `${safeBase}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 function apiUrl(path = '') {
-  const port = process.env.PORT || 5000;
-  // Prefer explicit API public URL. For local SSO, APP_URL (Vite :3000) can proxy /api.
-  const base = (
-    process.env.API_PUBLIC_URL ||
-    process.env.APP_URL ||
-    `http://localhost:${port}`
-  ).replace(/\/$/, '');
-  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+  const safeBase = publicBase(
+    process.env.API_PUBLIC_URL,
+    process.env.APP_URL,
+    LIVE_APP_URL
+  );
+  return `${safeBase}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 export function getRefexOneSamlConfig() {
-  const entityId = process.env.REFEXONE_SAML_ENTITY_ID || `${appUrl()}/auth/refexone/saml`;
-  const acsUrl = process.env.REFEXONE_SAML_ACS_URL || apiUrl('/api/auth/refexone/saml/acs');
+  const entityId =
+    process.env.REFEXONE_SAML_ENTITY_ID || `${appUrl()}/auth/refexone/saml`;
+  const acsUrl =
+    process.env.REFEXONE_SAML_ACS_URL ||
+    apiUrl('/api/auth/refexone/saml/acs');
   const launchUrl = appUrl('/auth/refexone/launch');
   const homeUrl = launchUrl;
   return {
