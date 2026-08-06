@@ -39,15 +39,55 @@ async function issueAuthResponse(res, userRow) {
   res.json({ token, user: authUser });
 }
 
-async function completeSamlLoginAndRedirect(res, userRow) {
+function htmlSsoRedirect(targetUrl, p2pToken) {
+  const safeUrl = String(targetUrl).replace(/"/g, '&quot;');
+  const safeToken = String(p2pToken)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/</g, '');
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="refresh" content="0;url=${safeUrl}" />
+  <title>P2P SSO</title>
+</head>
+<body>
+  <p>Signing you into P2P…</p>
+  <script>
+    try {
+      sessionStorage.setItem('p2p_sso_token', '${safeToken}');
+      localStorage.setItem('p2p_sso_token', '${safeToken}');
+    } catch (e) {}
+    window.location.replace('${safeUrl}');
+  </script>
+  <p><a href="${safeUrl}">Continue to P2P</a></p>
+</body>
+</html>`;
+}
+
+async function completeSamlLoginAndRedirect(res, userRow, relayState) {
   const authUser = await enrichAuthUser(userRow);
   const token = signUserToken(authUser);
   const { launchUrl, appUrl } = getRefexOneSamlConfig();
-  const target = new URL('/auth/refexone/callback', appUrl);
+
+  let target;
+  try {
+    target = relayState ? new URL(relayState, appUrl) : new URL(launchUrl);
+  } catch {
+    target = new URL(launchUrl);
+  }
+  // Only allow redirects back to our app
+  if (target.origin !== new URL(appUrl).origin) {
+    target = new URL(launchUrl);
+  }
   target.searchParams.set('p2p_token', token);
-  // Prefer launch home if callback path unavailable
-  const redirectTo = target.toString() || `${launchUrl}?p2p_token=${encodeURIComponent(token)}`;
-  return res.redirect(302, redirectTo);
+
+  console.log('[SAML ACS] SSO ok for', authUser.email, '→', target.toString());
+  res
+    .status(200)
+    .type('html')
+    .send(htmlSsoRedirect(target.toString(), token));
 }
 
 async function loginViaRefexOne(email, password) {
@@ -191,32 +231,54 @@ router.get('/refexone/config', (_req, res) => {
 router.post('/refexone/saml/acs', async (req, res) => {
   try {
     const samlResponse = req.body?.SAMLResponse || req.body?.samlResponse;
+    const relayState = req.body?.RelayState || req.body?.relayState || req.query?.RelayState;
+    console.log(
+      '[SAML ACS] POST received',
+      'hasSAMLResponse=',
+      Boolean(samlResponse),
+      'bodyKeys=',
+      Object.keys(req.body || {})
+    );
     if (!samlResponse) {
-      return res.status(400).send('SAMLResponse missing');
+      return res.status(400).type('html').send(
+        '<h1>SAMLResponse missing</h1><p>RefexOne did not post a SAML assertion to the ACS URL.</p>'
+      );
     }
 
     const profile = await parseRefexOneSamlResponse(samlResponse);
+    console.log('[SAML ACS] Parsed profile', profile.email, profile.name);
     const localUser = await resolveLocalUserFromRefexOne(profile);
     if (!localUser) {
-      return res.status(401).send('Unable to map RefexOne SAML user to P2P');
+      return res.status(401).type('html').send('<h1>Unable to map RefexOne SAML user to P2P</h1>');
     }
 
-    return completeSamlLoginAndRedirect(res, localUser);
+    return completeSamlLoginAndRedirect(res, localUser, relayState);
   } catch (err) {
     console.error('RefexOne SAML ACS error:', err);
-    const { appUrl } = getRefexOneSamlConfig();
-    const fail = new URL('/auth/refexone/callback', appUrl);
+    const { appUrl, launchUrl } = getRefexOneSamlConfig();
+    const fail = new URL(launchUrl || '/auth/refexone/launch', appUrl);
     fail.searchParams.set('error', err.message || 'SAML sign-in failed');
-    return res.redirect(302, fail.toString());
+    return res.status(200).type('html').send(
+      `<!DOCTYPE html><html><body><script>location.replace(${JSON.stringify(fail.toString())})</script>
+       <p>SSO failed: ${String(err.message || 'error')}. <a href="${fail.toString()}">Continue</a></p></body></html>`
+    );
   }
 });
 
 router.get('/refexone/saml/acs', (_req, res) => {
   const saml = getRefexOneSamlConfig();
-  res.json({
-    message: 'RefexOne SAML ACS is ready. Configure these values in RefexOne Add SAML App.',
-    ...saml,
-  });
+  res.type('html').send(`<!DOCTYPE html>
+<html><head><title>P2P SAML ACS</title></head>
+<body style="font-family:system-ui;max-width:640px;margin:40px auto;padding:0 16px">
+  <h1>P2P SAML ACS is ready</h1>
+  <p>RefexOne must <strong>POST</strong> a SAMLResponse here when you click the app. A normal browser open (GET) will not log you in.</p>
+  <ul>
+    <li><strong>Entity ID:</strong> <code>${saml.entityId}</code></li>
+    <li><strong>ACS URL:</strong> <code>${saml.acsUrl}</code></li>
+    <li><strong>HOME URL:</strong> <code>${saml.homeUrl}</code></li>
+  </ul>
+  <p>If clicking the app only opens HOME without SSO, keep these ACS/HOME values and ask RefexOne admin to enable IdP-initiated SAML for this app.</p>
+</body></html>`);
 });
 
 router.get('/me', authenticate, async (req, res) => {

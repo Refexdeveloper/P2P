@@ -6,6 +6,7 @@ import {
   buildPoPreviewDocument,
   listPurchaseOrders,
   listTrackPurchaseOrders,
+  listVendorAcceptancePOs,
   getPurchaseOrderById,
   getPurchaseOrderByNumber,
   signPurchaseOrder,
@@ -14,6 +15,11 @@ import {
   rejectBuyerFinalVerify,
   updatePurchaseOrder,
   buildPoPreviewForPo,
+  sendVendorAcceptanceMail,
+  submitManualVendorAcceptance,
+  getVendorAcceptanceByToken,
+  submitVendorAcceptanceByToken,
+  resolveVendorAcceptanceFile,
 } from '../services/poService.js';
 import {
   listLetterheads,
@@ -43,13 +49,51 @@ import {
 } from '../services/signatureService.js';
 
 const router = Router();
-router.use(authenticate);
 
 function sendCsv(res, filename, csv) {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(csv);
 }
+
+/** Public vendor acceptance link (no login) */
+router.get('/vendor-accept/:token', async (req, res) => {
+  try {
+    const data = await getVendorAcceptanceByToken(req.params.token);
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/vendor-accept/:token', async (req, res) => {
+  try {
+    const data = await submitVendorAcceptanceByToken(req.params.token, req.body || {});
+    res.json({ data, message: 'Vendor response recorded' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/vendor-accept/:token/pdf', async (req, res) => {
+  try {
+    const pool = (await import('../config/db.js')).default;
+    const [rows] = await pool.query(
+      `SELECT * FROM purchase_orders WHERE vendor_acceptance_token = ? LIMIT 1`,
+      [String(req.params.token || '').trim()]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Invalid link' });
+    const doc = resolvePoDocumentPath({
+      signedPdfPath: rows[0].signed_pdf_path,
+      pdfPath: rows[0].pdf_path,
+    });
+    res.download(doc.fullPath, `${rows[0].po_number}_signed.pdf`);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.use(authenticate);
 
 router.get('/signatures', requireRoles('SCM Manager'), async (req, res) => {
   try {
@@ -255,17 +299,29 @@ router.get('/pending-buyer-verify', requireRoles('SCM Buyer'), async (req, res) 
   }
 });
 
+router.get('/vendor-acceptance', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+  try {
+    const data = await listVendorAcceptancePOs(req.user);
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const page = req.query.page != null ? Number(req.query.page) : 1;
     const limit = req.query.limit != null ? Number(req.query.limit) : 10;
     const search = typeof req.query.search === 'string' ? req.query.search : '';
     const status = typeof req.query.status === 'string' ? req.query.status : 'all';
+    const purchaseType =
+      typeof req.query.purchaseType === 'string' ? req.query.purchaseType : 'all';
     const result = await listTrackPurchaseOrders(req.user, {
       page: Number.isFinite(page) ? page : 1,
       limit: Number.isFinite(limit) ? limit : 10,
       search,
       status,
+      purchaseType,
     });
     res.json(result);
   } catch (err) {
@@ -277,7 +333,12 @@ router.get('/', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) => {
   try {
     const pendingOnly = req.query.pending === 'true';
     const buyerVerifyOnly = req.query.buyerVerify === 'true';
-    const data = await listPurchaseOrders(req.user, { pendingOnly, buyerVerifyOnly });
+    const approvalQueue = req.query.approvalQueue === 'true' || req.user.role === 'SCM Manager';
+    const data = await listPurchaseOrders(req.user, {
+      pendingOnly,
+      buyerVerifyOnly,
+      approvalQueue: approvalQueue && !buyerVerifyOnly,
+    });
     res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -330,7 +391,7 @@ router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manag
   }
 });
 
-router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) => {
+router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const data = await getPurchaseOrderById(Number(req.params.id));
     if (!data) return res.status(404).json({ message: 'PO not found' });
@@ -394,7 +455,7 @@ router.post('/:id/final-verify', requireRoles('SCM Buyer'), async (req, res) => 
     const data = await finalVerifyPurchaseOrder(req.user, Number(req.params.id), req.body?.remarks);
     res.json({
       data,
-      message: `PO final-verified and emailed to ${data.vendorName} with all participants in CC`,
+      message: `PO final-verified. Next: open Vendor PO Acceptance to send mail or enter acceptance manually.`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -405,6 +466,38 @@ router.post('/:id/final-verify/reject', requireRoles('SCM Buyer'), async (req, r
   try {
     const data = await rejectBuyerFinalVerify(req.user, Number(req.params.id), req.body?.remarks);
     res.json({ data, message: 'PO rejected at buyer final verify' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/vendor-acceptance/send-mail', requireRoles('SCM Buyer'), async (req, res) => {
+  try {
+    const data = await sendVendorAcceptanceMail(req.user, Number(req.params.id));
+    res.json({
+      data,
+      message: `Acceptance mail sent to ${data.vendorEmail} with signed PO attached`,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/vendor-acceptance/manual', requireRoles('SCM Buyer'), async (req, res) => {
+  try {
+    const data = await submitManualVendorAcceptance(req.user, Number(req.params.id), req.body || {});
+    res.json({ data, message: 'Vendor acceptance recorded manually' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/:id/vendor-acceptance/file', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) => {
+  try {
+    const po = await getPurchaseOrderById(Number(req.params.id));
+    if (!po) return res.status(404).json({ message: 'PO not found' });
+    const fullPath = resolveVendorAcceptanceFile(po);
+    res.download(fullPath, po.vendorAcceptanceFileName || 'vendor-acceptance.pdf');
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

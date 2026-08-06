@@ -268,16 +268,16 @@ export function queueRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail,
   });
 }
 
-export async function sendPoVendorNotification(po, { signerName, signerComments, ccEmails, pdfPath }) {
+export async function sendPoVendorNotification(po, { signerName, signerComments, ccEmails, pdfPath, portalUrl }) {
   const { host, user, pass } = getSmtpConfig();
   const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const portalUrl = `${base}/scm/vendor-po-acceptance`;
+  const acceptUrl = portalUrl || `${base}/scm/vendor-po-acceptance`;
 
   const { subject, html, text } = buildPoVendorEmail({
     po,
     signerName,
     signerComments,
-    portalUrl,
+    portalUrl: acceptUrl,
   });
 
   const to = po.vendorEmail;

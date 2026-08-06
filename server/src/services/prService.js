@@ -16,7 +16,7 @@ import {
   formatDate,
   formatDateTime,
 } from '../utils/constants.js';
-import { nextDocumentNumber } from './documentNumberService.js';
+import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './documentNumberService.js';
 
 async function getLineItems(prId) {
   const [rows] = await pool.query('SELECT * FROM pr_line_items WHERE pr_id = ? ORDER BY id', [prId]);
@@ -58,6 +58,8 @@ async function enrichPR(row) {
     prNumber: row.pr_number,
     title: row.title,
     requestType: row.request_type,
+    purchaseType: row.purchase_type || 'purchase_order',
+    purchaseTypeLabel: purchaseTypeLabel(row.purchase_type),
     department: row.department_name,
     departmentId: row.department_id,
     entityId: row.entity_id || null,
@@ -187,6 +189,7 @@ export async function createPurchaseRequest(user, body) {
   const {
     title,
     requestType = 'Opex',
+    purchaseType = 'purchase_order',
     department,
     priority = 'Medium',
     justification,
@@ -198,6 +201,7 @@ export async function createPurchaseRequest(user, body) {
   } = body;
 
   const vendorMode = vendorSelection === 'own' ? 'own' : 'scm';
+  const normalizedPurchaseType = normalizePurchaseType(purchaseType);
 
   if (!lineItems.length) {
     throw new Error('At least one line item is required');
@@ -231,12 +235,13 @@ export async function createPurchaseRequest(user, body) {
 
     const [result] = await conn.query(
       `INSERT INTO purchase_requests
-       (pr_number, title, request_type, department_id, entity_id, requester_id, priority, justification, required_date, total_amount, status, vendor_selection, current_stage, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, total_amount, status, vendor_selection, current_stage, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         prNumber,
         prTitle,
         requestType,
+        normalizedPurchaseType,
         deptRows[0].id,
         Number(entityId),
         user.id,
@@ -462,6 +467,8 @@ function mapScmBucketSummary(row) {
     prNumber: row.pr_number,
     title: row.title,
     requestType: row.request_type,
+    purchaseType: row.purchase_type || 'purchase_order',
+    purchaseTypeLabel: purchaseTypeLabel(row.purchase_type),
     department: row.department_name,
     departmentId: row.department_id,
     entityId: row.entity_id || null,
@@ -707,6 +714,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
   const {
     title,
     requestType,
+    purchaseType,
     department,
     priority,
     justification,
@@ -731,16 +739,20 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
       : pr.vendor_selection === 'own'
         ? 'own'
         : 'scm';
+  const normalizedPurchaseType = purchaseType
+    ? normalizePurchaseType(purchaseType)
+    : normalizePurchaseType(pr.purchase_type);
 
   const run = async (db) => {
     await db.query(
       `UPDATE purchase_requests
-       SET title = ?, request_type = ?, department_id = ?, priority = ?, justification = ?,
+       SET title = ?, request_type = ?, purchase_type = ?, department_id = ?, priority = ?, justification = ?,
            required_date = ?, total_amount = ?, vendor_selection = ?, updated_at = NOW()
        WHERE id = ?`,
       [
         prTitle,
         requestType || pr.request_type,
+        normalizedPurchaseType,
         deptRows[0].id,
         priority || pr.priority,
         justification,

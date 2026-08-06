@@ -10,6 +10,7 @@ import {
 } from '../../../utils/poCsvImport';
 
 type StatusFilter = 'all' | 'ready' | 'pending' | 'approved' | 'rejected' | 'sent';
+type PurchaseTypeFilter = 'all' | 'purchase_order' | 'work_order';
 
 type TrackRow = {
   key: string;
@@ -24,6 +25,8 @@ type TrackRow = {
   amount: number;
   status: string;
   statusLabel: string;
+  purchaseType?: string;
+  purchaseTypeLabel?: string;
   requiredDate: string;
   createdAt: string;
   kind: 'ready' | 'po';
@@ -81,6 +84,7 @@ export default function TrackPoPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [purchaseTypeFilter, setPurchaseTypeFilter] = useState<PurchaseTypeFilter>('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [pagination, setPagination] = useState<TrackPagination>({
@@ -120,6 +124,7 @@ export default function TrackPoPage() {
         limit: pageSize,
         search: debouncedSearch || undefined,
         status: statusFilter,
+        purchaseType: purchaseTypeFilter,
       });
       setRows(res.data as TrackRow[]);
       if (res.pagination) {
@@ -135,7 +140,7 @@ export default function TrackPoPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, statusFilter]);
+  }, [page, pageSize, debouncedSearch, statusFilter, purchaseTypeFilter]);
 
   useEffect(() => {
     load();
@@ -288,9 +293,35 @@ export default function TrackPoPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search PR, PO, vendor, title..."
+            placeholder="Search PR, PO/WO, vendor, title..."
             className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
           />
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {(
+            [
+              ['all', 'All Types'],
+              ['purchase_order', 'Purchase Order'],
+              ['work_order', 'Work Order'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                setPurchaseTypeFilter(key);
+                setPage(1);
+                setExpandedKey(null);
+              }}
+              className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${
+                purchaseTypeFilter === key
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         <div className="flex gap-2 flex-wrap">
           {(
@@ -330,7 +361,8 @@ export default function TrackPoPage() {
                 <tr>
                   <th className="px-2 py-3 w-11"></th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[160px]">PR Number</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[160px]">PO Number</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[160px]">PO / WO Number</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[100px]">Type</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Title / Vendor</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Department</th>
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
@@ -341,7 +373,7 @@ export default function TrackPoPage() {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-12 text-center text-sm text-gray-500">
+                    <td colSpan={9} className="px-5 py-12 text-center text-sm text-gray-500">
                       No purchase orders found
                     </td>
                   </tr>
@@ -365,6 +397,18 @@ export default function TrackPoPage() {
                           </td>
                           <td className="px-3 py-3 text-sm text-gray-700 truncate" title={row.poNumber || undefined}>
                             {row.poNumber || '—'}
+                          </td>
+                          <td className="px-3 py-3">
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${
+                                row.purchaseType === 'work_order'
+                                  ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                                  : 'bg-teal-50 text-teal-700 border border-teal-200'
+                              }`}
+                            >
+                              {row.purchaseTypeLabel ||
+                                (row.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order')}
+                            </span>
                           </td>
                           <td className="px-3 py-3 overflow-hidden">
                             <p className="text-sm font-medium text-gray-900 truncate" title={row.title}>
@@ -394,7 +438,7 @@ export default function TrackPoPage() {
                                     onClick={() => openCreatePo(row.prId)}
                                     className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold"
                                   >
-                                    Create PO
+                                    Create {row.purchaseType === 'work_order' ? 'WO' : 'PO'}
                                   </button>
                                   <button
                                     type="button"
@@ -419,7 +463,7 @@ export default function TrackPoPage() {
                         </tr>
                         {open && (
                           <tr>
-                            <td colSpan={8} className="p-0 bg-slate-50 border-b">
+                            <td colSpan={9} className="p-0 bg-slate-50 border-b">
                               <div className="m-4 bg-white rounded-xl border border-gray-200 p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                                 <div>
                                   <p className="text-xs text-gray-500">Requester</p>

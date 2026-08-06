@@ -135,6 +135,17 @@ const MIGRATIONS = [
   `ALTER TABLE po_line_items MODIFY COLUMN discount DECIMAL(15, 2) NOT NULL DEFAULT 0`,
   `ALTER TABLE po_line_items MODIFY COLUMN description TEXT NOT NULL`,
   `ALTER TABLE po_line_items ADD COLUMN item_name VARCHAR(255) NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_token VARCHAR(64) NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_mode ENUM('email', 'manual') NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_status ENUM('pending', 'accepted', 'rejected', 'partial') NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_remarks TEXT NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_file_name VARCHAR(255) NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_file_path VARCHAR(500) NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_delivery_confirmed_date DATE NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_accepted_at TIMESTAMP NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
+  `ALTER TABLE purchase_orders ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
+  `ALTER TABLE document_number_sequences MODIFY COLUMN doc_type ENUM('PR', 'PO', 'WO') NOT NULL`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */
@@ -231,6 +242,13 @@ export async function runStartupMigrations() {
     await ensurePerformanceIndexes();
   } catch (err) {
     console.warn('Performance index migration skipped:', err.message);
+  }
+
+  try {
+    const { seedNavigationPermissions } = await import('./permissionService.js');
+    await seedNavigationPermissions();
+  } catch (err) {
+    console.warn('Navigation permission seed skipped:', err.message);
   }
 
   try {

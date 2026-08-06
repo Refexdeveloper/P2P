@@ -26,6 +26,27 @@ function extractToken(params: URLSearchParams): { kind: 'refex' | 'p2p'; value: 
   return null;
 }
 
+function readStoredSsoToken(): string | null {
+  try {
+    const fromSession = sessionStorage.getItem('p2p_sso_token');
+    if (fromSession?.trim()) return fromSession.trim();
+    const fromLocal = localStorage.getItem('p2p_sso_token');
+    if (fromLocal?.trim()) return fromLocal.trim();
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function clearStoredSsoToken() {
+  try {
+    sessionStorage.removeItem('p2p_sso_token');
+    localStorage.removeItem('p2p_sso_token');
+  } catch {
+    // ignore
+  }
+}
+
 export default function RefexOneLaunchPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -55,6 +76,13 @@ export default function RefexOneLaunchPage() {
   useEffect(() => {
     if (isLoading) return;
 
+    const errParam = searchParams.get('error');
+    if (errParam) {
+      setStatus('');
+      setError(errParam);
+      return;
+    }
+
     if (isAuthenticated && user) {
       navigate(resolvePostLoginPath(user.role, user.navigation), { replace: true });
       return;
@@ -64,12 +92,18 @@ export default function RefexOneLaunchPage() {
     const hashParams = new URLSearchParams(
       hash.includes('=') ? (hash.includes('?') ? hash.split('?')[1] || '' : hash) : ''
     );
-    const found = extractToken(searchParams) || extractToken(hashParams);
+    const found =
+      extractToken(searchParams) ||
+      extractToken(hashParams) ||
+      (() => {
+        const stored = readStoredSsoToken();
+        return stored ? ({ kind: 'p2p' as const, value: stored }) : null;
+      })();
 
     if (!found) {
       setStatus('');
       setError(
-        'No session was passed from RefexOne. Configure the SAML App ACS URL (recommended) or open P2P with an access_token.'
+        'No session was passed from RefexOne. The app opened HOME URL without a SAML login. Use the ACS URL below in RefexOne, then launch the app again from My Apps (not by pasting the HOME link).'
       );
       return;
     }
@@ -83,8 +117,10 @@ export default function RefexOneLaunchPage() {
         } else {
           await loginWithRefexOneToken(found.value);
         }
+        clearStoredSsoToken();
       } catch (err) {
         if (!cancelled) {
+          clearStoredSsoToken();
           setError(err instanceof Error ? err.message : 'Automatic sign-in failed');
           setStatus('');
         }
@@ -122,7 +158,7 @@ export default function RefexOneLaunchPage() {
             <p className="text-sm text-slate-600 mt-2">{error}</p>
             {samlHint && (
               <div className="mt-4 text-left bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600 space-y-1.5">
-                <p className="font-semibold text-slate-800">Set these in RefexOne → Add SAML App:</p>
+                <p className="font-semibold text-slate-800">Set these in RefexOne → SAML App:</p>
                 <p>
                   <span className="font-medium">Entity ID:</span>{' '}
                   <span className="font-mono break-all">{samlHint.entityId}</span>
@@ -134,6 +170,9 @@ export default function RefexOneLaunchPage() {
                 <p>
                   <span className="font-medium">HOME URL:</span>{' '}
                   <span className="font-mono break-all">{samlHint.homeUrl}</span>
+                </p>
+                <p className="pt-1 text-amber-700">
+                  Click the app from Refex One My Apps so it POSTs to ACS. Opening HOME alone will not SSO.
                 </p>
               </div>
             )}

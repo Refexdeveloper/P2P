@@ -170,6 +170,13 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-checkbox-circle-line',
     group: 'SCM',
   },
+  'nav.scm_manager_dashboard': {
+    code: 'nav.scm_manager_dashboard',
+    label: 'Dashboard',
+    path: '/scm/manager-dashboard',
+    icon: 'ri-dashboard-line',
+    group: 'SCM Manager',
+  },
   'nav.buyer_final_verify': {
     code: 'nav.buyer_final_verify',
     label: 'Buyer Final Verify',
@@ -288,6 +295,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.grn',
   ],
   'SCM Manager': [
+    'nav.scm_manager_dashboard',
     'nav.po_approval',
     'nav.rfq_approval',
     'nav.payment_authorization',
@@ -335,19 +343,34 @@ export function ensureNavigation(role: string | undefined | null, navigation?: N
       })
     : getDefaultNavigationForRole(role);
 
+  let merged = base;
+
   // SCM roles always get Item / Vendor / Category Master entries
   if (role === 'SCM Buyer' || role === 'SCM Manager') {
-    const codes = new Set(base.map((n) => n.code));
-    const merged = [...base];
+    const codes = new Set(merged.map((n) => n.code));
+    merged = [...merged];
     for (const code of MASTER_NAV_CODES) {
       if (!codes.has(code) && NAV_BY_CODE[code]) {
         merged.push(NAV_BY_CODE[code]);
       }
     }
-    return merged;
   }
 
-  return base;
+  // SCM Manager sidebar order: Dashboard → PO Approval → RFQ Approval → …
+  if (role === 'SCM Manager') {
+    const order = ROLE_DEFAULT_CODES['SCM Manager'] || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    if (!merged.some((n) => n.code === 'nav.scm_manager_dashboard') && NAV_BY_CODE['nav.scm_manager_dashboard']) {
+      merged = [NAV_BY_CODE['nav.scm_manager_dashboard'], ...merged];
+    }
+    merged = [...merged].sort((a, b) => {
+      const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;
+      const bi = rank.has(b.code) ? (rank.get(b.code) as number) : 1000;
+      return ai - bi;
+    });
+  }
+
+  return merged;
 }
 
 export function isMastersNavItem(item: Pick<NavItem, 'code' | 'group' | 'path'>) {

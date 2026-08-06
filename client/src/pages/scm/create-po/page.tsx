@@ -188,6 +188,8 @@ export default function CreatePOPage() {
     requiredDate?: string;
     amount?: number;
     requestType?: string;
+    purchaseType?: 'purchase_order' | 'work_order';
+    purchaseTypeLabel?: string;
     priority?: string;
   } | null>(null);
 
@@ -458,6 +460,10 @@ export default function CreatePOPage() {
         requiredDate: String(po.expectedDeliveryDate || ''),
         amount: Number(po.grandTotal) || Number(po.subtotal) || 0,
         requestType: 'Opex',
+        purchaseType: po.purchaseType === 'work_order' ? 'work_order' : 'purchase_order',
+        purchaseTypeLabel:
+          String(po.purchaseTypeLabel || '') ||
+          (po.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order'),
         priority: String(po.priority || 'medium'),
       });
       setVendorMeta({
@@ -511,6 +517,8 @@ export default function CreatePOPage() {
         entityName?: string;
         entityCode?: string;
         requester: string;
+        purchaseType?: 'purchase_order' | 'work_order';
+        purchaseTypeLabel?: string;
         lineItems: Array<{ id: number; description: string; quantity: number; unitCost: number; category?: string }>;
       };
       const vendor = res.data.vendor as { name: string; email: string; paymentTerms: string; deliveryTerms: string };
@@ -523,6 +531,8 @@ export default function CreatePOPage() {
         entityName: prData.entityName || '',
         entityCode: prData.entityCode || '',
         requester: prData.requester,
+        purchaseType: prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order',
+        purchaseTypeLabel: prData.purchaseTypeLabel || (prData.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order'),
         recommendedVendor: vendor.name,
         vendorEmail: vendor.email,
         lineItems: prData.lineItems.map((li) => ({
@@ -996,6 +1006,7 @@ export default function CreatePOPage() {
         },
         referencePoNumber: referencePoNumber.trim() || undefined,
         changeSummary: changeSummary.trim() || undefined,
+        purchaseType: pr?.purchaseType || 'purchase_order',
       };
 
       if (skipApproval) {
@@ -1030,6 +1041,10 @@ export default function CreatePOPage() {
   const fmt = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 
+  const isWorkOrder = pr?.purchaseType === 'work_order';
+  const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
+  const docNoLabel = isWorkOrder ? 'WO No' : 'PO No';
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -1042,8 +1057,8 @@ export default function CreatePOPage() {
     return (
       <DashboardLayout>
         <div className="p-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Purchase Order</h1>
-          <p className="text-sm text-gray-600 mb-6">Select a purchase request ready for PO creation</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Purchase Order / Work Order</h1>
+          <p className="text-sm text-gray-600 mb-6">Select a purchase request ready for PO or Work Order creation</p>
           {pickerLoading ? (
             <p className="text-sm text-gray-500">Loading PRs...</p>
           ) : pickerItems.length === 0 ? (
@@ -1171,7 +1186,7 @@ export default function CreatePOPage() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <h1 className="text-base sm:text-lg font-bold text-gray-900">
-                    {isEditMode ? 'Edit Purchase Order' : 'Create Purchase Order'}
+                    {isEditMode ? `Edit ${docLabel}` : `Create ${docLabel}`}
                   </h1>
                   <span className={`px-2.5 py-0.5 border rounded-full text-xs font-semibold tracking-wide ${
                     isBuyerVerifyEdit
@@ -1185,7 +1200,7 @@ export default function CreatePOPage() {
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
                   <span className="text-xs text-gray-500">
-                    PO No: <span className="font-semibold text-teal-600">{poNumber}</span>
+                    {docNoLabel}: <span className="font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
                   </span>
                   <span className="text-gray-300 text-xs hidden sm:inline">•</span>
                   <span className="text-xs text-gray-500">
@@ -1524,30 +1539,39 @@ export default function CreatePOPage() {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[860px]">
+                <div className="w-full overflow-x-hidden">
+                  <table className="w-full table-fixed">
+                    <colgroup>
+                      <col className="w-9" />
+                      <col className="w-[16%]" />
+                      <col className="w-[28%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[8%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[14%]" />
+                    </colgroup>
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100">
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-10">#</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-[180px]">Item Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-[240px]">Item Description</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Category</th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-20">Qty</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-36">Unit Price</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Discount</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-36">Total</th>
-                        <th className="px-4 py-3 w-10"></th>
+                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">#</th>
+                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Item Name</th>
+                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Item Description</th>
+                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Category</th>
+                        <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Qty</th>
+                        <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Unit Price</th>
+                        <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Discount</th>
+                        <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Total</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {lineItems.map((item, idx) => (
-                        <tr key={item.id} className="hover:bg-gray-50/60 transition-colors group">
-                          <td className="px-4 py-3 align-top">
-                            <span className="w-6 h-6 flex items-center justify-center bg-teal-50 text-teal-700 rounded-full text-xs font-bold">
+                        <tr key={item.id} className="hover:bg-gray-50/60 transition-colors group align-top">
+                          <td className="px-2 py-2.5 align-top">
+                            <span className="mt-1 w-6 h-6 flex items-center justify-center bg-teal-50 text-teal-700 rounded-full text-xs font-bold">
                               {idx + 1}
                             </span>
                           </td>
-                          <td className="px-4 py-3 align-top">
+                          <td className="px-2 py-2.5 align-top">
                             <input
                               type="text"
                               value={item.itemName || ''}
@@ -1556,16 +1580,16 @@ export default function CreatePOPage() {
                               className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
                             />
                           </td>
-                          <td className="px-4 py-3 min-w-[240px] align-top">
+                          <td className="px-2 py-2.5 align-top">
                             <RichTextEditor
                               editorKey={`li-desc-${item.id}`}
                               value={item.description || ''}
                               onChange={(html) => handleDescriptionChange(item.id, html)}
                               placeholder="Item description..."
-                              minHeight={72}
+                              minHeight={56}
                             />
                           </td>
-                          <td className="px-4 py-3 align-top">
+                          <td className="px-2 py-2.5 align-top">
                             <input
                               type="text"
                               value={item.category || ''}
@@ -1574,31 +1598,31 @@ export default function CreatePOPage() {
                               className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
                             />
                           </td>
-                          <td className="px-4 py-3 align-top">
+                          <td className="px-2 py-2.5 align-top">
                             <input
                               type="number"
                               min="1"
                               value={item.quantity}
                               onChange={e => handleQtyChange(item.id, parseInt(e.target.value) || 1)}
-                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                              className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
                             />
                           </td>
-                          <td className="px-4 py-3 align-top">
+                          <td className="px-2 py-2.5 align-top">
                             <div className="relative">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">₹</span>
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">₹</span>
                               <input
                                 type="number"
                                 min="0"
                                 step="0.01"
                                 value={item.unitPrice}
                                 onChange={e => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
-                                className="w-full pl-6 pr-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                                className="w-full pl-5 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
                               />
                             </div>
                           </td>
-                          <td className="px-4 py-3 align-top">
+                          <td className="px-2 py-2.5 align-top">
                             <div className="relative">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">₹</span>
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">₹</span>
                               <input
                                 type="text"
                                 inputMode="decimal"
@@ -1619,27 +1643,28 @@ export default function CreatePOPage() {
                                   });
                                 }}
                                 placeholder="0"
-                                className="w-full pl-6 pr-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                                className="w-full pl-5 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
                               />
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right">
-                            <p className="text-sm font-bold text-gray-900">{fmt(item.total)}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <button
-                              onClick={() => handleDeleteLineItem(item.id)}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
-                              title="Remove item"
-                            >
-                              <i className="ri-delete-bin-line text-sm"></i>
-                            </button>
+                          <td className="px-2 py-2.5 align-top">
+                            <div className="flex items-start justify-end gap-1.5 pt-1">
+                              <p className="text-sm font-bold text-gray-900 tabular-nums leading-6">{fmt(item.total)}</p>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLineItem(item.id)}
+                                className="w-6 h-6 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer opacity-0 group-hover:opacity-100 shrink-0"
+                                title="Remove item"
+                              >
+                                <i className="ri-delete-bin-line text-sm"></i>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
                       {lineItems.length === 0 && (
                         <tr>
-                          <td colSpan={9} className="px-6 py-10 text-center">
+                          <td colSpan={8} className="px-6 py-10 text-center">
                             <div className="flex flex-col items-center gap-2">
                               <div className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full">
                                 <i className="ri-file-list-3-line text-gray-400 text-lg"></i>

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
+    "build:client": "npm run build --prefix ../client",
+    "start:prod": "npm run build:client && node src/index.js",
     "db:init": "node db/init.js"
   },
   "dependencies": {

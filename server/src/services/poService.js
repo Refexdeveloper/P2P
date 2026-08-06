@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import pool from '../config/db.js';
 import { getPurchaseRequestById } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath } from './poPdfService.js';
@@ -10,7 +11,33 @@ import {
   getActiveLetterheadBranding,
   getLetterheadMasterById,
 } from './letterheadBrandingService.js';
-import { nextDocumentNumber } from './documentNumberService.js';
+import {
+  nextDocumentNumber,
+  normalizePurchaseType,
+  purchaseTypeLabel,
+  purchaseTypeToDocType,
+} from './documentNumberService.js';
+
+function ensurePoUploadDir() {
+  if (!fs.existsSync(PO_UPLOAD_DIR)) {
+    fs.mkdirSync(PO_UPLOAD_DIR, { recursive: true });
+  }
+}
+
+function saveVendorAcceptanceFile(poId, fileName, base64Data) {
+  if (!base64Data || !fileName) return { fileName: null, filePath: null };
+  ensurePoUploadDir();
+  const safeName = path.basename(String(fileName)).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storedName = `po-${poId}-vendor-acceptance-${Date.now()}-${safeName}`;
+  const fullPath = path.join(PO_UPLOAD_DIR, storedName);
+  const raw = String(base64Data).includes(',') ? String(base64Data).split(',').pop() : String(base64Data);
+  fs.writeFileSync(fullPath, Buffer.from(raw, 'base64'));
+  return { fileName: safeName, filePath: storedName };
+}
+
+function newVendorAcceptanceToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
 
 function parseClauseJson(value) {
   if (!value) return [];
@@ -54,8 +81,9 @@ export function normalizePoTermsDetails(raw) {
   return out;
 }
 
-async function generatePoNumber(entityId, connection = pool) {
-  return nextDocumentNumber('PO', entityId, connection);
+async function generatePoNumber(entityId, purchaseType = 'purchase_order', connection = pool) {
+  const docType = purchaseTypeToDocType(purchaseType);
+  return nextDocumentNumber(docType, entityId, connection);
 }
 
 async function getRecommendedVendor(prId) {
@@ -128,6 +156,8 @@ async function enrichPO(row) {
     incoterms: row.incoterms,
     specialInstructions: row.special_instructions || '',
     poType: row.po_type || 'short_po',
+    purchaseType: row.purchase_type || pr?.purchaseType || 'purchase_order',
+    purchaseTypeLabel: purchaseTypeLabel(row.purchase_type || pr?.purchaseType),
     letterheadHeader: row.letterhead_header || '',
     letterheadId: row.letterhead_id || null,
     entityId: row.entity_id || null,
@@ -141,8 +171,18 @@ async function enrichPO(row) {
     subtotal: Number(row.subtotal),
     taxAmount: Number(row.tax_amount),
     grandTotal: Number(row.grand_total),
-    status: mapPoStatusUI(row.status),
+    status: mapPoStatusUI(row.status, row.vendor_acceptance_status),
     statusRaw: row.status,
+    vendorAcceptanceStatus: row.vendor_acceptance_status || null,
+    vendorAcceptanceMode: row.vendor_acceptance_mode || null,
+    vendorAcceptanceRemarks: row.vendor_acceptance_remarks || '',
+    vendorAcceptanceFileName: row.vendor_acceptance_file_name || '',
+    vendorAcceptanceFilePath: row.vendor_acceptance_file_path || '',
+    vendorDeliveryConfirmedDate: row.vendor_delivery_confirmed_date
+      ? formatDate(row.vendor_delivery_confirmed_date)
+      : '',
+    vendorAcceptedAt: row.vendor_accepted_at ? formatDateTime(row.vendor_accepted_at) : null,
+    vendorAcceptanceToken: row.vendor_acceptance_token || null,
     pdfPath: row.pdf_path,
     signedPdfPath: row.signed_pdf_path,
     signatureName: row.signature_name,
@@ -158,7 +198,13 @@ async function enrichPO(row) {
   };
 }
 
-function mapPoStatusUI(status) {
+function mapPoStatusUI(status, acceptanceStatus) {
+  if (status === 'sent_to_vendor') {
+    if (acceptanceStatus === 'accepted') return 'Vendor Accepted';
+    if (acceptanceStatus === 'rejected') return 'Vendor Rejected';
+    if (acceptanceStatus === 'partial') return 'Partially Accepted';
+    return 'Pending Vendor Acceptance';
+  }
   const map = {
     draft: 'Draft',
     imported: 'Imported',
@@ -166,7 +212,7 @@ function mapPoStatusUI(status) {
     pending_buyer_verify: 'Pending Buyer Verify',
     approved: 'PO Approved',
     rejected: 'PO Rejected',
-    sent_to_vendor: 'Sent to Vendor',
+    sent_to_vendor: 'Pending Vendor Acceptance',
   };
   return map[status] || status;
 }
@@ -553,6 +599,9 @@ export async function createPurchaseOrder(user, prId, body) {
     throw new Error('PR has no entity. Set entity on the PR before creating a PO.');
   }
 
+  const purchaseType = normalizePurchaseType(body.purchaseType || pr.purchaseType);
+  const docLabel = purchaseTypeLabel(purchaseType);
+
   const referencePoNumber = body.referencePoNumber?.trim() || null;
   const initialStatus = skipApproval ? 'approved' : 'pending_approval';
 
@@ -566,18 +615,18 @@ export async function createPurchaseOrder(user, prId, body) {
         `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) LIMIT 1`,
         [poNumber]
       );
-      if (dup.length) throw new Error(`PO number ${poNumber} already exists`);
+      if (dup.length) throw new Error(`${docLabel} number ${poNumber} already exists`);
     } else {
-      poNumber = await generatePoNumber(entityIdForNumber, conn);
+      poNumber = await generatePoNumber(entityIdForNumber, purchaseType, conn);
     }
 
     const [result] = await conn.query(
       `INSERT INTO purchase_orders
        (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
         delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
-        po_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
+        po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
         po_terms_details, gst_percentage, subtotal, tax_amount, grand_total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         poNumber,
         referencePoNumber,
@@ -592,6 +641,7 @@ export async function createPurchaseOrder(user, prId, body) {
         incoterms,
         specialInstructions,
         normalizedPoType,
+        purchaseType,
         resolvedLetterhead,
         resolvedLetterheadId || null,
         entityIdForNumber,
@@ -676,20 +726,43 @@ export async function createPurchaseOrder(user, prId, body) {
   }
 }
 
-export async function listPurchaseOrders(user, { pendingOnly = false, buyerVerifyOnly = false } = {}) {
+export async function listPurchaseOrders(
+  user,
+  { pendingOnly = false, buyerVerifyOnly = false, approvalQueue = false } = {}
+) {
   let sql = `SELECT po.* FROM purchase_orders po WHERE 1=1`;
   const params = [];
 
   if (buyerVerifyOnly) {
     sql += ` AND po.status = 'pending_buyer_verify'`;
-  } else if (user.role === 'SCM Manager' && pendingOnly) {
-    sql += ` AND po.status = 'pending_approval'`;
+  } else if (approvalQueue || (user.role === 'SCM Manager' && pendingOnly)) {
+    // Manager PO Sign & Approve: workflow POs only (exclude imported/draft noise)
+    if (pendingOnly) {
+      sql += ` AND po.status = 'pending_approval'`;
+    } else {
+      sql += ` AND po.status IN (
+        'pending_approval',
+        'pending_buyer_verify',
+        'approved',
+        'rejected',
+        'sent_to_vendor'
+      )`;
+    }
   } else if (user.role === 'SCM Buyer') {
     sql += ` AND po.created_by = ?`;
     params.push(user.id);
   }
 
-  sql += ` ORDER BY po.created_at DESC`;
+  sql += ` ORDER BY
+    CASE po.status
+      WHEN 'pending_approval' THEN 0
+      WHEN 'pending_buyer_verify' THEN 1
+      WHEN 'approved' THEN 2
+      WHEN 'rejected' THEN 3
+      WHEN 'sent_to_vendor' THEN 4
+      ELSE 5
+    END,
+    po.created_at DESC`;
   const [rows] = await pool.query(sql, params);
   return Promise.all(rows.map(enrichPO));
 }
@@ -699,7 +772,7 @@ function mapTrackPoStatus(statusRaw) {
   if (s === 'pending_approval') return { status: 'pending', statusLabel: 'Pending Approval' };
   if (s === 'pending_buyer_verify') return { status: 'pending', statusLabel: 'Pending Buyer Verify' };
   if (s === 'rejected') return { status: 'rejected', statusLabel: 'Rejected' };
-  if (s === 'sent_to_vendor') return { status: 'sent', statusLabel: 'Sent to Vendor' };
+  if (s === 'sent_to_vendor') return { status: 'sent', statusLabel: 'Pending Vendor Acceptance' };
   if (s === 'approved') return { status: 'approved', statusLabel: 'PO Approved' };
   if (s === 'imported') return { status: 'imported', statusLabel: 'Imported' };
   if (s === 'draft') return { status: 'draft', statusLabel: 'Draft' };
@@ -713,12 +786,19 @@ function mapTrackPoStatus(statusRaw) {
  */
 export async function listTrackPurchaseOrders(
   user,
-  { page = 1, limit = 10, search = '', status = 'all' } = {}
+  { page = 1, limit = 10, search = '', status = 'all', purchaseType = 'all' } = {}
 ) {
   const pageSize = Math.min(100, Math.max(1, Number(limit) || 10));
   const pageNum = Math.max(1, Number(page) || 1);
   const q = String(search || '').trim().toLowerCase();
   const statusFilter = String(status || 'all').toLowerCase();
+  const typeFilter = String(purchaseType || 'all').toLowerCase().replace(/[\s-]+/g, '_');
+  const typeSqlValue =
+    typeFilter === 'work_order' || typeFilter === 'wo'
+      ? 'work_order'
+      : typeFilter === 'purchase_order' || typeFilter === 'po'
+        ? 'purchase_order'
+        : null;
 
   const buyerPoFilter = user.role === 'SCM Buyer' ? ' AND po.created_by = ?' : '';
   const readyParams = [PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED];
@@ -730,6 +810,13 @@ export async function listTrackPurchaseOrders(
     statusFilter !== 'ready' &&
     (statusFilter === 'all' ||
       ['pending', 'approved', 'rejected', 'sent', 'imported', 'draft'].includes(statusFilter));
+
+  const readyTypeFilter = typeSqlValue
+    ? ` AND COALESCE(pr.purchase_type, 'purchase_order') = ?`
+    : '';
+  const poTypeFilter = typeSqlValue
+    ? ` AND COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') = ?`
+    : '';
 
   const readySql = `
     SELECT
@@ -751,6 +838,7 @@ export async function listTrackPurchaseOrders(
       ), '') AS vendor_name,
       pr.total_amount AS amount,
       'ready' AS status_raw,
+      COALESCE(pr.purchase_type, 'purchase_order') AS purchase_type,
       pr.required_date AS required_date,
       COALESCE(pr.submitted_at, pr.created_at) AS sort_at
     FROM purchase_requests pr
@@ -772,6 +860,7 @@ export async function listTrackPurchaseOrders(
       )
     )
     AND NOT EXISTS (SELECT 1 FROM purchase_orders po3 WHERE po3.pr_id = pr.id)
+    ${readyTypeFilter}
   `;
 
   const poSql = `
@@ -788,6 +877,7 @@ export async function listTrackPurchaseOrders(
       po.vendor_name AS vendor_name,
       po.grand_total AS amount,
       po.status AS status_raw,
+      COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') AS purchase_type,
       po.expected_delivery_date AS required_date,
       po.created_at AS sort_at
     FROM purchase_orders po
@@ -796,6 +886,7 @@ export async function listTrackPurchaseOrders(
     LEFT JOIN users u ON u.id = pr.requester_id
     WHERE 1=1
     ${buyerPoFilter}
+    ${poTypeFilter}
   `;
 
   const unionParts = [];
@@ -803,10 +894,12 @@ export async function listTrackPurchaseOrders(
   if (includeReady) {
     unionParts.push(`(${readySql})`);
     baseParams.push(...readyParams);
+    if (typeSqlValue) baseParams.push(typeSqlValue);
   }
   if (includePo) {
     unionParts.push(`(${poSql})`);
     baseParams.push(...poParams);
+    if (typeSqlValue) baseParams.push(typeSqlValue);
   }
 
   if (!unionParts.length) {
@@ -890,6 +983,8 @@ export async function listTrackPurchaseOrders(
       status: mapped.status,
       statusLabel: mapped.statusLabel,
       statusRaw: r.status_raw,
+      purchaseType: r.purchase_type || 'purchase_order',
+      purchaseTypeLabel: purchaseTypeLabel(r.purchase_type),
       requiredDate: formatDate(r.required_date),
       createdAt: formatDate(r.sort_at),
       kind: r.kind,
@@ -1104,12 +1199,20 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     throw new Error('PO is not pending buyer final verification');
   }
 
-  const verifyRemarks = remarks?.trim() || 'Final verified by SCM Buyer — sent to vendor';
+  const verifyRemarks =
+    remarks?.trim() || 'Final verified by SCM Buyer — ready for vendor acceptance';
+  const token = rows[0].vendor_acceptance_token || newVendorAcceptanceToken();
 
   await pool.query(
-    `UPDATE purchase_orders SET status = 'sent_to_vendor', vendor_notified_at = NOW(), updated_at = NOW()
+    `UPDATE purchase_orders SET
+       status = 'sent_to_vendor',
+       vendor_acceptance_status = 'pending',
+       vendor_acceptance_token = ?,
+       vendor_acceptance_mode = NULL,
+       vendor_notified_at = NULL,
+       updated_at = NOW()
      WHERE id = ?`,
-    [poId]
+    [token, poId]
   );
 
   await pool.query(
@@ -1124,19 +1227,8 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     [rows[0].pr_id, user.id, verifyRemarks]
   );
 
-  const updatedPo = await getPurchaseOrderById(poId);
-  const ccEmails = await collectParticipantEmails(updatedPo.prId);
-  const pdfFile = updatedPo.signedPdfPath || updatedPo.pdfPath;
-  const pdfPath = pdfFile ? path.join(PO_UPLOAD_DIR, pdfFile) : null;
-
-  await sendPoVendorNotification(updatedPo, {
-    signerName: updatedPo.signatureName || 'SCM Manager',
-    signerComments: updatedPo.signerComments || verifyRemarks,
-    ccEmails,
-    pdfPath,
-  });
-
-  return updatedPo;
+  // Email / manual acceptance is done next on Vendor PO Acceptance page
+  return getPurchaseOrderById(poId);
 }
 
 export async function rejectBuyerFinalVerify(user, poId, remarks) {
@@ -1347,4 +1439,263 @@ export async function updatePurchaseOrder(user, poId, body) {
   }
 
   return updatedPo;
+}
+
+export async function listVendorAcceptancePOs(user) {
+  if (user.role !== 'SCM Buyer' && user.role !== 'SCM Manager' && user.role !== 'Super Admin') {
+    throw new Error('Unauthorized');
+  }
+
+  let sql = `
+    SELECT po.* FROM purchase_orders po
+    WHERE po.status = 'sent_to_vendor'
+  `;
+  const params = [];
+  if (user.role === 'SCM Buyer') {
+    sql += ` AND po.created_by = ?`;
+    params.push(user.id);
+  }
+  sql += ` ORDER BY
+    CASE COALESCE(po.vendor_acceptance_status, 'pending')
+      WHEN 'pending' THEN 0
+      WHEN 'partial' THEN 1
+      WHEN 'accepted' THEN 2
+      WHEN 'rejected' THEN 3
+      ELSE 4
+    END,
+    po.updated_at DESC`;
+
+  const [rows] = await pool.query(sql, params);
+  return Promise.all(rows.map(enrichPO));
+}
+
+async function assertVendorAcceptancePending(poId) {
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  const row = rows[0];
+  if (row.status !== 'sent_to_vendor') {
+    throw new Error('PO is not in vendor acceptance stage');
+  }
+  if (row.vendor_acceptance_status && row.vendor_acceptance_status !== 'pending') {
+    throw new Error('Vendor acceptance already recorded for this PO');
+  }
+  return row;
+}
+
+export async function sendVendorAcceptanceMail(user, poId) {
+  if (user.role !== 'SCM Buyer') throw new Error('Only SCM Buyer can send vendor acceptance mail');
+
+  const row = await assertVendorAcceptancePending(poId);
+  const token = row.vendor_acceptance_token || newVendorAcceptanceToken();
+
+  await pool.query(
+    `UPDATE purchase_orders SET
+       vendor_acceptance_token = ?,
+       vendor_acceptance_mode = 'email',
+       vendor_acceptance_status = 'pending',
+       vendor_notified_at = NOW(),
+       updated_at = NOW()
+     WHERE id = ?`,
+    [token, poId]
+  );
+
+  const updatedPo = await getPurchaseOrderById(poId);
+  const ccEmails = await collectParticipantEmails(updatedPo.prId);
+  const pdfFile = updatedPo.signedPdfPath || updatedPo.pdfPath;
+  const pdfPath = pdfFile ? path.join(PO_UPLOAD_DIR, pdfFile) : null;
+  const base = (process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:3000').replace(
+    /\/$/,
+    ''
+  );
+  const acceptUrl = `${base}/vendor/po-accept/${token}`;
+
+  await sendPoVendorNotification(updatedPo, {
+    signerName: updatedPo.signatureName || 'SCM Manager',
+    signerComments: updatedPo.signerComments || '',
+    ccEmails,
+    pdfPath,
+    portalUrl: acceptUrl,
+  });
+
+  if (updatedPo.prId) {
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_VENDOR_MAIL', ?, 'notified', ?)`,
+      [
+        updatedPo.prId,
+        user.id,
+        `Vendor acceptance mail sent to ${updatedPo.vendorEmail}`,
+      ]
+    );
+  }
+
+  return updatedPo;
+}
+
+export async function submitManualVendorAcceptance(user, poId, body = {}) {
+  if (user.role !== 'SCM Buyer') throw new Error('Only SCM Buyer can submit manual vendor acceptance');
+
+  const row = await assertVendorAcceptancePending(poId);
+  const action = String(body.action || 'accept').toLowerCase();
+  const statusMap = {
+    accept: 'accepted',
+    accepted: 'accepted',
+    reject: 'rejected',
+    rejected: 'rejected',
+    partial: 'partial',
+  };
+  const acceptanceStatus = statusMap[action];
+  if (!acceptanceStatus) throw new Error('Invalid action. Use accept, reject, or partial');
+
+  const remarks = String(body.remarks || '').trim();
+  if (!remarks) throw new Error('Remarks are required');
+
+  const fileInfo = saveVendorAcceptanceFile(poId, body.fileName, body.fileData);
+  if (acceptanceStatus === 'accepted' && !fileInfo.filePath) {
+    throw new Error('Please upload the vendor acceptance / signed document');
+  }
+
+  const deliveryDate = body.deliveryDate || body.deliveryConfirmedDate || null;
+
+  await pool.query(
+    `UPDATE purchase_orders SET
+       vendor_acceptance_mode = 'manual',
+       vendor_acceptance_status = ?,
+       vendor_acceptance_remarks = ?,
+       vendor_acceptance_file_name = COALESCE(?, vendor_acceptance_file_name),
+       vendor_acceptance_file_path = COALESCE(?, vendor_acceptance_file_path),
+       vendor_delivery_confirmed_date = ?,
+       vendor_accepted_at = NOW(),
+       updated_at = NOW()
+     WHERE id = ?`,
+    [
+      acceptanceStatus,
+      remarks,
+      fileInfo.fileName,
+      fileInfo.filePath,
+      deliveryDate || null,
+      poId,
+    ]
+  );
+
+  if (row.pr_id) {
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_VENDOR_ACCEPTANCE', ?, ?, ?)`,
+      [
+        row.pr_id,
+        user.id,
+        acceptanceStatus,
+        `Manual vendor acceptance (${acceptanceStatus}) by ${user.name || 'SCM Buyer'}: ${remarks}`,
+      ]
+    );
+  }
+
+  return getPurchaseOrderById(poId);
+}
+
+export async function getVendorAcceptanceByToken(token) {
+  const clean = String(token || '').trim();
+  if (!clean) throw new Error('Invalid acceptance link');
+
+  const [rows] = await pool.query(
+    `SELECT * FROM purchase_orders WHERE vendor_acceptance_token = ? LIMIT 1`,
+    [clean]
+  );
+  if (!rows.length) throw new Error('Acceptance link is invalid or expired');
+
+  const po = await enrichPO(rows[0]);
+  return {
+    poNumber: po.poNumber,
+    prNumber: po.prNumber,
+    prTitle: po.prTitle,
+    vendorName: po.vendorName,
+    vendorEmail: po.vendorEmail,
+    grandTotal: po.grandTotal,
+    expectedDeliveryDate: po.expectedDeliveryDate,
+    paymentTerms: po.paymentTerms,
+    status: po.status,
+    vendorAcceptanceStatus: po.vendorAcceptanceStatus || 'pending',
+    canRespond: !po.vendorAcceptanceStatus || po.vendorAcceptanceStatus === 'pending',
+    lineItems: po.lineItems,
+    hasSignedPdf: Boolean(po.signedPdfPath || po.pdfPath),
+  };
+}
+
+export async function submitVendorAcceptanceByToken(token, body = {}) {
+  const clean = String(token || '').trim();
+  const [rows] = await pool.query(
+    `SELECT * FROM purchase_orders WHERE vendor_acceptance_token = ? LIMIT 1`,
+    [clean]
+  );
+  if (!rows.length) throw new Error('Acceptance link is invalid or expired');
+
+  const row = rows[0];
+  if (row.status !== 'sent_to_vendor') throw new Error('PO is not awaiting vendor acceptance');
+  if (row.vendor_acceptance_status && row.vendor_acceptance_status !== 'pending') {
+    throw new Error('You have already responded to this purchase order');
+  }
+
+  const action = String(body.action || 'accept').toLowerCase();
+  const statusMap = {
+    accept: 'accepted',
+    accepted: 'accepted',
+    reject: 'rejected',
+    rejected: 'rejected',
+    partial: 'partial',
+  };
+  const acceptanceStatus = statusMap[action];
+  if (!acceptanceStatus) throw new Error('Invalid action');
+
+  const remarks = String(body.remarks || '').trim();
+  if (!remarks) throw new Error('Remarks are required');
+
+  const fileInfo = saveVendorAcceptanceFile(row.id, body.fileName, body.fileData);
+  if (acceptanceStatus !== 'rejected' && !fileInfo.filePath) {
+    throw new Error('Please upload the signed / acceptance document');
+  }
+
+  const deliveryDate = body.deliveryDate || body.deliveryConfirmedDate || null;
+
+  await pool.query(
+    `UPDATE purchase_orders SET
+       vendor_acceptance_mode = 'email',
+       vendor_acceptance_status = ?,
+       vendor_acceptance_remarks = ?,
+       vendor_acceptance_file_name = COALESCE(?, vendor_acceptance_file_name),
+       vendor_acceptance_file_path = COALESCE(?, vendor_acceptance_file_path),
+       vendor_delivery_confirmed_date = ?,
+       vendor_accepted_at = NOW(),
+       updated_at = NOW()
+     WHERE id = ?`,
+    [
+      acceptanceStatus,
+      remarks,
+      fileInfo.fileName,
+      fileInfo.filePath,
+      deliveryDate || null,
+      row.id,
+    ]
+  );
+
+  if (row.pr_id) {
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_VENDOR_ACCEPTANCE', NULL, ?, ?)`,
+      [row.pr_id, acceptanceStatus, `Vendor response via email link: ${remarks}`]
+    );
+  }
+
+  return getVendorAcceptanceByToken(clean);
+}
+
+export function resolveVendorAcceptanceFile(poRowOrPath) {
+  const filePath =
+    typeof poRowOrPath === 'string'
+      ? poRowOrPath
+      : poRowOrPath?.vendor_acceptance_file_path || poRowOrPath?.vendorAcceptanceFilePath;
+  if (!filePath) throw new Error('Acceptance file not found');
+  const fullPath = path.join(PO_UPLOAD_DIR, path.basename(filePath));
+  if (!fs.existsSync(fullPath)) throw new Error('Acceptance file missing on server');
+  return fullPath;
 }

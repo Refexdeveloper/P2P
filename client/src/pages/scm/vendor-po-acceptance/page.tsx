@@ -1,463 +1,433 @@
-import { useState, useMemo } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import AcceptanceModal from './components/AcceptanceModal';
-import POExpandedRow from './components/POExpandedRow';
-import { vendorPOAcceptanceData, VendorPOAcceptanceStatus } from '../../../mocks/vendor-po-acceptance-data';
+import { poApi } from '../../../services/api';
+import POExpandedRow, { AcceptancePo } from './components/POExpandedRow';
 
 const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
+    amount || 0
+  );
 
-const StatusBadge = ({ status }: { status: VendorPOAcceptanceStatus }) => {
-  const map: Record<VendorPOAcceptanceStatus, string> = {
-    'Pending Acceptance': 'bg-amber-100 text-amber-700 border border-amber-200',
-    'Accepted': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-    'Rejected': 'bg-red-100 text-red-700 border border-red-200',
-    'Partially Accepted': 'bg-violet-100 text-violet-700 border border-violet-200',
+type AcceptanceStatus = 'pending' | 'accepted' | 'rejected' | 'partial' | null;
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.includes(',') ? result.split(',')[1] : result);
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+const StatusBadge = ({ status }: { status?: string | null }) => {
+  const key = status || 'pending';
+  const map: Record<string, string> = {
+    pending: 'bg-amber-100 text-amber-700 border-amber-200',
+    accepted: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    rejected: 'bg-red-100 text-red-700 border-red-200',
+    partial: 'bg-violet-100 text-violet-700 border-violet-200',
   };
-  const icon: Record<VendorPOAcceptanceStatus, string> = {
-    'Pending Acceptance': 'ri-time-line',
-    'Accepted': 'ri-check-double-line',
-    'Rejected': 'ri-close-circle-line',
-    'Partially Accepted': 'ri-git-commit-line',
+  const label: Record<string, string> = {
+    pending: 'Pending Acceptance',
+    accepted: 'Accepted',
+    rejected: 'Rejected',
+    partial: 'Partially Accepted',
   };
   return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${map[status]}`}>
-      <i className={icon[status]}></i>
-      {status}
+    <span
+      className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${
+        map[key] || 'bg-gray-100 text-gray-600 border-gray-200'
+      }`}
+    >
+      {label[key] || status}
     </span>
   );
-};
-
-const PriorityBadge = ({ priority }: { priority: 'high' | 'medium' | 'low' }) => {
-  const map = {
-    high: 'bg-red-50 text-red-600 border border-red-200',
-    medium: 'bg-amber-50 text-amber-600 border border-amber-200',
-    low: 'bg-gray-100 text-gray-500 border border-gray-200',
-  };
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold capitalize whitespace-nowrap ${map[priority]}`}>
-      <i className="ri-flag-line text-xs"></i>
-      {priority}
-    </span>
-  );
-};
-
-type ModalState = {
-  isOpen: boolean;
-  type: 'accept' | 'reject' | 'partial';
-  poNumber: string;
-  prTitle: string;
-  vendorName: string;
-  grandTotal: number;
 };
 
 export default function VendorPOAcceptancePage() {
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [filter, setFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusUpdates, setStatusUpdates] = useState<Record<string, VendorPOAcceptanceStatus>>({});
-  const [responseData, setResponseData] = useState<Record<string, { remarks: string; deliveryDate?: string }>>({});
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' | 'warning' } | null>(null);
-  const [modal, setModal] = useState<ModalState>({
-    isOpen: false,
-    type: 'accept',
-    poNumber: '',
-    prTitle: '',
-    vendorName: '',
-    grandTotal: 0,
-  });
+  const navigate = useNavigate();
+  const [rows, setRows] = useState<AcceptancePo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('pending');
+  const [search, setSearch] = useState('');
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [manualFor, setManualFor] = useState<AcceptancePo | null>(null);
+  const [manualAction, setManualAction] = useState<'accept' | 'reject' | 'partial'>('accept');
+  const [remarks, setRemarks] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [file, setFile] = useState<File | null>(null);
 
-  const showToast = (text: string, type: 'success' | 'error' | 'warning') => {
+  const showToast = (text: string, type: 'success' | 'error') => {
     setToast({ text, type });
-    setTimeout(() => setToast(null), 3500);
+    setTimeout(() => setToast(null), 4000);
   };
 
-  const openModal = (poNumber: string, type: 'accept' | 'reject' | 'partial') => {
-    const po = vendorPOAcceptanceData.find((p) => p.poNumber === poNumber);
-    if (!po) return;
-    setModal({ isOpen: true, type, poNumber, prTitle: po.prTitle, vendorName: po.vendorName, grandTotal: po.grandTotal });
-  };
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await poApi.listVendorAcceptance();
+      setRows((res.data as AcceptancePo[]) || []);
+    } catch (err) {
+      setRows([]);
+      showToast(err instanceof Error ? err.message : 'Failed to load POs', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const handleConfirm = (remarks: string, deliveryDate?: string) => {
-    const newStatus: VendorPOAcceptanceStatus =
-      modal.type === 'accept' ? 'Accepted' :
-      modal.type === 'reject' ? 'Rejected' :
-      'Partially Accepted';
+  useEffect(() => {
+    load();
+  }, [load]);
 
-    setStatusUpdates((prev) => ({ ...prev, [modal.poNumber]: newStatus }));
-    setResponseData((prev) => ({ ...prev, [modal.poNumber]: { remarks, deliveryDate } }));
-
-    const msgs: Record<typeof modal.type, string> = {
-      accept: `${modal.poNumber} has been accepted successfully`,
-      reject: `${modal.poNumber} has been rejected`,
-      partial: `${modal.poNumber} marked as Partially Accepted`,
-    };
-    const types: Record<typeof modal.type, 'success' | 'error' | 'warning'> = {
-      accept: 'success',
-      reject: 'error',
-      partial: 'warning',
-    };
-    showToast(msgs[modal.type], types[modal.type]);
-    setModal((prev) => ({ ...prev, isOpen: false }));
-    setExpandedRow(null);
-  };
-
-  const processedPOs = useMemo(() =>
-    vendorPOAcceptanceData.map((po) => ({
-      ...po,
-      status: statusUpdates[po.poNumber] || po.status,
-      acceptanceRemarks: responseData[po.poNumber]?.remarks || po.acceptanceRemarks,
-      rejectionReason: responseData[po.poNumber]?.remarks || po.rejectionReason,
-      deliveryConfirmedDate: responseData[po.poNumber]?.deliveryDate || po.deliveryConfirmedDate,
-    })),
-    [statusUpdates, responseData]
-  );
-
-  const filteredPOs = useMemo(() => {
-    let result = [...processedPOs];
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      result = result.filter((po) =>
-        po.poNumber.toLowerCase().includes(q) ||
-        po.prTitle.toLowerCase().includes(q) ||
-        po.vendorName.toLowerCase().includes(q) ||
-        po.vendorCode.toLowerCase().includes(q) ||
-        po.department.toLowerCase().includes(q)
+  const filtered = useMemo(() => {
+    let list = [...rows];
+    if (filter !== 'all') {
+      list = list.filter((r) => (r.vendorAcceptanceStatus || 'pending') === filter);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (r) =>
+          r.poNumber?.toLowerCase().includes(q) ||
+          r.vendorName?.toLowerCase().includes(q) ||
+          r.prNumber?.toLowerCase().includes(q) ||
+          r.prTitle?.toLowerCase().includes(q)
       );
     }
-    if (filter !== 'all') {
-      result = result.filter((po) => po.status === filter);
+    return list;
+  }, [rows, filter, search]);
+
+  const stats = useMemo(
+    () => ({
+      pending: rows.filter((r) => (r.vendorAcceptanceStatus || 'pending') === 'pending').length,
+      accepted: rows.filter((r) => r.vendorAcceptanceStatus === 'accepted').length,
+      rejected: rows.filter((r) => r.vendorAcceptanceStatus === 'rejected').length,
+      total: rows.length,
+    }),
+    [rows]
+  );
+
+  const handleSendMail = async (po: AcceptancePo) => {
+    setBusyId(po.id);
+    try {
+      const res = await poApi.sendVendorAcceptanceMail(po.id);
+      showToast(res.message || `Mail sent to ${po.vendorEmail}`, 'success');
+      await load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to send mail', 'error');
+    } finally {
+      setBusyId(null);
     }
-    // Pending first
-    result.sort((a, b) => {
-      const order: Record<string, number> = { 'Pending Acceptance': 0, 'Partially Accepted': 1, 'Accepted': 2, 'Rejected': 3 };
-      return (order[a.status] ?? 4) - (order[b.status] ?? 4);
-    });
-    return result;
-  }, [processedPOs, searchTerm, filter]);
+  };
 
-  const stats = useMemo(() => ({
-    pending: processedPOs.filter((p) => p.status === 'Pending Acceptance').length,
-    accepted: processedPOs.filter((p) => p.status === 'Accepted').length,
-    rejected: processedPOs.filter((p) => p.status === 'Rejected').length,
-    partial: processedPOs.filter((p) => p.status === 'Partially Accepted').length,
-    pendingValue: processedPOs.filter((p) => p.status === 'Pending Acceptance').reduce((s, p) => s + p.grandTotal, 0),
-    acceptedValue: processedPOs.filter((p) => p.status === 'Accepted').reduce((s, p) => s + p.grandTotal, 0),
-  }), [processedPOs]);
+  const openManual = (po: AcceptancePo) => {
+    setManualFor(po);
+    setManualAction('accept');
+    setRemarks('');
+    setDeliveryDate('');
+    setFile(null);
+  };
 
-  const toggleRow = (poNumber: string) =>
-    setExpandedRow((prev) => (prev === poNumber ? null : poNumber));
+  const viewPdf = async (poId: number) => {
+    try {
+      const blob = await poApi.downloadPdf(poId);
+      window.open(URL.createObjectURL(blob), '_blank');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not open PDF', 'error');
+    }
+  };
+
+  const submitManual = async () => {
+    if (!manualFor) return;
+    if (!remarks.trim()) {
+      showToast('Remarks are required', 'error');
+      return;
+    }
+    if (manualAction !== 'reject' && !file) {
+      showToast('Upload vendor acceptance / signed document', 'error');
+      return;
+    }
+    setBusyId(manualFor.id);
+    try {
+      const fileData = file ? await fileToBase64(file) : undefined;
+      const res = await poApi.submitManualVendorAcceptance(manualFor.id, {
+        action: manualAction,
+        remarks: remarks.trim(),
+        deliveryDate: deliveryDate || undefined,
+        fileName: file?.name,
+        fileData,
+      });
+      showToast(res.message || 'Saved', 'success');
+      const poId = manualFor.id;
+      const poNumber = manualFor.poNumber;
+      setManualFor(null);
+      await load();
+      if (manualAction === 'accept' || manualAction === 'partial') {
+        showToast('Opening GRN with original PO data…', 'success');
+        setTimeout(() => {
+          navigate(
+            `/grn?poId=${poId}&poNumber=${encodeURIComponent(poNumber)}&from=vendor-acceptance&create=1`
+          );
+        }, 600);
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to save', 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return (
     <DashboardLayout>
-      {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Vendor PO Acceptance</h1>
-        <p className="text-sm text-gray-500 mt-1">Track vendor responses to issued Purchase Orders — accept, reject, or partially accept</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Expand a row for full details. After accept → next step is GRN.
+        </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+      {toast && (
+        <div
+          className={`mb-4 px-4 py-3 rounded-lg text-sm ${
+            toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+          }`}
+        >
+          {toast.text}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Pending Acceptance', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
-          { label: 'Accepted', value: stats.accepted, icon: 'ri-check-double-line', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
-          { label: 'Partially Accepted', value: stats.partial, icon: 'ri-git-commit-line', bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-100' },
-          { label: 'Rejected', value: stats.rejected, icon: 'ri-close-circle-line', bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-100' },
-        ].map((card) => (
-          <div key={card.label} className={`bg-white rounded-xl border ${card.border} p-5 flex items-center justify-between`}>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">{card.label}</p>
-              <p className="text-3xl font-bold text-gray-900">{card.value}</p>
-            </div>
-            <div className={`w-12 h-12 ${card.bg} rounded-xl flex items-center justify-center`}>
-              <i className={`${card.icon} text-2xl ${card.text}`}></i>
-            </div>
-          </div>
+          { key: 'pending', label: 'Pending', value: stats.pending },
+          { key: 'accepted', label: 'Accepted', value: stats.accepted },
+          { key: 'rejected', label: 'Rejected', value: stats.rejected },
+          { key: 'all', label: 'Total', value: stats.total },
+        ].map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => setFilter(c.key as typeof filter)}
+            className={`bg-white border rounded-xl p-4 text-left ${
+              filter === c.key ? 'ring-2 ring-teal-500/30 border-teal-200' : 'border-gray-200'
+            }`}
+          >
+            <p className="text-xs text-gray-500">{c.label}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{c.value}</p>
+          </button>
         ))}
       </div>
 
-      {/* Value Banner */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
-        <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-              <i className="ri-money-rupee-circle-line text-white text-2xl"></i>
-            </div>
-            <div>
-              <p className="text-amber-100 text-sm">Value Awaiting Acceptance</p>
-              <p className="text-white text-2xl font-bold">{formatCurrency(stats.pendingValue)}</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-amber-100 text-xs">{stats.pending} PO{stats.pending !== 1 ? 's' : ''} pending</p>
-            <p className="text-white text-xs font-medium mt-0.5">SLA: 2 business days</p>
-          </div>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap gap-3 items-center justify-between">
+          <h2 className="text-sm font-bold text-gray-900">Purchase orders</h2>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search PO, vendor, PR..."
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          />
         </div>
 
-        <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-              <i className="ri-checkbox-circle-line text-white text-2xl"></i>
-            </div>
-            <div>
-              <p className="text-teal-100 text-sm">Value Confirmed by Vendors</p>
-              <p className="text-white text-2xl font-bold">{formatCurrency(stats.acceptedValue)}</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-teal-100 text-xs">{stats.accepted} PO{stats.accepted !== 1 ? 's' : ''} accepted</p>
-            <p className="text-white text-xs font-medium mt-0.5">Ready for GRN tracking</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Table Card */}
-      <div className="bg-white rounded-xl border border-gray-200">
-        {/* Filters */}
-        <div className="px-6 py-5 border-b border-gray-100">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-bold text-gray-900">Purchase Orders — Vendor Acceptance Status</h2>
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input
-                  type="text"
-                  placeholder="Search PO, vendor, department..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 w-64"
-                />
-              </div>
-              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-                {[
-                  { key: 'all', label: 'All' },
-                  { key: 'Pending Acceptance', label: 'Pending' },
-                  { key: 'Accepted', label: 'Accepted' },
-                  { key: 'Partially Accepted', label: 'Partial' },
-                  { key: 'Rejected', label: 'Rejected' },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setFilter(tab.key)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                      filter === tab.key ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <p className="text-xs text-gray-400 mt-2">
-            Showing <strong className="text-gray-700">{filteredPOs.length}</strong> purchase order{filteredPOs.length !== 1 ? 's' : ''} · Click any row to expand full details
+        {loading ? (
+          <p className="p-8 text-sm text-gray-500">Loading…</p>
+        ) : filtered.length === 0 ? (
+          <p className="p-8 text-sm text-gray-400 text-center">
+            No POs in this queue. Final-verify a PO first, then it appears here.
           </p>
-        </div>
-
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>
-                {['', 'PO Number', 'Vendor', 'PR Reference', 'Department', 'Grand Total', 'Due Date', 'Priority', 'Status', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPOs.map((po) => {
-                const isExpanded = expandedRow === po.poNumber;
-                const isPending = po.status === 'Pending Acceptance';
-                const isOverdue = isPending && new Date(po.acceptanceDueDate) < new Date('2024-02-01');
-
-                return (
-                  <>
-                    <tr
-                      key={po.poNumber}
-                      onClick={() => toggleRow(po.poNumber)}
-                      className={`border-b transition-colors cursor-pointer ${
-                        isExpanded
-                          ? 'bg-teal-50 border-teal-200'
-                          : isOverdue
-                          ? 'hover:bg-red-50/30 border-gray-100 bg-red-50/10'
-                          : isPending
-                          ? 'hover:bg-amber-50/40 border-gray-100'
-                          : 'hover:bg-gray-50 border-gray-100'
-                      }`}
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  {['', 'PO Number', 'Vendor', 'PR', 'Amount', 'Mode', 'Status', 'Actions'].map((h) => (
+                    <th
+                      key={h || 'expand'}
+                      className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase"
                     >
-                      {/* Expand Icon */}
-                      <td className="px-4 py-4 w-8">
-                        <div className={`w-6 h-6 flex items-center justify-center rounded transition-all ${isExpanded ? 'bg-teal-100 text-teal-600' : 'text-gray-400'}`}>
-                          <i className={`text-sm ${isExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}`}></i>
-                        </div>
-                      </td>
-
-                      {/* PO Number */}
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <p className="text-sm font-bold text-gray-900">{po.poNumber}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">Issued: {po.issuedDate}</p>
-                      </td>
-
-                      {/* Vendor */}
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span className="text-teal-700 text-xs font-bold">
-                              {po.vendorName.split(' ').slice(0, 2).map((n) => n[0]).join('')}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900 max-w-[160px] truncate">{po.vendorName}</p>
-                            <p className="text-xs text-gray-400">{po.vendorCode}</p>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* PR Reference */}
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <p className="text-sm font-medium text-teal-600">{po.prId}</p>
-                        <p className="text-xs text-gray-500 max-w-[150px] truncate">{po.prTitle}</p>
-                      </td>
-
-                      {/* Department */}
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <p className="text-sm font-medium text-gray-900">{po.department}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                          <i className="ri-user-line text-xs"></i>{po.requester}
-                        </p>
-                      </td>
-
-                      {/* Grand Total */}
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <p className="text-sm font-bold text-gray-900">{formatCurrency(po.grandTotal)}</p>
-                        <p className="text-xs text-gray-400">{po.lineItems.length} line item{po.lineItems.length !== 1 ? 's' : ''}</p>
-                      </td>
-
-                      {/* Due Date */}
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        {isPending ? (
-                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                            isOverdue ? 'bg-red-100 text-red-700' : 'bg-amber-50 text-amber-700'
-                          }`}>
-                            <i className={isOverdue ? 'ri-alarm-warning-line' : 'ri-calendar-line'}></i>
-                            {isOverdue ? 'Overdue' : po.acceptanceDueDate}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-gray-500">{po.acceptanceDueDate}</p>
-                        )}
-                      </td>
-
-                      {/* Priority */}
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <PriorityBadge priority={po.priority} />
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <StatusBadge status={po.status} />
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-4 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((po) => {
+                  const pending = (po.vendorAcceptanceStatus || 'pending') === 'pending';
+                  const accepted =
+                    po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
+                  const isExpanded = expandedId === po.id;
+                  return (
+                    <Fragment key={po.id}>
+                      <tr
+                        className={`border-b hover:bg-gray-50 cursor-pointer ${
+                          isExpanded ? 'bg-teal-50/60' : ''
+                        }`}
+                        onClick={() => setExpandedId(isExpanded ? null : po.id)}
+                      >
+                        <td className="px-2 py-3">
                           <button
-                            onClick={() => toggleRow(po.poNumber)}
-                            className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg cursor-pointer"
-                            title="Expand"
+                            type="button"
+                            className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600"
+                            aria-expanded={isExpanded}
                           >
-                            <i className={`text-sm ${isExpanded ? 'ri-eye-off-line' : 'ri-eye-line'}`}></i>
+                            <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line`}></i>
                           </button>
-                          {isPending && (
-                            <>
+                        </td>
+                        <td className="px-3 py-3">
+                          <p className="text-sm font-semibold text-teal-700">{po.poNumber}</p>
+                        </td>
+                        <td className="px-3 py-3 text-sm">
+                          <p className="font-medium text-gray-900">{po.vendorName}</p>
+                          <p className="text-xs text-gray-500">{po.vendorEmail}</p>
+                        </td>
+                        <td className="px-3 py-3 text-sm text-gray-700">
+                          <p>{po.prNumber || '—'}</p>
+                          <p className="text-xs text-gray-500 truncate max-w-[180px]">{po.prTitle}</p>
+                        </td>
+                        <td className="px-3 py-3 text-sm font-semibold">
+                          {formatCurrency(Number(po.grandTotal) || 0)}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-600 capitalize">
+                          {po.vendorAcceptanceMode || '—'}
+                        </td>
+                        <td className="px-3 py-3">
+                          <StatusBadge status={(po.vendorAcceptanceStatus as AcceptanceStatus) || 'pending'} />
+                        </td>
+                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          {pending ? (
+                            <div className="flex flex-wrap gap-2">
                               <button
-                                onClick={() => openModal(po.poNumber, 'accept')}
-                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer"
-                                title="Accept"
+                                type="button"
+                                disabled={busyId === po.id}
+                                onClick={() => handleSendMail(po)}
+                                className="px-3 py-1.5 text-xs font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50"
                               >
-                                <i className="ri-check-line text-sm"></i>
+                                {busyId === po.id ? 'Sending…' : 'Send Mail'}
                               </button>
                               <button
-                                onClick={() => openModal(po.poNumber, 'partial')}
-                                className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg cursor-pointer"
-                                title="Partial Accept"
+                                type="button"
+                                onClick={() => openManual(po)}
+                                className="px-3 py-1.5 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50"
                               >
-                                <i className="ri-git-commit-line text-sm"></i>
+                                Manual Entry
                               </button>
-                              <button
-                                onClick={() => openModal(po.poNumber, 'reject')}
-                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg cursor-pointer"
-                                title="Reject"
-                              >
-                                <i className="ri-close-line text-sm"></i>
-                              </button>
-                            </>
+                            </div>
+                          ) : accepted ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigate(
+                                  `/grn?poId=${po.id}&poNumber=${encodeURIComponent(
+                                    po.poNumber
+                                  )}&from=vendor-acceptance&create=1`
+                                )
+                              }
+                              className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg"
+                            >
+                              Next: Enter GRN
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-500">Completed</span>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-
-                    {/* Expanded Row */}
-                    {isExpanded && (
-                      <POExpandedRow
-                        key={`expanded-${po.poNumber}`}
-                        po={po}
-                        status={po.status}
-                        onAccept={() => openModal(po.poNumber, 'accept')}
-                        onReject={() => openModal(po.poNumber, 'reject')}
-                        onPartial={() => openModal(po.poNumber, 'partial')}
-                      />
-                    )}
-                  </>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {filteredPOs.length === 0 && (
-          <div className="py-16 text-center">
-            <i className="ri-store-2-line text-5xl text-gray-200 mb-4 block"></i>
-            <p className="text-gray-500 text-sm font-medium">No purchase orders found</p>
-            {(searchTerm || filter !== 'all') && (
-              <button
-                onClick={() => { setSearchTerm(''); setFilter('all'); }}
-                className="mt-3 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 cursor-pointer whitespace-nowrap"
-              >
-                Clear filters
-              </button>
-            )}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <POExpandedRow
+                          po={po}
+                          busy={busyId === po.id}
+                          onSendMail={() => handleSendMail(po)}
+                          onManual={() => openManual(po)}
+                          onViewPdf={() => viewPdf(po.id)}
+                        />
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      {/* Acceptance Modal */}
-      <AcceptanceModal
-        isOpen={modal.isOpen}
-        type={modal.type}
-        poNumber={modal.poNumber}
-        prTitle={modal.prTitle}
-        vendorName={modal.vendorName}
-        grandTotal={modal.grandTotal}
-        onConfirm={handleConfirm}
-        onClose={() => setModal((prev) => ({ ...prev, isOpen: false }))}
-      />
+      {manualFor && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+            <h3 className="text-lg font-bold text-gray-900">Manual vendor acceptance</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              {manualFor.poNumber} — {manualFor.vendorName}
+            </p>
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <div className={`px-5 py-3 rounded-xl flex items-center gap-2 text-sm font-semibold ${
-            toast.type === 'success' ? 'bg-emerald-700 text-white' :
-            toast.type === 'error' ? 'bg-red-700 text-white' :
-            'bg-amber-600 text-white'
-          }`}>
-            <i className={
-              toast.type === 'success' ? 'ri-check-double-line' :
-              toast.type === 'error' ? 'ri-close-circle-line' :
-              'ri-git-commit-line'
-            }></i>
-            {toast.text}
+            <div className="mt-4 flex gap-2">
+              {(['accept', 'partial', 'reject'] as const).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setManualAction(a)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize ${
+                    manualAction === a
+                      ? 'bg-teal-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+
+            <label className="block mt-4 text-xs font-semibold text-gray-600 mb-1">Remarks *</label>
+            <textarea
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              rows={3}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+              placeholder="Vendor confirmation notes…"
+            />
+
+            {manualAction !== 'reject' && (
+              <>
+                <label className="block mt-3 text-xs font-semibold text-gray-600 mb-1">
+                  Confirmed delivery date
+                </label>
+                <input
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                />
+                <label className="block mt-3 text-xs font-semibold text-gray-600 mb-1">
+                  Upload acceptance / signed document *
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  className="w-full text-sm"
+                />
+              </>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setManualFor(null)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busyId === manualFor.id}
+                onClick={submitManual}
+                className="px-4 py-2 text-sm font-semibold bg-teal-600 text-white rounded-lg disabled:opacity-50"
+              >
+                Save &amp; continue
+              </button>
+            </div>
           </div>
         </div>
       )}

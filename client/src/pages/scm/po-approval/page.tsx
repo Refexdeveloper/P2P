@@ -10,6 +10,20 @@ import type { POData } from '../../../mocks/po-data';
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
+/** Manager still needs to act */
+const isAwaitingManager = (status: string) => status === 'Pending Approval';
+
+/** Manager already signed / final approved / sent */
+const isManagerApproved = (status: string) =>
+  status === 'PO Approved' ||
+  status === 'Sent to Vendor' ||
+  status === 'Pending Vendor Acceptance' ||
+  status === 'Vendor Accepted' ||
+  status === 'Partially Accepted' ||
+  status === 'Pending Buyer Verify';
+
+const isRejected = (status: string) => status === 'PO Rejected';
+
 const StatusBadge = ({ status }: { status: string }) => {
   const map: Record<string, string> = {
     'Pending Approval': 'bg-amber-100 text-amber-700 border border-amber-200',
@@ -522,16 +536,20 @@ export default function POApprovalPage() {
 
   const loadPos = useCallback(async () => {
     try {
+      setLoading(true);
       const res = await poApi.list();
-      const items = (res.data as Record<string, unknown>[]).map(mapApiPo);
+      const rawList = (res.data as Record<string, unknown>[]) || [];
+      const items = rawList.map(mapApiPo);
       const idMap: Record<string, number> = {};
-      (res.data as Record<string, unknown>[]).forEach((r) => {
+      rawList.forEach((r) => {
         idMap[String(r.poNumber)] = Number(r.id);
       });
       setPoList(items);
       setPoIdMap(idMap);
-    } catch {
+    } catch (err) {
+      console.error('Failed to load POs for manager approval', err);
       setPoList([]);
+      setPoIdMap({});
     } finally {
       setLoading(false);
     }
@@ -588,23 +606,29 @@ export default function POApprovalPage() {
         po.department.toLowerCase().includes(q)
       );
     }
-    if (filter !== 'all') {
-      result = result.filter(po => po.status === filter);
+    if (filter === 'pending') {
+      result = result.filter((po) => isAwaitingManager(po.status));
+    } else if (filter === 'approved') {
+      result = result.filter((po) => isManagerApproved(po.status));
+    } else if (filter === 'rejected') {
+      result = result.filter((po) => isRejected(po.status));
     }
     // Pending first
     result.sort((a, b) => {
-      const aP = a.status === 'Pending Approval' ? 0 : 1;
-      const bP = b.status === 'Pending Approval' ? 0 : 1;
+      const aP = isAwaitingManager(a.status) ? 0 : 1;
+      const bP = isAwaitingManager(b.status) ? 0 : 1;
       return aP - bP;
     });
     return result;
   }, [processedPOs, searchTerm, filter]);
 
   const stats = useMemo(() => ({
-    pending: processedPOs.filter(p => p.status === 'Pending Approval').length,
-    approved: processedPOs.filter(p => p.status === 'PO Approved').length,
-    rejected: processedPOs.filter(p => p.status === 'PO Rejected').length,
-    totalPendingValue: processedPOs.filter(p => p.status === 'Pending Approval').reduce((s, p) => s + p.grandTotal, 0),
+    pending: processedPOs.filter((p) => isAwaitingManager(p.status)).length,
+    approved: processedPOs.filter((p) => isManagerApproved(p.status)).length,
+    rejected: processedPOs.filter((p) => isRejected(p.status)).length,
+    totalPendingValue: processedPOs
+      .filter((p) => isAwaitingManager(p.status))
+      .reduce((s, p) => s + p.grandTotal, 0),
   }), [processedPOs]);
 
   const toggleRow = (poNumber: string) => {
@@ -624,12 +648,19 @@ export default function POApprovalPage() {
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         {[
-          { label: 'Pending Approval', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
-          { label: 'Approved', value: stats.approved, icon: 'ri-check-double-line', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
-          { label: 'Rejected', value: stats.rejected, icon: 'ri-close-circle-line', bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-100' },
-          { label: 'Total POs', value: processedPOs.length, icon: 'ri-file-list-3-line', bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-100' },
+          { key: 'pending', label: 'Pending Approval', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
+          { key: 'approved', label: 'Approved', value: stats.approved, icon: 'ri-check-double-line', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
+          { key: 'rejected', label: 'Rejected', value: stats.rejected, icon: 'ri-close-circle-line', bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-100' },
+          { key: 'all', label: 'Total POs', value: processedPOs.length, icon: 'ri-file-list-3-line', bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-100' },
         ].map((card) => (
-          <div key={card.label} className={`bg-white rounded-xl border ${card.border} p-5 flex items-center justify-between`}>
+          <button
+            key={card.label}
+            type="button"
+            onClick={() => setFilter(card.key)}
+            className={`bg-white rounded-xl border ${card.border} p-5 flex items-center justify-between text-left transition-shadow hover:shadow-md cursor-pointer ${
+              filter === card.key ? 'ring-2 ring-teal-500/30' : ''
+            }`}
+          >
             <div>
               <p className="text-xs text-gray-500 mb-1">{card.label}</p>
               <p className="text-3xl font-bold text-gray-900">{card.value}</p>
@@ -637,7 +668,7 @@ export default function POApprovalPage() {
             <div className={`w-12 h-12 ${card.bg} rounded-xl flex items-center justify-center`}>
               <i className={`${card.icon} text-2xl ${card.text}`}></i>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -680,9 +711,9 @@ export default function POApprovalPage() {
               <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
                 {[
                   { key: 'all', label: 'All' },
-                  { key: 'Pending Approval', label: 'Pending' },
-                  { key: 'PO Approved', label: 'Approved' },
-                  { key: 'PO Rejected', label: 'Rejected' },
+                  { key: 'pending', label: 'Pending' },
+                  { key: 'approved', label: 'Approved' },
+                  { key: 'rejected', label: 'Rejected' },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -717,7 +748,7 @@ export default function POApprovalPage() {
             <tbody>
               {filteredPOs.map((po) => {
                 const isExpanded = expandedRow === po.poNumber;
-                const isPending = po.status === 'Pending Approval';
+                const isPending = isAwaitingManager(po.status);
 
                 return (
                   <Fragment key={po.poNumber}>

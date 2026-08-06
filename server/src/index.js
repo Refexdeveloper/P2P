@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import authRoutes from './routes/auth.routes.js';
 import purchaseRequestRoutes from './routes/purchaseRequest.routes.js';
 import taskRoutes from './routes/task.routes.js';
@@ -11,12 +14,16 @@ import masterRoutes from './routes/master.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import { runStartupMigrations } from './services/dbMigrate.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+/** Built SPA (vite outDir: out) — client/out/index.html */
+const CLIENT_OUT = path.resolve(__dirname, '../../client/out');
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: process.env.CORS_ORIGIN || true,
     credentials: true,
   })
 );
@@ -41,6 +48,17 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ message: 'Internal server error' });
 });
 
+if (fs.existsSync(path.join(CLIENT_OUT, 'index.html'))) {
+  app.use(express.static(CLIENT_OUT, { index: 'index.html' }));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(CLIENT_OUT, 'index.html'));
+  });
+  console.log(`Serving frontend from ${CLIENT_OUT}`);
+} else {
+  console.warn(`Frontend build not found at ${CLIENT_OUT} — run: npm run build --prefix client`);
+}
+
 app.listen(PORT, async () => {
   try {
     await runStartupMigrations();
@@ -49,4 +67,7 @@ app.listen(PORT, async () => {
     console.error('Startup migration failed:', err.message);
   }
   console.log(`P2P API server running on http://localhost:${PORT}`);
+  if (fs.existsSync(path.join(CLIENT_OUT, 'index.html'))) {
+    console.log(`Open app: http://localhost:${PORT}/`);
+  }
 });

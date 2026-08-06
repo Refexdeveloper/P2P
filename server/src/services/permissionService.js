@@ -13,6 +13,7 @@ export const NAV_ITEMS = [
   { code: 'nav.cfo_dashboard', label: 'Dashboard', path: '/cfo/dashboard', icon: 'ri-dashboard-line', group: 'CFO', sort: 50 },
   { code: 'nav.home_dashboard', label: 'Dashboard', path: '/', icon: 'ri-dashboard-line', group: 'General', sort: 5 },
   { code: 'nav.purchase_requests', label: 'Dashboard', path: '/scm/purchase-requests', icon: 'ri-dashboard-line', group: 'SCM', sort: 60 },
+  { code: 'nav.scm_manager_dashboard', label: 'Dashboard', path: '/scm/manager-dashboard', icon: 'ri-dashboard-line', group: 'SCM Manager', sort: 65 },
   { code: 'nav.create_po', label: 'Create PO', path: '/scm/create-po', icon: 'ri-shopping-cart-2-line', group: 'SCM', sort: 61 },
   { code: 'nav.track_po', label: 'Track PO', path: '/scm/track-po', icon: 'ri-search-eye-line', group: 'SCM', sort: 62 },
   { code: 'nav.po_excel_import', label: 'PO Excel Import', path: '/scm/po-excel-import', icon: 'ri-file-excel-2-line', group: 'SCM', sort: 63 },
@@ -54,10 +55,18 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.technical_clearance', 'nav.po_approval', 'nav.buyer_final_verify', 'nav.vendor_po_acceptance', 'nav.vendor_invoice', 'nav.grn',
   ],
   'SCM Manager': [
-    'nav.po_approval', 'nav.rfq_approval', 'nav.payment_authorization', 'nav.tasks',
-    'nav.item_master', 'nav.vendor_master', 'nav.category_master',
-    'nav.entity_master', 'nav.department_master',
-    'nav.po_letterhead_master', 'nav.letterhead_master',
+    'nav.scm_manager_dashboard',
+    'nav.po_approval',
+    'nav.rfq_approval',
+    'nav.payment_authorization',
+    'nav.tasks',
+    'nav.item_master',
+    'nav.vendor_master',
+    'nav.category_master',
+    'nav.entity_master',
+    'nav.department_master',
+    'nav.po_letterhead_master',
+    'nav.letterhead_master',
   ],
   'Accounts Payable': ['nav.invoice_verification', 'nav.payment'],
   'Accounts Manager': ['nav.invoice_verification', 'nav.payment', 'nav.payment_authorization'],
@@ -115,6 +124,9 @@ export async function getUserPermissionCodes(userId, role) {
         if (role === 'SCM Buyer') {
           healCodes.push('nav.buyer_final_verify', 'nav.track_po', 'nav.po_excel_import');
         }
+        if (role === 'SCM Manager') {
+          healCodes.push('nav.scm_manager_dashboard', 'nav.po_approval', 'nav.rfq_approval');
+        }
         for (const code of healCodes) {
           if (!stored.includes(code) && validCodes.has(code)) {
             stored.push(code);
@@ -152,6 +164,17 @@ export async function getUserNavigation(userId, role) {
         );
       }
     }
+  }
+
+  // SCM Manager: Dashboard → PO Approval → RFQ Approval → …
+  if (role === 'SCM Manager') {
+    const order = ROLE_DEFAULT_PERMISSIONS['SCM Manager'] || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    nav.sort((a, b) => {
+      const ai = rank.has(a.code) ? rank.get(a.code) : 1000 + a.sort;
+      const bi = rank.has(b.code) ? rank.get(b.code) : 1000 + b.sort;
+      return ai - bi;
+    });
   }
 
   return nav;

@@ -56,7 +56,7 @@ export const ROLE_HOME: Partial<Record<UserRole, string>> = {
   'Tech Evaluator': '/tech-evaluator/rfq-evaluation',
   'HOD Approver': '/tasks',
   'SCM Buyer': '/scm/purchase-requests',
-  'SCM Manager': '/scm/po-approval',
+  'SCM Manager': '/scm/manager-dashboard',
   'Accounts Payable': '/accounts/invoice-verification',
   'Accounts Manager': '/accounts/invoice-verification',
   'Functional Team': '/functional/evaluate-pr',
@@ -177,10 +177,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const hashParams = new URLSearchParams(
         hash.includes('?') ? hash.split('?')[1] : hash.includes('=') ? hash : ''
       );
+      let storedSso: string | null = null;
+      try {
+        storedSso =
+          sessionStorage.getItem('p2p_sso_token') || localStorage.getItem('p2p_sso_token');
+      } catch {
+        storedSso = null;
+      }
       const p2pToken =
         params.get('p2p_token') ||
         params.get('p2pToken') ||
-        hashParams.get('p2p_token');
+        hashParams.get('p2p_token') ||
+        storedSso;
       const refexToken =
         params.get('access_token') ||
         params.get('accessToken') ||
@@ -196,6 +204,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const res = await authApi.me();
           const mapped = mapAuthUser(res.user);
           persistUser(mapped, p2pToken);
+          try {
+            sessionStorage.removeItem('p2p_sso_token');
+            localStorage.removeItem('p2p_sso_token');
+          } catch {
+            // ignore
+          }
           params.delete('p2p_token');
           params.delete('p2pToken');
           const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;

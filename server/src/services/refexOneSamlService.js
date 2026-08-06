@@ -6,12 +6,18 @@ const inflate = promisify(zlib.inflate);
 
 function appUrl(path = '') {
   const base = (process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:3000').replace(/\/$/, '');
+  if (!path) return base;
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 function apiUrl(path = '') {
   const port = process.env.PORT || 5000;
-  const base = (process.env.API_PUBLIC_URL || `http://localhost:${port}`).replace(/\/$/, '');
+  // Prefer explicit API public URL. For local SSO, APP_URL (Vite :3000) can proxy /api.
+  const base = (
+    process.env.API_PUBLIC_URL ||
+    process.env.APP_URL ||
+    `http://localhost:${port}`
+  ).replace(/\/$/, '');
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
@@ -66,6 +72,8 @@ function extractEmailFromSamlXml(xml) {
     /<saml?:NameID[^>]*>([^<]+)<\/saml?:NameID>/i,
     /<NameID[^>]*>([^<]+)<\/NameID>/i,
     /EmailAddress[^>]*>([^<]+)</i,
+    /Attribute[^>]*Name="[^"]*email[^"]*"[^>]*>[\s\S]*?<AttributeValue[^>]*>([^<]+)/i,
+    /Attribute[^>]*Name="[^"]*mail[^"]*"[^>]*>[\s\S]*?<AttributeValue[^>]*>([^<]+)/i,
     /AttributeValue[^>]*>([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})</i,
     /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i,
   ];
@@ -73,8 +81,8 @@ function extractEmailFromSamlXml(xml) {
   for (const re of patterns) {
     const match = xml.match(re);
     if (match?.[1]) {
-      const value = match[1].trim();
-      if (value.includes('@')) return value.toLowerCase();
+      const value = match[1].trim().toLowerCase();
+      if (value.includes('@')) return value;
     }
   }
 
@@ -86,6 +94,7 @@ function extractNameFromSamlXml(xml, fallbackEmail) {
     /Attribute[^>]*Name="[^"]*displayName"[^>]*>[\s\S]*?<AttributeValue[^>]*>([^<]+)/i,
     /Attribute[^>]*Name="[^"]*name"[^>]*>[\s\S]*?<AttributeValue[^>]*>([^<]+)/i,
     /Attribute[^>]*FriendlyName="[^"]*displayName"[^>]*>[\s\S]*?<AttributeValue[^>]*>([^<]+)/i,
+    /Attribute[^>]*Name="[^"]*cn"[^>]*>[\s\S]*?<AttributeValue[^>]*>([^<]+)/i,
   ];
   for (const re of patterns) {
     const match = xml.match(re);

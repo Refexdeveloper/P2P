@@ -1,9 +1,120 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback, Fragment } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/feature/DashboardLayout';
-import { grnData, GRNData, GRNStatus } from '../../mocks/grn-data';
+import { GRNData, GRNStatus } from '../../mocks/grn-data';
+import { poApi } from '../../services/api';
 import CreateGRNModal, { NewGRNData } from './components/CreateGRNModal';
 import GRNApprovalModal from './components/GRNApprovalModal';
-import ReceiptModal from './ReceiptModal';
+
+const GRN_STORAGE_KEY = 'p2p_grn_entries_v1';
+
+type ApiPo = {
+  id: number;
+  poNumber: string;
+  prNumber?: string;
+  prTitle?: string;
+  vendorName?: string;
+  department?: string;
+  requester?: string;
+  createdAt?: string;
+  expectedDeliveryDate?: string;
+  deliveryAddress?: string;
+  paymentTerms?: string;
+  gstPercentage?: number;
+  subtotal?: number;
+  taxAmount?: number;
+  grandTotal?: number;
+  priority?: string;
+  vendorAcceptanceStatus?: string | null;
+  vendorAcceptedAt?: string | null;
+  vendorAcceptanceRemarks?: string;
+  lineItems?: Array<{
+    id?: string | number;
+    itemName?: string;
+    description?: string;
+    quantity?: number;
+    unitPrice?: number;
+    total?: number;
+  }>;
+};
+
+function loadStoredGrns(): GRNData[] {
+  try {
+    const raw = localStorage.getItem(GRN_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as GRNData[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredGrns(rows: GRNData[]) {
+  try {
+    localStorage.setItem(GRN_STORAGE_KEY, JSON.stringify(rows));
+  } catch {
+    /* ignore */
+  }
+}
+
+function mapAcceptedPoToPendingGrn(po: ApiPo): GRNData {
+  const lineItems = (po.lineItems || []).map((li, idx) => {
+    const qty = Number(li.quantity) || 0;
+    const unitPrice = Number(li.unitPrice) || 0;
+    return {
+      id: String(li.id || idx + 1),
+      description: String(li.itemName || li.description || `Item ${idx + 1}`)
+        .replace(/<[^>]+>/g, ' ')
+        .trim(),
+      orderedQty: qty,
+      receivedQty: 0,
+      pendingQty: qty,
+      unitPrice,
+      total: Number(li.total) || qty * unitPrice,
+      condition: 'Pending Inspection' as const,
+    };
+  });
+
+  return {
+    grnNumber: `AWAITING-${po.poNumber}`,
+    poNumber: po.poNumber,
+    poId: po.id,
+    prId: po.prNumber || '',
+    prTitle: po.prTitle || '',
+    vendor: po.vendorName || '',
+    department: po.department || '',
+    requester: po.requester || '',
+    poDate: po.createdAt || '',
+    expectedDeliveryDate: po.expectedDeliveryDate || '',
+    receivedDate: null,
+    deliveryAddress: po.deliveryAddress || '',
+    paymentTerms: po.paymentTerms || '',
+    lineItems,
+    subtotal: Number(po.subtotal) || 0,
+    gstPercentage: Number(po.gstPercentage) || 18,
+    taxAmount: Number(po.taxAmount) || 0,
+    grandTotal: Number(po.grandTotal) || 0,
+    receivedValue: 0,
+    status: 'Pending Receipt',
+    priority: (po.priority === 'high' || po.priority === 'low' ? po.priority : 'medium') as
+      | 'high'
+      | 'medium'
+      | 'low',
+    receivedBy: null,
+    inspectedBy: null,
+    remarks: po.vendorAcceptanceRemarks || '',
+    awaitingEntry: true,
+    receiptHistory: [
+      {
+        action: 'Vendor Accepted — Ready for GRN',
+        performedBy: po.vendorName || 'Vendor',
+        role: 'Vendor',
+        date: po.vendorAcceptedAt || po.createdAt || '',
+        notes: `PO ${po.poNumber} accepted by vendor. Enter GRN with original PO data.`,
+      },
+    ],
+  };
+}
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
@@ -129,9 +240,10 @@ interface ExpandedGRNRowProps {
   grn: GRNData;
   onMarkReceived: () => void;
   onApprove: () => void;
+  onEnterGrn?: () => void;
 }
 
-function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps) {
+function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: ExpandedGRNRowProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'history'>('details');
   const isPending = grn.status === 'Pending Receipt' || grn.status === 'Partially Received';
   const isReceived = grn.status === 'Fully Received' || grn.status === 'Partially Received';
@@ -141,7 +253,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
 
   return (
     <tr>
-      <td colSpan={9} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
+      <td colSpan={10} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {/* Expanded Header */}
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
@@ -150,7 +262,9 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
                 <i className="ri-truck-line text-teal-600 text-lg"></i>
               </div>
               <div>
-                <p className="text-sm font-bold text-gray-900">{grn.grnNumber}</p>
+                <p className="text-sm font-bold text-gray-900">
+                  {grn.awaitingEntry ? grn.poNumber : grn.grnNumber}
+                </p>
                 <p className="text-xs text-gray-500">{grn.prTitle}</p>
               </div>
               <div className="ml-4 flex items-center gap-2">
@@ -164,7 +278,15 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {isPending && (
+              {grn.awaitingEntry && onEnterGrn && (
+                <button
+                  onClick={onEnterGrn}
+                  className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
+                >
+                  <i className="ri-add-circle-line"></i> Enter GRN
+                </button>
+              )}
+              {isPending && !grn.awaitingEntry && (
                 <button
                   onClick={onMarkReceived}
                   className="px-4 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
@@ -172,7 +294,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
                   <i className="ri-checkbox-circle-line"></i> Mark as Received
                 </button>
               )}
-              {isReceived && (
+              {isReceived && !grn.awaitingEntry && (
                 <button
                   onClick={onApprove}
                   className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
@@ -479,6 +601,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
 }
 
 export default function GRNPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -487,11 +610,62 @@ export default function GRNPage() {
   const [receiptModal, setReceiptModal] = useState<{ isOpen: boolean; grn: GRNData | null }>({ isOpen: false, grn: null });
   const [approvalModal, setApprovalModal] = useState<{ isOpen: boolean; grn: GRNData | null }>({ isOpen: false, grn: null });
   const [createGRNOpen, setCreateGRNOpen] = useState(false);
-  const [newGRNs, setNewGRNs] = useState<GRNData[]>([]);
+  const [newGRNs, setNewGRNs] = useState<GRNData[]>(() => loadStoredGrns());
+  const [pendingFromPos, setPendingFromPos] = useState<GRNData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [prefillPoNumber, setPrefillPoNumber] = useState<string | undefined>();
+  const [prefillPoId, setPrefillPoId] = useState<number | undefined>();
 
   const showToast = (text: string, type: 'success' | 'error') => {
     setToast({ text, type });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  const loadAcceptedPos = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await poApi.listVendorAcceptance();
+      const accepted = ((res.data as ApiPo[]) || []).filter(
+        (p) => p.vendorAcceptanceStatus === 'accepted' || p.vendorAcceptanceStatus === 'partial'
+      );
+      setPendingFromPos(accepted.map(mapAcceptedPoToPendingGrn));
+    } catch (err) {
+      setPendingFromPos([]);
+      showToast(err instanceof Error ? err.message : 'Failed to load vendor-accepted POs', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAcceptedPos();
+  }, [loadAcceptedPos]);
+
+  useEffect(() => {
+    saveStoredGrns(newGRNs);
+  }, [newGRNs]);
+
+  useEffect(() => {
+    const create = searchParams.get('create');
+    const poNumber = searchParams.get('poNumber') || undefined;
+    const poIdRaw = searchParams.get('poId');
+    const poId = poIdRaw ? Number(poIdRaw) : undefined;
+    if (create === '1' || poNumber || poId) {
+      setPrefillPoNumber(poNumber);
+      setPrefillPoId(poId && !Number.isNaN(poId) ? poId : undefined);
+      setCreateGRNOpen(true);
+      if (searchParams.get('from') === 'vendor-acceptance') {
+        showToast('Original PO loaded — enter receipt details', 'success');
+      }
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openEnterGrn = (grn: GRNData) => {
+    setPrefillPoId(grn.poId);
+    setPrefillPoNumber(grn.poNumber);
+    setCreateGRNOpen(true);
   };
 
   const handleConfirmReceipt = (remarks: string) => {
@@ -523,16 +697,18 @@ export default function GRNPage() {
     const totalReceived = data.lineItems.reduce((s, i) => s + i.receivedQty, 0);
     const allReceived = totalReceived === totalOrdered;
     const noneReceived = totalReceived === 0;
+    const matchedPo = pendingFromPos.find((p) => p.poNumber === data.poNumber);
 
     const newGRN: GRNData = {
       grnNumber: data.grnNumber,
       poNumber: data.poNumber,
+      poId: matchedPo?.poId || prefillPoId,
       prId: data.prId,
       prTitle: data.prTitle,
       vendor: data.vendor,
       department: data.department,
       requester: data.requester,
-      poDate: new Date().toISOString().split('T')[0],
+      poDate: matchedPo?.poDate || new Date().toISOString().split('T')[0],
       expectedDeliveryDate: data.expectedDeliveryDate,
       receivedDate: data.receivedDate,
       deliveryAddress: data.deliveryAddress,
@@ -553,10 +729,11 @@ export default function GRNPage() {
       grandTotal: data.grandTotal,
       receivedValue: data.subtotal,
       status: noneReceived ? 'Pending Receipt' : allReceived ? 'Fully Received' : 'Partially Received',
-      priority: 'medium',
+      priority: matchedPo?.priority || 'medium',
       receivedBy: data.receivedBy || null,
       inspectedBy: data.inspectedBy || null,
       remarks: data.remarks,
+      awaitingEntry: false,
       receiptHistory: [
         {
           action: 'GRN Created',
@@ -568,12 +745,18 @@ export default function GRNPage() {
       ],
     };
 
-    setNewGRNs(prev => [newGRN, ...prev]);
+    setNewGRNs(prev => [newGRN, ...prev.filter((g) => g.poNumber !== data.poNumber)]);
     setCreateGRNOpen(false);
+    setPrefillPoNumber(undefined);
+    setPrefillPoId(undefined);
     showToast(`${data.grnNumber} created successfully!`, 'success');
   };
 
-  const allGRNs = useMemo(() => [...newGRNs, ...grnData], [newGRNs]);
+  const allGRNs = useMemo(() => {
+    const enteredPoNumbers = new Set(newGRNs.map((g) => g.poNumber));
+    const awaiting = pendingFromPos.filter((p) => !enteredPoNumbers.has(p.poNumber));
+    return [...newGRNs, ...awaiting];
+  }, [newGRNs, pendingFromPos]);
 
   const processedGRNs = useMemo(
     () => allGRNs.map(g => ({ ...g, status: statusUpdates[g.grnNumber] || g.status })),
@@ -628,14 +811,20 @@ export default function GRNPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Goods Receipt Note (GRN)</h1>
-          <p className="text-sm text-gray-500 mt-1">Track and manage goods receipt against approved purchase orders</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Vendor-accepted POs from approval — enter GRN with original PO data
+          </p>
         </div>
         <button
-          onClick={() => setCreateGRNOpen(true)}
+          onClick={() => {
+            setPrefillPoId(undefined);
+            setPrefillPoNumber(undefined);
+            setCreateGRNOpen(true);
+          }}
           className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-xl hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap shadow-sm"
         >
           <i className="ri-add-line text-base"></i>
-          Create GRN
+          Enter GRN
         </button>
       </div>
 
@@ -685,6 +874,14 @@ export default function GRNPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-bold text-gray-900">GRN Register</h2>
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => loadAcceptedPos()}
+                className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                title="Refresh"
+              >
+                <i className={`ri-refresh-line text-sm ${loading ? 'animate-spin' : ''}`}></i>
+              </button>
               <div className="relative">
                 <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                 <input
@@ -717,16 +914,23 @@ export default function GRNPage() {
             </div>
           </div>
           <p className="text-xs text-gray-400 mt-2">
-            Showing <strong className="text-gray-700">{filteredGRNs.length}</strong> GRN record{filteredGRNs.length !== 1 ? 's' : ''} · Click any row to expand full details
+            Showing <strong className="text-gray-700">{filteredGRNs.length}</strong> record
+            {filteredGRNs.length !== 1 ? 's' : ''} from vendor-accepted POs · Click any row to expand
           </p>
         </div>
 
         {/* Table */}
         <div className="overflow-x-auto">
+          {loading ? (
+            <div className="py-16 text-center text-gray-400">
+              <i className="ri-loader-4-line text-4xl block mb-2 animate-spin"></i>
+              <p className="text-sm">Loading vendor-accepted POs…</p>
+            </div>
+          ) : (
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['', 'GRN Number', 'PO Reference', 'Vendor', 'Department / Requester', 'PO Value', 'Receipt Progress', 'Priority', 'Status', 'Actions'].map((h) => (
+                {['', 'GRN / Status', 'PO Reference', 'Vendor', 'Department / Requester', 'PO Value', 'Receipt Progress', 'Priority', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                     {h}
                   </th>
@@ -743,9 +947,8 @@ export default function GRNPage() {
                 const pct = formatPercent(totalReceived, totalOrdered);
 
                 return (
-                  <>
+                  <Fragment key={grn.grnNumber}>
                     <tr
-                      key={grn.grnNumber}
                       onClick={() => toggleRow(grn.grnNumber)}
                       className={`border-b transition-colors cursor-pointer ${
                         isExpanded
@@ -761,8 +964,17 @@ export default function GRNPage() {
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <p className="text-sm font-bold text-gray-900">{grn.grnNumber}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{grn.poDate}</p>
+                        {grn.awaitingEntry ? (
+                          <>
+                            <p className="text-sm font-bold text-amber-700">Awaiting GRN</p>
+                            <p className="text-xs text-gray-400 mt-0.5">Vendor accepted</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-bold text-gray-900">{grn.grnNumber}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{grn.poDate}</p>
+                          </>
+                        )}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <p className="text-sm font-semibold text-teal-600">{grn.poNumber}</p>
@@ -813,7 +1025,16 @@ export default function GRNPage() {
                           >
                             <i className={`text-sm ${isExpanded ? 'ri-eye-off-line' : 'ri-eye-line'}`}></i>
                           </button>
-                          {isPending && (
+                          {grn.awaitingEntry && (
+                            <button
+                              onClick={() => openEnterGrn(grn)}
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                              title="Enter GRN"
+                            >
+                              <i className="ri-add-circle-line text-sm"></i>
+                            </button>
+                          )}
+                          {isPending && !grn.awaitingEntry && (
                             <button
                               onClick={() => setReceiptModal({ isOpen: true, grn })}
                               className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
@@ -822,7 +1043,7 @@ export default function GRNPage() {
                               <i className="ri-checkbox-circle-line text-sm"></i>
                             </button>
                           )}
-                          {isReceived && (
+                          {isReceived && !grn.awaitingEntry && (
                             <button
                               onClick={() => setApprovalModal({ isOpen: true, grn })}
                               className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
@@ -846,19 +1067,22 @@ export default function GRNPage() {
                         grn={grn}
                         onMarkReceived={() => setReceiptModal({ isOpen: true, grn })}
                         onApprove={() => setApprovalModal({ isOpen: true, grn })}
+                        onEnterGrn={() => openEnterGrn(grn)}
                       />
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>
           </table>
+          )}
         </div>
 
-        {filteredGRNs.length === 0 && (
+        {!loading && filteredGRNs.length === 0 && (
           <div className="py-16 text-center">
             <i className="ri-truck-line text-5xl text-gray-200 mb-4 block"></i>
-            <p className="text-gray-500 text-sm font-medium">No GRN records found</p>
+            <p className="text-gray-500 text-sm font-medium">No vendor-accepted POs ready for GRN</p>
+            <p className="text-xs text-gray-400 mt-1">Accept a PO on Vendor PO Acceptance first</p>
             {(searchTerm || filter !== 'all') && (
               <button
                 onClick={() => { setSearchTerm(''); setFilter('all'); }}
@@ -891,8 +1115,14 @@ export default function GRNPage() {
       {/* Create GRN Modal */}
       <CreateGRNModal
         isOpen={createGRNOpen}
-        onClose={() => setCreateGRNOpen(false)}
+        onClose={() => {
+          setCreateGRNOpen(false);
+          setPrefillPoNumber(undefined);
+          setPrefillPoId(undefined);
+        }}
         onSubmit={handleCreateGRN}
+        initialPoNumber={prefillPoNumber}
+        initialPoId={prefillPoId}
       />
 
       {/* Toast */}

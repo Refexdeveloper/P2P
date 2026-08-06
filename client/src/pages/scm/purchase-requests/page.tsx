@@ -365,22 +365,33 @@ export default function SCMPurchaseRequestsPage() {
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="w-full overflow-x-hidden">
           {loading ? (
             <p className="p-8 text-sm text-gray-500">Loading...</p>
           ) : (
-            <table className="w-full min-w-[1280px] table-fixed">
+            <table className="w-full table-fixed">
+              <colgroup>
+                <col className="w-10" />
+                <col className="w-[14%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+              </colgroup>
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-2 py-3 w-11"></th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[190px]">PR Number</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[190px]">PO Number</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase min-w-[160px]">Title</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Department</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Requester</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px]">Status</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[130px] sticky right-0 bg-gray-50 z-10">Actions</th>
+                  <th className="px-1.5 py-3"></th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">PR Number</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">PO Number</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Title</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Department</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Requester</th>
+                  <th className="px-2 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="px-2 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -396,18 +407,18 @@ export default function SCMPurchaseRequestsPage() {
                     return (
                       <Fragment key={pr.key}>
                         <tr className="border-b hover:bg-gray-50 group">
-                          <td className="px-2 py-3 align-middle">
+                          <td className="px-1.5 py-3 align-middle">
                             <button
                               type="button"
                               onClick={() => toggleExpand(pr.key)}
-                              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-white text-gray-600"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-white text-gray-600"
                               aria-expanded={isExpanded}
                               aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
                             >
-                              <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-lg`}></i>
+                              <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-base`}></i>
                             </button>
                           </td>
-                          <td className="px-3 py-3 align-middle overflow-hidden">
+                          <td className="px-2 py-3 align-middle overflow-hidden">
                             <button
                               type="button"
                               onClick={() => toggleExpand(pr.key)}
@@ -417,36 +428,36 @@ export default function SCMPurchaseRequestsPage() {
                               {pr.prNumber || '—'}
                             </button>
                           </td>
-                          <td className="px-3 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.poNumber || undefined}>
+                          <td className="px-2 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.poNumber || undefined}>
                             {pr.poNumber || '—'}
                           </td>
-                          <td className="px-3 py-3 align-middle overflow-hidden text-gray-900 font-medium text-sm truncate" title={pr.title}>
+                          <td className="px-2 py-3 align-middle overflow-hidden text-gray-900 font-medium text-sm truncate" title={pr.title}>
                             {pr.title}
                           </td>
-                          <td className="px-3 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.department}>
+                          <td className="px-2 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.department}>
                             {pr.department}
                           </td>
-                          <td className="px-3 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.requester}>
+                          <td className="px-2 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.requester}>
                             {pr.requester}
                           </td>
-                          <td className="px-3 py-3 align-middle overflow-hidden text-right font-semibold text-gray-900 text-sm tabular-nums whitespace-nowrap">
+                          <td className="px-2 py-3 align-middle overflow-hidden text-right font-semibold text-gray-900 text-sm tabular-nums truncate" title={formatCurrency(pr.amount)}>
                             {formatCurrency(pr.amount)}
                           </td>
-                          <td className="px-3 py-3 align-middle overflow-hidden">
+                          <td className="px-2 py-3 align-middle overflow-hidden">
                             <span
-                              className={`inline-flex max-w-full px-2.5 py-1 rounded-full text-xs font-medium truncate ${getStatusColor(pr.status)}`}
+                              className={`inline-flex max-w-full px-2 py-1 rounded-full text-xs font-medium truncate ${getStatusColor(pr.status)}`}
                               title={pr.status}
                             >
                               {pr.status}
                             </span>
                           </td>
-                          <td className="px-3 py-3 align-middle sticky right-0 bg-white group-hover:bg-gray-50 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.08)] z-10">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="px-2 py-3 align-middle">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
                               {pr.status === 'Ready for PO' && (
                                 <button
                                   type="button"
                                   onClick={() => openCreatePo(pr.prId)}
-                                  className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
+                                  className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
                                 >
                                   Create PO
                                 </button>
@@ -455,7 +466,7 @@ export default function SCMPurchaseRequestsPage() {
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/scm/po-pdf-view?poId=${pr.poId}`)}
-                                  className="px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50 whitespace-nowrap"
+                                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50 whitespace-nowrap"
                                 >
                                   View PDF
                                 </button>
@@ -464,7 +475,7 @@ export default function SCMPurchaseRequestsPage() {
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/scm/rfq-entry/${pr.prId}`)}
-                                  className="px-3 py-1.5 border border-amber-300 text-amber-700 rounded-md text-xs font-medium hover:bg-amber-50 whitespace-nowrap"
+                                  className="px-2.5 py-1.5 border border-amber-300 text-amber-700 rounded-md text-xs font-medium hover:bg-amber-50 whitespace-nowrap"
                                 >
                                   RFQ
                                 </button>

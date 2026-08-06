@@ -48,6 +48,7 @@ export default function CreatePRPage() {
   const [entities, setEntities] = useState<EntityRecord[]>([]);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [requestType, setRequestType] = useState<'Capex' | 'Opex' | 'Service'>('Opex');
+  const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order'>('purchase_order');
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
   const [priority, setPriority] = useState('Medium');
   const [businessJustification, setBusinessJustification] = useState('');
@@ -88,6 +89,7 @@ export default function CreatePRPage() {
           department: string;
           entityId?: number;
           requestType: 'Capex' | 'Opex' | 'Service';
+          purchaseType?: 'purchase_order' | 'work_order' | string;
           vendorSelection?: 'own' | 'scm';
           priority: string;
           justification: string;
@@ -100,6 +102,11 @@ export default function CreatePRPage() {
         setDepartment(pr.department || '');
         setEntityId(pr.entityId ? Number(pr.entityId) : '');
         setRequestType(pr.requestType);
+        setPurchaseType(
+          pr.purchaseType === 'work_order' || pr.purchaseType === 'Work Order'
+            ? 'work_order'
+            : 'purchase_order'
+        );
         setVendorSelection(pr.vendorSelection === 'own' ? 'own' : 'scm');
         setPriority(pr.priority);
         setBusinessJustification(pr.justification || '');
@@ -310,6 +317,7 @@ export default function CreatePRPage() {
   const buildPayload = () => ({
     title: lineItems[0]?.description || `${requestType} Request`,
     requestType,
+    purchaseType,
     department,
     entityId: entityId ? Number(entityId) : undefined,
     priority,
@@ -564,6 +572,38 @@ export default function CreatePRPage() {
                   {errors.entityId}
                 </p>
               )}
+            </div>
+
+            {/* Purchase Type */}
+            <div className="md:col-span-2 lg:col-span-3">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Purchase Type <span className="text-red-500">*</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    { id: 'purchase_order' as const, label: 'Purchase Order', hint: 'Number: PO-Entity-FY-####' },
+                    { id: 'work_order' as const, label: 'Work Order', hint: 'Number: WO-Entity-FY-####' },
+                  ]
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={isEditMode}
+                    onClick={() => setPurchaseType(opt.id)}
+                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                      purchaseType === opt.id
+                        ? 'bg-teal-600 text-white border-teal-600'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-teal-300'
+                    }`}
+                  >
+                    <span className="block">{opt.label}</span>
+                    <span className={`block text-[10px] font-normal mt-0.5 ${purchaseType === opt.id ? 'text-teal-100' : 'text-gray-400'}`}>
+                      {opt.hint}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Department */}

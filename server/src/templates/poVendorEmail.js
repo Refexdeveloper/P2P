@@ -37,7 +37,7 @@ export function buildPoVendorEmail({ po, signerName, signerComments, portalUrl }
         ${signerComments ? `<p style="font-size:13px;color:#334155;background:#ecfdf5;padding:12px;border-radius:8px;border:1px solid #bbf7d0;"><strong>SCM Manager Note:</strong> ${escapeHtml(signerComments)}</p>` : ''}
         <p style="text-align:center;margin-top:24px;">
           <a href="${portalUrl || `${base}/scm/vendor-po-acceptance`}" style="display:inline-block;padding:12px 24px;background:#0f766e;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
-            View PO in Portal
+            Review &amp; Accept PO
           </a>
         </p>
         <p style="font-size:12px;color:#64748b;margin-top:20px;">Signed by: ${escapeHtml(signerName)} (SCM Manager)</p>

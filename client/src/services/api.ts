@@ -323,12 +323,16 @@ export const poApi = {
     limit?: number;
     search?: string;
     status?: string;
+    purchaseType?: string;
   }) => {
     const query = new URLSearchParams();
     if (params?.page != null) query.set('page', String(params.page));
     if (params?.limit != null) query.set('limit', String(params.limit));
     if (params?.search) query.set('search', params.search);
     if (params?.status && params.status !== 'all') query.set('status', params.status);
+    if (params?.purchaseType && params.purchaseType !== 'all') {
+      query.set('purchaseType', params.purchaseType);
+    }
     const qs = query.toString();
     return request<{
       data: Array<{
@@ -345,6 +349,8 @@ export const poApi = {
         status: string;
         statusLabel: string;
         statusRaw?: string;
+        purchaseType?: string;
+        purchaseTypeLabel?: string;
         requiredDate: string;
         createdAt: string;
         kind: 'ready' | 'po';
@@ -362,6 +368,47 @@ export const poApi = {
   listPending: () => request<{ data: unknown[] }>('/api/po/pending'),
   listPendingBuyerVerify: () =>
     request<{ data: unknown[] }>('/api/po/pending-buyer-verify'),
+  listVendorAcceptance: () =>
+    request<{ data: unknown[] }>('/api/po/vendor-acceptance'),
+  sendVendorAcceptanceMail: (poId: number) =>
+    request<{ data: Record<string, unknown>; message: string }>(
+      `/api/po/${poId}/vendor-acceptance/send-mail`,
+      { method: 'POST', body: JSON.stringify({}) }
+    ),
+  submitManualVendorAcceptance: (
+    poId: number,
+    body: {
+      action: 'accept' | 'reject' | 'partial';
+      remarks: string;
+      deliveryDate?: string;
+      fileName?: string;
+      fileData?: string;
+    }
+  ) =>
+    request<{ data: Record<string, unknown>; message: string }>(
+      `/api/po/${poId}/vendor-acceptance/manual`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
+  getVendorAcceptanceByToken: (token: string) =>
+    request<{ data: Record<string, unknown> }>(`/api/po/vendor-accept/${encodeURIComponent(token)}`),
+  submitVendorAcceptanceByToken: (
+    token: string,
+    body: {
+      action: 'accept' | 'reject' | 'partial';
+      remarks: string;
+      deliveryDate?: string;
+      fileName?: string;
+      fileData?: string;
+    }
+  ) =>
+    request<{ data: Record<string, unknown>; message: string }>(
+      `/api/po/vendor-accept/${encodeURIComponent(token)}`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
+  getVendorAcceptancePdfUrl: (token: string) =>
+    `${PO_API_URL}/api/po/vendor-accept/${encodeURIComponent(token)}/pdf`,
+  getVendorAcceptanceFileUrl: (poId: number) =>
+    `${PO_API_URL}/api/po/${poId}/vendor-acceptance/file`,
   finalVerify: (poId: number, remarks?: string) =>
     request<{ data: unknown; message: string }>(`/api/po/${poId}/final-verify`, {
       method: 'POST',
@@ -376,6 +423,17 @@ export const poApi = {
     request<{ data: Record<string, unknown> }>(`/api/po/by-number/${encodeURIComponent(poNumber)}`),
   get: (poId: number) => request<{ data: Record<string, unknown> }>(`/api/po/${poId}`),
   getPdfUrl: (poId: number) => `${PO_API_URL}/api/po/${poId}/pdf`,
+  downloadPdf: async (poId: number) => {
+    const token = getToken();
+    const res = await fetch(`${PO_API_URL}/api/po/${poId}/pdf`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ApiError(res.status, text.slice(0, 200) || 'Could not download PDF');
+    }
+    return res.blob();
+  },
   getDocumentUrl: (poId: number) => `${PO_API_URL}/api/po/${poId}/document`,
   previewDocumentHtml: async (prId: number, body: Record<string, unknown>) => {
     const token = getToken();

@@ -41,12 +41,39 @@ export async function resolveEntityForNumbering(entityId, connection = pool) {
   };
 }
 
+/** Normalize purchase type from PR/PO body or DB. */
+export function normalizePurchaseType(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  if (
+    raw === 'work_order' ||
+    raw === 'workorder' ||
+    raw === 'wo'
+  ) {
+    return 'work_order';
+  }
+  return 'purchase_order';
+}
+
+/** Map purchase type → document number prefix / sequence key. */
+export function purchaseTypeToDocType(purchaseType) {
+  return normalizePurchaseType(purchaseType) === 'work_order' ? 'WO' : 'PO';
+}
+
+export function purchaseTypeLabel(purchaseType) {
+  return normalizePurchaseType(purchaseType) === 'work_order' ? 'Work Order' : 'Purchase Order';
+}
+
 /**
  * Atomically increments and returns next number:
- * PR-RGML-2025-26-0001 / PO-RGML-2025-26-0001
+ * PR-RGML-2025-26-0001 / PO-RGML-2025-26-0001 / WO-RGML-2025-26-0001
+ * PO and WO sequences increment separately per entity + FY.
  */
 export async function nextDocumentNumber(docType, entityId, connection = pool) {
-  const type = String(docType || '').toUpperCase() === 'PO' ? 'PO' : 'PR';
+  const raw = String(docType || '').toUpperCase();
+  const type = raw === 'PO' ? 'PO' : raw === 'WO' ? 'WO' : 'PR';
   const entity = await resolveEntityForNumbering(entityId, connection);
   const fyLabel = getIndianFinancialYearLabel();
 

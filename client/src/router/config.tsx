@@ -34,6 +34,7 @@ const PoLetterheadMasterPage = lazy(() => import('../pages/scm/po-letterhead-mas
 const LetterheadMasterPage = lazy(() => import('../pages/scm/letterhead-master/page'));
 const POPDFViewPage = lazy(() => import('../pages/scm/po-pdf-view/page'));
 const POApprovalPage = lazy(() => import('../pages/scm/po-approval/page'));
+const ScmManagerDashboardPage = lazy(() => import('../pages/scm/manager-dashboard/page'));
 const BuyerFinalVerifyPage = lazy(() => import('../pages/scm/buyer-final-verify/page'));
 const GRNPage = lazy(() => import('../pages/grn/page'));
 const InvoiceVerificationPage = lazy(() => import('../pages/accounts/invoice-verification/page'));
@@ -45,6 +46,7 @@ const VendorPOAcceptancePage = lazy(() => import('../pages/scm/vendor-po-accepta
 const VendorInvoicePage = lazy(() => import('../pages/scm/vendor-invoice/page'));
 const VendorQuotationPortalPage = lazy(() => import('../pages/scm/vendor-quotation-portal/page'));
 const VendorSubmitQuotePage = lazy(() => import('../pages/vendor/submit-quote/page'));
+const VendorPoAcceptPage = lazy(() => import('../pages/vendor/po-accept/page'));
 const VendorDashboardPage = lazy(() => import('../pages/vendor/dashboard/page'));
 const TechEvaluatorPage = lazy(() => import('../pages/tech-evaluator/rfq-evaluation/page'));
 const UserPermissionsPage = lazy(() => import('../pages/admin/user-permissions/page'));
@@ -73,6 +75,10 @@ const routes: RouteObject[] = [
   {
     path: '/vendor/submit-quote/:token',
     element: <VendorSubmitQuotePage />,
+  },
+  {
+    path: '/vendor/po-accept/:token',
+    element: <VendorPoAcceptPage />,
   },
   {
     path: '/dashboard',
@@ -177,6 +183,10 @@ const routes: RouteObject[] = [
   {
     path: '/scm/po-pdf-view',
     element: <ProtectedRoute><POPDFViewPage /></ProtectedRoute>
+  },
+  {
+    path: '/scm/manager-dashboard',
+    element: <ProtectedRoute><ScmManagerDashboardPage /></ProtectedRoute>
   },
   {
     path: '/scm/po-approval',
