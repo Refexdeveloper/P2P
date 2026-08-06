@@ -7,14 +7,29 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const DB_CONFIG = {
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-};
-
 const DB_NAME = process.env.DB_NAME || 'p2p_system';
+
+function buildDbConfig(includeDatabase = false) {
+  const instance =
+    process.env.INSTANCE_CONNECTION_NAME ||
+    process.env.CLOUD_SQL_CONNECTION_NAME ||
+    '';
+  const base = {
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+  };
+  if (includeDatabase) base.database = DB_NAME;
+  if (instance) {
+    return { ...base, socketPath: `/cloudsql/${instance}` };
+  }
+  return {
+    ...base,
+    host: process.env.DB_HOST || 'localhost',
+    port: Number(process.env.DB_PORT) || 3306,
+  };
+}
+
+const DB_CONFIG = buildDbConfig(false);
 
 const DEPARTMENTS = [
   { name: 'IT & Technology', budget_allocated: 5000000, budget_utilized: 3850000 },

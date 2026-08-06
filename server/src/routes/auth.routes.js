@@ -18,6 +18,10 @@ import {
 const router = Router();
 
 function signUserToken(authUser) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET is not configured on the server');
+  }
   return jwt.sign(
     {
       id: authUser.id,
@@ -28,7 +32,7 @@ function signUserToken(authUser) {
       departmentName: authUser.departmentName,
       isSuperAdmin: authUser.isSuperAdmin,
     },
-    process.env.JWT_SECRET,
+    secret,
     { expiresIn: '24h' }
   );
 }
@@ -145,7 +149,12 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ message: 'Invalid email or password' });
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ message: 'Login failed' });
+    res.status(500).json({
+      message: 'Login failed',
+      // Helps diagnose Cloud Run / DB misconfig without needing log access
+      detail: err.message || String(err),
+      code: err.code || undefined,
+    });
   }
 });
 

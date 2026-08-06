@@ -13,6 +13,7 @@ import vendorRoutes from './routes/vendor.routes.js';
 import masterRoutes from './routes/master.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import { runStartupMigrations } from './services/dbMigrate.js';
+import { pingDatabase } from './config/db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -32,6 +33,35 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/health/db', async (_req, res) => {
+  try {
+    await pingDatabase();
+    res.json({
+      status: 'ok',
+      database: 'connected',
+      hasJwtSecret: Boolean(process.env.JWT_SECRET),
+      dbHost: process.env.INSTANCE_CONNECTION_NAME || process.env.CLOUD_SQL_CONNECTION_NAME
+        ? `socket:/cloudsql/${process.env.INSTANCE_CONNECTION_NAME || process.env.CLOUD_SQL_CONNECTION_NAME}`
+        : process.env.DB_HOST || 'localhost',
+      dbName: process.env.DB_NAME || 'p2p_system',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      database: 'unreachable',
+      detail: err.message || String(err),
+      code: err.code || undefined,
+      hasJwtSecret: Boolean(process.env.JWT_SECRET),
+      dbHost: process.env.INSTANCE_CONNECTION_NAME || process.env.CLOUD_SQL_CONNECTION_NAME
+        ? `socket:/cloudsql/${process.env.INSTANCE_CONNECTION_NAME || process.env.CLOUD_SQL_CONNECTION_NAME}`
+        : process.env.DB_HOST || 'localhost',
+      dbName: process.env.DB_NAME || 'p2p_system',
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 app.use('/api/auth', authRoutes);
