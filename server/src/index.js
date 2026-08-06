@@ -13,7 +13,9 @@ import vendorRoutes from './routes/vendor.routes.js';
 import masterRoutes from './routes/master.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import { runStartupMigrations } from './services/dbMigrate.js';
+import { testSmtpConnection, sendTestEmail } from './services/emailService.js';
 import { pingDatabase } from './config/db.js';
+import { authenticate } from './middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -64,6 +66,54 @@ app.get('/api/health/db', async (_req, res) => {
   }
 });
 
+app.get('/api/health/smtp', async (_req, res) => {
+  try {
+    const ok = await testSmtpConnection();
+    res.status(ok ? 200 : 503).json({
+      status: ok ? 'ok' : 'error',
+      smtp: ok ? 'connected' : 'failed',
+      host: process.env.SMTP_HOST || null,
+      port: process.env.SMTP_PORT || null,
+      user: process.env.SMTP_USER || null,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      smtp: 'failed',
+      detail: err.message || String(err),
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+app.post('/api/health/smtp/send-test', authenticate, async (req, res) => {
+  try {
+    const to =
+      (typeof req.body?.to === 'string' && req.body.to.trim()) ||
+      req.user?.email ||
+      process.env.PR_NOTIFY_EMAIL?.split(',')[0]?.trim();
+
+    if (!to) {
+      return res.status(400).json({ message: 'No recipient. Pass { "to": "email@example.com" }.' });
+    }
+
+    const info = await sendTestEmail(to);
+    res.json({
+      status: 'ok',
+      to,
+      messageId: info.messageId,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      message: err.message || String(err),
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/purchase-requests', purchaseRequestRoutes);
 app.use('/api/tasks', taskRoutes);
@@ -96,6 +146,13 @@ app.listen(PORT, async () => {
   } catch (err) {
     console.error('Startup migration failed:', err.message);
   }
+
+  try {
+    await testSmtpConnection();
+  } catch (err) {
+    console.error('SMTP connection test failed unexpectedly:', err.message);
+  }
+
   console.log(`P2P API server running on http://localhost:${PORT}`);
   if (fs.existsSync(path.join(CLIENT_OUT, 'index.html'))) {
     console.log(`Open app: http://localhost:${PORT}/`);

@@ -12,10 +12,11 @@ let smtpReady = false;
 
 function getSmtpConfig() {
   const host = process.env.SMTP_HOST?.trim();
-  const port = Number(process.env.SMTP_PORT || 587);
+  const port = Number(process.env.SMTP_PORT);
   const user = process.env.SMTP_USER?.trim();
-  const pass = (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || '').trim();
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  // SMTP_PASSWORD is the required name; SMTP_PASS kept as a deploy fallback
+  const pass = (process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '').trim();
+  const secure = process.env.SMTP_SECURE === 'true';
 
   return { host, port, user, pass, secure };
 }
@@ -23,41 +24,68 @@ function getSmtpConfig() {
 function getTransporter() {
   if (transporter) return transporter;
 
-  const { host, port, user, pass, secure } = getSmtpConfig();
+  const { host, port, user, pass } = getSmtpConfig();
 
-  if (!host || !user || !pass) {
+  if (!host || !user || !pass || Number.isNaN(port)) {
     console.warn(
-      'SMTP not fully configured (need SMTP_HOST, SMTP_USER, SMTP_PASS or SMTP_PASSWORD). Emails will not be delivered.'
+      'SMTP not fully configured (need SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD). Emails will not be delivered.'
     );
     transporter = nodemailer.createTransport({ jsonTransport: true });
     return transporter;
   }
 
   transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASSWORD || process.env.SMTP_PASS,
+    },
   });
 
   return transporter;
 }
 
-async function ensureSmtpReady() {
-  if (smtpReady) return true;
+/**
+ * Verify SMTP connectivity/auth. Safe to call at startup and before sends.
+ * @returns {Promise<boolean>}
+ */
+export async function testSmtpConnection() {
+  const { host, port, user, pass } = getSmtpConfig();
 
-  const { host, user, pass } = getSmtpConfig();
-  if (!host || !user || !pass) return false;
+  if (!host || !user || !pass || Number.isNaN(port)) {
+    console.warn(
+      'SMTP connection test skipped: missing SMTP_HOST, SMTP_PORT, SMTP_USER, or SMTP_PASSWORD'
+    );
+    return false;
+  }
 
   try {
     await getTransporter().verify();
     smtpReady = true;
-    console.log(`SMTP ready: ${host} as ${user}`);
+    console.log(`SMTP connection success: ${host}:${port} as ${user}`);
     return true;
   } catch (err) {
-    console.error('SMTP verification failed:', err.message);
+    smtpReady = false;
+    const code = err.code || err.responseCode || '';
+    const isAuthFailure =
+      code === 'EAUTH' ||
+      code === 535 ||
+      /auth|credential|login|password/i.test(err.message || '');
+
+    if (isAuthFailure) {
+      console.error('SMTP authentication failure:', err.message);
+    } else {
+      console.error('SMTP connection failure:', err.message);
+    }
     return false;
   }
+}
+
+async function ensureSmtpReady() {
+  if (smtpReady) return true;
+  return testSmtpConnection();
 }
 
 function getNotificationRecipients() {
@@ -69,13 +97,46 @@ function getNotificationRecipients() {
 }
 
 function getFromAddress() {
-  const { user } = getSmtpConfig();
-  const fromEmail =
-    process.env.SMTP_FROM_EMAIL?.trim() ||
+  const from =
     process.env.SMTP_FROM?.trim() ||
-    user ||
-    'p2p-procurement@refex.co.in';
-  return `"P2P Procurement" <${fromEmail}>`;
+    process.env.SMTP_FROM_EMAIL?.trim() ||
+    '';
+  if (!from) {
+    console.warn('SMTP_FROM is not set; emails may be rejected by the provider');
+  }
+  return from;
+}
+
+/** Send a one-off SMTP test message (ops / health check). */
+export async function sendTestEmail(to) {
+  const recipient = (to || '').trim();
+  if (!recipient) {
+    throw new Error('Test email recipient is required');
+  }
+
+  const { host, user, pass } = getSmtpConfig();
+  if (!host || !user || !pass) {
+    throw new Error('SMTP is not fully configured');
+  }
+
+  await ensureSmtpReady();
+
+  try {
+    const transport = getTransporter();
+    const info = await transport.sendMail({
+      from: getFromAddress(),
+      to: recipient,
+      subject: 'Refex P2P — SMTP test',
+      text: 'Gmail SMTP is configured correctly for Refex P2P.',
+      html: '<p>Gmail SMTP is configured correctly for <strong>Refex P2P</strong>.</p>',
+    });
+    console.log(`Email sent successfully to ${recipient} — ${info.messageId}`);
+    return info;
+  } catch (err) {
+    console.error('Email send failure (SMTP test):', err.message);
+    if (err.response) console.error('SMTP response:', err.response);
+    throw err;
+  }
 }
 
 export async function sendPrRaisedNotification(pr, requester, options = {}) {
@@ -101,22 +162,30 @@ export async function sendPrRaisedNotification(pr, requester, options = {}) {
 
   await ensureSmtpReady();
 
-  const transport = getTransporter();
-  const info = await transport.sendMail({
-    from: getFromAddress(),
-    to: recipients.join(', '),
-    subject,
-    text,
-    html,
-  });
+  try {
+    const transport = getTransporter();
+    const info = await transport.sendMail({
+      from: getFromAddress(),
+      to: recipients.join(', '),
+      subject,
+      text,
+      html,
+    });
 
-  console.log(`PR notification email sent to ${recipients.join(', ')} — ${info.messageId}`);
-  return info;
+    console.log(
+      `Email sent successfully to ${recipients.join(', ')} — ${info.messageId}`
+    );
+    return info;
+  } catch (err) {
+    console.error('Email send failure:', err.message);
+    if (err.response) console.error('SMTP response:', err.response);
+    throw err;
+  }
 }
 
 export function queuePrRaisedNotification(pr, requester, options = {}) {
   sendPrRaisedNotification(pr, requester, options).catch((err) => {
-    console.error('Failed to send PR raised email:', err.message);
+    console.error('Email send failure (PR raised):', err.message);
     if (err.response) console.error('SMTP response:', err.response);
   });
 }
@@ -140,16 +209,25 @@ async function sendMailToRecipients(recipients, subject, html, text) {
   }
 
   await ensureSmtpReady();
-  const transport = getTransporter();
-  const info = await transport.sendMail({
-    from: getFromAddress(),
-    to: recipients.join(', '),
-    subject,
-    text,
-    html,
-  });
-  console.log(`Email sent to ${recipients.join(', ')} — ${info.messageId}`);
-  return info;
+
+  try {
+    const transport = getTransporter();
+    const info = await transport.sendMail({
+      from: getFromAddress(),
+      to: recipients.join(', '),
+      subject,
+      text,
+      html,
+    });
+    console.log(
+      `Email sent successfully to ${recipients.join(', ')} — ${info.messageId}`
+    );
+    return info;
+  } catch (err) {
+    console.error('Email send failure:', err.message);
+    if (err.response) console.error('SMTP response:', err.response);
+    throw err;
+  }
 }
 
 export async function sendPrApprovalPendingNotification(pr, assignedRole, requester, departmentId = null, options = {}) {
@@ -185,7 +263,7 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
 
 export function queuePrApprovalPendingNotification(pr, assignedRole, requester, departmentId = null, options = {}) {
   sendPrApprovalPendingNotification(pr, assignedRole, requester, departmentId, options).catch((err) => {
-    console.error('Failed to send PR approval email:', err.message);
+    console.error('Email send failure (PR approval):', err.message);
     if (err.response) console.error('SMTP response:', err.response);
   });
 }
@@ -215,7 +293,7 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
 
 export function queuePostRfqActionNotification(pr, approverRole, action, remarks, requester) {
   sendPostRfqActionNotification(pr, approverRole, action, remarks, requester).catch((err) => {
-    console.error('Failed to send post-RFQ action email:', err.message);
+    console.error('Email send failure (post-RFQ action):', err.message);
   });
 }
 
@@ -226,7 +304,7 @@ export async function sendRfqVendorEmail(pr, vendorName, vendorEmail, submitUrl,
 
 export function queueRfqVendorEmail(pr, vendorName, vendorEmail, submitUrl, round = 1) {
   sendRfqVendorEmail(pr, vendorName, vendorEmail, submitUrl, round).catch((err) => {
-    console.error(`Failed to send RFQ email to ${vendorEmail}:`, err.message);
+    console.error(`Email send failure (RFQ vendor ${vendorEmail}):`, err.message);
   });
 }
 
@@ -244,7 +322,7 @@ export async function sendRfqSendBackEmail(pr, vendorName, vendorEmail, submitUr
 
 export function queueRfqSendBackEmail(pr, vendorName, vendorEmail, submitUrl, round, reason, fields) {
   sendRfqSendBackEmail(pr, vendorName, vendorEmail, submitUrl, round, reason, fields).catch((err) => {
-    console.error(`Failed to send RFQ send-back email to ${vendorEmail}:`, err.message);
+    console.error(`Email send failure (RFQ send-back ${vendorEmail}):`, err.message);
   });
 }
 
@@ -264,7 +342,7 @@ export async function sendRfqSubmittedNotifyRequester(pr, vendorName, requesterE
 
 export function queueRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail, requesterName, submission, reviewUrl) {
   sendRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail, requesterName, submission, reviewUrl).catch((err) => {
-    console.error(`Failed to send RFQ submitted notification:`, err.message);
+    console.error('Email send failure (RFQ submitted):', err.message);
   });
 }
 
@@ -289,18 +367,27 @@ export async function sendPoVendorNotification(po, { signerName, signerComments,
   }
 
   await ensureSmtpReady();
-  const transport = getTransporter();
-  const info = await transport.sendMail({
-    from: getFromAddress(),
-    to,
-    cc: cc.length ? cc.join(', ') : undefined,
-    subject,
-    text,
-    html,
-    attachments: pdfPath
-      ? [{ filename: `${po.poNumber}_signed.pdf`, path: pdfPath, contentType: 'application/pdf' }]
-      : [],
-  });
-  console.log(`PO email sent to ${to} (CC: ${cc.join(', ')}) — ${info.messageId}`);
-  return info;
+
+  try {
+    const transport = getTransporter();
+    const info = await transport.sendMail({
+      from: getFromAddress(),
+      to,
+      cc: cc.length ? cc.join(', ') : undefined,
+      subject,
+      text,
+      html,
+      attachments: pdfPath
+        ? [{ filename: `${po.poNumber}_signed.pdf`, path: pdfPath, contentType: 'application/pdf' }]
+        : [],
+    });
+    console.log(
+      `Email sent successfully to ${to} (CC: ${cc.join(', ')}) — ${info.messageId}`
+    );
+    return info;
+  } catch (err) {
+    console.error('Email send failure (PO vendor):', err.message);
+    if (err.response) console.error('SMTP response:', err.response);
+    throw err;
+  }
 }

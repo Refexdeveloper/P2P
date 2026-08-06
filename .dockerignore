@@ -1,0 +1,17 @@
+.git
+.gitignore
+**/.DS_Store
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.example
+client/out
+server/uploads
+uploads
+coverage
+**/*.log
+.vscode
+.idea
+deploy
+*.md
+client/BRD
