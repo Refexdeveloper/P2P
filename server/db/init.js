@@ -54,11 +54,29 @@ async function init() {
 
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   for (const statement of schema.split(';').map((s) => s.trim()).filter(Boolean)) {
-    await connection.query(statement);
+    try {
+      await connection.query(statement);
+    } catch (err) {
+      // Allow re-run on existing DB: skip duplicate indexes / known alter conflicts
+      const msg = String(err.message || '');
+      if (
+        msg.includes('already exists') ||
+        msg.includes('Duplicate key name') ||
+        msg.includes('Duplicate column name')
+      ) {
+        console.warn('Schema skip:', msg.split('\n')[0]);
+        continue;
+      }
+      throw err;
+    }
   }
   console.log('Schema applied.');
 
   const migrations = [
+    `ALTER TABLE purchase_requests ADD COLUMN entity_id INT NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN entity_id INT NULL`,
+    `ALTER TABLE purchase_requests MODIFY COLUMN pr_number VARCHAR(40) NOT NULL`,
+    `ALTER TABLE purchase_orders MODIFY COLUMN po_number VARCHAR(40) NOT NULL`,
     `ALTER TABLE vendor_quotation_submissions ADD COLUMN warranty VARCHAR(100) NULL`,
     `ALTER TABLE vendor_quotation_submissions ADD COLUMN delivery_terms VARCHAR(100) NULL`,
     `ALTER TABLE vendor_quotation_submissions ADD COLUMN quotation_file_name VARCHAR(255) NULL`,
@@ -117,14 +135,26 @@ async function init() {
     )`,
     `ALTER TABLE purchase_orders ADD COLUMN po_type ENUM('short_po', 'long_po') NOT NULL DEFAULT 'short_po'`,
     `ALTER TABLE purchase_orders ADD COLUMN letterhead_header LONGTEXT NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN letterhead_id INT NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN terms_clauses JSON NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN annexure_clauses JSON NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN po_terms_details JSON NULL`,
     `ALTER TABLE po_letterhead_masters ADD COLUMN entity VARCHAR(255) NULL`,
     `ALTER TABLE po_letterhead_masters ADD COLUMN header_logo LONGTEXT NULL`,
     `ALTER TABLE po_letterhead_masters ADD COLUMN footer_logo LONGTEXT NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN entity VARCHAR(255) NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN header_logo LONGTEXT NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN footer_logo LONGTEXT NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_token VARCHAR(64) NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_mode ENUM('email', 'manual') NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_status ENUM('pending', 'accepted', 'rejected', 'partial') NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_remarks TEXT NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_file_name VARCHAR(255) NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_file_path VARCHAR(500) NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN vendor_delivery_confirmed_date DATE NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN vendor_accepted_at TIMESTAMP NULL`,
+    `ALTER TABLE purchase_requests ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
+    `ALTER TABLE purchase_orders ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
     `CREATE TABLE IF NOT EXISTS letterhead_branding (
       id INT PRIMARY KEY,
       entity VARCHAR(255) NULL,
@@ -145,12 +175,49 @@ async function init() {
       INDEX idx_letterhead_status (status),
       INDEX idx_letterhead_name (name)
     )`,
+    `CREATE TABLE IF NOT EXISTS document_number_sequences (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      doc_type ENUM('PR', 'PO', 'WO') NOT NULL,
+      entity_id INT NOT NULL,
+      fy_label VARCHAR(10) NOT NULL,
+      last_seq INT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_doc_entity_fy (doc_type, entity_id, fy_label),
+      INDEX idx_doc_seq_entity (entity_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS entity_masters (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(200) NOT NULL,
+      code VARCHAR(20) NULL,
+      cost_center VARCHAR(100) NULL,
+      description TEXT NULL,
+      status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_entity_name (name),
+      INDEX idx_entity_code (code),
+      INDEX idx_entity_status (status)
+    )`,
+    `ALTER TABLE document_number_sequences MODIFY COLUMN doc_type ENUM('PR', 'PO', 'WO') NOT NULL`,
   ];
   for (const sql of migrations) {
     try {
       await connection.query(sql);
     } catch {
-      // column may already exist
+      // column/table may already exist
+    }
+  }
+
+  // Indexes that need entity_id column present first
+  const indexMigrations = [
+    `CREATE INDEX idx_pr_entity ON purchase_requests (entity_id)`,
+    `CREATE INDEX idx_po_entity ON purchase_orders (entity_id)`,
+  ];
+  for (const sql of indexMigrations) {
+    try {
+      await connection.query(sql);
+    } catch {
+      // index may already exist
     }
   }
 
