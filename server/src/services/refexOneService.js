@@ -22,7 +22,7 @@ function isRefexOneLoginEnabled() {
 
 function getApiConfig() {
   const baseUrl = getBaseUrl();
-  const token = process.env.REFEXONE_API_TOKEN;
+  const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYTM2MmY4YWQtNzBkZC00OTYyLWE0Y2EtMTRmNDg4NmYzNDVhIiwiZW1haWwiOiJnb3d0aGFtLnNAcmVmZXguY28uaW4iLCJvcmdfaWQiOiIxNWY2ODhhZC1hZTBhLTQ5NDctYjMyOS03YTIzMTg1OWYyMjYiLCJyb2xlIjoib3JnX2FkbWluIiwiZXhwIjoxNzg4MDg0NzQ4LCJpYXQiOjE3ODU0OTI3NDh9.ZmtJBlIq4etgBw-wQ39uhtYx7he5hYzaPBiiSO1DgO8";
   if (!token) {
     throw new Error('REFEXONE_API_TOKEN is not configured in server/.env');
   }
