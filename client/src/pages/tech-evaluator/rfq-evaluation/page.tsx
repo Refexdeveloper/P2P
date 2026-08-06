@@ -94,7 +94,7 @@ export default function TechEvaluatorPage() {
 
         <div className="px-8 py-6 space-y-6">
           {/* KPI Strip */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Total Assigned', value: counts.all, icon: 'ri-file-list-3-line', color: 'text-gray-700', bg: 'bg-gray-50' },
               { label: 'Pending Evaluation', value: counts.pending, icon: 'ri-time-line', color: 'text-amber-600', bg: 'bg-amber-50' },

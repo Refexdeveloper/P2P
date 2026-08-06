@@ -1,4 +1,6 @@
 import pool from '../config/db.js';
+import { SHORT_PO_LETTERHEAD_DEFAULTS } from './shortPoLetterheadDefaults.js';
+import { LONG_PO_LETTERHEAD_DEFAULTS } from './longPoLetterheadDefaults.js';
 
 export const PO_TYPES = ['short_po', 'long_po'];
 
@@ -129,67 +131,31 @@ export async function saveLetterhead(poTypeInput, payload) {
 }
 
 export async function seedLetterheadDefaults() {
-  const defaults = {
-    short_po: {
-      title: 'Short PO',
-      letterheadHeader: '<p><strong>REFEX</strong><br/>Purchase Order — Short Format</p>',
-      terms: [
-        {
-          termsHeader: 'Payment Terms',
-          termsDescription: '<p>Payment shall be made within agreed credit days from receipt of valid tax invoice.</p>',
-        },
-        {
-          termsHeader: 'Delivery',
-          termsDescription: '<p>Delivery must be completed on or before the expected delivery date mentioned in this PO.</p>',
-        },
-      ],
-      annexure: [
-        {
-          termsHeader: 'Annexure A — Scope',
-          termsDescription: '<p>Scope of supply is limited to line items listed in this purchase order.</p>',
-        },
-      ],
-    },
-    long_po: {
-      title: 'Long PO',
-      letterheadHeader: '<p><strong>REFEX</strong><br/>Purchase Order — Long Format</p>',
-      terms: [
-        {
-          termsHeader: 'General Terms',
-          termsDescription: '<p>This purchase order is subject to company procurement policy and applicable laws.</p>',
-        },
-        {
-          termsHeader: 'Quality & Warranty',
-          termsDescription: '<p>Vendor shall supply goods/services conforming to agreed specifications with applicable warranty.</p>',
-        },
-        {
-          termsHeader: 'Payment Terms',
-          termsDescription: '<p>Invoice must reference PO number. Payment will be processed as per agreed payment terms.</p>',
-        },
-      ],
-      annexure: [
-        {
-          termsHeader: 'Annexure I — Technical Specifications',
-          termsDescription: '<p>Technical requirements and compliance details as agreed during RFQ evaluation.</p>',
-        },
-        {
-          termsHeader: 'Annexure II — Penalty Clause',
-          termsDescription: '<p>Delay penalties may apply as per agreed commercial terms.</p>',
-        },
-      ],
-    },
-  };
+  // Short PO: apply Refex commercial template when missing, or when still on old stub defaults
+  const [shortClauses] = await pool.query(
+    `SELECT c.terms_header, c.section_type
+     FROM po_letterhead_clauses c
+     JOIN po_letterhead_masters m ON m.id = c.master_id
+     WHERE m.po_type = 'short_po'`
+  );
+  const hasShortParties = shortClauses.some(
+    (c) => c.section_type === 'annexure' && String(c.terms_header || '').toLowerCase() === 'parties'
+  );
+  if (!shortClauses.length || !hasShortParties) {
+    await saveLetterhead('short_po', SHORT_PO_LETTERHEAD_DEFAULTS);
+  }
 
-  for (const poType of PO_TYPES) {
-    const [existing] = await pool.query(
-      `SELECT c.id
-       FROM po_letterhead_clauses c
-       JOIN po_letterhead_masters m ON m.id = c.master_id
-       WHERE m.po_type = ?
-       LIMIT 1`,
-      [poType]
-    );
-    if (existing.length) continue;
-    await saveLetterhead(poType, defaults[poType]);
+  // Long PO: apply Refex long commercial template when missing or still on stub defaults
+  const [longClauses] = await pool.query(
+    `SELECT c.terms_header, c.section_type
+     FROM po_letterhead_clauses c
+     JOIN po_letterhead_masters m ON m.id = c.master_id
+     WHERE m.po_type = 'long_po'`
+  );
+  const hasLongPacking = longClauses.some(
+    (c) => c.section_type === 'annexure' && String(c.terms_header || '').toLowerCase() === 'packing'
+  );
+  if (!longClauses.length || !hasLongPacking) {
+    await saveLetterhead('long_po', LONG_PO_LETTERHEAD_DEFAULTS);
   }
 }

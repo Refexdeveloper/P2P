@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect, useCallback, Fragment, useRef } from 'react';
+import { useState, useEffect, useCallback, Fragment, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { prApi, poApi } from '../../../services/api';
+import { poApi } from '../../../services/api';
 import PRBucketExpandedRow from './components/PRBucketExpandedRow';
+import PoSampleCsvTable from '../../../components/feature/PoSampleCsvTable';
 import {
   downloadPoImportSampleCsv,
   parsePoImportCsv,
@@ -12,6 +13,7 @@ import {
 type RowStatus = 'Ready for PO' | 'Pending Approval' | 'PO Approved' | 'PO Rejected';
 
 interface BucketRow {
+  key: string;
   prId: number;
   prNumber: string;
   poNumber: string | null;
@@ -25,26 +27,152 @@ interface BucketRow {
   status: RowStatus;
 }
 
+type TrackPagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+type TrackStats = {
+  total: number;
+  ready: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+};
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
+
+function mapTrackStatusToBucket(status: string, statusRaw?: string): RowStatus {
+  const s = String(status || '').toLowerCase();
+  const raw = String(statusRaw || '').toLowerCase();
+  if (s === 'ready') return 'Ready for PO';
+  if (s === 'pending' || raw === 'pending_approval' || raw === 'pending_buyer_verify') return 'Pending Approval';
+  if (s === 'rejected' || raw === 'rejected') return 'PO Rejected';
+  return 'PO Approved';
+}
+
+function mapUiFilterToApi(filter: 'all' | 'ready' | 'created' | 'approved' | 'rejected'): string {
+  if (filter === 'created') return 'pending';
+  return filter;
+}
+
 export default function SCMPurchaseRequestsPage() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<BucketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'created' | 'approved' | 'rejected'>('all');
-  const [expandedPrId, setExpandedPrId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [pagination, setPagination] = useState<TrackPagination>({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+  });
+  const [stats, setStats] = useState({
+    total: 0,
+    readyForPO: 0,
+    pendingApproval: 0,
+    poApproved: 0,
+    poRejected: 0,
+  });
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [importTarget, setImportTarget] = useState<BucketRow | null>(null);
+  const [readyOptions, setReadyOptions] = useState<BucketRow[]>([]);
   const [importTab, setImportTab] = useState<'reference' | 'csv'>('csv');
   const [importPoNumber, setImportPoNumber] = useState('');
   const [importError, setImportError] = useState('');
   const [importChecking, setImportChecking] = useState(false);
   const csvFileRef = useRef<HTMLInputElement>(null);
 
-  const toggleExpand = (prId: number) => {
-    setExpandedPrId((prev) => (prev === prId ? null : prId));
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const mapTrackRows = (data: Array<Record<string, unknown>>): BucketRow[] =>
+    data.map((r) => ({
+      key: String(r.key),
+      prId: Number(r.prId) || 0,
+      prNumber: String(r.prNumber || ''),
+      poNumber: r.poNumber ? String(r.poNumber) : null,
+      poId: r.poId != null ? Number(r.poId) : null,
+      title: String(r.title || ''),
+      department: String(r.department || ''),
+      requester: String(r.requester || ''),
+      amount: Number(r.amount) || 0,
+      recommendedVendor: String(r.vendorName || ''),
+      requiredDate: String(r.requiredDate || ''),
+      status: mapTrackStatusToBucket(String(r.status), String(r.statusRaw || '')),
+    }));
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await poApi.listTrack({
+        page,
+        limit: pageSize,
+        search: debouncedSearch || undefined,
+        status: mapUiFilterToApi(statusFilter),
+      });
+      setRows(mapTrackRows(res.data as Array<Record<string, unknown>>));
+      if (res.pagination) {
+        setPagination(res.pagination);
+        if (res.pagination.page !== page) setPage(res.pagination.page);
+      }
+      const s = res.stats as TrackStats | undefined;
+      if (s) {
+        setStats({
+          total: s.total,
+          readyForPO: s.ready,
+          pendingApproval: s.pending,
+          poApproved: s.approved,
+          poRejected: s.rejected,
+        });
+      }
+      setError('');
+    } catch (err) {
+      setRows([]);
+      setError(err instanceof Error ? err.message : 'Failed to load');
+      setPagination({ page: 1, limit: pageSize, total: 0, totalPages: 1 });
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, debouncedSearch, statusFilter]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const loadReadyOptions = async (): Promise<BucketRow[]> => {
+    try {
+      const res = await poApi.listTrack({ status: 'ready', page: 1, limit: 100 });
+      const opts = mapTrackRows(res.data as Array<Record<string, unknown>>);
+      setReadyOptions(opts);
+      return opts;
+    } catch {
+      setReadyOptions([]);
+      return [];
+    }
+  };
+
+  const toggleExpand = (key: string) => {
+    setExpandedKey((prev) => (prev === key ? null : key));
   };
 
   const openCreatePo = (prId: number, opts?: { refPo?: string; fromCsv?: boolean }) => {
+    if (!prId) {
+      setError('This row has no purchase request to create a PO from.');
+      return;
+    }
     const qs = new URLSearchParams({ prId: String(prId), mode: opts?.fromCsv ? 'import' : 'manual' });
     if (opts?.refPo?.trim()) {
       qs.set('refPo', opts.refPo.trim());
@@ -54,9 +182,9 @@ export default function SCMPurchaseRequestsPage() {
     navigate(`/scm/create-po?${qs.toString()}`);
   };
 
-  const openImportModal = (row?: BucketRow) => {
-    const ready = rows.filter((r) => r.status === 'Ready for PO');
-    const target = row || ready[0] || null;
+  const openImportModal = async (row?: BucketRow) => {
+    const opts = await loadReadyOptions();
+    const target = row || opts[0] || null;
     if (!target) {
       setError('No purchase requests are Ready for PO. Complete RFQ approval first.');
       return;
@@ -67,11 +195,6 @@ export default function SCMPurchaseRequestsPage() {
     setImportError('');
     setError('');
   };
-
-  const readyForPoRows = useMemo(
-    () => rows.filter((r) => r.status === 'Ready for PO'),
-    [rows]
-  );
 
   const confirmImportAndCreate = async () => {
     if (!importTarget) return;
@@ -104,7 +227,12 @@ export default function SCMPurchaseRequestsPage() {
       const text = await file.text();
       const payload = parsePoImportCsv(text);
       storePoCsvImport(payload);
-      const prId = importTarget.prId;
+      let prId = importTarget.prId;
+      const csvPr = String(payload.prNumber || '').trim().toLowerCase();
+      if (csvPr) {
+        const match = readyOptions.find((r) => r.prNumber.toLowerCase() === csvPr);
+        if (match) prId = match.prId;
+      }
       setImportTarget(null);
       openCreatePo(prId, { fromCsv: true });
     } catch (err) {
@@ -115,121 +243,26 @@ export default function SCMPurchaseRequestsPage() {
     }
   };
 
-  const load = useCallback(async () => {
-    try {
-      const [prRes, poRes] = await Promise.all([prApi.listScmBucket(), poApi.list()]);
-      const prs = prRes.data as Array<Record<string, unknown>>;
-      const pos = poRes.data as Array<Record<string, unknown>>;
-
-      const poByPr = new Map<number, { poNumber: string; poId: number; status: string }>();
-      for (const po of pos) {
-        poByPr.set(Number(po.prId), {
-          poNumber: String(po.poNumber),
-          poId: Number(po.id),
-          status: String(po.statusRaw || po.status),
-        });
-      }
-
-      const merged: BucketRow[] = prs.map((p) => {
-        const prId = Number(p.id);
-        const po = poByPr.get(prId);
-        let status: RowStatus = 'Ready for PO';
-        if (po) {
-          if (po.status === 'rejected') status = 'PO Rejected';
-          else if (po.status === 'sent_to_vendor' || po.status === 'approved') status = 'PO Approved';
-          else status = 'Pending Approval';
-        } else if (p.status === 'PENDING_SCM_PO' || p.statusUI === 'Pending SCM PO') {
-          status = 'Ready for PO';
-        }
-
-        return {
-          prId,
-          prNumber: String(p.prNumber),
-          poNumber: po?.poNumber || null,
-          poId: po?.poId || null,
-          title: String(p.title),
-          department: String(p.department),
-          requester: String(p.requester),
-          amount: Number(p.totalAmount),
-          recommendedVendor: '',
-          requiredDate: String(p.requiredDate || ''),
-          status,
-        };
-      });
-
-      for (const po of pos) {
-        if (!merged.some((r) => r.prId === Number(po.prId))) {
-          const st = String(po.statusRaw || po.status);
-          merged.push({
-            prId: Number(po.prId),
-            prNumber: String(po.prNumber),
-            poNumber: String(po.poNumber),
-            poId: Number(po.id),
-            title: String(po.prTitle || ''),
-            department: String(po.department || ''),
-            requester: String(po.requester || ''),
-            amount: Number(po.grandTotal || 0),
-            recommendedVendor: String(po.vendorName || ''),
-            requiredDate: String(po.expectedDeliveryDate || ''),
-            status: st === 'rejected' ? 'PO Rejected' : st === 'pending_approval' ? 'Pending Approval' : 'PO Approved',
-          });
-        }
-      }
-
-      setRows(merged);
-      setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const stats = useMemo(() => ({
-    total: rows.length,
-    readyForPO: rows.filter((r) => r.status === 'Ready for PO').length,
-    pendingApproval: rows.filter((r) => r.status === 'Pending Approval').length,
-    poApproved: rows.filter((r) => r.status === 'PO Approved').length,
-    poRejected: rows.filter((r) => r.status === 'PO Rejected').length,
-  }), [rows]);
-
-  const filteredPRs = useMemo(() => {
-    let filtered = rows;
-    if (statusFilter === 'ready') filtered = filtered.filter((r) => r.status === 'Ready for PO');
-    else if (statusFilter === 'created') filtered = filtered.filter((r) => r.status === 'Pending Approval');
-    else if (statusFilter === 'approved') filtered = filtered.filter((r) => r.status === 'PO Approved');
-    else if (statusFilter === 'rejected') filtered = filtered.filter((r) => r.status === 'PO Rejected');
-
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (r) =>
-          r.prNumber.toLowerCase().includes(q) ||
-          r.title.toLowerCase().includes(q) ||
-          (r.poNumber && r.poNumber.toLowerCase().includes(q)) ||
-          r.department.toLowerCase().includes(q) ||
-          r.requester.toLowerCase().includes(q)
-      );
-    }
-    return filtered;
-  }, [rows, searchQuery, statusFilter]);
-
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
   const getStatusColor = (status: RowStatus) => {
     switch (status) {
-      case 'Ready for PO': return 'bg-emerald-100 text-emerald-700';
-      case 'Pending Approval': return 'bg-amber-100 text-amber-700';
-      case 'PO Approved': return 'bg-blue-100 text-blue-700';
-      case 'PO Rejected': return 'bg-red-100 text-red-700';
-      default: return 'bg-gray-100 text-gray-700';
+      case 'Ready for PO':
+        return 'bg-emerald-100 text-emerald-700';
+      case 'Pending Approval':
+        return 'bg-amber-100 text-amber-700';
+      case 'PO Approved':
+        return 'bg-blue-100 text-blue-700';
+      case 'PO Rejected':
+        return 'bg-red-100 text-red-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
     }
   };
+
+  const rangeFrom = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
+  const rangeTo = Math.min(pagination.page * pagination.limit, pagination.total);
 
   return (
     <DashboardLayout>
@@ -270,7 +303,7 @@ export default function SCMPurchaseRequestsPage() {
 
       {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
 
-      <div className="grid grid-cols-5 gap-4 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-5">
         {[
           { label: 'Total PRs', value: stats.total, color: 'text-gray-900', icon: 'ri-file-list-3-line', bg: 'bg-teal-100', ic: 'text-teal-600' },
           { label: 'Ready for PO', value: stats.readyForPO, color: 'text-emerald-600', icon: 'ri-checkbox-circle-line', bg: 'bg-emerald-100', ic: 'text-emerald-600' },
@@ -305,17 +338,23 @@ export default function SCMPurchaseRequestsPage() {
             />
           </div>
           <div className="flex gap-2 flex-wrap">
-            {([
-              ['all', `All (${stats.total})`],
-              ['ready', `Ready (${stats.readyForPO})`],
-              ['created', `Pending (${stats.pendingApproval})`],
-              ['approved', `Approved (${stats.poApproved})`],
-              ['rejected', `Rejected (${stats.poRejected})`],
-            ] as const).map(([key, label]) => (
+            {(
+              [
+                ['all', `All (${stats.total})`],
+                ['ready', `Ready (${stats.readyForPO})`],
+                ['created', `Pending (${stats.pendingApproval})`],
+                ['approved', `Approved (${stats.poApproved})`],
+                ['rejected', `Rejected (${stats.poRejected})`],
+              ] as const
+            ).map(([key, label]) => (
               <button
                 key={key}
                 type="button"
-                onClick={() => setStatusFilter(key)}
+                onClick={() => {
+                  setStatusFilter(key);
+                  setPage(1);
+                  setExpandedKey(null);
+                }}
                 className={`px-3.5 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${statusFilter === key ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
                 {label}
@@ -325,123 +364,188 @@ export default function SCMPurchaseRequestsPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-        {loading ? (
-          <p className="p-8 text-sm text-gray-500">Loading...</p>
-        ) : (
-          <table className="w-full min-w-[1100px] table-fixed">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="px-3 py-3 w-12"></th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">PR Number</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">PO Number</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Title</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px]">Department</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px]">Requester</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Status</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[120px] sticky right-0 bg-gray-50">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPRs.length === 0 ? (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          {loading ? (
+            <p className="p-8 text-sm text-gray-500">Loading...</p>
+          ) : (
+            <table className="w-full min-w-[1280px] table-fixed">
+              <thead className="bg-gray-50 border-b">
                 <tr>
-                  <td colSpan={9} className="px-5 py-12 text-center text-sm text-gray-500">
-                    No purchase requests found
-                  </td>
+                  <th className="px-2 py-3 w-11"></th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[190px]">PR Number</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[190px]">PO Number</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase min-w-[160px]">Title</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Department</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Requester</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px]">Status</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[130px] sticky right-0 bg-gray-50 z-10">Actions</th>
                 </tr>
-              ) : (
-                filteredPRs.map((pr) => {
-                  const isExpanded = expandedPrId === pr.prId;
-                  return (
-                    <Fragment key={pr.prId}>
-                      <tr className="border-b hover:bg-gray-50 group">
-                        <td className="px-3 py-4 align-middle">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(pr.prId)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-white text-gray-600"
-                          >
-                            <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-lg`}></i>
-                          </button>
-                        </td>
-                        <td className="px-4 py-4 align-middle whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(pr.prId)}
-                            className="font-semibold text-teal-600 hover:text-teal-800 cursor-pointer"
-                          >
-                            {pr.prNumber}
-                          </button>
-                        </td>
-                        <td className="px-4 py-4 align-middle whitespace-nowrap text-gray-700 truncate" title={pr.poNumber || undefined}>
-                          {pr.poNumber || '—'}
-                        </td>
-                        <td className="px-4 py-4 align-middle text-gray-900 font-medium truncate" title={pr.title}>
-                          {pr.title}
-                        </td>
-                        <td className="px-4 py-4 align-middle whitespace-nowrap text-gray-700 truncate" title={pr.department}>
-                          {pr.department}
-                        </td>
-                        <td className="px-4 py-4 align-middle whitespace-nowrap text-gray-700 truncate" title={pr.requester}>
-                          {pr.requester}
-                        </td>
-                        <td className="px-4 py-4 align-middle whitespace-nowrap text-right font-semibold text-gray-900">
-                          {formatCurrency(pr.amount)}
-                        </td>
-                        <td className="px-4 py-4 align-middle">
-                          <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getStatusColor(pr.status)}`}>
-                            {pr.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 align-middle sticky right-0 bg-white group-hover:bg-gray-50 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.08)]">
-                          <div className="flex items-center justify-end gap-2">
-                            {pr.status === 'Ready for PO' && (
-                              <button
-                                type="button"
-                                onClick={() => openCreatePo(pr.prId)}
-                                className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
-                              >
-                                Create PO
-                              </button>
-                            )}
-                            {pr.poId && (
-                              <button
-                                type="button"
-                                onClick={() => navigate(`/scm/po-pdf-view?poId=${pr.poId}`)}
-                                className="px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50 whitespace-nowrap"
-                              >
-                                View PDF
-                              </button>
-                            )}
-                            {pr.status !== 'Ready for PO' && !pr.poId && (
-                              <button
-                                type="button"
-                                onClick={() => navigate(`/scm/rfq-entry/${pr.prId}`)}
-                                className="px-3 py-1.5 border border-amber-300 text-amber-700 rounded-md text-xs font-medium hover:bg-amber-50 whitespace-nowrap"
-                              >
-                                RFQ
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <PRBucketExpandedRow
-                          prId={pr.prId}
-                          colSpan={9}
-                          statusLabel={pr.status}
-                          showCreatePo={pr.status === 'Ready for PO'}
-                          onCreatePo={() => openCreatePo(pr.prId)}
-                        />
-                      )}
-                    </Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-5 py-12 text-center text-sm text-gray-500">
+                      No purchase requests found
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((pr) => {
+                    const isExpanded = expandedKey === pr.key;
+                    return (
+                      <Fragment key={pr.key}>
+                        <tr className="border-b hover:bg-gray-50 group">
+                          <td className="px-2 py-3 align-middle">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(pr.key)}
+                              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-white text-gray-600"
+                              aria-expanded={isExpanded}
+                              aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+                            >
+                              <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-lg`}></i>
+                            </button>
+                          </td>
+                          <td className="px-3 py-3 align-middle overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(pr.key)}
+                              className="block w-full max-w-full font-semibold text-teal-600 hover:text-teal-800 cursor-pointer text-left text-sm truncate"
+                              title={pr.prNumber}
+                            >
+                              {pr.prNumber || '—'}
+                            </button>
+                          </td>
+                          <td className="px-3 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.poNumber || undefined}>
+                            {pr.poNumber || '—'}
+                          </td>
+                          <td className="px-3 py-3 align-middle overflow-hidden text-gray-900 font-medium text-sm truncate" title={pr.title}>
+                            {pr.title}
+                          </td>
+                          <td className="px-3 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.department}>
+                            {pr.department}
+                          </td>
+                          <td className="px-3 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.requester}>
+                            {pr.requester}
+                          </td>
+                          <td className="px-3 py-3 align-middle overflow-hidden text-right font-semibold text-gray-900 text-sm tabular-nums whitespace-nowrap">
+                            {formatCurrency(pr.amount)}
+                          </td>
+                          <td className="px-3 py-3 align-middle overflow-hidden">
+                            <span
+                              className={`inline-flex max-w-full px-2.5 py-1 rounded-full text-xs font-medium truncate ${getStatusColor(pr.status)}`}
+                              title={pr.status}
+                            >
+                              {pr.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 align-middle sticky right-0 bg-white group-hover:bg-gray-50 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.08)] z-10">
+                            <div className="flex items-center justify-end gap-2">
+                              {pr.status === 'Ready for PO' && (
+                                <button
+                                  type="button"
+                                  onClick={() => openCreatePo(pr.prId)}
+                                  className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
+                                >
+                                  Create PO
+                                </button>
+                              )}
+                              {pr.poId && (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/scm/po-pdf-view?poId=${pr.poId}`)}
+                                  className="px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50 whitespace-nowrap"
+                                >
+                                  View PDF
+                                </button>
+                              )}
+                              {pr.status !== 'Ready for PO' && !pr.poId && pr.prId > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/scm/rfq-entry/${pr.prId}`)}
+                                  className="px-3 py-1.5 border border-amber-300 text-amber-700 rounded-md text-xs font-medium hover:bg-amber-50 whitespace-nowrap"
+                                >
+                                  RFQ
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {isExpanded && pr.prId > 0 && (
+                          <PRBucketExpandedRow
+                            prId={pr.prId}
+                            colSpan={9}
+                            statusLabel={pr.status}
+                            showCreatePo={pr.status === 'Ready for PO'}
+                            onCreatePo={() => openCreatePo(pr.prId)}
+                          />
+                        )}
+                      </Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="px-4 py-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-gray-500">
+            Showing <span className="font-semibold text-gray-700">{rangeFrom}</span>
+            {'–'}
+            <span className="font-semibold text-gray-700">{rangeTo}</span>
+            {' of '}
+            <span className="font-semibold text-gray-700">{pagination.total}</span> records
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-2 text-sm text-gray-600">
+              Rows
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                  setExpandedKey(null);
+                }}
+                className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={pagination.page <= 1 || loading}
+                onClick={() => {
+                  setPage((p) => Math.max(1, p - 1));
+                  setExpandedKey(null);
+                }}
+                className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Previous
+              </button>
+              <span className="px-3 py-1.5 text-sm text-gray-600 whitespace-nowrap">
+                Page {pagination.page} of {pagination.totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={pagination.page >= pagination.totalPages || loading}
+                onClick={() => {
+                  setPage((p) => p + 1);
+                  setExpandedKey(null);
+                }}
+                className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {importTarget && (
@@ -467,12 +571,12 @@ export default function SCMPurchaseRequestsPage() {
             <select
               value={importTarget.prId}
               onChange={(e) => {
-                const next = readyForPoRows.find((r) => r.prId === Number(e.target.value));
+                const next = readyOptions.find((r) => r.prId === Number(e.target.value));
                 if (next) setImportTarget(next);
               }}
               className="w-full mb-4 px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
             >
-              {readyForPoRows.map((r) => (
+              {readyOptions.map((r) => (
                 <option key={r.prId} value={r.prId}>
                   {r.prNumber} — {r.title}
                 </option>
@@ -482,14 +586,20 @@ export default function SCMPurchaseRequestsPage() {
             <div className="flex rounded-lg border border-gray-200 overflow-hidden mb-4">
               <button
                 type="button"
-                onClick={() => { setImportTab('csv'); setImportError(''); }}
+                onClick={() => {
+                  setImportTab('csv');
+                  setImportError('');
+                }}
                 className={`flex-1 px-3 py-2.5 text-sm font-semibold ${importTab === 'csv' ? 'bg-violet-600 text-white' : 'bg-white text-gray-600'}`}
               >
                 CSV Import
               </button>
               <button
                 type="button"
-                onClick={() => { setImportTab('reference'); setImportError(''); }}
+                onClick={() => {
+                  setImportTab('reference');
+                  setImportError('');
+                }}
                 className={`flex-1 px-3 py-2.5 text-sm font-semibold border-l border-gray-200 ${importTab === 'reference' ? 'bg-violet-600 text-white' : 'bg-white text-gray-600'}`}
               >
                 Reference PO
@@ -498,22 +608,9 @@ export default function SCMPurchaseRequestsPage() {
 
             {importTab === 'csv' ? (
               <div className="space-y-4">
-                <div className="p-4 rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/60">
-                  <p className="text-sm font-semibold text-violet-900 mb-1">1. Download sample CSV</p>
-                  <p className="text-xs text-violet-700 mb-3">
-                    Use this template, fill your PO line items, then upload in step 2.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={downloadPoImportSampleCsv}
-                    className="w-full px-4 py-3 bg-white border border-violet-300 text-violet-800 rounded-lg text-sm font-bold hover:bg-violet-50 flex items-center justify-center gap-2 shadow-sm"
-                  >
-                    <i className="ri-file-excel-2-line text-lg"></i>
-                    Download Sample CSV
-                  </button>
-                </div>
+                <PoSampleCsvTable title="Sample CSV table" />
                 <div className="p-4 rounded-xl border border-gray-200 bg-white">
-                  <p className="text-sm font-semibold text-gray-900 mb-1">2. Upload filled CSV</p>
+                  <p className="text-sm font-semibold text-gray-900 mb-1">Upload filled CSV</p>
                   <p className="text-xs text-gray-500 mb-3">Creates the PO form with imported line items and fields.</p>
                   <button
                     type="button"
@@ -531,9 +628,6 @@ export default function SCMPurchaseRequestsPage() {
                     className="hidden"
                     onChange={(e) => handleCsvImportFile(e.target.files?.[0] || null)}
                   />
-                </div>
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-[11px] text-gray-600 font-mono break-all">
-                  Columns: description, quantity, unitPrice, category, deliveryAddress, expectedDeliveryDate, paymentTerms, incoterms, gstPercentage, specialInstructions
                 </div>
               </div>
             ) : (
@@ -592,8 +686,8 @@ export default function SCMPurchaseRequestsPage() {
                 }}
                 className="px-4 py-2 text-sm font-semibold text-teal-700 border border-teal-300 rounded-lg hover:bg-teal-50 flex items-center gap-2"
               >
-                <i className="ri-edit-line"></i>
-                Manual Create PO instead
+                <i className="ri-shopping-cart-2-line"></i>
+                Create PO manually
               </button>
             </div>
           </div>

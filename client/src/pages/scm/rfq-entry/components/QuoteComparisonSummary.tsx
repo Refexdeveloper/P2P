@@ -86,20 +86,20 @@ export default function QuoteComparisonSummary({ quotations }: Props) {
 
       {/* Top KPI strip — only if there are multi-round vendors */}
       {multiRound.length > 0 && (
-        <div className="grid grid-cols-4 divide-x divide-gray-100 border-b border-gray-100">
-          <div className="px-6 py-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 lg:divide-x divide-gray-100 border-b border-gray-100">
+          <div className="px-4 sm:px-6 py-4 border-b lg:border-b-0 border-gray-100">
             <p className="text-xs text-gray-500 mb-1">Total Savings (Q1 → Latest)</p>
             <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalSavings)}</p>
             <p className="text-xs text-gray-400 mt-0.5">vs initial Q1 prices</p>
           </div>
-          <div className="px-6 py-4">
+          <div className="px-4 sm:px-6 py-4 border-b lg:border-b-0 border-gray-100">
             <p className="text-xs text-gray-500 mb-1">Avg. Price Reduction</p>
             <p className={`text-xl font-bold ${avgReduction > 0 ? 'text-emerald-600' : avgReduction < 0 ? 'text-red-600' : 'text-gray-500'}`}>
               {avgReduction > 0 ? '-' : avgReduction < 0 ? '+' : ''}{Math.abs(avgReduction).toFixed(1)}%
             </p>
             <p className="text-xs text-gray-400 mt-0.5">across re-quoted vendors</p>
           </div>
-          <div className="px-6 py-4">
+          <div className="px-4 sm:px-6 py-4 border-b lg:border-b-0 border-gray-100">
             <p className="text-xs text-gray-500 mb-1">Best Negotiation</p>
             {bestVendor ? (
               <>
@@ -113,7 +113,7 @@ export default function QuoteComparisonSummary({ quotations }: Props) {
               <p className="text-base text-gray-400">—</p>
             )}
           </div>
-          <div className="px-6 py-4">
+          <div className="px-4 sm:px-6 py-4">
             <p className="text-xs text-gray-500 mb-1">Vendors in Comparison</p>
             <p className="text-xl font-bold text-gray-900">{vendorsWithData.length}</p>
             <p className="text-xs text-gray-400 mt-0.5">{multiRound.length} re-quoted</p>

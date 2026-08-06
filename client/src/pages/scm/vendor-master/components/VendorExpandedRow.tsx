@@ -5,6 +5,9 @@ const DOC_LABELS: Record<string, string> = {
   gst: 'GST Certificate',
   pan: 'PAN Card',
   cheque: 'Cancelled Cheque',
+  msme: 'MSME Certificate',
+  kyc: 'KYC Form',
+  msme_declaration: 'MSME Declaration Form',
 };
 
 interface Props {
@@ -18,7 +21,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
   const [activeTab, setActiveTab] = useState<'details' | 'documents'>('details');
   const [error, setError] = useState('');
 
-  const docTypes = ['gst', 'pan', 'cheque'] as const;
+  const docTypes = ['gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration'] as const;
   const docMap = Object.fromEntries((vendor.documents || []).map((d) => [d.docType, d]));
 
   const handleViewFile = async (docType: string) => {
@@ -108,7 +111,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
               <p className="text-sm text-gray-500 text-center py-6">Loading vendor details...</p>
             ) : activeTab === 'details' ? (
               <div className="space-y-5">
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {[
                     { label: 'Vendor Code', value: vendor.vendorCode, icon: 'ri-hashtag', color: 'text-teal-600' },
                     { label: 'Vendor Type', value: vendor.vendorType, icon: 'ri-building-line', color: 'text-gray-900' },
@@ -124,7 +127,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                   ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                       <i className="ri-contacts-line text-teal-500"></i> Contact Information

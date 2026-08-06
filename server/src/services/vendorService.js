@@ -83,21 +83,59 @@ async function upsertVendorDocument(vendorId, docType, fileName, base64Data) {
   );
 }
 
-export async function listVendors({ search, includeInactive = false } = {}) {
-  let sql = includeInactive
-    ? `SELECT * FROM vendors WHERE 1=1`
-    : `SELECT * FROM vendors WHERE status = 'active'`;
+export async function listVendors({ search, includeInactive = false, page, limit } = {}) {
+  let where = includeInactive ? `WHERE 1=1` : `WHERE status = 'active'`;
   const params = [];
 
   if (search?.trim()) {
-    sql += ` AND (name LIKE ? OR email LIKE ? OR vendor_code LIKE ? OR category LIKE ?)`;
+    where += ` AND (name LIKE ? OR email LIKE ? OR vendor_code LIKE ? OR category LIKE ?)`;
     const q = `%${search.trim()}%`;
     params.push(q, q, q, q);
   }
 
-  sql += ` ORDER BY created_at DESC`;
-  const [rows] = await pool.query(sql, params);
-  return rows.map((row) => mapVendor(row));
+  const pageNum = page != null ? Math.max(1, Number(page) || 1) : null;
+  const pageSize = limit != null ? Math.min(100, Math.max(1, Number(limit) || 10)) : null;
+
+  let stats = null;
+  let pagination = null;
+
+  if (pageNum != null && pageSize != null) {
+    const [countRows] = await pool.query(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN vendor_type = 'Company' THEN 1 ELSE 0 END) AS company,
+         SUM(CASE WHEN vendor_type = 'Individual' THEN 1 ELSE 0 END) AS individual
+       FROM vendors ${where}`,
+      params
+    );
+    const total = Number(countRows[0]?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(pageNum, totalPages);
+    stats = {
+      total,
+      company: Number(countRows[0]?.company || 0),
+      individual: Number(countRows[0]?.individual || 0),
+    };
+    pagination = {
+      page: safePage,
+      limit: pageSize,
+      total,
+      totalPages,
+    };
+
+    const offset = (safePage - 1) * pageSize;
+    const [rows] = await pool.query(
+      `SELECT * FROM vendors ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [...params, pageSize, offset]
+    );
+    return { data: rows.map((row) => mapVendor(row)), pagination, stats };
+  }
+
+  const [rows] = await pool.query(
+    `SELECT * FROM vendors ${where} ORDER BY created_at DESC`,
+    params
+  );
+  return { data: rows.map((row) => mapVendor(row)), pagination, stats };
 }
 
 export async function createVendor(user, body) {
@@ -141,6 +179,9 @@ export async function createVendor(user, body) {
     { docType: 'gst', file: body.gstFile, name: body.gstFileName },
     { docType: 'pan', file: body.panFile, name: body.panFileName },
     { docType: 'cheque', file: body.chequeFile, name: body.chequeFileName },
+    { docType: 'msme', file: body.msmeFile, name: body.msmeFileName },
+    { docType: 'kyc', file: body.kycFile, name: body.kycFileName },
+    { docType: 'msme_declaration', file: body.msmeDeclarationFile, name: body.msmeDeclarationFileName },
   ];
 
   for (const { docType, file, name } of fileFields) {
@@ -191,6 +232,9 @@ export async function updateVendor(vendorId, body) {
     { docType: 'gst', file: body.gstFile, name: body.gstFileName },
     { docType: 'pan', file: body.panFile, name: body.panFileName },
     { docType: 'cheque', file: body.chequeFile, name: body.chequeFileName },
+    { docType: 'msme', file: body.msmeFile, name: body.msmeFileName },
+    { docType: 'kyc', file: body.kycFile, name: body.kycFileName },
+    { docType: 'msme_declaration', file: body.msmeDeclarationFile, name: body.msmeDeclarationFileName },
   ];
 
   for (const { docType, file, name } of fileFields) {
@@ -210,7 +254,7 @@ export async function getVendorById(vendorId) {
 }
 
 export async function getVendorDocumentFile(vendorId, docType) {
-  const allowed = ['gst', 'pan', 'cheque'];
+  const allowed = ['gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration'];
   if (!allowed.includes(docType)) throw new Error('Invalid document type');
 
   const [rows] = await pool.query(
@@ -243,7 +287,7 @@ const VENDOR_HEADERS = [
 ];
 
 export async function exportVendorsCsv() {
-  const rows = await listVendors({ includeInactive: true });
+  const { data: rows } = await listVendors({ includeInactive: true });
   return rowsToCsv(
     VENDOR_HEADERS,
     rows.map((r) => ({

@@ -261,7 +261,7 @@ export default function SCMPaymentApprovalPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
           <div className="bg-white rounded-xl p-6 border border-orange-200 shadow-sm">
             <div className="flex items-center justify-between">
               <div>

@@ -123,7 +123,7 @@ export default function VendorInvoicePage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         {[
           { label: 'Draft / Pending', value: stats.draft, icon: 'ri-draft-line', bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200' },
           { label: 'Under Verification', value: stats.underVerification + stats.submitted, icon: 'ri-search-eye-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
@@ -143,8 +143,8 @@ export default function VendorInvoicePage() {
       </div>
 
       {/* Value Banners */}
-      <div className="grid grid-cols-2 gap-5 mb-6">
-        <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl p-5 flex items-center justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <i className="ri-time-line text-white text-2xl"></i>
@@ -158,7 +158,7 @@ export default function VendorInvoicePage() {
             <p className="text-amber-100 text-xs">{stats.draft + stats.submitted + stats.underVerification + stats.discrepancy} invoice(s)</p>
           </div>
         </div>
-        <div className="bg-gradient-to-r from-violet-600 to-violet-700 rounded-xl p-5 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-violet-600 to-violet-700 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <i className="ri-checkbox-circle-line text-white text-2xl"></i>
@@ -178,7 +178,7 @@ export default function VendorInvoicePage() {
       <div className="bg-white rounded-xl border border-gray-200">
         {/* Filters */}
         <div className="px-6 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h2 className="text-base font-bold text-gray-900">Invoice Register</h2>
             <div className="relative">
               <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>

@@ -51,7 +51,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
       {/* Drawer */}
       <div className="fixed right-0 top-0 h-full w-full max-w-4xl bg-white shadow-2xl z-50 overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-8 py-6 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-8 py-6 flex flex-wrap items-center justify-between gap-3 z-10">
           <div>
             <h2 className="text-2xl font-semibold text-gray-900">{po.poNumber}</h2>
             <p className="text-sm text-gray-600 mt-1">Purchase Order Details</p>
@@ -135,7 +135,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
               {/* PR Details */}
               <div className="bg-gray-50 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Purchase Request Details</h3>
-                <div className="grid grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Title</p>
                     <p className="text-sm font-medium text-gray-900">{po.prTitle}</p>
@@ -169,7 +169,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
               {/* Line Items */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Line Items</h3>
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="border border-gray-200 rounded-lg overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>

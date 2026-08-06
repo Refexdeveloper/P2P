@@ -157,7 +157,7 @@ export default function VendorPOAcceptancePage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         {[
           { label: 'Pending Acceptance', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
           { label: 'Accepted', value: stats.accepted, icon: 'ri-check-double-line', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
@@ -177,8 +177,8 @@ export default function VendorPOAcceptancePage() {
       </div>
 
       {/* Value Banner */}
-      <div className="grid grid-cols-2 gap-5 mb-6">
-        <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl p-5 flex items-center justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <i className="ri-money-rupee-circle-line text-white text-2xl"></i>
@@ -194,7 +194,7 @@ export default function VendorPOAcceptancePage() {
           </div>
         </div>
 
-        <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <i className="ri-checkbox-circle-line text-white text-2xl"></i>
@@ -215,7 +215,7 @@ export default function VendorPOAcceptancePage() {
       <div className="bg-white rounded-xl border border-gray-200">
         {/* Filters */}
         <div className="px-6 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-bold text-gray-900">Purchase Orders — Vendor Acceptance Status</h2>
             <div className="flex items-center gap-3">
               <div className="relative">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import MasterImportExport from '../../../components/feature/MasterImportExport';
 import { masterApi, EntityRecord } from '../../../services/api';
 
 const emptyForm = {
@@ -92,18 +93,26 @@ export default function EntityMasterPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <>
         <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Entity Master</h1>
             <p className="text-sm text-gray-500 mt-1">Manage entity names and cost centers</p>
           </div>
-          <button
-            onClick={openCreate}
-            className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer flex items-center gap-2"
-          >
-            <i className="ri-add-line"></i> Add Entity
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <MasterImportExport
+              onExport={() => masterApi.exportEntitiesCsv()}
+              onDownloadTemplate={() => masterApi.downloadEntityTemplate()}
+              onImport={(csv) => masterApi.importEntitiesCsv(csv)}
+              onImported={load}
+            />
+            <button
+              onClick={openCreate}
+              className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer flex items-center gap-2"
+            >
+              <i className="ri-add-line"></i> Add Entity
+            </button>
+          </div>
         </div>
 
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -127,47 +136,49 @@ export default function EntityMasterPage() {
               <p className="mt-3 text-sm">No entities found</p>
             </div>
           ) : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  {['Entity Name', 'Code', 'Cost Center', 'Description', 'Status', 'Action'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.name}</td>
-                    <td className="px-4 py-3 text-sm font-mono text-gray-800">{row.code || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{row.costCenter || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{row.description || '—'}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          row.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => openEdit(row)}
-                        className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
-                      >
-                        Edit
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    {['Entity Name', 'Code', 'Cost Center', 'Description', 'Status', 'Action'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.id} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.name}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-gray-800">{row.code || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{row.costCenter || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{row.description || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            row.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => openEdit(row)}
+                          className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
-      </div>
+      </>
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

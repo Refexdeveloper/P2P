@@ -210,7 +210,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
           {activeTab === 'summary' && (
             <div className="space-y-5">
               {/* 3 Check Cards */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
                   {
                     title: 'Quantity Check',
@@ -358,7 +358,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
               )}
 
               {/* Item Stats */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
                   { label: 'Fully Matched', value: summary.matched, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-100' },
                   { label: 'Partial / Issues', value: summary.partial, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-100' },
@@ -375,7 +375,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
 
           {/* LINE ITEMS TAB */}
           {activeTab === 'items' && (
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <div className="border border-gray-200 rounded-xl overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>

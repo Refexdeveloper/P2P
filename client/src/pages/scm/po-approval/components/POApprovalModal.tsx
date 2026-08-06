@@ -81,7 +81,7 @@ export default function POApprovalModal({
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 {isApprove
-                  ? 'Your signature will be embedded in the PDF and emailed to the vendor'
+                  ? 'Your signature will be embedded in the PDF, then SCM Buyer will final-verify before vendor email'
                   : 'This action cannot be undone'}
               </p>
             </div>

@@ -82,7 +82,7 @@ export default function DepartmentMasterPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <>
         <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Department Master</h1>
@@ -117,46 +117,48 @@ export default function DepartmentMasterPage() {
               <p className="mt-3 text-sm">No departments found</p>
             </div>
           ) : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  {['Name', 'Code', 'Description', 'Status', 'Action'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{row.code || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{row.description || '—'}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          row.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => openEdit(row)}
-                        className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
-                      >
-                        Edit
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    {['Name', 'Code', 'Description', 'Status', 'Action'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.id} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{row.code || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{row.description || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            row.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => openEdit(row)}
+                          className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
-      </div>
+      </>
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

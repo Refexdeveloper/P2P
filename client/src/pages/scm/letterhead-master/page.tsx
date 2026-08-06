@@ -315,7 +315,7 @@ export default function LetterheadMasterPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <>
         <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Letterhead Master</h1>
@@ -433,7 +433,7 @@ export default function LetterheadMasterPage() {
             </div>
           )}
         </div>
-      </div>
+      </>
 
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

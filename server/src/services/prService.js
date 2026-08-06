@@ -45,6 +45,14 @@ async function getApprovalHistory(prId) {
 async function enrichPR(row) {
   const lineItems = await getLineItems(row.id);
   const approvalHistory = await getApprovalHistory(row.id);
+  const [vendorRows] = await pool.query(
+    `SELECT ri.vendor_name
+     FROM rfq_configs rc
+     JOIN rfq_invitations ri ON ri.id = rc.recommended_invitation_id
+     WHERE rc.pr_id = ?
+     LIMIT 1`,
+    [row.id]
+  );
   return {
     id: row.id,
     prNumber: row.pr_number,
@@ -67,6 +75,7 @@ async function enrichPR(row) {
     statusFrontend: mapStatusToFrontend(row.status),
     statusUI: mapStatusToManagerUI(row.status),
     vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+    recommendedVendor: vendorRows[0]?.vendor_name || '',
     currentStage: row.current_stage,
     submittedDate: formatDate(row.submitted_at || row.created_at),
     createdAt: formatDate(row.created_at),
@@ -376,8 +385,23 @@ export async function listPurchaseRequests(user, filters = {}) {
       sql += ' AND pr.status = ?';
       params.push(PR_STATUS.PENDING_SCM_PO);
     } else if (filters.bucket === 'scm') {
-      sql += ` AND pr.status = ?`;
-      params.push(PR_STATUS.PENDING_SCM_PO);
+      // Ready for PO: pending SCM PO, or orphan APPROVED (RFQ done) with no active PO
+      sql += ` AND (
+        pr.status = ?
+        OR (
+          pr.status = ?
+          AND EXISTS (
+            SELECT 1 FROM rfq_configs rc
+            WHERE rc.pr_id = pr.id AND rc.finalized_at IS NOT NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM purchase_orders po
+            WHERE po.pr_id = pr.id
+              AND po.status IN ('pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')
+          )
+        )
+      )`;
+      params.push(PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED);
     }
   }
 
@@ -386,10 +410,82 @@ export async function listPurchaseRequests(user, filters = {}) {
     params.push(filters.status);
   }
 
-  sql += ' ORDER BY pr.updated_at DESC';
+  // Newest created/submitted first (HOD / approval queues)
+  sql += ' ORDER BY COALESCE(pr.submitted_at, pr.created_at) DESC, pr.id DESC';
+
+  // SCM bucket list is for dashboards only — skip heavy enrichPR (line items + approval history N+1)
+  if (filters.bucket === 'scm') {
+    const scmSql = `
+    SELECT pr.*, d.name AS department_name, u.name AS requester_name,
+           e.name AS entity_name, e.code AS entity_code, e.cost_center AS entity_cost_center,
+           COALESCE((
+             SELECT ri.vendor_name
+             FROM rfq_configs rc
+             JOIN rfq_invitations ri ON ri.id = rc.recommended_invitation_id
+             WHERE rc.pr_id = pr.id
+             LIMIT 1
+           ), '') AS recommended_vendor_name
+    FROM purchase_requests pr
+    JOIN departments d ON d.id = pr.department_id
+    JOIN users u ON u.id = pr.requester_id
+    LEFT JOIN entity_masters e ON e.id = pr.entity_id
+    WHERE 1=1
+      AND (
+        pr.status = ?
+        OR (
+          pr.status = ?
+          AND EXISTS (
+            SELECT 1 FROM rfq_configs rc
+            WHERE rc.pr_id = pr.id AND rc.finalized_at IS NOT NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM purchase_orders po
+            WHERE po.pr_id = pr.id
+              AND po.status IN ('pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')
+          )
+        )
+      )
+    ORDER BY COALESCE(pr.submitted_at, pr.created_at) DESC, pr.id DESC
+  `;
+    const [rows] = await pool.query(scmSql, [PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED]);
+    return rows.map((row) => mapScmBucketSummary(row));
+  }
 
   const [rows] = await pool.query(sql, params);
   return Promise.all(rows.map(enrichPR));
+}
+
+/** Lean PR row for SCM bucket lists — no line items / approval history queries. */
+function mapScmBucketSummary(row) {
+  return {
+    id: row.id,
+    prNumber: row.pr_number,
+    title: row.title,
+    requestType: row.request_type,
+    department: row.department_name,
+    departmentId: row.department_id,
+    entityId: row.entity_id || null,
+    entityName: row.entity_name || '',
+    entityCode: row.entity_code || '',
+    entityCostCenter: row.entity_cost_center || '',
+    requester: row.requester_name,
+    requesterId: row.requester_id,
+    priority: row.priority,
+    priorityLower: mapPriorityToFrontend(row.priority),
+    justification: row.justification,
+    requiredDate: formatDate(row.required_date),
+    totalAmount: Number(row.total_amount),
+    status: row.status,
+    statusFrontend: mapStatusToFrontend(row.status),
+    statusUI: mapStatusToManagerUI(row.status),
+    vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+    recommendedVendor: row.recommended_vendor_name || '',
+    currentStage: row.current_stage,
+    submittedDate: formatDate(row.submitted_at || row.created_at),
+    createdAt: formatDate(row.created_at),
+    lineItems: [],
+    approvalHistory: [],
+  };
 }
 
 export async function getRequesterStats(userId) {
@@ -850,9 +946,15 @@ export async function listTasks(user) {
     }
   }
 
-  if (!prs.length) return [];
+  // Keep newest created/submitted first after merging assigned post-RFQ rows
+  prs.sort((a, b) => {
+    const aTime = new Date(a.submittedDate || a.createdAt || 0).getTime();
+    const bTime = new Date(b.submittedDate || b.createdAt || 0).getTime();
+    if (bTime !== aTime) return bTime - aTime;
+    return Number(b.id) - Number(a.id);
+  });
 
-  return prs.map((pr) => {
+  const tasks = prs.map((pr) => {
     const due = new Date(pr.submittedDate || Date.now());
     due.setDate(due.getDate() + 1);
     const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
@@ -883,10 +985,58 @@ export async function listTasks(user) {
       actionPath: isPostRfq ? `/rfq-approval/${pr.id}` : undefined,
     };
   });
+
+  // SCM Buyer final verify after Manager sign-off
+  if (user.role === 'SCM Buyer') {
+    const [buyerVerifyRows] = await pool.query(
+      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, pr.title, pr.priority,
+              d.name AS department_name, u.name AS requester_name, wt.due_date
+       FROM purchase_orders po
+       JOIN purchase_requests pr ON pr.id = po.pr_id
+       JOIN departments d ON d.id = pr.department_id
+       JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
+         AND wt.task_type = 'PO_BUYER_VERIFY' AND wt.status = 'pending'
+       WHERE po.status = 'pending_buyer_verify'
+       ORDER BY po.signed_at DESC, po.updated_at DESC`
+    );
+    for (const row of buyerVerifyRows) {
+      const due = row.due_date ? new Date(row.due_date) : new Date();
+      if (!row.due_date) due.setDate(due.getDate() + 1);
+      const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
+      tasks.push({
+        id: `po-verify-${row.po_id}`,
+        taskId: row.po_id,
+        prId: row.pr_id,
+        prNumber: row.po_number,
+        title: `${row.title} — Final Verify`,
+        requester: row.requester_name,
+        department: row.department_name,
+        totalAmount: Number(row.grand_total),
+        priority: mapPriorityToFrontend(row.priority),
+        status: 'pending_approval',
+        statusUI: 'Pending Buyer Verify',
+        submittedDate: formatDate(due),
+        dueDate: formatDate(due),
+        slaRemaining: hoursLeft || 24,
+        isOverdue: hoursLeft <= 0,
+        lineItems: 0,
+        requestType: 'PO',
+        requesterRole: 'SCM Manager',
+        requesterAvatar: 'S',
+        justification: 'SCM Manager signed — final verify before sending to vendor',
+        isPostRfq: false,
+        actionPath: '/scm/buyer-final-verify',
+      });
+    }
+  }
+
+  return tasks;
 }
 
 export function toRequesterDashboardFormat(pr) {
   return {
+    // Dashboard-compatible fields
     id: pr.prNumber,
     prId: pr.id,
     title: pr.title,
@@ -897,6 +1047,22 @@ export function toRequesterDashboardFormat(pr) {
     date: pr.submittedDate || pr.createdAt,
     items: pr.items,
     requestType: pr.requestType,
+    // Full fields for Track PR / expanded views
+    prNumber: pr.prNumber,
+    totalAmount: pr.totalAmount,
+    statusRaw: pr.status,
+    statusFrontend: pr.statusFrontend,
+    statusUI: pr.statusUI,
+    priorityLower: pr.priorityLower,
+    submittedDate: pr.submittedDate,
+    createdAt: pr.createdAt,
+    requiredDate: pr.requiredDate,
+    justification: pr.justification,
+    lineItems: pr.lineItems,
+    approvalHistory: pr.approvalHistory,
+    requester: pr.requester,
+    vendorSelection: pr.vendorSelection,
+    currentStage: pr.currentStage,
   };
 }
 

@@ -172,7 +172,7 @@ export default function EvaluatePRPage() {
         <div className="px-8 py-6 max-w-7xl mx-auto">
           {/* PR Details Card */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 mb-6">
-            <div className="grid grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6">
               <div>
                 <p className="text-xs text-gray-600 mb-1">PR Title</p>
                 <p className="text-sm font-semibold text-gray-900">

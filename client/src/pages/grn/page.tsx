@@ -144,7 +144,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
       <td colSpan={9} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {/* Expanded Header */}
-          <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
                 <i className="ri-truck-line text-teal-600 text-lg"></i>
@@ -208,9 +208,9 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
           {/* Tab Content */}
           <div className="p-6">
             {activeTab === 'details' && (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Top Summary Row */}
-                <div className="col-span-3 grid grid-cols-4 gap-3 mb-2">
+                <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-2">
                   {[
                     { label: 'GRN Number', value: grn.grnNumber, icon: 'ri-file-text-line', color: 'text-teal-600' },
                     { label: 'PO Reference', value: grn.poNumber, icon: 'ri-links-line', color: 'text-teal-600' },
@@ -227,12 +227,12 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
                 </div>
 
                 {/* Left Column */}
-                <div className="col-span-2 space-y-4">
+                <div className="lg:col-span-2 space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                       <i className="ri-file-list-3-line text-teal-500"></i> Purchase Request Details
                     </h4>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <p className="text-xs text-gray-500 mb-0.5">PR Title</p>
                         <p className="text-sm font-medium text-gray-900">{grn.prTitle}</p>
@@ -320,7 +320,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
                 </div>
 
                 {/* Right Column */}
-                <div className="col-span-1">
+                <div className="lg:col-span-1">
                   <div className="bg-gray-50 rounded-lg p-4 sticky top-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
                       <i className="ri-receipt-line text-teal-500"></i> Receipt Summary
@@ -379,7 +379,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove }: ExpandedGRNRowProps)
             )}
 
             {activeTab === 'items' && (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="border border-gray-200 rounded-lg overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
@@ -625,7 +625,7 @@ export default function GRNPage() {
   return (
     <DashboardLayout>
       {/* Page Header */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Goods Receipt Note (GRN)</h1>
           <p className="text-sm text-gray-500 mt-1">Track and manage goods receipt against approved purchase orders</p>
@@ -640,7 +640,7 @@ export default function GRNPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         {[
           { label: 'Pending Receipt', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
           { label: 'Partially Received', value: stats.partial, icon: 'ri-loader-2-line', bg: 'bg-sky-50', text: 'text-sky-600', border: 'border-sky-100' },
@@ -660,7 +660,7 @@ export default function GRNPage() {
       </div>
 
       {/* Pending Value Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 mb-6 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
             <i className="ri-truck-line text-white text-2xl"></i>
@@ -682,7 +682,7 @@ export default function GRNPage() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         {/* Filters */}
         <div className="px-6 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-bold text-gray-900">GRN Register</h2>
             <div className="flex items-center gap-3">
               <div className="relative">

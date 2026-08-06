@@ -1136,7 +1136,11 @@ export async function getVendorComparisonMatrix(user, prId) {
       assignedRoleConfig
         ? pr.status === assignedRoleConfig.status
         : userRoleConfig &&
-            pr.status === userRoleConfig.status &&
+            (pr.status === userRoleConfig.status ||
+              // Buyer Create-PO orphans incorrectly left as APPROVED with no PO
+              (user.role === 'SCM Buyer' &&
+                userRoleConfig.status === PR_STATUS.PENDING_SCM_PO &&
+                pr.status === PR_STATUS.APPROVED)) &&
             (!pendingTask?.assigned_user_id || pendingTask.assigned_user_id === user.id)
     ),
     vendors,
@@ -1187,24 +1191,72 @@ export async function listScmRfqEntryPrs(user) {
 }
 
 export async function listPostRfqPending(user) {
-  const [rows] = await pool.query(
-    `SELECT DISTINCT pr.id
+  // SCM Manager / SCM Buyer tasks are role-queued (assigned_user_id NULL).
+  // HOD / L2 tasks are assigned to a specific user. Match either pattern.
+  const [assignedRows] = await pool.query(
+    `SELECT pr.id
      FROM purchase_requests pr
      JOIN workflow_tasks wt ON wt.pr_id = pr.id
      WHERE wt.task_type = 'RFQ_POST_APPROVAL'
        AND wt.status = 'pending'
-       AND wt.assigned_user_id = ?
-     ORDER BY pr.updated_at DESC`,
-    [user.id]
+       AND (
+         wt.assigned_user_id = ?
+         OR (wt.assigned_user_id IS NULL AND wt.assigned_role = ?)
+       )
+     GROUP BY pr.id
+     ORDER BY MAX(COALESCE(pr.submitted_at, pr.created_at, pr.updated_at)) DESC, pr.id DESC`,
+    [user.id, user.role]
   );
+
+  // Also include PRs in this role's post-RFQ status for role-queued roles
+  // (SCM Manager / SCM Buyer tasks use assigned_user_id NULL).
+  // Do NOT do this for HOD / L2 / CFO — those are person-assigned via RefexOne.
+  const ROLE_QUEUED_POST_RFQ = new Set(['SCM Manager', 'SCM Buyer']);
+  const userRoleConfig = getPostRfqRoleConfig(user.role);
+  const idSet = new Set(assignedRows.map((r) => r.id));
+  if (ROLE_QUEUED_POST_RFQ.has(user.role) && userRoleConfig?.status) {
+    const [statusRows] = await pool.query(
+      `SELECT id FROM purchase_requests WHERE status = ?
+       ORDER BY COALESCE(submitted_at, created_at, updated_at) DESC, id DESC`,
+      [userRoleConfig.status]
+    );
+    for (const row of statusRows) idSet.add(row.id);
+  }
+
+  // Recover orphans: Buyer RFQ "approve" used to mark APPROVED before PO create
+  if (user.role === 'SCM Buyer') {
+    const [orphanRows] = await pool.query(
+      `SELECT pr.id
+       FROM purchase_requests pr
+       JOIN rfq_configs rc ON rc.pr_id = pr.id AND rc.finalized_at IS NOT NULL
+       LEFT JOIN purchase_orders po ON po.pr_id = pr.id
+         AND po.status IN ('pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')
+       WHERE pr.status = ?
+         AND po.id IS NULL
+       ORDER BY COALESCE(pr.submitted_at, pr.created_at, pr.updated_at) DESC, pr.id DESC`,
+      [PR_STATUS.APPROVED]
+    );
+    for (const row of orphanRows) idSet.add(row.id);
+  }
+
+  const rows = [...idSet].map((id) => ({ id }));
 
   const results = [];
   for (const row of rows) {
     const pr = await getPurchaseRequestById(row.id);
-    const roleConfig = getPostRfqRoleConfig(
-      (await getPendingPostRfqTask(row.id))?.assigned_role || user.role
-    );
-    if (!roleConfig || pr.status !== roleConfig.status) continue;
+    if (!pr) continue;
+    const pendingTask = await getPendingPostRfqTask(row.id);
+    const roleConfig = getPostRfqRoleConfig(pendingTask?.assigned_role || user.role);
+    if (!roleConfig) continue;
+
+    // Normal match: PR status equals this role's queue status
+    const statusMatches = pr.status === roleConfig.status;
+    // Orphan Buyer Create-PO items incorrectly left as APPROVED with no PO
+    const buyerOrphan =
+      user.role === 'SCM Buyer' &&
+      pr.status === PR_STATUS.APPROVED &&
+      roleConfig.status === PR_STATUS.PENDING_SCM_PO;
+    if (!statusMatches && !buyerOrphan) continue;
 
     const config = await getOrCreateRfqConfig(row.id);
     const [vendorCount] = await pool.query(
@@ -1254,6 +1306,12 @@ export async function processPostRfqApproval(user, prId, action, remarks) {
     let nextRole = null;
 
     if (action === 'approve') {
+      // SCM Buyer "approve" at Create PO stage must not mark the PR APPROVED —
+      // that hides it from Purchase Requests / Create PO before a PO exists.
+      // Buyer should open Create PO instead; PO create completes this step.
+      if (workflowRole === 'SCM Buyer' && pr.status === PR_STATUS.PENDING_SCM_PO) {
+        throw new Error('Open Create PO to complete this step — do not approve from RFQ Approval');
+      }
       newStatus = roleConfig.nextStatus;
       newStage = roleConfig.nextStage;
       nextRole = roleConfig.nextRole;

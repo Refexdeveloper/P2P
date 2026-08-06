@@ -14,6 +14,8 @@ export const NAV_ITEMS = [
   { code: 'nav.home_dashboard', label: 'Dashboard', path: '/', icon: 'ri-dashboard-line', group: 'General', sort: 5 },
   { code: 'nav.purchase_requests', label: 'Dashboard', path: '/scm/purchase-requests', icon: 'ri-dashboard-line', group: 'SCM', sort: 60 },
   { code: 'nav.create_po', label: 'Create PO', path: '/scm/create-po', icon: 'ri-shopping-cart-2-line', group: 'SCM', sort: 61 },
+  { code: 'nav.track_po', label: 'Track PO', path: '/scm/track-po', icon: 'ri-search-eye-line', group: 'SCM', sort: 62 },
+  { code: 'nav.po_excel_import', label: 'PO Excel Import', path: '/scm/po-excel-import', icon: 'ri-file-excel-2-line', group: 'SCM', sort: 63 },
   { code: 'nav.item_master', label: 'Item Master', path: '/scm/item-master', icon: 'ri-box-3-line', group: 'Masters', sort: 200 },
   { code: 'nav.vendor_master', label: 'Vendor Master', path: '/scm/vendor-master', icon: 'ri-store-2-line', group: 'Masters', sort: 201 },
   { code: 'nav.category_master', label: 'Category Master', path: '/scm/category-master', icon: 'ri-price-tag-3-line', group: 'Masters', sort: 202 },
@@ -21,14 +23,15 @@ export const NAV_ITEMS = [
   { code: 'nav.department_master', label: 'Department Master', path: '/scm/department-master', icon: 'ri-organization-chart', group: 'Masters', sort: 206 },
   { code: 'nav.po_letterhead_master', label: 'PO Type Master', path: '/scm/po-type-master', icon: 'ri-file-list-3-line', group: 'Masters', sort: 203 },
   { code: 'nav.letterhead_master', label: 'Letterhead Master', path: '/scm/letterhead-master', icon: 'ri-layout-top-2-line', group: 'Masters', sort: 204 },
-  { code: 'nav.scm_rfq_entry', label: 'RFQ Entry', path: '/scm/rfq-entry', icon: 'ri-file-list-line', group: 'SCM', sort: 63 },
-  { code: 'nav.vendor_quotation', label: 'Vendor Quotation Portal', path: '/scm/vendor-quotation-portal', icon: 'ri-price-tag-3-line', group: 'SCM', sort: 64 },
-  { code: 'nav.vendor_comparison', label: 'Vendor Comparison', path: '/scm/vendor-comparison', icon: 'ri-bar-chart-box-line', group: 'SCM', sort: 65 },
-  { code: 'nav.technical_clearance', label: 'Technical Clearance', path: '/scm/technical-clearance', icon: 'ri-shield-check-line', group: 'SCM', sort: 66 },
-  { code: 'nav.po_approval', label: 'PO Approval', path: '/scm/po-approval', icon: 'ri-checkbox-circle-line', group: 'SCM', sort: 67 },
-  { code: 'nav.vendor_po_acceptance', label: 'Vendor PO Acceptance', path: '/scm/vendor-po-acceptance', icon: 'ri-shake-hands-line', group: 'SCM', sort: 68 },
-  { code: 'nav.vendor_invoice', label: 'Vendor Invoice', path: '/scm/vendor-invoice', icon: 'ri-file-invoice-line', group: 'SCM', sort: 69 },
-  { code: 'nav.grn', label: 'GRN', path: '/grn', icon: 'ri-truck-line', group: 'SCM', sort: 70 },
+  { code: 'nav.scm_rfq_entry', label: 'RFQ Entry', path: '/scm/rfq-entry', icon: 'ri-file-list-line', group: 'SCM', sort: 64 },
+  { code: 'nav.vendor_quotation', label: 'Vendor Quotation Portal', path: '/scm/vendor-quotation-portal', icon: 'ri-price-tag-3-line', group: 'SCM', sort: 65 },
+  { code: 'nav.vendor_comparison', label: 'Vendor Comparison', path: '/scm/vendor-comparison', icon: 'ri-bar-chart-box-line', group: 'SCM', sort: 66 },
+  { code: 'nav.technical_clearance', label: 'Technical Clearance', path: '/scm/technical-clearance', icon: 'ri-shield-check-line', group: 'SCM', sort: 67 },
+  { code: 'nav.po_approval', label: 'PO Approval', path: '/scm/po-approval', icon: 'ri-checkbox-circle-line', group: 'SCM', sort: 68 },
+  { code: 'nav.buyer_final_verify', label: 'Buyer Final Verify', path: '/scm/buyer-final-verify', icon: 'ri-shield-check-line', group: 'SCM', sort: 69 },
+  { code: 'nav.vendor_po_acceptance', label: 'Vendor PO Acceptance', path: '/scm/vendor-po-acceptance', icon: 'ri-shake-hands-line', group: 'SCM', sort: 70 },
+  { code: 'nav.vendor_invoice', label: 'Vendor Invoice', path: '/scm/vendor-invoice', icon: 'ri-file-invoice-line', group: 'SCM', sort: 71 },
+  { code: 'nav.grn', label: 'GRN', path: '/grn', icon: 'ri-truck-line', group: 'SCM', sort: 72 },
   { code: 'nav.invoice_verification', label: 'Invoice Verification', path: '/accounts/invoice-verification', icon: 'ri-file-check-2-line', group: 'Accounts', sort: 80 },
   { code: 'nav.payment', label: 'Payment', path: '/accounts/payment', icon: 'ri-money-rupee-circle-line', group: 'Accounts', sort: 81 },
   { code: 'nav.payment_authorization', label: 'Payment Authorization', path: '/accounts/scm-payment-approval', icon: 'ri-shield-check-line', group: 'SCM Manager', sort: 82 },
@@ -44,11 +47,11 @@ export const ROLE_DEFAULT_PERMISSIONS = {
   CFO: ['nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
-    'nav.purchase_requests', 'nav.rfq_approval', 'nav.create_po',
+    'nav.purchase_requests', 'nav.rfq_approval', 'nav.create_po', 'nav.track_po', 'nav.po_excel_import',
     'nav.item_master', 'nav.vendor_master', 'nav.category_master',
     'nav.entity_master', 'nav.department_master',
     'nav.po_letterhead_master', 'nav.letterhead_master', 'nav.scm_rfq_entry', 'nav.vendor_quotation', 'nav.vendor_comparison',
-    'nav.technical_clearance', 'nav.po_approval', 'nav.vendor_po_acceptance', 'nav.vendor_invoice', 'nav.grn',
+    'nav.technical_clearance', 'nav.po_approval', 'nav.buyer_final_verify', 'nav.vendor_po_acceptance', 'nav.vendor_invoice', 'nav.grn',
   ],
   'SCM Manager': [
     'nav.po_approval', 'nav.rfq_approval', 'nav.payment_authorization', 'nav.tasks',
@@ -104,7 +107,15 @@ export async function getUserPermissionCodes(userId, role) {
     if (stored.length) {
       // Heal: SCM roles always get Masters menu permissions
       if (role === 'SCM Buyer' || role === 'SCM Manager') {
-        for (const code of ['nav.item_master', 'nav.vendor_master', 'nav.category_master', 'nav.entity_master', 'nav.department_master', 'nav.po_letterhead_master', 'nav.letterhead_master']) {
+        const healCodes = [
+          'nav.item_master', 'nav.vendor_master', 'nav.category_master',
+          'nav.entity_master', 'nav.department_master',
+          'nav.po_letterhead_master', 'nav.letterhead_master',
+        ];
+        if (role === 'SCM Buyer') {
+          healCodes.push('nav.buyer_final_verify', 'nav.track_po', 'nav.po_excel_import');
+        }
+        for (const code of healCodes) {
           if (!stored.includes(code) && validCodes.has(code)) {
             stored.push(code);
             await pool.query(

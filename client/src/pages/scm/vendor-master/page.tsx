@@ -1,16 +1,28 @@
-import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import MasterImportExport from '../../../components/feature/MasterImportExport';
-import { vendorApi, VendorRecord } from '../../../services/api';
+import { vendorApi, VendorRecord, VendorPagination, VendorListStats } from '../../../services/api';
 import CreateVendorForm from './components/CreateVendorForm';
 import VendorExpandedRow from './components/VendorExpandedRow';
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
 export default function VendorMasterPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [vendors, setVendors] = useState<VendorRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [pagination, setPagination] = useState<VendorPagination>({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+  });
+  const [stats, setStats] = useState<VendorListStats>({ total: 0, company: 0, individual: 0 });
   const [showCreate, setShowCreate] = useState(searchParams.get('create') === '1');
   const [editingVendor, setEditingVendor] = useState<VendorRecord | null>(null);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
@@ -18,16 +30,36 @@ export default function VendorMasterPage() {
   const [detailsLoading, setDetailsLoading] = useState<number | null>(null);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const loadVendors = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await vendorApi.list(search || undefined);
+      const res = await vendorApi.list({
+        search: debouncedSearch || undefined,
+        page,
+        limit: pageSize,
+      });
       setVendors(res.data);
+      if (res.pagination) {
+        setPagination(res.pagination);
+        if (res.pagination.page !== page) setPage(res.pagination.page);
+      }
+      if (res.stats) setStats(res.stats);
     } catch {
       setVendors([]);
+      setPagination({ page: 1, limit: pageSize, total: 0, totalPages: 1 });
+      setStats({ total: 0, company: 0, individual: 0 });
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [debouncedSearch, page, pageSize]);
 
   useEffect(() => {
     loadVendors();
@@ -77,15 +109,14 @@ export default function VendorMasterPage() {
     closeEdit();
     setVendorDetails({});
     showToast('Vendor updated successfully', 'success');
-    setLoading(true);
     loadVendors();
   };
 
   const handleCreated = () => {
     closeCreate();
     showToast('Vendor created successfully', 'success');
-    setLoading(true);
-    loadVendors();
+    if (page === 1) loadVendors();
+    else setPage(1);
   };
 
   const toggleRow = async (vendorId: number) => {
@@ -108,13 +139,9 @@ export default function VendorMasterPage() {
     }
   };
 
-  const stats = useMemo(() => ({
-    total: vendors.length,
-    company: vendors.filter((v) => v.vendorType === 'Company').length,
-    individual: vendors.filter((v) => v.vendorType === 'Individual').length,
-  }), [vendors]);
-
   const COL_COUNT = 9;
+  const rangeFrom = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
+  const rangeTo = Math.min(pagination.page * pagination.limit, pagination.total);
 
   return (
     <DashboardLayout>
@@ -130,8 +157,8 @@ export default function VendorMasterPage() {
               onDownloadTemplate={() => vendorApi.downloadImportTemplate()}
               onImport={(csv) => vendorApi.importCsv(csv)}
               onImported={() => {
-                setLoading(true);
-                loadVendors();
+                if (page === 1) loadVendors();
+                else setPage(1);
               }}
             />
             <button
@@ -151,7 +178,7 @@ export default function VendorMasterPage() {
         <CreateVendorForm vendor={editingVendor} onSuccess={handleUpdated} onCancel={closeEdit} />
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-5 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-6">
             {[
               { label: 'Total Vendors', value: stats.total, icon: 'ri-store-2-line', color: 'text-teal-600', bg: 'bg-teal-50' },
               { label: 'Companies', value: stats.company, icon: 'ri-building-line', color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -182,7 +209,7 @@ export default function VendorMasterPage() {
                   placeholder="Search vendor, email, code..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 w-72"
+                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 w-full sm:w-72"
                 />
               </div>
             </div>
@@ -285,6 +312,61 @@ export default function VendorMasterPage() {
                     })}
                   </tbody>
                 </table>
+
+                <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-gray-500">
+                    Showing <span className="font-semibold text-gray-700">{rangeFrom}</span>
+                    {'–'}
+                    <span className="font-semibold text-gray-700">{rangeTo}</span>
+                    {' of '}
+                    <span className="font-semibold text-gray-700">{pagination.total}</span> vendors
+                  </p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                      Rows
+                      <select
+                        value={pageSize}
+                        onChange={(e) => {
+                          setPageSize(Number(e.target.value));
+                          setPage(1);
+                          setExpandedRow(null);
+                        }}
+                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                      >
+                        {PAGE_SIZE_OPTIONS.map((size) => (
+                          <option key={size} value={size}>{size}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={pagination.page <= 1 || loading}
+                        onClick={() => {
+                          setPage((p) => Math.max(1, p - 1));
+                          setExpandedRow(null);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        Previous
+                      </button>
+                      <span className="px-3 py-1.5 text-sm text-gray-600 whitespace-nowrap">
+                        Page {pagination.page} of {pagination.totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={pagination.page >= pagination.totalPages || loading}
+                        onClick={() => {
+                          setPage((p) => p + 1);
+                          setExpandedRow(null);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

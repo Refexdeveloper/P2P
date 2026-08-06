@@ -51,7 +51,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
       <td colSpan={10} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 bg-teal-100 rounded-xl flex items-center justify-center">
                 <i className="ri-file-invoice-line text-teal-600 text-lg"></i>
@@ -102,9 +102,9 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
           <div className="p-6">
             {/* Details Tab */}
             {activeTab === 'details' && (
-              <div className="grid grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 {/* Dates strip */}
-                <div className="col-span-3 grid grid-cols-4 gap-3">
+                <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {[
                     { label: 'Invoice Date', value: invoice.invoiceDate, icon: 'ri-file-text-line' },
                     { label: 'Submitted Date', value: status !== 'Draft' ? invoice.submittedDate : '—', icon: 'ri-send-plane-line' },
@@ -119,7 +119,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                 </div>
 
                 {/* Vendor & GRN info */}
-                <div className="col-span-2 space-y-4">
+                <div className="lg:col-span-2 space-y-4">
                   <div className="bg-teal-50 border border-teal-100 rounded-xl p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                       <i className="ri-store-2-line text-teal-500"></i> Vendor Details
@@ -184,7 +184,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                 </div>
 
                 {/* Billing Summary */}
-                <div className="col-span-1">
+                <div className="lg:col-span-1">
                   <div className="bg-gray-50 rounded-xl p-4 sticky top-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
                       <i className="ri-receipt-line text-teal-500"></i> Invoice Summary
@@ -241,7 +241,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
 
             {/* Line Items Tab */}
             {activeTab === 'lineitems' && (
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <div className="border border-gray-200 rounded-xl overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>

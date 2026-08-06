@@ -13,12 +13,16 @@ const formatCurrency = (amount: number) =>
 const StatusBadge = ({ status }: { status: string }) => {
   const map: Record<string, string> = {
     'Pending Approval': 'bg-amber-100 text-amber-700 border border-amber-200',
+    'Pending Buyer Verify': 'bg-blue-100 text-blue-700 border border-blue-200',
     'PO Approved': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+    'Sent to Vendor': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     'PO Rejected': 'bg-red-100 text-red-700 border border-red-200',
   };
   const icon: Record<string, string> = {
     'Pending Approval': 'ri-time-line',
+    'Pending Buyer Verify': 'ri-shield-check-line',
     'PO Approved': 'ri-check-double-line',
+    'Sent to Vendor': 'ri-mail-send-line',
     'PO Rejected': 'ri-close-circle-line',
   };
   return (
@@ -111,7 +115,7 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
       <td colSpan={9} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {/* Expanded Header */}
-          <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
                 <i className="ri-file-text-line text-teal-600 text-lg"></i>
@@ -181,9 +185,9 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
           {/* Tab Content */}
           <div className="p-6">
             {activeTab === 'details' && (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* PO Summary */}
-                <div className="col-span-3 grid grid-cols-4 gap-3 mb-2">
+                <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-2">
                   {[
                     { label: 'PO Number', value: po.poNumber, icon: 'ri-file-text-line', color: 'text-teal-600' },
                     { label: 'PR Reference', value: po.prId, icon: 'ri-links-line', color: 'text-teal-600' },
@@ -200,13 +204,13 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
                 </div>
 
                 {/* Left Column */}
-                <div className="col-span-2 space-y-4">
+                <div className="lg:col-span-2 space-y-4">
                   {/* PR Details */}
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                       <i className="ri-file-list-3-line text-teal-500"></i> Purchase Request Details
                     </h4>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <p className="text-xs text-gray-500 mb-0.5">Title</p>
                         <p className="text-sm font-medium text-gray-900">{po.prTitle}</p>
@@ -259,8 +263,8 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
                 </div>
 
                 {/* Right Column - Billing */}
-                <div className="col-span-1">
-                  <div className="bg-gray-50 rounded-lg p-4 sticky top-4">
+                <div className="lg:col-span-1">
+                  <div className="bg-gray-50 rounded-lg p-4 lg:sticky lg:top-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
                       <i className="ri-receipt-line text-teal-500"></i> Billing Summary
                     </h4>
@@ -299,7 +303,7 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
 
             {activeTab === 'items' && (
               <div>
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="border border-gray-200 rounded-lg overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
@@ -556,7 +560,7 @@ export default function POApprovalPage() {
     try {
       if (modal.type === 'approve') {
         const res = await poApi.sign(modal.poId, remarks, signature);
-        showToast(res.message || `${modal.poNumber} signed and sent to vendor`, 'success');
+        showToast(res.message || `${modal.poNumber} signed — sent to SCM Buyer for final verify`, 'success');
       } else {
         await poApi.reject(modal.poId, remarks);
         showToast(`${modal.poNumber} has been rejected`, 'error');
@@ -612,13 +616,13 @@ export default function POApprovalPage() {
       {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">SCM Manager — PO Sign &amp; Approve</h1>
-        <p className="text-sm text-gray-500 mt-1">Sign PO with comments — signed PDF is emailed to vendor with all participants in CC</p>
+        <p className="text-sm text-gray-500 mt-1">Sign PO with comments — after sign-off, SCM Buyer final-verifies before the vendor email is sent</p>
       </div>
 
       {loading && <p className="text-sm text-gray-500 mb-4">Loading purchase orders...</p>}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         {[
           { label: 'Pending Approval', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
           { label: 'Approved', value: stats.approved, icon: 'ri-check-double-line', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
@@ -638,7 +642,7 @@ export default function POApprovalPage() {
       </div>
 
       {/* Pending Value Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 mb-6 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
             <i className="ri-money-rupee-circle-line text-white text-2xl"></i>
@@ -658,7 +662,7 @@ export default function POApprovalPage() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         {/* Table Header / Filters */}
         <div className="px-6 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-bold text-gray-900">Purchase Order Approvals</h2>
             <div className="flex items-center gap-3">
               {/* Search */}

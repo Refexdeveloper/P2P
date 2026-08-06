@@ -47,7 +47,12 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
   FOREIGN KEY (department_id) REFERENCES departments(id),
   FOREIGN KEY (requester_id) REFERENCES users(id),
   INDEX idx_pr_status (status),
-  INDEX idx_pr_requester (requester_id)
+  INDEX idx_pr_requester (requester_id),
+  INDEX idx_pr_department (department_id),
+  INDEX idx_pr_entity (entity_id),
+  INDEX idx_pr_status_submitted (status, submitted_at, id),
+  INDEX idx_pr_status_created (status, created_at, id),
+  FULLTEXT INDEX ft_pr_search (pr_number, title)
 );
 
 CREATE TABLE IF NOT EXISTS pr_line_items (
@@ -58,10 +63,9 @@ CREATE TABLE IF NOT EXISTS pr_line_items (
   quantity INT NOT NULL DEFAULT 1,
   unit_cost DECIMAL(15, 2) NOT NULL DEFAULT 0,
   total DECIMAL(15, 2) NOT NULL DEFAULT 0,
-  FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE
+  FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
+  INDEX idx_pr_line_pr (pr_id)
 );
-
-CREATE TABLE IF NOT EXISTS pr_approvals (
   id INT AUTO_INCREMENT PRIMARY KEY,
   pr_id INT NOT NULL,
   stage VARCHAR(50) NOT NULL,
@@ -70,10 +74,10 @@ CREATE TABLE IF NOT EXISTS pr_approvals (
   remarks TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
-  FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_pr_approvals_pr (pr_id),
+  INDEX idx_pr_approvals_pr_created (pr_id, created_at)
 );
-
-CREATE TABLE IF NOT EXISTS workflow_tasks (
   id INT AUTO_INCREMENT PRIMARY KEY,
   pr_id INT NOT NULL,
   task_type VARCHAR(50) DEFAULT 'PR_APPROVAL',
@@ -84,7 +88,9 @@ CREATE TABLE IF NOT EXISTS workflow_tasks (
   completed_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
-  INDEX idx_task_role_status (assigned_role, status)
+  INDEX idx_task_role_status (assigned_role, status),
+  INDEX idx_task_pr (pr_id),
+  INDEX idx_task_user_status (assigned_user_id, status)
 );
 
 CREATE TABLE IF NOT EXISTS rfq_invitations (
@@ -142,15 +148,15 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   id INT AUTO_INCREMENT PRIMARY KEY,
   po_number VARCHAR(40) NOT NULL UNIQUE,
   reference_po_number VARCHAR(30) NULL,
-  pr_id INT NOT NULL,
+  pr_id INT NULL,
   vendor_name VARCHAR(150) NOT NULL,
   vendor_email VARCHAR(150) NOT NULL,
   rfq_invitation_id INT NULL,
   created_by INT NOT NULL,
   delivery_address TEXT,
   expected_delivery_date DATE NULL,
-  payment_terms VARCHAR(100) DEFAULT 'Net 30 Days',
-  incoterms VARCHAR(50) DEFAULT 'DDP',
+  payment_terms TEXT DEFAULT NULL,
+  incoterms VARCHAR(255) DEFAULT 'DDP',
   special_instructions TEXT,
   po_type ENUM('short_po', 'long_po') NOT NULL DEFAULT 'short_po',
   letterhead_header LONGTEXT NULL,
@@ -160,11 +166,12 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   letterhead_id INT NULL,
   terms_clauses JSON NULL,
   annexure_clauses JSON NULL,
+  po_terms_details JSON NULL,
   gst_percentage DECIMAL(5, 2) DEFAULT 18,
   subtotal DECIMAL(15, 2) NOT NULL DEFAULT 0,
   tax_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
   grand_total DECIMAL(15, 2) NOT NULL DEFAULT 0,
-  status ENUM('draft', 'pending_approval', 'approved', 'rejected', 'sent_to_vendor') DEFAULT 'draft',
+  status ENUM('draft', 'imported', 'pending_approval', 'pending_buyer_verify', 'approved', 'rejected', 'sent_to_vendor') DEFAULT 'draft',
   pdf_path VARCHAR(500) NULL,
   signed_pdf_path VARCHAR(500) NULL,
   signer_id INT NULL,
@@ -179,7 +186,14 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   FOREIGN KEY (created_by) REFERENCES users(id),
   FOREIGN KEY (signer_id) REFERENCES users(id) ON DELETE SET NULL,
   INDEX idx_po_pr (pr_id),
-  INDEX idx_po_status (status)
+  INDEX idx_po_status (status),
+  INDEX idx_po_pr_status (pr_id, status),
+  INDEX idx_po_created_by_created (created_by, created_at),
+  INDEX idx_po_created_by_status (created_by, status),
+  INDEX idx_po_status_created (status, created_at),
+  INDEX idx_po_entity (entity_id),
+  INDEX idx_po_vendor_name (vendor_name),
+  FULLTEXT INDEX ft_po_search (po_number, vendor_name)
 );
 
 CREATE TABLE IF NOT EXISTS user_signatures (
@@ -196,11 +210,14 @@ CREATE TABLE IF NOT EXISTS po_line_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   po_id INT NOT NULL,
   category VARCHAR(100),
-  description VARCHAR(255) NOT NULL,
+  item_name VARCHAR(255) NULL,
+  description TEXT NOT NULL,
   quantity INT NOT NULL DEFAULT 1,
   unit_price DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
   total DECIMAL(15, 2) NOT NULL DEFAULT 0,
-  FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
+  FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  INDEX idx_po_line_po (po_id)
 );
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -320,7 +337,7 @@ CREATE TABLE IF NOT EXISTS entity_masters (
 CREATE TABLE IF NOT EXISTS vendor_documents (
   id INT AUTO_INCREMENT PRIMARY KEY,
   vendor_id INT NOT NULL,
-  doc_type ENUM('gst', 'pan', 'cheque') NOT NULL,
+  doc_type ENUM('gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration') NOT NULL,
   file_name VARCHAR(255) NOT NULL,
   file_path VARCHAR(500) NOT NULL,
   uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

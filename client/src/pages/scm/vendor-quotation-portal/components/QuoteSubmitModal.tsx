@@ -88,7 +88,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
           )}
 
           {/* RFQ Summary */}
-          <div className="grid grid-cols-3 gap-4 bg-gray-50 rounded-xl p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-gray-50 rounded-xl p-4">
             <div>
               <p className="text-xs text-gray-500">Buyer</p>
               <p className="text-sm font-semibold text-gray-900">{rfq.buyerName}</p>

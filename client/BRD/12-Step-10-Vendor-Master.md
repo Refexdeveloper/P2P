@@ -77,6 +77,9 @@ Maintain vendor registry used for RFQ invitations and PO generation. Stores comp
 | 1 | GST Certificate | `gstDoc` | File (PDF/image) | No |
 | 2 | PAN Card | `panDoc` | File (PDF/image) | No |
 | 3 | Cancelled Cheque | `chequeDoc` | File (PDF/image) | No |
+| 4 | MSME Certificate | `msmeDoc` | File (PDF/image) | No |
+| 5 | KYC Form | `kycDoc` | File (PDF/image) | No |
+| 6 | MSME Declaration Form | `msmeDeclarationDoc` | File (PDF/image) | No |
 
 Documents stored as base64 in `vendor_documents` table.
 
@@ -134,7 +137,7 @@ Documents stored as base64 in `vendor_documents` table.
 |--------|------|-------------|
 | `id` | INT PK | |
 | `vendor_id` | INT FK | |
-| `doc_type` | ENUM | gst/pan/cheque |
+| `doc_type` | ENUM | gst/pan/cheque/msme/kyc/msme_declaration |
 | `file_name` | VARCHAR | |
 | `file_data` | LONGTEXT | Base64 |
 | `uploaded_at` | DATETIME | |

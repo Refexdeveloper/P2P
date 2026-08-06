@@ -144,7 +144,7 @@ export default function UserPermissionsPage() {
 
   return (
     <DashboardLayout>
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">User Permissions</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -162,9 +162,9 @@ export default function UserPermissionsPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* User list */}
-        <div className="col-span-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="lg:col-span-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold text-gray-900">Users</h2>
@@ -247,7 +247,7 @@ export default function UserPermissionsPage() {
         </div>
 
         {/* Permission editor */}
-        <div className="col-span-8 bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="lg:col-span-8 bg-white rounded-xl border border-gray-200 shadow-sm">
           {!selectedUser ? (
             <div className="py-20 text-center">
               <i className="ri-user-settings-line text-5xl text-gray-200 mb-4 block"></i>
@@ -324,7 +324,7 @@ export default function UserPermissionsPage() {
                 {Object.entries(groupedCatalog).map(([group, items]) => (
                   <div key={group}>
                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">{group}</h3>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {items.map((item) => {
                         const checked = selectedPerms.includes(item.code);
                         return (

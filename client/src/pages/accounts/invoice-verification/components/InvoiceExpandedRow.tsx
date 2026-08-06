@@ -20,7 +20,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
   return (
     <div className="p-5 space-y-4">
       {/* Top summary bar */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <p className="text-xs text-gray-500 mb-1">Invoice Amount</p>
           <p className="text-base font-bold text-gray-900">₹{invoice.invoiceGrandTotal.toLocaleString('en-IN')}</p>
@@ -81,7 +81,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
       {tab === 'match' && (
         <div className="space-y-4">
           {/* Match checks */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { label: 'PO Match', ok: invoice.matchStatus.poMatch, desc: 'Invoice vs Purchase Order' },
               { label: 'GRN Match', ok: invoice.matchStatus.grnMatch, desc: 'Invoice vs Goods Receipt' },
@@ -234,7 +234,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
       )}
 
       {tab === 'lineitems' && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">

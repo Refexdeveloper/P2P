@@ -16,15 +16,23 @@ export default function RichTextEditor({
   editorKey,
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
-  const lastSyncedValue = useRef(value);
+  const lastSyncedValue = useRef<string | null>(null);
+  const mountedKey = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!editorRef.current) return;
+    const keyChanged = mountedKey.current !== editorKey;
+    if (keyChanged) {
+      mountedKey.current = editorKey;
+      editorRef.current.innerHTML = value || '';
+      lastSyncedValue.current = value || '';
+      return;
+    }
     if (lastSyncedValue.current === value) return;
     if (editorRef.current.innerHTML !== value) {
       editorRef.current.innerHTML = value || '';
     }
-    lastSyncedValue.current = value;
+    lastSyncedValue.current = value || '';
   }, [value, editorKey]);
 
   const exec = useCallback((command: string, arg?: string) => {

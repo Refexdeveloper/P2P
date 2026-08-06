@@ -51,10 +51,20 @@ function normalizeConfig(config: PoLetterheadConfig): PoLetterheadConfig {
 
 function ClauseTable({
   title,
+  headerColumnLabel = 'Header',
+  descriptionColumnLabel = 'Description',
+  descriptionFieldLabel = 'Description',
+  headerPlaceholder = 'e.g. Payment Terms',
+  descriptionPlaceholder = 'Enter description...',
   rows,
   onChange,
 }: {
   title: string;
+  headerColumnLabel?: string;
+  descriptionColumnLabel?: string;
+  descriptionFieldLabel?: string;
+  headerPlaceholder?: string;
+  descriptionPlaceholder?: string;
   rows: EditableClause[];
   onChange: (rows: EditableClause[]) => void;
 }) {
@@ -104,8 +114,8 @@ function ClauseTable({
           <thead>
             <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 bg-white border-b border-gray-100">
               <th className="px-5 py-3 w-12">#</th>
-              <th className="px-5 py-3 w-[220px]">Terms Header</th>
-              <th className="px-5 py-3">Terms Description</th>
+              <th className="px-5 py-3 w-[220px]">{headerColumnLabel}</th>
+              <th className="px-5 py-3">{descriptionColumnLabel}</th>
               <th className="px-5 py-3 w-28 text-center">Actions</th>
             </tr>
           </thead>
@@ -119,17 +129,17 @@ function ClauseTable({
                     type="text"
                     value={row.termsHeader}
                     onChange={(e) => updateRow(index, { termsHeader: e.target.value })}
-                    placeholder="e.g. Payment Terms"
+                    placeholder={headerPlaceholder}
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
                   />
                 </td>
                 <td className="px-5 py-4">
-                  <label className="block text-xs text-gray-400 mb-1">Description (Rich Text)</label>
+                  <label className="block text-xs text-gray-400 mb-1">{descriptionFieldLabel}</label>
                   <RichTextEditor
                     editorKey={row.clientKey}
                     value={row.termsDescription}
                     onChange={(html) => updateRow(index, { termsDescription: html })}
-                    placeholder="Enter terms description..."
+                    placeholder={descriptionPlaceholder}
                     minHeight={100}
                   />
                 </td>
@@ -430,12 +440,22 @@ export default function PoTypeMasterPage() {
 
             <ClauseTable
               title="Terms & Conditions"
+              headerColumnLabel="Terms Header"
+              descriptionColumnLabel="Terms & Conditions"
+              descriptionFieldLabel="Terms & Conditions"
+              headerPlaceholder="e.g. Payment Terms"
+              descriptionPlaceholder="Enter terms & conditions..."
               rows={termsRows}
               onChange={(terms) => updateCurrent({ terms: terms as unknown as PoLetterheadClause[] })}
             />
 
             <ClauseTable
               title="Annexure"
+              headerColumnLabel="Annexure Header"
+              descriptionColumnLabel="Annexure Description"
+              descriptionFieldLabel="Annexure Description"
+              headerPlaceholder="e.g. Scope of Work"
+              descriptionPlaceholder="Enter annexure description..."
               rows={annexureRows}
               onChange={(annexure) => updateCurrent({ annexure: annexure as unknown as PoLetterheadClause[] })}
             />

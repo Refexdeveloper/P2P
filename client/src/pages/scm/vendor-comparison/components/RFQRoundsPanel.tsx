@@ -119,7 +119,7 @@ function VendorRoundsCard({ vendor }: { vendor: Vendor }) {
           </div>
 
           {/* Key metrics grid */}
-          <div className="grid grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             <div className="bg-teal-50 border border-teal-100 rounded-lg p-3">
               <p className="text-xs text-teal-600 mb-1 flex items-center gap-1">
                 <i className="ri-money-rupee-circle-line"></i> Quoted Price
@@ -149,7 +149,7 @@ function VendorRoundsCard({ vendor }: { vendor: Vendor }) {
           </div>
 
           {/* Scores */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             {[
               { label: 'Technical Score', value: currentRound.technicalScore, color: 'bg-violet-500' },
               { label: 'Commercial Score', value: currentRound.commercialScore, color: 'bg-teal-500' },

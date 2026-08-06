@@ -554,6 +554,92 @@ export async function updateEntity(id, body) {
   return mapEntity(rows[0]);
 }
 
+const ENTITY_HEADERS = ['name', 'code', 'costCenter', 'description', 'status'];
+
+export async function exportEntitiesCsv() {
+  const rows = await listEntities();
+  return rowsToCsv(
+    ENTITY_HEADERS,
+    rows.map((r) => ({
+      name: r.name,
+      code: r.code,
+      costCenter: r.costCenter,
+      description: r.description,
+      status: r.status,
+    }))
+  );
+}
+
+export function getEntityImportTemplateCsv() {
+  return rowsToCsv(ENTITY_HEADERS, [
+    {
+      name: 'Refex Green Mobility',
+      code: 'RGML',
+      costCenter: 'CC-1001',
+      description: 'Sample entity for PR/PO numbering',
+      status: 'active',
+    },
+  ]);
+}
+
+export async function importEntitiesFromCsv(csvText) {
+  const parsed = parseCsv(csvText);
+  if (!parsed.length) throw new Error('CSV has no data rows');
+
+  let created = 0;
+  let updated = 0;
+  const errors = [];
+
+  for (let i = 0; i < parsed.length; i++) {
+    const rowNum = i + 2;
+    const mapped = normalizeHeaderKey(parsed[i], {
+      name: ['name', 'entity', 'entityname', 'entity_name'],
+      code: ['code', 'entitycode', 'entity_code'],
+      costCenter: ['costcenter', 'cost_center', 'costcentre', 'cc'],
+      description: ['description', 'desc'],
+      status: ['status'],
+    });
+    try {
+      if (!mapped.name) throw new Error('name is required');
+      if (!mapped.costCenter) throw new Error('costCenter is required');
+      const code = String(mapped.code || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '');
+
+      let existingId = null;
+      if (code) {
+        const [byCode] = await pool.query(`SELECT id FROM entity_masters WHERE code = ?`, [code]);
+        if (byCode.length) existingId = byCode[0].id;
+      }
+      if (!existingId) {
+        const [byName] = await pool.query(`SELECT id FROM entity_masters WHERE name = ?`, [mapped.name]);
+        if (byName.length) existingId = byName[0].id;
+      }
+
+      const payload = {
+        name: mapped.name,
+        code: code || undefined,
+        costCenter: mapped.costCenter,
+        description: mapped.description || '',
+        status: mapped.status === 'inactive' ? 'inactive' : 'active',
+      };
+
+      if (existingId) {
+        await updateEntity(existingId, payload);
+        updated += 1;
+      } else {
+        await createEntity(payload);
+        created += 1;
+      }
+    } catch (err) {
+      errors.push(`Row ${rowNum}: ${err.message}`);
+    }
+  }
+
+  return { created, updated, failed: errors.length, errors };
+}
+
 export async function listDepartments({ search, status } = {}) {
   let sql = `SELECT * FROM departments WHERE 1=1`;
   const params = [];

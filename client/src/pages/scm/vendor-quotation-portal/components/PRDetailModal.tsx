@@ -116,7 +116,7 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
           {activeTab === 'PR Details' && (
             <div className="space-y-5">
               {/* Key Info Grid */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Buyer Information</p>
                   <div className="space-y-3">

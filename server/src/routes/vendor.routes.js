@@ -24,8 +24,14 @@ function sendCsv(res, filename, csv) {
 
 router.get('/', requireRoles('SCM Buyer', 'SCM Manager', 'Requester'), async (req, res) => {
   try {
-    const data = await listVendors({ search: req.query.search });
-    res.json({ data });
+    const page = req.query.page != null ? Number(req.query.page) : undefined;
+    const limit = req.query.limit != null ? Number(req.query.limit) : undefined;
+    const result = await listVendors({
+      search: req.query.search,
+      page: Number.isFinite(page) ? page : undefined,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+    res.json(result);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

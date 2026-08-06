@@ -340,7 +340,7 @@ export default function CreateGRNModal({ isOpen, onClose, onSubmit }: CreateGRNM
                   <i className="ri-file-text-line text-teal-600 text-sm"></i>
                   <span className="text-xs font-bold text-teal-700 uppercase tracking-wide">Selected PO</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <p className="text-xs text-gray-500">PO Number</p>
                     <p className="text-sm font-bold text-teal-600">{selectedPOData.poNumber}</p>
@@ -356,7 +356,7 @@ export default function CreateGRNModal({ isOpen, onClose, onSubmit }: CreateGRNM
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Received By <span className="text-red-500">*</span>
@@ -409,7 +409,7 @@ export default function CreateGRNModal({ isOpen, onClose, onSubmit }: CreateGRNM
                   />
                 </div>
 
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     Delivery Address <span className="text-red-500">*</span>
                   </label>
@@ -423,7 +423,7 @@ export default function CreateGRNModal({ isOpen, onClose, onSubmit }: CreateGRNM
                   {errors.deliveryAddress && <p className="text-xs text-red-500 mt-1">{errors.deliveryAddress}</p>}
                 </div>
 
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                     General Remarks <span className="text-gray-400 font-normal">(optional)</span>
                   </label>
@@ -460,7 +460,7 @@ export default function CreateGRNModal({ isOpen, onClose, onSubmit }: CreateGRNM
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Ordered Qty</label>
                         <input
@@ -496,7 +496,7 @@ export default function CreateGRNModal({ isOpen, onClose, onSubmit }: CreateGRNM
                           <option value="Pending Inspection">Pending Inspection</option>
                         </select>
                       </div>
-                      <div className="col-span-3">
+                      <div className="sm:col-span-3">
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Item Remarks (optional)</label>
                         <input
                           type="text"

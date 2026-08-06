@@ -107,7 +107,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
       {/* Drawer */}
       <div className="fixed right-0 top-0 h-full w-full max-w-4xl bg-white shadow-2xl z-50 overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-8 py-6 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-8 py-6 flex flex-wrap items-center justify-between gap-3 z-10">
           <div>
             <h2 className="text-2xl font-semibold text-gray-900">{pr.id}</h2>
             <p className="text-sm text-gray-600 mt-1">{pr.title}</p>
@@ -215,7 +215,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
               {/* Line Items */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Line Items</h3>
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="border border-gray-200 rounded-lg overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
@@ -253,7 +253,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
                   <i className="ri-star-fill text-emerald-600 text-xl"></i>
                   <h3 className="text-lg font-semibold text-gray-900">Recommended Vendor</h3>
                 </div>
-                <div className="grid grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Vendor Name</p>
                     <p className="text-sm font-semibold text-gray-900">{pr.recommendedVendor}</p>
@@ -282,7 +282,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
                       : 'border-gray-200 bg-white'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3">
                       <h4 className="text-lg font-semibold text-gray-900">{vendor.vendorName}</h4>
                       {vendor.recommended && (
@@ -300,7 +300,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Quoted Price</p>
                       <p className="text-sm font-semibold text-gray-900">{formatCurrency(vendor.quotedPrice)}</p>

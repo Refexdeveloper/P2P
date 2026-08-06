@@ -134,7 +134,7 @@ export default function VendorQuotationPortalPage() {
           )}
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {[
               { label: 'Total RFQs',       value: stats.total,                        icon: 'ri-file-list-3-line',         color: '#6366f1', bg: '#eef2ff' },
               { label: 'Pending Quote',     value: stats.pending,                      icon: 'ri-time-line',                color: '#d97706', bg: '#fffbeb' },

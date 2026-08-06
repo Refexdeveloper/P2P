@@ -390,7 +390,7 @@ export default function CreatePRPage() {
       ) : (
       <>
       {/* ── Hero Header Banner ── */}
-      <div className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 px-8 py-6 mb-0">
+      <div className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 px-4 sm:px-8 py-5 sm:py-6 mb-0">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           {/* Left: breadcrumb + title */}
           <div>
@@ -454,8 +454,8 @@ export default function CreatePRPage() {
       </div>
 
       {/* ── Sticky Sub-header (type + status bar) ── */}
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm px-8 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm px-3 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${typeColors[requestType]}`}>
             {requestType}
           </span>

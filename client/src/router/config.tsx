@@ -28,10 +28,13 @@ const NotFoundPage = lazy(() => import('../pages/NotFound'));
 const SCMTechnicalClearancePage = lazy(() => import('../pages/scm/technical-clearance/page'));
 const SCMPurchaseRequestsPage = lazy(() => import('../pages/scm/purchase-requests/page'));
 const CreatePOPage = lazy(() => import('../pages/scm/create-po/page'));
+const TrackPoPage = lazy(() => import('../pages/scm/track-po/page'));
+const PoExcelImportPage = lazy(() => import('../pages/scm/po-excel-import/page'));
 const PoLetterheadMasterPage = lazy(() => import('../pages/scm/po-letterhead-master/page'));
 const LetterheadMasterPage = lazy(() => import('../pages/scm/letterhead-master/page'));
 const POPDFViewPage = lazy(() => import('../pages/scm/po-pdf-view/page'));
 const POApprovalPage = lazy(() => import('../pages/scm/po-approval/page'));
+const BuyerFinalVerifyPage = lazy(() => import('../pages/scm/buyer-final-verify/page'));
 const GRNPage = lazy(() => import('../pages/grn/page'));
 const InvoiceVerificationPage = lazy(() => import('../pages/accounts/invoice-verification/page'));
 const PaymentPage = lazy(() => import('../pages/accounts/payment/page'));
@@ -152,6 +155,14 @@ const routes: RouteObject[] = [
     element: <ProtectedRoute><CreatePOPage /></ProtectedRoute>
   },
   {
+    path: '/scm/track-po',
+    element: <ProtectedRoute><TrackPoPage /></ProtectedRoute>
+  },
+  {
+    path: '/scm/po-excel-import',
+    element: <ProtectedRoute><PoExcelImportPage /></ProtectedRoute>
+  },
+  {
     path: '/scm/po-type-master',
     element: <ProtectedRoute><PoLetterheadMasterPage /></ProtectedRoute>,
   },
@@ -170,6 +181,10 @@ const routes: RouteObject[] = [
   {
     path: '/scm/po-approval',
     element: <ProtectedRoute><POApprovalPage /></ProtectedRoute>
+  },
+  {
+    path: '/scm/buyer-final-verify',
+    element: <ProtectedRoute><BuyerFinalVerifyPage /></ProtectedRoute>
   },
   {
     path: '/grn',

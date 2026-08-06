@@ -16,6 +16,9 @@ import {
   listEntities,
   createEntity,
   updateEntity,
+  exportEntitiesCsv,
+  getEntityImportTemplateCsv,
+  importEntitiesFromCsv,
   listDepartments,
   createDepartment,
   updateDepartment,
@@ -165,6 +168,36 @@ router.get('/entities', requireRoles(...READ_ROLES), async (req, res) => {
       status: req.query.status,
     });
     res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/entities/export', canManageEntities, async (_req, res) => {
+  try {
+    sendCsv(res, `entities-export-${Date.now()}.csv`, await exportEntitiesCsv());
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/entities/import-template', canManageEntities, async (_req, res) => {
+  try {
+    sendCsv(res, 'entities-import-template.csv', getEntityImportTemplateCsv());
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/entities/import', canManageEntities, async (req, res) => {
+  try {
+    const csvText = req.body?.csv || req.body?.content || '';
+    if (!csvText.trim()) throw new Error('CSV content is required');
+    const result = await importEntitiesFromCsv(csvText);
+    res.json({
+      data: result,
+      message: `Import done: ${result.created} created, ${result.updated} updated, ${result.failed} failed`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

@@ -124,7 +124,98 @@ const MIGRATIONS = [
     UNIQUE KEY uk_doc_entity_fy (doc_type, entity_id, fy_label),
     INDEX idx_doc_seq_entity (entity_id)
   )`,
+  `ALTER TABLE vendor_documents MODIFY COLUMN doc_type ENUM('gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration') NOT NULL`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN status ENUM('draft', 'imported', 'pending_approval', 'pending_buyer_verify', 'approved', 'rejected', 'sent_to_vendor') DEFAULT 'draft'`,
+  // Excel / historical PO import may not link to a PR
+  `ALTER TABLE purchase_orders MODIFY COLUMN pr_id INT NULL`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN incoterms VARCHAR(255) DEFAULT 'DDP'`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN payment_terms TEXT`,
+  `ALTER TABLE purchase_orders ADD COLUMN po_terms_details JSON NULL`,
+  `ALTER TABLE po_line_items ADD COLUMN discount DECIMAL(15, 2) NOT NULL DEFAULT 0`,
+  `ALTER TABLE po_line_items MODIFY COLUMN discount DECIMAL(15, 2) NOT NULL DEFAULT 0`,
+  `ALTER TABLE po_line_items MODIFY COLUMN description TEXT NOT NULL`,
+  `ALTER TABLE po_line_items ADD COLUMN item_name VARCHAR(255) NULL`,
 ];
+
+/** Idempotent index creation for PR/PO list & track performance */
+const PERFORMANCE_INDEXES = [
+  // purchase_requests
+  { table: 'purchase_requests', name: 'idx_pr_department', columns: 'department_id' },
+  { table: 'purchase_requests', name: 'idx_pr_entity', columns: 'entity_id' },
+  { table: 'purchase_requests', name: 'idx_pr_status_submitted', columns: 'status, submitted_at, id' },
+  { table: 'purchase_requests', name: 'idx_pr_status_created', columns: 'status, created_at, id' },
+  // purchase_orders
+  { table: 'purchase_orders', name: 'idx_po_pr_status', columns: 'pr_id, status' },
+  { table: 'purchase_orders', name: 'idx_po_created_by_created', columns: 'created_by, created_at' },
+  { table: 'purchase_orders', name: 'idx_po_created_by_status', columns: 'created_by, status' },
+  { table: 'purchase_orders', name: 'idx_po_status_created', columns: 'status, created_at' },
+  { table: 'purchase_orders', name: 'idx_po_entity', columns: 'entity_id' },
+  { table: 'purchase_orders', name: 'idx_po_vendor_name', columns: 'vendor_name' },
+  // line items / approvals / tasks
+  { table: 'pr_line_items', name: 'idx_pr_line_pr', columns: 'pr_id' },
+  { table: 'po_line_items', name: 'idx_po_line_po', columns: 'po_id' },
+  { table: 'pr_approvals', name: 'idx_pr_approvals_pr', columns: 'pr_id' },
+  { table: 'pr_approvals', name: 'idx_pr_approvals_pr_created', columns: 'pr_id, created_at' },
+  { table: 'workflow_tasks', name: 'idx_task_pr', columns: 'pr_id' },
+  { table: 'workflow_tasks', name: 'idx_task_user_status', columns: 'assigned_user_id, status' },
+  // RFQ lookups used by ready-for-PO EXISTS
+  { table: 'rfq_configs', name: 'idx_rfq_config_finalized', columns: 'finalized_at' },
+  { table: 'rfq_configs', name: 'idx_rfq_config_recommended', columns: 'recommended_invitation_id' },
+];
+
+const FULLTEXT_INDEXES = [
+  {
+    table: 'purchase_requests',
+    name: 'ft_pr_search',
+    columns: 'pr_number, title',
+  },
+  {
+    table: 'purchase_orders',
+    name: 'ft_po_search',
+    columns: 'po_number, vendor_name',
+  },
+];
+
+async function indexExists(table, name) {
+  const [rows] = await pool.query(
+    `SELECT 1 AS ok
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = ?
+       AND index_name = ?
+     LIMIT 1`,
+    [table, name]
+  );
+  return rows.length > 0;
+}
+
+async function ensurePerformanceIndexes() {
+  for (const idx of PERFORMANCE_INDEXES) {
+    try {
+      if (await indexExists(idx.table, idx.name)) continue;
+      await pool.query(`CREATE INDEX \`${idx.name}\` ON \`${idx.table}\` (${idx.columns})`);
+      console.log(`Index created: ${idx.table}.${idx.name}`);
+    } catch (err) {
+      const msg = String(err.message || '');
+      if (msg.includes('Duplicate') || msg.includes('already exists')) continue;
+      console.warn(`Index skipped ${idx.table}.${idx.name}:`, msg);
+    }
+  }
+
+  for (const idx of FULLTEXT_INDEXES) {
+    try {
+      if (await indexExists(idx.table, idx.name)) continue;
+      await pool.query(
+        `CREATE FULLTEXT INDEX \`${idx.name}\` ON \`${idx.table}\` (${idx.columns})`
+      );
+      console.log(`Fulltext index created: ${idx.table}.${idx.name}`);
+    } catch (err) {
+      const msg = String(err.message || '');
+      if (msg.includes('Duplicate') || msg.includes('already exists')) continue;
+      console.warn(`Fulltext index skipped ${idx.table}.${idx.name}:`, msg);
+    }
+  }
+}
 
 export async function runStartupMigrations() {
   for (const sql of MIGRATIONS) {
@@ -134,6 +225,12 @@ export async function runStartupMigrations() {
       if (String(err.message || '').includes('Duplicate column')) continue;
       console.warn('Migration skipped:', err.message);
     }
+  }
+
+  try {
+    await ensurePerformanceIndexes();
+  } catch (err) {
+    console.warn('Performance index migration skipped:', err.message);
   }
 
   try {

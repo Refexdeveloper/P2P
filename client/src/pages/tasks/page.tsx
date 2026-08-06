@@ -106,7 +106,7 @@ export default function TasksPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('sla');
+  const [sortBy, setSortBy] = useState('date');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [actionUpdates, setActionUpdates] = useState<Record<string, string>>({});
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
@@ -165,6 +165,15 @@ export default function TasksPage() {
   };
 
   const openPostRfqPage = (task: TaskItem, action?: 'approve' | 'reject' | 'return') => {
+    // Buyer Create PO queue → go straight to Create PO
+    if (
+      user?.role === 'SCM Buyer' &&
+      (task.statusUI === 'Pending SCM PO' || task.actionPath?.includes('/rfq-approval/')) &&
+      (!action || action === 'approve')
+    ) {
+      navigate(`/scm/create-po?prId=${task.prId}`);
+      return;
+    }
     const base = task.actionPath || `/rfq-approval/${task.prId}`;
     const url = action ? `${base}?action=${action}` : base;
     navigate(url);

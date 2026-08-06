@@ -40,13 +40,19 @@ type MenuGroup = {
 
 type MenuNode = MenuLeaf | MenuGroup;
 
-export default function Sidebar() {
-  // Default closed; expand only while hovered
+type SidebarProps = {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+};
+
+export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const [hovered, setHovered] = useState(false);
-  const collapsed = !hovered;
   const location = useLocation();
   const { user, logout, refreshUser } = useAuth();
   const [mastersOpen, setMastersOpen] = useState(true);
+
+  // Desktop: collapse when not hovered. Mobile drawer: always expanded when open.
+  const collapsed = !mobileOpen && !hovered;
 
   const menuItems = useMemo<MenuNode[]>(() => {
     const nav = ensureNavigation(user?.role, user?.navigation);
@@ -103,7 +109,6 @@ export default function Sidebar() {
     if (onMastersPath) setMastersOpen(true);
   }, [location.pathname]);
 
-  // Heal stale sessions: empty nav, or SCM missing Masters entries
   useEffect(() => {
     if (!user) return;
     const nav = ensureNavigation(user.role, user.navigation);
@@ -116,6 +121,10 @@ export default function Sidebar() {
     }
   }, [user, refreshUser]);
 
+  const handleNavigate = () => {
+    onMobileClose?.();
+  };
+
   const renderLink = (item: MenuLeaf, nested = false) => {
     const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     return (
@@ -123,6 +132,7 @@ export default function Sidebar() {
         key={item.path}
         to={item.path}
         title={collapsed ? item.label : undefined}
+        onClick={handleNavigate}
         className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} ${
           nested ? 'px-3 py-2 ml-2' : 'px-3 py-2.5'
         } rounded-lg transition-colors ${
@@ -152,20 +162,41 @@ export default function Sidebar() {
   };
 
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      className={`${collapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ease-out shrink-0 z-30`}
+    <aside
+      onMouseEnter={() => {
+        if (window.innerWidth >= 1024) setHovered(true);
+      }}
+      onMouseLeave={() => {
+        if (window.innerWidth >= 1024) setHovered(false);
+      }}
+      className={`
+        bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ease-out z-50
+        fixed inset-y-0 left-0 w-64
+        ${mobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}
+        lg:static lg:translate-x-0 lg:shadow-none lg:shrink-0
+        ${collapsed ? 'lg:w-20' : 'lg:w-64'}
+      `}
     >
-      <div className={`h-16 flex items-center border-b border-gray-200 ${collapsed ? 'justify-center px-2' : 'justify-between px-4'}`}>
+      <div
+        className={`h-16 flex items-center border-b border-gray-200 ${
+          collapsed ? 'lg:justify-center lg:px-2 justify-between px-4' : 'justify-between px-4'
+        }`}
+      >
         <div className="flex items-center space-x-2 min-w-0">
           <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center shrink-0">
             <i className="ri-shopping-cart-2-line text-white text-lg"></i>
           </div>
-          {!collapsed && (
-            <span className="font-semibold text-gray-900 whitespace-nowrap">P2P System</span>
-          )}
+          {!collapsed && <span className="font-semibold text-gray-900 whitespace-nowrap">P2P System</span>}
+          {collapsed && <span className="font-semibold text-gray-900 whitespace-nowrap lg:hidden">P2P System</span>}
         </div>
+        <button
+          type="button"
+          onClick={onMobileClose}
+          className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 cursor-pointer"
+          aria-label="Close navigation"
+        >
+          <i className="ri-close-line text-xl"></i>
+        </button>
       </div>
 
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
@@ -234,7 +265,11 @@ export default function Sidebar() {
               title={user?.name || 'User'}
             >
               <span className="text-teal-600 font-semibold text-sm">
-                {user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2) || 'U'}
+                {user?.name
+                  ?.split(' ')
+                  .map((n) => n[0])
+                  .join('')
+                  .slice(0, 2) || 'U'}
               </span>
             </div>
             <button
@@ -249,7 +284,11 @@ export default function Sidebar() {
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center shrink-0">
               <span className="text-teal-600 font-semibold text-sm">
-                {user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2) || 'U'}
+                {user?.name
+                  ?.split(' ')
+                  .map((n) => n[0])
+                  .join('')
+                  .slice(0, 2) || 'U'}
               </span>
             </div>
             <div className="flex-1 min-w-0">
@@ -268,6 +307,6 @@ export default function Sidebar() {
           </div>
         )}
       </div>
-    </div>
+    </aside>
   );
 }

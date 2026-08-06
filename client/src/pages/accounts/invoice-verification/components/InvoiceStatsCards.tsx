@@ -15,7 +15,7 @@ export default function InvoiceStatsCards({ invoices }: Props) {
   };
 
   return (
-    <div className="grid grid-cols-6 gap-6 mb-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6 mb-6">
       <div className="bg-white rounded-xl p-6 border border-orange-200 shadow-sm">
         <div className="flex items-center justify-between">
           <div>

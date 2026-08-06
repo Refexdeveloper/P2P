@@ -59,7 +59,7 @@ export default function POApprovalModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold text-gray-900">PO Approval</h2>
             <p className="text-sm text-gray-600 mt-1">Review and approve/reject purchase order</p>
@@ -99,7 +99,7 @@ export default function POApprovalModal({
           {/* PR Details */}
           <div className="bg-gray-50 rounded-lg p-5">
             <h3 className="text-sm font-semibold text-gray-900 mb-4">Purchase Request Details</h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <p className="text-xs text-gray-600 mb-1">Title</p>
                 <p className="text-sm font-medium text-gray-900">{po.prTitle}</p>
@@ -118,7 +118,7 @@ export default function POApprovalModal({
           {/* Line Items */}
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Line Items</h3>
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-gray-200 rounded-lg overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>

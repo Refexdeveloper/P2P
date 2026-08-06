@@ -109,7 +109,7 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
       <td colSpan={colSpan} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {/* Expanded Header */}
-          <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
                 <i className="ri-file-list-3-line text-teal-600 text-lg"></i>
@@ -159,9 +159,9 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
           <div className="p-6">
             {/* ── PR Details ── */}
             {activeTab === 'details' && (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Top summary row */}
-                <div className="col-span-3 grid grid-cols-4 gap-3 mb-2">
+                <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-2">
                   {[
                     { label: 'PR Number', value: pr.id, icon: 'ri-file-text-line', color: 'text-teal-600' },
                     { label: 'Requested Date', value: pr.requestedDate, icon: 'ri-calendar-line', color: 'text-gray-700' },
@@ -178,12 +178,12 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
                 </div>
 
                 {/* Left */}
-                <div className="col-span-2 space-y-4">
+                <div className="lg:col-span-2 space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                       <i className="ri-user-line text-teal-500"></i> Requester Information
                     </h4>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <p className="text-xs text-gray-500 mb-0.5">Requester</p>
                         <p className="text-sm font-medium text-gray-900">{pr.requester}</p>
@@ -208,7 +208,7 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
                 </div>
 
                 {/* Right */}
-                <div className="col-span-1">
+                <div className="lg:col-span-1">
                   <div className="bg-teal-50 border border-teal-100 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
                       <i className="ri-trophy-line text-teal-500"></i> Recommended Vendor
@@ -243,7 +243,7 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
 
             {/* ── Line Items ── */}
             {activeTab === 'items' && (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="border border-gray-200 rounded-lg overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
@@ -282,7 +282,7 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
             {/* ── Vendor Comparison ── */}
             {activeTab === 'vendors' && (
               <div>
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="border border-gray-200 rounded-lg overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>

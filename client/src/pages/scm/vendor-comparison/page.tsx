@@ -186,7 +186,7 @@ export default function VendorComparisonPage() {
         {viewMode === 'pr-list' && (
           <>
             {/* Stats Cards */}
-            <div className="grid grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
               {[
                 { label: 'Ready for PO', value: stats.readyForPO, icon: 'ri-checkbox-circle-line', bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-100' },
                 { label: 'Pending Approval', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
@@ -207,7 +207,7 @@ export default function VendorComparisonPage() {
             </div>
 
             {/* Total Value Banner */}
-            <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 mb-6 flex items-center justify-between">
+            <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
                   <i className="ri-money-rupee-circle-line text-white text-2xl"></i>
@@ -227,7 +227,7 @@ export default function VendorComparisonPage() {
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
               {/* Filters */}
               <div className="px-6 py-5 border-b border-gray-100">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-base font-bold text-gray-900">Purchase Requests — Vendor Comparison</h2>
                   <div className="flex items-center gap-3">
                     <div className="relative">
@@ -470,7 +470,7 @@ export default function VendorComparisonPage() {
                 </div>
                 <h2 className="text-base font-semibold text-gray-900">Purchase Request Details</h2>
               </div>
-              <div className="grid grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Department</p>
                   <p className="text-sm font-medium text-gray-900">{vendorComparisonData.department}</p>
@@ -722,7 +722,7 @@ export default function VendorComparisonPage() {
                     <p className="text-xs text-gray-500 mb-1">Uploaded By</p>
                     <p className="text-sm font-semibold text-gray-900">{previewFile.file.uploadedBy}</p>
                   </div>
-                  <div className="bg-white rounded-lg p-3 border border-gray-200 col-span-2">
+                  <div className="bg-white rounded-lg p-3 border border-gray-200 sm:col-span-2">
                     <p className="text-xs text-gray-500 mb-1">Uploaded At</p>
                     <p className="text-sm font-semibold text-gray-900">{previewFile.file.uploadedAt}</p>
                   </div>

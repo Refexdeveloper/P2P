@@ -25,7 +25,7 @@ export interface POData {
   gstPercentage: number;
   taxAmount: number;
   grandTotal: number;
-  status: 'Pending Approval' | 'PO Approved' | 'PO Rejected';
+  status: 'Pending Approval' | 'Pending Buyer Verify' | 'PO Approved' | 'PO Rejected' | 'Sent to Vendor';
   priority: 'high' | 'medium' | 'low';
   createdBy: string;
   approvalHistory: {

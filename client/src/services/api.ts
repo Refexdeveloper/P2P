@@ -318,7 +318,60 @@ export const poApi = {
     }),
   list: (pending?: boolean) =>
     request<{ data: unknown[] }>(`/api/po${pending ? '?pending=true' : ''}`),
+  listTrack: (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.page != null) query.set('page', String(params.page));
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    if (params?.search) query.set('search', params.search);
+    if (params?.status && params.status !== 'all') query.set('status', params.status);
+    const qs = query.toString();
+    return request<{
+      data: Array<{
+        key: string;
+        prId: number;
+        poId: number | null;
+        prNumber: string;
+        poNumber: string | null;
+        title: string;
+        department: string;
+        requester: string;
+        vendorName: string;
+        amount: number;
+        status: string;
+        statusLabel: string;
+        statusRaw?: string;
+        requiredDate: string;
+        createdAt: string;
+        kind: 'ready' | 'po';
+      }>;
+      pagination: { page: number; limit: number; total: number; totalPages: number };
+      stats: {
+        total: number;
+        ready: number;
+        pending: number;
+        approved: number;
+        rejected: number;
+      };
+    }>(`/api/po/track${qs ? `?${qs}` : ''}`);
+  },
   listPending: () => request<{ data: unknown[] }>('/api/po/pending'),
+  listPendingBuyerVerify: () =>
+    request<{ data: unknown[] }>('/api/po/pending-buyer-verify'),
+  finalVerify: (poId: number, remarks?: string) =>
+    request<{ data: unknown; message: string }>(`/api/po/${poId}/final-verify`, {
+      method: 'POST',
+      body: JSON.stringify({ remarks }),
+    }),
+  rejectFinalVerify: (poId: number, remarks: string) =>
+    request<{ data: unknown; message: string }>(`/api/po/${poId}/final-verify/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ remarks }),
+    }),
   getByNumber: (poNumber: string) =>
     request<{ data: Record<string, unknown> }>(`/api/po/by-number/${encodeURIComponent(poNumber)}`),
   get: (poId: number) => request<{ data: Record<string, unknown> }>(`/api/po/${poId}`),
@@ -400,6 +453,42 @@ export const poApi = {
     }),
   deleteSignature: (id: number) =>
     request<{ message: string }>(`/api/po/signatures/${id}`, { method: 'DELETE' }),
+  getExcelImportConfig: () =>
+    request<{ data: { defaultStatus: 'draft' | 'imported'; allowedStatuses: string[] } }>(
+      '/api/po/excel-import/config'
+    ),
+  downloadExcelImportTemplate: () =>
+    downloadCsvFile('/api/po/excel-import/template', 'po-import-template.csv'),
+  validateExcelImport: (rows: Record<string, string>[]) =>
+    request<{
+      data: {
+        valid: boolean;
+        errors: Array<{ row: number; poNumber: string; field: string; message: string }>;
+        groups: Array<Record<string, unknown>>;
+        poCount: number;
+        lineItemCount: number;
+        defaultStatus: 'draft' | 'imported';
+      };
+    }>('/api/po/excel-import/validate', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    }),
+  importExcel: (rows: Record<string, string>[], status?: 'draft' | 'imported') =>
+    request<{
+      data: {
+        success: boolean;
+        imported: number;
+        failed: number;
+        errors: Array<{ row: number; poNumber: string; field: string; message: string }>;
+        created?: Array<{ poId: number; poNumber: string; status: string; lineItems: number }>;
+        defaultStatus: string;
+        message?: string;
+      };
+      message: string;
+    }>('/api/po/excel-import', {
+      method: 'POST',
+      body: JSON.stringify({ rows, status }),
+    }),
 };
 
 export interface UserSignatureItem {
@@ -497,7 +586,7 @@ export const letterheadBrandingApi = {
 
 export interface VendorDocument {
   id: number;
-  docType: 'gst' | 'pan' | 'cheque';
+  docType: 'gst' | 'pan' | 'cheque' | 'msme' | 'kyc' | 'msme_declaration';
   fileName: string;
   uploadedAt: string;
 }
@@ -522,9 +611,42 @@ export interface VendorRecord {
   documents?: VendorDocument[];
 }
 
+export interface VendorListParams {
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface VendorPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface VendorListStats {
+  total: number;
+  company: number;
+  individual: number;
+}
+
 export const vendorApi = {
-  list: (search?: string) =>
-    request<{ data: VendorRecord[] }>(`/api/vendors${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  list: (params?: string | VendorListParams) => {
+    const query = new URLSearchParams();
+    if (typeof params === 'string') {
+      if (params) query.set('search', params);
+    } else if (params) {
+      if (params.search) query.set('search', params.search);
+      if (params.page != null) query.set('page', String(params.page));
+      if (params.limit != null) query.set('limit', String(params.limit));
+    }
+    const qs = query.toString();
+    return request<{
+      data: VendorRecord[];
+      pagination?: VendorPagination;
+      stats?: VendorListStats;
+    }>(`/api/vendors${qs ? `?${qs}` : ''}`);
+  },
   get: (id: number) => request<{ data: VendorRecord }>(`/api/vendors/${id}`),
   create: (body: Record<string, unknown>) =>
     request<{ data: VendorRecord; message: string }>('/api/vendors', {
@@ -637,6 +759,18 @@ export const masterApi = {
     request<{ data: EntityRecord; message: string }>(`/api/masters/entities/${id}`, {
       method: 'PUT',
       body: JSON.stringify(body),
+    }),
+  exportEntitiesCsv: () =>
+    downloadCsvFile('/api/masters/entities/export', 'entities-export.csv'),
+  downloadEntityTemplate: () =>
+    downloadCsvFile('/api/masters/entities/import-template', 'entities-import-template.csv'),
+  importEntitiesCsv: (csv: string) =>
+    request<{
+      data: { created: number; updated: number; failed: number; errors: string[] };
+      message: string;
+    }>('/api/masters/entities/import', {
+      method: 'POST',
+      body: JSON.stringify({ csv }),
     }),
   listDepartments: (params?: { search?: string; status?: string }) => {
     const q = new URLSearchParams();

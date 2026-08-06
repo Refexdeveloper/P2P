@@ -57,6 +57,19 @@ interface TrackPR {
 
 const SLA_DAYS = 1;
 
+function toDateOnly(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  const raw = String(value).trim();
+  const iso = raw.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  if (iso) return iso;
+  // en-IN datetime: "05/08/2026, 10:30:00 am" or "05/08/2026"
+  const dmy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().split('T')[0];
+}
+
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return '';
@@ -78,21 +91,6 @@ function formatHoursLabel(hours: number): string {
 }
 
 function computeSla(startDate: string | null, endDate: string | null, stageStatus: StageStatus): StageSla {
-  if (!startDate) {
-    return {
-      slaDays: SLA_DAYS,
-      startDate: null,
-      dueDate: null,
-      actualDays: null,
-      slaStatus: 'not_started',
-      hoursAtStage: null,
-    };
-  }
-  const dueDate = addDays(startDate, SLA_DAYS);
-  const end = endDate || new Date().toISOString().split('T')[0];
-  const actualDays = daysBetween(startDate, end);
-  const hours = (new Date(end).getTime() - new Date(startDate).getTime()) / 3600000;
-
   if (stageStatus === 'pending') {
     return {
       slaDays: SLA_DAYS,
@@ -103,6 +101,22 @@ function computeSla(startDate: string | null, endDate: string | null, stageStatu
       hoursAtStage: null,
     };
   }
+
+  if (!startDate) {
+    return {
+      slaDays: SLA_DAYS,
+      startDate: null,
+      dueDate: null,
+      actualDays: null,
+      slaStatus: 'not_started',
+      hoursAtStage: null,
+    };
+  }
+
+  const dueDate = addDays(startDate, SLA_DAYS);
+  const end = endDate || new Date().toISOString().split('T')[0];
+  const actualDays = daysBetween(startDate, end);
+  const hours = Math.max(0, (new Date(end).getTime() - new Date(startDate).getTime()) / 3600000);
 
   if (stageStatus === 'current') {
     const breached = actualDays > SLA_DAYS;
@@ -118,6 +132,7 @@ function computeSla(startDate: string | null, endDate: string | null, stageStatu
     };
   }
 
+  // Instant stages (e.g. Submitted) complete the same day — treat as on time.
   const breached = actualDays > SLA_DAYS;
   return {
     slaDays: SLA_DAYS,
@@ -129,6 +144,33 @@ function computeSla(startDate: string | null, endDate: string | null, stageStatu
       ? `${formatHoursLabel(hours)} (SLA: 24 hrs)`
       : formatHoursLabel(hours),
   };
+}
+
+function resolveRawStatus(pr: Record<string, unknown>): string {
+  const raw = String(pr.statusRaw || '');
+  if (raw && raw === raw.toUpperCase() && raw.includes('_')) return raw;
+  const status = String(pr.status || '');
+  if (status && status === status.toUpperCase() && status.includes('_')) return status;
+  // Map frontend / UI labels back when raw status was stripped
+  const frontend = String(pr.statusFrontend || pr.status || '').toLowerCase();
+  const ui = String(pr.statusUI || '').toLowerCase();
+  if (frontend === 'draft' || status === 'draft') return 'DRAFT';
+  if (frontend === 'returned' || ui.includes('return')) return 'RETURNED';
+  if (frontend === 'rejected' || ui.includes('reject')) return 'REJECTED';
+  if (frontend === 'approved' || ui === 'approved') return 'APPROVED';
+  if (ui.includes('hod')) return 'PENDING_HOD_APPROVAL';
+  if (ui.includes('l2') || ui.includes('pr manager') || ui.includes('manager review')) {
+    return ui.includes('rfq') || ui.includes('vendor')
+      ? 'PENDING_RFQ_L2_APPROVAL'
+      : 'PENDING_PR_MANAGER_APPROVAL';
+  }
+  if (ui.includes('cfo')) {
+    return ui.includes('rfq') ? 'PENDING_RFQ_CFO_APPROVAL' : 'PENDING_CFO_APPROVAL';
+  }
+  if (ui.includes('scm manager') || ui.includes('business')) return 'PENDING_BUSINESS_APPROVAL';
+  if (ui.includes('scm po') || ui.includes('po creation')) return 'PENDING_SCM_PO';
+  if (frontend === 'pending_approval' || ui.includes('pending')) return 'PENDING_HOD_APPROVAL';
+  return status || 'PENDING_HOD_APPROVAL';
 }
 
 function mapTrackStatus(rawStatus: string, statusFrontend: string): string {
@@ -144,11 +186,11 @@ function currentStageLabel(rawStatus: string, statusUI: string): string | null {
   if (rawStatus === 'PENDING_HOD_APPROVAL') return 'HOD Review';
   if (rawStatus === 'PENDING_PR_MANAGER_APPROVAL') return 'Manager Review';
   if (rawStatus === 'PENDING_CFO_APPROVAL') return 'CFO Review';
-  if (rawStatus === 'PENDING_RFQ_MANAGER_APPROVAL') return 'Manager Approval (Post-RFQ)';
+  if (rawStatus === 'PENDING_RFQ_MANAGER_APPROVAL') return 'HOD Vendor Final';
   if (rawStatus === 'PENDING_RFQ_L2_APPROVAL') return 'L2 Manager Approval';
   if (rawStatus === 'PENDING_RFQ_CFO_APPROVAL') return 'CFO Approval (Post-RFQ)';
   if (rawStatus === 'PENDING_SCM_PO') return 'SCM PO Creation';
-  if (rawStatus === 'PENDING_BUSINESS_APPROVAL') return 'Business Approval';
+  if (rawStatus === 'PENDING_BUSINESS_APPROVAL') return 'SCM Manager Vendor Approval';
   if (rawStatus === 'RETURNED') return 'Returned for Rework';
   if (rawStatus === 'REJECTED') return 'Rejected';
   if (rawStatus === 'APPROVED') return 'PO Issued';
@@ -158,38 +200,53 @@ function currentStageLabel(rawStatus: string, statusUI: string): string | null {
 
 function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
   const stages: TimelineStage[] = [];
-  const submittedDate = String(pr.submittedDate || pr.createdAt || '');
+  const submittedDate =
+    toDateOnly(pr.submittedDate) || toDateOnly(pr.date) || toDateOnly(pr.createdAt);
   const requester = String(pr.requester || 'Requester');
-  const rawStatus = String(pr.status || '');
+  const rawStatus = resolveRawStatus(pr);
   const history = Array.isArray(pr.approvalHistory)
     ? (pr.approvalHistory as Array<Record<string, unknown>>)
     : [];
 
+  const isDraft = rawStatus === 'DRAFT';
   stages.push({
     stage: 'Submitted',
-    date: submittedDate,
+    date: submittedDate || '',
     approver: requester,
-    status: rawStatus === 'DRAFT' ? 'pending' : 'completed',
-    sla: computeSla(submittedDate, submittedDate, rawStatus === 'DRAFT' ? 'pending' : 'completed'),
+    status: isDraft ? 'pending' : 'completed',
+    sla: computeSla(
+      submittedDate,
+      submittedDate,
+      isDraft ? 'pending' : 'completed'
+    ),
   });
 
   let prevDate = submittedDate;
   for (const h of history) {
     const action = String(h.status || h.action || '').toLowerCase();
     const stageName = String(h.stage || 'Approval');
-    if (action === 'completed' && stageName.toLowerCase().includes('submit')) continue;
-    if (action === 'submitted') continue;
+    if (stageName.toLowerCase().includes('submit') && (action === 'completed' || action === 'submitted' || action === 'resubmitted')) {
+      // Prefer history date for submitted stage when PR date was missing
+      const histDate = toDateOnly(h.date || h.timestamp);
+      if (histDate && stages[0]) {
+        stages[0].date = histDate;
+        stages[0].status = 'completed';
+        stages[0].approver = String(h.user || h.approver || requester);
+        stages[0].sla = computeSla(histDate, histDate, 'completed');
+        prevDate = histDate;
+      }
+      continue;
+    }
+    if (action === 'submitted' || action === 'resubmitted') continue;
 
-    const date = String(h.date || '').split(',')[0] || String(h.date || '');
-    // Try ISO-like first 10 chars
-    const dateOnly = date.match(/\d{4}-\d{2}-\d{2}/)?.[0] || prevDate;
+    const dateOnly = toDateOnly(h.date || h.timestamp) || prevDate;
     let stageStatus: StageStatus = 'completed';
     if (action.includes('reject')) stageStatus = 'rejected';
     else if (action.includes('return') || action.includes('rework')) stageStatus = 'returned';
 
     stages.push({
       stage: stageName.replace(/_/g, ' '),
-      date: dateOnly,
+      date: dateOnly || '',
       approver: String(h.user || h.approver || 'Approver'),
       status: stageStatus,
       remarks: String(h.remarks || ''),
@@ -202,7 +259,9 @@ function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
   const terminal = ['APPROVED', 'REJECTED', 'RETURNED', 'DRAFT'].includes(rawStatus);
   if (currentLabel && !terminal) {
     const already = stages.some(
-      (s) => s.stage.toLowerCase() === currentLabel.toLowerCase() && s.status === 'current'
+      (s) =>
+        s.stage.toLowerCase() === currentLabel.toLowerCase() &&
+        (s.status === 'current' || s.status === 'completed')
     );
     if (!already) {
       stages.push({
@@ -212,6 +271,15 @@ function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
         status: 'current',
         sla: computeSla(prevDate || submittedDate, null, 'current'),
       });
+    } else {
+      // Mark the matching pending approval stage as current if history only has earlier stages
+      const match = [...stages].reverse().find(
+        (s) => s.stage.toLowerCase() === currentLabel.toLowerCase() && s.status !== 'completed'
+      );
+      if (match && match.status !== 'current') {
+        match.status = 'current';
+        match.sla = computeSla(prevDate || submittedDate, null, 'current');
+      }
     }
   }
 
@@ -220,7 +288,7 @@ function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
     if (!hasPo) {
       stages.push({
         stage: 'PO Issued',
-        date: prevDate,
+        date: prevDate || '',
         approver: 'SCM',
         status: 'completed',
         sla: computeSla(prevDate, prevDate, 'completed'),
@@ -241,25 +309,32 @@ function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
 
 function mapApiPr(pr: Record<string, unknown>): TrackPR {
   const lineItems = Array.isArray(pr.lineItems) ? pr.lineItems : [];
-  const statusFrontend = String(pr.statusFrontend || '');
-  const rawStatus = String(pr.status || '');
+  const statusFrontend = String(pr.statusFrontend || pr.status || '');
+  const rawStatus = resolveRawStatus(pr);
   const history = Array.isArray(pr.approvalHistory) ? pr.approvalHistory : [];
   const returnEntry = history.find((h) => {
-    const s = String((h as Record<string, unknown>).status || '').toLowerCase();
+    const s = String(
+      (h as Record<string, unknown>).status || (h as Record<string, unknown>).action || ''
+    ).toLowerCase();
     return s.includes('return') || s.includes('reject') || s.includes('rework');
   }) as Record<string, unknown> | undefined;
 
+  const submittedDate =
+    toDateOnly(pr.submittedDate) || toDateOnly(pr.date) || toDateOnly(pr.createdAt) || '';
+  const prId = Number(pr.prId ?? pr.id);
+  const prNumber = String(pr.prNumber || (Number.isNaN(prId) ? pr.id : '') || pr.id);
+
   return {
-    key: String(pr.id),
-    prId: Number(pr.id),
-    id: String(pr.prNumber || pr.id),
+    key: String(Number.isNaN(prId) ? prNumber : prId),
+    prId: Number.isNaN(prId) ? 0 : prId,
+    id: prNumber,
     title: String(pr.title || ''),
     requestType: String(pr.requestType || ''),
     department: String(pr.department || ''),
-    amount: Number(pr.totalAmount || 0),
+    amount: Number(pr.totalAmount ?? pr.amount ?? 0),
     status: mapTrackStatus(rawStatus, statusFrontend),
     statusUI: String(pr.statusUI || statusFrontend),
-    submittedDate: String(pr.submittedDate || pr.createdAt || ''),
+    submittedDate,
     priority: String(pr.priorityLower || pr.priority || 'medium').toLowerCase(),
     requiredDate: String(pr.requiredDate || '—'),
     justification: String(pr.justification || 'No justification provided.'),
@@ -273,8 +348,10 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
         total: Number(item.total || 0),
       };
     }),
-    approvalHistory: buildTimeline(pr),
-    returnReason: returnEntry ? String(returnEntry.remarks || '') : undefined,
+    approvalHistory: buildTimeline({ ...pr, statusRaw: rawStatus, submittedDate }),
+    returnReason: returnEntry
+      ? String(returnEntry.remarks || '')
+      : undefined,
   };
 }
 
@@ -912,7 +989,7 @@ export default function TrackPRPage() {
                                                       <SLABadge status={sla.slaStatus} />
                                                     </div>
 
-                                                    <div className="grid grid-cols-3 gap-2 text-xs">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                                                       <div>
                                                         <p className="text-gray-400 mb-0.5">
                                                           Approver

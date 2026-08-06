@@ -5,10 +5,13 @@ import {
   createPurchaseOrder,
   buildPoPreviewDocument,
   listPurchaseOrders,
+  listTrackPurchaseOrders,
   getPurchaseOrderById,
   getPurchaseOrderByNumber,
   signPurchaseOrder,
   rejectPurchaseOrder,
+  finalVerifyPurchaseOrder,
+  rejectBuyerFinalVerify,
   updatePurchaseOrder,
   buildPoPreviewForPo,
 } from '../services/poService.js';
@@ -27,6 +30,12 @@ import {
 } from '../services/letterheadBrandingService.js';
 import { buildPoHtml, resolvePoDocumentPath } from '../services/poPdfService.js';
 import {
+  getPoExcelImportTemplateCsv,
+  validatePoExcelImport,
+  importPoExcelRows,
+  getPoExcelImportDefaultStatus,
+} from '../services/poExcelImportService.js';
+import {
   listUserSignatures,
   saveUserSignature,
   deleteUserSignature,
@@ -35,6 +44,12 @@ import {
 
 const router = Router();
 router.use(authenticate);
+
+function sendCsv(res, filename, csv) {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(csv);
+}
 
 router.get('/signatures', requireRoles('SCM Manager'), async (req, res) => {
   try {
@@ -61,6 +76,46 @@ router.delete('/signatures/:id', requireRoles('SCM Manager'), async (req, res) =
   try {
     await deleteUserSignature(req.user.id, Number(req.params.id));
     res.json({ message: 'Signature removed from gallery' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Excel / CSV PO import — no approval workflow */
+const poImportRoles = requireRoles('SCM Buyer', 'Super Admin');
+
+router.get('/excel-import/template', poImportRoles, (_req, res) => {
+  sendCsv(res, 'po-import-template.csv', getPoExcelImportTemplateCsv());
+});
+
+router.get('/excel-import/config', poImportRoles, (_req, res) => {
+  res.json({
+    data: {
+      defaultStatus: getPoExcelImportDefaultStatus(),
+      allowedStatuses: ['draft', 'imported'],
+    },
+  });
+});
+
+router.post('/excel-import/validate', poImportRoles, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const data = await validatePoExcelImport(rows);
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/excel-import', poImportRoles, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const status = req.body?.status;
+    const data = await importPoExcelRows(req.user, rows, { status });
+    res.json({
+      data,
+      message: `Imported ${data.imported} purchase order(s) as ${data.defaultStatus} (no approval workflow)`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -191,10 +246,38 @@ router.get('/pending', requireRoles('SCM Manager'), async (req, res) => {
   }
 });
 
+router.get('/pending-buyer-verify', requireRoles('SCM Buyer'), async (req, res) => {
+  try {
+    const data = await listPurchaseOrders(req.user, { buyerVerifyOnly: true });
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+  try {
+    const page = req.query.page != null ? Number(req.query.page) : 1;
+    const limit = req.query.limit != null ? Number(req.query.limit) : 10;
+    const search = typeof req.query.search === 'string' ? req.query.search : '';
+    const status = typeof req.query.status === 'string' ? req.query.status : 'all';
+    const result = await listTrackPurchaseOrders(req.user, {
+      page: Number.isFinite(page) ? page : 1,
+      limit: Number.isFinite(limit) ? limit : 10,
+      search,
+      status,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.get('/', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) => {
   try {
     const pendingOnly = req.query.pending === 'true';
-    const data = await listPurchaseOrders(req.user, { pendingOnly });
+    const buyerVerifyOnly = req.query.buyerVerify === 'true';
+    const data = await listPurchaseOrders(req.user, { pendingOnly, buyerVerifyOnly });
     res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -257,7 +340,7 @@ router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) =>
   }
 });
 
-router.post('/:id/preview-document', requireRoles('SCM Manager'), async (req, res) => {
+router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer'), async (req, res) => {
   try {
     const po = await buildPoPreviewForPo(req.user, Number(req.params.id), req.body);
     const html = buildPoHtml(po);
@@ -268,7 +351,7 @@ router.post('/:id/preview-document', requireRoles('SCM Manager'), async (req, re
   }
 });
 
-router.put('/:id', requireRoles('SCM Manager'), async (req, res) => {
+router.put('/:id', requireRoles('SCM Manager', 'SCM Buyer'), async (req, res) => {
   try {
     const data = await updatePurchaseOrder(req.user, Number(req.params.id), req.body);
     res.json({ data, message: `PO ${data.poNumber} updated successfully` });
@@ -289,7 +372,7 @@ router.post('/:id/sign', requireRoles('SCM Manager'), async (req, res) => {
     });
     res.json({
       data,
-      message: `PO signed and emailed to ${data.vendorName} with all participants in CC`,
+      message: `PO signed — sent to SCM Buyer for final verification before vendor dispatch`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -301,6 +384,27 @@ router.post('/:id/reject', requireRoles('SCM Manager'), async (req, res) => {
     const { remarks } = req.body;
     const data = await rejectPurchaseOrder(req.user, Number(req.params.id), remarks);
     res.json({ data, message: 'PO rejected' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/final-verify', requireRoles('SCM Buyer'), async (req, res) => {
+  try {
+    const data = await finalVerifyPurchaseOrder(req.user, Number(req.params.id), req.body?.remarks);
+    res.json({
+      data,
+      message: `PO final-verified and emailed to ${data.vendorName} with all participants in CC`,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/final-verify/reject', requireRoles('SCM Buyer'), async (req, res) => {
+  try {
+    const data = await rejectBuyerFinalVerify(req.user, Number(req.params.id), req.body?.remarks);
+    res.json({ data, message: 'PO rejected at buyer final verify' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

@@ -73,6 +73,16 @@ export default function RfqApprovalDetailPage() {
     deepLinkHandled.current = true;
     pendingDeepLinkAction.current = null;
 
+    // Buyer Create PO: deep-link approve goes to Create PO page
+    if (
+      modalAction === 'approve' &&
+      (user?.role === 'SCM Buyer' || data.stageLabel === 'SCM PO Create')
+    ) {
+      setSearchParams({}, { replace: true });
+      navigate(`/scm/create-po?prId=${prId}`);
+      return;
+    }
+
     if (!data.canApprove) {
       showToast('You cannot approve this RFQ at the current stage');
       setSearchParams({}, { replace: true });
@@ -81,18 +91,22 @@ export default function RfqApprovalDetailPage() {
 
     setModal({ open: true, action: modalAction });
     setSearchParams({}, { replace: true });
-  }, [loading, data, searchParams, setSearchParams, showToast]);
+  }, [loading, data, searchParams, setSearchParams, showToast, user?.role, navigate, prId]);
 
   const handleApprove = async (remarks: string) => {
+    const isBuyerCreatePo =
+      user?.role === 'SCM Buyer' || data?.stageLabel === 'SCM PO Create';
+
+    // Buyer Create PO step: go straight to Create PO — do not mark PR APPROVED yet
+    if (modal.action === 'approve' && isBuyerCreatePo) {
+      navigate(`/scm/create-po?prId=${prId}`);
+      return;
+    }
+
     const actionMap = { approve: 'approve' as const, reject: 'reject' as const, rework: 'return' as const };
     await rfqApi.postApprove(Number(prId), actionMap[modal.action], remarks);
     showToast(`RFQ ${modal.action} completed successfully`);
-    if (modal.action === 'approve' && (user?.role === 'SCM Buyer' || data?.stageLabel === 'SCM PO Create')) {
-      navigate(`/scm/create-po?prId=${prId}`);
-    } else {
-      // Manager / HOD L1 usually works from My Tasks
-      navigate('/tasks');
-    }
+    navigate('/tasks');
   };
 
   const handlePreviewFile = async (submissionId: number, _vendorName: string, fileName: string) => {
@@ -159,7 +173,7 @@ export default function RfqApprovalDetailPage() {
               className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 cursor-pointer flex items-center gap-2"
             >
               <i className="ri-check-line"></i>
-              {user?.role === 'SCM Buyer' ? 'Approve & Create PO' : 'Approve'}
+              {user?.role === 'SCM Buyer' ? 'Create PO' : 'Approve'}
             </button>
             <button
               type="button"

@@ -42,7 +42,16 @@ const CATEGORIES = [
   'Transportation',
 ];
 
-type DocType = 'gst' | 'pan' | 'cheque';
+type DocType = 'gst' | 'pan' | 'cheque' | 'msme' | 'kyc' | 'msme_declaration';
+
+const DOC_UPLOAD_FIELDS: { type: DocType; label: string }[] = [
+  { type: 'gst', label: 'GST Certificate' },
+  { type: 'pan', label: 'PAN Card' },
+  { type: 'cheque', label: 'Cancelled Cheque' },
+  { type: 'msme', label: 'MSME Certificate' },
+  { type: 'kyc', label: 'KYC Form' },
+  { type: 'msme_declaration', label: 'MSME Declaration Form' },
+];
 
 interface UploadedDoc {
   file: File;
@@ -134,11 +143,20 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
     setSubmitting(true);
     try {
       const payload: Record<string, unknown> = { ...form };
-      for (const type of ['gst', 'pan', 'cheque'] as DocType[]) {
+      const fileKeyMap: Record<DocType, { file: string; name: string }> = {
+        gst: { file: 'gstFile', name: 'gstFileName' },
+        pan: { file: 'panFile', name: 'panFileName' },
+        cheque: { file: 'chequeFile', name: 'chequeFileName' },
+        msme: { file: 'msmeFile', name: 'msmeFileName' },
+        kyc: { file: 'kycFile', name: 'kycFileName' },
+        msme_declaration: { file: 'msmeDeclarationFile', name: 'msmeDeclarationFileName' },
+      };
+      for (const type of DOC_UPLOAD_FIELDS.map((d) => d.type)) {
         const doc = files[type];
         if (doc) {
-          payload[`${type}File`] = await readFileAsBase64(doc.file);
-          payload[`${type}FileName`] = doc.name;
+          const keys = fileKeyMap[type];
+          payload[keys.file] = await readFileAsBase64(doc.file);
+          payload[keys.name] = doc.name;
         }
       }
       if (isEdit && vendor) {
@@ -327,11 +345,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
           {isEdit ? 'Replace Documents (Optional)' : 'Upload Documents (Optional)'}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {([
-            { type: 'gst' as DocType, label: 'GST Certificate' },
-            { type: 'pan' as DocType, label: 'PAN Card' },
-            { type: 'cheque' as DocType, label: 'Cancelled Cheque' },
-          ]).map(({ type, label }) => (
+          {DOC_UPLOAD_FIELDS.map(({ type, label }) => (
             <div key={type}>
               <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
               {existingDocs[type] && !files[type] && (

@@ -14,11 +14,9 @@ function threeDigits(n) {
   return `${ONES[Math.floor(n / 100)]} Hundred${n % 100 ? ` ${twoDigits(n % 100)}` : ''}`.trim();
 }
 
-export function numberToIndianWords(amount) {
-  const num = Math.round(Number(amount || 0));
-  if (!Number.isFinite(num) || num === 0) return 'Zero Rupees and Zero Paisa Only.';
-
-  let n = num;
+function integerToWords(num) {
+  if (!Number.isFinite(num) || num <= 0) return '';
+  let n = Math.floor(num);
   const crore = Math.floor(n / 10000000);
   n %= 10000000;
   const lakh = Math.floor(n / 100000);
@@ -26,14 +24,24 @@ export function numberToIndianWords(amount) {
   const thousand = Math.floor(n / 1000);
   n %= 1000;
   const hundred = n;
-
   const parts = [];
   if (crore) parts.push(`${threeDigits(crore)} Crore`);
   if (lakh) parts.push(`${threeDigits(lakh)} Lakh`);
   if (thousand) parts.push(`${threeDigits(thousand)} Thousand`);
   if (hundred) parts.push(threeDigits(hundred));
+  return parts.join(' ');
+}
 
-  return `${parts.join(' ')} Rupees and Zero Paisa Only.`;
+export function numberToIndianWords(amount) {
+  const value = Math.round((Number(amount) || 0) * 100) / 100;
+  if (!Number.isFinite(value) || value === 0) return 'Zero Rupees and Zero Paisa Only.';
+
+  const rupees = Math.floor(value);
+  const paisa = Math.round((value - rupees) * 100);
+  const rupeeWords = rupees > 0 ? integerToWords(rupees) : 'Zero';
+  const paisaWords = paisa > 0 ? integerToWords(paisa) : 'Zero';
+
+  return `${rupeeWords} Rupees and ${paisaWords} Paisa Only.`;
 }
 
 export function escapeHtml(value) {
@@ -150,10 +158,11 @@ function lineItemsHtml(po) {
   const rows = items.map((item, index) => `
     <tr>
       <td class="center">${index + 1}</td>
-      <td><div class="spec-block"><p>${escapeHtml(item.description)}</p>${item.category ? `<p><strong>Category:</strong> ${escapeHtml(item.category)}</p>` : ''}</div></td>
+      <td><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}${item.category ? `<p><strong>Category:</strong> ${escapeHtml(item.category)}</p>` : ''}</div></td>
       <td class="center">${escapeHtml(item.uom || item.category || "No's")}</td>
       <td class="center">${escapeHtml(item.quantity)}</td>
       <td class="right">${fmtMoney(item.unitPrice)}</td>
+      <td class="right">${fmtMoney(item.discount)}</td>
       <td class="right">${fmtMoney(item.total)}</td>
     </tr>`).join('');
 
@@ -161,17 +170,18 @@ function lineItemsHtml(po) {
   <table class="price">
     <caption>PRICE SCHEDULE</caption>
     <tr>
-      <th style="width:6%">SI.No</th>
+      <th style="width:5%">SI.No</th>
       <th>Description Of Work</th>
-      <th style="width:8%">UOM</th>
+      <th style="width:7%">UOM</th>
       <th style="width:6%">Qty</th>
-      <th style="width:14%">Unit Rate Rs.</th>
-      <th style="width:14%">TOTAL Amt Rs.</th>
+      <th style="width:12%">Unit Rate Rs.</th>
+      <th style="width:10%">Disc Amt Rs.</th>
+      <th style="width:12%">TOTAL Amt Rs.</th>
     </tr>
     ${rows}
-    <tr class="total"><td colspan="5">SubTotal</td><td class="right">${fmtMoney(po.subtotal)}</td></tr>
-    <tr class="total"><td colspan="5">Add: GST@${escapeHtml(po.gstPercentage)}% Extra</td><td class="right">${fmtMoney(po.taxAmount)}</td></tr>
-    <tr class="total"><td colspan="5">GrandTotal</td><td class="right">${fmtMoney(po.grandTotal)}</td></tr>
+    <tr class="total"><td colspan="6">SubTotal</td><td class="right">${fmtMoney(po.subtotal)}</td></tr>
+    <tr class="total"><td colspan="6">Add: GST@${escapeHtml(po.gstPercentage)}% Extra</td><td class="right">${fmtMoney(po.taxAmount)}</td></tr>
+    <tr class="total"><td colspan="6">GrandTotal</td><td class="right">${fmtMoney(po.grandTotal)}</td></tr>
   </table>
   <div class="amount-words">
     <span class="label">Amount In Words:</span>
@@ -179,12 +189,23 @@ function lineItemsHtml(po) {
   </div>`;
 }
 
+/** Replace clause placeholders with live PO entity + vendor */
+function applyClausePlaceholders(html, po) {
+  const company = escapeHtml(po.entity || po.entityName || 'Refex Group of Companies');
+  const vendor = escapeHtml(po.vendorName || 'Vendor');
+  return String(html || '')
+    .replace(/\[Company Name\]/gi, company)
+    .replace(/\[Vendor Name\]/gi, vendor)
+    .replace(/\$aos_quotes_company_name_c/gi, company)
+    .replace(/\$accounts_aos_quotes_1_name_name/gi, vendor);
+}
+
 function termsSummaryHtml(po, terms) {
   if (!terms?.length) return '';
   const rows = terms.map((term) => `
     <tr>
       <th class="head-col">${escapeHtml(term.termsHeader || term.terms_header || 'Term')}</th>
-      <td>${term.termsDescription || term.terms_description || ''}</td>
+      <td>${applyClausePlaceholders(term.termsDescription || term.terms_description || '', po)}</td>
     </tr>`).join('');
 
   return `
@@ -210,7 +231,7 @@ function annexurePagesHtml(po, annexure, poTypeLabel) {
       <tr>
         <td class="sno-col">${serial}.</td>
         <td><strong>${escapeHtml(item.termsHeader || item.terms_header || 'Header')}</strong></td>
-        <td>${item.termsDescription || item.terms_description || ''}</td>
+        <td>${applyClausePlaceholders(item.termsDescription || item.terms_description || '', po)}</td>
       </tr>`;
     }).join('');
     startIndex += chunk.length;
@@ -235,17 +256,31 @@ function annexurePagesHtml(po, annexure, poTypeLabel) {
 function specialNotesHtml(po, options = {}) {
   const signature = options.signature;
   const entityLabel = po.entity || 'Refex Group of Companies';
+  const td = po.poTermsDetails || {};
+  const paymentText = td.paymentTermsText || po.paymentTerms || '—';
+  const siteAddress = td.siteAddress || po.deliveryAddress || '';
   return `
   <div class="page">
     ${logoHtml(po)}
     <div class="special-notes">
+      <p><strong>PO TERMS &amp; CONDITIONS DETAILS:</strong></p>
+      <p><span class="lbl">Payment Terms:</span> ${escapeHtml(paymentText).replace(/\n/g, '<br>')}</p>
+      ${siteAddress ? `<p><span class="lbl">Site Address:</span> ${escapeHtml(siteAddress).replace(/\n/g, '<br>')}</p>` : ''}
+      ${td.siteContactPerson ? `<p><span class="lbl">Site Contact Person:</span> ${escapeHtml(td.siteContactPerson)}</p>` : ''}
+      ${td.siteContactPhone ? `<p><span class="lbl">Site Contact Phone:</span> ${escapeHtml(td.siteContactPhone)}</p>` : ''}
+      ${td.siteContactEmail ? `<p><span class="lbl">Site Contact Email:</span> ${escapeHtml(td.siteContactEmail)}</p>` : ''}
+      ${td.projectManagerHo ? `<p><span class="lbl">Project Manager at HO:</span> ${escapeHtml(td.projectManagerHo)}</p>` : ''}
+      ${td.projectManagerContact ? `<p><span class="lbl">Project Manager Contact:</span> ${escapeHtml(td.projectManagerContact)}</p>` : ''}
+      ${td.projectManagerEmail ? `<p><span class="lbl">Project Manager Email:</span> ${escapeHtml(td.projectManagerEmail)}</p>` : ''}
+      ${td.invoicingAddress ? `<p><span class="lbl">Invoicing Address:</span> ${escapeHtml(td.invoicingAddress).replace(/\n/g, '<br>')}</p>` : ''}
+      ${td.mailingAddress ? `<p><span class="lbl">Mailing Address:</span> ${escapeHtml(td.mailingAddress).replace(/\n/g, '<br>')}</p>` : ''}
+      ${td.subject ? `<p><span class="lbl">Subject:</span> ${escapeHtml(td.subject).replace(/\n/g, '<br>')}</p>` : ''}
+      ${td.reasonForCancellation ? `<p><span class="lbl">Reason For Cancellation:</span> ${escapeHtml(td.reasonForCancellation).replace(/\n/g, '<br>')}</p>` : ''}
       <p><strong>SPECIAL NOTES (if any):</strong></p>
-      ${po.deliveryAddress ? `<p><span class="lbl">Site Address:</span>${escapeHtml(po.deliveryAddress).replace(/\n/g, '<br>')}</p>` : ''}
       ${po.specialInstructions ? `<p><span class="lbl">Instructions:</span>${escapeHtml(po.specialInstructions).replace(/\n/g, '<br>')}</p>` : ''}
       <p><span class="lbl">PR Reference:</span> ${escapeHtml(po.prNumber)}</p>
       <p><span class="lbl">Department:</span> ${escapeHtml(po.department || '—')}</p>
       <p><span class="lbl">Requester:</span> ${escapeHtml(po.requester || '—')}</p>
-      <p><span class="lbl">Payment Terms:</span> ${escapeHtml(po.paymentTerms || '—')}</p>
       <p><span class="lbl">Incoterms:</span> ${escapeHtml(po.incoterms || '—')}</p>
       <p><span class="lbl">Expected Delivery:</span> ${escapeHtml(po.expectedDeliveryDate || '—')}</p>
       ${signature ? `

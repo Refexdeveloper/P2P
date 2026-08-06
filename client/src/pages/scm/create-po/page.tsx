@@ -1,22 +1,39 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import RichTextEditor from '../../../components/base/RichTextEditor';
 import { poApi, prApi, rfqApi, poLetterheadApi, letterheadMasterApi, PoType, PoLetterheadClause, LetterheadMasterRecord } from '../../../services/api';
 import {
   consumePoCsvImport,
-  downloadPoImportSampleCsv,
-  parsePoImportCsv,
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
+import { numberToIndianWords } from '../../../utils/amountInWords';
 
 interface LineItem {
   id: string | number;
+  itemName: string;
   description: string;
   quantity: number;
   unitPrice: number;
+  discount: number;
   total: number;
   category?: string;
   unit?: string;
+}
+
+function plainTextFromHtml(html: string) {
+  return String(html || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** discount is absolute amount (₹), capped at line gross */
+function calcLineTotal(quantity: number, unitPrice: number, discount = 0) {
+  const gross = (Number(quantity) || 0) * (Number(unitPrice) || 0);
+  const disc = Math.min(gross, Math.max(0, Number(discount) || 0));
+  return Math.round((gross - disc) * 100) / 100;
 }
 
 const PAYMENT_TERMS_OPTIONS = [
@@ -28,6 +45,23 @@ const PAYMENT_TERMS_OPTIONS = [
   '50% Advance, 50% on Delivery',
 ];
 
+const EMPTY_PO_TERMS_DETAILS = {
+  paymentTermsText: '',
+  siteAddress: '',
+  siteContactPerson: '',
+  siteContactPhone: '',
+  siteContactEmail: '',
+  projectManagerHo: '',
+  projectManagerContact: '',
+  projectManagerEmail: '',
+  invoicingAddress: '',
+  mailingAddress: '',
+  reasonForCancellation: '',
+  subject: '',
+};
+
+type PoTermsDetails = typeof EMPTY_PO_TERMS_DETAILS;
+
 const INCOTERMS_OPTIONS = ['EXW', 'FOB', 'CIF', 'DDP', 'DAP', 'FCA'];
 
 const PO_TYPE_OPTIONS: { id: PoType; label: string }[] = [
@@ -35,34 +69,90 @@ const PO_TYPE_OPTIONS: { id: PoType; label: string }[] = [
   { id: 'long_po', label: 'Long PO' },
 ];
 
-function ClausePreviewList({
+function emptyClause(): PoLetterheadClause {
+  return { termsHeader: '', termsDescription: '' };
+}
+
+function ClauseEditorList({
   clauses,
   emptyText,
+  onChange,
 }: {
   clauses: PoLetterheadClause[];
   emptyText: string;
+  onChange: (next: PoLetterheadClause[]) => void;
 }) {
+  const updateRow = (index: number, patch: Partial<PoLetterheadClause>) => {
+    onChange(clauses.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  };
+
+  const removeRow = (index: number) => {
+    onChange(clauses.filter((_, i) => i !== index));
+  };
+
+  const addRow = () => {
+    onChange([...clauses, emptyClause()]);
+  };
+
   if (!clauses.length) {
-    return <p className="text-sm text-gray-400 italic">{emptyText}</p>;
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-gray-400 italic">{emptyText}</p>
+        <button
+          type="button"
+          onClick={addRow}
+          className="text-sm font-medium text-teal-700 hover:underline cursor-pointer"
+        >
+          + Add clause
+        </button>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-4">
       {clauses.map((clause, index) => (
-        <div key={index} className="border border-gray-100 rounded-lg p-4 bg-gray-50/40">
-          <p className="text-sm font-semibold text-gray-900 mb-2">
-            {index + 1}. {clause.termsHeader || 'Untitled'}
-          </p>
-          {clause.termsDescription ? (
-            <div
-              className="text-sm text-gray-600 prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: clause.termsDescription }}
+        <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50/40 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                {index + 1}. Header
+              </label>
+              <input
+                value={clause.termsHeader || ''}
+                onChange={(e) => updateRow(index, { termsHeader: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 bg-white"
+                placeholder="Clause title"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => removeRow(index)}
+              className="mt-6 p-2 text-red-500 hover:bg-red-50 rounded-lg cursor-pointer"
+              title="Remove clause"
+            >
+              <i className="ri-delete-bin-line"></i>
+            </button>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Description</label>
+            <RichTextEditor
+              editorKey={`clause-desc-${index}-${clause.termsHeader || 'new'}`}
+              value={clause.termsDescription || ''}
+              onChange={(html) => updateRow(index, { termsDescription: html })}
+              placeholder="Clause details (shown on PO PDF)"
+              minHeight={110}
             />
-          ) : (
-            <p className="text-sm text-gray-400 italic">No description</p>
-          )}
+          </div>
         </div>
       ))}
+      <button
+        type="button"
+        onClick={addRow}
+        className="text-sm font-medium text-teal-700 hover:underline cursor-pointer"
+      >
+        + Add clause
+      </button>
     </div>
   );
 }
@@ -73,11 +163,13 @@ export default function CreatePOPage() {
   const prIdParam = searchParams.get('prId');
   const poIdParam = searchParams.get('poId');
   const refPoParam = searchParams.get('refPo');
-  const modeParam = searchParams.get('mode');
   const fromCsvParam = searchParams.get('from');
   const numericPrId = prIdParam ? Number(prIdParam) : null;
   const editPoId = poIdParam ? Number(poIdParam) : null;
   const isEditMode = !!editPoId && !Number.isNaN(editPoId);
+  const editReturnPath =
+    searchParams.get('from') === 'buyer-verify' ? '/scm/buyer-final-verify' : '/scm/po-approval';
+  const isBuyerVerifyEdit = searchParams.get('from') === 'buyer-verify';
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -123,6 +215,8 @@ export default function CreatePOPage() {
   });
 
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  /** Draft text for discount inputs so clearing / typing 0 works without number-input quirks */
+  const [discountDrafts, setDiscountDrafts] = useState<Record<string, string>>({});
   const [deliveryAddress, setDeliveryAddress] = useState('Plot No. 42, Industrial Area Phase II, Chandigarh - 160002');
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('Net 30 Days');
@@ -138,6 +232,7 @@ export default function CreatePOPage() {
   const [footerLogo, setFooterLogo] = useState('');
   const [termsClauses, setTermsClauses] = useState<PoLetterheadClause[]>([]);
   const [annexureClauses, setAnnexureClauses] = useState<PoLetterheadClause[]>([]);
+  const [poTermsDetails, setPoTermsDetails] = useState<PoTermsDetails>({ ...EMPTY_PO_TERMS_DETAILS });
   const [letterheadLoading, setLetterheadLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'terms' | 'preview'>('details');
@@ -152,14 +247,15 @@ export default function CreatePOPage() {
   const [pickerLoading, setPickerLoading] = useState(false);
   const [changeSummary, setChangeSummary] = useState('');
   const [letterheadLocked, setLetterheadLocked] = useState(false);
-  const [poEntryMode, setPoEntryMode] = useState<'manual' | 'import'>(
-    refPoParam?.trim() || fromCsvParam === 'csv' || modeParam === 'import' ? 'import' : 'manual'
+  const [skipApproval, setSkipApproval] = useState(
+    searchParams.get('legacy') === '1' || searchParams.get('skipApproval') === '1'
   );
-  const [csvImportNote, setCsvImportNote] = useState('');
-  const [csvImportError, setCsvImportError] = useState('');
-  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [importedPoNumber, setImportedPoNumber] = useState('');
+  const [importedVendorName, setImportedVendorName] = useState('');
+  const [importedVendorEmail, setImportedVendorEmail] = useState('');
   const csvAppliedRef = useRef(false);
   const brandingAutoApplied = useRef(false);
+  const skipNextLetterheadLoad = useRef(false);
 
   const loadLetterhead = useCallback(async (type: PoType) => {
     setLetterheadLoading(true);
@@ -231,21 +327,48 @@ export default function CreatePOPage() {
   }, [letterheadId, letterheadOptions]);
 
   useEffect(() => {
-    if (letterheadLocked || isEditMode) return;
+    if (letterheadLocked) return;
+    if (skipNextLetterheadLoad.current) {
+      skipNextLetterheadLoad.current = false;
+      return;
+    }
     loadLetterhead(poType);
-  }, [poType, loadLetterhead, letterheadLocked, isEditMode]);
+  }, [poType, loadLetterhead, letterheadLocked]);
+
+  const reloadClausesFromMaster = useCallback(async () => {
+    setLetterheadLoading(true);
+    try {
+      const res = await poLetterheadApi.get(poType);
+      setLetterheadHeader(res.data.letterheadHeader || '');
+      setTermsClauses(res.data.terms || []);
+      setAnnexureClauses(res.data.annexure || []);
+    } catch {
+      /* keep current clauses */
+    } finally {
+      setLetterheadLoading(false);
+    }
+  }, [poType]);
 
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;
-    setLetterheadLocked(true);
+    skipNextLetterheadLoad.current = true;
+    setLetterheadLocked(false);
     setLoading(true);
     try {
       const res = await poApi.get(editPoId);
       const po = res.data as Record<string, unknown>;
-      if (po.statusRaw !== 'pending_approval') {
-        setLoadError('Only pending POs can be edited');
+      const statusRaw = String(po.statusRaw || '');
+      const allowBuyerVerifyEdit =
+        searchParams.get('from') === 'buyer-verify' && statusRaw === 'pending_buyer_verify';
+      if (statusRaw !== 'pending_approval' && !allowBuyerVerifyEdit) {
+        setLoadError('Only pending or buyer-verify POs can be edited');
         setPr(null);
         return;
+      }
+
+      // Buyer final-verify edit uses the same manual create-PO form layout
+      if (allowBuyerVerifyEdit || searchParams.get('mode') === 'manual') {
+        setPoEntryMode('manual');
       }
 
       const prDbId = Number(po.prId);
@@ -272,17 +395,50 @@ export default function CreatePOPage() {
       setEntity(String(po.entity || ''));
       setHeaderLogo(String(po.headerLogo || ''));
       setFooterLogo(String(po.footerLogo || ''));
-      setTermsClauses((po.termsClauses as PoLetterheadClause[]) || []);
-      setAnnexureClauses((po.annexureClauses as PoLetterheadClause[]) || []);
+      const loadedTerms = (po.termsClauses as PoLetterheadClause[]) || [];
+      const loadedAnnexure = (po.annexureClauses as PoLetterheadClause[]) || [];
+      const loadedType = ((po.poType as PoType) || 'short_po');
+      setTermsClauses(loadedTerms);
+      setAnnexureClauses(loadedAnnexure);
+      {
+        const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
+        setPoTermsDetails({
+          ...loadedDetails,
+          paymentTermsText: loadedDetails.paymentTermsText || String(po.paymentTerms || ''),
+          siteAddress: loadedDetails.siteAddress || String(po.deliveryAddress || ''),
+        });
+      }
+
+      // If PO has no saved clauses, pull defaults from PO Type Master
+      if (!loadedTerms.length || !loadedAnnexure.length || !po.letterheadHeader) {
+        try {
+          const masterRes = await poLetterheadApi.get(loadedType);
+          const master = masterRes.data;
+          if (!po.letterheadHeader) setLetterheadHeader(master.letterheadHeader || '');
+          if (!loadedTerms.length) setTermsClauses(master.terms || []);
+          if (!loadedAnnexure.length) setAnnexureClauses(master.annexure || []);
+        } catch {
+          /* keep empty if master missing */
+        }
+      }
       setLineItems(
-        ((po.lineItems as Array<Record<string, unknown>>) || []).map((li) => ({
-          id: Number(li.id) || `li-${li.description}`,
-          description: String(li.description || ''),
-          quantity: Number(li.quantity) || 0,
-          unitPrice: Number(li.unitPrice) || 0,
-          total: Number(li.total) || Number(li.quantity) * Number(li.unitPrice) || 0,
-          category: String(li.category || ''),
-        }))
+        ((po.lineItems as Array<Record<string, unknown>>) || []).map((li) => {
+          const quantity = Number(li.quantity) || 0;
+          const unitPrice = Number(li.unitPrice) || 0;
+          const discount = Math.max(0, Number(li.discount) || 0);
+          const description = String(li.description || '');
+          const itemName = String(li.itemName || li.name || '').trim() || plainTextFromHtml(description);
+          return {
+            id: Number(li.id) || `li-${itemName || description}`,
+            itemName,
+            description,
+            quantity,
+            unitPrice,
+            discount,
+            total: Number(li.total) || calcLineTotal(quantity, unitPrice, discount),
+            category: String(li.category || ''),
+          };
+        })
       );
       setPr({
         id: prDbId,
@@ -331,7 +487,7 @@ export default function CreatePOPage() {
     } finally {
       setLoading(false);
     }
-  }, [isEditMode, editPoId]);
+  }, [isEditMode, editPoId, searchParams]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -415,7 +571,7 @@ export default function CreatePOPage() {
           department: String(p.department),
           requester: String(p.requester),
           totalAmount: Number(p.totalAmount),
-          recommendedVendor: '',
+          recommendedVendor: String(p.recommendedVendor || ''),
         }));
         const rfqRows = (rfqRes.data as Array<{ prId: number; prNumber: string; title: string; department: string; requester: string; totalAmount: number; recommendedVendor: string }>).map((p) => ({
           prId: p.prId,
@@ -427,7 +583,14 @@ export default function CreatePOPage() {
           recommendedVendor: p.recommendedVendor || '',
         }));
         const merged = new Map<number, (typeof prRows)[0]>();
-        [...prRows, ...rfqRows].forEach((row) => merged.set(row.prId, { ...merged.get(row.prId), ...row }));
+        [...prRows, ...rfqRows].forEach((row) => {
+          const prev = merged.get(row.prId);
+          merged.set(row.prId, {
+            ...prev,
+            ...row,
+            recommendedVendor: row.recommendedVendor || prev?.recommendedVendor || '',
+          });
+        });
         setPickerItems([...merged.values()]);
       })
       .catch(() => setPickerItems([]))
@@ -440,17 +603,32 @@ export default function CreatePOPage() {
     };
   }, [pdfPreviewUrl]);
 
+  const updatePoTermsField = (key: keyof PoTermsDetails, value: string) => {
+    setPoTermsDetails((prev) => ({ ...prev, [key]: value }));
+    if (key === 'paymentTermsText') {
+      const firstLine = value.trim().split('\n')[0]?.trim();
+      if (firstLine) setPaymentTerms(firstLine.slice(0, 120));
+    }
+  };
+
   const subtotal = useMemo(() => lineItems.reduce((s, i) => s + i.total, 0), [lineItems]);
+  const discountTotal = useMemo(
+    () => lineItems.reduce((s, i) => s + (Number(i.discount) || 0), 0),
+    [lineItems]
+  );
   const taxAmount = useMemo(() => (subtotal * gstPercentage) / 100, [subtotal, gstPercentage]);
   const grandTotal = useMemo(() => subtotal + taxAmount, [subtotal, taxAmount]);
+  const amountInWords = useMemo(() => numberToIndianWords(grandTotal), [grandTotal]);
 
   const buildPreviewPayload = useCallback(() => ({
     poNumber: poNumber || undefined,
     lineItems: lineItems.map((i) => ({
+      itemName: i.itemName || '',
       description: i.description,
       category: i.category || '',
       quantity: i.quantity,
       unitPrice: i.unitPrice,
+      discount: i.discount || 0,
     })),
     deliveryAddress,
     expectedDeliveryDate,
@@ -466,6 +644,7 @@ export default function CreatePOPage() {
     footerLogo,
     terms: termsClauses,
     annexure: annexureClauses,
+    poTermsDetails,
   }), [
     poNumber,
     lineItems,
@@ -483,6 +662,7 @@ export default function CreatePOPage() {
     footerLogo,
     termsClauses,
     annexureClauses,
+    poTermsDetails,
   ]);
 
   useEffect(() => {
@@ -532,13 +712,67 @@ export default function CreatePOPage() {
   }, [previewHtmlUrl]);
 
   const handleQtyChange = (id: string | number, val: number) =>
-    setLineItems(prev =>
-      prev.map(item => item.id === id ? { ...item, quantity: val, total: val * item.unitPrice } : item)
+    setLineItems((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, quantity: val, total: calcLineTotal(val, item.unitPrice, item.discount) }
+          : item
+      )
     );
 
   const handlePriceChange = (id: string | number, val: number) =>
-    setLineItems(prev =>
-      prev.map(item => item.id === id ? { ...item, unitPrice: val, total: item.quantity * val } : item)
+    setLineItems((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, unitPrice: val, total: calcLineTotal(item.quantity, val, item.discount) }
+          : item
+      )
+    );
+
+  const handleDiscountInput = (id: string | number, raw: string) => {
+    const key = String(id);
+    // Allow empty / partial typing ("", ".", "0.", "0.5")
+    if (raw === '' || raw === '.' || raw === '0.') {
+      setDiscountDrafts((prev) => ({ ...prev, [key]: raw === '0.' ? '0.' : raw }));
+      setLineItems((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? { ...item, discount: 0, total: calcLineTotal(item.quantity, item.unitPrice, 0) }
+            : item
+        )
+      );
+      return;
+    }
+
+    // Normalize leading zeros like "00" / "03" while typing
+    const cleaned = raw.replace(/[^\d.]/g, '');
+    const num = Number(cleaned);
+    if (Number.isNaN(num)) {
+      setDiscountDrafts((prev) => ({ ...prev, [key]: '' }));
+      setLineItems((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? { ...item, discount: 0, total: calcLineTotal(item.quantity, item.unitPrice, 0) }
+            : item
+        )
+      );
+      return;
+    }
+
+    setDiscountDrafts((prev) => ({ ...prev, [key]: cleaned }));
+    setLineItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const gross = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+        const discount = Math.min(gross, Math.max(0, num));
+        return { ...item, discount, total: calcLineTotal(item.quantity, item.unitPrice, discount) };
+      })
+    );
+  };
+
+  const handleItemNameChange = (id: string | number, val: string) =>
+    setLineItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, itemName: val } : item))
     );
 
   const handleDescriptionChange = (id: string | number, val: string) =>
@@ -555,7 +789,17 @@ export default function CreatePOPage() {
     const newId = `new-${Date.now()}`;
     setLineItems(prev => [
       ...prev,
-      { id: newId, description: '', quantity: 1, unitPrice: 0, total: 0, category: '', unit: 'Nos' },
+      {
+        id: newId,
+        itemName: '',
+        description: '',
+        quantity: 1,
+        unitPrice: 0,
+        discount: 0,
+        total: 0,
+        category: '',
+        unit: 'Nos',
+      },
     ]);
   };
 
@@ -588,16 +832,29 @@ export default function CreatePOPage() {
     setFooterLogo(String(po.footerLogo || ''));
     setTermsClauses((po.termsClauses as PoLetterheadClause[]) || []);
     setAnnexureClauses((po.annexureClauses as PoLetterheadClause[]) || []);
+    {
+      const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
+      setPoTermsDetails({
+        ...loadedDetails,
+        paymentTermsText: loadedDetails.paymentTermsText || String(po.paymentTerms || ''),
+        siteAddress: loadedDetails.siteAddress || String(po.deliveryAddress || ''),
+      });
+    }
 
     const refLineItems = ((po.lineItems as Array<Record<string, unknown>>) || []).map((li, index) => {
       const qty = Number(li.quantity) || 0;
       const unitPrice = Number(li.unitPrice) || 0;
+      const discount = Math.max(0, Number(li.discount) || 0);
+      const description = String(li.description || '');
+      const itemName = String(li.itemName || li.name || '').trim() || plainTextFromHtml(description);
       return {
         id: `ref-${index}-${Date.now()}`,
-        description: String(li.description || ''),
+        itemName,
+        description,
         quantity: qty,
         unitPrice,
-        total: Number(li.total) || qty * unitPrice,
+        discount,
+        total: Number(li.total) || calcLineTotal(qty, unitPrice, discount),
         category: String(li.category || ''),
       };
     });
@@ -614,7 +871,6 @@ export default function CreatePOPage() {
   }, []);
 
   const applyCsvImportPayload = useCallback((payload: PoCsvImportPayload) => {
-    setPoEntryMode('import');
     if (payload.lineItems?.length) setLineItems(payload.lineItems);
     if (payload.deliveryAddress) setDeliveryAddress(payload.deliveryAddress);
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
@@ -622,8 +878,16 @@ export default function CreatePOPage() {
     if (payload.incoterms) setIncoterms(payload.incoterms);
     if (payload.gstPercentage != null) setGstPercentage(payload.gstPercentage);
     if (payload.specialInstructions) setSpecialInstructions(payload.specialInstructions);
-    setCsvImportNote(`Imported ${payload.lineItems.length} line item(s) from CSV`);
-    setCsvImportError('');
+    if (payload.poType) setPoType(payload.poType);
+    if (payload.entity) setEntity(payload.entity);
+    if (payload.letterheadHeader) setLetterheadHeader(payload.letterheadHeader);
+    if (payload.referencePoNumber) setReferencePoNumber(payload.referencePoNumber);
+    if (payload.termsClauses?.length) setTermsClauses(payload.termsClauses);
+    if (payload.annexureClauses?.length) setAnnexureClauses(payload.annexureClauses);
+    if (payload.poNumber) setImportedPoNumber(payload.poNumber);
+    if (payload.vendorName) setImportedVendorName(payload.vendorName);
+    if (payload.vendorEmail) setImportedVendorEmail(payload.vendorEmail);
+    if (payload.skipApproval) setSkipApproval(true);
   }, []);
 
   useEffect(() => {
@@ -646,42 +910,16 @@ export default function CreatePOPage() {
     setLineItems(
       pr.lineItems.map((item) => ({
         id: item.id,
-        description: item.description,
+        itemName: plainTextFromHtml(item.description || ''),
+        description: item.description || '',
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        total: item.quantity * item.unitPrice,
+        discount: 0,
+        total: calcLineTotal(item.quantity, item.unitPrice, 0),
         category: item.category,
       }))
     );
   }, [pr, isEditMode, fromCsvParam, refPoParam, applyCsvImportPayload]);
-
-  const handleLookupReferencePo = async () => {
-    const value = referencePoNumber.trim();
-    if (!value) {
-      setReferencePoError('Enter a PO number to look up');
-      setReferencePoLoaded(null);
-      return;
-    }
-    setReferencePoLoading(true);
-    setReferencePoError('');
-    try {
-      const res = await poApi.getByNumber(value);
-      const po = res.data as Record<string, unknown>;
-      if (!po?.poNumber) {
-        throw new Error('PO not found');
-      }
-      // Do not allow referencing the PO currently being edited
-      if (isEditMode && String(po.poNumber) === poNumber) {
-        throw new Error('Cannot use the current PO as its own reference');
-      }
-      applyReferencePoDetails(po);
-    } catch (err) {
-      setReferencePoLoaded(null);
-      setReferencePoError(err instanceof Error ? err.message : 'PO not found');
-    } finally {
-      setReferencePoLoading(false);
-    }
-  };
 
   // Auto-import reference PO when opened from Purchase Requests with ?refPo=
   useEffect(() => {
@@ -712,23 +950,9 @@ export default function CreatePOPage() {
     };
   }, [isEditMode, pr, refPoParam, referencePoLoaded, applyReferencePoDetails]);
 
-  const handleCsvFileOnForm = async (file: File | null) => {
-    if (!file) return;
-    setCsvImportError('');
-    try {
-      const text = await file.text();
-      const payload = parsePoImportCsv(text);
-      applyCsvImportPayload(payload);
-    } catch (err) {
-      setCsvImportError(err instanceof Error ? err.message : 'CSV import failed');
-    } finally {
-      if (csvInputRef.current) csvInputRef.current.value = '';
-    }
-  };
-
   const handleSendForApproval = async () => {
     if ((!numericPrId && !editPoId) || !pr) return;
-    if (!letterheadId) {
+    if (!skipApproval && !letterheadId) {
       alert('Please select a letterhead entity');
       return;
     }
@@ -742,12 +966,14 @@ export default function CreatePOPage() {
     }
     setSubmitting(true);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         lineItems: lineItems.map((i) => ({
+          itemName: i.itemName || '',
           description: i.description,
           category: i.category || '',
           quantity: i.quantity,
           unitPrice: i.unitPrice,
+          discount: i.discount || 0,
         })),
         deliveryAddress,
         expectedDeliveryDate,
@@ -763,13 +989,26 @@ export default function CreatePOPage() {
         footerLogo,
         terms: termsClauses,
         annexure: annexureClauses,
+        poTermsDetails: {
+          ...poTermsDetails,
+          paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
+          siteAddress: poTermsDetails.siteAddress || deliveryAddress,
+        },
         referencePoNumber: referencePoNumber.trim() || undefined,
         changeSummary: changeSummary.trim() || undefined,
       };
 
+      if (skipApproval) {
+        payload.skipApproval = true;
+        payload.legacyImport = true;
+        if (importedPoNumber.trim()) payload.poNumber = importedPoNumber.trim();
+        if (importedVendorName.trim()) payload.vendorName = importedVendorName.trim();
+        if (importedVendorEmail.trim()) payload.vendorEmail = importedVendorEmail.trim();
+      }
+
       if (isEditMode && editPoId) {
         await poApi.update(editPoId, payload);
-        navigate('/scm/po-approval');
+        navigate(editReturnPath);
         return;
       }
 
@@ -920,45 +1159,47 @@ export default function CreatePOPage() {
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50/60">
         {/* ── Top Header Bar ── */}
-        <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-20">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+        <div className="bg-white border-b border-gray-200 px-3 sm:px-6 lg:px-8 py-3 sm:py-4 sticky top-0 z-20">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
               <button
-                onClick={() => navigate(isEditMode ? '/scm/po-approval' : '/scm/purchase-requests')}
-                className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer text-gray-500"
+                onClick={() => navigate(isEditMode ? editReturnPath : '/scm/purchase-requests')}
+                className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer text-gray-500 shrink-0"
               >
                 <i className="ri-arrow-left-line text-lg"></i>
               </button>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-lg font-bold text-gray-900">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <h1 className="text-base sm:text-lg font-bold text-gray-900">
                     {isEditMode ? 'Edit Purchase Order' : 'Create Purchase Order'}
                   </h1>
                   <span className={`px-2.5 py-0.5 border rounded-full text-xs font-semibold tracking-wide ${
-                    isEditMode
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-teal-50 text-teal-700 border-teal-200'
+                    isBuyerVerifyEdit
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : isEditMode
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-teal-50 text-teal-700 border-teal-200'
                   }`}>
-                    {isEditMode ? 'PENDING REVIEW' : 'DRAFT'}
+                    {isBuyerVerifyEdit ? 'BUYER FINAL VERIFY' : isEditMode ? 'PENDING REVIEW' : 'DRAFT'}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 mt-0.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
                   <span className="text-xs text-gray-500">
                     PO No: <span className="font-semibold text-teal-600">{poNumber}</span>
                   </span>
-                  <span className="text-gray-300 text-xs">•</span>
+                  <span className="text-gray-300 text-xs hidden sm:inline">•</span>
                   <span className="text-xs text-gray-500">
                     PR Ref: <span className="font-semibold text-gray-700">{pr.prNumber}</span>
                   </span>
-                  <span className="text-gray-300 text-xs">•</span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-gray-300 text-xs hidden md:inline">•</span>
+                  <span className="text-xs text-gray-500 truncate max-w-full md:max-w-[240px]">
                     Vendor: <span className="font-semibold text-gray-700">{pr.recommendedVendor}</span>
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
               {draftSaved && (
                 <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium animate-pulse">
                   <i className="ri-checkbox-circle-fill"></i> Draft saved
@@ -967,7 +1208,7 @@ export default function CreatePOPage() {
               {!isEditMode && (
                 <button
                   onClick={handleSaveDraft}
-                  className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium flex items-center gap-2"
+                  className="px-3 sm:px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium flex items-center gap-2"
                 >
                   <i className="ri-save-line"></i> Save Draft
                 </button>
@@ -977,7 +1218,7 @@ export default function CreatePOPage() {
                   href={pdfPreviewUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium flex items-center gap-2"
+                  className="px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium flex items-center gap-2"
                 >
                   <i className="ri-file-pdf-line"></i> View PDF
                 </a>
@@ -988,31 +1229,31 @@ export default function CreatePOPage() {
                   value={changeSummary}
                   onChange={(e) => setChangeSummary(e.target.value)}
                   placeholder="Change summary (optional)"
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-64 max-w-full"
                 />
               )}
               <button
                 onClick={handleSendForApproval}
                 disabled={submitting}
-                className="px-5 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-semibold flex items-center gap-2 shadow-sm disabled:opacity-60"
+                className="px-4 sm:px-5 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-semibold flex items-center gap-2 shadow-sm disabled:opacity-60"
               >
                 <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
-                {submitting ? 'Saving...' : isEditMode ? 'Save Changes' : 'Send for Approval'}
+                {submitting ? 'Saving...' : isEditMode ? 'Save Changes' : skipApproval ? 'Create PO Only' : 'Send for Approval'}
               </button>
             </div>
           </div>
 
           {/* Progress Steps */}
-          <div className="flex items-center gap-0 mt-4">
+          <div className="flex items-center gap-0 mt-3 sm:mt-4 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
             {[
               { key: 'details', label: 'PO Details', icon: 'ri-file-list-3-line', step: 1 },
               { key: 'terms', label: 'Terms & Conditions', icon: 'ri-file-text-line', step: 2 },
               { key: 'preview', label: 'Preview & Submit', icon: 'ri-eye-line', step: 3 },
-            ].map((tab, idx) => (
+            ].map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as typeof activeTab)}
-                className={`flex items-center gap-2 px-5 py-2 text-sm font-medium transition-all cursor-pointer whitespace-nowrap border-b-2 ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 text-xs sm:text-sm font-medium transition-all cursor-pointer whitespace-nowrap border-b-2 shrink-0 ${
                   activeTab === tab.key
                     ? 'border-teal-600 text-teal-700'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -1022,20 +1263,20 @@ export default function CreatePOPage() {
                   activeTab === tab.key ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-500'
                 }`}>{tab.step}</span>
                 <i className={`${tab.icon} text-base`}></i>
-                {tab.label}
+                <span className="hidden sm:inline">{tab.label}</span>
               </button>
             ))}
           </div>
         </div>
 
-        <div className="px-8 py-6">
+        <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
           {/* ══════════════════════════════════════════
               TAB 1 — PO DETAILS
           ══════════════════════════════════════════ */}
           {activeTab === 'details' && (
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
               {/* LEFT — 2/3 */}
-              <div className="col-span-2 space-y-5">
+              <div className="lg:col-span-2 space-y-5">
 
                 {/* PR Info Banner */}
                 <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 text-white">
@@ -1064,264 +1305,6 @@ export default function CreatePOPage() {
                       </span>
                     </div>
                   </div>
-                </div>
-
-                {/* Create PO: Import + Manual entry */}
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-lg">
-                        <i className="ri-file-add-line text-teal-600"></i>
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-gray-900">Create PO</h3>
-                        <p className="text-xs text-gray-500">Import from an existing PO, or enter details manually</p>
-                      </div>
-                    </div>
-                    <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setPoEntryMode('manual')}
-                        className={`px-3.5 py-2 text-xs font-semibold ${
-                          poEntryMode === 'manual' ? 'bg-teal-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        <i className="ri-edit-line mr-1"></i>
-                        Manual Entry
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPoEntryMode('import')}
-                        className={`px-3.5 py-2 text-xs font-semibold border-l border-gray-200 ${
-                          poEntryMode === 'import' ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        <i className="ri-download-2-line mr-1"></i>
-                        Import
-                      </button>
-                    </div>
-                  </div>
-
-                  {poEntryMode === 'import' && (
-                    <div className="space-y-4 mb-4">
-                      <div className="p-4 rounded-lg bg-violet-50/50 border border-violet-100 space-y-3">
-                        <p className="text-xs font-semibold text-violet-800 uppercase tracking-wide">Import CSV (sample)</p>
-                        <p className="text-xs text-violet-700">Download sample, fill line items, then upload to create this PO.</p>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={downloadPoImportSampleCsv}
-                            className="px-4 py-2.5 border border-emerald-300 text-emerald-800 rounded-lg text-sm font-semibold hover:bg-white flex items-center gap-1.5"
-                          >
-                            <i className="ri-file-excel-2-line"></i>
-                            Sample CSV
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => csvInputRef.current?.click()}
-                            className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 flex items-center gap-1.5"
-                          >
-                            <i className="ri-upload-2-line"></i>
-                            Upload CSV
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setActiveTab('terms')}
-                            className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 flex items-center gap-1.5"
-                          >
-                            <i className="ri-shopping-cart-2-line"></i>
-                            Create PO
-                          </button>
-                          <input
-                            ref={csvInputRef}
-                            type="file"
-                            accept=".csv,text/csv"
-                            className="hidden"
-                            onChange={(e) => handleCsvFileOnForm(e.target.files?.[0] || null)}
-                          />
-                        </div>
-                        {csvImportNote && (
-                          <p className="text-xs text-emerald-700 flex items-center gap-1">
-                            <i className="ri-checkbox-circle-fill"></i>
-                            {csvImportNote}
-                          </p>
-                        )}
-                        {csvImportError && (
-                          <p className="text-xs text-red-600 flex items-center gap-1">
-                            <i className="ri-error-warning-line"></i>
-                            {csvImportError}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-3">
-                        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Or import from Reference PO</p>
-                        <div className="flex flex-wrap gap-2">
-                          <input
-                            type="text"
-                            value={referencePoNumber}
-                            onChange={(e) => {
-                              setReferencePoNumber(e.target.value);
-                              setReferencePoError('');
-                              if (!e.target.value.trim()) setReferencePoLoaded(null);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleLookupReferencePo();
-                              }
-                            }}
-                            placeholder="e.g. PO-2026-0001"
-                            className="flex-1 min-w-[180px] px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleLookupReferencePo}
-                            disabled={referencePoLoading}
-                            className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 disabled:opacity-60 cursor-pointer whitespace-nowrap flex items-center gap-1.5"
-                          >
-                            {referencePoLoading ? (
-                              <i className="ri-loader-4-line animate-spin"></i>
-                            ) : (
-                              <i className="ri-download-2-line"></i>
-                            )}
-                            Import PO
-                          </button>
-                        </div>
-                        {referencePoError && (
-                          <p className="text-xs text-red-600 flex items-center gap-1">
-                            <i className="ri-error-warning-line"></i>
-                            {referencePoError}
-                          </p>
-                        )}
-                        {referencePoLoaded && !referencePoError && (
-                          <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-xs text-emerald-800">
-                            <p className="font-semibold flex items-center gap-1.5">
-                              <i className="ri-checkbox-circle-fill"></i>
-                              Loaded from {referencePoLoaded.poNumber}
-                            </p>
-                            <p className="mt-1 text-emerald-700">
-                              {[
-                                referencePoLoaded.prNumber && `PR ${referencePoLoaded.prNumber}`,
-                                referencePoLoaded.vendorName && `Vendor: ${referencePoLoaded.vendorName}`,
-                                referencePoLoaded.grandTotal
-                                  ? `Amount: ${fmt(referencePoLoaded.grandTotal)}`
-                                  : '',
-                              ]
-                                .filter(Boolean)
-                                .join(' · ')}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {poEntryMode === 'manual' && (
-                    <div className="space-y-4 mb-4 p-4 rounded-lg bg-teal-50/40 border border-teal-100">
-                      <p className="text-xs font-semibold text-teal-800 uppercase tracking-wide">Manual entry fields</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">Delivery address</label>
-                          <textarea
-                            value={deliveryAddress}
-                            onChange={(e) => setDeliveryAddress(e.target.value)}
-                            rows={2}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                            placeholder="Ship-to address"
-                          />
-                        </div>
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Expected delivery date</label>
-                            <input
-                              type="date"
-                              value={expectedDeliveryDate}
-                              onChange={(e) => setExpectedDeliveryDate(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Payment terms</label>
-                            <select
-                              value={paymentTerms}
-                              onChange={(e) => setPaymentTerms(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                            >
-                              {['Net 30 Days', 'Net 45 Days', 'Net 60 Days', 'Advance 50%', 'On Delivery'].map((opt) => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">Incoterms</label>
-                          <select
-                            value={incoterms}
-                            onChange={(e) => setIncoterms(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                          >
-                            {['DDP', 'FOB', 'CIF', 'EXW', 'DAP'].map((opt) => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">GST %</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={gstPercentage}
-                            onChange={(e) => setGstPercentage(Math.max(0, Number(e.target.value) || 0))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">Special instructions</label>
-                          <input
-                            type="text"
-                            value={specialInstructions}
-                            onChange={(e) => setSpecialInstructions(e.target.value)}
-                            placeholder="Optional notes for vendor"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                          />
-                        </div>
-                      </div>
-                      <p className="text-xs text-teal-700">
-                        Edit line items below as needed, then continue with Create PO.
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab('terms')}
-                          className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer whitespace-nowrap flex items-center gap-1.5"
-                        >
-                          <i className="ri-shopping-cart-2-line"></i>
-                          Create PO
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPoEntryMode('import')}
-                          className="px-4 py-2.5 border border-violet-300 text-violet-700 rounded-lg text-sm font-semibold hover:bg-violet-50 cursor-pointer whitespace-nowrap flex items-center gap-1.5"
-                        >
-                          <i className="ri-download-2-line"></i>
-                          Switch to Import
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {poEntryMode === 'import' && referencePoLoaded && (
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setPoEntryMode('manual')}
-                        className="text-xs font-medium text-teal-700 hover:underline"
-                      >
-                        Review / edit imported fields manually
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 {/* PO Type */}
@@ -1431,207 +1414,6 @@ export default function CreatePOPage() {
                   )}
                 </div>
 
-                {/* Line Items */}
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                  <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900">Line Items</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">{lineItems.length} item{lineItems.length !== 1 ? 's' : ''} — edit qty & price as needed</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
-                        {lineItems.length} Items
-                      </span>
-                      <button
-                        onClick={handleAddLineItem}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
-                      >
-                        <i className="ri-add-line text-sm"></i> Add Item
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-10">#</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Category</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Qty</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-36">Unit Price</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Total</th>
-                          <th className="px-4 py-3 w-10"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {lineItems.map((item, idx) => (
-                          <tr key={item.id} className="hover:bg-gray-50/60 transition-colors group">
-                            <td className="px-4 py-3">
-                              <span className="w-6 h-6 flex items-center justify-center bg-teal-50 text-teal-700 rounded-full text-xs font-bold">
-                                {idx + 1}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                value={item.description}
-                                onChange={e => handleDescriptionChange(item.id, e.target.value)}
-                                placeholder="Enter item description..."
-                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50 min-w-[180px]"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="text"
-                                value={item.category || ''}
-                                onChange={e => handleCategoryChange(item.id, e.target.value)}
-                                placeholder="Category"
-                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="number"
-                                min="1"
-                                value={item.quantity}
-                                onChange={e => handleQtyChange(item.id, parseInt(e.target.value) || 1)}
-                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
-                              />
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="relative">
-                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">₹</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={item.unitPrice}
-                                  onChange={e => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
-                                  className="w-full pl-6 pr-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
-                                />
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <p className="text-sm font-bold text-gray-900">{fmt(item.total)}</p>
-                            </td>
-                            <td className="px-4 py-3">
-                              <button
-                                onClick={() => handleDeleteLineItem(item.id)}
-                                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
-                                title="Remove item"
-                              >
-                                <i className="ri-delete-bin-line text-sm"></i>
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                        {lineItems.length === 0 && (
-                          <tr>
-                            <td colSpan={7} className="px-6 py-10 text-center">
-                              <div className="flex flex-col items-center gap-2">
-                                <div className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full">
-                                  <i className="ri-file-list-3-line text-gray-400 text-lg"></i>
-                                </div>
-                                <p className="text-sm text-gray-400">No line items yet</p>
-                                <button
-                                  onClick={handleAddLineItem}
-                                  className="mt-1 flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
-                                >
-                                  <i className="ri-add-line"></i> Add First Item
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Totals Footer */}
-                  <div className="border-t border-gray-100 bg-gray-50/80 px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <button
-                        onClick={handleAddLineItem}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 border border-dashed border-teal-400 text-teal-600 rounded-lg hover:bg-teal-50 transition-colors cursor-pointer text-xs font-medium whitespace-nowrap"
-                      >
-                        <i className="ri-add-line text-sm"></i> Add Another Item
-                      </button>
-                      <div className="w-72 space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Subtotal</span>
-                          <span className="font-semibold text-gray-900">{fmt(subtotal)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">GST</span>
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={gstPercentage}
-                                onChange={e => setGstPercentage(parseFloat(e.target.value) || 0)}
-                                className="w-14 px-2 py-1 border border-gray-200 rounded text-xs text-center focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                              />
-                              <span className="text-gray-400 text-xs">%</span>
-                            </div>
-                          </div>
-                          <span className="font-semibold text-gray-900">{fmt(taxAmount)}</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-                          <span className="text-sm font-bold text-gray-900">Grand Total</span>
-                          <span className="text-lg font-bold text-teal-600">{fmt(grandTotal)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Delivery Details */}
-                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                  <div className="flex items-center gap-2 mb-5">
-                    <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-lg">
-                      <i className="ri-map-pin-line text-teal-600"></i>
-                    </div>
-                    <h3 className="text-sm font-bold text-gray-900">Delivery Information</h3>
-                  </div>
-                  <div className="grid grid-cols-2 gap-5">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                        Delivery Address <span className="text-red-500">*</span>
-                      </label>
-                      <textarea
-                        value={deliveryAddress}
-                        onChange={e => setDeliveryAddress(e.target.value)}
-                        rows={2}
-                        placeholder="Enter complete delivery address..."
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none bg-gray-50/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                        Expected Delivery Date <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={expectedDeliveryDate}
-                        onChange={e => setExpectedDeliveryDate(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Incoterms</label>
-                      <select
-                        value={incoterms}
-                        onChange={e => setIncoterms(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50/50 cursor-pointer"
-                      >
-                        {INCOTERMS_OPTIONS.map(o => <option key={o}>{o}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* RIGHT — 1/3 */}
@@ -1720,26 +1502,253 @@ export default function CreatePOPage() {
                   </div>
                 </div>
 
-                {/* Quick Actions */}
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                  <h3 className="text-sm font-bold text-gray-900 mb-3">Quick Actions</h3>
-                  <div className="space-y-2">
+              </div>
+
+              {/* Line Items — full width */}
+              <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Line Items</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">{lineItems.length} item{lineItems.length !== 1 ? 's' : ''} — edit qty & price as needed</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                      {lineItems.length} Items
+                    </span>
                     <button
-                      onClick={() => setActiveTab('terms')}
-                      className="w-full flex items-center gap-3 px-3.5 py-2.5 bg-gray-50 hover:bg-teal-50 hover:text-teal-700 rounded-lg text-sm text-gray-700 transition-colors cursor-pointer"
+                      onClick={handleAddLineItem}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
                     >
-                      <i className="ri-file-text-line text-base"></i>
-                      <span className="font-medium">Add Terms &amp; Conditions</span>
-                      <i className="ri-arrow-right-line ml-auto text-gray-400"></i>
+                      <i className="ri-add-line text-sm"></i> Add Item
                     </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[860px]">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-100">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-10">#</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-[180px]">Item Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-[240px]">Item Description</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Category</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-20">Qty</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-36">Unit Price</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Discount</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-36">Total</th>
+                        <th className="px-4 py-3 w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {lineItems.map((item, idx) => (
+                        <tr key={item.id} className="hover:bg-gray-50/60 transition-colors group">
+                          <td className="px-4 py-3 align-top">
+                            <span className="w-6 h-6 flex items-center justify-center bg-teal-50 text-teal-700 rounded-full text-xs font-bold">
+                              {idx + 1}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <input
+                              type="text"
+                              value={item.itemName || ''}
+                              onChange={(e) => handleItemNameChange(item.id, e.target.value)}
+                              placeholder="Item name"
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                            />
+                          </td>
+                          <td className="px-4 py-3 min-w-[240px] align-top">
+                            <RichTextEditor
+                              editorKey={`li-desc-${item.id}`}
+                              value={item.description || ''}
+                              onChange={(html) => handleDescriptionChange(item.id, html)}
+                              placeholder="Item description..."
+                              minHeight={72}
+                            />
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <input
+                              type="text"
+                              value={item.category || ''}
+                              onChange={e => handleCategoryChange(item.id, e.target.value)}
+                              placeholder="Category"
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                            />
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={e => handleQtyChange(item.id, parseInt(e.target.value) || 1)}
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                            />
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">₹</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.unitPrice}
+                                onChange={e => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
+                                className="w-full pl-6 pr-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                              />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">₹</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={
+                                  discountDrafts[String(item.id)] !== undefined
+                                    ? discountDrafts[String(item.id)]
+                                    : item.discount
+                                      ? String(item.discount)
+                                      : ''
+                                }
+                                onChange={(e) => handleDiscountInput(item.id, e.target.value)}
+                                onBlur={() => {
+                                  const key = String(item.id);
+                                  setDiscountDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[key];
+                                    return next;
+                                  });
+                                }}
+                                placeholder="0"
+                                className="w-full pl-6 pr-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                              />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <p className="text-sm font-bold text-gray-900">{fmt(item.total)}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => handleDeleteLineItem(item.id)}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                              title="Remove item"
+                            >
+                              <i className="ri-delete-bin-line text-sm"></i>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {lineItems.length === 0 && (
+                        <tr>
+                          <td colSpan={9} className="px-6 py-10 text-center">
+                            <div className="flex flex-col items-center gap-2">
+                              <div className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full">
+                                <i className="ri-file-list-3-line text-gray-400 text-lg"></i>
+                              </div>
+                              <p className="text-sm text-gray-400">No line items yet</p>
+                              <button
+                                onClick={handleAddLineItem}
+                                className="mt-1 flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
+                              >
+                                <i className="ri-add-line"></i> Add First Item
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="border-t border-gray-100 bg-gray-50/80 px-6 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
                     <button
-                      onClick={() => setActiveTab('preview')}
-                      className="w-full flex items-center gap-3 px-3.5 py-2.5 bg-gray-50 hover:bg-teal-50 hover:text-teal-700 rounded-lg text-sm text-gray-700 transition-colors cursor-pointer"
+                      onClick={handleAddLineItem}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 border border-dashed border-teal-400 text-teal-600 rounded-lg hover:bg-teal-50 transition-colors cursor-pointer text-xs font-medium whitespace-nowrap"
                     >
-                      <i className="ri-eye-line text-base"></i>
-                      <span className="font-medium">Preview PO Document</span>
-                      <i className="ri-arrow-right-line ml-auto text-gray-400"></i>
+                      <i className="ri-add-line text-sm"></i> Add Another Item
                     </button>
+                    <div className="w-full sm:w-72 space-y-2">
+                      {discountTotal > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Discount</span>
+                          <span className="font-semibold text-emerald-600">−{fmt(discountTotal)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Subtotal</span>
+                        <span className="font-semibold text-gray-900">{fmt(subtotal)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-500">GST</span>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={gstPercentage}
+                              onChange={e => setGstPercentage(parseFloat(e.target.value) || 0)}
+                              className="w-14 px-2 py-1 border border-gray-200 rounded text-xs text-center focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                            />
+                            <span className="text-gray-400 text-xs">%</span>
+                          </div>
+                        </div>
+                        <span className="font-semibold text-gray-900">{fmt(taxAmount)}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                        <span className="text-sm font-bold text-gray-900">Grand Total</span>
+                        <span className="text-lg font-bold text-teal-600">{fmt(grandTotal)}</span>
+                      </div>
+                      <div className="pt-2 border-t border-gray-100">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Amount In Words</p>
+                        <p className="text-xs text-gray-700 leading-relaxed">{amountInWords}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Delivery — full width */}
+              <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-lg">
+                    <i className="ri-map-pin-line text-teal-600"></i>
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-900">Delivery Information</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                  <div className="sm:col-span-2 lg:col-span-4">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                      Delivery Address <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={deliveryAddress}
+                      onChange={e => setDeliveryAddress(e.target.value)}
+                      rows={2}
+                      placeholder="Enter complete delivery address..."
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none bg-gray-50/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                      Expected Delivery Date <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={expectedDeliveryDate}
+                      onChange={e => setExpectedDeliveryDate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Incoterms</label>
+                    <select
+                      value={incoterms}
+                      onChange={e => setIncoterms(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50/50 cursor-pointer"
+                    >
+                      {INCOTERMS_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -1750,8 +1759,147 @@ export default function CreatePOPage() {
               TAB 2 — TERMS & CONDITIONS
           ══════════════════════════════════════════ */}
           {activeTab === 'terms' && (
-            <div className="grid grid-cols-3 gap-6">
-              <div className="col-span-2 space-y-5">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+              <div className="lg:col-span-2 space-y-5">
+                {/* PO Terms & Conditions Details — matches ERP form layout */}
+                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                  <div className="flex items-center gap-2 mb-5">
+                    <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-lg">
+                      <i className="ri-file-list-3-line text-teal-600"></i>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-900">PO Terms &amp; Conditions Details</h3>
+                      <p className="text-xs text-gray-500">Site, project manager, invoicing and mailing details</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Payment Terms — full width */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-gray-700">Payment Terms</label>
+                      <textarea
+                        value={poTermsDetails.paymentTermsText || paymentTerms}
+                        onChange={(e) => updatePoTermsField('paymentTermsText', e.target.value)}
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                      />
+                    </div>
+
+                    {/* Site address + contact stack side by side */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-gray-700">Site Address</label>
+                        <textarea
+                          value={poTermsDetails.siteAddress}
+                          onChange={(e) => updatePoTermsField('siteAddress', e.target.value)}
+                          rows={5}
+                          className="w-full h-full min-h-[132px] px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                        />
+                      </div>
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold text-gray-700">Site Contact Person</label>
+                          <input
+                            type="text"
+                            value={poTermsDetails.siteContactPerson}
+                            onChange={(e) => updatePoTermsField('siteContactPerson', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold text-gray-700">Site Contact Person&apos;s Mail</label>
+                          <input
+                            type="email"
+                            value={poTermsDetails.siteContactEmail}
+                            onChange={(e) => updatePoTermsField('siteContactEmail', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold text-gray-700">Site Contact Person Phone No</label>
+                          <input
+                            type="text"
+                            value={poTermsDetails.siteContactPhone}
+                            onChange={(e) => updatePoTermsField('siteContactPhone', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Project manager fields — equal 2-col pairs */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-gray-700">Project Manager at HO</label>
+                        <input
+                          type="text"
+                          value={poTermsDetails.projectManagerHo}
+                          onChange={(e) => updatePoTermsField('projectManagerHo', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-gray-700">Project Manager&apos;s Contact</label>
+                        <input
+                          type="text"
+                          value={poTermsDetails.projectManagerContact}
+                          onChange={(e) => updatePoTermsField('projectManagerContact', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="block text-xs font-semibold text-gray-700">Project Manager&apos;s Email</label>
+                        <input
+                          type="email"
+                          value={poTermsDetails.projectManagerEmail}
+                          onChange={(e) => updatePoTermsField('projectManagerEmail', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Addresses — equal height textareas */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-gray-700">Invoicing Address</label>
+                        <textarea
+                          value={poTermsDetails.invoicingAddress}
+                          onChange={(e) => updatePoTermsField('invoicingAddress', e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-gray-700">Mailing Address</label>
+                        <textarea
+                          value={poTermsDetails.mailingAddress}
+                          onChange={(e) => updatePoTermsField('mailingAddress', e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-gray-700">Reason For Cancellation</label>
+                        <textarea
+                          value={poTermsDetails.reasonForCancellation}
+                          onChange={(e) => updatePoTermsField('reasonForCancellation', e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-gray-700">Subject</label>
+                        <textarea
+                          value={poTermsDetails.subject}
+                          onChange={(e) => updatePoTermsField('subject', e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div>
@@ -1785,25 +1933,32 @@ export default function CreatePOPage() {
                     </div>
                     <h3 className="text-sm font-bold text-gray-900">Payment &amp; Commercial Terms</h3>
                   </div>
-                  <div className="grid grid-cols-2 gap-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payment Terms</label>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payment Terms (quick select)</label>
                       <select
                         value={paymentTerms}
-                        onChange={e => setPaymentTerms(e.target.value)}
+                        onChange={(e) => {
+                          setPaymentTerms(e.target.value);
+                          updatePoTermsField('paymentTermsText', e.target.value);
+                        }}
                         className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
                       >
-                        {PAYMENT_TERMS_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                        {PAYMENT_TERMS_OPTIONS.map((o) => (
+                          <option key={o}>{o}</option>
+                        ))}
                       </select>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">Incoterms</label>
                       <select
                         value={incoterms}
-                        onChange={e => setIncoterms(e.target.value)}
+                        onChange={(e) => setIncoterms(e.target.value)}
                         className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
                       >
-                        {INCOTERMS_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                        {INCOTERMS_OPTIONS.map((o) => (
+                          <option key={o}>{o}</option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -1813,16 +1968,18 @@ export default function CreatePOPage() {
                         min="0"
                         max="100"
                         value={gstPercentage}
-                        onChange={e => setGstPercentage(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => setGstPercentage(parseFloat(e.target.value) || 0)}
                         className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Expected Delivery Date <span className="text-red-500">*</span></label>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                        Expected Delivery Date <span className="text-red-500">*</span>
+                      </label>
                       <input
                         type="date"
                         value={expectedDeliveryDate}
-                        onChange={e => setExpectedDeliveryDate(e.target.value)}
+                        onChange={(e) => setExpectedDeliveryDate(e.target.value)}
                         className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
                       />
                     </div>
@@ -1864,16 +2021,23 @@ export default function CreatePOPage() {
                   <p className="text-xs text-gray-400 mt-1.5">{specialInstructions.length}/500 characters</p>
                 </div>
 
-                {/* Terms from Master */}
+                {/* Terms from Master — editable for this PO / PDF */}
                 <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center gap-2 mb-4 flex-wrap">
                     <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg">
                       <i className="ri-shield-check-line text-gray-600"></i>
                     </div>
                     <h3 className="text-sm font-bold text-gray-900">Terms &amp; Conditions</h3>
-                    <span className="ml-auto px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
-                      From PO Type Master
+                    <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
+                      Default from PO Type Master
                     </span>
+                    <button
+                      type="button"
+                      onClick={reloadClausesFromMaster}
+                      className="ml-auto text-xs font-medium text-teal-700 hover:underline cursor-pointer"
+                    >
+                      Reload from Master
+                    </button>
                   </div>
                   {letterheadLoading ? (
                     <p className="text-sm text-gray-400 flex items-center gap-2">
@@ -1881,20 +2045,31 @@ export default function CreatePOPage() {
                       Loading terms...
                     </p>
                   ) : (
-                    <ClausePreviewList clauses={termsClauses} emptyText="No terms configured for this PO type." />
+                    <ClauseEditorList
+                      clauses={termsClauses}
+                      emptyText="No terms yet — reload from master or add clauses. Edits appear on the PO PDF."
+                      onChange={setTermsClauses}
+                    />
                   )}
                 </div>
 
-                {/* Annexure from Master */}
+                {/* Annexure from Master — editable for this PO / PDF */}
                 <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center gap-2 mb-4 flex-wrap">
                     <div className="w-8 h-8 flex items-center justify-center bg-indigo-50 rounded-lg">
                       <i className="ri-attachment-2 text-indigo-600"></i>
                     </div>
                     <h3 className="text-sm font-bold text-gray-900">Annexure</h3>
-                    <span className="ml-auto px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
-                      From PO Type Master
+                    <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
+                      Default from PO Type Master
                     </span>
+                    <button
+                      type="button"
+                      onClick={reloadClausesFromMaster}
+                      className="ml-auto text-xs font-medium text-teal-700 hover:underline cursor-pointer"
+                    >
+                      Reload from Master
+                    </button>
                   </div>
                   {letterheadLoading ? (
                     <p className="text-sm text-gray-400 flex items-center gap-2">
@@ -1902,7 +2077,11 @@ export default function CreatePOPage() {
                       Loading annexure...
                     </p>
                   ) : (
-                    <ClausePreviewList clauses={annexureClauses} emptyText="No annexure configured for this PO type." />
+                    <ClauseEditorList
+                      clauses={annexureClauses}
+                      emptyText="No annexure yet — reload from master or add clauses. Edits appear on the PO PDF."
+                      onChange={setAnnexureClauses}
+                    />
                   )}
                 </div>
               </div>
@@ -1912,6 +2091,12 @@ export default function CreatePOPage() {
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                   <h3 className="text-sm font-bold text-gray-900 mb-4">Financial Summary</h3>
                   <div className="space-y-3">
+                    {discountTotal > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Discount</span>
+                        <span className="font-semibold text-emerald-600">−{fmt(discountTotal)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Subtotal</span>
                       <span className="font-semibold">{fmt(subtotal)}</span>
@@ -1924,6 +2109,10 @@ export default function CreatePOPage() {
                       <span className="text-sm font-bold text-gray-900">Grand Total</span>
                       <span className="text-xl font-bold text-teal-600">{fmt(grandTotal)}</span>
                     </div>
+                    <div className="pt-3 border-t border-gray-100">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Amount In Words</p>
+                      <p className="text-xs text-gray-700 leading-relaxed">{amountInWords}</p>
+                    </div>
                   </div>
                 </div>
 
@@ -1933,6 +2122,7 @@ export default function CreatePOPage() {
                     <div>
                       <p className="text-xs font-semibold text-amber-800 mb-1">Before Submitting</p>
                       <ul className="text-xs text-amber-700 space-y-1">
+                        <li>• Edit Terms &amp; Annexure — they print on the PO PDF</li>
                         <li>• Verify all line item quantities and prices</li>
                         <li>• Confirm delivery address is correct</li>
                         <li>• Set expected delivery date</li>
@@ -2024,7 +2214,9 @@ export default function CreatePOPage() {
                     </p>
                     <p className="text-xs text-gray-500">
                       {isEditMode
-                        ? 'Updated PO stays pending until you sign from PO Approval'
+                        ? isBuyerVerifyEdit
+                          ? 'Changes update the signed PO before you verify and send to vendor'
+                          : 'Updated PO stays pending until you sign from PO Approval'
                         : 'PO will be sent to SCM Manager for approval'}
                     </p>
                   </div>
@@ -2046,7 +2238,7 @@ export default function CreatePOPage() {
                     <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
                     {submitting
                       ? isEditMode ? 'Saving...' : 'Creating PO...'
-                      : isEditMode ? 'Save Changes' : 'Send for Approval'}
+                      : isEditMode ? 'Save Changes' : skipApproval ? 'Create PO Only' : 'Send for Approval'}
                   </button>
                 </div>
               </div>
