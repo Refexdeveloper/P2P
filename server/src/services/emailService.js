@@ -7,6 +7,13 @@ import { buildRfqSubmittedNotifyRequesterEmail } from '../templates/rfqSubmitted
 import { buildPostRfqActionEmail } from '../templates/prPostRfqActionEmail.js';
 import { buildPoVendorEmail } from '../templates/poVendorEmail.js';
 import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import { formatRoleDisplayName } from '../templates/emailUtils.js';
+import {
+  buildWorkflowWhatsAppParams,
+  queueWorkflowWhatsApp,
+  resolvePhonesForEmails,
+  getWhatsAppPublicBaseUrl,
+} from './whatsappService.js';
 
 let transporter;
 let smtpReady = false;
@@ -36,15 +43,32 @@ function getTransporter() {
   }
 
   // Gmail / Google Workspace: port 587 + STARTTLS (secure:false)
+  // Pool + rate limit: one connection, avoid parallel handshake storms (slow + rate-limits)
   transporter = nodemailer.createTransport({
     host,
     port,
     secure,
     auth: { user, pass },
     requireTLS: !secure && port === 587,
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 100,
+    rateDelta: 1000,
+    rateLimit: 8,
+    connectionTimeout: 12_000,
+    greetingTimeout: 12_000,
+    socketTimeout: 30_000,
   });
 
   return transporter;
+}
+
+/** Serialize outbound mail so Gmail isn't hit with parallel SMTP sessions. */
+let mailQueue = Promise.resolve();
+function enqueueMail(job) {
+  const run = mailQueue.then(() => job());
+  mailQueue = run.catch(() => {});
+  return run;
 }
 
 /**
@@ -88,6 +112,67 @@ async function ensureSmtpReady() {
   return testSmtpConnection();
 }
 
+function getAppBaseUrl() {
+  // Emails / WhatsApp must use public HTTPS — never localhost
+  return getWhatsAppPublicBaseUrl();
+}
+
+function buildWorkflowPortalUrl(pr, assignedRole, options = {}) {
+  const base = getAppBaseUrl();
+  const prId = pr.id || pr.prId;
+  const postRfq = Boolean(options.postRfq);
+  const rfqEntry = Boolean(options.rfqEntry);
+
+  if (assignedRole === 'Requester') return `${base}/requester/rfq-entry/${prId}`;
+  if (rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq)) {
+    return `${base}/scm/rfq-entry/${prId}`;
+  }
+  if (postRfq) return `${base}/rfq-approval/${prId}`;
+  if (assignedRole === 'CFO') return `${base}/cfo/dashboard?prId=${prId}`;
+  if (assignedRole === 'PR Manager') return `${base}/tasks?prId=${prId}`;
+  return `${base}/tasks?prId=${prId}`;
+}
+
+async function notifyWorkflowWhatsApp({
+  pr,
+  emails = [],
+  stage,
+  actionUrl,
+  requesterName,
+}) {
+  try {
+    const toPhones = await resolvePhonesForEmails(pool, emails, {
+      includeOpsCc: process.env.WHATSAPP_CC_OPS === 'true',
+      fallbackToDefault: process.env.WHATSAPP_FALLBACK_DEFAULT !== 'false',
+    });
+    if (!toPhones.length) {
+      console.warn(
+        `WhatsApp skipped: no phone for assignees [${(emails || []).join(', ')}] on ${pr.prNumber || pr.id}`
+      );
+      return;
+    }
+    console.log(
+      `WhatsApp assignees ${(emails || []).join(', ') || '(none)'} → ${toPhones.join(', ')}`
+    );
+    const parameters = buildWorkflowWhatsAppParams({
+      appName: 'P2P',
+      documentNumber: pr.prNumber || `PR-${pr.id || pr.prId}`,
+      title: pr.title || 'Purchase Request',
+      stage,
+      actionUrl: actionUrl || `${getAppBaseUrl()}/tasks`,
+      requesterName: requesterName || pr.requester || 'Requester',
+    });
+    queueWorkflowWhatsApp({
+      toPhones,
+      parameters,
+      documentNumber: pr.prNumber || `PR-${pr.id || pr.prId}`,
+      stage,
+    });
+  } catch (err) {
+    console.error('WhatsApp notify failed:', err.message);
+  }
+}
+
 function getNotificationRecipients() {
   const configured = process.env.PR_NOTIFY_EMAIL || 'sathishkumar.r@refex.co.in';
   return configured
@@ -100,6 +185,7 @@ function getFromAddress() {
   const { user } = getSmtpConfig();
   const fromEmail =
     process.env.SMTP_FROM?.trim() ||
+    process.env.SMTP_FROM_EMAIL?.trim() ||
     user ||
     'support@refexone.com';
   const fromName = process.env.SMTP_FROM_NAME?.trim() || 'P2P Procurement';
@@ -149,7 +235,9 @@ export async function sendPrRaisedNotification(pr, requester, options = {}) {
     return;
   }
 
-  await ensureSmtpReady();
+  if (!smtpReady) {
+    await ensureSmtpReady();
+  }
 
   try {
     const transport = getTransporter();
@@ -166,6 +254,7 @@ export async function sendPrRaisedNotification(pr, requester, options = {}) {
     );
     return info;
   } catch (err) {
+    smtpReady = false;
     console.error('Email send failure:', err.message);
     if (err.response) console.error('SMTP response:', err.response);
     throw err;
@@ -173,10 +262,12 @@ export async function sendPrRaisedNotification(pr, requester, options = {}) {
 }
 
 export function queuePrRaisedNotification(pr, requester, options = {}) {
-  sendPrRaisedNotification(pr, requester, options).catch((err) => {
+  enqueueMail(() => sendPrRaisedNotification(pr, requester, options)).catch((err) => {
     console.error('Email send failure (PR raised):', err.message);
     if (err.response) console.error('SMTP response:', err.response);
   });
+  // WhatsApp is sent only on approval-pending (action required) to avoid
+  // duplicate HSMs that Meta/Unfyd often drop when fired milliseconds apart.
 }
 
 async function getApproverRecipients(role, departmentId = null) {
@@ -205,19 +296,27 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
     return;
   }
 
-  await ensureSmtpReady();
-  const transport = getTransporter();
-  const info = await transport.sendMail({
-    from: getFromAddress(),
-    to: recipients.join(', '),
-    bcc: mailOptions.bcc?.length ? mailOptions.bcc.join(', ') : undefined,
-    subject,
-    text,
-    html,
-    attachments: attachments?.length ? attachments : undefined,
-  });
-  console.log(`Email sent to ${recipients.join(', ')} — ${info.messageId}`);
-  return info;
+  // Skip verify when already confirmed at startup — verify was a major latency source
+  if (!smtpReady) {
+    await ensureSmtpReady();
+  }
+  try {
+    const transport = getTransporter();
+    const info = await transport.sendMail({
+      from: getFromAddress(),
+      to: recipients.join(', '),
+      bcc: mailOptions.bcc?.length ? mailOptions.bcc.join(', ') : undefined,
+      subject,
+      text,
+      html,
+      attachments: attachments?.length ? attachments : undefined,
+    });
+    console.log(`Email sent to ${recipients.join(', ')} — ${info.messageId}`);
+    return info;
+  } catch (err) {
+    smtpReady = false;
+    throw err;
+  }
 }
 
 /** Resolve the particular user assigned on the pending workflow task for this step */
@@ -296,10 +395,49 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
 }
 
 export function queuePrApprovalPendingNotification(pr, assignedRole, requester, departmentId = null, options = {}) {
-  sendPrApprovalPendingNotification(pr, assignedRole, requester, departmentId, options).catch((err) => {
+  enqueueMail(() =>
+    sendPrApprovalPendingNotification(pr, assignedRole, requester, departmentId, options)
+  ).catch((err) => {
     console.error('Email send failure (PR approval):', err.message);
     if (err.response) console.error('SMTP response:', err.response);
   });
+
+  const emails = [
+    ...((options.approverEmails || []).map((e) => String(e || '').trim()).filter(Boolean)),
+  ];
+  // If assignee emails not passed yet, still try notify with empty → will resolve from task later in send path
+  // Prefer only the step assignee for WhatsApp (not ops PR_NOTIFY_EMAIL)
+  const stage =
+    options.stageLabel ||
+    `${formatRoleDisplayName(assignedRole)} - Action Required`;
+
+  // Resolve assignee emails async for WhatsApp (same logic as mail, but WA is fire-and-forget)
+  (async () => {
+    let assigneeEmails = emails;
+    if (!assigneeEmails.length) {
+      try {
+        const fromTask = await resolveAssignedUserForStep(pr.id || pr.prId, assignedRole);
+        assigneeEmails = fromTask.emails || [];
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!assigneeEmails.length) {
+      try {
+        const approvers = await getApproverRecipients(assignedRole, departmentId);
+        assigneeEmails = approvers.map((a) => a.email).filter(Boolean);
+      } catch {
+        /* ignore */
+      }
+    }
+    await notifyWorkflowWhatsApp({
+      pr,
+      emails: assigneeEmails,
+      stage,
+      actionUrl: buildWorkflowPortalUrl(pr, assignedRole, options),
+      requesterName: requester?.name || pr.requester || 'Requester',
+    });
+  })().catch((err) => console.error('WhatsApp assignee notify failed:', err.message));
 }
 
 export async function sendPostRfqActionNotification(pr, approverRole, action, remarks, requester) {
@@ -332,8 +470,18 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
 }
 
 export function queuePostRfqActionNotification(pr, approverRole, action, remarks, requester) {
-  sendPostRfqActionNotification(pr, approverRole, action, remarks, requester).catch((err) => {
-    console.error('Email send failure (post-RFQ action):', err.message);
+  enqueueMail(() => sendPostRfqActionNotification(pr, approverRole, action, remarks, requester)).catch(
+    (err) => {
+      console.error('Email send failure (post-RFQ action):', err.message);
+    }
+  );
+
+  notifyWorkflowWhatsApp({
+    pr,
+    emails: [requester?.email].filter(Boolean),
+    stage: `PR ${action === 'reject' ? 'Rejected' : action === 'return' || action === 'rework' ? 'Sent Back' : action}`,
+    actionUrl: `${getAppBaseUrl()}/requester/dashboard`,
+    requesterName: requester?.name || pr.requester || 'Requester',
   });
 }
 
@@ -343,7 +491,7 @@ export async function sendRfqVendorEmail(pr, vendorName, vendorEmail, submitUrl,
 }
 
 export function queueRfqVendorEmail(pr, vendorName, vendorEmail, submitUrl, round = 1) {
-  sendRfqVendorEmail(pr, vendorName, vendorEmail, submitUrl, round).catch((err) => {
+  enqueueMail(() => sendRfqVendorEmail(pr, vendorName, vendorEmail, submitUrl, round)).catch((err) => {
     console.error(`Email send failure (RFQ vendor ${vendorEmail}):`, err.message);
   });
 }
@@ -361,7 +509,9 @@ export async function sendRfqSendBackEmail(pr, vendorName, vendorEmail, submitUr
 }
 
 export function queueRfqSendBackEmail(pr, vendorName, vendorEmail, submitUrl, round, reason, fields) {
-  sendRfqSendBackEmail(pr, vendorName, vendorEmail, submitUrl, round, reason, fields).catch((err) => {
+  enqueueMail(() =>
+    sendRfqSendBackEmail(pr, vendorName, vendorEmail, submitUrl, round, reason, fields)
+  ).catch((err) => {
     console.error(`Email send failure (RFQ send-back ${vendorEmail}):`, err.message);
   });
 }
@@ -383,7 +533,9 @@ export async function sendRfqSubmittedNotifyRequester(pr, vendorName, requesterE
 }
 
 export function queueRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail, requesterName, submission, reviewUrl) {
-  sendRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail, requesterName, submission, reviewUrl).catch((err) => {
+  enqueueMail(() =>
+    sendRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail, requesterName, submission, reviewUrl)
+  ).catch((err) => {
     console.error('Email send failure (RFQ submitted):', err.message);
   });
 }

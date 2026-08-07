@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifications } from '../../mocks/procurement-data';
 import BrandLogo from './BrandLogo';
@@ -13,6 +14,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const isMac =
@@ -31,6 +33,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
   const handleLogout = () => {
     logout();
+    navigate('/login');
   };
 
   const getInitials = () => {

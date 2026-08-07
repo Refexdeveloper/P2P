@@ -104,23 +104,27 @@ async function enrichPR(row) {
 
 async function resolveHodAssignment(requesterEmail, departmentId) {
   let l1Manager = null;
+  const email = (requesterEmail || '').toLowerCase().trim();
 
-  try {
-    l1Manager = await getL1ManagerForEmail(requesterEmail);
-  } catch (err) {
-    console.warn('RefexOne L1 manager lookup failed:', err.message);
-  }
-
-  if (!l1Manager?.email) {
+  // Prefer local supervisor first — avoids slow RefexOne /users fetch on every PR submit
+  if (email) {
     const [localRows] = await pool.query(
       `SELECT supervisor_email, supervisor_name FROM users WHERE email = ? LIMIT 1`,
-      [requesterEmail.toLowerCase().trim()]
+      [email]
     );
     if (localRows[0]?.supervisor_email) {
       l1Manager = {
         email: localRows[0].supervisor_email,
         name: localRows[0].supervisor_name || localRows[0].supervisor_email.split('@')[0],
       };
+    }
+  }
+
+  if (!l1Manager?.email) {
+    try {
+      l1Manager = await getL1ManagerForEmail(requesterEmail);
+    } catch (err) {
+      console.warn('RefexOne L1 manager lookup failed:', err.message);
     }
   }
 
@@ -152,20 +156,24 @@ async function createHodApprovalTask(conn, prId, requesterEmail, departmentId) {
 
 async function resolveL2Assignment(requesterEmail, departmentId) {
   let l2Manager = null;
-  try {
-    l2Manager = await getL2ManagerForEmail(requesterEmail);
-  } catch (err) {
-    console.warn('RefexOne L2 manager lookup failed:', err.message);
+  const email = (requesterEmail || '').toLowerCase().trim();
+
+  if (email) {
+    const [localRows] = await pool.query(
+      `SELECT l2_manager_email FROM users WHERE email = ? LIMIT 1`,
+      [email]
+    );
+    if (localRows[0]?.l2_manager_email) {
+      const mgr = localRows[0].l2_manager_email;
+      l2Manager = { email: mgr, name: mgr.split('@')[0] };
+    }
   }
 
   if (!l2Manager?.email) {
-    const [localRows] = await pool.query(
-      `SELECT l2_manager_email FROM users WHERE email = ? LIMIT 1`,
-      [requesterEmail.toLowerCase().trim()]
-    );
-    if (localRows[0]?.l2_manager_email) {
-      const email = localRows[0].l2_manager_email;
-      l2Manager = { email, name: email.split('@')[0] };
+    try {
+      l2Manager = await getL2ManagerForEmail(requesterEmail);
+    } catch (err) {
+      console.warn('RefexOne L2 manager lookup failed:', err.message);
     }
   }
 

@@ -183,9 +183,9 @@ export default function RefexOneLaunchPage() {
               >
                 Continue with RefexOne email &amp; password
               </Link>
-              <a href="https://refexone.com" className="text-sm text-slate-600 hover:underline text-center">
-                Back to RefexOne
-              </a>
+              <Link to="/login" className="text-sm text-slate-600 hover:underline text-center">
+                Back to login
+              </Link>
             </div>
           </>
         )}

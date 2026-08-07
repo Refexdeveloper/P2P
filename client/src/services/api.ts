@@ -1,7 +1,7 @@
 const LIVE_API = 'https://p2p-backend-645830234926.asia-south1.run.app';
-const API_URL = (import.meta.env.VITE_API_URL || LIVE_API).replace(/\/$/, '');
+// const API_URL = (import.meta.env.VITE_API_URL || LIVE_API).replace(/\/$/, '');
 
-// const API_URL = 'http://localhost:5000';
+const API_URL = 'http://localhost:5000';
 
 export class ApiError extends Error {
   status: number;

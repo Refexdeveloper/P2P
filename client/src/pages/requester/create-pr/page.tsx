@@ -46,6 +46,9 @@ export default function CreatePRPage() {
   const [department, setDepartment] = useState('');
   const [entityId, setEntityId] = useState<number | ''>('');
   const [entities, setEntities] = useState<EntityRecord[]>([]);
+  const [entitySearch, setEntitySearch] = useState('');
+  const [entityOpen, setEntityOpen] = useState(false);
+  const entityBoxRef = useRef<HTMLDivElement>(null);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [requestType, setRequestType] = useState<'Capex' | 'Opex' | 'Service'>('Opex');
   const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order'>('purchase_order');
@@ -200,6 +203,43 @@ export default function CreatePRPage() {
   const categoryOptions = useMemo(() => {
     return masterCategories.map((c) => c.name);
   }, [masterCategories]);
+
+  const selectedEntity = useMemo(
+    () => (entityId === '' ? null : entities.find((e) => e.id === entityId) || null),
+    [entities, entityId]
+  );
+
+  const filteredEntities = useMemo(() => {
+    const q = entitySearch.trim().toLowerCase();
+    if (!q) return entities;
+    return entities.filter((ent) => {
+      const hay = `${ent.code || ''} ${ent.name || ''} ${ent.costCenter || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [entities, entitySearch]);
+
+  const formatEntityLabel = (ent: EntityRecord) => {
+    const base = ent.code ? `${ent.code} — ${ent.name}` : ent.name;
+    return ent.costCenter ? `${base} (${ent.costCenter})` : base;
+  };
+
+  useEffect(() => {
+    if (!entityOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!entityBoxRef.current?.contains(e.target as Node)) {
+        setEntityOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [entityOpen]);
+
+  // Keep search box in sync when entity is set from edit load
+  useEffect(() => {
+    if (selectedEntity) {
+      setEntitySearch(formatEntityLabel(selectedEntity));
+    }
+  }, [selectedEntity]);
 
   const priorityOptions = ['Low', 'Medium', 'High', 'Critical'];
 
@@ -548,29 +588,88 @@ export default function CreatePRPage() {
             </div>
 
             {/* Entity */}
-            <div>
+            <div ref={entityBoxRef} className="relative">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Entity <span className="text-red-500">*</span>
               </label>
-              <select
-                value={entityId === '' ? '' : String(entityId)}
-                onChange={(e) => setEntityId(e.target.value ? Number(e.target.value) : '')}
-                disabled={isEditMode}
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer disabled:bg-gray-50 disabled:cursor-not-allowed ${errors.entityId ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
-              >
-                <option value="">Select Entity</option>
-                {entities.map((ent) => (
-                  <option key={ent.id} value={ent.id}>
-                    {ent.code ? `${ent.code} — ${ent.name}` : ent.name}
-                    {ent.costCenter ? ` (${ent.costCenter})` : ''}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none" />
+                <input
+                  type="text"
+                  value={entitySearch}
+                  disabled={isEditMode}
+                  placeholder="Search entity by code, name, cost center…"
+                  onFocus={() => {
+                    if (!isEditMode) setEntityOpen(true);
+                  }}
+                  onChange={(e) => {
+                    setEntitySearch(e.target.value);
+                    setEntityId('');
+                    setEntityOpen(true);
+                    if (errors.entityId) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.entityId;
+                        return next;
+                      });
+                    }
+                  }}
+                  className={`w-full pl-9 pr-9 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-gray-50 disabled:cursor-not-allowed ${
+                    errors.entityId ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                  }`}
+                />
+                {(entitySearch || entityId) && !isEditMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEntitySearch('');
+                      setEntityId('');
+                      setEntityOpen(true);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 cursor-pointer"
+                    title="Clear"
+                  >
+                    <i className="ri-close-line text-base" />
+                  </button>
+                )}
+              </div>
+              {entityOpen && !isEditMode && (
+                <div className="absolute z-30 mt-1 w-full max-h-56 overflow-auto bg-white border border-gray-200 rounded-xl shadow-lg">
+                  {filteredEntities.length === 0 ? (
+                    <p className="px-3 py-2.5 text-sm text-gray-500">No entities match “{entitySearch}”</p>
+                  ) : (
+                    filteredEntities.map((ent) => {
+                      const label = formatEntityLabel(ent);
+                      const active = entityId === ent.id;
+                      return (
+                        <button
+                          key={ent.id}
+                          type="button"
+                          onClick={() => {
+                            setEntityId(ent.id);
+                            setEntitySearch(label);
+                            setEntityOpen(false);
+                            if (errors.entityId) {
+                              setErrors((prev) => {
+                                const next = { ...prev };
+                                delete next.entityId;
+                                return next;
+                              });
+                            }
+                          }}
+                          className={`w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 cursor-pointer ${
+                            active ? 'bg-slate-100 font-semibold text-slate-900' : 'text-gray-800'
+                          }`}
+                        >
+                          <span className="block truncate">{label}</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
               {errors.entityId && (
-                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                  <i className="ri-error-warning-line"></i>
-                  {errors.entityId}
-                </p>
+                <p className="text-xs text-red-500 mt-1">{errors.entityId}</p>
               )}
             </div>
 

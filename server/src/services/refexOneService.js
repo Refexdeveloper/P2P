@@ -9,7 +9,7 @@ import {
 const DEFAULT_ROLE = 'Requester';
 const PLACEHOLDER_PASSWORD = 'refexone-sync-no-login';
 const INSERT_BATCH_SIZE = 100;
-const USERS_CACHE_TTL_MS = 5 * 60 * 1000;
+const USERS_CACHE_TTL_MS = 30 * 60 * 1000;
 let usersCache = { fetchedAt: 0, users: [] };
 
 function getBaseUrl() {
@@ -246,6 +246,15 @@ function normalizeRefexOneUser(raw) {
   const supervisorEmail = (raw.supervisor_email || '').trim().toLowerCase() || null;
   const supervisorName = (raw.supervisor_name || '').trim() || null;
   const l2ManagerEmail = (raw.l2_manager_email || '').trim().toLowerCase() || null;
+  const phoneRaw =
+    raw.work_mobile ||
+    raw.mobile ||
+    raw.employee_mobile ||
+    raw.phone ||
+    raw.phone_number ||
+    raw.mobile_number ||
+    '';
+  const phone = String(phoneRaw || '').replace(/\D/g, '') || null;
 
   if (!refexoneUserId || !email) return null;
 
@@ -257,6 +266,7 @@ function normalizeRefexOneUser(raw) {
     supervisorEmail,
     supervisorName,
     l2ManagerEmail,
+    phone,
   };
 }
 
@@ -434,7 +444,7 @@ export async function syncRefexOneUsers() {
   let created = 0;
   for (let i = 0; i < toInsert.length; i += INSERT_BATCH_SIZE) {
     const batch = toInsert.slice(i, i + INSERT_BATCH_SIZE);
-    const placeholders = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+    const placeholders = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
     const values = batch.flatMap((u) => [
       u.name,
       u.email,
@@ -445,10 +455,11 @@ export async function syncRefexOneUsers() {
       u.supervisorEmail,
       u.supervisorName,
       u.l2ManagerEmail,
+      u.phone || null,
     ]);
 
     await pool.query(
-      `INSERT INTO users (name, email, password_hash, role, is_active, refexone_user_id, supervisor_email, supervisor_name, l2_manager_email)
+      `INSERT INTO users (name, email, password_hash, role, is_active, refexone_user_id, supervisor_email, supervisor_name, l2_manager_email, phone)
        VALUES ${placeholders}`,
       values
     );
@@ -470,7 +481,8 @@ export async function syncRefexOneUsers() {
     await pool.query(
       `UPDATE users
        SET name = ?, email = ?, is_active = ?, refexone_user_id = ?,
-           supervisor_email = ?, supervisor_name = ?, l2_manager_email = ?
+           supervisor_email = ?, supervisor_name = ?, l2_manager_email = ?,
+           phone = COALESCE(?, phone)
        WHERE id = ?`,
       [
         remote.name,
@@ -480,6 +492,7 @@ export async function syncRefexOneUsers() {
         remote.supervisorEmail,
         remote.supervisorName,
         remote.l2ManagerEmail,
+        remote.phone || null,
         localId,
       ]
     );

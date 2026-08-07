@@ -14,6 +14,7 @@ import masterRoutes from './routes/master.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import { runStartupMigrations } from './services/dbMigrate.js';
 import { testSmtpConnection, sendTestEmail } from './services/emailService.js';
+import { sendWhatsAppHsm, buildWorkflowWhatsAppParams, normalizeWhatsAppTo, getWhatsAppPublicBaseUrl } from './services/whatsappService.js';
 import { pingDatabase } from './config/db.js';
 import { authenticate } from './middleware/auth.js';
 
@@ -104,6 +105,45 @@ app.post('/api/health/smtp/send-test', authenticate, async (req, res) => {
       status: 'ok',
       to,
       messageId: info.messageId,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      message: err.message || String(err),
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+app.post('/api/health/whatsapp/send-test', authenticate, async (req, res) => {
+  try {
+    const to =
+      (typeof req.body?.to === 'string' && req.body.to.trim()) ||
+      process.env.WHATSAPP_DEFAULT_TO ||
+      process.env.WHATSAPP_NOTIFY_PHONES?.split(',')[0]?.trim();
+
+    if (!to) {
+      return res.status(400).json({
+        message: 'No phone. Pass { "to": "9198xxxxxxxx" } or set WHATSAPP_DEFAULT_TO.',
+      });
+    }
+
+    const phone = normalizeWhatsAppTo(to);
+    const parameters = buildWorkflowWhatsAppParams({
+      appName: 'P2P',
+      documentNumber: 'TEST-PR',
+      title: 'WhatsApp connectivity test',
+      stage: 'Test Notification',
+      actionUrl: `${getWhatsAppPublicBaseUrl()}/tasks`,
+      requesterName: req.user?.name || 'P2P System',
+    });
+
+    const result = await sendWhatsAppHsm({ to: phone, parameters });
+    res.json({
+      status: 'ok',
+      to: phone,
+      result,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
