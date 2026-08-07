@@ -35,10 +35,10 @@ router.get('/', async (req, res) => {
 
 router.post('/:taskId/complete', async (req, res) => {
   try {
-    const { action = 'approve', remarks, prId } = req.body;
+    const { action = 'approve', remarks, prId, returnTo } = req.body;
     if (!prId) return res.status(400).json({ message: 'prId is required' });
 
-    const pr = await processApproval(req.user, prId, action, remarks);
+    const pr = await processApproval(req.user, prId, action, remarks, { returnTo });
     res.json({ data: pr, message: 'Task completed' });
   } catch (err) {
     res.status(400).json({ message: err.message });

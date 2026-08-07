@@ -274,13 +274,24 @@ export default function RfqEntryDetailPage() {
       setError('Enter quoted price before saving manual entry');
       return;
     }
+    const file = manualFiles[row.invitationId];
+    if (!file) {
+      setError('Upload quotation file (PDF/image) before saving manual entry');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Quotation file must be under 5MB');
+      return;
+    }
 
     setSavingManualId(row.invitationId);
     setError('');
     try {
-      const file = manualFiles[row.invitationId];
-      let quotationFileData: string | undefined;
-      if (file) quotationFileData = await readFileAsBase64(file);
+      const quotationFileData = await readFileAsBase64(file);
+      if (!quotationFileData) {
+        setError('Could not read quotation file — try again');
+        return;
+      }
 
       const requesterFieldValues: Record<string, unknown> = {};
       for (const f of requesterFields) {
@@ -295,7 +306,7 @@ export default function RfqEntryDetailPage() {
         deliveryTerms: String(draft.deliveryTerms || ''),
         compliance: draft.compliance !== false,
         vendorNotes: String(draft.vendorNotes || 'Manually entered by requester'),
-        quotationFileName: file?.name,
+        quotationFileName: file.name,
         quotationFileData,
         requesterFields: requesterFieldValues,
         technicalScore: Number(draft.technicalScore) || 0,
@@ -782,7 +793,7 @@ export default function RfqEntryDetailPage() {
                               disabled={savingManualId === row.invitationId}
                               className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
                             >
-                              {savingManualId === row.invitationId ? 'Saving...' : 'Save Entry'}
+                              {savingManualId === row.invitationId ? 'Saving...' : 'Save Entry + File'}
                             </button>
                           )}
                           {mode === 'entry' && !isFinalized && awaitingVendorEmail && (
@@ -899,9 +910,9 @@ export default function RfqEntryDetailPage() {
                                   <i className="ri-upload-2-line text-xl text-teal-700"></i>
                                   <div className="min-w-0 flex-1">
                                     <p className="text-sm font-medium text-teal-800 truncate">
-                                      {manualFiles[row.invitationId]?.name || 'Upload quotation file'}
+                                      {manualFiles[row.invitationId]?.name || 'Upload quotation file (required)'}
                                     </p>
-                                    <p className="text-xs text-teal-700">PDF, Word, or image</p>
+                                    <p className="text-xs text-teal-700">PDF, Word, or image · max 5MB</p>
                                   </div>
                                   <input
                                     type="file"
@@ -923,6 +934,60 @@ export default function RfqEntryDetailPage() {
                                   {quote.quotationFileName}
                                   <span className="text-xs text-gray-500">Preview</span>
                                 </button>
+                              ) : quote?.submissionId && !quote.quotationFileName && !config?.finalizedAt ? (
+                                <label className="flex flex-col gap-2 px-4 py-3 border border-dashed border-amber-300 rounded-lg bg-amber-50/50 cursor-pointer hover:bg-amber-50">
+                                  <div className="flex items-center gap-3">
+                                    <i className="ri-error-warning-line text-xl text-amber-600"></i>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-medium text-amber-900">
+                                        {manualFiles[row.invitationId]?.name || 'Quotation file missing — upload now'}
+                                      </p>
+                                      <p className="text-xs text-amber-800">Required for Vendor Final Approval email / comparison</p>
+                                    </div>
+                                    <input
+                                      type="file"
+                                      accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                                      className="text-xs"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0] || null;
+                                        setManualFiles((prev) => ({ ...prev, [row.invitationId]: file }));
+                                      }}
+                                    />
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={!manualFiles[row.invitationId] || savingManualId === row.invitationId}
+                                    onClick={async (e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const file = manualFiles[row.invitationId];
+                                      if (!file || !quote.submissionId) return;
+                                      setSavingManualId(row.invitationId);
+                                      setError('');
+                                      try {
+                                        const quotationFileData = await readFileAsBase64(file);
+                                        await rfqApi.attachQuotationFile(quote.submissionId, {
+                                          quotationFileName: file.name,
+                                          quotationFileData,
+                                        });
+                                        showToast('Quotation file attached');
+                                        setManualFiles((prev) => {
+                                          const next = { ...prev };
+                                          delete next[row.invitationId];
+                                          return next;
+                                        });
+                                        await loadRfq();
+                                      } catch (err) {
+                                        setError(err instanceof Error ? err.message : 'Failed to attach file');
+                                      } finally {
+                                        setSavingManualId(null);
+                                      }
+                                    }}
+                                    className="self-start px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 text-white disabled:opacity-50"
+                                  >
+                                    {savingManualId === row.invitationId ? 'Uploading…' : 'Attach file'}
+                                  </button>
+                                </label>
                               ) : (
                                 <p className="text-sm text-gray-400">No file uploaded</p>
                               )}

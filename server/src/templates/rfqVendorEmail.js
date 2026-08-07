@@ -1,4 +1,4 @@
-import { escapeHtml, formatCurrency } from './emailUtils.js';
+import { escapeHtml, formatCurrency, formatEntity } from './emailUtils.js';
 
 function buildLineItemsTable(lineItems = []) {
   const rows = lineItems
@@ -55,13 +55,20 @@ export function buildRfqInvitationEmail({ pr, vendorName, submitUrl, round = 1 }
         <div style="font-size:16px;font-weight:600;color:#334155;margin-top:6px;">${escapeHtml(pr.title)}</div>
         <table width="100%" style="margin-top:16px;"><tr>
           <td width="50%" style="padding:6px;"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
+            <div style="font-size:10px;color:#64748b;font-weight:700;">ENTITY</div>
+            <div style="font-size:14px;font-weight:600;margin-top:4px;">${escapeHtml(formatEntity(pr))}</div>
+          </div></td>
+          <td width="50%" style="padding:6px;"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
             <div style="font-size:10px;color:#64748b;font-weight:700;">DEPARTMENT</div>
             <div style="font-size:14px;font-weight:600;margin-top:4px;">${escapeHtml(pr.department)}</div>
           </div></td>
+        </tr>
+        <tr>
           <td width="50%" style="padding:6px;"><div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;padding:12px;">
             <div style="font-size:10px;color:#047857;font-weight:700;">ESTIMATED VALUE</div>
             <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${formatCurrency(pr.totalAmount)}</div>
           </div></td>
+          <td width="50%" style="padding:6px;"></td>
         </tr></table>
         <div style="margin-top:16px;font-size:13px;font-weight:700;color:#0f172a;">Line Items</div>
         ${buildLineItemsTable(pr.lineItems)}
@@ -104,6 +111,7 @@ export function buildRfqSendBackEmail({ pr, vendorName, submitUrl, round, reason
       </td></tr>
       <tr><td style="padding:28px 32px;">
         <div style="font-size:18px;font-weight:700;color:#0f172a;">${escapeHtml(pr.prNumber)} — ${escapeHtml(pr.title)}</div>
+        <div style="font-size:13px;color:#475569;margin-top:8px;">Entity: <strong>${escapeHtml(formatEntity(pr))}</strong> · ${escapeHtml(pr.department || '')}</div>
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px;margin-top:16px;">
           <div style="font-size:12px;font-weight:700;color:#b45309;text-transform:uppercase;">Feedback</div>
           ${fieldsList}

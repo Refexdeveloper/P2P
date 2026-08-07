@@ -1,5 +1,5 @@
-
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { prApi } from '../../../services/api';
 
 interface ApprovalModalProps {
   isOpen: boolean;
@@ -7,7 +7,8 @@ interface ApprovalModalProps {
   prNumber: string;
   prTitle: string;
   amount: number;
-  onConfirm: (remarks: string) => void;
+  prId?: number;
+  onConfirm: (remarks: string, returnTo?: string) => void;
   onClose: () => void;
 }
 
@@ -17,11 +18,49 @@ export default function ApprovalModal({
   prNumber,
   prTitle,
   amount,
+  prId,
   onConfirm,
   onClose,
 }: ApprovalModalProps) {
   const [remarks, setRemarks] = useState('');
+  const [returnTo, setReturnTo] = useState('');
+  const [targets, setTargets] = useState<{ key: string; label: string }[]>([]);
+  const [targetsLoading, setTargetsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) {
+      setRemarks('');
+      setReturnTo('');
+      setTargets([]);
+      setError('');
+      return;
+    }
+    if (type !== 'return' || !prId) return;
+
+    let cancelled = false;
+    setTargetsLoading(true);
+    prApi
+      .sendBackTargets(prId)
+      .then((res) => {
+        if (cancelled) return;
+        const list = res.data || [];
+        setTargets(list);
+        setReturnTo(list[0]?.key || '');
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load previous stages');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTargetsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, type, prId]);
 
   if (!isOpen) return null;
 
@@ -76,13 +115,19 @@ export default function ApprovalModal({
       setError('Please provide a reason for rejection (minimum 10 characters)');
       return;
     }
-    onConfirm(remarks.trim());
+    if (type === 'return' && !returnTo) {
+      setError('Select a previous stage to send back to');
+      return;
+    }
+    onConfirm(remarks.trim(), type === 'return' ? returnTo : undefined);
     setRemarks('');
+    setReturnTo('');
     setError('');
   };
 
   const handleClose = () => {
     setRemarks('');
+    setReturnTo('');
     setError('');
     onClose();
   };
@@ -108,10 +153,36 @@ export default function ApprovalModal({
           <div className="bg-gray-50 rounded-lg p-3 mb-4">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-bold text-gray-500">{prNumber}</span>
-              <span className="text-sm font-bold text-gray-900">₹{amount.toLocaleString()}</span>
+              <span className="text-sm font-bold text-gray-900">₹{Number(amount || 0).toLocaleString('en-IN')}</span>
             </div>
             <p className="text-sm font-medium text-gray-800">{prTitle}</p>
           </div>
+
+          {type === 'return' && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Send back to <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={returnTo}
+                onChange={(e) => {
+                  setReturnTo(e.target.value);
+                  setError('');
+                }}
+                disabled={targetsLoading || !targets.length}
+                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 bg-white"
+              >
+                {targetsLoading && <option value="">Loading previous stages...</option>}
+                {!targetsLoading && !targets.length && <option value="">No previous stages</option>}
+                {targets.map((t) => (
+                  <option key={t.key} value={t.key}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">PR will return to the selected stage for action.</p>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">

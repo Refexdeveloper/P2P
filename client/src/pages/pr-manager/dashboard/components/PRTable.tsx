@@ -13,6 +13,8 @@ interface PRItem {
   amount: number;
   priority: string;
   status: string;
+  statusKey?: string;
+  isPostRfq?: boolean;
   submittedDate: string;
   dueDate: string;
   isOverdue: boolean;
@@ -34,6 +36,20 @@ interface PRItem {
   }>;
 }
 
+const L2_PENDING_STATUSES = new Set([
+  'Pending Approval',
+  'Pending L2 Manager Approval',
+  'Pending RFQ Manager Approval',
+]);
+
+function canTakeAction(status: string) {
+  return L2_PENDING_STATUSES.has(status);
+}
+
+function isRfqApproval(pr: PRItem) {
+  return Boolean(pr.isPostRfq) || pr.status === 'Pending RFQ Manager Approval';
+}
+
 interface PRTableProps {
   data: PRItem[];
   onApprove: (pr: PRItem) => void;
@@ -43,11 +59,6 @@ interface PRTableProps {
 
 const PRTable: React.FC<PRTableProps> = ({ data, onApprove, onReject, onRework }) => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-
-  const canTakeAction = (status: string) =>
-    status === 'Pending Approval' || status === 'Pending RFQ Manager Approval';
-
-  const isRfqApproval = (status: string) => status === 'Pending RFQ Manager Approval';
 
   const toggleRow = (id: string) => {
     setExpandedRow(expandedRow === id ? null : id);
@@ -72,6 +83,13 @@ const PRTable: React.FC<PRTableProps> = ({ data, onApprove, onReject, onRework }
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
+            {data.length === 0 && (
+              <tr>
+                <td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-500">
+                  No tasks in this view
+                </td>
+              </tr>
+            )}
             {data.map((pr) => (
               <React.Fragment key={pr.id}>
                 <tr className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => toggleRow(pr.id)}>
@@ -111,7 +129,7 @@ const PRTable: React.FC<PRTableProps> = ({ data, onApprove, onReject, onRework }
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
-                      {canTakeAction(pr.status) && isRfqApproval(pr.status) && pr.prId && (
+                      {canTakeAction(pr.status) && isRfqApproval(pr) && pr.prId && (
                         <Link
                           to={`/rfq-approval/${pr.prId}`}
                           className="px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 whitespace-nowrap"
@@ -120,7 +138,7 @@ const PRTable: React.FC<PRTableProps> = ({ data, onApprove, onReject, onRework }
                           Review RFQ
                         </Link>
                       )}
-                      {canTakeAction(pr.status) && !isRfqApproval(pr.status) && (
+                      {canTakeAction(pr.status) && !isRfqApproval(pr) && (
                         <>
                           <button
                             onClick={() => onApprove(pr)}
@@ -145,7 +163,7 @@ const PRTable: React.FC<PRTableProps> = ({ data, onApprove, onReject, onRework }
                           </button>
                         </>
                       )}
-                      {pr.status !== 'Pending Approval' && pr.status !== 'Pending RFQ Manager Approval' && (
+                      {!canTakeAction(pr.status) && (
                         <button
                           onClick={() => toggleRow(pr.id)}
                           className="w-8 h-8 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"

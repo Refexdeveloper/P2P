@@ -1,9 +1,11 @@
-import { escapeHtml, formatCurrency } from './emailUtils.js';
+import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
 
 const ROLE_PORTAL_PATH = {
   'HOD Approver': '/tasks',
   'PR Manager': '/pr-manager/dashboard',
   CFO: '/cfo/dashboard',
+  Requester: '/requester/rfq-entry',
+  'SCM Buyer': '/scm/rfq-entry',
 };
 
 const POST_RFQ_PORTAL_PATH = {
@@ -19,10 +21,22 @@ function getPortalPath(role, postRfq) {
   return ROLE_PORTAL_PATH[role] || '/tasks';
 }
 
-function buildActionUrl(prId, action, role, postRfq = false) {
+function buildActionUrl(prId, action, role, postRfq = false, rfqEntry = false) {
   const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+  if (role === 'Requester') {
+    return `${base}/requester/rfq-entry/${prId}`;
+  }
+  if (rfqEntry || (role === 'SCM Buyer' && !postRfq)) {
+    return `${base}/scm/rfq-entry/${prId}`;
+  }
   const path = getPortalPath(role, postRfq);
   const actionParam = role === 'PR Manager' && action === 'return' && !postRfq ? 'rework' : action;
+  // Post-RFQ and most portals use /path/:prId?action=
+  if (postRfq || path.includes('rfq-approval') || path.includes('dashboard') || path === '/tasks') {
+    if (path === '/tasks') return `${base}${path}?prId=${prId}&action=${actionParam}`;
+    if (path.includes('dashboard')) return `${base}${path}?prId=${prId}&action=${actionParam}`;
+    return `${base}${path}/${prId}?action=${actionParam}`;
+  }
   return `${base}${path}/${prId}?action=${actionParam}`;
 }
 
@@ -35,22 +49,131 @@ function actionButton(label, url, bgColor, textColor = '#ffffff') {
     </td>`;
 }
 
-export function buildPrApprovalPendingEmail({ pr, requester, assignedRole, approverName, postRfq = false, stageLabel = null, rfqSummary = null }) {
-  const stageText = stageLabel || (postRfq ? 'Post-RFQ Review' : 'Purchase Request');
-  const subject = postRfq
-    ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
-    : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
+function buildNegotiationRoundsBlock(rfqSummary) {
+  if (!rfqSummary?.vendors?.length) return '';
+
+  const vendorSections = rfqSummary.vendors
+    .map((vendor) => {
+      const rounds = (vendor.rounds || []).slice(0, 3);
+      if (!rounds.length) {
+        return `
+          <div style="margin-bottom:12px;padding:12px 14px;background:#fff;border:1px solid #bbf7d0;border-radius:8px;">
+            <div style="font-size:13px;font-weight:700;color:#14532d;">
+              ${escapeHtml(vendor.name)}${vendor.isRecommended ? ' ★ Recommended' : ''}
+            </div>
+            <div style="font-size:12px;color:#64748b;margin-top:4px;">No submitted quotation rounds yet</div>
+          </div>`;
+      }
+
+      const roundRows = rounds
+        .map(
+          (r) => `
+          <tr>
+            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;font-weight:700;color:#166534;">R${r.round}</td>
+            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;text-align:right;font-weight:700;">${formatCurrency(r.quotedPrice)}</td>
+            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;text-align:center;">${r.leadTime ?? '—'}d</td>
+            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;">${escapeHtml(r.paymentTerms || '—')}</td>
+            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;">${escapeHtml(r.quotationFileName || '—')}</td>
+          </tr>`
+        )
+        .join('');
+
+      return `
+        <div style="margin-bottom:14px;">
+          <div style="font-size:13px;font-weight:700;color:#14532d;margin-bottom:6px;">
+            ${escapeHtml(vendor.name)}${vendor.isRecommended ? ' ★ Recommended' : ''}
+            <span style="font-weight:500;color:#64748b;font-size:11px;"> · ${rounds.length} round(s)</span>
+          </div>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #bbf7d0;border-collapse:collapse;background:#fff;border-radius:8px;">
+            <thead><tr style="background:#ecfdf5;">
+              <th style="padding:8px;font-size:10px;color:#047857;text-align:left;">Round</th>
+              <th style="padding:8px;font-size:10px;color:#047857;text-align:right;">Price</th>
+              <th style="padding:8px;font-size:10px;color:#047857;text-align:center;">Lead</th>
+              <th style="padding:8px;font-size:10px;color:#047857;text-align:left;">Payment</th>
+              <th style="padding:8px;font-size:10px;color:#047857;text-align:left;">Quotation File</th>
+            </tr></thead>
+            <tbody>${roundRows}</tbody>
+          </table>
+        </div>`;
+    })
+    .join('');
+
+  return `
+        <tr>
+          <td style="padding:0 32px 16px 32px;">
+            <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">
+              Vendor Quotations &amp; Negotiation Rounds (up to 3)
+            </div>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;">
+              <div style="font-size:13px;color:#14532d;margin-bottom:12px;line-height:1.5;">
+                <strong>Recommended Vendor:</strong> ${escapeHtml(rfqSummary.recommendedVendor || '—')}<br/>
+                <strong>Vendors Quoted:</strong> ${rfqSummary.vendorCount || 0}<br/>
+                <strong>Recommended Price:</strong> ${formatCurrency(rfqSummary.quotedPrice || 0)}
+              </div>
+              ${vendorSections}
+              <p style="font-size:11px;color:#64748b;margin:8px 0 0 0;">
+                Quotation PDF files for each round are attached to this email (when available).
+              </p>
+            </div>
+          </td>
+        </tr>`;
+}
+
+export function buildPrApprovalPendingEmail({
+  pr,
+  requester,
+  assignedRole,
+  approverName,
+  postRfq = false,
+  stageLabel = null,
+  rfqSummary = null,
+  rfqEntry = false,
+}) {
+  const isRequesterStep = assignedRole === 'Requester';
+  const isScmRfqEntry = rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq);
+  const isRfqEntryStep = isRequesterStep || isScmRfqEntry;
+  const roleDisplayName = formatRoleDisplayName(assignedRole);
+  const stageText = stageLabel || (postRfq ? 'Post-RFQ Review' : isRfqEntryStep ? 'RFQ Entry' : 'Purchase Request');
+  const subject = isRfqEntryStep
+    ? `Action Required: RFQ Entry for ${pr.prNumber} — ${pr.title}`
+    : postRfq
+      ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
+      : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
   const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const path = getPortalPath(assignedRole, postRfq);
-  const portalUrl = postRfq ? `${base}${path}/${pr.id}` : `${base}${path}?prId=${pr.id}`;
+  const portalUrl = isRequesterStep
+    ? `${base}/requester/rfq-entry/${pr.id}`
+    : isScmRfqEntry
+      ? `${base}/scm/rfq-entry/${pr.id}`
+      : postRfq
+        ? `${base}${path}/${pr.id}`
+        : path === '/tasks'
+          ? `${base}${path}?prId=${pr.id}`
+          : `${base}${path}?prId=${pr.id}`;
 
-  const approveUrl = buildActionUrl(pr.id, 'approve', assignedRole, postRfq);
-  const returnUrl = buildActionUrl(pr.id, 'return', assignedRole, postRfq);
-  const rejectUrl = buildActionUrl(pr.id, 'reject', assignedRole, postRfq);
+  const approveUrl = buildActionUrl(pr.id, 'approve', assignedRole, postRfq, isScmRfqEntry);
+  const returnUrl = buildActionUrl(pr.id, 'return', assignedRole, postRfq, isScmRfqEntry);
+  const rejectUrl = buildActionUrl(pr.id, 'reject', assignedRole, postRfq, isScmRfqEntry);
 
-  const showSendBack = assignedRole !== 'CFO';
+  const showSendBack = assignedRole !== 'CFO' && !isRfqEntryStep;
 
-  const actionButtons = `
+  const rfqEntryHint = isScmRfqEntry
+    ? stageLabel?.toLowerCase().includes('final')
+      ? 'CFO approved vendor selection — complete SCM Final RFQ to continue to Create PO.'
+      : 'CFO approved this PR — open SCM RFQ Entry to invite vendors and collect quotations.'
+    : 'HOD approved your PR — enter vendor quotations to continue.';
+
+  const actionButtons = isRfqEntryStep
+    ? `
+    <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto 8px auto;">
+      <tr>
+        ${actionButton('Open RFQ Entry →', portalUrl, '#0f766e')}
+      </tr>
+    </table>
+    <p style="text-align:center;font-size:12px;color:#64748b;margin:12px 0 0 0;">
+      ${escapeHtml(rfqEntryHint)}
+    </p>`
+    : `
     <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto 8px auto;">
       <tr>
         ${actionButton('✓ Approve', approveUrl, '#059669')}
@@ -75,8 +198,10 @@ export function buildPrApprovalPendingEmail({ pr, requester, assignedRole, appro
     )
     .join('');
 
-  const rfqBlock = rfqSummary
-    ? `
+  const rfqBlock = postRfq || (isScmRfqEntry && rfqSummary?.vendors?.length)
+    ? buildNegotiationRoundsBlock(rfqSummary)
+    : rfqSummary
+      ? `
         <tr>
           <td style="padding:0 32px 16px 32px;">
             <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">RFQ Summary</div>
@@ -87,7 +212,19 @@ export function buildPrApprovalPendingEmail({ pr, requester, assignedRole, appro
             </td></tr></table>
           </td>
         </tr>`
-    : '';
+      : '';
+
+  const entityLabel = formatEntity(pr);
+  const headerEyebrow = isRfqEntryStep
+    ? 'RFQ Entry Required'
+    : postRfq
+      ? 'RFQ Approval Required'
+      : 'Approval Required';
+  const headerTitle = isRfqEntryStep
+    ? escapeHtml(stageText)
+    : postRfq
+      ? `${escapeHtml(stageText)} — Vendor Comparison`
+      : 'Purchase Request Pending Your Action';
 
   const html = `
 <!DOCTYPE html>
@@ -99,9 +236,9 @@ export function buildPrApprovalPendingEmail({ pr, requester, assignedRole, appro
       <table width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #dbe3ee;">
         <tr>
           <td style="background:linear-gradient(135deg,#0c4a6e,#0369a1);padding:28px 32px;">
-            <div style="font-size:11px;color:#bae6fd;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">${postRfq ? 'RFQ Approval Required' : 'Approval Required'}</div>
-            <div style="font-size:24px;color:#fff;font-weight:800;margin-top:8px;">${postRfq ? `${escapeHtml(stageText)} — Vendor Comparison` : 'Purchase Request Pending Your Action'}</div>
-            <div style="font-size:14px;color:#e0f2fe;margin-top:8px;">Hello ${escapeHtml(approverName || 'Approver')}, a PR needs your review as <strong>${escapeHtml(assignedRole)}</strong>.</div>
+            <div style="font-size:11px;color:#bae6fd;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">${headerEyebrow}</div>
+            <div style="font-size:24px;color:#fff;font-weight:800;margin-top:8px;">${headerTitle}</div>
+            <div style="font-size:14px;color:#e0f2fe;margin-top:8px;">Hello ${escapeHtml(approverName || 'Approver')}, a PR needs your review as <strong>${escapeHtml(roleDisplayName)}</strong>.</div>
           </td>
         </tr>
         <tr>
@@ -117,8 +254,8 @@ export function buildPrApprovalPendingEmail({ pr, requester, assignedRole, appro
               <tr>
                 <td width="50%" style="padding:6px;">
                   <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;">Requester</div>
-                    <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;">${escapeHtml(requester?.name || pr.requester)}</div>
+                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;">Entity</div>
+                    <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;">${escapeHtml(entityLabel)}</div>
                   </td></tr></table>
                 </td>
                 <td width="50%" style="padding:6px;">
@@ -131,16 +268,25 @@ export function buildPrApprovalPendingEmail({ pr, requester, assignedRole, appro
               <tr>
                 <td width="50%" style="padding:6px;">
                   <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"><tr><td style="padding:12px 14px;">
+                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;">Requester</div>
+                    <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;">${escapeHtml(requester?.name || pr.requester)}</div>
+                  </td></tr></table>
+                </td>
+                <td width="50%" style="padding:6px;">
+                  <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"><tr><td style="padding:12px 14px;">
                     <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;">Type / Priority</div>
                     <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;">${escapeHtml(pr.requestType)} · ${escapeHtml(pr.priority)}</div>
                   </td></tr></table>
                 </td>
+              </tr>
+              <tr>
                 <td width="50%" style="padding:6px;">
                   <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
                     <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">Total Amount</div>
                     <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${formatCurrency(pr.totalAmount)}</div>
                   </td></tr></table>
                 </td>
+                <td width="50%" style="padding:6px;"></td>
               </tr>
             </table>
           </td>
@@ -190,13 +336,18 @@ export function buildPrApprovalPendingEmail({ pr, requester, assignedRole, appro
 
   const text = [
     `Action Required: PR ${pr.prNumber} — ${pr.title}`,
-    `Role: ${assignedRole}`,
+    `Entity: ${entityLabel}`,
+    `Role: ${roleDisplayName}`,
+    `Stage: ${stageText}`,
     `Requester: ${requester?.name || pr.requester}`,
     `Amount: ${formatCurrency(pr.totalAmount)}`,
+    rfqSummary?.recommendedVendor
+      ? `Recommended: ${rfqSummary.recommendedVendor} (${formatCurrency(rfqSummary.quotedPrice || 0)})`
+      : '',
     '',
-    `Approve: ${approveUrl}`,
-    showSendBack ? `Send Back: ${returnUrl}` : '',
-    `Reject: ${rejectUrl}`,
+    isRfqEntryStep ? `Open RFQ Entry: ${portalUrl}` : `Approve: ${approveUrl}`,
+    !isRfqEntryStep && showSendBack ? `Send Back: ${returnUrl}` : '',
+    !isRfqEntryStep ? `Reject: ${rejectUrl}` : '',
   ]
     .filter(Boolean)
     .join('\n');

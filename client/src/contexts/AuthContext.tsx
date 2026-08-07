@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { ensureNavigation } from '../constants/roleNavigation';
 import { authApi, AuthUser, NavItem } from '../services/api';
+import { goToRefexOne } from '../utils/refexOneUrl';
 
 export type UserRole =
   | 'Requester'
@@ -50,7 +51,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 /** Starting page for each role after login */
 export const ROLE_HOME: Partial<Record<UserRole, string>> = {
   Requester: '/requester/dashboard',
-  'PR Manager': '/pr-manager/dashboard',
+  'PR Manager': '/tasks',
   CFO: '/cfo/dashboard',
   Vendor: '/vendor/dashboard',
   'Tech Evaluator': '/tech-evaluator/rfq-evaluation',
@@ -276,9 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     localStorage.removeItem('p2p_token');
     localStorage.removeItem('p2p_user');
-    if (typeof window.REACT_APP_NAVIGATE === 'function') {
-      window.REACT_APP_NAVIGATE('/login', { replace: true });
-    }
+    goToRefexOne();
   };
 
   return (

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { resolvePostLoginPath, useAuth } from '../../../contexts/AuthContext';
 import { authApi } from '../../../services/api';
 
@@ -237,11 +237,9 @@ export default function RefexOneSsoPage() {
               Open RefexOne website
             </a>
             <p className="text-xs text-slate-500">
-              <Link to="/login" className="text-slate-700 hover:underline">
-                Back to login
-              </Link>
-              {' · '}
-              Demo accounts stay on the main login page
+              <a href={refexoneUrl} className="text-slate-700 hover:underline">
+                Back to RefexOne
+              </a>
             </p>
           </div>
         </div>

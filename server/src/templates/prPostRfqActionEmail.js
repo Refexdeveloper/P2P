@@ -1,4 +1,4 @@
-import { escapeHtml, formatCurrency } from './emailUtils.js';
+import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
 
 export function buildPostRfqActionEmail({ pr, action, remarks, approverRole, requesterName }) {
   const isReject = action === 'reject';
@@ -8,6 +8,8 @@ export function buildPostRfqActionEmail({ pr, action, remarks, approverRole, req
   const portalUrl = isReject
     ? `${base}/requester/track-pr`
     : `${base}/requester/rfq-entry/${pr.id}`;
+  const entityLabel = formatEntity(pr);
+  const roleDisplayName = formatRoleDisplayName(approverRole);
 
   const html = `
 <!DOCTYPE html>
@@ -18,13 +20,14 @@ export function buildPostRfqActionEmail({ pr, action, remarks, approverRole, req
     <tr>
       <td style="padding:24px 28px;background:${isReject ? '#dc2626' : '#ea580c'};">
         <div style="color:#fff;font-size:20px;font-weight:800;">RFQ ${actionLabel}</div>
-        <div style="color:#fff;font-size:14px;margin-top:6px;opacity:0.9;">Hello ${escapeHtml(requesterName || 'Requester')}, your RFQ submission was reviewed by ${escapeHtml(approverRole)}.</div>
+        <div style="color:#fff;font-size:14px;margin-top:6px;opacity:0.9;">Hello ${escapeHtml(requesterName || 'Requester')}, your RFQ submission was reviewed by ${escapeHtml(roleDisplayName)}.</div>
       </td>
     </tr>
     <tr>
       <td style="padding:24px 28px;">
         <div style="font-size:18px;font-weight:700;color:#0f172a;">${escapeHtml(pr.prNumber)} — ${escapeHtml(pr.title)}</div>
-        <div style="margin-top:12px;font-size:14px;color:#475569;">Amount: <strong>${formatCurrency(pr.totalAmount)}</strong></div>
+        <div style="margin-top:12px;font-size:14px;color:#475569;">Entity: <strong>${escapeHtml(entityLabel)}</strong></div>
+        <div style="margin-top:8px;font-size:14px;color:#475569;">Amount: <strong>${formatCurrency(pr.totalAmount)}</strong></div>
         <div style="margin-top:16px;padding:14px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
           <div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;">Remarks</div>
           <div style="font-size:14px;color:#334155;margin-top:6px;line-height:1.5;">${escapeHtml(remarks)}</div>
@@ -42,7 +45,7 @@ export function buildPostRfqActionEmail({ pr, action, remarks, approverRole, req
 
   const text = [
     `PR ${pr.prNumber} ${actionLabel}`,
-    `Role: ${approverRole}`,
+    `Role: ${roleDisplayName}`,
     `Remarks: ${remarks}`,
     `Open: ${portalUrl}`,
   ].join('\n');

@@ -93,7 +93,10 @@ export default function RfqApprovalDetailPage() {
     setSearchParams({}, { replace: true });
   }, [loading, data, searchParams, setSearchParams, showToast, user?.role, navigate, prId]);
 
-  const handleApprove = async (remarks: string) => {
+  const handleApprove = async (
+    remarks: string,
+    options?: { goToBusinessApproval?: boolean; returnTo?: string }
+  ) => {
     const isBuyerCreatePo =
       user?.role === 'SCM Buyer' || data?.stageLabel === 'SCM PO Create';
 
@@ -104,8 +107,16 @@ export default function RfqApprovalDetailPage() {
     }
 
     const actionMap = { approve: 'approve' as const, reject: 'reject' as const, rework: 'return' as const };
-    await rfqApi.postApprove(Number(prId), actionMap[modal.action], remarks);
-    showToast(`RFQ ${modal.action} completed successfully`);
+    await rfqApi.postApprove(Number(prId), actionMap[modal.action], remarks, options);
+    const branchMsg =
+      modal.action === 'approve' && typeof options?.goToBusinessApproval === 'boolean'
+        ? options.goToBusinessApproval
+          ? ' — sent to L2 → CFO → SCM Final'
+          : ' — sent to L2 → SCM Final (skip CFO)'
+        : modal.action === 'rework' && options?.returnTo
+          ? ' — returned to selected stage'
+          : '';
+    showToast(`RFQ ${modal.action} completed successfully${branchMsg}`);
     navigate('/tasks');
   };
 
@@ -158,6 +169,11 @@ export default function RfqApprovalDetailPage() {
             <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-semibold text-xs">
               {data.stageLabel || data.pr.statusUI}
             </span>
+            <span>
+              <strong>Entity:</strong> {data.pr.entityName || '—'}
+              {data.pr.entityCode ? ` (${data.pr.entityCode})` : ''}
+            </span>
+            <span><strong>Department:</strong> {data.pr.department || '—'}</span>
             <span>Requester stage complete · {data.vendorCount} vendors quoted</span>
             {data.recommendedVendorName && (
               <span className="text-emerald-700 font-medium">⭐ Recommended: {data.recommendedVendorName}</span>
@@ -238,6 +254,8 @@ export default function RfqApprovalDetailPage() {
         prNumber={data.pr.prNumber}
         title={data.pr.title}
         stageLabel={data.stageLabel || user?.role || 'Approval'}
+        prId={Number(prId)}
+        askBusinessApproval={Boolean(data.askBusinessApproval)}
         onClose={() => setModal((m) => ({ ...m, open: false }))}
         onConfirm={handleApprove}
       />

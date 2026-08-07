@@ -704,8 +704,8 @@ export default function CreatePRPage() {
               </select>
               <p className="text-xs text-gray-500 mt-1.5">
                 {vendorSelection === 'own'
-                  ? 'Flow: HOD → your RFQ entry → HOD vendor final → L2 → CFO → SCM final RFQ → Create PO → SCM Manager sign-off.'
-                  : 'Flow: HOD → L2 → CFO → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off.'}
+                  ? 'Flow: L1 → your RFQ entry → L1 vendor final → L2 → (optional CFO) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
+                  : 'Flow: L1 → L2 → CFO → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off.'}
               </p>
             </div>
           </div>

@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS rfq_configs (
   max_rounds INT NULL,
   requester_submitted_at TIMESTAMP NULL,
   finalized_at TIMESTAMP NULL,
+  require_cfo_approval TINYINT(1) NULL,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE
 );

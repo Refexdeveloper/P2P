@@ -17,6 +17,7 @@ import {
   purchaseTypeLabel,
   purchaseTypeToDocType,
 } from './documentNumberService.js';
+import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
 
 function ensurePoUploadDir() {
   if (!fs.existsSync(PO_UPLOAD_DIR)) {
@@ -1178,10 +1179,11 @@ export async function signPurchaseOrder(user, poId, {
 
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 1);
+  const scmBuyer = await resolveScmBuyerUser();
   await pool.query(
     `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'PO_BUYER_VERIFY', 'SCM Buyer', ?, 'pending', ?)`,
-    [po.prId, rows[0].created_by || null, dueDate.toISOString().split('T')[0]]
+    [po.prId, scmBuyer?.id || rows[0].created_by || null, dueDate.toISOString().split('T')[0]]
   );
 
   await pool.query(

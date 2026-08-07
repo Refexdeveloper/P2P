@@ -7,7 +7,7 @@ export const NAV_ITEMS = [
   { code: 'nav.create_pr', label: 'Create PR', path: '/requester/create-pr', icon: 'ri-add-circle-line', group: 'Requester', sort: 11 },
   { code: 'nav.rfq_entry', label: 'RFQ Entry', path: '/requester/rfq-entry', icon: 'ri-file-edit-line', group: 'Requester', sort: 12 },
   { code: 'nav.track_pr', label: 'Track PR', path: '/requester/track-pr', icon: 'ri-search-line', group: 'Requester', sort: 13 },
-  { code: 'nav.pr_manager_dashboard', label: 'Dashboard', path: '/pr-manager/dashboard', icon: 'ri-dashboard-line', group: 'PR Manager', sort: 20 },
+  { code: 'nav.pr_manager_dashboard', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'L2 Manager', sort: 20 },
   { code: 'nav.rfq_approval', label: 'RFQ Approval', path: '/rfq-approval', icon: 'ri-bar-chart-box-line', group: 'Approvals', sort: 30 },
   { code: 'nav.tasks', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'General', sort: 40 },
   { code: 'nav.cfo_dashboard', label: 'Dashboard', path: '/cfo/dashboard', icon: 'ri-dashboard-line', group: 'CFO', sort: 50 },
@@ -44,7 +44,7 @@ export const NAV_ITEMS = [
 
 export const ROLE_DEFAULT_PERMISSIONS = {
   Requester: ['nav.requester_dashboard', 'nav.create_pr', 'nav.rfq_entry', 'nav.track_pr'],
-  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.tasks'],
+  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
   CFO: ['nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [

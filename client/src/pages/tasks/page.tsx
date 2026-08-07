@@ -7,6 +7,7 @@ import PriorityBadge from '../../components/base/PriorityBadge';
 import ApprovalModal from './components/ApprovalModal';
 import TaskDetailDrawer from './components/TaskDetailDrawer';
 import { taskApi, prApi } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface TaskItem {
   id: string;
@@ -15,6 +16,8 @@ interface TaskItem {
   title: string;
   requester: string;
   department: string;
+  entityName: string;
+  entityCode: string;
   totalAmount: number;
   priority: string;
   status: string;
@@ -29,40 +32,57 @@ interface TaskItem {
   requesterRole: string;
   isPostRfq?: boolean;
   actionPath?: string;
+  statusUI?: string;
 }
 
 export default function TasksPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkHandled = useRef(false);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionUpdates, setActionUpdates] = useState<Record<string, string>>({});
   const loadTasks = useCallback(async () => {
     try {
       const res = await taskApi.list();
-      const mapped = (res.data as Array<Record<string, unknown>>).map((t) => ({
-        id: String(t.id),
-        prId: Number(t.prId),
-        prNumber: String(t.prNumber),
-        title: String(t.title),
-        requester: String(t.requester),
-        department: String(t.department),
-        totalAmount: Number(t.totalAmount),
-        priority: String(t.priority),
-        status: 'pending_approval',
-        submittedDate: String(t.submittedDate || ''),
-        dueDate: String(t.dueDate || ''),
-        slaRemaining: Number(t.slaRemaining) || 24,
-        isOverdue: Boolean(t.isOverdue),
-        currentApprover: 'You',
-        lineItems: Number(t.lineItems) || 0,
-        requestType: String(t.requestType || 'Opex'),
-        requesterAvatar: String(t.requesterAvatar || 'R'),
-        requesterRole: String(t.requesterRole || 'Requester'),
-        isPostRfq: Boolean(t.isPostRfq),
-        actionPath: t.actionPath ? String(t.actionPath) : undefined,
-      }));
+      const mapped = (res.data as Array<Record<string, unknown>>).map((t) => {
+        const rawStatus = String(t.status || 'pending_approval');
+        const status =
+          rawStatus === 'approved' ||
+          rawStatus === 'rejected' ||
+          rawStatus === 'returned' ||
+          rawStatus === 'pending_approval'
+            ? rawStatus
+            : 'pending_approval';
+        return {
+          id: String(t.id),
+          prId: Number(t.prId),
+          prNumber: String(t.prNumber),
+          title: String(t.title),
+          requester: String(t.requester),
+          department: String(t.department || ''),
+          entityName: String(t.entityName || ''),
+          entityCode: String(t.entityCode || ''),
+          totalAmount: Number(t.totalAmount),
+          priority: String(t.priority),
+          status,
+          submittedDate: String(t.submittedDate || ''),
+          dueDate: String(t.dueDate || ''),
+          slaRemaining: Number(t.slaRemaining) || 0,
+          isOverdue: Boolean(t.isOverdue),
+          currentApprover: status === 'pending_approval' ? 'You' : 'Completed',
+          lineItems: Number(t.lineItems) || 0,
+          requestType: String(t.requestType || 'Opex'),
+          requesterAvatar: String(t.requesterAvatar || 'R'),
+          requesterRole: String(t.requesterRole || 'Requester'),
+          isPostRfq: Boolean(t.isPostRfq),
+          actionPath: t.actionPath ? String(t.actionPath) : undefined,
+          statusUI: t.statusUI ? String(t.statusUI) : undefined,
+        };
+      });
       setTasks(mapped);
+      setActionUpdates({});
     } catch {
       setTasks([]);
     } finally {
@@ -108,7 +128,6 @@ export default function TasksPage() {
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const [actionUpdates, setActionUpdates] = useState<Record<string, string>>({});
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [drawerDetail, setDrawerDetail] = useState<{
     id: string;
@@ -118,6 +137,8 @@ export default function TasksPage() {
     requesterRole: string;
     requesterAvatar: string;
     department: string;
+    entityName: string;
+    entityCode: string;
     requestType: string;
     category: string;
     priority: string;
@@ -199,6 +220,8 @@ export default function TasksPage() {
       requesterRole: task.requesterRole,
       requesterAvatar: task.requesterAvatar,
       department: task.department,
+      entityName: task.entityName,
+      entityCode: task.entityCode,
       requestType: task.requestType,
       category: '—',
       priority: task.priority,
@@ -246,6 +269,8 @@ export default function TasksPage() {
         requesterRole: task.requesterRole,
         requesterAvatar: task.requesterAvatar,
         department: String(pr.department || task.department),
+        entityName: String(pr.entityName || task.entityName || ''),
+        entityCode: String(pr.entityCode || task.entityCode || ''),
         requestType: String(pr.requestType || task.requestType),
         category: firstCategory,
         priority: String(pr.priorityLower || pr.priority || task.priority).toLowerCase(),
@@ -289,13 +314,18 @@ export default function TasksPage() {
     });
   };
 
-  const handleConfirm = async (remarks: string) => {
+  const handleConfirm = async (remarks: string, returnTo?: string) => {
     const { taskId, type, prNumber } = modalState;
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
     const action = type === 'approve' ? 'approve' : type === 'return' ? 'return' : 'reject';
     try {
-      await prApi.approve(task.prId, action, remarks);
+      await prApi.approve(
+        task.prId,
+        action,
+        remarks,
+        type === 'return' && returnTo ? { returnTo } : undefined
+      );
       setActionUpdates((prev) => ({
         ...prev,
         [taskId]: type === 'approve' ? 'approved' : type === 'return' ? 'returned' : 'rejected',
@@ -334,7 +364,9 @@ export default function TasksPage() {
           t.prNumber.toLowerCase().includes(q) ||
           t.title.toLowerCase().includes(q) ||
           t.requester.toLowerCase().includes(q) ||
-          t.department.toLowerCase().includes(q)
+          t.department.toLowerCase().includes(q) ||
+          t.entityName.toLowerCase().includes(q) ||
+          t.entityCode.toLowerCase().includes(q)
       );
     }
 
@@ -379,8 +411,10 @@ export default function TasksPage() {
 
     // Push completed tasks to the bottom
     result.sort((a, b) => {
-      const aCompleted = a.status === 'approved' || a.status === 'rejected';
-      const bCompleted = b.status === 'approved' || b.status === 'rejected';
+      const aCompleted =
+        a.status === 'approved' || a.status === 'rejected' || a.status === 'returned';
+      const bCompleted =
+        b.status === 'approved' || b.status === 'rejected' || b.status === 'returned';
       if (aCompleted && !bCompleted) return 1;
       if (!aCompleted && bCompleted) return -1;
       return 0;
@@ -409,12 +443,15 @@ export default function TasksPage() {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('en-IN', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     });
   };
+
+  const formatInr = (amount: number) =>
+    `₹${Number(amount || 0).toLocaleString('en-IN')}`;
 
   const getSlaInfo = (task: typeof processedTasks[0]) => {
     if (task.status !== 'pending_approval') return null;
@@ -460,19 +497,73 @@ export default function TasksPage() {
     },
   ];
 
+  const renderRowActions = (task: TaskItem, isPending: boolean, compact = false) => (
+    <div className={`flex items-center ${compact ? 'gap-1 flex-wrap justify-end' : 'gap-1'}`}>
+      {(task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) && (
+        <button
+          onClick={() => openPostRfqPage(task)}
+          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
+          title="Vendor Comparison"
+        >
+          <i className="ri-table-line"></i>
+        </button>
+      )}
+      <button
+        onClick={() => openTaskDetail(task.id)}
+        className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+        title={
+          task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
+            ? 'Open Vendor Comparison'
+            : 'View Details'
+        }
+      >
+        <i className="ri-eye-line"></i>
+      </button>
+      {isPending && (
+        <>
+          <button
+            onClick={() => openModal(task.id, 'approve')}
+            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+            title={
+              task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
+                ? 'Approve (Vendor Comparison)'
+                : 'Approve'
+            }
+          >
+            <i className="ri-check-line"></i>
+          </button>
+          <button
+            onClick={() => openModal(task.id, 'return')}
+            className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors cursor-pointer"
+            title="Send Back"
+          >
+            <i className="ri-arrow-go-back-line"></i>
+          </button>
+          <button
+            onClick={() => openModal(task.id, 'reject')}
+            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+            title="Reject"
+          >
+            <i className="ri-close-line"></i>
+          </button>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <DashboardLayout>
       {/* Widget Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-4 sm:mb-6">
         {widgetCards.map((card, index) => (
-          <div key={index} className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">{card.title}</p>
-                <p className="text-3xl font-bold text-gray-900">{card.value}</p>
+          <div key={index} className="bg-white rounded-lg border border-gray-200 p-3 sm:p-6">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">{card.title}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{card.value}</p>
               </div>
-              <div className={`w-12 h-12 ${card.bgColor} rounded-lg flex items-center justify-center`}>
-                <i className={`${card.icon} text-2xl ${card.textColor}`}></i>
+              <div className={`w-9 h-9 sm:w-12 sm:h-12 ${card.bgColor} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                <i className={`${card.icon} text-lg sm:text-2xl ${card.textColor}`}></i>
               </div>
             </div>
           </div>
@@ -480,24 +571,27 @@ export default function TasksPage() {
       </div>
 
       {/* Pending Value Banner */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center">
-            <i className="ri-money-dollar-circle-line text-xl text-slate-600"></i>
+      <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center flex-shrink-0">
+            <i className="ri-money-rupee-circle-line text-xl text-slate-600"></i>
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-sm text-gray-500">Total Pending Value</p>
-            <p className="text-xl font-bold text-gray-900">
-              ${stats.totalValue.toLocaleString()}
+            <p className="text-lg sm:text-xl font-bold text-gray-900 truncate">
+              {formatInr(stats.totalValue)}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer">
+          <button className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap cursor-pointer">
             <i className="ri-download-2-line text-base"></i>
             <span>Export</span>
           </button>
-          <button className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer">
+          <button
+            onClick={() => loadTasks()}
+            className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap cursor-pointer"
+          >
             <i className="ri-refresh-line text-base"></i>
             <span>Refresh</span>
           </button>
@@ -505,15 +599,15 @@ export default function TasksPage() {
       </div>
 
       {/* Table Card */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <h2 className="text-lg font-semibold text-gray-900">
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="p-4 sm:p-6 border-b border-gray-200">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">
               Purchase Request Approvals
             </h2>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative">
+            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+              <div className="relative w-full sm:w-auto">
                 <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
                 <input
                   type="text"
@@ -524,17 +618,18 @@ export default function TasksPage() {
                 />
               </div>
 
-              <div className="flex gap-2 overflow-x-auto">
+              <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
                 {[
                   { key: 'all', label: 'All' },
                   { key: 'pending_approval', label: 'Pending' },
                   { key: 'approved', label: 'Approved' },
                   { key: 'rejected', label: 'Rejected' },
+                  { key: 'returned', label: 'Returned' },
                 ].map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => setFilter(tab.key)}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                    className={`px-3 sm:px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
                       filter === tab.key
                         ? 'bg-amber-600 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -548,29 +643,31 @@ export default function TasksPage() {
           </div>
 
           {/* Secondary Filters */}
-          <div className="flex items-center gap-3 mt-4">
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white cursor-pointer"
-            >
-              <option value="all">All Priorities</option>
-              <option value="high">High Priority</option>
-              <option value="medium">Medium Priority</option>
-              <option value="low">Low Priority</option>
-            </select>
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 mt-4">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="w-full sm:w-auto min-w-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white cursor-pointer"
+              >
+                <option value="all">All Priorities</option>
+                <option value="high">High Priority</option>
+                <option value="medium">Medium Priority</option>
+                <option value="low">Low Priority</option>
+              </select>
 
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white cursor-pointer"
-            >
-              <option value="sla">Sort: SLA Urgency</option>
-              <option value="amount_high">Sort: Amount (High to Low)</option>
-              <option value="amount_low">Sort: Amount (Low to High)</option>
-              <option value="priority">Sort: Priority</option>
-              <option value="date">Sort: Newest First</option>
-            </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="w-full sm:w-auto min-w-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white cursor-pointer"
+              >
+                <option value="sla">Sort: SLA Urgency</option>
+                <option value="amount_high">Sort: Amount (High to Low)</option>
+                <option value="amount_low">Sort: Amount (Low to High)</option>
+                <option value="priority">Sort: Priority</option>
+                <option value="date">Sort: Newest First</option>
+              </select>
+            </div>
 
             {(searchTerm || priorityFilter !== 'all') && (
               <button
@@ -578,13 +675,13 @@ export default function TasksPage() {
                   setSearchTerm('');
                   setPriorityFilter('all');
                 }}
-                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1"
+                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 self-start"
               >
                 <i className="ri-filter-off-line"></i> Clear Filters
               </button>
             )}
 
-            <span className="ml-auto text-sm text-gray-500">
+            <span className="sm:ml-auto text-sm text-gray-500">
               Showing{' '}
               <strong className="text-gray-900">{filteredTasks.length}</strong>{' '}
               request{filteredTasks.length !== 1 ? 's' : ''}
@@ -592,30 +689,97 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        {/* Mobile card list */}
+        <div className="md:hidden divide-y divide-gray-200">
+          {filteredTasks.map((task) => {
+            const slaInfo = getSlaInfo(task);
+            const isPending = task.status === 'pending_approval';
+            return (
+              <div
+                key={task.id}
+                className={`p-4 ${task.isOverdue && isPending ? 'bg-red-50/40' : 'bg-white'}`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-gray-900">{task.prNumber}</p>
+                      {(task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) && (
+                        <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-semibold rounded">
+                          Post-RFQ
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5 line-clamp-2">{task.title}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {task.lineItems} item{task.lineItems !== 1 ? 's' : ''} · {task.requestType}
+                    </p>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                    {formatInr(task.totalAmount)}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 mb-3">
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                      isPending
+                        ? 'bg-amber-100 text-amber-700'
+                        : task.status === 'approved'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-red-100 text-red-700'
+                    }`}
+                  >
+                    {task.requesterAvatar}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{task.requester}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {task.entityName || '—'}
+                      {task.entityCode ? ` (${task.entityCode})` : ''}
+                      {' · '}
+                      {task.department || '—'}
+                      {' · '}
+                      {formatDate(task.submittedDate)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <PriorityBadge priority={task.priority} size="sm" />
+                    <StatusBadge status={task.status} size="sm" />
+                    {slaInfo ? (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ${slaInfo.cls}`}
+                      >
+                        {task.isOverdue && <i className="ri-alarm-warning-line text-xs"></i>}
+                        {slaInfo.label}
+                      </span>
+                    ) : null}
+                  </div>
+                  {renderRowActions(task, isPending, true)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop / tablet table — auto layout + min widths so badges/actions never overlap */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full min-w-[1280px] border-collapse">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                {[
-                  'PR Number',
-                  'Title',
-                  'Requester',
-                  'Department',
-                  'Amount',
-                  'Priority',
-                  'Status',
-                  'SLA',
-                  'Date',
-                  'Actions',
-                ].map((head) => (
-                  <th
-                    key={head}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap"
-                  >
-                    {head}
-                  </th>
-                ))}
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">PR Number</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[180px]">Title</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Requester</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Entity</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Department</th>
+                <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Amount</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Priority</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">SLA</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</th>
+                <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -630,25 +794,25 @@ export default function TasksPage() {
                       task.isOverdue && isPending ? 'bg-red-50/40' : ''
                     }`}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm font-medium text-gray-900">
                       {task.prNumber}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{task.title}</p>
+                    <td className="px-3 py-3 align-middle text-sm text-gray-900 max-w-[220px]">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="font-medium truncate" title={task.title}>{task.title}</p>
                           {(task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) && (
-                            <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-semibold rounded">
+                            <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-semibold rounded flex-shrink-0">
                               Post-RFQ
                             </span>
                           )}
                         </div>
-                        <p className="text-gray-500 text-xs mt-1">
+                        <p className="text-gray-500 text-xs mt-0.5 truncate">
                           {task.lineItems} item{task.lineItems !== 1 ? 's' : ''} &middot; {task.requestType}
                         </p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm text-gray-700">
                       <div className="flex items-center gap-2">
                         <div
                           className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
@@ -662,28 +826,36 @@ export default function TasksPage() {
                           {task.requesterAvatar}
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-sm font-medium text-gray-900 whitespace-nowrap">
                             {task.requester}
                           </p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-gray-500 whitespace-nowrap">
                             {task.requesterRole}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {task.department}
+                    <td className="px-3 py-3 align-middle text-sm text-gray-700 max-w-[140px]">
+                      <p className="truncate font-medium text-gray-900" title={task.entityName || undefined}>
+                        {task.entityName || '—'}
+                      </p>
+                      {task.entityCode ? (
+                        <p className="text-xs text-gray-500 truncate">{task.entityCode}</p>
+                      ) : null}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                      ${task.totalAmount.toLocaleString()}
+                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm text-gray-700">
+                      {task.department || '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm font-semibold text-gray-900 text-right tabular-nums">
+                      {formatInr(task.totalAmount)}
+                    </td>
+                    <td className="px-3 py-3 align-middle whitespace-nowrap">
                       <PriorityBadge priority={task.priority} size="sm" />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 py-3 align-middle whitespace-nowrap">
                       <StatusBadge status={task.status} size="sm" />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm">
                       {slaInfo ? (
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ${slaInfo.cls}`}
@@ -697,60 +869,12 @@ export default function TasksPage() {
                         <span className="text-gray-400 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm text-gray-700">
                       {formatDate(task.submittedDate)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center gap-1">
-                        {(task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) && (
-                          <button
-                            onClick={() => openPostRfqPage(task)}
-                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
-                            title="Vendor Comparison"
-                          >
-                            <i className="ri-table-line"></i>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => openTaskDetail(task.id)}
-                          className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-colors cursor-pointer"
-                          title={
-                            task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
-                              ? 'Open Vendor Comparison'
-                              : 'View Details'
-                          }
-                        >
-                          <i className="ri-eye-line"></i>
-                        </button>
-                        {isPending && (
-                          <>
-                            <button
-                              onClick={() => openModal(task.id, 'approve')}
-                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
-                              title={
-                                task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
-                                  ? 'Approve (Vendor Comparison)'
-                                  : 'Approve'
-                              }
-                            >
-                              <i className="ri-check-line"></i>
-                            </button>
-                            <button
-                              onClick={() => openModal(task.id, 'return')}
-                              className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors cursor-pointer"
-                              title="Send Back"
-                            >
-                              <i className="ri-arrow-go-back-line"></i>
-                            </button>
-                            <button
-                              onClick={() => openModal(task.id, 'reject')}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
-                              title="Reject"
-                            >
-                              <i className="ri-close-line"></i>
-                            </button>
-                          </>
-                        )}
+                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm">
+                      <div className="flex items-center justify-end gap-0.5 min-w-[7.5rem]">
+                        {renderRowActions(task, isPending)}
                       </div>
                     </td>
                   </tr>
@@ -806,6 +930,7 @@ export default function TasksPage() {
         prNumber={modalState.prNumber}
         prTitle={modalState.prTitle}
         amount={modalState.amount}
+        prId={tasks.find((t) => t.id === modalState.taskId)?.prId}
         onConfirm={handleConfirm}
         onClose={() =>
           setModalState((prev) => ({ ...prev, isOpen: false }))

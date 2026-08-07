@@ -13,6 +13,7 @@ import {
   toManagerDashboardFormat,
   toCfoDashboardFormat,
 } from '../services/prService.js';
+import { getSendBackTargetsForPr } from '../services/sendBackService.js';
 import pool from '../config/db.js';
 
 const router = Router();
@@ -108,10 +109,19 @@ router.post('/:id/resubmit', requireRoles('Requester'), async (req, res) => {
   }
 });
 
+router.get('/:id/send-back-targets', async (req, res) => {
+  try {
+    const targets = await getSendBackTargetsForPr(Number(req.params.id));
+    res.json({ data: targets });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.post('/:id/approve', requireRoles('HOD Approver', 'PR Manager', 'CFO'), async (req, res) => {
   try {
-    const { action = 'approve', remarks } = req.body;
-    const pr = await processApproval(req.user, req.params.id, action, remarks);
+    const { action = 'approve', remarks, returnTo } = req.body;
+    const pr = await processApproval(req.user, req.params.id, action, remarks, { returnTo });
     res.json({ data: pr, message: `PR ${action}d successfully` });
   } catch (err) {
     res.status(400).json({ message: err.message });

@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifications } from '../../mocks/procurement-data';
+import BrandLogo from './BrandLogo';
 
 type TopBarProps = {
   onMenuClick?: () => void;
@@ -10,14 +10,27 @@ type TopBarProps = {
 export default function TopBar({ onMenuClick }: TopBarProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+  const isMac =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
   };
 
   const getInitials = () => {
@@ -30,35 +43,48 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   };
 
   return (
-    <div className="h-14 sm:h-16 bg-white border-b border-gray-200 flex items-center justify-between gap-2 px-3 sm:px-4 lg:px-6 shrink-0">
-      <div className="flex items-center gap-2 min-w-0">
+    <div className="h-14 sm:h-16 bg-[#f7f7f8] border-b border-gray-200 border-t-[3px] border-t-[#f5c9a8] flex items-center justify-between gap-2 sm:gap-4 px-3 sm:px-4 lg:px-5 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
         <button
           type="button"
           onClick={onMenuClick}
-          className="lg:hidden p-2 -ml-1 rounded-lg text-gray-600 hover:bg-gray-100 cursor-pointer shrink-0"
+          className="lg:hidden p-2 -ml-1 rounded-lg text-gray-600 hover:bg-white/80 cursor-pointer shrink-0"
           aria-label="Open navigation"
         >
           <i className="ri-menu-line text-xl"></i>
         </button>
-        <div className="min-w-0">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Procurement P2P</h2>
-          <p className="text-xs text-gray-500 hidden sm:block">Enterprise Management System</p>
+
+        <BrandLogo className="shrink-0" />
+
+        <div className="relative hidden sm:block flex-1 max-w-xl lg:max-w-2xl min-w-0">
+          <i className="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-base"></i>
+          <input
+            ref={searchRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="What are you looking for today?"
+            className="w-full h-10 pl-10 pr-28 bg-white border border-gray-200 rounded-full text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-300 shadow-sm"
+          />
+          <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-400 whitespace-nowrap select-none">
+            {isMac ? 'Cmd+E' : 'Ctrl+E'}
+          </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-1 sm:gap-2 lg:gap-4 shrink-0">
-        <div className="relative hidden md:block">
-          <input
-            type="text"
-            placeholder="Search..."
-            className="w-40 lg:w-72 xl:w-80 pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-        </div>
+      <div className="flex items-center gap-1 sm:gap-2 lg:gap-3 shrink-0">
+        <button
+          type="button"
+          className="sm:hidden p-2 hover:bg-white/80 rounded-lg transition-colors"
+          aria-label="Search"
+          onClick={() => searchRef.current?.focus()}
+        >
+          <i className="ri-search-line text-gray-600 text-xl"></i>
+        </button>
 
         <button
           type="button"
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors hidden sm:inline-flex"
+          className="p-2 hover:bg-white/80 rounded-lg transition-colors hidden sm:inline-flex"
           aria-label="Quick add"
         >
           <i className="ri-add-circle-line text-gray-600 text-xl"></i>
@@ -71,7 +97,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
               setShowNotifications(!showNotifications);
               setShowUserMenu(false);
             }}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
+            className="p-2 hover:bg-white/80 rounded-lg transition-colors relative"
             aria-label="Notifications"
           >
             <i className="ri-notification-3-line text-gray-600 text-xl"></i>
@@ -128,9 +154,9 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
               setShowUserMenu(!showUserMenu);
               setShowNotifications(false);
             }}
-            className="flex items-center space-x-2 sm:space-x-3 p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="flex items-center space-x-2 sm:space-x-3 p-1.5 sm:p-2 hover:bg-white/80 rounded-lg transition-colors"
           >
-            <div className="w-8 h-8 sm:w-9 sm:h-9 bg-blue-600 rounded-full flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 bg-sky-600 rounded-full flex items-center justify-center shrink-0">
               <span className="text-white font-semibold text-sm">{getInitials()}</span>
             </div>
             <div className="text-left hidden sm:block">
@@ -149,7 +175,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                 <div className="p-4 border-b border-gray-200">
                   <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
                   <p className="text-xs text-gray-500 mt-1 truncate">{user?.email}</p>
-                  <p className="text-xs text-blue-600 font-medium mt-1">{user?.role}</p>
+                  <p className="text-xs text-sky-600 font-medium mt-1">{user?.role}</p>
                 </div>
                 <div className="p-2">
                   <button

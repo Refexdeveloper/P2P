@@ -18,6 +18,8 @@ import {
   getL2ManagerForEmail,
   ensureApproverUser,
 } from './refexOneService.js';
+import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 
 export const DEFAULT_FIELD_DEFINITIONS = [
   { id: 'quotedPrice', label: 'Quoted Price (₹)', type: 'number', filledBy: 'vendor', required: true, core: true },
@@ -93,10 +95,18 @@ function ensureUploadDir() {
 function saveQuotationFile(invitationId, round, fileName, base64Data) {
   if (!base64Data || !fileName) return { fileName: null, filePath: null };
   ensureUploadDir();
-  const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
+  // Accept raw base64 or data-URL (data:application/pdf;base64,...)
+  const raw = String(base64Data).includes(',')
+    ? String(base64Data).split(',').pop()
+    : String(base64Data);
+  const safeName =
+    path.basename(String(fileName)).replace(/[^a-zA-Z0-9._-]/g, '_') || 'quotation.pdf';
   const storedName = `${invitationId}_r${round}_${Date.now()}_${safeName}`;
   const fullPath = path.join(UPLOAD_DIR, storedName);
-  const buffer = Buffer.from(base64Data, 'base64');
+  const buffer = Buffer.from(raw.replace(/\s/g, ''), 'base64');
+  if (!buffer.length) {
+    throw new Error('Quotation file data is empty or invalid');
+  }
   if (buffer.length > 5 * 1024 * 1024) {
     throw new Error('Quotation file must be under 5MB');
   }
@@ -136,6 +146,10 @@ async function getOrCreateRfqConfig(prId) {
       maxRounds: rows[0].max_rounds,
       requesterSubmittedAt: rows[0].requester_submitted_at || null,
       finalizedAt: rows[0].finalized_at,
+      requireCfoApproval:
+        rows[0].require_cfo_approval === null || rows[0].require_cfo_approval === undefined
+          ? null
+          : Boolean(rows[0].require_cfo_approval),
     };
   }
   await pool.query(
@@ -149,6 +163,7 @@ async function getOrCreateRfqConfig(prId) {
     maxRounds: null,
     requesterSubmittedAt: null,
     finalizedAt: null,
+    requireCfoApproval: null,
   };
 }
 
@@ -420,12 +435,18 @@ export async function submitVendorQuotation(token, body) {
   const config = await getOrCreateRfqConfig(inv.pr_id);
   const { core, customFields } = extractCoreVendorValues(body, config.fieldDefinitions);
 
+  if (!quotationFileName || !quotationFileData) {
+    throw new Error('Quotation file is required (PDF or image)');
+  }
   const fileInfo = saveQuotationFile(
     inv.id,
     inv.round,
     quotationFileName,
     quotationFileData
   );
+  if (!fileInfo.filePath) {
+    throw new Error('Failed to save quotation file');
+  }
 
   await pool.query(
     `INSERT INTO vendor_quotation_submissions
@@ -505,12 +526,18 @@ export async function submitManualVendorQuotation(user, invitationId, body) {
     throw new Error('Quoted price is required');
   }
 
+  if (!body.quotationFileName || !body.quotationFileData) {
+    throw new Error('Quotation file is required before saving manual entry');
+  }
   const fileInfo = saveQuotationFile(
     inv.id,
     inv.round,
     body.quotationFileName,
     body.quotationFileData
   );
+  if (!fileInfo.filePath) {
+    throw new Error('Failed to save quotation file — try a smaller PDF/image under 5MB');
+  }
 
   const requesterFieldDefs = config.fieldDefinitions.filter((f) => f.filledBy === 'requester');
   const requesterFields = {
@@ -841,6 +868,17 @@ async function resolvePostRfqManager(requesterEmail, departmentId, level) {
     manager = await getL2ManagerForEmail(requesterEmail);
   } else if (level === 'scm_manager') {
     workflowRole = 'SCM Manager';
+    const [rows] = await pool.query(
+      `SELECT id, email, name FROM users WHERE role = 'SCM Manager' AND is_active = 1 ORDER BY id ASC LIMIT 1`
+    );
+    if (rows[0]?.email) {
+      return {
+        userId: rows[0].id,
+        email: rows[0].email,
+        name: rows[0].name,
+        workflowRole,
+      };
+    }
     return { userId: null, email: null, name: null, workflowRole };
   }
 
@@ -877,15 +915,69 @@ async function createPostRfqApprovalTask(conn, prId, level) {
 
 async function buildRfqSummary(prId) {
   const config = await getOrCreateRfqConfig(prId);
-  if (!config.recommendedInvitationId) return null;
   const invitations = await getInvitationsWithSubmissions(prId);
+  if (!invitations.length) return null;
+
   const recommended = invitations.find((i) => i.id === config.recommendedInvitationId);
   const latest = recommended?.submissions?.find((s) => s.status === 'submitted' && s.quotedPrice > 0);
+
+  const vendors = invitations.map((inv) => {
+    const rounds = (inv.submissions || [])
+      .filter((s) => s.status === 'submitted')
+      .sort((a, b) => Number(a.round) - Number(b.round))
+      .slice(-3) // up to 3 negotiation rounds
+      .map((s) => ({
+        round: s.round,
+        quotedPrice: s.quotedPrice,
+        leadTime: s.leadTime,
+        paymentTerms: s.paymentTerms || '',
+        warranty: s.warranty || '',
+        quotationFileName: s.quotationFileName || '',
+        quotationFilePath: s.quotationFilePath || '',
+        submissionId: s.id,
+        submittedAt: s.submittedAt,
+      }));
+
+    return {
+      id: inv.id,
+      name: inv.vendorName,
+      isRecommended: config.recommendedInvitationId === inv.id,
+      rounds,
+    };
+  });
+
   return {
     recommendedVendor: recommended?.vendorName || '',
     vendorCount: invitations.length,
     quotedPrice: latest?.quotedPrice || 0,
+    maxRounds: config.maxRounds || 3,
+    vendors,
   };
+}
+
+/** Collect quotation PDF attachments (up to 3 rounds per vendor) for RFQ approval emails */
+export async function collectQuotationAttachments(prId) {
+  const summary = await buildRfqSummary(prId);
+  if (!summary?.vendors?.length) return [];
+
+  const attachments = [];
+  for (const vendor of summary.vendors) {
+    for (const round of vendor.rounds || []) {
+      if (!round.quotationFilePath) continue;
+      const fullPath = path.join(UPLOAD_DIR, round.quotationFilePath);
+      if (!fs.existsSync(fullPath)) continue;
+      const safeVendor = String(vendor.name || 'vendor').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeFile = String(round.quotationFileName || 'quotation.pdf').replace(
+        /[^a-zA-Z0-9._-]/g,
+        '_'
+      );
+      attachments.push({
+        filename: `${safeVendor}_R${round.round}_${safeFile}`,
+        path: fullPath,
+      });
+    }
+  }
+  return attachments;
 }
 
 /** Own path after requester RFQ: HOD vendor final */
@@ -895,9 +987,18 @@ async function startOwnVendorPostRfqWorkflow(prId) {
     [PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL, STAGE.RFQ_MANAGER_REVIEW, prId]
   );
 
+  // Clear any stale pending post-RFQ tasks before creating the L1 vendor-final task
+  await pool.query(
+    `UPDATE workflow_tasks
+     SET status = 'cancelled', completed_at = NOW()
+     WHERE pr_id = ? AND task_type = 'RFQ_POST_APPROVAL' AND status = 'pending'`,
+    [prId]
+  );
+
   const assignee = await createPostRfqApprovalTask(null, prId, 'hod');
   const pr = await getPurchaseRequestById(prId);
   const rfqSummary = await buildRfqSummary(prId);
+  const attachments = await collectQuotationAttachments(prId);
 
   queuePrApprovalPendingNotification(
     pr,
@@ -906,8 +1007,9 @@ async function startOwnVendorPostRfqWorkflow(prId) {
     pr.departmentId,
     {
       postRfq: true,
-      stageLabel: 'HOD Vendor Final Approval',
+      stageLabel: 'L1 Manager Vendor Final Approval',
       rfqSummary,
+      attachments,
       approverEmails: assignee.email ? [assignee.email] : undefined,
       approverName: assignee.name || undefined,
     }
@@ -924,6 +1026,7 @@ async function startScmVendorPostRfqWorkflow(prId) {
   const assignee = await createPostRfqApprovalTask(null, prId, 'scm_manager');
   const pr = await getPurchaseRequestById(prId);
   const rfqSummary = await buildRfqSummary(prId);
+  const attachments = await collectQuotationAttachments(prId);
 
   queuePrApprovalPendingNotification(
     pr,
@@ -934,8 +1037,40 @@ async function startScmVendorPostRfqWorkflow(prId) {
       postRfq: true,
       stageLabel: 'SCM Manager Vendor Approval',
       rfqSummary,
+      attachments,
       approverEmails: assignee.email ? [assignee.email] : undefined,
       approverName: assignee.name || undefined,
+    }
+  );
+}
+
+/** Own path after CFO post-RFQ: notify SCM Buyer to run final RFQ (/scm/rfq-entry) */
+async function notifyScmBuyerForFinalRfq(prId) {
+  const buyer = await resolveScmBuyerUser();
+  const pr = await getPurchaseRequestById(prId);
+  const rfqSummary = await buildRfqSummary(prId);
+  const attachments = await collectQuotationAttachments(prId);
+
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 5);
+  await pool.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+     VALUES (?, 'RFQ_ENTRY', 'SCM Buyer', ?, 'pending', ?)`,
+    [prId, buyer?.id || null, dueDate.toISOString().split('T')[0]]
+  );
+
+  queuePrApprovalPendingNotification(
+    pr,
+    'SCM Buyer',
+    { name: pr.requester, email: '' },
+    pr.departmentId,
+    {
+      rfqEntry: true,
+      stageLabel: 'SCM Final RFQ',
+      rfqSummary,
+      attachments,
+      approverEmails: buyer?.email ? [buyer.email] : undefined,
+      approverName: buyer?.name || undefined,
     }
   );
 }
@@ -947,12 +1082,31 @@ async function moveToScmCreatePo(prId) {
     [PR_STATUS.PENDING_SCM_PO, STAGE.SCM_PO_CREATE, prId]
   );
 
+  const buyer = await resolveScmBuyerUser();
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 2);
   await pool.query(
-    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
-     VALUES (?, 'RFQ_POST_APPROVAL', 'SCM Buyer', 'pending', ?)`,
-    [prId, dueDate.toISOString().split('T')[0]]
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+     VALUES (?, 'RFQ_POST_APPROVAL', 'SCM Buyer', ?, 'pending', ?)`,
+    [prId, buyer?.id || null, dueDate.toISOString().split('T')[0]]
+  );
+
+  const pr = await getPurchaseRequestById(prId);
+  const rfqSummary = await buildRfqSummary(prId);
+  const attachments = await collectQuotationAttachments(prId);
+  queuePrApprovalPendingNotification(
+    pr,
+    'SCM Buyer',
+    { name: pr.requester, email: '' },
+    pr.departmentId,
+    {
+      postRfq: true,
+      stageLabel: 'SCM PO Create',
+      rfqSummary,
+      attachments,
+      approverEmails: buyer?.email ? [buyer.email] : undefined,
+      approverName: buyer?.name || undefined,
+    }
   );
 }
 
@@ -1119,11 +1273,15 @@ export async function getVendorComparisonMatrix(user, prId) {
       prNumber: pr.prNumber,
       title: pr.title,
       department: pr.department,
+      entityId: pr.entityId || null,
+      entityName: pr.entityName || '',
+      entityCode: pr.entityCode || '',
       requestType: pr.requestType,
       totalAmount: pr.totalAmount,
       estimatedBudget: pr.totalAmount,
       status: pr.status,
       statusUI: pr.statusUI,
+      vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
       justification: pr.justification,
       approvalHistory: pr.approvalHistory,
     },
@@ -1132,6 +1290,14 @@ export async function getVendorComparisonMatrix(user, prId) {
     recommendedVendorName: recommendedVendor?.name || '',
     showFullNegotiation,
     stageLabel: roleConfig?.label || null,
+    /** Own-vendor HOD final: UI must ask Yes=CFO path / No=SCM vendor selection */
+    askBusinessApproval: Boolean(
+      pr.vendorSelection === 'own' &&
+        pr.status === PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL &&
+        (user.role === 'HOD Approver' ||
+          pendingTask?.assigned_role === 'HOD Approver' ||
+          assignedRoleConfig?.status === PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL)
+    ),
     canApprove: Boolean(
       assignedRoleConfig
         ? pr.status === assignedRoleConfig.status
@@ -1275,6 +1441,9 @@ export async function listPostRfqPending(user) {
       prNumber: pr.prNumber,
       title: pr.title,
       department: pr.department,
+      entityId: pr.entityId || null,
+      entityName: pr.entityName || '',
+      entityCode: pr.entityCode || '',
       requester: pr.requester,
       totalAmount: pr.totalAmount,
       requestType: pr.requestType,
@@ -1289,13 +1458,34 @@ export async function listPostRfqPending(user) {
   return results;
 }
 
-export async function processPostRfqApproval(user, prId, action, remarks) {
+export async function processPostRfqApproval(user, prId, action, remarks, options = {}) {
   const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
   if (!prRows.length) throw new Error('PR not found');
 
   const pr = prRows[0];
   const { roleConfig, workflowRole } = await resolvePostRfqRoleConfigForUser(user, prId, pr.status);
   if (!remarks?.trim()) throw new Error('Remarks are required');
+
+  const isOwnHodVendorFinal =
+    action === 'approve' &&
+    workflowRole === 'HOD Approver' &&
+    pr.vendor_selection === 'own' &&
+    pr.status === PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL;
+
+  // Own vendor HOD final: must choose Business/CFO path or skip to SCM vendor selection
+  let goToBusinessApproval = null;
+  if (isOwnHodVendorFinal) {
+    if (typeof options.goToBusinessApproval === 'boolean') {
+      goToBusinessApproval = options.goToBusinessApproval;
+    } else if (options.goToBusinessApproval === 'yes' || options.goToBusinessApproval === 'true') {
+      goToBusinessApproval = true;
+    } else if (options.goToBusinessApproval === 'no' || options.goToBusinessApproval === 'false') {
+      goToBusinessApproval = false;
+    }
+    if (goToBusinessApproval === null) {
+      throw new Error('Select whether to go to Business / CFO Approval (Yes or No)');
+    }
+  }
 
   const conn = await pool.getConnection();
   try {
@@ -1315,35 +1505,63 @@ export async function processPostRfqApproval(user, prId, action, remarks) {
       newStatus = roleConfig.nextStatus;
       newStage = roleConfig.nextStage;
       nextRole = roleConfig.nextRole;
+
+      // Own HOD vendor final branch (both paths go to L2 first):
+      // Yes → L2 → CFO → SCM Final RFQ
+      // No  → L2 → SCM Final RFQ (skip CFO)
+      if (isOwnHodVendorFinal) {
+        newStatus = PR_STATUS.PENDING_RFQ_L2_APPROVAL;
+        newStage = STAGE.RFQ_L2_REVIEW;
+        nextRole = 'PR Manager';
+        await conn.query(
+          `UPDATE rfq_configs SET require_cfo_approval = ?, updated_at = NOW() WHERE pr_id = ?`,
+          [goToBusinessApproval ? 1 : 0, prId]
+        );
+      }
+
+      // Own L2 approve: honor HOD choice (CFO vs SCM Final)
+      if (
+        workflowRole === 'PR Manager' &&
+        pr.vendor_selection === 'own' &&
+        pr.status === PR_STATUS.PENDING_RFQ_L2_APPROVAL
+      ) {
+        const config = await getOrCreateRfqConfig(prId);
+        if (config.requireCfoApproval === false) {
+          newStatus = PR_STATUS.APPROVED;
+          newStage = null;
+          nextRole = null;
+        }
+        // requireCfoApproval true/null → keep default L2 map (CFO)
+      }
     } else if (action === 'reject') {
       newStatus = PR_STATUS.REJECTED;
       newStage = null;
     } else if (action === 'return' || action === 'rework') {
-      // Send back to RFQ: Own → Requester re-entry; SCM → SCM RFQ queue
-      newStatus = PR_STATUS.APPROVED;
-      newStage = null;
+      const defaultReturnTo = pr.vendor_selection === 'own' ? 'REQUESTER_RFQ' : 'SCM_RFQ';
+      const returnTo = options.returnTo || defaultReturnTo;
+      const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarks, user);
       await conn.query(
-        `UPDATE rfq_configs
-         SET finalized_at = NULL, requester_submitted_at = NULL, updated_at = NOW()
-         WHERE pr_id = ?`,
-        [prId]
+        `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
+        [prId, roleConfig.stage, user.id, action, applyResult.remarksLine]
       );
-      if (pr.vendor_selection === 'own') {
-        const rfqDue = new Date();
-        rfqDue.setDate(rfqDue.getDate() + 5);
-        await conn.query(
-          `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
-           VALUES (?, 'RFQ_ENTRY', 'Requester', ?, 'pending', ?)`,
-          [prId, pr.requester_id, rfqDue.toISOString().split('T')[0]]
-        );
-      }
+      await conn.commit();
+      const updatedPr = await getPurchaseRequestById(prId);
+      queueSendBackNotifications(updatedPr, { ...applyResult, actorRole: workflowRole });
+      return updatedPr;
     } else {
       throw new Error('Invalid action');
     }
 
+    let approvalRemarks = remarks.trim();
+    if (isOwnHodVendorFinal) {
+      approvalRemarks = `${approvalRemarks}\n[Go to Business/CFO Approval: ${
+        goToBusinessApproval ? 'Yes — L2 → CFO → SCM Final' : 'No — L2 → SCM Final (skip CFO)'
+      }]`;
+    }
+
     await conn.query(
       `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
-      [prId, roleConfig.stage, user.id, action, remarks]
+      [prId, roleConfig.stage, user.id, action, approvalRemarks]
     );
 
     await conn.query(
@@ -1368,11 +1586,24 @@ export async function processPostRfqApproval(user, prId, action, remarks) {
       } else {
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 2);
+        let roleUser = null;
+        if (nextRole === 'SCM Buyer') {
+          roleUser = await resolveScmBuyerUser(conn);
+        } else {
+          const [roleUsers] = await conn.query(
+            `SELECT id, email, name FROM users WHERE role = ? AND is_active = 1 ORDER BY id ASC LIMIT 1`,
+            [nextRole]
+          );
+          roleUser = roleUsers[0] || null;
+        }
         await conn.query(
-          `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
-           VALUES (?, 'RFQ_POST_APPROVAL', ?, 'pending', ?)`,
-          [prId, nextRole, dueDate.toISOString().split('T')[0]]
+          `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+           VALUES (?, 'RFQ_POST_APPROVAL', ?, ?, 'pending', ?)`,
+          [prId, nextRole, roleUser?.id || null, dueDate.toISOString().split('T')[0]]
         );
+        if (roleUser?.email) {
+          nextAssignee = { email: roleUser.email, name: roleUser.name, userId: roleUser.id };
+        }
       }
     }
 
@@ -1383,9 +1614,14 @@ export async function processPostRfqApproval(user, prId, action, remarks) {
 
     if (nextRole && action === 'approve') {
       const nextCfg = POST_RFQ_ROLE_MAP[nextRole];
+      // L2 / next RFQ approver gets full negotiation rounds + quotation file attachments
+      const rfqSummary = await buildRfqSummary(prId);
+      const attachments = await collectQuotationAttachments(prId);
       queuePrApprovalPendingNotification(updatedPr, nextRole, requester, updatedPr.departmentId, {
         postRfq: true,
         stageLabel: nextCfg?.label,
+        rfqSummary,
+        attachments,
         approverEmails: nextAssignee?.email ? [nextAssignee.email] : undefined,
         approverName: nextAssignee?.name || undefined,
       });
@@ -1395,7 +1631,8 @@ export async function processPostRfqApproval(user, prId, action, remarks) {
       newStatus === PR_STATUS.APPROVED &&
       pr.vendor_selection === 'own'
     ) {
-      // Own path: CFO done → ready for SCM final RFQ (no task; appears in SCM RFQ queue)
+      // Own path: CFO done → SCM Buyer final RFQ (queue + mail)
+      await notifyScmBuyerForFinalRfq(prId);
     } else if (action === 'reject' || action === 'return' || action === 'rework') {
       queuePostRfqActionNotification(updatedPr, workflowRole, action, remarks, requester);
     }
@@ -1464,6 +1701,55 @@ export function mapInvitationsToTableRows(invitations, config = null) {
       })),
     };
   });
+}
+
+/** Attach / replace quotation file on an existing submitted quote (fixes missing uploads). */
+export async function attachQuotationFileToSubmission(user, submissionId, body) {
+  if (!['Requester', 'SCM Buyer'].includes(user.role)) {
+    throw new Error('Unauthorized');
+  }
+  const [rows] = await pool.query(
+    `SELECT vqs.*, ri.id AS invitation_id, ri.pr_id, ri.round AS inv_round, pr.requester_id, pr.status AS pr_status
+     FROM vendor_quotation_submissions vqs
+     JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id
+     JOIN purchase_requests pr ON pr.id = ri.pr_id
+     WHERE vqs.id = ?`,
+    [submissionId]
+  );
+  if (!rows.length) throw new Error('Submission not found');
+  const row = rows[0];
+  if (user.role === 'Requester' && row.requester_id !== user.id) {
+    throw new Error('Unauthorized');
+  }
+  if (row.status !== 'submitted') {
+    throw new Error('Can only attach files to submitted quotations');
+  }
+  if (!body?.quotationFileName || !body?.quotationFileData) {
+    throw new Error('Quotation file is required');
+  }
+
+  const fileInfo = saveQuotationFile(
+    row.invitation_id,
+    row.round || row.inv_round || 1,
+    body.quotationFileName,
+    body.quotationFileData
+  );
+  if (!fileInfo.filePath) {
+    throw new Error('Failed to save quotation file');
+  }
+
+  await pool.query(
+    `UPDATE vendor_quotation_submissions
+     SET quotation_file_name = ?, quotation_file_path = ?
+     WHERE id = ?`,
+    [fileInfo.fileName, fileInfo.filePath, submissionId]
+  );
+
+  return {
+    submissionId,
+    quotationFileName: fileInfo.fileName,
+    message: 'Quotation file attached successfully',
+  };
 }
 
 export async function getSubmissionFile(user, submissionId) {

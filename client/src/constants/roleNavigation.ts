@@ -32,10 +32,10 @@ const NAV_BY_CODE: Record<string, NavItem> = {
   },
   'nav.pr_manager_dashboard': {
     code: 'nav.pr_manager_dashboard',
-    label: 'Dashboard',
-    path: '/pr-manager/dashboard',
-    icon: 'ri-dashboard-line',
-    group: 'PR Manager',
+    label: 'My Tasks',
+    path: '/tasks',
+    icon: 'ri-task-line',
+    group: 'L2 Manager',
   },
   'nav.rfq_approval': {
     code: 'nav.rfq_approval',
@@ -268,7 +268,7 @@ const MASTER_NAV_CODES = [
 
 const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   Requester: ['nav.requester_dashboard', 'nav.create_pr', 'nav.rfq_entry', 'nav.track_pr'],
-  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.tasks'],
+  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
   CFO: ['nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [

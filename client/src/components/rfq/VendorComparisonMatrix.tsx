@@ -134,6 +134,11 @@ export default function VendorComparisonMatrix({
             <div className="min-w-0">
               <h2 className="text-lg font-bold text-gray-900">Purchase Request Details</h2>
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-gray-600">
+                <span>
+                  <strong>Entity:</strong>{' '}
+                  {pr.entityName || '—'}
+                  {pr.entityCode ? ` (${pr.entityCode})` : ''}
+                </span>
                 <span><strong>Department:</strong> {pr.department}</span>
                 <span><strong>Request Type:</strong> {pr.requestType}</span>
                 <span><strong>Estimated Budget:</strong> {formatCurrency(pr.estimatedBudget)}</span>
@@ -144,6 +149,10 @@ export default function VendorComparisonMatrix({
         )}
         {compact && (
           <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3 text-xs text-gray-600">
+            <span>
+              <strong>Entity:</strong> {pr.entityName || '—'}
+              {pr.entityCode ? ` (${pr.entityCode})` : ''}
+            </span>
             <span><strong>Department:</strong> {pr.department}</span>
             <span><strong>Budget:</strong> {formatCurrency(pr.estimatedBudget)}</span>
             <span><strong>Vendors:</strong> {data.vendorCount}</span>

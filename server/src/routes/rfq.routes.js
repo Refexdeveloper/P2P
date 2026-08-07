@@ -9,6 +9,7 @@ import {
   resendRfqInvitationEmail,
   sendBackVendorQuote,
   getSubmissionFile,
+  attachQuotationFileToSubmission,
   saveRfqConfig,
   updateSubmissionReviewFields,
   finalizeRfq,
@@ -82,8 +83,11 @@ router.get('/pr/:prId/comparison', async (req, res) => {
 
 router.post('/pr/:prId/post-approve', async (req, res) => {
   try {
-    const { action, remarks } = req.body;
-    const data = await processPostRfqApproval(req.user, Number(req.params.prId), action, remarks);
+    const { action, remarks, goToBusinessApproval, returnTo } = req.body;
+    const data = await processPostRfqApproval(req.user, Number(req.params.prId), action, remarks, {
+      goToBusinessApproval,
+      returnTo,
+    });
     res.json({ data, message: `RFQ ${action} recorded successfully` });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -133,6 +137,15 @@ router.put('/submissions/:id/review-fields', requireRoles('Requester', 'SCM Buye
   try {
     const result = await updateSubmissionReviewFields(req.user, Number(req.params.id), req.body.requesterFields);
     res.json({ data: result, message: 'Review fields saved' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/submissions/:id/attach-file', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+  try {
+    const result = await attachQuotationFileToSubmission(req.user, Number(req.params.id), req.body);
+    res.json({ data: result, message: result.message });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

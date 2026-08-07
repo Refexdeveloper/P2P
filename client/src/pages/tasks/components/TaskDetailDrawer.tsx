@@ -26,6 +26,8 @@ interface PRTask {
   requesterRole: string;
   requesterAvatar: string;
   department: string;
+  entityName?: string;
+  entityCode?: string;
   requestType: string;
   category: string;
   priority: string;
@@ -124,7 +126,7 @@ export default function TaskDetailDrawer({
               <div>
                 <p className="text-sm font-semibold text-gray-900">{task.requester}</p>
                 <p className="text-xs text-gray-500">
-                  {task.requesterRole} &middot; {task.department}
+                  {task.requesterRole} &middot; {task.department || '—'}
                 </p>
               </div>
             </div>
@@ -135,6 +137,19 @@ export default function TaskDetailDrawer({
                 PR Details
               </h4>
               <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-0.5">Entity</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {task.entityName || '—'}
+                    {task.entityCode ? (
+                      <span className="block text-xs text-gray-500 font-normal mt-0.5">{task.entityCode}</span>
+                    ) : null}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-0.5">Department</p>
+                  <p className="text-sm font-medium text-gray-900">{task.department || '—'}</p>
+                </div>
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-xs text-gray-500 mb-0.5">Category</p>
                   <p className="text-sm font-medium text-gray-900">{task.category || '—'}</p>

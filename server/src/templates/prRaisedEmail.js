@@ -128,16 +128,20 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
                   ${infoCell('Requester Email', requester?.email || '—')}
                 </tr>
                 <tr>
+                  ${infoCell('Entity', pr.entityName ? `${pr.entityName}${pr.entityCode ? ` (${pr.entityCode})` : ''}` : '—')}
                   ${infoCell('Department', pr.department)}
+                </tr>
+                <tr>
                   ${infoCell('Request Type', pr.requestType)}
-                </tr>
-                <tr>
                   ${infoCell('Priority', pr.priority)}
-                  ${infoCell('Required Date', pr.requiredDate || '—')}
                 </tr>
                 <tr>
+                  ${infoCell('Required Date', pr.requiredDate || '—')}
                   ${infoCell('Submitted On', pr.submittedDate || pr.createdAt)}
+                </tr>
+                <tr>
                   ${infoCell('Total Amount', formatCurrency(pr.totalAmount))}
+                  ${infoCell('Entity Cost Center', pr.entityCostCenter || '—')}
                 </tr>
               </table>
             </td>

@@ -132,7 +132,7 @@ export default function TaskCard({ task, onAction, isExpanded, onToggle }: TaskC
               <div className="flex items-center gap-3 flex-shrink-0">
                 {task.amount && (
                   <span className="text-sm font-bold text-gray-900 whitespace-nowrap">
-                    ${task.amount.toLocaleString()}
+                    {'\u20B9'}{Number(task.amount || 0).toLocaleString('en-IN')}
                   </span>
                 )}
                 {task.slaRemaining !== null && (

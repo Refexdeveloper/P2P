@@ -27,6 +27,8 @@ interface PRTask {
   requesterRole: string;
   requesterAvatar: string;
   department: string;
+  entityName?: string;
+  entityCode?: string;
   requestType: string;
   category: string;
   priority: string;
@@ -207,14 +209,21 @@ export default function PRApprovalCard({
                 >
                   {task.title}
                 </h3>
-                <div className="flex items-center gap-4 mt-1.5 text-xs text-gray-500">
+                <div className="flex items-center gap-4 mt-1.5 text-xs text-gray-500 flex-wrap">
                   <span className="flex items-center gap-1">
                     <i className="ri-user-line"></i>
                     {task.requester} &middot; {task.requesterRole}
                   </span>
+                  <span className="flex items-center gap-1 min-w-0">
+                    <i className="ri-community-line"></i>
+                    <span className="truncate" title={task.entityName || undefined}>
+                      {task.entityName || '—'}
+                      {task.entityCode ? ` (${task.entityCode})` : ''}
+                    </span>
+                  </span>
                   <span className="flex items-center gap-1">
                     <i className="ri-building-line"></i>
-                    {task.department}
+                    {task.department || '—'}
                   </span>
                   <span className="flex items-center gap-1">
                     <i className="ri-calendar-line"></i>
@@ -227,7 +236,7 @@ export default function PRApprovalCard({
               <div className="flex items-center gap-3 flex-shrink-0">
                 <div className="text-right">
                   <p className="text-base font-bold text-gray-900">
-                    ${task.totalAmount.toLocaleString()}
+                    {'\u20B9'}{Number(task.totalAmount || 0).toLocaleString('en-IN')}
                   </p>
                   <p className="text-xs text-gray-400">
                     {task.lineItems.length} item{task.lineItems.length > 1 ? 's' : ''}
@@ -258,7 +267,16 @@ export default function PRApprovalCard({
 
           {/* PR Details Grid */}
           <div className="px-5 pb-3">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="bg-gray-50 rounded-md p-2.5">
+                <p className="text-xs text-gray-500 mb-0.5">Entity</p>
+                <p className="text-sm font-medium text-gray-900 truncate" title={task.entityName || undefined}>
+                  {task.entityName || '—'}
+                  {task.entityCode ? (
+                    <span className="block text-xs text-gray-500 font-normal">{task.entityCode}</span>
+                  ) : null}
+                </p>
+              </div>
               <div className="bg-gray-50 rounded-md p-2.5">
                 <p className="text-xs text-gray-500 mb-0.5">Category</p>
                 <p className="text-sm font-medium text-gray-900">{task.category}</p>
@@ -278,7 +296,7 @@ export default function PRApprovalCard({
               <div className="bg-gray-50 rounded-md p-2.5">
                 <p className="text-xs text-gray-500 mb-0.5">Total Amount</p>
                 <p className="text-sm font-bold text-gray-900">
-                  ${task.totalAmount.toLocaleString()}
+                  {'\u20B9'}{Number(task.totalAmount || 0).toLocaleString('en-IN')}
                 </p>
               </div>
             </div>
@@ -319,10 +337,10 @@ export default function PRApprovalCard({
                       <td className="px-3 py-2 text-center text-gray-700">{item.qty}</td>
                       <td className="px-3 py-2 text-center text-gray-500">{item.unit}</td>
                       <td className="px-3 py-2 text-right text-gray-700">
-                        ${item.unitCost.toLocaleString()}
+                        {'\u20B9'}{Number(item.unitCost || 0).toLocaleString('en-IN')}
                       </td>
                       <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                        ${item.total.toLocaleString()}
+                        {'\u20B9'}{Number(item.total || 0).toLocaleString('en-IN')}
                       </td>
                     </tr>
                   ))}
@@ -333,7 +351,7 @@ export default function PRApprovalCard({
                       Grand Total
                     </td>
                     <td className="px-3 py-2 text-right font-bold text-gray-900">
-                      ${task.totalAmount.toLocaleString()}
+                      {'\u20B9'}{Number(task.totalAmount || 0).toLocaleString('en-IN')}
                     </td>
                   </tr>
                 </tfoot>

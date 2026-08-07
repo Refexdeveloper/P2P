@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getRoleHomePath, useAuth } from '../../contexts/AuthContext';
+import { goToRefexOne } from '../../utils/refexOneUrl';
 
 export default function Home() {
   const { user, isLoading } = useAuth();
@@ -9,7 +10,7 @@ export default function Home() {
   useEffect(() => {
     if (isLoading) return;
     if (!user) {
-      navigate('/login', { replace: true });
+      goToRefexOne();
       return;
     }
     navigate(getRoleHomePath(user.role, user.navigation), { replace: true });
@@ -17,7 +18,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">
-      Redirecting to your dashboard…
+      Redirecting…
     </div>
   );
 }

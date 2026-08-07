@@ -6,6 +6,7 @@ import { buildRfqInvitationEmail, buildRfqSendBackEmail } from '../templates/rfq
 import { buildRfqSubmittedNotifyRequesterEmail } from '../templates/rfqSubmittedEmail.js';
 import { buildPostRfqActionEmail } from '../templates/prPostRfqActionEmail.js';
 import { buildPoVendorEmail } from '../templates/poVendorEmail.js';
+import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
 
 let transporter;
 let smtpReady = false;
@@ -24,7 +25,7 @@ function getSmtpConfig() {
 function getTransporter() {
   if (transporter) return transporter;
 
-  const { host, port, user, pass } = getSmtpConfig();
+  const { host, port, user, pass, secure } = getSmtpConfig();
 
   if (!host || !user || !pass || Number.isNaN(port)) {
     console.warn(
@@ -34,14 +35,13 @@ function getTransporter() {
     return transporter;
   }
 
+  // Gmail / Google Workspace: port 587 + STARTTLS (secure:false)
   transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD || process.env.SMTP_PASS,
-    },
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+    requireTLS: !secure && port === 587,
   });
 
   return transporter;
@@ -97,46 +97,35 @@ function getNotificationRecipients() {
 }
 
 function getFromAddress() {
-  const from =
+  const { user } = getSmtpConfig();
+  const fromEmail =
     process.env.SMTP_FROM?.trim() ||
-    process.env.SMTP_FROM_EMAIL?.trim() ||
-    '';
-  if (!from) {
-    console.warn('SMTP_FROM is not set; emails may be rejected by the provider');
-  }
-  return from;
+    user ||
+    'support@refexone.com';
+  const fromName = process.env.SMTP_FROM_NAME?.trim() || 'P2P Procurement';
+  return `"${fromName}" <${fromEmail}>`;
 }
 
-/** Send a one-off SMTP test message (ops / health check). */
+/** Send a one-off SMTP test message (used by /api/health/smtp/send-test). */
 export async function sendTestEmail(to) {
-  const recipient = (to || '').trim();
-  if (!recipient) {
-    throw new Error('Test email recipient is required');
+  const recipient = String(to || '').trim();
+  if (!recipient) throw new Error('Recipient email is required');
+
+  const ok = await ensureSmtpReady();
+  if (!ok) {
+    throw new Error('SMTP is not connected. Check SMTP_HOST / SMTP_USER / SMTP_PASSWORD.');
   }
 
-  const { host, user, pass } = getSmtpConfig();
-  if (!host || !user || !pass) {
-    throw new Error('SMTP is not fully configured');
-  }
+  const info = await getTransporter().sendMail({
+    from: getFromAddress(),
+    to: recipient,
+    subject: 'P2P SMTP test',
+    text: `P2P SMTP test message sent at ${new Date().toISOString()}`,
+    html: `<p>P2P SMTP test message sent at <strong>${new Date().toISOString()}</strong></p>`,
+  });
 
-  await ensureSmtpReady();
-
-  try {
-    const transport = getTransporter();
-    const info = await transport.sendMail({
-      from: getFromAddress(),
-      to: recipient,
-      subject: 'Refex P2P — SMTP test',
-      text: 'Gmail SMTP is configured correctly for Refex P2P.',
-      html: '<p>Gmail SMTP is configured correctly for <strong>Refex P2P</strong>.</p>',
-    });
-    console.log(`Email sent successfully to ${recipient} — ${info.messageId}`);
-    return info;
-  } catch (err) {
-    console.error('Email send failure (SMTP test):', err.message);
-    if (err.response) console.error('SMTP response:', err.response);
-    throw err;
-  }
+  console.log(`SMTP test email sent to ${recipient} — ${info.messageId}`);
+  return info;
 }
 
 export async function sendPrRaisedNotification(pr, requester, options = {}) {
@@ -191,6 +180,11 @@ export function queuePrRaisedNotification(pr, requester, options = {}) {
 }
 
 async function getApproverRecipients(role, departmentId = null) {
+  if (role === 'SCM Buyer') {
+    const buyer = await resolveScmBuyerUser();
+    return buyer?.email ? [{ email: buyer.email, name: buyer.name }] : [];
+  }
+
   let sql = `SELECT email, name FROM users WHERE role = ? AND is_active = 1`;
   const params = [role];
   if (role === 'HOD Approver' && departmentId) {
@@ -201,52 +195,87 @@ async function getApproverRecipients(role, departmentId = null) {
   return rows;
 }
 
-async function sendMailToRecipients(recipients, subject, html, text) {
+async function sendMailToRecipients(recipients, subject, html, text, attachments = [], mailOptions = {}) {
   const { host, user, pass } = getSmtpConfig();
   if (!host || !user || !pass) {
     console.log('Email NOT sent (SMTP missing):', subject, '→', recipients.join(', '));
+    if (attachments?.length) {
+      console.log(`  Attachments skipped (${attachments.length}):`, attachments.map((a) => a.filename).join(', '));
+    }
     return;
   }
 
   await ensureSmtpReady();
-
-  try {
-    const transport = getTransporter();
-    const info = await transport.sendMail({
-      from: getFromAddress(),
-      to: recipients.join(', '),
-      subject,
-      text,
-      html,
-    });
-    console.log(
-      `Email sent successfully to ${recipients.join(', ')} — ${info.messageId}`
-    );
-    return info;
-  } catch (err) {
-    console.error('Email send failure:', err.message);
-    if (err.response) console.error('SMTP response:', err.response);
-    throw err;
-  }
+  const transport = getTransporter();
+  const info = await transport.sendMail({
+    from: getFromAddress(),
+    to: recipients.join(', '),
+    bcc: mailOptions.bcc?.length ? mailOptions.bcc.join(', ') : undefined,
+    subject,
+    text,
+    html,
+    attachments: attachments?.length ? attachments : undefined,
+  });
+  console.log(`Email sent to ${recipients.join(', ')} — ${info.messageId}`);
+  return info;
 }
 
-export async function sendPrApprovalPendingNotification(pr, assignedRole, requester, departmentId = null, options = {}) {
-  const approvers = await getApproverRecipients(assignedRole, departmentId);
-  const notifyEmails = getNotificationRecipients();
+/** Resolve the particular user assigned on the pending workflow task for this step */
+async function resolveAssignedUserForStep(prId, assignedRole) {
+  if (!prId || !assignedRole) return { emails: [], name: null };
+  const [rows] = await pool.query(
+    `SELECT u.email, u.name
+     FROM workflow_tasks wt
+     JOIN users u ON u.id = wt.assigned_user_id
+     WHERE wt.pr_id = ?
+       AND wt.assigned_role = ?
+       AND wt.status = 'pending'
+       AND wt.assigned_user_id IS NOT NULL
+     ORDER BY wt.id DESC
+     LIMIT 1`,
+    [prId, assignedRole]
+  );
+  if (!rows[0]?.email) return { emails: [], name: null };
+  return { emails: [rows[0].email], name: rows[0].name || null };
+}
 
-  const explicitEmails = (options.approverEmails || []).filter(Boolean);
-  const emails = [...new Set([
-    ...explicitEmails,
-    ...approvers.map((a) => a.email),
-    ...notifyEmails,
-  ])];
+/**
+ * Step mail goes to the particular assigned user.
+ * - Prefer options.approverEmails (explicit assignee for this step)
+ * - Else pending workflow_tasks.assigned_user_id
+ * - Else role inbox (CFO / SCM Manager queues without a person)
+ * Ops notify list is BCC only (not primary To).
+ */
+export async function sendPrApprovalPendingNotification(pr, assignedRole, requester, departmentId = null, options = {}) {
+  const explicitEmails = (options.approverEmails || [])
+    .map((e) => String(e || '').trim())
+    .filter(Boolean);
+
+  let emails = [...new Set(explicitEmails)];
+  let primaryName = options.approverName || null;
 
   if (!emails.length) {
-    console.warn(`No recipients for PR approval email (role: ${assignedRole})`);
+    const fromTask = await resolveAssignedUserForStep(pr.id || pr.prId, assignedRole);
+    emails = fromTask.emails;
+    primaryName = primaryName || fromTask.name;
+  }
+
+  if (!emails.length) {
+    const approvers = await getApproverRecipients(assignedRole, departmentId);
+    emails = [...new Set(approvers.map((a) => a.email).filter(Boolean))];
+    primaryName = primaryName || approvers[0]?.name || 'Approver';
+  }
+
+  if (!emails.length) {
+    console.warn(`No recipients for PR approval email (role: ${assignedRole}, pr: ${pr.prNumber || pr.id})`);
     return;
   }
 
-  const primaryName = options.approverName || approvers[0]?.name || 'Approver';
+  primaryName = primaryName || 'Approver';
+
+  // Keep ops copy as BCC so the step owner is the only primary recipient
+  const emailSet = new Set(emails.map((e) => e.toLowerCase()));
+  const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
 
   const { subject, html, text } = buildPrApprovalPendingEmail({
     pr,
@@ -256,9 +285,14 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
     postRfq: options.postRfq || false,
     stageLabel: options.stageLabel || null,
     rfqSummary: options.rfqSummary || null,
+    rfqEntry: options.rfqEntry || false,
   });
 
-  return sendMailToRecipients(emails, subject, html, text);
+  console.log(
+    `Step mail → ${assignedRole} (${primaryName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}`
+  );
+
+  return sendMailToRecipients(emails, subject, html, text, options.attachments || [], { bcc });
 }
 
 export function queuePrApprovalPendingNotification(pr, assignedRole, requester, departmentId = null, options = {}) {
@@ -273,12 +307,17 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
     `SELECT email, name FROM users WHERE id = ?`,
     [pr.requesterId || pr.requester_id]
   );
-  const requesterEmail = requesterRows[0]?.email;
+  const requesterEmail = requesterRows[0]?.email || requester?.email;
   const requesterName = requesterRows[0]?.name || requester?.name || 'Requester';
-  const notifyEmails = getNotificationRecipients();
 
-  const emails = [...new Set([requesterEmail, ...notifyEmails].filter(Boolean))];
-  if (!emails.length) return;
+  // Particular requester only (ops notify as BCC)
+  const emails = requesterEmail ? [requesterEmail] : [];
+  if (!emails.length) {
+    console.warn(`No requester email for action notification on ${pr.prNumber || pr.id}`);
+    return;
+  }
+  const emailSet = new Set(emails.map((e) => e.toLowerCase()));
+  const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
 
   const { subject, html, text } = buildPostRfqActionEmail({
     pr,
@@ -288,7 +327,8 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
     requesterName,
   });
 
-  return sendMailToRecipients(emails, subject, html, text);
+  console.log(`Step mail → Requester (${requesterName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}`);
+  return sendMailToRecipients(emails, subject, html, text, [], { bcc });
 }
 
 export function queuePostRfqActionNotification(pr, approverRole, action, remarks, requester) {
@@ -327,8 +367,10 @@ export function queueRfqSendBackEmail(pr, vendorName, vendorEmail, submitUrl, ro
 }
 
 export async function sendRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail, requesterName, submission, reviewUrl) {
-  const notifyEmails = getNotificationRecipients();
-  const recipients = [...new Set([requesterEmail, ...notifyEmails].filter(Boolean))];
+  const recipients = requesterEmail ? [requesterEmail] : [];
+  if (!recipients.length) return;
+  const emailSet = new Set(recipients.map((e) => e.toLowerCase()));
+  const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
 
   const { subject, html, text } = buildRfqSubmittedNotifyRequesterEmail({
     pr,
@@ -337,7 +379,7 @@ export async function sendRfqSubmittedNotifyRequester(pr, vendorName, requesterE
     submission,
     reviewUrl,
   });
-  return sendMailToRecipients(recipients, subject, html, text);
+  return sendMailToRecipients(recipients, subject, html, text, [], { bcc });
 }
 
 export function queueRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail, requesterName, submission, reviewUrl) {

@@ -1,5 +1,9 @@
 import pool from '../config/db.js';
-import { queuePrRaisedNotification, queuePrApprovalPendingNotification } from './emailService.js';
+import {
+  queuePrRaisedNotification,
+  queuePrApprovalPendingNotification,
+  queuePostRfqActionNotification,
+} from './emailService.js';
 import {
   getL1ManagerForEmail,
   getL2ManagerForEmail,
@@ -17,6 +21,8 @@ import {
   formatDateTime,
 } from '../utils/constants.js';
 import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './documentNumberService.js';
+import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 
 async function getLineItems(prId) {
   const [rows] = await pool.query('SELECT * FROM pr_line_items WHERE pr_id = ? ORDER BY id', [prId]);
@@ -299,7 +305,7 @@ export async function createPurchaseRequest(user, body) {
         {
           approverEmails: hodAssignment?.hodEmail ? [hodAssignment.hodEmail] : undefined,
           approverName: hodAssignment?.hodName || undefined,
-          stageLabel: 'HOD / L1 Manager Approval',
+          stageLabel: 'L1 Manager Approval',
         }
       );
     }
@@ -328,16 +334,18 @@ export async function getPurchaseRequestById(id) {
 }
 
 function hodAssignedTaskSql(user) {
+  // Pre-RFQ HOD + post-RFQ L1 vendor final — by assigned user or requester supervisor email
   return {
-    clause: ` AND pr.status = ? AND EXISTS (
+    clause: ` AND pr.status IN (?, ?) AND EXISTS (
       SELECT 1 FROM workflow_tasks wt
       WHERE wt.pr_id = pr.id
-        AND wt.assigned_role = 'HOD Approver'
         AND wt.status = 'pending'
+        AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
         AND (
           wt.assigned_user_id = ?
           OR (
             wt.assigned_user_id IS NULL
+            AND wt.assigned_role = 'HOD Approver'
             AND EXISTS (
               SELECT 1 FROM users ru
               WHERE ru.id = pr.requester_id
@@ -347,7 +355,12 @@ function hodAssignedTaskSql(user) {
           )
         )
     )`,
-    params: [PR_STATUS.PENDING_HOD_APPROVAL, user.id, user.email],
+    params: [
+      PR_STATUS.PENDING_HOD_APPROVAL,
+      PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL,
+      user.id,
+      user.email,
+    ],
   };
 }
 
@@ -372,8 +385,28 @@ export async function listPurchaseRequests(user, filters = {}) {
     params.push(...hodFilter.params);
   } else if (user.role === 'PR Manager') {
     if (filters.pendingOnly) {
-      sql += ' AND pr.status IN (?, ?)';
-      params.push(PR_STATUS.PENDING_PR_MANAGER_APPROVAL, PR_STATUS.PENDING_RFQ_L2_APPROVAL);
+      // Only PRs assigned to this L2 manager (or unassigned role queue)
+      sql += ` AND pr.status IN (?, ?)
+        AND (
+          EXISTS (
+            SELECT 1 FROM workflow_tasks wt
+            WHERE wt.pr_id = pr.id
+              AND wt.status = 'pending'
+              AND wt.assigned_role = 'PR Manager'
+              AND (wt.assigned_user_id = ? OR wt.assigned_user_id IS NULL)
+          )
+          OR NOT EXISTS (
+            SELECT 1 FROM workflow_tasks wt2
+            WHERE wt2.pr_id = pr.id
+              AND wt2.status = 'pending'
+              AND wt2.assigned_role = 'PR Manager'
+          )
+        )`;
+      params.push(
+        PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
+        PR_STATUS.PENDING_RFQ_L2_APPROVAL,
+        user.id
+      );
     }
   } else if (user.role === 'CFO') {
     if (filters.pendingOnly) {
@@ -547,7 +580,7 @@ export async function getManagerStats() {
   };
 }
 
-export async function processApproval(user, prId, action, remarks) {
+export async function processApproval(user, prId, action, remarks, options = {}) {
   const roleConfig = ROLE_STAGE_MAP[user.role];
   if (!roleConfig) throw new Error('Role cannot approve PRs');
 
@@ -623,7 +656,16 @@ export async function processApproval(user, prId, action, remarks) {
     } else if (action === 'reject') {
       newStatus = PR_STATUS.REJECTED;
     } else if (action === 'return' || action === 'rework') {
-      newStatus = PR_STATUS.RETURNED;
+      const returnTo = options.returnTo || 'REQUESTER';
+      const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarks, user);
+      await conn.query(
+        `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
+        [prId, roleConfig.stage, user.id, action, applyResult.remarksLine]
+      );
+      await conn.commit();
+      const updatedPr = await getPurchaseRequestById(prId);
+      queueSendBackNotifications(updatedPr, { ...applyResult, actorRole: user.role });
+      return updatedPr;
     } else {
       throw new Error('Invalid action');
     }
@@ -658,13 +700,24 @@ export async function processApproval(user, prId, action, remarks) {
     } else if (nextRole && action === 'approve') {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 1);
-      await conn.query(
-        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date) VALUES (?, 'PR_APPROVAL', ?, 'pending', ?)`,
-        [prId, nextRole, dueDate.toISOString().split('T')[0]]
+      // Prefer a particular active user for role-queued steps (e.g. CFO)
+      const [roleUsers] = await conn.query(
+        `SELECT id, email, name FROM users WHERE role = ? AND is_active = 1 ORDER BY id ASC LIMIT 1`,
+        [nextRole]
       );
+      const roleUser = roleUsers[0] || null;
+      await conn.query(
+        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+         VALUES (?, 'PR_APPROVAL', ?, ?, 'pending', ?)`,
+        [prId, nextRole, roleUser?.id || null, dueDate.toISOString().split('T')[0]]
+      );
+      if (roleUser?.email) {
+        nextAssignee = { email: roleUser.email, name: roleUser.name, userId: roleUser.id };
+      }
     }
 
     // Own vendor: Requester RFQ Entry immediately after HOD approval
+    let rfqEntryRequester = null;
     if (user.role === 'HOD Approver' && action === 'approve' && pr.vendor_selection === 'own') {
       const rfqDue = new Date();
       rfqDue.setDate(rfqDue.getDate() + 5);
@@ -672,6 +725,23 @@ export async function processApproval(user, prId, action, remarks) {
         `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
          VALUES (?, 'RFQ_ENTRY', 'Requester', ?, 'pending', ?)`,
         [prId, pr.requester_id, rfqDue.toISOString().split('T')[0]]
+      );
+      const [reqRows] = await conn.query(`SELECT id, email, name FROM users WHERE id = ?`, [
+        pr.requester_id,
+      ]);
+      rfqEntryRequester = reqRows[0] || null;
+    }
+
+    // SCM vendor: after CFO pre-RFQ → SCM Buyer RFQ Entry (/scm/rfq-entry)
+    let scmRfqBuyer = null;
+    if (user.role === 'CFO' && action === 'approve') {
+      const rfqDue = new Date();
+      rfqDue.setDate(rfqDue.getDate() + 5);
+      scmRfqBuyer = await resolveScmBuyerUser(conn);
+      await conn.query(
+        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+         VALUES (?, 'RFQ_ENTRY', 'SCM Buyer', ?, 'pending', ?)`,
+        [prId, scmRfqBuyer?.id || null, rfqDue.toISOString().split('T')[0]]
       );
     }
 
@@ -686,9 +756,41 @@ export async function processApproval(user, prId, action, remarks) {
         {
           approverEmails: nextAssignee?.email ? [nextAssignee.email] : undefined,
           approverName: nextAssignee?.name || undefined,
-          stageLabel: nextRole === 'PR Manager' ? 'L2 Manager Approval' : undefined,
+          stageLabel: nextRole === 'PR Manager' ? 'L2 Manager Approval' : `${nextRole} Approval`,
         }
       );
+    } else if (rfqEntryRequester?.email) {
+      // Particular requester — RFQ entry step
+      queuePrApprovalPendingNotification(
+        updatedPr,
+        'Requester',
+        { name: rfqEntryRequester.name, email: rfqEntryRequester.email },
+        updatedPr.departmentId,
+        {
+          approverEmails: [rfqEntryRequester.email],
+          approverName: rfqEntryRequester.name,
+          stageLabel: 'RFQ Entry Required',
+        }
+      );
+    } else if (user.role === 'CFO' && action === 'approve') {
+      // SCM path: CFO done → SCM Buyer RFQ Entry mail
+      queuePrApprovalPendingNotification(
+        updatedPr,
+        'SCM Buyer',
+        { name: updatedPr.requester, email: '' },
+        updatedPr.departmentId,
+        {
+          rfqEntry: true,
+          stageLabel: 'SCM RFQ Entry',
+          approverEmails: scmRfqBuyer?.email ? [scmRfqBuyer.email] : undefined,
+          approverName: scmRfqBuyer?.name || undefined,
+        }
+      );
+    } else if (action === 'reject' || action === 'return' || action === 'rework') {
+      // Particular requester — return / reject
+      queuePostRfqActionNotification(updatedPr, user.role, action, remarks, {
+        name: updatedPr.requester,
+      });
     }
     return updatedPr;
   } catch (err) {
@@ -862,7 +964,7 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
       {
         approverEmails: hodAssignment.hodEmail ? [hodAssignment.hodEmail] : undefined,
         approverName: hodAssignment.hodName || undefined,
-        stageLabel: 'HOD / L1 Manager Approval',
+        stageLabel: 'L1 Manager Approval',
       }
     );
     return updatedPr;
@@ -921,6 +1023,90 @@ export async function completeRequesterTask(user, taskId) {
   return { success: true };
 }
 
+function mapApproverActionToTaskStatus(action) {
+  if (action === 'approve') return 'approved';
+  if (action === 'reject') return 'rejected';
+  if (action === 'return' || action === 'rework') return 'returned';
+  return 'pending_approval';
+}
+
+function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null }) {
+  const due = new Date(pr.submittedDate || Date.now());
+  due.setDate(due.getDate() + 1);
+  const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
+  const pending = status === 'pending_approval';
+
+  return {
+    id: String(pr.id),
+    taskId: pr.id,
+    prId: pr.id,
+    prNumber: pr.prNumber,
+    title: pr.title,
+    requester: pr.requester,
+    department: pr.department,
+    entityId: pr.entityId || null,
+    entityName: pr.entityName || '',
+    entityCode: pr.entityCode || '',
+    totalAmount: pr.totalAmount,
+    priority: pr.priorityLower || mapPriorityToFrontend(pr.priority),
+    status,
+    statusUI: pr.statusUI,
+    submittedDate: decidedAt ? formatDate(decidedAt) : pr.submittedDate,
+    dueDate: formatDate(due),
+    slaRemaining: pending ? hoursLeft || 24 : 0,
+    isOverdue: pending && hoursLeft <= 0,
+    lineItems: Array.isArray(pr.lineItems) ? pr.lineItems.length : (pr.items || 0),
+    requestType: pr.requestType,
+    requesterRole: 'Requester',
+    requesterAvatar: (pr.requester || 'R').charAt(0).toUpperCase(),
+    justification: pr.justification,
+    isPostRfq,
+    actionPath: isPostRfq ? `/rfq-approval/${pr.id}` : undefined,
+  };
+}
+
+/** Latest approve/reject/return decisions by this user for their approval stage(s). */
+async function listMyApprovalDecisions(user) {
+  const stages = [
+    ROLE_STAGE_MAP[user.role]?.stage,
+    POST_RFQ_ROLE_MAP[user.role]?.stage,
+  ].filter(Boolean);
+  if (!stages.length) return [];
+
+  const placeholders = stages.map(() => '?').join(',');
+  const [rows] = await pool.query(
+    `SELECT pr.*, d.name AS department_name, u.name AS requester_name,
+            e.name AS entity_name, e.code AS entity_code, e.cost_center AS entity_cost_center,
+            pa.action AS my_action, pa.created_at AS decided_at, pa.stage AS my_stage
+     FROM pr_approvals pa
+     INNER JOIN (
+       SELECT pr_id, MAX(id) AS max_id
+       FROM pr_approvals
+       WHERE approver_id = ?
+         AND stage IN (${placeholders})
+         AND action IN ('approve', 'reject', 'return', 'rework')
+       GROUP BY pr_id
+     ) latest ON latest.max_id = pa.id
+     JOIN purchase_requests pr ON pr.id = pa.pr_id
+     JOIN departments d ON d.id = pr.department_id
+     JOIN users u ON u.id = pr.requester_id
+     LEFT JOIN entity_masters e ON e.id = pr.entity_id
+     ORDER BY pa.created_at DESC`,
+    [user.id, ...stages]
+  );
+
+  return rows.map((row) => {
+    const summary = mapScmBucketSummary(row);
+    return {
+      ...summary,
+      items: 0,
+      myAction: row.my_action,
+      decidedAt: row.decided_at,
+      myStage: row.my_stage,
+    };
+  });
+}
+
 export async function listTasks(user) {
   const roleConfig = ROLE_STAGE_MAP[user.role];
   const postRfqConfig = POST_RFQ_ROLE_MAP[user.role];
@@ -938,75 +1124,96 @@ export async function listTasks(user) {
     prs = all.filter((p) => allowedStatuses.has(p.status));
   }
 
-  // Always include PRs where this user is the assigned post-RFQ approver
-  // (e.g. HOD Approver / L2 Manager from RefexOne)
+  // Always include PRs where this user is the assigned approver
+  // Match by assigned_user_id first (even if assigned_role was stored wrong).
   const [assignedRows] = await pool.query(
-    `SELECT DISTINCT pr.id
+    `SELECT DISTINCT pr.id, wt.task_type, pr.status AS pr_status
      FROM purchase_requests pr
      JOIN workflow_tasks wt ON wt.pr_id = pr.id
-     WHERE wt.task_type = 'RFQ_POST_APPROVAL'
-       AND wt.status = 'pending'
-       AND (wt.assigned_user_id = ? OR (wt.assigned_user_id IS NULL AND wt.assigned_role = ?))`,
+     WHERE wt.status = 'pending'
+       AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
+       AND (
+         wt.assigned_user_id = ?
+         OR (wt.assigned_user_id IS NULL AND wt.assigned_role = ?)
+       )`,
     [user.id, user.role]
   );
-  const existing = new Set(prs.map((p) => p.id));
-  const assignedPostRfqIds = new Set(assignedRows.map((r) => r.id));
+  const pendingIds = new Set(prs.map((p) => p.id));
+  // Only RFQ_POST_APPROVAL (or post-RFQ statuses) count as post-RFQ — not every assigned PR
+  const assignedPostRfqIds = new Set(
+    assignedRows
+      .filter(
+        (r) =>
+          r.task_type === 'RFQ_POST_APPROVAL' ||
+          postRfqStatuses.has(r.pr_status)
+      )
+      .map((r) => r.id)
+  );
   for (const row of assignedRows) {
-    if (!existing.has(row.id)) {
+    if (!pendingIds.has(row.id)) {
       const pr = await getPurchaseRequestById(row.id);
-      if (pr) prs.push(pr);
+      if (pr) {
+        prs.push(pr);
+        pendingIds.add(pr.id);
+      }
     }
   }
 
-  // Keep newest created/submitted first after merging assigned post-RFQ rows
+  // Include PRs this approver already acted on (Approved / Rejected / Returned)
+  const decided = await listMyApprovalDecisions(user);
+  const decidedByPrId = new Map();
+  for (const pr of decided) {
+    decidedByPrId.set(pr.id, pr);
+    if (!pendingIds.has(pr.id)) {
+      prs.push(pr);
+    }
+  }
+
+  // Pending first (newest), then completed
   prs.sort((a, b) => {
-    const aTime = new Date(a.submittedDate || a.createdAt || 0).getTime();
-    const bTime = new Date(b.submittedDate || b.createdAt || 0).getTime();
+    const aPending = pendingIds.has(a.id) ? 0 : 1;
+    const bPending = pendingIds.has(b.id) ? 0 : 1;
+    if (aPending !== bPending) return aPending - bPending;
+    const aTime = new Date(
+      decidedByPrId.get(a.id)?.decidedAt || a.submittedDate || a.createdAt || 0
+    ).getTime();
+    const bTime = new Date(
+      decidedByPrId.get(b.id)?.decidedAt || b.submittedDate || b.createdAt || 0
+    ).getTime();
     if (bTime !== aTime) return bTime - aTime;
     return Number(b.id) - Number(a.id);
   });
 
   const tasks = prs.map((pr) => {
-    const due = new Date(pr.submittedDate || Date.now());
-    due.setDate(due.getDate() + 1);
-    const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
-    const isPostRfq = postRfqStatuses.has(pr.status) || assignedPostRfqIds.has(pr.id);
+    const isPending = pendingIds.has(pr.id);
+    const decision = decidedByPrId.get(pr.id);
+    const status = isPending
+      ? 'pending_approval'
+      : mapApproverActionToTaskStatus(decision?.myAction);
+    // Pending post-RFQ stages, or a pending RFQ_POST_APPROVAL assignment.
+    // Do NOT treat completed decisions as post-RFQ for routing.
+    const isPostRfq = isPending
+      ? postRfqStatuses.has(pr.status) || assignedPostRfqIds.has(pr.id)
+      : decision?.myStage === POST_RFQ_ROLE_MAP[user.role]?.stage;
 
-    return {
-      id: String(pr.id),
-      taskId: pr.id,
-      prId: pr.id,
-      prNumber: pr.prNumber,
-      title: pr.title,
-      requester: pr.requester,
-      department: pr.department,
-      totalAmount: pr.totalAmount,
-      priority: pr.priorityLower || mapPriorityToFrontend(pr.priority),
-      status: 'pending_approval',
-      statusUI: pr.statusUI,
-      submittedDate: pr.submittedDate,
-      dueDate: formatDate(due),
-      slaRemaining: hoursLeft || 24,
-      isOverdue: hoursLeft <= 0,
-      lineItems: pr.items,
-      requestType: pr.requestType,
-      requesterRole: 'Requester',
-      requesterAvatar: (pr.requester || 'R').charAt(0).toUpperCase(),
-      justification: pr.justification,
+    return buildTaskRow(pr, {
+      status,
       isPostRfq,
-      actionPath: isPostRfq ? `/rfq-approval/${pr.id}` : undefined,
-    };
+      decidedAt: !isPending ? decision?.decidedAt : null,
+    });
   });
 
   // SCM Buyer final verify after Manager sign-off
   if (user.role === 'SCM Buyer') {
     const [buyerVerifyRows] = await pool.query(
       `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, pr.title, pr.priority,
-              d.name AS department_name, u.name AS requester_name, wt.due_date
+              d.name AS department_name, u.name AS requester_name, wt.due_date,
+              e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
        FROM purchase_orders po
        JOIN purchase_requests pr ON pr.id = po.pr_id
        JOIN departments d ON d.id = pr.department_id
        JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN entity_masters e ON e.id = pr.entity_id
        LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
          AND wt.task_type = 'PO_BUYER_VERIFY' AND wt.status = 'pending'
        WHERE po.status = 'pending_buyer_verify'
@@ -1024,6 +1231,9 @@ export async function listTasks(user) {
         title: `${row.title} — Final Verify`,
         requester: row.requester_name,
         department: row.department_name,
+        entityId: row.entity_id || null,
+        entityName: row.entity_name || '',
+        entityCode: row.entity_code || '',
         totalAmount: Number(row.grand_total),
         priority: mapPriorityToFrontend(row.priority),
         status: 'pending_approval',
@@ -1081,15 +1291,26 @@ export function toRequesterDashboardFormat(pr) {
 export function toManagerDashboardFormat(pr) {
   const due = new Date(pr.submittedDate);
   due.setDate(due.getDate() + 5);
+  const isPostRfq = Boolean(
+    POST_RFQ_ROLE_MAP['PR Manager'] &&
+      (pr.status === PR_STATUS.PENDING_RFQ_L2_APPROVAL ||
+        pr.status === PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL ||
+        pr.status === PR_STATUS.PENDING_RFQ_CFO_APPROVAL ||
+        pr.status === PR_STATUS.PENDING_BUSINESS_APPROVAL)
+  );
   return {
     id: pr.prNumber,
     prId: pr.id,
     title: pr.title,
     requester: pr.requester,
     department: pr.department,
+    entityName: pr.entityName || '',
+    entityCode: pr.entityCode || '',
     amount: pr.totalAmount,
     priority: pr.priority,
     status: pr.statusUI,
+    statusKey: pr.status,
+    isPostRfq,
     submittedDate: pr.submittedDate,
     dueDate: formatDate(due),
     isOverdue: false,

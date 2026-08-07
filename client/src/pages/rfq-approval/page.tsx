@@ -54,10 +54,11 @@ export default function RfqApprovalListPage() {
           <table className="w-full min-w-[1100px] table-fixed">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[170px]">PR Number</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PR Number</th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Title</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Department</th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Requester</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Entity</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[110px]">Department</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[110px]">Requester</th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-20">Vendors</th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">Recommended</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
@@ -73,6 +74,12 @@ export default function RfqApprovalListPage() {
                   </td>
                   <td className="px-3 py-3 text-sm text-gray-800 truncate" title={item.title}>
                     {item.title}
+                  </td>
+                  <td
+                    className="px-3 py-3 text-sm text-gray-700 truncate"
+                    title={item.entityName ? `${item.entityName}${item.entityCode ? ` (${item.entityCode})` : ''}` : undefined}
+                  >
+                    {item.entityName || '—'}
                   </td>
                   <td className="px-3 py-3 text-sm text-gray-600 truncate" title={item.department}>
                     {item.department}

@@ -1,0 +1,174 @@
+import pool from '../config/db.js';
+import { listSendBackTargets, resolveSendBackTarget } from '../utils/sendBackTargets.js';
+import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import {
+  getL1ManagerForEmail,
+  getL2ManagerForEmail,
+  ensureApproverUser,
+} from './refexOneService.js';
+import { queuePrApprovalPendingNotification, queuePostRfqActionNotification } from './emailService.js';
+
+async function resolveHodUser(requesterEmail, departmentId) {
+  let l1 = null;
+  try {
+    l1 = await getL1ManagerForEmail(requesterEmail);
+  } catch {
+    /* ignore */
+  }
+  if (!l1?.email) return { userId: null, email: null, name: null };
+  const userId = await ensureApproverUser(l1, 'HOD Approver', departmentId);
+  return { userId, email: l1.email, name: l1.name };
+}
+
+async function resolveL2User(requesterEmail, departmentId) {
+  let l2 = null;
+  try {
+    l2 = await getL2ManagerForEmail(requesterEmail);
+  } catch {
+    /* ignore */
+  }
+  if (!l2?.email) return { userId: null, email: null, name: null };
+  const userId = await ensureApproverUser(l2, 'PR Manager', departmentId);
+  return { userId, email: l2.email, name: l2.name };
+}
+
+async function resolveRoleUser(role, conn = null) {
+  if (role === 'SCM Buyer') {
+    const buyer = await resolveScmBuyerUser(conn);
+    return buyer
+      ? { userId: buyer.id, email: buyer.email, name: buyer.name }
+      : { userId: null, email: null, name: null };
+  }
+  const db = conn || pool;
+  const [rows] = await db.query(
+    `SELECT id, email, name FROM users WHERE role = ? AND is_active = 1 ORDER BY id ASC LIMIT 1`,
+    [role]
+  );
+  if (!rows[0]) return { userId: null, email: null, name: null };
+  return { userId: rows[0].id, email: rows[0].email, name: rows[0].name };
+}
+
+export async function getSendBackTargetsForPr(prId) {
+  const [rows] = await pool.query(
+    `SELECT status, vendor_selection FROM purchase_requests WHERE id = ?`,
+    [prId]
+  );
+  if (!rows[0]) throw new Error('PR not found');
+  return listSendBackTargets(rows[0].status, rows[0].vendor_selection);
+}
+
+/**
+ * Apply send-back to a selected previous stage.
+ * `pr` is raw purchase_requests row.
+ */
+export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor) {
+  const target = resolveSendBackTarget(returnTo);
+  if (!target) {
+    throw new Error('Select a previous stage to send back to');
+  }
+
+  const allowed = listSendBackTargets(pr.status, pr.vendor_selection).map((t) => t.key);
+  if (!allowed.includes(target.key)) {
+    throw new Error(`Cannot send back to ${target.label} from the current stage`);
+  }
+
+  const db = conn || pool;
+  const newStatus = target.status;
+  const newStage = target.stage;
+
+  await db.query(
+    `UPDATE workflow_tasks
+     SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND status = 'pending'`,
+    [pr.id]
+  );
+
+  if (target.resetRfqSubmit || target.resetRfqFinalize) {
+    const sets = ['updated_at = NOW()'];
+    if (target.resetRfqFinalize) sets.push('finalized_at = NULL');
+    if (target.resetRfqSubmit) sets.push('requester_submitted_at = NULL');
+    await db.query(`UPDATE rfq_configs SET ${sets.join(', ')} WHERE pr_id = ?`, [pr.id]);
+  }
+
+  await db.query(
+    `UPDATE purchase_requests SET status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
+    [newStatus, newStage, pr.id]
+  );
+
+  let assignee = { userId: null, email: null, name: null };
+  const [reqRows] = await db.query(`SELECT id, email, name FROM users WHERE id = ?`, [pr.requester_id]);
+  const requester = reqRows[0] || null;
+
+  if (target.taskType && target.assignedRole) {
+    const due = new Date();
+    due.setDate(due.getDate() + 3);
+    const dueStr = due.toISOString().split('T')[0];
+
+    if (target.assignedRole === 'Requester') {
+      assignee = {
+        userId: pr.requester_id,
+        email: requester?.email || null,
+        name: requester?.name || null,
+      };
+    } else if (target.assignedRole === 'HOD Approver') {
+      assignee = await resolveHodUser(requester?.email || '', pr.department_id);
+    } else if (target.assignedRole === 'PR Manager') {
+      assignee = await resolveL2User(requester?.email || '', pr.department_id);
+    } else {
+      assignee = await resolveRoleUser(target.assignedRole, db);
+    }
+
+    await db.query(
+      `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+       VALUES (?, ?, ?, ?, 'pending', ?)`,
+      [pr.id, target.taskType, target.assignedRole, assignee.userId, dueStr]
+    );
+  }
+
+  return {
+    target,
+    newStatus,
+    newStage,
+    assignee,
+    requester,
+    remarksLine: `${remarks.trim()}\n[Sent back to: ${target.label}]`,
+    actorRole: actor?.role || '',
+  };
+}
+
+export function queueSendBackNotifications(updatedPr, applyResult) {
+  const { target, assignee, requester } = applyResult;
+
+  if (target.key === 'REQUESTER') {
+    queuePostRfqActionNotification(
+      updatedPr,
+      applyResult.actorRole || 'Approver',
+      'return',
+      applyResult.remarksLine,
+      {
+        name: requester?.name || updatedPr.requester,
+        email: requester?.email,
+      }
+    );
+    return;
+  }
+
+  if (assignee?.email && target.assignedRole) {
+    const isRfqEntry = target.taskType === 'RFQ_ENTRY';
+    queuePrApprovalPendingNotification(
+      updatedPr,
+      target.assignedRole,
+      { name: updatedPr.requester, email: '' },
+      updatedPr.departmentId,
+      {
+        postRfq: target.taskType === 'RFQ_POST_APPROVAL',
+        rfqEntry: isRfqEntry && target.assignedRole === 'SCM Buyer',
+        stageLabel: `Sent back — ${target.label}`,
+        approverEmails: [assignee.email],
+        approverName: assignee.name || undefined,
+      }
+    );
+  }
+}
+
+export { listSendBackTargets, resolveSendBackTarget };

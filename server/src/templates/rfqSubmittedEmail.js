@@ -1,4 +1,4 @@
-import { escapeHtml, formatCurrency } from './emailUtils.js';
+import { escapeHtml, formatCurrency, formatEntity } from './emailUtils.js';
 
 export function buildRfqSubmittedNotifyRequesterEmail({
   pr,
@@ -23,6 +23,7 @@ export function buildRfqSubmittedNotifyRequesterEmail({
         <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700;">PR Number</div>
         <div style="font-size:22px;font-weight:800;color:#0f172a;margin-top:4px;">${escapeHtml(pr.prNumber)}</div>
         <div style="font-size:16px;font-weight:600;color:#334155;margin-top:6px;">${escapeHtml(pr.title)}</div>
+        <div style="font-size:13px;color:#475569;margin-top:8px;">Entity: <strong>${escapeHtml(formatEntity(pr))}</strong> · ${escapeHtml(pr.department || '')}</div>
         <div style="margin-top:20px;padding:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;">
           <div style="font-size:13px;font-weight:700;color:#047857;">${escapeHtml(vendorName)} has submitted a quotation</div>
           <table width="100%" style="margin-top:12px;font-size:13px;">

@@ -35,7 +35,8 @@ export const ROLE_STAGE_MAP = {
 
 /**
  * Post-RFQ approval chain
- * Own: HOD vendor final → L2 (PR Manager) → CFO → APPROVED (SCM final RFQ)
+ * Own: HOD vendor final → L2 → (optional CFO) → APPROVED (SCM final RFQ)
+ *      Yes: L2 → CFO → SCM Final | No: L2 → SCM Final (skip CFO)
  * SCM: SCM Manager vendor approval → Create PO
  */
 export const POST_RFQ_ROLE_MAP = {
@@ -45,7 +46,7 @@ export const POST_RFQ_ROLE_MAP = {
     nextRole: 'PR Manager',
     nextStatus: PR_STATUS.PENDING_RFQ_L2_APPROVAL,
     nextStage: STAGE.RFQ_L2_REVIEW,
-    label: 'HOD Vendor Final Approval',
+    label: 'L1 Manager Vendor Final Approval',
     showFullNegotiation: true,
   },
   'PR Manager': {

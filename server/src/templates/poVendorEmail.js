@@ -1,4 +1,4 @@
-import { escapeHtml, formatCurrency } from './emailUtils.js';
+import { escapeHtml, formatCurrency, formatEntity } from './emailUtils.js';
 
 export function buildPoVendorEmail({ po, signerName, signerComments, portalUrl }) {
   const subject = `Purchase Order ${po.poNumber} — ${po.prTitle}`;
@@ -28,6 +28,7 @@ export function buildPoVendorEmail({ po, signerName, signerComments, portalUrl }
             <div style="font-size:18px;font-weight:800;color:#0f766e;">${escapeHtml(po.poNumber)}</div>
             <div style="margin-top:12px;font-size:13px;color:#334155;">
               <strong>PR:</strong> ${escapeHtml(po.prNumber)} — ${escapeHtml(po.prTitle)}<br/>
+              <strong>Entity:</strong> ${escapeHtml(formatEntity(po))}<br/>
               <strong>Amount:</strong> ${formatCurrency(po.grandTotal)}<br/>
               <strong>Payment Terms:</strong> ${escapeHtml(po.paymentTerms || '—')}<br/>
               <strong>Delivery:</strong> ${escapeHtml(po.expectedDeliveryDate || '—')}

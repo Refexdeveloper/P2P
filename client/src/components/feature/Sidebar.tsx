@@ -186,8 +186,12 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center shrink-0">
             <i className="ri-shopping-cart-2-line text-white text-lg"></i>
           </div>
-          {!collapsed && <span className="font-semibold text-gray-900 whitespace-nowrap">P2P System</span>}
-          {collapsed && <span className="font-semibold text-gray-900 whitespace-nowrap lg:hidden">P2P System</span>}
+          {(!collapsed || mobileOpen) && (
+            <span className="font-semibold text-gray-900 whitespace-nowrap">P2P System</span>
+          )}
+          {collapsed && !mobileOpen && (
+            <span className="font-semibold text-gray-900 whitespace-nowrap lg:hidden">P2P</span>
+          )}
         </div>
         <button
           type="button"

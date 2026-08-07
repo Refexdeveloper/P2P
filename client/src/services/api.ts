@@ -1,6 +1,7 @@
 const LIVE_API = 'https://p2p-backend-645830234926.asia-south1.run.app';
-const API_URL = (import.meta.env.VITE_API_URL || LIVE_API).replace(/\/$/, '');
+// const API_URL = (import.meta.env.VITE_API_URL || LIVE_API).replace(/\/$/, '');
 
+const API_URL = 'http://localhost:5000';
 
 export class ApiError extends Error {
   status: number;
@@ -131,10 +132,17 @@ export const prApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  approve: (id: number, action: 'approve' | 'reject' | 'return' | 'rework', remarks: string) =>
+  sendBackTargets: (id: number) =>
+    request<{ data: { key: string; label: string }[] }>(`/api/purchase-requests/${id}/send-back-targets`),
+  approve: (
+    id: number,
+    action: 'approve' | 'reject' | 'return' | 'rework',
+    remarks: string,
+    options?: { returnTo?: string }
+  ) =>
     request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/approve`, {
       method: 'POST',
-      body: JSON.stringify({ action, remarks }),
+      body: JSON.stringify({ action, remarks, ...(options?.returnTo ? { returnTo: options.returnTo } : {}) }),
     }),
   resubmit: (id: number, body: Record<string, unknown>) =>
     request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/resubmit`, {
@@ -156,10 +164,21 @@ export const prApi = {
 export const taskApi = {
   list: () => request<{ data: unknown[] }>('/api/tasks'),
   listRequester: () => request<{ data: unknown[] }>('/api/tasks/requester'),
-  complete: (taskId: number, prId: number, action: 'approve' | 'reject' | 'return', remarks: string) =>
+  complete: (
+    taskId: number,
+    prId: number,
+    action: 'approve' | 'reject' | 'return',
+    remarks: string,
+    options?: { returnTo?: string }
+  ) =>
     request<{ data: unknown }>(`/api/tasks/${taskId}/complete`, {
       method: 'POST',
-      body: JSON.stringify({ prId, action, remarks }),
+      body: JSON.stringify({
+        prId,
+        action,
+        remarks,
+        ...(options?.returnTo ? { returnTo: options.returnTo } : {}),
+      }),
     }),
   completeRfq: (taskId: number) =>
     request<{ data: unknown; message: string }>(`/api/tasks/${taskId}/complete-rfq`, {
@@ -216,6 +235,14 @@ export const rfqApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  attachQuotationFile: (submissionId: number, body: { quotationFileName: string; quotationFileData: string }) =>
+    request<{ data: { submissionId: number; quotationFileName: string }; message: string }>(
+      `/api/rfq/submissions/${submissionId}/attach-file`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    ),
   resendInviteEmail: (invitationId: number) =>
     request<{ message: string }>(`/api/rfq/invitations/${invitationId}/resend-email`, {
       method: 'POST',
@@ -229,10 +256,22 @@ export const rfqApi = {
     request<{ data: PostRfqPendingItem[] }>('/api/rfq/post-approval/pending'),
   listScmEntryPending: () =>
     request<{ data: ScmRfqEntryItem[] }>('/api/rfq/scm-entry/pending'),
-  postApprove: (prId: number, action: 'approve' | 'reject' | 'return' | 'rework', remarks: string) =>
+  postApprove: (
+    prId: number,
+    action: 'approve' | 'reject' | 'return' | 'rework',
+    remarks: string,
+    options?: { goToBusinessApproval?: boolean; returnTo?: string }
+  ) =>
     request<{ data: unknown; message: string }>(`/api/rfq/pr/${prId}/post-approve`, {
       method: 'POST',
-      body: JSON.stringify({ action, remarks }),
+      body: JSON.stringify({
+        action,
+        remarks,
+        ...(typeof options?.goToBusinessApproval === 'boolean'
+          ? { goToBusinessApproval: options.goToBusinessApproval }
+          : {}),
+        ...(options?.returnTo ? { returnTo: options.returnTo } : {}),
+      }),
     }),
 };
 
@@ -241,6 +280,8 @@ export interface PostRfqPendingItem {
   prNumber: string;
   title: string;
   department: string;
+  entityName?: string;
+  entityCode?: string;
   requester: string;
   totalAmount: number;
   requestType: string;
@@ -273,11 +314,14 @@ export interface VendorComparisonData {
     prNumber: string;
     title: string;
     department: string;
+    entityName?: string;
+    entityCode?: string;
     requestType: string;
     totalAmount: number;
     estimatedBudget: number;
     status: string;
     statusUI: string;
+    vendorSelection?: 'own' | 'scm';
     justification: string;
     approvalHistory: Array<{ stage: string; user: string; role: string; date: string; status: string; remarks: string }>;
   };
@@ -286,6 +330,8 @@ export interface VendorComparisonData {
   recommendedVendorName: string;
   showFullNegotiation: boolean;
   stageLabel: string | null;
+  /** Own-vendor HOD final: ask Yes=CFO / No=SCM vendor selection */
+  askBusinessApproval?: boolean;
   canApprove: boolean;
   vendors: Array<{
     id: number;
