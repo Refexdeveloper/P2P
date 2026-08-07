@@ -16,7 +16,7 @@ const b64 = Buffer.from(xml).toString('base64');
 const profile = await parseRefexOneSamlResponse(b64);
 console.log('profile', profile);
 
-const res = await fetch('http://localhost:5000/api/auth/refexone/saml/acs', {
+const res = await fetch('/api/auth/refexone/saml/acs', {
   method: 'POST',
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   body: new URLSearchParams({ SAMLResponse: b64 }).toString(),
