@@ -1,4 +1,4 @@
-/** RefexOne portal — used for login / logout redirects */
+/** RefexOne portal — login / logout entry */
 export const DEFAULT_REFEXONE_URL = 'https://refexone.com';
 
 export function getRefexOneUrl(): string {

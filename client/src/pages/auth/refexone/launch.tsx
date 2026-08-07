@@ -101,10 +101,16 @@ export default function RefexOneLaunchPage() {
       })();
 
     if (!found) {
-      setStatus('');
-      setError(
-        'No session was passed from RefexOne. The app opened HOME URL without a SAML login. Use the ACS URL below in RefexOne, then launch the app again from My Apps (not by pasting the HOME link).'
-      );
+      setStatus('No RefexOne session on this link — opening RefexOne…');
+      // User must launch P2P from RefexOne My Apps (SAML) when already logged in there
+      authApi
+        .refexOneConfig()
+        .then((cfg) => {
+          window.location.replace((cfg.refexoneUrl || 'https://refexone.com').replace(/\/$/, ''));
+        })
+        .catch(() => {
+          window.location.replace('https://refexone.com');
+        });
       return;
     }
 

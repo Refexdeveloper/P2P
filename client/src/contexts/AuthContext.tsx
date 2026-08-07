@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { ensureNavigation } from '../constants/roleNavigation';
 import { authApi, AuthUser, NavItem } from '../services/api';
+import { goToRefexOne } from '../utils/refexOneUrl';
 
 export type UserRole =
   | 'Requester'
@@ -276,11 +277,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     localStorage.removeItem('p2p_token');
     localStorage.removeItem('p2p_user');
-    if (typeof window.REACT_APP_NAVIGATE === 'function') {
-      window.REACT_APP_NAVIGATE('/login', { replace: true });
-    } else {
-      window.location.assign('/login');
+    try {
+      sessionStorage.removeItem('p2p_sso_token');
+      localStorage.removeItem('p2p_sso_token');
+    } catch {
+      /* ignore */
     }
+    // Back to RefexOne — open P2P again from My Apps when already signed in there
+    goToRefexOne();
   };
 
   return (

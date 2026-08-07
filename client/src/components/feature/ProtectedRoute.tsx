@@ -1,6 +1,6 @@
 import { ReactNode, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { goToRefexOne } from '../../utils/refexOneUrl';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -8,14 +8,12 @@ interface ProtectedRouteProps {
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      navigate('/login', { replace: true, state: { from: location } });
+      goToRefexOne();
     }
-  }, [isAuthenticated, isLoading, navigate, location]);
+  }, [isAuthenticated, isLoading]);
 
   if (isLoading || !isAuthenticated) {
     return null;

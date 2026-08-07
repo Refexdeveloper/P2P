@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifications } from '../../mocks/procurement-data';
 import BrandLogo from './BrandLogo';
 
 type TopBarProps = {
@@ -9,14 +7,11 @@ type TopBarProps = {
 };
 
 export default function TopBar({ onMenuClick }: TopBarProps) {
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
 
@@ -33,7 +28,6 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
   };
 
   const getInitials = () => {
@@ -85,78 +79,10 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
           <i className="ri-search-line text-gray-600 text-xl"></i>
         </button>
 
-        <button
-          type="button"
-          className="p-2 hover:bg-white/80 rounded-lg transition-colors hidden sm:inline-flex"
-          aria-label="Quick add"
-        >
-          <i className="ri-add-circle-line text-gray-600 text-xl"></i>
-        </button>
-
         <div className="relative">
           <button
             type="button"
-            onClick={() => {
-              setShowNotifications(!showNotifications);
-              setShowUserMenu(false);
-            }}
-            className="p-2 hover:bg-white/80 rounded-lg transition-colors relative"
-            aria-label="Notifications"
-          >
-            <i className="ri-notification-3-line text-gray-600 text-xl"></i>
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white text-xs font-semibold rounded-full flex items-center justify-center">
-                {unreadCount}
-              </span>
-            )}
-          </button>
-
-          {showNotifications && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowNotifications(false)}></div>
-              <div className="absolute right-0 mt-2 w-[min(24rem,calc(100vw-1.5rem))] bg-white rounded-lg shadow-lg border border-gray-200 z-20 max-h-96 overflow-y-auto">
-                <div className="p-4 border-b border-gray-200">
-                  <h3 className="font-semibold text-gray-900">Notifications</h3>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`p-4 hover:bg-gray-50 cursor-pointer ${!notification.read ? 'bg-blue-50' : ''}`}
-                    >
-                      <div className="flex items-start space-x-3">
-                        <div
-                          className={`w-2 h-2 rounded-full mt-2 shrink-0 ${
-                            notification.priority === 'high'
-                              ? 'bg-red-500'
-                              : notification.priority === 'medium'
-                                ? 'bg-yellow-500'
-                                : 'bg-green-500'
-                          }`}
-                        ></div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900">{notification.title}</p>
-                          <p className="text-sm text-gray-600 mt-1 break-words">{notification.message}</p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {new Date(notification.timestamp).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => {
-              setShowUserMenu(!showUserMenu);
-              setShowNotifications(false);
-            }}
+            onClick={() => setShowUserMenu(!showUserMenu)}
             className="flex items-center space-x-2 sm:space-x-3 p-1.5 sm:p-2 hover:bg-white/80 rounded-lg transition-colors"
           >
             <div className="w-8 h-8 sm:w-9 sm:h-9 bg-sky-600 rounded-full flex items-center justify-center shrink-0">
