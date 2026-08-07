@@ -823,25 +823,25 @@ export async function listTrackPurchaseOrders(
 
   const readySql = `
     SELECT
-      CONCAT('ready-', pr.id) AS row_key,
-      'ready' AS kind,
+      CONCAT('ready-', pr.id) COLLATE utf8mb4_unicode_ci AS row_key,
+      'ready' COLLATE utf8mb4_unicode_ci AS kind,
       pr.id AS pr_id,
       CAST(NULL AS SIGNED) AS po_id,
-      pr.pr_number AS pr_number,
-      CAST(NULL AS CHAR) AS po_number,
-      pr.title AS title,
-      d.name AS department,
-      u.name AS requester,
+      pr.pr_number COLLATE utf8mb4_unicode_ci AS pr_number,
+      CAST('' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS po_number,
+      pr.title COLLATE utf8mb4_unicode_ci AS title,
+      d.name COLLATE utf8mb4_unicode_ci AS department,
+      u.name COLLATE utf8mb4_unicode_ci AS requester,
       COALESCE((
         SELECT ri.vendor_name
         FROM rfq_configs rc
         JOIN rfq_invitations ri ON ri.id = rc.recommended_invitation_id
         WHERE rc.pr_id = pr.id
         LIMIT 1
-      ), '') AS vendor_name,
+      ), '') COLLATE utf8mb4_unicode_ci AS vendor_name,
       pr.total_amount AS amount,
-      'ready' AS status_raw,
-      COALESCE(pr.purchase_type, 'purchase_order') AS purchase_type,
+      'ready' COLLATE utf8mb4_unicode_ci AS status_raw,
+      CAST(COALESCE(pr.purchase_type, 'purchase_order') AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS purchase_type,
       pr.required_date AS required_date,
       COALESCE(pr.submitted_at, pr.created_at) AS sort_at
     FROM purchase_requests pr
@@ -868,19 +868,19 @@ export async function listTrackPurchaseOrders(
 
   const poSql = `
     SELECT
-      CONCAT('po-', po.id) AS row_key,
-      'po' AS kind,
+      CONCAT('po-', po.id) COLLATE utf8mb4_unicode_ci AS row_key,
+      'po' COLLATE utf8mb4_unicode_ci AS kind,
       po.pr_id AS pr_id,
       po.id AS po_id,
-      COALESCE(pr.pr_number, '') AS pr_number,
-      po.po_number AS po_number,
-      COALESCE(pr.title, '') AS title,
-      COALESCE(d.name, '') AS department,
-      COALESCE(u.name, '') AS requester,
-      po.vendor_name AS vendor_name,
+      COALESCE(pr.pr_number, '') COLLATE utf8mb4_unicode_ci AS pr_number,
+      po.po_number COLLATE utf8mb4_unicode_ci AS po_number,
+      COALESCE(pr.title, '') COLLATE utf8mb4_unicode_ci AS title,
+      COALESCE(d.name, '') COLLATE utf8mb4_unicode_ci AS department,
+      COALESCE(u.name, '') COLLATE utf8mb4_unicode_ci AS requester,
+      COALESCE(po.vendor_name, '') COLLATE utf8mb4_unicode_ci AS vendor_name,
       po.grand_total AS amount,
-      po.status AS status_raw,
-      COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') AS purchase_type,
+      CAST(po.status AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS status_raw,
+      CAST(COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS purchase_type,
       po.expected_delivery_date AS required_date,
       po.created_at AS sort_at
     FROM purchase_orders po
