@@ -348,7 +348,6 @@ export default function CreatePRPage() {
       }
       if (!item.category) newErrors[`item_${index}_category`] = 'Category is required';
       if (item.quantity <= 0) newErrors[`item_${index}_quantity`] = 'Quantity must be > 0';
-      if (item.estimatedCost <= 0) newErrors[`item_${index}_cost`] = 'Cost must be > 0';
     });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -963,7 +962,7 @@ export default function CreatePRPage() {
 
                   {/* Unit Cost */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Unit Cost ({moneySymbol}) <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Unit Cost ({moneySymbol})</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">{moneySymbol}</span>
                       <input
