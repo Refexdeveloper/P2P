@@ -115,11 +115,13 @@ export default function ApprovalModal({
       setError('Please provide a reason for rejection (minimum 10 characters)');
       return;
     }
-    if (type === 'return' && !returnTo) {
+    // Prefer selected state; fall back to first loaded target (avoids empty value while dropdown shows a label)
+    const selectedReturnTo = returnTo || targets[0]?.key || '';
+    if (type === 'return' && !selectedReturnTo) {
       setError('Select a previous stage to send back to');
       return;
     }
-    onConfirm(remarks.trim(), type === 'return' ? returnTo : undefined);
+    onConfirm(remarks.trim(), type === 'return' ? selectedReturnTo : undefined);
     setRemarks('');
     setReturnTo('');
     setError('');

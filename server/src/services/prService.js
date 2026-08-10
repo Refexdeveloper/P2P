@@ -674,6 +674,48 @@ export async function getManagerStats() {
   };
 }
 
+/**
+ * HOD / L1 can act when My Tasks would show the PR:
+ * - pending task assigned to this user id, OR
+ * - pending task assigned to same email (SSO / re-synced user id), OR
+ * - unassigned HOD role-queue task and this user is the requester's L1 (supervisor), OR
+ * - unassigned HOD role-queue task (same visibility as listTasks)
+ */
+async function assertHodCanActOnPr(user, prId) {
+  const userEmail = String(user.email || '').toLowerCase().trim();
+  const [taskRows] = await pool.query(
+    `SELECT wt.assigned_user_id, u.email AS assigned_email
+     FROM workflow_tasks wt
+     LEFT JOIN users u ON u.id = wt.assigned_user_id
+     WHERE wt.pr_id = ?
+       AND wt.status = 'pending'
+       AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
+       AND (
+         wt.assigned_user_id = ?
+         OR wt.assigned_role = 'HOD Approver'
+       )
+     ORDER BY wt.id DESC
+     LIMIT 1`,
+    [prId, user.id]
+  );
+
+  if (!taskRows.length) {
+    throw new Error('This PR is not assigned to you for approval');
+  }
+
+  const assignedUserId = taskRows[0].assigned_user_id;
+  const assignedEmail = String(taskRows[0].assigned_email || '').toLowerCase().trim();
+
+  if (assignedUserId) {
+    if (assignedUserId === user.id) return;
+    // Same person, different user row after SSO / RefexOne re-sync
+    if (assignedEmail && userEmail && assignedEmail === userEmail) return;
+    throw new Error('This PR is assigned to another L1 manager for approval');
+  }
+
+  // Unassigned HOD role-queue — same visibility as My Tasks (listTasks)
+}
+
 export async function processApproval(user, prId, action, remarks, options = {}) {
   const roleConfig = ROLE_STAGE_MAP[user.role];
   if (!roleConfig) throw new Error('Role cannot approve PRs');
@@ -687,29 +729,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
   }
 
   if (user.role === 'HOD Approver') {
-    const [taskRows] = await pool.query(
-      `SELECT wt.assigned_user_id
-       FROM workflow_tasks wt
-       WHERE wt.pr_id = ? AND wt.assigned_role = 'HOD Approver' AND wt.status = 'pending'
-       ORDER BY wt.id DESC LIMIT 1`,
-      [prId]
-    );
-    const assignedUserId = taskRows[0]?.assigned_user_id;
-    if (assignedUserId) {
-      if (assignedUserId !== user.id) {
-        throw new Error('This PR is assigned to another L1 manager for approval');
-      }
-    } else {
-      const [requesterRows] = await pool.query(
-        `SELECT supervisor_email FROM users WHERE id = ? LIMIT 1`,
-        [pr.requester_id]
-      );
-      const supervisorEmail = (requesterRows[0]?.supervisor_email || '').toLowerCase();
-      const userEmail = (user.email || '').toLowerCase();
-      if (!supervisorEmail || supervisorEmail !== userEmail) {
-        throw new Error('This PR is not assigned to you for approval');
-      }
-    }
+    await assertHodCanActOnPr(user, prId);
   }
 
   if (!remarks?.trim()) throw new Error('Remarks are required');

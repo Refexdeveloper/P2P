@@ -17,6 +17,12 @@ import {
 } from './whatsappService.js';
 import { createEmailLog, updateEmailLog } from './emailLogService.js';
 
+/**
+ * Set true to re-enable outbound email.
+ * When false, all mail queue/send paths are no-ops (commented out).
+ */
+const EMAIL_SEND_ENABLED = true;
+
 let transporter;
 let smtpReady = false;
 
@@ -68,6 +74,11 @@ function getTransporter() {
 /** Serialize outbound mail so Gmail isn't hit with parallel SMTP sessions. */
 let mailQueue = Promise.resolve();
 function enqueueMail(job) {
+  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
+  if (!EMAIL_SEND_ENABLED) {
+    console.log('Email send skipped (EMAIL_SEND_ENABLED=false)');
+    return Promise.resolve(null);
+  }
   const run = mailQueue.then(() => job());
   mailQueue = run.catch(() => {});
   return run;
@@ -147,7 +158,6 @@ async function notifyWorkflowWhatsApp({
     const prId = pr?.id || pr?.prId || null;
     const prNumber = pr?.prNumber || pr?.pr_number || (prId ? `PR-${prId}` : null);
 
-    // Always send to assignee mobile when available; ops number only as CC/fallback
     const assigneePhones = await resolvePhonesForEmails(pool, emails, {
       includeOpsCc: false,
       fallbackToDefault: false,
@@ -234,6 +244,11 @@ function getFromAddress() {
 
 /** Send a one-off SMTP test message (used by /api/health/smtp/send-test). */
 export async function sendTestEmail(to) {
+  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
+  if (!EMAIL_SEND_ENABLED) {
+    throw new Error('Email send is disabled (EMAIL_SEND_ENABLED=false)');
+  }
+
   const recipient = String(to || '').trim();
   if (!recipient) throw new Error('Recipient email is required');
 
@@ -273,6 +288,12 @@ export async function sendTestEmail(to) {
 }
 
 export async function sendPrRaisedNotification(pr, requester, options = {}) {
+  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
+  if (!EMAIL_SEND_ENABLED) {
+    console.log('Email send skipped (PR raised): EMAIL_SEND_ENABLED=false');
+    return null;
+  }
+
   const recipients = getNotificationRecipients();
   const prId = pr?.id || pr?.prId || null;
   const prNumber = pr?.prNumber || pr?.pr_number || null;
@@ -374,6 +395,12 @@ async function getApproverRecipients(role, departmentId = null) {
 }
 
 async function sendMailToRecipients(recipients, subject, html, text, attachments = [], mailOptions = {}) {
+  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
+  if (!EMAIL_SEND_ENABLED) {
+    console.log('Email send skipped (EMAIL_SEND_ENABLED=false):', subject);
+    return null;
+  }
+
   const toList = (recipients || []).filter(Boolean);
   const logCtx = {
     emailType: mailOptions.emailType || 'generic',
@@ -734,6 +761,12 @@ export function queueRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail,
 }
 
 export async function sendPoVendorNotification(po, { signerName, signerComments, ccEmails, pdfPath, portalUrl }) {
+  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
+  if (!EMAIL_SEND_ENABLED) {
+    console.log('Email send skipped (PO vendor): EMAIL_SEND_ENABLED=false');
+    return null;
+  }
+
   const { host, user, pass } = getSmtpConfig();
   const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const acceptUrl = portalUrl || `${base}/scm/vendor-po-acceptance`;

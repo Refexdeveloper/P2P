@@ -360,7 +360,7 @@ export default function RfqEntryDetailPage() {
           value={String(value || 'Net 30')}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50"
+          className="w-full h-10 max-h-10 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50"
         >
           {['Net 30', 'Net 45', 'Net 60', 'Advance 50%', 'On Delivery', 'Deviated'].map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
@@ -385,7 +385,7 @@ export default function RfqEntryDetailPage() {
             onChange(e.target.value);
           }
         }}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50"
+        className="w-full h-10 max-h-10 px-3 py-2 border border-gray-300 rounded-lg text-sm leading-normal focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         placeholder={field.label}
       />
     );
@@ -586,9 +586,9 @@ export default function RfqEntryDetailPage() {
       {loading ? (
         <div className="p-12 text-center text-gray-500">Loading...</div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 pb-8">
           {!isFinalized && (
-            <div className="bg-white border border-gray-200 rounded-lg p-5">
+            <div className="bg-white border border-gray-200 rounded-lg p-5 h-fit">
               <h2 className="text-sm font-bold text-gray-900 mb-3">Quotation Fields (dynamic)</h2>
               <div className="flex flex-wrap gap-2 mb-3">
                 {fields.map((f) => (
@@ -617,19 +617,19 @@ export default function RfqEntryDetailPage() {
           )}
 
           {!isFinalized && (
-            <div className="bg-white border border-gray-200 rounded-lg p-5">
+            <div className="bg-white border border-gray-200 rounded-lg p-5 h-fit">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-bold text-gray-900">Invite Vendors</h2>
                 <button type="button" onClick={() => setDraftRows((r) => [...r, newDraftRow()])} className="text-sm text-teal-700 font-medium">+ Add Row</button>
               </div>
-              <div className="space-y-2 mb-3">
+              <div className="space-y-2 mb-3 max-h-[320px] overflow-y-auto pr-1">
                 {draftRows.map((row, i) => (
-                  <div key={row.key} className="flex gap-2 items-center">
-                    <span className="text-xs text-gray-400 w-6">{i + 1}</span>
+                  <div key={row.key} className="flex gap-2 items-center shrink-0">
+                    <span className="text-xs text-gray-400 w-6 shrink-0">{i + 1}</span>
                     <select
                       value={row.vendorId}
                       onChange={(e) => updateDraftVendor(row.key, e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="flex-1 min-w-0 h-10 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     >
                       <option value="">— Select vendor —</option>
                       {vendorCatalog.map((v) => {
@@ -714,7 +714,7 @@ export default function RfqEntryDetailPage() {
                   return (
                     <div
                       key={row.id}
-                      className={`bg-white border rounded-xl overflow-hidden shadow-sm ${
+                      className={`bg-white border rounded-xl shadow-sm h-fit self-start ${
                         isRecommended
                           ? 'border-teal-400 ring-1 ring-teal-200'
                           : awaitingManualEntry
@@ -818,7 +818,7 @@ export default function RfqEntryDetailPage() {
                         </div>
                       </div>
 
-                      <div className="p-5 space-y-5">
+                      <div className="p-4 sm:p-5 space-y-4">
                         {awaitingVendorEmail ? (
                           <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/40 px-4 py-6 text-center">
                             <i className="ri-mail-send-line text-2xl text-amber-500"></i>
@@ -827,11 +827,11 @@ export default function RfqEntryDetailPage() {
                           </div>
                         ) : (
                           <>
-                            <div>
+                            <div className="min-h-0">
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Vendor fields</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start content-start">
                                 {vendorFields.map((f) => (
-                                  <div key={f.id} className="space-y-1.5">
+                                  <div key={f.id} className="space-y-1.5 min-w-0 self-start">
                                     <label className="block text-xs font-semibold text-gray-600">{f.label}</label>
                                     {mode === 'entry' && !isFinalized && awaitingManualEntry ? (
                                       renderFieldInput(
@@ -840,7 +840,7 @@ export default function RfqEntryDetailPage() {
                                         (val) => setManualValue(row.invitationId, f.id, val)
                                       )
                                     ) : (
-                                      <div className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-sm text-gray-900 min-h-[40px] flex items-center">
+                                      <div className="h-10 px-3 rounded-lg bg-gray-50 border border-gray-100 text-sm text-gray-900 flex items-center truncate">
                                         {formatFieldValue(f, vals[f.id])}
                                       </div>
                                     )}
@@ -851,11 +851,11 @@ export default function RfqEntryDetailPage() {
 
                             {(mode === 'entry' || requesterFields.some((f) => vals[f.id] !== undefined && vals[f.id] !== '')) &&
                               requesterFields.length > 0 && (
-                              <div>
+                              <div className="min-h-0">
                                 <p className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-3">Your scoring fields</p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start content-start">
                                   {requesterFields.map((f) => (
-                                    <div key={f.id} className="space-y-1.5">
+                                    <div key={f.id} className="space-y-1.5 min-w-0 self-start">
                                       <label className="block text-xs font-semibold text-violet-700">{f.label}</label>
                                       {mode === 'entry' && !isFinalized ? (
                                         awaitingManualEntry ? (
@@ -865,7 +865,7 @@ export default function RfqEntryDetailPage() {
                                             (val) => setManualValue(row.invitationId, f.id, val)
                                           )
                                         ) : f.type === 'boolean' ? (
-                                          <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                          <label className="inline-flex items-center gap-2 h-10 text-sm text-gray-700 cursor-pointer">
                                             <input
                                               type="checkbox"
                                               checked={Boolean(vals[f.id])}
@@ -888,12 +888,12 @@ export default function RfqEntryDetailPage() {
                                                   : e.target.value
                                               )
                                             }
-                                            className="w-full px-3 py-2 border border-violet-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                                            className="w-full h-10 max-h-10 px-3 py-2 border border-violet-200 rounded-lg text-sm leading-normal focus:outline-none focus:ring-2 focus:ring-violet-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                             placeholder={f.label}
                                           />
                                         )
                                       ) : (
-                                        <div className="px-3 py-2 rounded-lg bg-violet-50/50 border border-violet-100 text-sm text-gray-900 min-h-[40px] flex items-center">
+                                        <div className="h-10 px-3 rounded-lg bg-violet-50/50 border border-violet-100 text-sm text-gray-900 flex items-center truncate">
                                           {formatFieldValue(f, vals[f.id])}
                                         </div>
                                       )}
@@ -903,11 +903,11 @@ export default function RfqEntryDetailPage() {
                               </div>
                             )}
 
-                            <div className="pt-1 border-t border-gray-100">
+                            <div className="pt-3 border-t border-gray-100 min-h-0">
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Quotation file</p>
                               {mode === 'entry' && !isFinalized && awaitingManualEntry ? (
-                                <label className="flex items-center gap-3 px-4 py-3 border border-dashed border-teal-300 rounded-lg bg-teal-50/40 cursor-pointer hover:bg-teal-50">
-                                  <i className="ri-upload-2-line text-xl text-teal-700"></i>
+                                <label className="flex flex-wrap items-center gap-3 px-4 py-3 border border-dashed border-teal-300 rounded-lg bg-teal-50/40 cursor-pointer hover:bg-teal-50">
+                                  <i className="ri-upload-2-line text-xl text-teal-700 shrink-0"></i>
                                   <div className="min-w-0 flex-1">
                                     <p className="text-sm font-medium text-teal-800 truncate">
                                       {manualFiles[row.invitationId]?.name || 'Upload quotation file (required)'}
@@ -917,7 +917,7 @@ export default function RfqEntryDetailPage() {
                                   <input
                                     type="file"
                                     accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
-                                    className="text-xs"
+                                    className="text-xs max-w-full"
                                     onChange={(e) => {
                                       const file = e.target.files?.[0] || null;
                                       setManualFiles((prev) => ({ ...prev, [row.invitationId]: file }));

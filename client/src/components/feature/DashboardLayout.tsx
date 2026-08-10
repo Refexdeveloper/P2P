@@ -41,8 +41,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar onMenuClick={() => setMobileNavOpen(true)} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="p-3 sm:p-4 lg:p-6">{children}</div>
+        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+          <div className="p-3 sm:p-4 lg:p-6 min-h-0 h-auto">{children}</div>
         </main>
       </div>
     </div>
