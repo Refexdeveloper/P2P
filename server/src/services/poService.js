@@ -19,6 +19,14 @@ import {
 } from './documentNumberService.js';
 import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
 
+function normalizeCurrency(value) {
+  const code = String(value || '')
+    .trim()
+    .toUpperCase();
+  if (code === 'EUR' || code === 'USD' || code === 'INR') return code;
+  return 'INR';
+}
+
 function ensurePoUploadDir() {
   if (!fs.existsSync(PO_UPLOAD_DIR)) {
     fs.mkdirSync(PO_UPLOAD_DIR, { recursive: true });
@@ -175,6 +183,7 @@ async function enrichPO(row) {
     annexureClauses: parseClauseJson(row.annexure_clauses),
     poTermsDetails: normalizePoTermsDetails(row.po_terms_details),
     gstPercentage: Number(row.gst_percentage),
+    currency: normalizeCurrency(row.currency),
     subtotal: Number(row.subtotal),
     taxAmount: Number(row.tax_amount),
     grandTotal: Number(row.grand_total),
@@ -533,6 +542,7 @@ async function resolvePoDraftContent(prId, body) {
   const effectiveGst =
     subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : Number(gstPercentage) || 0;
   const grandTotal = subtotal + taxAmount;
+  const resolvedCurrency = normalizeCurrency(body?.currency || pr.currency);
 
   return {
     poNumber: poNumber || `DRAFT-${pr.prNumber}`,
@@ -566,6 +576,7 @@ async function resolvePoDraftContent(prId, body) {
         resolvedPoTermsDetails.paymentTermsText || resolvedPaymentTerms || '',
     },
     gstPercentage: effectiveGst,
+    currency: resolvedCurrency,
     subtotal,
     taxAmount,
     grandTotal,
@@ -655,6 +666,7 @@ export async function createPurchaseOrder(user, prId, body) {
     termsClauses: resolvedTerms,
     annexureClauses: resolvedAnnexure,
     poTermsDetails: resolvedPoTermsDetails,
+    currency: resolvedCurrency,
     subtotal,
     taxAmount,
     grandTotal,
@@ -695,8 +707,8 @@ export async function createPurchaseOrder(user, prId, body) {
        (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
         delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
         po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
-        po_terms_details, gst_percentage, subtotal, tax_amount, grand_total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         poNumber,
         referencePoNumber,
@@ -722,6 +734,7 @@ export async function createPurchaseOrder(user, prId, body) {
         JSON.stringify(resolvedAnnexure),
         JSON.stringify(resolvedPoTermsDetails || EMPTY_PO_TERMS_DETAILS),
         gstPercentage,
+        resolvedCurrency || 'INR',
         subtotal,
         taxAmount,
         grandTotal,
@@ -1373,6 +1386,7 @@ export async function updatePurchaseOrder(user, poId, body) {
   const draft = await resolvePoDraftContent(existing.pr_id, {
     ...body,
     poNumber: existing.po_number,
+    currency: body.currency ?? existing.currency,
     terms: body.terms ?? body.termsClauses,
     annexure: body.annexure ?? body.annexureClauses,
   });
@@ -1394,6 +1408,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     termsClauses: resolvedTerms,
     annexureClauses: resolvedAnnexure,
     poTermsDetails: resolvedPoTermsDetails,
+    currency: resolvedCurrency,
     subtotal,
     taxAmount,
     grandTotal,
@@ -1424,7 +1439,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         delivery_address = ?, expected_delivery_date = ?, payment_terms = ?, incoterms = ?,
         special_instructions = ?, po_type = ?, letterhead_header = ?, letterhead_id = ?, entity = ?,
         header_logo = ?, footer_logo = ?, terms_clauses = ?,
-        annexure_clauses = ?, po_terms_details = ?, gst_percentage = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
+        annexure_clauses = ?, po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
         updated_at = NOW()
        WHERE id = ?`,
       [
@@ -1444,6 +1459,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         JSON.stringify(resolvedAnnexure),
         JSON.stringify(resolvedPoTermsDetails || EMPTY_PO_TERMS_DETAILS),
         gstPercentage,
+        resolvedCurrency || normalizeCurrency(existing.currency),
         subtotal,
         taxAmount,
         grandTotal,

@@ -56,11 +56,23 @@ export function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-export function fmtMoney(amount) {
-  return Number(amount || 0).toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+export function fmtMoney(amount, currency = 'INR') {
+  const code = ['EUR', 'USD', 'INR'].includes(String(currency || '').toUpperCase())
+    ? String(currency).toUpperCase()
+    : 'INR';
+  try {
+    return new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(amount || 0));
+  } catch {
+    return Number(amount || 0).toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
 }
 
 export function fmtDateDisplay(value) {
@@ -200,9 +212,9 @@ function lineItemsHtml(po) {
       <td><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}</div></td>
       <td class="center">${escapeHtml(item.uom || "No's")}</td>
       <td class="center">${escapeHtml(item.quantity)}</td>
-      <td class="right">${fmtMoney(item.unitPrice)}</td>
+      <td class="right">${fmtMoney(item.unitPrice, po.currency)}</td>
       <td class="center">${escapeHtml(item.taxPercentage ?? item.tax_percentage ?? 0)}%</td>
-      <td class="right">${fmtMoney(item.total)}</td>
+      <td class="right">${fmtMoney(item.total, po.currency)}</td>
     </tr>`).join('');
 
   return `
@@ -215,16 +227,16 @@ function lineItemsHtml(po) {
       <th>Description Of Work</th>
       <th style="width:7%">UOM</th>
       <th style="width:6%">Qty</th>
-      <th style="width:12%">Unit Rate Rs.</th>
+      <th style="width:12%">Unit Rate</th>
       <th style="width:8%">Tax %</th>
-      <th style="width:12%">TOTAL Amt Rs.</th>
+      <th style="width:12%">TOTAL Amt</th>
     </tr>
     </thead>
     <tbody>
     ${rows}
-    <tr class="total"><td colspan="6">SubTotal</td><td class="right">${fmtMoney(po.subtotal)}</td></tr>
-    <tr class="total"><td colspan="6">Add: Tax (per line)</td><td class="right">${fmtMoney(po.taxAmount)}</td></tr>
-    <tr class="total"><td colspan="6">GrandTotal</td><td class="right">${fmtMoney(po.grandTotal)}</td></tr>
+    <tr class="total"><td colspan="6">SubTotal</td><td class="right">${fmtMoney(po.subtotal, po.currency)}</td></tr>
+    <tr class="total"><td colspan="6">Add: Tax (per line)</td><td class="right">${fmtMoney(po.taxAmount, po.currency)}</td></tr>
+    <tr class="total"><td colspan="6">GrandTotal</td><td class="right">${fmtMoney(po.grandTotal, po.currency)}</td></tr>
     </tbody>
   </table>
   </div>
@@ -343,19 +355,22 @@ function specialNotesHtml(po, options = {}) {
       ${td.projectManagerHo ? `<p><span class="lbl">Project Manager at HO:</span> ${escapeHtml(td.projectManagerHo)}</p>` : ''}
       ${td.projectManagerContact ? `<p><span class="lbl">Project Manager Contact:</span> ${escapeHtml(td.projectManagerContact)}</p>` : ''}
       ${td.projectManagerEmail ? `<p><span class="lbl">Project Manager Email:</span> ${escapeHtml(td.projectManagerEmail)}</p>` : ''}
-      ${td.invoicingAddress || td.locationName || td.buyerGstNo ? `<p><span class="lbl">Invoicing Address:</span> ${escapeHtml(
-        [
-          td.invoicingAddress || '',
-          !String(td.invoicingAddress || '').includes(String(td.locationName || '')) && td.locationName
-            ? td.locationName
-            : '',
-          td.buyerGstNo && !String(td.invoicingAddress || '').toUpperCase().includes('GSTIN')
-            ? `GSTIN: ${td.buyerGstNo}`
-            : '',
-        ]
-          .filter(Boolean)
-          .join('\n')
-      ).replace(/\n/g, '<br>')}</p>` : ''}
+      ${td.invoicingAddress || td.locationName || td.buyerGstNo ? `<div><span class="lbl">Invoicing Address:</span> ${(() => {
+        const raw = String(td.invoicingAddress || '').trim();
+        if (looksLikeHtml(raw)) return `<div class="inv-addr-rich">${raw}</div>`;
+        const lines = [
+          raw,
+          !raw.includes(String(td.locationName || '')) && td.locationName ? td.locationName : '',
+          td.buyerGstNo && !raw.toUpperCase().includes('GSTIN') ? `GSTIN: ${td.buyerGstNo}` : '',
+        ].filter(Boolean);
+        if (!lines.length && (td.locationName || td.buyerGstNo)) {
+          return `<div class="inv-addr-rich">${[
+            td.locationName ? `<p><strong>${escapeHtml(td.locationName)}</strong></p>` : '',
+            td.buyerGstNo ? `<p>GSTIN: ${escapeHtml(td.buyerGstNo)}</p>` : '',
+          ].join('')}</div>`;
+        }
+        return escapeHtml(lines.join('\n')).replace(/\n/g, '<br>');
+      })()}</div>` : ''}
       ${td.mailingAddress ? `<p><span class="lbl">Mailing Address:</span> ${escapeHtml(td.mailingAddress).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.subject ? `<p><span class="lbl">Subject:</span> ${escapeHtml(td.subject).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.reasonForCancellation ? `<p><span class="lbl">Reason For Cancellation:</span> ${escapeHtml(td.reasonForCancellation).replace(/\n/g, '<br>')}</p>` : ''}

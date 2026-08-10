@@ -24,6 +24,14 @@ import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './
 import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 
+function normalizeCurrency(value) {
+  const code = String(value || '')
+    .trim()
+    .toUpperCase();
+  if (code === 'EUR' || code === 'USD' || code === 'INR') return code;
+  return 'INR';
+}
+
 async function getLineItems(prId) {
   const [rows] = await pool.query('SELECT * FROM pr_line_items WHERE pr_id = ? ORDER BY id', [prId]);
   return rows;
@@ -143,6 +151,7 @@ async function enrichPR(row) {
     priorityLower: mapPriorityToFrontend(row.priority),
     justification: row.justification,
     requiredDate: formatDate(row.required_date),
+    currency: normalizeCurrency(row.currency),
     totalAmount: Number(row.total_amount),
     status: row.status,
     statusFrontend: mapStatusToFrontend(row.status),
@@ -275,12 +284,14 @@ export async function createPurchaseRequest(user, body) {
     requiredDate,
     vendorSelection = 'scm',
     entityId,
+    currency = 'INR',
     lineItems = [],
     submit = false,
   } = body;
 
   const vendorMode = vendorSelection === 'own' ? 'own' : 'scm';
   const normalizedPurchaseType = normalizePurchaseType(purchaseType);
+  const normalizedCurrency = normalizeCurrency(currency);
 
   if (!lineItems.length) {
     throw new Error('At least one line item is required');
@@ -314,8 +325,8 @@ export async function createPurchaseRequest(user, body) {
 
     const [result] = await conn.query(
       `INSERT INTO purchase_requests
-       (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, total_amount, status, vendor_selection, current_stage, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, current_stage, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         prNumber,
         prTitle,
@@ -327,6 +338,7 @@ export async function createPurchaseRequest(user, body) {
         priority,
         justification,
         requiredDate || null,
+        normalizedCurrency,
         totalAmount,
         status,
         vendorMode,
@@ -595,6 +607,7 @@ function mapScmBucketSummary(row) {
     priorityLower: mapPriorityToFrontend(row.priority),
     justification: row.justification,
     requiredDate: formatDate(row.required_date),
+    currency: normalizeCurrency(row.currency),
     totalAmount: Number(row.total_amount),
     status: row.status,
     statusFrontend: mapStatusToFrontend(row.status),
@@ -903,6 +916,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     justification,
     requiredDate,
     vendorSelection,
+    currency,
     lineItems = [],
   } = body;
 
@@ -925,12 +939,13 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
   const normalizedPurchaseType = purchaseType
     ? normalizePurchaseType(purchaseType)
     : normalizePurchaseType(pr.purchase_type);
+  const normalizedCurrency = normalizeCurrency(currency ?? pr.currency);
 
   const run = async (db) => {
     await db.query(
       `UPDATE purchase_requests
        SET title = ?, request_type = ?, purchase_type = ?, department_id = ?, priority = ?, justification = ?,
-           required_date = ?, total_amount = ?, vendor_selection = ?, updated_at = NOW()
+           required_date = ?, currency = ?, total_amount = ?, vendor_selection = ?, updated_at = NOW()
        WHERE id = ?`,
       [
         prTitle,
@@ -940,6 +955,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
         priority || pr.priority,
         justification,
         requiredDate || null,
+        normalizedCurrency,
         totalAmount,
         vendorMode,
         prId,

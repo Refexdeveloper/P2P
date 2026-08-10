@@ -2,6 +2,14 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { prApi, masterApi, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord } from '../../../services/api';
+import {
+  CURRENCY_OPTIONS,
+  DEFAULT_CURRENCY,
+  CurrencyCode,
+  currencySymbol,
+  formatMoney,
+  normalizeCurrency,
+} from '../../../constants/currency';
 
 interface LineItem {
   id: string;
@@ -54,8 +62,10 @@ export default function CreatePRPage() {
   const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order'>('purchase_order');
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
   const [priority, setPriority] = useState('Medium');
+  const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
   const [businessJustification, setBusinessJustification] = useState('');
   const [requiredDate, setRequiredDate] = useState('');
+  const moneySymbol = currencySymbol(currency);
   const [lineItems, setLineItems] = useState<LineItem[]>([
     { id: '1', itemId: null, itemName: '', description: '', quantity: 1, estimatedCost: 0, category: '', hsnCode: '', gstPercentage: 18 },
   ]);
@@ -95,6 +105,7 @@ export default function CreatePRPage() {
           purchaseType?: 'purchase_order' | 'work_order' | string;
           vendorSelection?: 'own' | 'scm';
           priority: string;
+          currency?: string;
           justification: string;
           requiredDate: string;
           status: string;
@@ -112,6 +123,7 @@ export default function CreatePRPage() {
         );
         setVendorSelection(pr.vendorSelection === 'own' ? 'own' : 'scm');
         setPriority(pr.priority);
+        setCurrency(normalizeCurrency(pr.currency));
         setBusinessJustification(pr.justification || '');
         setRequiredDate(pr.requiredDate || '');
         setPrStatus(pr.status);
@@ -361,6 +373,7 @@ export default function CreatePRPage() {
     department,
     entityId: entityId ? Number(entityId) : undefined,
     priority,
+    currency,
     vendorSelection,
     justification: businessJustification,
     requiredDate: requiredDate || undefined,
@@ -482,7 +495,7 @@ export default function CreatePRPage() {
               <div>
                 <p className="text-emerald-300/80 text-xs leading-none mb-0.5">Total Amount</p>
                 <p className="text-emerald-300 font-bold text-base">
-                  ₹{getTotalAmount().toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
             </div>
@@ -746,6 +759,24 @@ export default function CreatePRPage() {
               {errors.requiredDate && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><i className="ri-error-warning-line"></i>{errors.requiredDate}</p>}
             </div>
 
+            {/* Currency */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Currency <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
+              >
+                {CURRENCY_OPTIONS.map((opt) => (
+                  <option key={opt.code} value={opt.code}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Request Type */}
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -843,7 +874,7 @@ export default function CreatePRPage() {
                     </span>
                     {item.quantity > 0 && item.estimatedCost > 0 && (
                       <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                        ₹{(item.quantity * item.estimatedCost).toLocaleString('en-IN')}
+                        {formatMoney(item.quantity * item.estimatedCost, currency, { maximumFractionDigits: 0 })}
                       </span>
                     )}
                   </div>
@@ -932,9 +963,9 @@ export default function CreatePRPage() {
 
                   {/* Unit Cost */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Unit Cost (₹) <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Unit Cost ({moneySymbol}) <span className="text-red-500">*</span></label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">₹</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">{moneySymbol}</span>
                       <input
                         type="number"
                         value={item.estimatedCost || ''}
@@ -976,7 +1007,7 @@ export default function CreatePRPage() {
                     <label className="block text-xs font-medium text-gray-500 mb-1.5">Line Total</label>
                     <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
                       <span className="text-sm font-bold text-emerald-700">
-                        ₹{(item.quantity * item.estimatedCost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        {formatMoney(item.quantity * item.estimatedCost, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
                   </div>
@@ -1014,7 +1045,7 @@ export default function CreatePRPage() {
                 <div className="text-center">
                   <p className="text-xs text-gray-500 mb-0.5">Avg Unit Cost</p>
                   <p className="text-lg font-bold text-gray-800">
-                    ₹{lineItems.length > 0 ? (lineItems.reduce((s, i) => s + i.estimatedCost, 0) / lineItems.length).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '0'}
+                    {formatMoney(lineItems.length > 0 ? lineItems.reduce((s, i) => s + i.estimatedCost, 0) / lineItems.length : 0, currency, { maximumFractionDigits: 0 })}
                   </p>
                 </div>
               </div>
@@ -1022,7 +1053,7 @@ export default function CreatePRPage() {
                 <div className="text-right">
                   <p className="text-xs text-gray-500 mb-0.5">Total Estimated Amount</p>
                   <p className="text-2xl font-extrabold text-emerald-700">
-                    ₹{getTotalAmount().toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
                 <div className="w-12 h-12 flex items-center justify-center bg-emerald-500 rounded-xl">
@@ -1184,7 +1215,7 @@ export default function CreatePRPage() {
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl mb-5">
               <span className="text-sm text-gray-600">Total Amount</span>
               <span className="text-base font-bold text-emerald-700">
-                ₹{getTotalAmount().toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
             <div className="flex gap-3">
@@ -1228,7 +1259,7 @@ export default function CreatePRPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Total Amount</span>
-                  <span className="font-bold text-emerald-700">₹{getTotalAmount().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-bold text-emerald-700">{formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Next Step</span>

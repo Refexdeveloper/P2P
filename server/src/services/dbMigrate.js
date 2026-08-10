@@ -127,6 +127,8 @@ const MIGRATIONS = [
   )`,
   `ALTER TABLE letterhead_masters ADD COLUMN location VARCHAR(255) NULL`,
   `ALTER TABLE letterhead_masters ADD COLUMN gst_no VARCHAR(50) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'INR'`,
+  `ALTER TABLE purchase_orders ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'INR'`,
   `CREATE TABLE IF NOT EXISTS letterhead_locations (
     id INT AUTO_INCREMENT PRIMARY KEY,
     letterhead_id INT NOT NULL,

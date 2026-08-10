@@ -19,6 +19,14 @@ import {
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
 import { numberToIndianWords } from '../../../utils/amountInWords';
+import {
+  CURRENCY_OPTIONS,
+  DEFAULT_CURRENCY,
+  CurrencyCode,
+  currencySymbol,
+  formatMoney,
+  normalizeCurrency,
+} from '../../../constants/currency';
 
 interface LineItem {
   id: string | number;
@@ -81,9 +89,14 @@ function letterheadLocKey(loc: LetterheadLocationRecord, index = 0) {
 }
 
 function buildInvoicingAddressFromLocation(loc: LetterheadLocationRecord) {
-  return [loc.location?.trim(), loc.gstNo?.trim() ? `GSTIN: ${loc.gstNo.trim()}` : '']
-    .filter(Boolean)
-    .join('\n');
+  const parts: string[] = [];
+  if (loc.location?.trim()) {
+    parts.push(`<p><strong>${loc.location.trim()}</strong></p>`);
+  }
+  if (loc.gstNo?.trim()) {
+    parts.push(`<p>GSTIN: ${loc.gstNo.trim()}</p>`);
+  }
+  return parts.join('');
 }
 
 type PoTermsDetails = typeof EMPTY_PO_TERMS_DETAILS;
@@ -339,6 +352,7 @@ export default function CreatePOPage() {
     purchaseType?: 'purchase_order' | 'work_order';
     purchaseTypeLabel?: string;
     priority?: string;
+    currency?: CurrencyCode;
   } | null>(null);
 
   const [poNumber, setPoNumber] = useState('');
@@ -370,6 +384,8 @@ export default function CreatePOPage() {
   const [paymentTerms, setPaymentTerms] = useState('Net 30 Days');
   const [incoterms, setIncoterms] = useState('DDP');
   const [specialInstructions, setSpecialInstructions] = useState('');
+  const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
+  const moneySymbol = currencySymbol(currency);
   /** Effective GST % derived from line taxes (stored on PO for compatibility) */
   const [gstPercentage, setGstPercentage] = useState(18);
   const [poType, setPoType] = useState<PoType>('short_po');
@@ -655,6 +671,7 @@ export default function CreatePOPage() {
       setEntity(String(po.entity || ''));
       setHeaderLogo(String(po.headerLogo || ''));
       setFooterLogo(String(po.footerLogo || ''));
+      setCurrency(normalizeCurrency(String(po.currency || DEFAULT_CURRENCY)));
       const loadedTerms = (po.termsClauses as PoLetterheadClause[]) || [];
       const loadedAnnexure = (po.annexureClauses as PoLetterheadClause[]) || [];
       const loadedType = ((po.poType as PoType) || 'short_po');
@@ -724,6 +741,7 @@ export default function CreatePOPage() {
           String(po.purchaseTypeLabel || '') ||
           (po.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order'),
         priority: String(po.priority || 'medium'),
+        currency: normalizeCurrency(String(po.currency || DEFAULT_CURRENCY)),
       });
       setVendorMeta({
         name: String(po.vendorName || ''),
@@ -776,11 +794,14 @@ export default function CreatePOPage() {
         entityName?: string;
         entityCode?: string;
         requester: string;
+        currency?: string;
         purchaseType?: 'purchase_order' | 'work_order';
         purchaseTypeLabel?: string;
         lineItems: Array<{ id: number; description: string; quantity: number; unitCost: number; category?: string }>;
       };
       const vendor = res.data.vendor as { name: string; email: string; paymentTerms: string; deliveryTerms: string };
+      const prCurrency = normalizeCurrency(prData.currency);
+      setCurrency(prCurrency);
       setPr({
         id: prData.id,
         prNumber: prData.prNumber,
@@ -794,6 +815,7 @@ export default function CreatePOPage() {
         purchaseTypeLabel: prData.purchaseTypeLabel || (prData.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order'),
         recommendedVendor: vendor.name,
         vendorEmail: vendor.email,
+        currency: prCurrency,
         lineItems: prData.lineItems.map((li) => ({
           id: li.id,
           description: li.description,
@@ -917,6 +939,7 @@ export default function CreatePOPage() {
     letterheadId: letterheadId || undefined,
     letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || undefined,
     locationName: poTermsDetails.locationName || undefined,
+    currency,
     entity,
     headerLogo,
     footerLogo,
@@ -936,6 +959,7 @@ export default function CreatePOPage() {
     letterheadHeader,
     letterheadId,
     letterheadLocationKey,
+    currency,
     entity,
     headerLogo,
     footerLogo,
@@ -1247,6 +1271,7 @@ export default function CreatePOPage() {
         letterheadId: letterheadId || undefined,
         letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || undefined,
         locationName: poTermsDetails.locationName || undefined,
+        currency,
         entity,
         headerLogo,
         footerLogo,
@@ -1305,7 +1330,7 @@ export default function CreatePOPage() {
   };
 
   const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+    formatMoney(n, currency, { maximumFractionDigits: 0 });
 
   const isWorkOrder = pr?.purchaseType === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
@@ -2021,7 +2046,7 @@ export default function CreatePOPage() {
                           </td>
                           <td className="px-2 py-2.5 align-top">
                             <div className="relative">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">₹</span>
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">{moneySymbol}</span>
                               <input
                                 type="number"
                                 min="0"
@@ -2161,6 +2186,23 @@ export default function CreatePOPage() {
                     >
                       {INCOTERMS_OPTIONS.map(o => <option key={o}>{o}</option>)}
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                      Currency <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={currency}
+                      onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50/50 cursor-pointer"
+                    >
+                      {CURRENCY_OPTIONS.map((opt) => (
+                        <option key={opt.code} value={opt.code}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Defaults from PR currency when available</p>
                   </div>
                 </div>
               </div>
@@ -2315,12 +2357,12 @@ export default function CreatePOPage() {
                       </div>
                     </div>
 
-                    {/* Addresses — equal height textareas */}
+                    {/* Addresses */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                      <div className="space-y-1.5">
+                      <div className="space-y-1.5 md:col-span-2">
                         <label className="block text-xs font-semibold text-gray-700">Invoicing Address</label>
                         {(poTermsDetails.locationName || poTermsDetails.buyerGstNo || locationGstNo) && (
-                          <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-2 text-xs text-teal-900 space-y-1">
+                          <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-2 text-xs text-teal-900 space-y-1 mb-1.5">
                             {poTermsDetails.locationName && (
                               <p>
                                 <span className="font-semibold">Location:</span> {poTermsDetails.locationName}
@@ -2346,12 +2388,12 @@ export default function CreatePOPage() {
                               )}
                           </div>
                         )}
-                        <textarea
+                        <RichTextEditor
+                          editorKey={`inv-addr-${letterheadId || 'none'}-${letterheadLocationKey || 'none'}`}
                           value={poTermsDetails.invoicingAddress}
-                          onChange={(e) => updatePoTermsField('invoicingAddress', e.target.value)}
-                          rows={3}
-                          placeholder="Auto-filled from selected location + GSTIN"
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                          onChange={(html) => updatePoTermsField('invoicingAddress', html)}
+                          placeholder="Enter invoicing address (rich text). Auto-fills from selected location + GSTIN."
+                          minHeight={120}
                         />
                       </div>
                       <div className="space-y-1.5">

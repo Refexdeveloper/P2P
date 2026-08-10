@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
 import {
   NAV_ITEMS,
@@ -8,6 +11,44 @@ import {
   isSuperAdmin,
 } from './permissionService.js';
 import { syncRefexOneUsers } from './refexOneService.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
+
+/** Tables cleared on Reset Data — PRs / POs / RFQs only (keeps users + all masters). */
+const RESET_TABLES = [
+  'vendor_quotation_submissions',
+  'rfq_invitations',
+  'rfq_configs',
+  'pr_approvals',
+  'workflow_tasks',
+  'pr_line_items',
+  'po_line_items',
+  'purchase_orders',
+  'purchase_requests',
+  'document_number_sequences',
+];
+
+function clearUploadDir(dirPath) {
+  if (!fs.existsSync(dirPath)) return 0;
+  let removed = 0;
+  for (const name of fs.readdirSync(dirPath)) {
+    const full = path.join(dirPath, name);
+    try {
+      const stat = fs.statSync(full);
+      if (stat.isDirectory()) {
+        removed += clearUploadDir(full);
+        fs.rmdirSync(full);
+      } else {
+        fs.unlinkSync(full);
+        removed += 1;
+      }
+    } catch {
+      /* ignore locked/missing files */
+    }
+  }
+  return removed;
+}
 
 async function mapUserRow(u) {
   return {
@@ -112,4 +153,73 @@ export async function updateUser(adminUser, userId, { role, permissions }) {
   const u = final[0];
 
   return mapUserRow(u);
+}
+
+/**
+ * Wipe PR / PO / RFQ transactional data only.
+ * Keeps: users, permissions, departments, and all master data
+ * (vendors, items, entities, letterheads, categories, etc.).
+ */
+export async function resetAllData(adminUser, { confirm } = {}) {
+  if (!isSuperAdmin(adminUser.role)) {
+    throw new Error('Only Super Admin can reset data');
+  }
+  if (String(confirm || '').trim().toUpperCase() !== 'RESET') {
+    throw new Error('Type RESET to confirm data wipe');
+  }
+
+  const cleared = [];
+  const missing = [];
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+    for (const table of RESET_TABLES) {
+      try {
+        await conn.query(`TRUNCATE TABLE \`${table}\``);
+        cleared.push(table);
+      } catch (err) {
+        // Table may not exist on older DBs
+        if (String(err?.code) === 'ER_NO_SUCH_TABLE') {
+          missing.push(table);
+        } else {
+          throw err;
+        }
+      }
+    }
+    await conn.query('SET FOREIGN_KEY_CHECKS = 1');
+  } finally {
+    try {
+      await conn.query('SET FOREIGN_KEY_CHECKS = 1');
+    } catch {
+      /* ignore */
+    }
+    conn.release();
+  }
+
+  // Only clear PO/RFQ uploads — not signature masters or unrelated files
+  const poUploads = path.join(UPLOAD_ROOT, 'po');
+  const filesRemoved = clearUploadDir(poUploads);
+
+  return {
+    clearedTables: cleared,
+    missingTables: missing,
+    filesRemoved,
+    kept: [
+      'users',
+      'user_permissions',
+      'navigation_permissions',
+      'departments',
+      'vendors',
+      'items',
+      'categories',
+      'entity_masters',
+      'letterhead_masters',
+      'po_letterhead_masters',
+    ],
+    message:
+      `Reset complete. Cleared PRs, POs, RFQs (${cleared.length} tables)` +
+      (filesRemoved ? ` and ${filesRemoved} PO upload files` : '') +
+      '. Users and master data were kept.',
+  };
 }

@@ -1059,4 +1059,18 @@ export const adminApi = {
       method: 'PUT',
       body: JSON.stringify({ permissions }),
     }),
+  resetData: (confirm: string) =>
+    request<{
+      data: {
+        clearedTables: string[];
+        missingTables: string[];
+        filesRemoved: number;
+        kept: string[];
+        message: string;
+      };
+      message: string;
+    }>('/api/admin/reset-data', {
+      method: 'POST',
+      body: JSON.stringify({ confirm }),
+    }),
 };

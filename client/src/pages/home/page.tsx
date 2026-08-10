@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getRoleHomePath, useAuth } from '../../contexts/AuthContext';
-// TEMP: RefexOne redirect disabled — uncomment when ready
-// import { goToRefexOne } from '../../utils/refexOneUrl';
+import { goToRefexOne } from '../../utils/refexOneUrl';
 
 export default function Home() {
   const { user, isLoading } = useAuth();
@@ -11,9 +10,7 @@ export default function Home() {
   useEffect(() => {
     if (isLoading) return;
     if (!user) {
-      // TEMP: RefexOne redirect disabled — uncomment when ready
-      // goToRefexOne();
-      navigate('/login', { replace: true });
+      goToRefexOne();
       return;
     }
     navigate(getRoleHomePath(user.role, user.navigation), { replace: true });

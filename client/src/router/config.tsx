@@ -4,6 +4,7 @@ import ProtectedRoute from '../components/feature/ProtectedRoute';
 
 const HomePage = lazy(() => import('../pages/home/page'));
 const LoginPage = lazy(() => import('../pages/login/page'));
+const LogoutPage = lazy(() => import('../pages/logout/page'));
 const RefexOneSsoPage = lazy(() => import('../pages/auth/refexone/page'));
 const RefexOneCallbackPage = lazy(() => import('../pages/auth/refexone/callback'));
 const RefexOneLaunchPage = lazy(() => import('../pages/auth/refexone/launch'));
@@ -60,6 +61,10 @@ const routes: RouteObject[] = [
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/logout',
+    element: <LogoutPage />,
   },
   {
     path: '/admin/login',

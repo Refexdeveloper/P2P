@@ -1,8 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { ensureNavigation } from '../constants/roleNavigation';
 import { authApi, AuthUser, NavItem } from '../services/api';
-// TEMP: RefexOne redirect disabled — uncomment when ready
-// import { goToRefexOne } from '../utils/refexOneUrl';
+import { goToRefexOne } from '../utils/refexOneUrl';
 
 export type UserRole =
   | 'Requester'
@@ -285,9 +284,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
-    // TEMP: RefexOne redirect disabled — uncomment when ready
-    // goToRefexOne();
-    window.location.replace('/login');
+    // Regular users return to RefexOne; admin local login stays at /admin/login
+    goToRefexOne();
   };
 
   return (

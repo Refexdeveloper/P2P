@@ -14,6 +14,9 @@ export default function UserPermissionsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [resetting, setResetting] = useState(false);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -123,6 +126,24 @@ export default function UserPermissionsPage() {
     }
   };
 
+  const handleResetData = async () => {
+    if (resetConfirmText.trim().toUpperCase() !== 'RESET') {
+      showToast('Type RESET to confirm', 'error');
+      return;
+    }
+    setResetting(true);
+    try {
+      const res = await adminApi.resetData('RESET');
+      showToast(res.message || 'All data reset successfully', 'success');
+      setShowResetModal(false);
+      setResetConfirmText('');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to reset data', 'error');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!selectedUserId || !selectedUser || selectedUser.isSuperAdmin || !hasChanges) return;
     setSaving(true);
@@ -151,15 +172,29 @@ export default function UserPermissionsPage() {
             Super Admin — sync users from RefexOne, assign roles and navigation menus.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleSyncFromRefexOne}
-          disabled={syncing || loading}
-          className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 cursor-pointer flex items-center gap-2 shrink-0"
-        >
-          <i className={syncing ? 'ri-loader-4-line animate-spin' : 'ri-cloud-download-line'}></i>
-          {syncing ? 'Syncing...' : 'Sync from RefexOne'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setResetConfirmText('');
+              setShowResetModal(true);
+            }}
+            disabled={resetting || loading}
+            className="px-5 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer flex items-center gap-2"
+          >
+            <i className="ri-delete-bin-2-line"></i>
+            Reset Data
+          </button>
+          <button
+            type="button"
+            onClick={handleSyncFromRefexOne}
+            disabled={syncing || loading}
+            className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 cursor-pointer flex items-center gap-2"
+          >
+            <i className={syncing ? 'ri-loader-4-line animate-spin' : 'ri-cloud-download-line'}></i>
+            {syncing ? 'Syncing...' : 'Sync from RefexOne'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -358,6 +393,67 @@ export default function UserPermissionsPage() {
           )}
         </div>
       </div>
+
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h2 className="text-lg font-bold text-red-700 flex items-center gap-2">
+                <i className="ri-error-warning-line"></i>
+                Reset All Data
+              </h2>
+              <button
+                type="button"
+                onClick={() => !resetting && setShowResetModal(false)}
+                className="text-gray-400 hover:text-gray-600 cursor-pointer"
+              >
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-700">
+                This permanently deletes <strong>PRs, POs, and RFQs</strong> only (including related
+                approvals, tasks, line items, and document number sequences).
+              </p>
+              <p className="text-sm text-gray-600">
+                Kept: <strong>users</strong>, <strong>permissions</strong>, <strong>departments</strong>,
+                and all <strong>master data</strong> (vendors, items, entities, letterheads, categories).
+              </p>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Type <span className="font-mono text-red-600">RESET</span> to confirm
+                </label>
+                <input
+                  value={resetConfirmText}
+                  onChange={(e) => setResetConfirmText(e.target.value)}
+                  placeholder="RESET"
+                  disabled={resetting}
+                  className="w-full px-3 py-2.5 border border-red-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                disabled={resetting}
+                className="px-4 py-2 border border-gray-200 rounded-lg text-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleResetData}
+                disabled={resetting || resetConfirmText.trim().toUpperCase() !== 'RESET'}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50 cursor-pointer inline-flex items-center gap-2"
+              >
+                <i className={resetting ? 'ri-loader-4-line animate-spin' : 'ri-delete-bin-2-line'}></i>
+                {resetting ? 'Resetting…' : 'Reset All Data'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-6 right-6 z-50">

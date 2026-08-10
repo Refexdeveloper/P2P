@@ -8,6 +8,7 @@ import {
   updateUserPermissions,
   updateUser,
   syncUsersFromRefexOne,
+  resetAllData,
 } from '../services/adminService.js';
 
 const router = Router();
@@ -68,6 +69,15 @@ router.put('/users/:id/permissions', async (req, res) => {
   try {
     const permissions = await updateUserPermissions(req.user, Number(req.params.id), req.body.permissions || []);
     res.json({ data: { permissions }, message: 'User permissions updated' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/reset-data', async (req, res) => {
+  try {
+    const data = await resetAllData(req.user, { confirm: req.body?.confirm });
+    res.json({ data, message: data.message });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
