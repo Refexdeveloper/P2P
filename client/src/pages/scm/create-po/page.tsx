@@ -2,7 +2,18 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import RichTextEditor from '../../../components/base/RichTextEditor';
-import { poApi, prApi, rfqApi, poLetterheadApi, letterheadMasterApi, PoType, PoLetterheadClause, LetterheadMasterRecord } from '../../../services/api';
+import {
+  poApi,
+  prApi,
+  rfqApi,
+  poLetterheadApi,
+  letterheadMasterApi,
+  triggerBlobDownload,
+  PoType,
+  PoLetterheadClause,
+  LetterheadMasterRecord,
+  LetterheadLocationRecord,
+} from '../../../services/api';
 import {
   consumePoCsvImport,
   type PoCsvImportPayload,
@@ -15,9 +26,8 @@ interface LineItem {
   description: string;
   quantity: number;
   unitPrice: number;
-  discount: number;
+  taxPercentage: number;
   total: number;
-  category?: string;
   unit?: string;
 }
 
@@ -29,11 +39,13 @@ function plainTextFromHtml(html: string) {
     .trim();
 }
 
-/** discount is absolute amount (₹), capped at line gross */
-function calcLineTotal(quantity: number, unitPrice: number, discount = 0) {
+function calcLineTotal(quantity: number, unitPrice: number) {
   const gross = (Number(quantity) || 0) * (Number(unitPrice) || 0);
-  const disc = Math.min(gross, Math.max(0, Number(discount) || 0));
-  return Math.round((gross - disc) * 100) / 100;
+  return Math.round(gross * 100) / 100;
+}
+
+function calcLineTax(total: number, taxPercentage: number) {
+  return Math.round(((Number(total) || 0) * (Number(taxPercentage) || 0)) / 100 * 100) / 100;
 }
 
 const PAYMENT_TERMS_OPTIONS = [
@@ -58,7 +70,21 @@ const EMPTY_PO_TERMS_DETAILS = {
   mailingAddress: '',
   reasonForCancellation: '',
   subject: '',
+  locationName: '',
+  buyerGstNo: '',
+  letterheadLocationId: '',
 };
+
+function letterheadLocKey(loc: LetterheadLocationRecord, index = 0) {
+  if (loc.id != null) return String(loc.id);
+  return `name:${loc.location || index}`;
+}
+
+function buildInvoicingAddressFromLocation(loc: LetterheadLocationRecord) {
+  return [loc.location?.trim(), loc.gstNo?.trim() ? `GSTIN: ${loc.gstNo.trim()}` : '']
+    .filter(Boolean)
+    .join('\n');
+}
 
 type PoTermsDetails = typeof EMPTY_PO_TERMS_DETAILS;
 
@@ -69,90 +95,212 @@ const PO_TYPE_OPTIONS: { id: PoType; label: string }[] = [
   { id: 'long_po', label: 'Long PO' },
 ];
 
-function emptyClause(): PoLetterheadClause {
-  return { termsHeader: '', termsDescription: '' };
+type EditableClauseRow = PoLetterheadClause & { clientKey: string };
+
+function makeClauseClientKey() {
+  return `clause-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function ClauseEditorList({
+function emptyClauseRow(): EditableClauseRow {
+  return { clientKey: makeClauseClientKey(), termsHeader: '', termsDescription: '' };
+}
+
+function toEditableClauseRows(clauses: PoLetterheadClause[]): EditableClauseRow[] {
+  if (!clauses.length) return [emptyClauseRow()];
+  return clauses.map((clause) => ({
+    ...clause,
+    clientKey: clause.id ? `db-${clause.id}` : makeClauseClientKey(),
+  }));
+}
+
+function filterNonEmptyClauses(clauses: PoLetterheadClause[]): PoLetterheadClause[] {
+  return clauses
+    .filter(
+      (clause) =>
+        plainTextFromHtml(String(clause.termsHeader || '')) ||
+        plainTextFromHtml(String(clause.termsDescription || ''))
+    )
+    .map((clause, index) => ({ ...clause, sortOrder: index }));
+}
+
+function clauseListSignature(clauses: PoLetterheadClause[]) {
+  return JSON.stringify(
+    (clauses || []).map((c) => [c.id ?? null, c.termsHeader || '', c.termsDescription || '', c.sortOrder ?? null])
+  );
+}
+
+function ClauseTableEditor({
+  title,
+  headerColumnLabel,
+  descriptionColumnLabel,
+  headerPlaceholder,
+  descriptionPlaceholder,
+  emptyHint,
   clauses,
-  emptyText,
   onChange,
+  onReloadFromMaster,
+  reloadDisabled,
 }: {
+  title: string;
+  headerColumnLabel: string;
+  descriptionColumnLabel: string;
+  headerPlaceholder: string;
+  descriptionPlaceholder: string;
+  emptyHint: string;
   clauses: PoLetterheadClause[];
-  emptyText: string;
   onChange: (next: PoLetterheadClause[]) => void;
+  onReloadFromMaster?: () => void;
+  reloadDisabled?: boolean;
 }) {
-  const updateRow = (index: number, patch: Partial<PoLetterheadClause>) => {
-    onChange(clauses.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  const [rows, setRows] = useState<EditableClauseRow[]>(() => toEditableClauseRows(clauses));
+  const lastExternalSig = useRef(clauseListSignature(clauses));
+
+  useEffect(() => {
+    const sig = clauseListSignature(clauses);
+    if (sig === lastExternalSig.current) return;
+    lastExternalSig.current = sig;
+    setRows(toEditableClauseRows(clauses));
+  }, [clauses]);
+
+  const commit = (nextRows: EditableClauseRow[]) => {
+    setRows(nextRows);
+    const payload = nextRows.map(({ clientKey: _key, ...clause }, index) => ({
+      ...clause,
+      sortOrder: index,
+    }));
+    lastExternalSig.current = clauseListSignature(payload);
+    onChange(payload);
   };
+
+  const updateRow = (index: number, patch: Partial<EditableClauseRow>) => {
+    commit(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  };
+
+  const addRow = () => commit([...rows, emptyClauseRow()]);
 
   const removeRow = (index: number) => {
-    onChange(clauses.filter((_, i) => i !== index));
+    if (rows.length <= 1) {
+      commit([emptyClauseRow()]);
+      return;
+    }
+    commit(rows.filter((_, i) => i !== index));
   };
 
-  const addRow = () => {
-    onChange([...clauses, emptyClause()]);
+  const moveRow = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= rows.length) return;
+    const next = [...rows];
+    [next[index], next[target]] = [next[target], next[index]];
+    commit(next);
   };
-
-  if (!clauses.length) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-gray-400 italic">{emptyText}</p>
-        <button
-          type="button"
-          onClick={addRow}
-          className="text-sm font-medium text-teal-700 hover:underline cursor-pointer"
-        >
-          + Add clause
-        </button>
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-4">
-      {clauses.map((clause, index) => (
-        <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50/40 space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                {index + 1}. Header
-              </label>
-              <input
-                value={clause.termsHeader || ''}
-                onChange={(e) => updateRow(index, { termsHeader: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 bg-white"
-                placeholder="Clause title"
-              />
-            </div>
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm w-full">
+      <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-sm font-bold text-gray-900">{title}</h3>
+          <span className="px-2 py-0.5 text-xs font-medium bg-white border border-gray-200 rounded-full text-gray-500">
+            {rows.length} row{rows.length !== 1 ? 's' : ''}
+          </span>
+          <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
+            Editable · shown on PO PDF
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {onReloadFromMaster ? (
             <button
               type="button"
-              onClick={() => removeRow(index)}
-              className="mt-6 p-2 text-red-500 hover:bg-red-50 rounded-lg cursor-pointer"
-              title="Remove clause"
+              onClick={onReloadFromMaster}
+              disabled={reloadDisabled}
+              className="text-xs font-medium text-teal-700 hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <i className="ri-delete-bin-line"></i>
+              Reload from Master
             </button>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Description</label>
-            <RichTextEditor
-              editorKey={`clause-desc-${index}-${clause.termsHeader || 'new'}`}
-              value={clause.termsDescription || ''}
-              onChange={(html) => updateRow(index, { termsDescription: html })}
-              placeholder="Clause details (shown on PO PDF)"
-              minHeight={110}
-            />
-          </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={addRow}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
+          >
+            <i className="ri-add-line"></i>
+            Add Row
+          </button>
         </div>
-      ))}
-      <button
-        type="button"
-        onClick={addRow}
-        className="text-sm font-medium text-teal-700 hover:underline cursor-pointer"
-      >
-        + Add clause
-      </button>
+      </div>
+
+      {!clauses.length ? (
+        <p className="px-5 pt-3 text-xs text-gray-400 italic">{emptyHint}</p>
+      ) : null}
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px]">
+          <thead>
+            <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 bg-white border-b border-gray-100">
+              <th className="px-5 py-3 w-12">#</th>
+              <th className="px-5 py-3 w-[280px]">{headerColumnLabel}</th>
+              <th className="px-5 py-3">{descriptionColumnLabel}</th>
+              <th className="px-5 py-3 w-28 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.clientKey} className="border-b border-gray-50 align-top hover:bg-gray-50/40">
+                <td className="px-5 py-4 text-sm text-gray-400">{index + 1}</td>
+                <td className="px-5 py-4">
+                  <label className="block text-xs text-gray-400 mb-1">Header</label>
+                  <RichTextEditor
+                    editorKey={`${row.clientKey}-header`}
+                    value={row.termsHeader || ''}
+                    onChange={(html) => updateRow(index, { termsHeader: html })}
+                    placeholder={headerPlaceholder}
+                    minHeight={72}
+                  />
+                </td>
+                <td className="px-5 py-4">
+                  <label className="block text-xs text-gray-400 mb-1">Description</label>
+                  <RichTextEditor
+                    editorKey={`${row.clientKey}-desc`}
+                    value={row.termsDescription || ''}
+                    onChange={(html) => updateRow(index, { termsDescription: html })}
+                    placeholder={descriptionPlaceholder}
+                    minHeight={100}
+                  />
+                </td>
+                <td className="px-5 py-4">
+                  <div className="flex items-center justify-center gap-1 pt-5">
+                    <button
+                      type="button"
+                      onClick={() => moveRow(index, -1)}
+                      disabled={index === 0}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                      title="Move up"
+                    >
+                      <i className="ri-arrow-up-line"></i>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveRow(index, 1)}
+                      disabled={index === rows.length - 1}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                      title="Move down"
+                    >
+                      <i className="ri-arrow-down-line"></i>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeRow(index)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 cursor-pointer"
+                      title="Remove row"
+                    >
+                      <i className="ri-delete-bin-line"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -217,18 +365,19 @@ export default function CreatePOPage() {
   });
 
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
-  /** Draft text for discount inputs so clearing / typing 0 works without number-input quirks */
-  const [discountDrafts, setDiscountDrafts] = useState<Record<string, string>>({});
   const [deliveryAddress, setDeliveryAddress] = useState('Plot No. 42, Industrial Area Phase II, Chandigarh - 160002');
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('Net 30 Days');
   const [incoterms, setIncoterms] = useState('DDP');
   const [specialInstructions, setSpecialInstructions] = useState('');
+  /** Effective GST % derived from line taxes (stored on PO for compatibility) */
   const [gstPercentage, setGstPercentage] = useState(18);
   const [poType, setPoType] = useState<PoType>('short_po');
   const [letterheadHeader, setLetterheadHeader] = useState('');
   const [letterheadOptions, setLetterheadOptions] = useState<LetterheadMasterRecord[]>([]);
   const [letterheadId, setLetterheadId] = useState<number | ''>('');
+  const [letterheadLocationKey, setLetterheadLocationKey] = useState('');
+  const [locationGstNo, setLocationGstNo] = useState('');
   const [entity, setEntity] = useState('');
   const [headerLogo, setHeaderLogo] = useState('');
   const [footerLogo, setFooterLogo] = useState('');
@@ -245,6 +394,7 @@ export default function CreatePOPage() {
   const [previewHtmlUrl, setPreviewHtmlUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const [pdfDownloading, setPdfDownloading] = useState(false);
   const [pickerItems, setPickerItems] = useState<Array<{ prId: number; prNumber: string; title: string; department: string; requester: string; totalAmount: number; recommendedVendor: string }>>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
   const [changeSummary, setChangeSummary] = useState('');
@@ -275,19 +425,115 @@ export default function CreatePOPage() {
     }
   }, []);
 
-  const applyLetterheadBranding = useCallback((row: LetterheadMasterRecord | null) => {
-    if (!row) {
-      setLetterheadId('');
-      setEntity('');
-      setHeaderLogo('');
-      setFooterLogo('');
-      return;
+  const selectedLetterhead = useMemo(
+    () => letterheadOptions.find((o) => o.id === letterheadId) || null,
+    [letterheadOptions, letterheadId]
+  );
+  const letterheadLocations = useMemo(() => {
+    const locs = selectedLetterhead?.locations || [];
+    if (locs.length) return locs;
+    // Fallback: single location from master columns
+    if (selectedLetterhead?.location || selectedLetterhead?.gstNo) {
+      return [
+        {
+          id: selectedLetterhead.id,
+          location: selectedLetterhead.location || '',
+          gstNo: selectedLetterhead.gstNo || '',
+          footerLogo: selectedLetterhead.footerLogo || '',
+        },
+      ];
     }
-    setLetterheadId(row.id);
-    setEntity(row.entity || '');
-    setHeaderLogo(row.headerLogo || '');
-    setFooterLogo(row.footerLogo || '');
-  }, []);
+    return [];
+  }, [selectedLetterhead]);
+
+  const applyLetterheadLocation = useCallback(
+    (loc: LetterheadLocationRecord | null, index = 0) => {
+      if (!loc) {
+        setLetterheadLocationKey('');
+        setLocationGstNo('');
+        setPoTermsDetails((prev) => ({
+          ...prev,
+          locationName: '',
+          buyerGstNo: '',
+          letterheadLocationId: '',
+        }));
+        return;
+      }
+      const key = letterheadLocKey(loc, index);
+      setLetterheadLocationKey(key);
+      setLocationGstNo(loc.gstNo || '');
+      if (loc.footerLogo) setFooterLogo(loc.footerLogo);
+      const invoicing = buildInvoicingAddressFromLocation(loc);
+      setPoTermsDetails((prev) => ({
+        ...prev,
+        locationName: loc.location || '',
+        buyerGstNo: loc.gstNo || '',
+        letterheadLocationId: loc.id != null ? String(loc.id) : key,
+        invoicingAddress: invoicing || prev.invoicingAddress,
+      }));
+    },
+    []
+  );
+
+  const applyLetterheadBranding = useCallback(
+    (row: LetterheadMasterRecord | null, opts?: { keepLocation?: boolean }) => {
+      if (!row) {
+        setLetterheadId('');
+        setEntity('');
+        setHeaderLogo('');
+        setFooterLogo('');
+        if (!opts?.keepLocation) applyLetterheadLocation(null);
+        return;
+      }
+      setLetterheadId(row.id);
+      setEntity(row.entity || '');
+      setHeaderLogo(row.headerLogo || '');
+      const locs = row.locations?.length
+        ? row.locations
+        : row.location || row.gstNo
+          ? [
+              {
+                id: row.id,
+                location: row.location || '',
+                gstNo: row.gstNo || '',
+                footerLogo: row.footerLogo || '',
+              },
+            ]
+          : [];
+      if (locs.length) {
+        if (opts?.keepLocation) {
+          // Refresh header/entity only; keep current location selection & its footer
+          setLetterheadLocationKey((currentKey) => {
+            if (!currentKey) {
+              setFooterLogo(row.footerLogo || locs[0].footerLogo || '');
+              return currentKey;
+            }
+            const idx = locs.findIndex(
+              (l, i) =>
+                letterheadLocKey(l, i) === currentKey ||
+                String(l.id) === currentKey ||
+                l.location === currentKey
+            );
+            if (idx >= 0) {
+              const loc = locs[idx];
+              setFooterLogo(loc.footerLogo || row.footerLogo || '');
+              setLocationGstNo(loc.gstNo || '');
+              return letterheadLocKey(loc, idx);
+            }
+            setFooterLogo(row.footerLogo || locs[0].footerLogo || '');
+            return currentKey;
+          });
+          return;
+        }
+        applyLetterheadLocation(locs[0], 0);
+        if (!locs[0].footerLogo) setFooterLogo(row.footerLogo || '');
+      } else {
+        setFooterLogo(row.footerLogo || '');
+        if (!opts?.keepLocation) applyLetterheadLocation(null);
+      }
+    },
+    [applyLetterheadLocation]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -310,23 +556,25 @@ export default function CreatePOPage() {
     };
   }, [isEditMode, applyLetterheadBranding]);
 
-  /** Keep logos/entity in sync with Letterhead Master when id is set */
+  /** Keep logos/entity in sync with Letterhead Master when id is set (do not reset location pick). */
   useEffect(() => {
     if (!letterheadId) return;
     let cancelled = false;
     (async () => {
       try {
         const match = letterheadOptions.find((o) => o.id === letterheadId);
-        if (match?.headerLogo || match?.footerLogo || match?.entity) {
-          if (!cancelled) applyLetterheadBranding(match);
+        if (match?.headerLogo || match?.footerLogo || match?.entity || match?.locations?.length) {
+          if (!cancelled) applyLetterheadBranding(match, { keepLocation: true });
           return;
         }
         const res = await letterheadMasterApi.get(Number(letterheadId));
         if (cancelled) return;
         setLetterheadOptions((prev) =>
-          prev.some((p) => p.id === res.data.id) ? prev.map((p) => (p.id === res.data.id ? res.data : p)) : [...prev, res.data]
+          prev.some((p) => p.id === res.data.id)
+            ? prev.map((p) => (p.id === res.data.id ? res.data : p))
+            : [...prev, res.data]
         );
-        applyLetterheadBranding(res.data);
+        applyLetterheadBranding(res.data, { keepLocation: true });
       } catch {
         /* keep existing snapshot */
       }
@@ -419,6 +667,8 @@ export default function CreatePOPage() {
           paymentTermsText: loadedDetails.paymentTermsText || String(po.paymentTerms || ''),
           siteAddress: loadedDetails.siteAddress || String(po.deliveryAddress || ''),
         });
+        setLocationGstNo(loadedDetails.buyerGstNo || '');
+        setLetterheadLocationKey(loadedDetails.letterheadLocationId || '');
       }
 
       // If PO has no saved clauses, pull defaults from PO Type Master
@@ -437,7 +687,7 @@ export default function CreatePOPage() {
         ((po.lineItems as Array<Record<string, unknown>>) || []).map((li) => {
           const quantity = Number(li.quantity) || 0;
           const unitPrice = Number(li.unitPrice) || 0;
-          const discount = Math.max(0, Number(li.discount) || 0);
+          const taxPercentage = Math.max(0, Number(li.taxPercentage ?? li.tax_percentage ?? po.gstPercentage) || 18);
           const description = String(li.description || '');
           const itemName = String(li.itemName || li.name || '').trim() || plainTextFromHtml(description);
           return {
@@ -446,9 +696,8 @@ export default function CreatePOPage() {
             description,
             quantity,
             unitPrice,
-            discount,
-            total: Number(li.total) || calcLineTotal(quantity, unitPrice, discount),
-            category: String(li.category || ''),
+            taxPercentage,
+            total: Number(li.total) || calcLineTotal(quantity, unitPrice),
           };
         })
       );
@@ -632,33 +881,42 @@ export default function CreatePOPage() {
   };
 
   const subtotal = useMemo(() => lineItems.reduce((s, i) => s + i.total, 0), [lineItems]);
-  const discountTotal = useMemo(
-    () => lineItems.reduce((s, i) => s + (Number(i.discount) || 0), 0),
+  const taxAmount = useMemo(
+    () => lineItems.reduce((s, i) => s + calcLineTax(i.total, i.taxPercentage), 0),
     [lineItems]
   );
-  const taxAmount = useMemo(() => (subtotal * gstPercentage) / 100, [subtotal, gstPercentage]);
   const grandTotal = useMemo(() => subtotal + taxAmount, [subtotal, taxAmount]);
   const amountInWords = useMemo(() => numberToIndianWords(grandTotal), [grandTotal]);
+  const effectiveGstPercentage = useMemo(
+    () => (subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : 0),
+    [subtotal, taxAmount]
+  );
+
+  useEffect(() => {
+    setGstPercentage(effectiveGstPercentage);
+  }, [effectiveGstPercentage]);
 
   const buildPreviewPayload = useCallback(() => ({
     poNumber: poNumber || undefined,
     lineItems: lineItems.map((i) => ({
       itemName: i.itemName || '',
       description: i.description,
-      category: i.category || '',
       quantity: i.quantity,
       unitPrice: i.unitPrice,
-      discount: i.discount || 0,
+      taxPercentage: i.taxPercentage || 0,
+      discount: 0,
     })),
     deliveryAddress,
     expectedDeliveryDate,
     paymentTerms,
     incoterms,
     specialInstructions,
-    gstPercentage,
+    gstPercentage: effectiveGstPercentage,
     poType,
     letterheadHeader,
     letterheadId: letterheadId || undefined,
+    letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || undefined,
+    locationName: poTermsDetails.locationName || undefined,
     entity,
     headerLogo,
     footerLogo,
@@ -673,10 +931,11 @@ export default function CreatePOPage() {
     paymentTerms,
     incoterms,
     specialInstructions,
-    gstPercentage,
+    effectiveGstPercentage,
     poType,
     letterheadHeader,
     letterheadId,
+    letterheadLocationKey,
     entity,
     headerLogo,
     footerLogo,
@@ -735,7 +994,7 @@ export default function CreatePOPage() {
     setLineItems((prev) =>
       prev.map((item) =>
         item.id === id
-          ? { ...item, quantity: val, total: calcLineTotal(val, item.unitPrice, item.discount) }
+          ? { ...item, quantity: val, total: calcLineTotal(val, item.unitPrice) }
           : item
       )
     );
@@ -744,51 +1003,19 @@ export default function CreatePOPage() {
     setLineItems((prev) =>
       prev.map((item) =>
         item.id === id
-          ? { ...item, unitPrice: val, total: calcLineTotal(item.quantity, val, item.discount) }
+          ? { ...item, unitPrice: val, total: calcLineTotal(item.quantity, val) }
           : item
       )
     );
 
-  const handleDiscountInput = (id: string | number, raw: string) => {
-    const key = String(id);
-    // Allow empty / partial typing ("", ".", "0.", "0.5")
-    if (raw === '' || raw === '.' || raw === '0.') {
-      setDiscountDrafts((prev) => ({ ...prev, [key]: raw === '0.' ? '0.' : raw }));
-      setLineItems((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? { ...item, discount: 0, total: calcLineTotal(item.quantity, item.unitPrice, 0) }
-            : item
-        )
-      );
-      return;
-    }
-
-    // Normalize leading zeros like "00" / "03" while typing
-    const cleaned = raw.replace(/[^\d.]/g, '');
-    const num = Number(cleaned);
-    if (Number.isNaN(num)) {
-      setDiscountDrafts((prev) => ({ ...prev, [key]: '' }));
-      setLineItems((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? { ...item, discount: 0, total: calcLineTotal(item.quantity, item.unitPrice, 0) }
-            : item
-        )
-      );
-      return;
-    }
-
-    setDiscountDrafts((prev) => ({ ...prev, [key]: cleaned }));
+  const handleTaxPercentageChange = (id: string | number, val: number) =>
     setLineItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const gross = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
-        const discount = Math.min(gross, Math.max(0, num));
-        return { ...item, discount, total: calcLineTotal(item.quantity, item.unitPrice, discount) };
-      })
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, taxPercentage: Math.min(100, Math.max(0, val)) }
+          : item
+      )
     );
-  };
 
   const handleItemNameChange = (id: string | number, val: string) =>
     setLineItems((prev) =>
@@ -798,11 +1025,6 @@ export default function CreatePOPage() {
   const handleDescriptionChange = (id: string | number, val: string) =>
     setLineItems(prev =>
       prev.map(item => item.id === id ? { ...item, description: val } : item)
-    );
-
-  const handleCategoryChange = (id: string | number, val: string) =>
-    setLineItems(prev =>
-      prev.map(item => item.id === id ? { ...item, category: val } : item)
     );
 
   const handleAddLineItem = () => {
@@ -815,9 +1037,8 @@ export default function CreatePOPage() {
         description: '',
         quantity: 1,
         unitPrice: 0,
-        discount: 0,
+        taxPercentage: 18,
         total: 0,
-        category: '',
         unit: 'Nos',
       },
     ]);
@@ -864,7 +1085,7 @@ export default function CreatePOPage() {
     const refLineItems = ((po.lineItems as Array<Record<string, unknown>>) || []).map((li, index) => {
       const qty = Number(li.quantity) || 0;
       const unitPrice = Number(li.unitPrice) || 0;
-      const discount = Math.max(0, Number(li.discount) || 0);
+      const taxPercentage = Math.max(0, Number(li.taxPercentage ?? li.tax_percentage ?? po.gstPercentage) || 18);
       const description = String(li.description || '');
       const itemName = String(li.itemName || li.name || '').trim() || plainTextFromHtml(description);
       return {
@@ -873,9 +1094,8 @@ export default function CreatePOPage() {
         description,
         quantity: qty,
         unitPrice,
-        discount,
-        total: Number(li.total) || calcLineTotal(qty, unitPrice, discount),
-        category: String(li.category || ''),
+        taxPercentage,
+        total: Number(li.total) || calcLineTotal(qty, unitPrice),
       };
     });
     if (refLineItems.length) {
@@ -890,8 +1110,49 @@ export default function CreatePOPage() {
     });
   }, []);
 
+  /** Enter existing PO number → auto-fill PO Details / Terms / line items */
+  const loadPoDetailsByNumber = useCallback(
+    async (rawNumber?: string) => {
+      const num = String(rawNumber ?? referencePoNumber).trim();
+      if (!num) {
+        setReferencePoError('Enter a PO number to auto-fill details');
+        return false;
+      }
+      setReferencePoNumber(num);
+      setReferencePoLoading(true);
+      setReferencePoError('');
+      try {
+        const res = await poApi.getByNumber(num);
+        const po = res.data as Record<string, unknown>;
+        if (!po?.poNumber) throw new Error('PO not found');
+        applyReferencePoDetails(po);
+        return true;
+      } catch (err) {
+        setReferencePoLoaded(null);
+        setReferencePoError(err instanceof Error ? err.message : 'PO not found');
+        return false;
+      } finally {
+        setReferencePoLoading(false);
+      }
+    },
+    [referencePoNumber, applyReferencePoDetails]
+  );
+
   const applyCsvImportPayload = useCallback((payload: PoCsvImportPayload) => {
-    if (payload.lineItems?.length) setLineItems(payload.lineItems);
+    if (payload.lineItems?.length) {
+      setLineItems(
+        payload.lineItems.map((item) => ({
+          id: item.id,
+          itemName: item.itemName || '',
+          description: item.description || '',
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          taxPercentage: item.taxPercentage ?? payload.gstPercentage ?? 18,
+          total: item.total ?? calcLineTotal(item.quantity, item.unitPrice),
+          unit: item.unit,
+        }))
+      );
+    }
     if (payload.deliveryAddress) setDeliveryAddress(payload.deliveryAddress);
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
     if (payload.paymentTerms) setPaymentTerms(payload.paymentTerms);
@@ -934,9 +1195,8 @@ export default function CreatePOPage() {
         description: item.description || '',
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        discount: 0,
-        total: calcLineTotal(item.quantity, item.unitPrice, 0),
-        category: item.category,
+        taxPercentage: 18,
+        total: calcLineTotal(item.quantity, item.unitPrice),
       }))
     );
   }, [pr, isEditMode, fromCsvParam, refPoParam, applyCsvImportPayload]);
@@ -944,36 +1204,17 @@ export default function CreatePOPage() {
   // Auto-import reference PO when opened from Purchase Requests with ?refPo=
   useEffect(() => {
     if (isEditMode || !pr || !refPoParam?.trim() || referencePoLoaded) return;
-    let cancelled = false;
-    const run = async () => {
-      setReferencePoNumber(refPoParam.trim());
-      setReferencePoLoading(true);
-      setReferencePoError('');
-      try {
-        const res = await poApi.getByNumber(refPoParam.trim());
-        if (cancelled) return;
-        const po = res.data as Record<string, unknown>;
-        if (!po?.poNumber) throw new Error('PO not found');
-        applyReferencePoDetails(po);
-      } catch (err) {
-        if (!cancelled) {
-          setReferencePoLoaded(null);
-          setReferencePoError(err instanceof Error ? err.message : 'PO not found');
-        }
-      } finally {
-        if (!cancelled) setReferencePoLoading(false);
-      }
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [isEditMode, pr, refPoParam, referencePoLoaded, applyReferencePoDetails]);
+    void loadPoDetailsByNumber(refPoParam.trim());
+  }, [isEditMode, pr, refPoParam, referencePoLoaded, loadPoDetailsByNumber]);
 
   const handleSendForApproval = async () => {
     if ((!numericPrId && !editPoId) || !pr) return;
     if (!skipApproval && !letterheadId) {
       alert('Please select a letterhead entity');
+      return;
+    }
+    if (!skipApproval && letterheadLocations.length > 0 && !letterheadLocationKey) {
+      alert('Please select a location for the letterhead entity');
       return;
     }
     if (!deliveryAddress.trim()) {
@@ -990,29 +1231,34 @@ export default function CreatePOPage() {
         lineItems: lineItems.map((i) => ({
           itemName: i.itemName || '',
           description: i.description,
-          category: i.category || '',
           quantity: i.quantity,
           unitPrice: i.unitPrice,
-          discount: i.discount || 0,
+          taxPercentage: i.taxPercentage || 0,
+          discount: 0,
         })),
         deliveryAddress,
         expectedDeliveryDate,
         paymentTerms,
         incoterms,
         specialInstructions,
-        gstPercentage,
+        gstPercentage: effectiveGstPercentage,
         poType,
         letterheadHeader,
         letterheadId: letterheadId || undefined,
+        letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || undefined,
+        locationName: poTermsDetails.locationName || undefined,
         entity,
         headerLogo,
         footerLogo,
-        terms: termsClauses,
-        annexure: annexureClauses,
+        terms: filterNonEmptyClauses(termsClauses),
+        annexure: filterNonEmptyClauses(annexureClauses),
         poTermsDetails: {
           ...poTermsDetails,
           paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
           siteAddress: poTermsDetails.siteAddress || deliveryAddress,
+          letterheadLocationId:
+            poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
+          buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
         },
         referencePoNumber: referencePoNumber.trim() || undefined,
         changeSummary: changeSummary.trim() || undefined,
@@ -1037,10 +1283,20 @@ export default function CreatePOPage() {
       const data = res.data as { poNumber: string; id: number };
       setPoNumber(data.poNumber);
       setCreatedPoId(data.id);
-      const blob = await poApi.fetchPdfBlob(data.id);
-      if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
-      setPdfPreviewUrl(URL.createObjectURL(blob));
-      setPageMode('pdf');
+      try {
+        const blob = await poApi.fetchPdfBlob(data.id);
+        if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+        setPdfPreviewUrl(URL.createObjectURL(blob));
+        setPageMode('pdf');
+      } catch (pdfErr) {
+        // PO created successfully; PDF may still be regenerating
+        setShowSuccessModal(true);
+        alert(
+          pdfErr instanceof Error
+            ? `PO created, but PDF could not be opened: ${pdfErr.message}`
+            : 'PO created, but PDF could not be opened'
+        );
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to create PO');
     } finally {
@@ -1145,9 +1401,24 @@ export default function CreatePOPage() {
               <button onClick={() => navigate('/scm/purchase-requests')} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">
                 Back to PRs
               </button>
-              <a href={pdfPreviewUrl} download={`${poNumber}.pdf`} className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium">
-                Download PDF
-              </a>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    setPdfDownloading(true);
+                    const blob = await poApi.fetchPdfBlob(createdPoId);
+                    triggerBlobDownload(blob, `${poNumber || 'PO'}.pdf`);
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : 'Could not download PDF');
+                  } finally {
+                    setPdfDownloading(false);
+                  }
+                }}
+                disabled={pdfDownloading}
+                className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+              >
+                {pdfDownloading ? 'Preparing…' : 'Download PDF'}
+              </button>
             </div>
           </div>
           <iframe title="PO PDF Preview" src={pdfPreviewUrl} className="flex-1 w-full min-h-[calc(100vh-120px)] border-0" />
@@ -1332,6 +1603,77 @@ export default function CreatePOPage() {
                   </div>
                 </div>
 
+                {/* Load existing PO → auto-fill PO Details */}
+                <div className="bg-white rounded-xl border border-teal-200 p-5 shadow-sm">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-9 h-9 flex items-center justify-center bg-teal-50 rounded-lg shrink-0">
+                      <i className="ri-search-eye-line text-teal-600 text-lg"></i>
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-bold text-gray-900">Load PO Details by PO Number</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Enter an existing PO number to auto-fill delivery, terms, letterhead, line items and POD fields
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      value={referencePoNumber}
+                      onChange={(e) => {
+                        setReferencePoNumber(e.target.value);
+                        setReferencePoError('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void loadPoDetailsByNumber();
+                        }
+                      }}
+                      placeholder="e.g. PO-RIL-2026-27-0001"
+                      className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                      disabled={referencePoLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void loadPoDetailsByNumber()}
+                      disabled={referencePoLoading || !referencePoNumber.trim()}
+                      className="px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-sm font-semibold whitespace-nowrap disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {referencePoLoading ? (
+                        <>
+                          <i className="ri-loader-4-line animate-spin"></i> Loading...
+                        </>
+                      ) : (
+                        <>
+                          <i className="ri-download-cloud-2-line"></i> Auto Fill
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {referencePoError && (
+                    <p className="mt-2 text-xs text-red-600 flex items-center gap-1.5">
+                      <i className="ri-error-warning-line"></i>
+                      {referencePoError}
+                    </p>
+                  )}
+                  {referencePoLoaded && !referencePoError && (
+                    <p className="mt-2 text-xs text-emerald-700 flex items-center gap-1.5 flex-wrap">
+                      <i className="ri-checkbox-circle-fill"></i>
+                      Loaded <span className="font-semibold">{referencePoLoaded.poNumber}</span>
+                      {referencePoLoaded.vendorName ? (
+                        <span className="text-gray-500">· {referencePoLoaded.vendorName}</span>
+                      ) : null}
+                      {referencePoLoaded.prNumber ? (
+                        <span className="text-gray-500">· PR {referencePoLoaded.prNumber}</span>
+                      ) : null}
+                      {referencePoLoaded.grandTotal ? (
+                        <span className="text-gray-500">· {fmt(referencePoLoaded.grandTotal)}</span>
+                      ) : null}
+                    </p>
+                  )}
+                </div>
+
                 {/* PO Type */}
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                   <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -1409,11 +1751,50 @@ export default function CreatePOPage() {
                       </p>
                     )}
                   </div>
-                  {(entity || headerLogo || footerLogo) && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+
+                  {letterheadLocations.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                        Location <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={letterheadLocationKey}
+                        onChange={(e) => {
+                          const key = e.target.value;
+                          const idx = letterheadLocations.findIndex(
+                            (l, i) => letterheadLocKey(l, i) === key
+                          );
+                          if (idx < 0) {
+                            applyLetterheadLocation(null);
+                            return;
+                          }
+                          applyLetterheadLocation(letterheadLocations[idx], idx);
+                        }}
+                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                      >
+                        <option value="">Select location...</option>
+                        {letterheadLocations.map((loc, idx) => (
+                          <option key={letterheadLocKey(loc, idx)} value={letterheadLocKey(loc, idx)}>
+                            {loc.location}
+                            {loc.gstNo ? ` — ${loc.gstNo}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1.5">
+                        Selecting a location fills GSTIN &amp; footer into Invoicing Address (Terms tab) and PO PDF footer.
+                      </p>
+                    </div>
+                  )}
+
+                  {(entity || headerLogo || footerLogo || locationGstNo) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
                       <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Entity</p>
                         <p className="text-sm text-gray-800">{entity || '—'}</p>
+                      </div>
+                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">GSTIN</p>
+                        <p className="text-sm font-mono text-gray-800">{locationGstNo || '—'}</p>
                       </div>
                       <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Header Logo</p>
@@ -1511,9 +1892,41 @@ export default function CreatePOPage() {
                     <h3 className="text-sm font-bold text-gray-900">PO Summary</h3>
                   </div>
                   <div className="space-y-2.5">
+                    <div className="flex justify-between items-center py-1.5 border-b border-gray-50">
+                      <span className="text-xs text-gray-500">PO Number</span>
+                      <span className="text-xs font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
+                    </div>
+                    <div className="py-1.5 border-b border-gray-50 space-y-1.5">
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-xs text-gray-500 shrink-0">Reference PO</span>
+                        <button
+                          type="button"
+                          onClick={() => void loadPoDetailsByNumber()}
+                          disabled={referencePoLoading || !referencePoNumber.trim()}
+                          className="text-[11px] font-semibold text-teal-600 hover:text-teal-700 disabled:opacity-40 cursor-pointer"
+                        >
+                          {referencePoLoading ? 'Loading…' : 'Fill'}
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={referencePoNumber}
+                        onChange={(e) => {
+                          setReferencePoNumber(e.target.value);
+                          setReferencePoError('');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void loadPoDetailsByNumber();
+                          }
+                        }}
+                        placeholder="Type PO no. + Fill"
+                        className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        disabled={referencePoLoading}
+                      />
+                    </div>
                     {[
-                      { label: 'PO Number', value: poNumber, highlight: true },
-                      { label: 'Reference PO', value: referencePoNumber || '—' },
                       { label: 'PR Reference', value: pr.prNumber },
                       { label: 'Department', value: pr.department },
                       { label: 'Requester', value: pr.requester },
@@ -1521,7 +1934,7 @@ export default function CreatePOPage() {
                     ].map(row => (
                       <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-50 last:border-0">
                         <span className="text-xs text-gray-500">{row.label}</span>
-                        <span className={`text-xs font-semibold ${row.highlight ? 'text-teal-600' : 'text-gray-800'}`}>{row.value}</span>
+                        <span className="text-xs font-semibold text-gray-800">{row.value}</span>
                       </div>
                     ))}
                   </div>
@@ -1553,11 +1966,10 @@ export default function CreatePOPage() {
                   <table className="w-full table-fixed">
                     <colgroup>
                       <col className="w-9" />
-                      <col className="w-[16%]" />
-                      <col className="w-[28%]" />
-                      <col className="w-[12%]" />
+                      <col className="w-[18%]" />
+                      <col className="w-[32%]" />
                       <col className="w-[8%]" />
-                      <col className="w-[12%]" />
+                      <col className="w-[14%]" />
                       <col className="w-[10%]" />
                       <col className="w-[14%]" />
                     </colgroup>
@@ -1566,10 +1978,9 @@ export default function CreatePOPage() {
                         <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">#</th>
                         <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Item Name</th>
                         <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Item Description</th>
-                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Category</th>
                         <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Qty</th>
                         <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Unit Price</th>
-                        <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Discount</th>
+                        <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tax %</th>
                         <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Total</th>
                       </tr>
                     </thead>
@@ -1601,15 +2012,6 @@ export default function CreatePOPage() {
                           </td>
                           <td className="px-2 py-2.5 align-top">
                             <input
-                              type="text"
-                              value={item.category || ''}
-                              onChange={e => handleCategoryChange(item.id, e.target.value)}
-                              placeholder="Category"
-                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
-                            />
-                          </td>
-                          <td className="px-2 py-2.5 align-top">
-                            <input
                               type="number"
                               min="1"
                               value={item.quantity}
@@ -1632,34 +2034,28 @@ export default function CreatePOPage() {
                           </td>
                           <td className="px-2 py-2.5 align-top">
                             <div className="relative">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">₹</span>
                               <input
-                                type="text"
-                                inputMode="decimal"
-                                value={
-                                  discountDrafts[String(item.id)] !== undefined
-                                    ? discountDrafts[String(item.id)]
-                                    : item.discount
-                                      ? String(item.discount)
-                                      : ''
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={item.taxPercentage}
+                                onChange={(e) =>
+                                  handleTaxPercentageChange(item.id, parseFloat(e.target.value) || 0)
                                 }
-                                onChange={(e) => handleDiscountInput(item.id, e.target.value)}
-                                onBlur={() => {
-                                  const key = String(item.id);
-                                  setDiscountDrafts((prev) => {
-                                    const next = { ...prev };
-                                    delete next[key];
-                                    return next;
-                                  });
-                                }}
-                                placeholder="0"
-                                className="w-full pl-5 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
                               />
+                              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">%</span>
                             </div>
                           </td>
                           <td className="px-2 py-2.5 align-top">
                             <div className="flex items-start justify-end gap-1.5 pt-1">
-                              <p className="text-sm font-bold text-gray-900 tabular-nums leading-6">{fmt(item.total)}</p>
+                              <div className="text-right">
+                                <p className="text-sm font-bold text-gray-900 tabular-nums leading-6">{fmt(item.total)}</p>
+                                <p className="text-[10px] text-gray-400 tabular-nums">
+                                  Tax {fmt(calcLineTax(item.total, item.taxPercentage))}
+                                </p>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteLineItem(item.id)}
@@ -1674,7 +2070,7 @@ export default function CreatePOPage() {
                       ))}
                       {lineItems.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="px-6 py-10 text-center">
+                          <td colSpan={7} className="px-6 py-10 text-center">
                             <div className="flex flex-col items-center gap-2">
                               <div className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full">
                                 <i className="ri-file-list-3-line text-gray-400 text-lg"></i>
@@ -1703,31 +2099,12 @@ export default function CreatePOPage() {
                       <i className="ri-add-line text-sm"></i> Add Another Item
                     </button>
                     <div className="w-full sm:w-72 space-y-2">
-                      {discountTotal > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Discount</span>
-                          <span className="font-semibold text-emerald-600">−{fmt(discountTotal)}</span>
-                        </div>
-                      )}
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Subtotal</span>
                         <span className="font-semibold text-gray-900">{fmt(subtotal)}</span>
                       </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-500">GST</span>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={gstPercentage}
-                              onChange={e => setGstPercentage(parseFloat(e.target.value) || 0)}
-                              className="w-14 px-2 py-1 border border-gray-200 rounded text-xs text-center focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                            />
-                            <span className="text-gray-400 text-xs">%</span>
-                          </div>
-                        </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Tax (per line)</span>
                         <span className="font-semibold text-gray-900">{fmt(taxAmount)}</span>
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t border-gray-200">
@@ -1794,8 +2171,53 @@ export default function CreatePOPage() {
               TAB 2 — TERMS & CONDITIONS
           ══════════════════════════════════════════ */}
           {activeTab === 'terms' && (
+            <div className="space-y-5">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
               <div className="lg:col-span-2 space-y-5">
+                {/* Quick load POD fields from existing PO */}
+                <div className="bg-teal-50/60 border border-teal-200 rounded-xl p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                    <div className="flex-1 min-w-0">
+                      <label className="block text-xs font-semibold text-teal-800 mb-1.5">
+                        PO Number — auto-fill POD details
+                      </label>
+                      <input
+                        type="text"
+                        value={referencePoNumber}
+                        onChange={(e) => {
+                          setReferencePoNumber(e.target.value);
+                          setReferencePoError('');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void loadPoDetailsByNumber();
+                          }
+                        }}
+                        placeholder="Enter existing PO number"
+                        className="w-full px-3 py-2 border border-teal-200 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        disabled={referencePoLoading}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadPoDetailsByNumber()}
+                      disabled={referencePoLoading || !referencePoNumber.trim()}
+                      className="px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 text-sm font-semibold whitespace-nowrap disabled:opacity-60 cursor-pointer"
+                    >
+                      {referencePoLoading ? 'Loading...' : 'Auto Fill Fields'}
+                    </button>
+                  </div>
+                  {referencePoError && (
+                    <p className="mt-2 text-xs text-red-600">{referencePoError}</p>
+                  )}
+                  {referencePoLoaded && !referencePoError && (
+                    <p className="mt-2 text-xs text-emerald-700">
+                      POD fields filled from {referencePoLoaded.poNumber}
+                    </p>
+                  )}
+                </div>
+
                 {/* PO Terms & Conditions Details — matches ERP form layout */}
                 <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
                   <div className="flex items-center gap-2 mb-5">
@@ -1897,10 +2319,38 @@ export default function CreatePOPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                       <div className="space-y-1.5">
                         <label className="block text-xs font-semibold text-gray-700">Invoicing Address</label>
+                        {(poTermsDetails.locationName || poTermsDetails.buyerGstNo || locationGstNo) && (
+                          <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-2 text-xs text-teal-900 space-y-1">
+                            {poTermsDetails.locationName && (
+                              <p>
+                                <span className="font-semibold">Location:</span> {poTermsDetails.locationName}
+                              </p>
+                            )}
+                            <p>
+                              <span className="font-semibold">GSTIN:</span>{' '}
+                              <span className="font-mono">
+                                {poTermsDetails.buyerGstNo || locationGstNo || '—'}
+                              </span>
+                            </p>
+                            {footerLogo &&
+                              (footerLogo.startsWith('data:image/') ||
+                                /^https?:\/\//i.test(footerLogo)) && (
+                                <div className="pt-1">
+                                  <p className="font-semibold mb-1">Footer (from location)</p>
+                                  <img
+                                    src={footerLogo}
+                                    alt="Location footer"
+                                    className="max-h-10 max-w-[180px] object-contain"
+                                  />
+                                </div>
+                              )}
+                          </div>
+                        )}
                         <textarea
                           value={poTermsDetails.invoicingAddress}
                           onChange={(e) => updatePoTermsField('invoicingAddress', e.target.value)}
                           rows={3}
+                          placeholder="Auto-filled from selected location + GSTIN"
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
                         />
                       </div>
@@ -1997,17 +2447,6 @@ export default function CreatePOPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">GST Rate (%)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={gstPercentage}
-                        onChange={(e) => setGstPercentage(parseFloat(e.target.value) || 0)}
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                         Expected Delivery Date <span className="text-red-500">*</span>
                       </label>
@@ -2055,70 +2494,6 @@ export default function CreatePOPage() {
                   />
                   <p className="text-xs text-gray-400 mt-1.5">{specialInstructions.length}/500 characters</p>
                 </div>
-
-                {/* Terms from Master — editable for this PO / PDF */}
-                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                  <div className="flex items-center gap-2 mb-4 flex-wrap">
-                    <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg">
-                      <i className="ri-shield-check-line text-gray-600"></i>
-                    </div>
-                    <h3 className="text-sm font-bold text-gray-900">Terms &amp; Conditions</h3>
-                    <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
-                      Default from PO Type Master
-                    </span>
-                    <button
-                      type="button"
-                      onClick={reloadClausesFromMaster}
-                      className="ml-auto text-xs font-medium text-teal-700 hover:underline cursor-pointer"
-                    >
-                      Reload from Master
-                    </button>
-                  </div>
-                  {letterheadLoading ? (
-                    <p className="text-sm text-gray-400 flex items-center gap-2">
-                      <i className="ri-loader-4-line animate-spin"></i>
-                      Loading terms...
-                    </p>
-                  ) : (
-                    <ClauseEditorList
-                      clauses={termsClauses}
-                      emptyText="No terms yet — reload from master or add clauses. Edits appear on the PO PDF."
-                      onChange={setTermsClauses}
-                    />
-                  )}
-                </div>
-
-                {/* Annexure from Master — editable for this PO / PDF */}
-                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                  <div className="flex items-center gap-2 mb-4 flex-wrap">
-                    <div className="w-8 h-8 flex items-center justify-center bg-indigo-50 rounded-lg">
-                      <i className="ri-attachment-2 text-indigo-600"></i>
-                    </div>
-                    <h3 className="text-sm font-bold text-gray-900">Annexure</h3>
-                    <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
-                      Default from PO Type Master
-                    </span>
-                    <button
-                      type="button"
-                      onClick={reloadClausesFromMaster}
-                      className="ml-auto text-xs font-medium text-teal-700 hover:underline cursor-pointer"
-                    >
-                      Reload from Master
-                    </button>
-                  </div>
-                  {letterheadLoading ? (
-                    <p className="text-sm text-gray-400 flex items-center gap-2">
-                      <i className="ri-loader-4-line animate-spin"></i>
-                      Loading annexure...
-                    </p>
-                  ) : (
-                    <ClauseEditorList
-                      clauses={annexureClauses}
-                      emptyText="No annexure yet — reload from master or add clauses. Edits appear on the PO PDF."
-                      onChange={setAnnexureClauses}
-                    />
-                  )}
-                </div>
               </div>
 
               {/* Right sidebar summary */}
@@ -2126,18 +2501,12 @@ export default function CreatePOPage() {
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                   <h3 className="text-sm font-bold text-gray-900 mb-4">Financial Summary</h3>
                   <div className="space-y-3">
-                    {discountTotal > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Discount</span>
-                        <span className="font-semibold text-emerald-600">−{fmt(discountTotal)}</span>
-                      </div>
-                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Subtotal</span>
                       <span className="font-semibold">{fmt(subtotal)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">GST ({gstPercentage}%)</span>
+                      <span className="text-gray-500">Tax (per line)</span>
                       <span className="font-semibold">{fmt(taxAmount)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-3 border-t border-gray-200">
@@ -2175,6 +2544,44 @@ export default function CreatePOPage() {
                 </button>
               </div>
             </div>
+
+            {/* Terms & Annexure — full width below the form + sidebar */}
+            {letterheadLoading ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm w-full">
+                <p className="text-sm text-gray-400 flex items-center gap-2">
+                  <i className="ri-loader-4-line animate-spin"></i>
+                  Loading terms &amp; annexure...
+                </p>
+              </div>
+            ) : (
+              <div className="w-full space-y-5">
+                <ClauseTableEditor
+                  title="Terms & Conditions"
+                  headerColumnLabel="Terms Header"
+                  descriptionColumnLabel="Terms Description"
+                  headerPlaceholder="e.g. Payment Terms"
+                  descriptionPlaceholder="Clause details (shown on PO PDF)"
+                  emptyHint="No terms yet — reload from master or add rows. Edits appear on the PO PDF."
+                  clauses={termsClauses}
+                  onChange={setTermsClauses}
+                  onReloadFromMaster={reloadClausesFromMaster}
+                  reloadDisabled={letterheadLoading}
+                />
+                <ClauseTableEditor
+                  title="Annexure"
+                  headerColumnLabel="Annexure Header"
+                  descriptionColumnLabel="Annexure Description"
+                  headerPlaceholder="e.g. Scope of Work"
+                  descriptionPlaceholder="Annexure details (shown on PO PDF)"
+                  emptyHint="No annexure yet — reload from master or add rows. Edits appear on the PO PDF."
+                  clauses={annexureClauses}
+                  onChange={setAnnexureClauses}
+                  onReloadFromMaster={reloadClausesFromMaster}
+                  reloadDisabled={letterheadLoading}
+                />
+              </div>
+            )}
+            </div>
           )}
 
           {/* ══════════════════════════════════════════
@@ -2189,14 +2596,50 @@ export default function CreatePOPage() {
                     <p className="text-xs text-gray-500">Refex letterhead format with line items, terms, and annexure</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {isEditMode && pdfPreviewUrl && (
-                      <a
-                        href={pdfPreviewUrl}
-                        download={`${poNumber || 'PO'}.pdf`}
-                        className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100"
+                    <button
+                      type="button"
+                      disabled={pdfDownloading || previewLoading || (!numericPrId && !editPoId)}
+                      onClick={async () => {
+                        try {
+                          setPdfDownloading(true);
+                          const blob =
+                            isEditMode && editPoId
+                              ? await poApi.previewPdfBlobByPoId(editPoId, buildPreviewPayload())
+                              : await poApi.previewPdfBlob(numericPrId!, buildPreviewPayload());
+                          triggerBlobDownload(
+                            blob,
+                            `${poNumber || pr?.prNumber || 'PO'}_preview.pdf`
+                          );
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : 'Could not download PDF');
+                        } finally {
+                          setPdfDownloading(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 cursor-pointer disabled:opacity-50"
+                    >
+                      <i className="ri-download-2-line mr-1"></i>
+                      {pdfDownloading ? 'Generating PDF…' : 'Download PDF'}
+                    </button>
+                    {isEditMode && editPoId && (
+                      <button
+                        type="button"
+                        disabled={pdfDownloading}
+                        onClick={async () => {
+                          try {
+                            setPdfDownloading(true);
+                            const blob = await poApi.fetchPdfBlob(editPoId);
+                            triggerBlobDownload(blob, `${poNumber || 'PO'}.pdf`);
+                          } catch (err) {
+                            alert(err instanceof Error ? err.message : 'Could not download saved PDF');
+                          } finally {
+                            setPdfDownloading(false);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 cursor-pointer disabled:opacity-50"
                       >
                         Download saved PDF
-                      </a>
+                      </button>
                     )}
                     {previewHtmlUrl && (
                       <button

@@ -432,7 +432,17 @@ export async function importItemsFromCsv(csvText) {
   return { created, updated, failed: errors.length, errors };
 }
 
-function mapEntity(row) {
+function mapEntityLocation(row) {
+  return {
+    id: row.id,
+    location: row.location || '',
+    gstNo: row.gst_no || '',
+    footerLogo: row.footer_logo || '',
+    sortOrder: Number(row.sort_order) || 0,
+  };
+}
+
+function mapEntity(row, locations = []) {
   return {
     id: row.id,
     name: row.name,
@@ -440,9 +450,41 @@ function mapEntity(row) {
     costCenter: row.cost_center || '',
     description: row.description || '',
     status: row.status === 'inactive' ? 'inactive' : 'active',
+    locations: locations.map(mapEntityLocation),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+async function getEntityLocations(entityId) {
+  const [rows] = await pool.query(
+    `SELECT * FROM entity_locations WHERE entity_id = ? ORDER BY sort_order ASC, id ASC`,
+    [entityId]
+  );
+  return rows;
+}
+
+function normalizeEntityLocations(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, idx) => ({
+      location: String(item?.location || '').trim(),
+      gstNo: String(item?.gstNo || item?.gst_no || '').trim(),
+      footerLogo: String(item?.footerLogo || item?.footer_logo || '').trim(),
+      sortOrder: idx,
+    }))
+    .filter((item) => item.location);
+}
+
+async function replaceEntityLocations(entityId, locations) {
+  await pool.query(`DELETE FROM entity_locations WHERE entity_id = ?`, [entityId]);
+  for (const loc of locations) {
+    await pool.query(
+      `INSERT INTO entity_locations (entity_id, location, gst_no, footer_logo, sort_order)
+       VALUES (?, ?, ?, ?, ?)`,
+      [entityId, loc.location, loc.gstNo || null, loc.footerLogo || null, loc.sortOrder]
+    );
+  }
 }
 
 function mapDepartment(row) {
@@ -463,8 +505,13 @@ export async function listEntities({ search, status } = {}) {
   let sql = `SELECT * FROM entity_masters WHERE 1=1`;
   const params = [];
   if (search) {
-    sql += ` AND (name LIKE ? OR IFNULL(code, '') LIKE ? OR cost_center LIKE ? OR description LIKE ?)`;
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    sql += ` AND (name LIKE ? OR IFNULL(code, '') LIKE ? OR cost_center LIKE ? OR description LIKE ?
+      OR EXISTS (
+        SELECT 1 FROM entity_locations el
+        WHERE el.entity_id = entity_masters.id
+          AND (el.location LIKE ? OR IFNULL(el.gst_no, '') LIKE ?)
+      ))`;
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (status) {
     sql += ` AND status = ?`;
@@ -472,7 +519,12 @@ export async function listEntities({ search, status } = {}) {
   }
   sql += ` ORDER BY name ASC`;
   const [rows] = await pool.query(sql, params);
-  return rows.map(mapEntity);
+  const result = [];
+  for (const row of rows) {
+    const locations = await getEntityLocations(row.id);
+    result.push(mapEntity(row, locations));
+  }
+  return result;
 }
 
 export async function createEntity(body) {
@@ -490,14 +542,18 @@ export async function createEntity(body) {
   if (!code) throw new Error('Entity code is required');
   const description = String(body.description || '').trim();
   const status = body.status === 'inactive' ? 'inactive' : 'active';
+  const locations = normalizeEntityLocations(body.locations);
 
   try {
     const [result] = await pool.query(
       `INSERT INTO entity_masters (name, code, cost_center, description, status) VALUES (?, ?, ?, ?, ?)`,
       [name, code, costCenter, description || null, status]
     );
-    const [rows] = await pool.query(`SELECT * FROM entity_masters WHERE id = ?`, [result.insertId]);
-    return mapEntity(rows[0]);
+    const entityId = result.insertId;
+    await replaceEntityLocations(entityId, locations);
+    const [rows] = await pool.query(`SELECT * FROM entity_masters WHERE id = ?`, [entityId]);
+    const savedLocations = await getEntityLocations(entityId);
+    return mapEntity(rows[0], savedLocations);
   } catch (err) {
     if (String(err.message || '').includes('Duplicate')) {
       throw new Error('Entity name or code already exists');
@@ -544,6 +600,9 @@ export async function updateEntity(id, body) {
        WHERE id = ?`,
       [name, code, costCenter, description || null, status, id]
     );
+    if (body.locations !== undefined) {
+      await replaceEntityLocations(id, normalizeEntityLocations(body.locations));
+    }
   } catch (err) {
     if (String(err.message || '').includes('Duplicate')) {
       throw new Error('Entity name or code already exists');
@@ -551,7 +610,8 @@ export async function updateEntity(id, body) {
     throw err;
   }
   const [rows] = await pool.query(`SELECT * FROM entity_masters WHERE id = ?`, [id]);
-  return mapEntity(rows[0]);
+  const locations = await getEntityLocations(id);
+  return mapEntity(rows[0], locations);
 }
 
 const ENTITY_HEADERS = ['name', 'code', 'costCenter', 'description', 'status'];

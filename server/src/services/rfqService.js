@@ -805,6 +805,11 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId 
     }
   }
 
+  const quotePrice = Number(latestQuote.quotedPrice) || 0;
+  const quotePriceLabel = quotePrice
+    ? `₹${quotePrice.toLocaleString('en-IN')}`
+    : '—';
+
   // Own vendor + Requester → HOD vendor final → L2 → CFO
   if (isOwnVendor && isRequester) {
     await pool.query(
@@ -816,6 +821,16 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId 
     if (taskId) {
       await completeRequesterTask(user, taskId);
     }
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, ?, ?, 'submitted', ?)`,
+      [
+        prId,
+        STAGE.RFQ_REQUESTER_SUBMIT,
+        user.id,
+        `RFQ submitted for Vendor Final Approval. Recommended vendor: ${recommended.vendorName} (${quotePriceLabel})`,
+      ]
+    );
     await startOwnVendorPostRfqWorkflow(prId);
     return {
       success: true,
@@ -832,6 +847,17 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId 
   if (taskId) {
     await completeRequesterTask(user, taskId);
   }
+
+  // SCM Buyer vendor selection / final RFQ — always record in approval history
+  const selectionRemarks = isOwnVendor
+    ? `SCM Buyer Final RFQ — vendor selected: ${recommended.vendorName} (${quotePriceLabel}). Sent to Create PO.`
+    : `SCM Buyer Vendor Selection — recommended vendor: ${recommended.vendorName} (${quotePriceLabel}). Sent to SCM Manager Vendor Approval.`;
+
+  await pool.query(
+    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+     VALUES (?, ?, ?, 'approved', ?)`,
+    [prId, STAGE.RFQ_SCM_BUYER_SELECTION, user.id, selectionRemarks]
+  );
 
   if (isOwnVendor && isScmBuyer) {
     // Own: after CFO → SCM final RFQ → Create PO (no SCM Manager vendor step)
@@ -1557,6 +1583,25 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       approvalRemarks = `${approvalRemarks}\n[Go to Business/CFO Approval: ${
         goToBusinessApproval ? 'Yes — L2 → CFO → SCM Final' : 'No — L2 → SCM Final (skip CFO)'
       }]`;
+    }
+
+    // Append recommended vendor on vendor-final / SCM Manager vendor approval steps
+    if (action === 'approve') {
+      try {
+        const cfg = await getOrCreateRfqConfig(prId);
+        if (cfg.recommendedInvitationId) {
+          const [vendRows] = await conn.query(
+            `SELECT vendor_name FROM rfq_invitations WHERE id = ? LIMIT 1`,
+            [cfg.recommendedInvitationId]
+          );
+          const vName = vendRows[0]?.vendor_name;
+          if (vName) {
+            approvalRemarks = `${approvalRemarks}\nRecommended vendor: ${vName}`;
+          }
+        }
+      } catch {
+        /* non-blocking */
+      }
     }
 
     await conn.query(

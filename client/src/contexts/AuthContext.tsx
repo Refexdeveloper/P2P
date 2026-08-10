@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { ensureNavigation } from '../constants/roleNavigation';
 import { authApi, AuthUser, NavItem } from '../services/api';
-import { goToRefexOne } from '../utils/refexOneUrl';
+// TEMP: RefexOne redirect disabled — uncomment when ready
+// import { goToRefexOne } from '../utils/refexOneUrl';
 
 export type UserRole =
   | 'Requester'
@@ -88,6 +89,7 @@ export function resolvePostLoginPath(
     !pathname ||
     pathname === '/' ||
     pathname === '/login' ||
+    pathname === '/admin/login' ||
     pathname === '/home' ||
     pathname.startsWith('/auth/')
   ) {
@@ -283,8 +285,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
-    // Back to RefexOne — open P2P again from My Apps when already signed in there
-    goToRefexOne();
+    // TEMP: RefexOne redirect disabled — uncomment when ready
+    // goToRefexOne();
+    window.location.replace('/login');
   };
 
   return (

@@ -490,6 +490,142 @@ export default function VendorComparisonPage() {
               </div>
             </div>
 
+            {/* Price Negotiation Trend — Round 1 / Round 2 price + file */}
+            {(() => {
+              const vendorsWithRounds = vendorComparisonData.vendors.filter(
+                (v) => v.quoteRounds && v.quoteRounds.length > 0
+              );
+              const maxRounds = Math.max(
+                ...vendorsWithRounds.map((v) => v.quoteRounds?.length || 0),
+                1
+              );
+              if (!vendorsWithRounds.length) return null;
+              return (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+                  <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+                    <i className="ri-line-chart-line text-teal-600"></i>
+                    <p className="text-sm font-semibold text-gray-900">Price Negotiation Trend</p>
+                    <span className="text-xs text-gray-400 ml-1">— how prices changed across rounds</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50">
+                          <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[200px]">
+                            Vendor
+                          </th>
+                          {Array.from({ length: maxRounds }, (_, i) => (
+                            <th
+                              key={i}
+                              className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[160px]"
+                            >
+                              Quotation Round {i + 1}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {vendorsWithRounds.map((vendor) => {
+                          const rounds = vendor.quoteRounds || [];
+                          const last = rounds[rounds.length - 1];
+                          return (
+                            <tr key={vendor.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-5 py-4 align-top">
+                                <p className="text-sm font-semibold text-gray-900">{vendor.name}</p>
+                                {vendor.id === vendorComparisonData.recommendedVendorId && (
+                                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
+                                    <i className="ri-star-fill text-xs"></i> Recommended
+                                  </span>
+                                )}
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {rounds.length} round{rounds.length !== 1 ? 's' : ''}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  Last quotation: {last?.quotedPrice ? formatCurrency(last.quotedPrice) : '—'}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[180px]" title={last?.quotationFile}>
+                                  Last file: {last?.quotationFile || '—'}
+                                </p>
+                              </td>
+                              {Array.from({ length: maxRounds }, (_, i) => {
+                                const round = rounds[i];
+                                if (!round) {
+                                  return (
+                                    <td key={i} className="px-4 py-4 text-center text-gray-300 text-sm align-top">
+                                      —
+                                    </td>
+                                  );
+                                }
+                                const prev = rounds[i - 1];
+                                const change = prev ? round.quotedPrice - prev.quotedPrice : 0;
+                                const changePct = prev?.quotedPrice
+                                  ? ((change / prev.quotedPrice) * 100).toFixed(1)
+                                  : null;
+                                const isLast = i === rounds.length - 1;
+                                const fileMeta = vendor.quotationFiles?.find((f) => f.fileName === round.quotationFile);
+                                return (
+                                  <td key={i} className={`px-4 py-4 text-center align-top ${isLast ? 'bg-teal-50/60' : ''}`}>
+                                    <div className="inline-flex flex-col items-center gap-1.5 min-w-[120px]">
+                                      <div>
+                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Price</p>
+                                        <p className={`text-sm font-bold ${isLast ? 'text-teal-700' : 'text-gray-900'}`}>
+                                          {formatCurrency(round.quotedPrice)}
+                                        </p>
+                                        {changePct !== null && (
+                                          <p className={`text-xs font-semibold mt-0.5 ${change < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                            {change < 0 ? '▼' : '▲'} {Math.abs(Number(changePct))}%
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="w-full pt-1.5 border-t border-gray-100">
+                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">File</p>
+                                        {round.quotationFile ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (fileMeta) {
+                                                setPreviewFile({ file: fileMeta, vendorName: vendor.name });
+                                              } else {
+                                                setPreviewFile({
+                                                  file: {
+                                                    id: `${vendor.id}-r${round.round}`,
+                                                    fileName: round.quotationFile!,
+                                                    fileType: 'pdf',
+                                                    fileSize: '—',
+                                                    uploadedBy: 'Vendor Portal',
+                                                    uploadedAt: round.submittedDate,
+                                                  },
+                                                  vendorName: vendor.name,
+                                                });
+                                              }
+                                            }}
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 hover:bg-red-100 max-w-[150px] cursor-pointer"
+                                            title={round.quotationFile}
+                                          >
+                                            <i className="ri-file-pdf-2-line text-red-500 text-sm flex-shrink-0"></i>
+                                            <span className="text-xs font-medium text-teal-700 truncate">
+                                              {round.quotationFile}
+                                            </span>
+                                            <i className="ri-eye-line text-teal-600 text-xs flex-shrink-0"></i>
+                                          </button>
+                                        ) : (
+                                          <span className="text-xs text-gray-300">—</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Comparison Table */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
               <div className="overflow-x-auto">

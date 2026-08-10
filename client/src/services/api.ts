@@ -15,6 +15,36 @@ function getToken(): string | null {
   return localStorage.getItem('p2p_token');
 }
 
+/** Ensure blob is a real PDF (rejects HTML mistakenly saved as .pdf). */
+function asPdfBlob(buffer: ArrayBuffer): Blob {
+  const bytes = new Uint8Array(buffer);
+  const header = String.fromCharCode(bytes[0] || 0, bytes[1] || 0, bytes[2] || 0, bytes[3] || 0, bytes[4] || 0);
+  if (!header.startsWith('%PDF')) {
+    const text = new TextDecoder().decode(bytes.slice(0, 300));
+    let message = 'Downloaded file is not a valid PDF';
+    try {
+      message = (JSON.parse(text) as { message?: string }).message || message;
+    } catch {
+      if (/<html|<!doctype/i.test(text)) {
+        message = 'Server returned HTML instead of PDF. Try Download PDF again after server restart.';
+      }
+    }
+    throw new ApiError(400, message);
+  }
+  return new Blob([buffer], { type: 'application/pdf' });
+}
+
+export function triggerBlobDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function downloadCsvFile(path: string, fallbackName: string) {
   const token = getToken();
   const res = await fetch(`${API_URL}${path}`, {
@@ -472,15 +502,8 @@ export const poApi = {
   get: (poId: number) => request<{ data: Record<string, unknown> }>(`/api/po/${poId}`),
   getPdfUrl: (poId: number) => `${PO_API_URL}/api/po/${poId}/pdf`,
   downloadPdf: async (poId: number) => {
-    const token = getToken();
-    const res = await fetch(`${PO_API_URL}/api/po/${poId}/pdf`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new ApiError(res.status, text.slice(0, 200) || 'Could not download PDF');
-    }
-    return res.blob();
+    const blob = await poApi.fetchPdfBlob(poId);
+    return blob;
   },
   getDocumentUrl: (poId: number) => `${PO_API_URL}/api/po/${poId}/document`,
   previewDocumentHtml: async (prId: number, body: Record<string, unknown>) => {
@@ -515,6 +538,38 @@ export const poApi = {
     }
     return res.text();
   },
+  previewPdfBlob: async (prId: number, body: Record<string, unknown>) => {
+    const token = getToken();
+    const res = await fetch(`${PO_API_URL}/api/po/pr/${prId}/preview-pdf`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ApiError(res.status, text.slice(0, 200) || 'Could not generate preview PDF');
+    }
+    return asPdfBlob(await res.arrayBuffer());
+  },
+  previewPdfBlobByPoId: async (poId: number, body: Record<string, unknown>) => {
+    const token = getToken();
+    const res = await fetch(`${PO_API_URL}/api/po/${poId}/preview-pdf`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ApiError(res.status, text.slice(0, 200) || 'Could not generate preview PDF');
+    }
+    return asPdfBlob(await res.arrayBuffer());
+  },
   fetchPdfBlob: async (poId: number) => {
     const token = getToken();
     const res = await fetch(`${PO_API_URL}/api/po/${poId}/pdf`, {
@@ -524,7 +579,7 @@ export const poApi = {
       const text = await res.text();
       throw new ApiError(res.status, text.slice(0, 200) || 'Could not load PDF');
     }
-    return res.blob();
+    return asPdfBlob(await res.arrayBuffer());
   },
   sign: (
     poId: number,
@@ -624,12 +679,23 @@ export interface PoLetterheadConfig {
   updatedAt?: string;
 }
 
+export interface LetterheadLocationRecord {
+  id?: number;
+  location: string;
+  gstNo: string;
+  footerLogo: string;
+  sortOrder?: number;
+}
+
 export interface LetterheadBranding {
   id?: number;
   name?: string;
   entity: string;
+  location?: string;
+  gstNo?: string;
   headerLogo: string;
   footerLogo: string;
+  locations?: LetterheadLocationRecord[];
   status?: 'active' | 'inactive';
   updatedAt?: string | null;
   createdAt?: string | null;
@@ -639,8 +705,11 @@ export interface LetterheadMasterRecord {
   id: number;
   name: string;
   entity: string;
+  location: string;
+  gstNo: string;
   headerLogo: string;
   footerLogo: string;
+  locations?: LetterheadLocationRecord[];
   status: 'active' | 'inactive';
   updatedAt?: string | null;
   createdAt?: string | null;
@@ -798,6 +867,14 @@ export interface CategoryRecord {
   status: string;
 }
 
+export interface EntityLocationRecord {
+  id?: number;
+  location: string;
+  gstNo: string;
+  footerLogo: string;
+  sortOrder?: number;
+}
+
 export interface EntityRecord {
   id: number;
   name: string;
@@ -805,6 +882,7 @@ export interface EntityRecord {
   costCenter: string;
   description: string;
   status: string;
+  locations?: EntityLocationRecord[];
 }
 
 export interface DepartmentRecord {

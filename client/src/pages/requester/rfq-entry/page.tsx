@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import RfqListExpandedRow from '../../../components/feature/RfqListExpandedRow';
 import { taskApi } from '../../../services/api';
 
 interface RequesterTask {
@@ -26,6 +27,7 @@ export default function RequesterRfqTaskListPage() {
   const [tasks, setTasks] = useState<RequesterTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [expandedPrId, setExpandedPrId] = useState<number | null>(null);
 
   const loadTasks = useCallback(async () => {
     const res = await taskApi.listRequester();
@@ -43,7 +45,9 @@ export default function RequesterRfqTaskListPage() {
     <DashboardLayout>
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900">RFQ Entry Tasks</h1>
-        <p className="text-sm text-gray-500 mt-1">Select a PR to invite vendors and collect quotations</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Select a PR to invite vendors and collect quotations — expand a row for full PR details
+        </p>
       </div>
 
       {error && (
@@ -73,6 +77,7 @@ export default function RequesterRfqTaskListPage() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-3 py-3 w-10"></th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">PR Number</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Title</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Department</th>
@@ -83,25 +88,56 @@ export default function RequesterRfqTaskListPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {tasks.map((task) => (
-                  <tr key={task.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-5 py-4 text-sm font-semibold text-teal-700">{task.prNumber}</td>
-                    <td className="px-5 py-4 text-sm text-gray-900">{task.title}</td>
-                    <td className="px-5 py-4 text-sm text-gray-600">{task.department}</td>
-                    <td className="px-5 py-4 text-sm font-medium text-gray-900">{formatCurrency(task.totalAmount)}</td>
-                    <td className="px-5 py-4 text-sm text-gray-600">{task.requestType}</td>
-                    <td className="px-5 py-4 text-sm text-gray-500">{task.dueDate || '—'}</td>
-                    <td className="px-5 py-4 text-right">
-                      <Link
-                        to={`/requester/rfq-entry/${task.prId}?taskId=${task.taskId}`}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
-                      >
-                        <i className="ri-pencil-line"></i>
-                        Open RFQ Entry
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                {tasks.map((task) => {
+                  const open = expandedPrId === task.prId;
+                  return (
+                    <Fragment key={task.id}>
+                      <tr className="hover:bg-gray-50 transition-colors">
+                        <td className="px-3 py-4">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedPrId(open ? null : task.prId)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 cursor-pointer"
+                            aria-expanded={open}
+                            title={open ? 'Collapse details' : 'Expand full details'}
+                          >
+                            <i className={`ri-arrow-${open ? 'down' : 'right'}-s-line text-lg`}></i>
+                          </button>
+                        </td>
+                        <td className="px-5 py-4 text-sm font-semibold text-teal-700">{task.prNumber}</td>
+                        <td className="px-5 py-4 text-sm text-gray-900">{task.title}</td>
+                        <td className="px-5 py-4 text-sm text-gray-600">{task.department}</td>
+                        <td className="px-5 py-4 text-sm font-medium text-gray-900">{formatCurrency(task.totalAmount)}</td>
+                        <td className="px-5 py-4 text-sm text-gray-600">{task.requestType}</td>
+                        <td className="px-5 py-4 text-sm text-gray-500">{task.dueDate || '—'}</td>
+                        <td className="px-5 py-4 text-right">
+                          <Link
+                            to={`/requester/rfq-entry/${task.prId}?taskId=${task.taskId}`}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
+                          >
+                            <i className="ri-pencil-line"></i>
+                            Open RFQ Entry
+                          </Link>
+                        </td>
+                      </tr>
+                      {open && (
+                        <RfqListExpandedRow
+                          prId={task.prId}
+                          colSpan={8}
+                          statusLabel="RFQ Entry"
+                          actionSlot={
+                            <Link
+                              to={`/requester/rfq-entry/${task.prId}?taskId=${task.taskId}`}
+                              className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold"
+                            >
+                              Open RFQ Entry
+                            </Link>
+                          }
+                        />
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

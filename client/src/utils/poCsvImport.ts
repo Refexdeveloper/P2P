@@ -23,6 +23,7 @@ export const PO_CSV_HEADERS = [
   'description',
   'quantity',
   'unitPrice',
+  'taxPercentage',
   'discount',
   'category',
   'unit',
@@ -55,9 +56,8 @@ export type PoCsvImportPayload = {
     description: string;
     quantity: number;
     unitPrice: number;
-    discount: number;
+    taxPercentage: number;
     total: number;
-    category: string;
     unit?: string;
   }>;
 };
@@ -85,6 +85,7 @@ export const PO_CSV_COLUMN_LABELS: Record<PoCsvHeaderKey, string> = {
   description: 'Item Description',
   quantity: 'Quantity',
   unitPrice: 'Unit Price',
+  taxPercentage: 'Tax %',
   discount: 'Discount Amt',
   category: 'Category',
   unit: 'Unit',
@@ -115,6 +116,7 @@ export const PO_CSV_SAMPLE_ROWS: Array<Record<PoCsvHeaderKey, string>> = [
     description: 'Business laptop with 16GB RAM',
     quantity: '2',
     unitPrice: '55000',
+    taxPercentage: '18',
     discount: '0',
     category: 'IT',
     unit: 'Nos',
@@ -143,7 +145,8 @@ export const PO_CSV_SAMPLE_ROWS: Array<Record<PoCsvHeaderKey, string>> = [
     description: 'USB optical mouse',
     quantity: '2',
     unitPrice: '800',
-    discount: '80',
+    taxPercentage: '12',
+    discount: '0',
     category: 'IT',
     unit: 'Nos',
     skipApproval: '',
@@ -244,6 +247,10 @@ const HEADER_ALIASES: Record<string, ParsedKey> = {
   unitprice: 'unitPrice',
   price: 'unitPrice',
   rate: 'unitPrice',
+  taxpercentage: 'taxPercentage',
+  taxpercent: 'taxPercentage',
+  tax: 'taxPercentage',
+  gstline: 'taxPercentage',
   discount: 'discount',
   disc: 'discount',
   discountpercent: 'discount',
@@ -366,7 +373,8 @@ function buildPayloadFromRows(groupRows: Record<string, string>[], gi = 0): PoCs
       const quantity = Math.max(0, Number(r.quantity) || 0);
       const unitPrice = Math.max(0, Number(r.unitPrice) || 0);
       const gross = quantity * unitPrice;
-      const discount = Math.min(gross, Math.max(0, Number(r.discount) || 0));
+      const taxRaw = r.taxPercentage || r.gstPercentage || firstWith(groupRows, 'gstPercentage') || '18';
+      const taxPercentage = Math.min(100, Math.max(0, Number(taxRaw) || 18));
       const itemName = String(r.itemName || r.description || '').trim();
       const description = String(r.description || r.itemName || '').trim();
       return {
@@ -375,9 +383,8 @@ function buildPayloadFromRows(groupRows: Record<string, string>[], gi = 0): PoCs
         description,
         quantity,
         unitPrice,
-        discount,
-        total: Math.round((gross - discount) * 100) / 100,
-        category: r.category || '',
+        taxPercentage,
+        total: Math.round(gross * 100) / 100,
         unit: r.unit || '',
       };
     });

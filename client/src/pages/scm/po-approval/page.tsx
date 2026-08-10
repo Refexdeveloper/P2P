@@ -2,6 +2,9 @@
 import { useState, useMemo, useEffect, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import ApprovalHistoryPanel, {
+  ManagerL2CommentsHighlight,
+} from '../../../components/feature/ApprovalHistoryPanel';
 import POApprovalModal from './components/POApprovalModal';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
 import { poApi, rfqApi, VendorComparisonData } from '../../../services/api';
@@ -224,7 +227,7 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                       <i className="ri-file-list-3-line text-teal-500"></i> Purchase Request Details
                     </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                       <div>
                         <p className="text-xs text-gray-500 mb-0.5">Title</p>
                         <p className="text-sm font-medium text-gray-900">{po.prTitle}</p>
@@ -238,6 +241,7 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
                         <p className="text-sm font-medium text-gray-900">{po.requester}</p>
                       </div>
                     </div>
+                    <ManagerL2CommentsHighlight history={po.approvalHistory} />
                   </div>
 
                   {/* Vendor Info */}
@@ -398,50 +402,9 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
             )}
 
             {activeTab === 'history' && (
-              <div className="space-y-0">
-                {po.approvalHistory.length === 0 ? (
-                  <p className="text-sm text-gray-500 italic py-4">No approval history available.</p>
-                ) : (
-                  po.approvalHistory.map((item, idx) => (
-                  <div key={`${item.stage}-${item.date}-${idx}`} className="flex gap-4 pb-6 relative">
-                    {idx !== po.approvalHistory.length - 1 && (
-                      <div className="absolute left-4 top-10 w-0.5 h-full bg-gray-200"></div>
-                    )}
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${
-                      item.action === 'Approved' || item.action === 'Created' || item.action === 'Submitted' ? 'bg-emerald-100' :
-                      item.action === 'Rejected' ? 'bg-red-100' : 'bg-amber-100'
-                    }`}>
-                      <i className={`text-sm ${
-                        item.action === 'Approved' ? 'ri-check-line text-emerald-600' :
-                        item.action === 'Created' ? 'ri-file-add-line text-emerald-600' :
-                        item.action === 'Submitted' ? 'ri-send-plane-line text-emerald-600' :
-                        item.action === 'Rejected' ? 'ri-close-line text-red-600' :
-                        'ri-time-line text-amber-600'
-                      }`}></i>
-                    </div>
-                    <div className="flex-1 bg-gray-50 rounded-lg p-4 border border-gray-100">
-                      <div className="flex items-start justify-between gap-3 mb-1">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{item.stage}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">{item.approver} · {item.role}</p>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap ${
-                          item.action === 'Approved' || item.action === 'Created' || item.action === 'Submitted' ? 'bg-emerald-100 text-emerald-700' :
-                          item.action === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {item.action}
-                        </span>
-                      </div>
-                      {item.remarks && (
-                        <p className="text-sm text-gray-700 mt-2 leading-relaxed">{item.remarks}</p>
-                      )}
-                      <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                        <i className="ri-calendar-line"></i>{item.date}
-                      </p>
-                    </div>
-                  </div>
-                  ))
-                )}
+              <div className="space-y-4">
+                <ManagerL2CommentsHighlight history={po.approvalHistory} />
+                <ApprovalHistoryPanel history={po.approvalHistory} />
               </div>
             )}
           </div>

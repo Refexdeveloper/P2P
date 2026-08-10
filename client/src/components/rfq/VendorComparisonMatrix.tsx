@@ -161,54 +161,140 @@ export default function VendorComparisonMatrix({
         {matrixTable}
       </div>
 
-      {vendors.some((v) => v.rounds.length > 0) && (
-        <div className={compact ? 'bg-white' : 'bg-white rounded-xl border border-gray-200 p-6'}>
-          <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <i className="ri-history-line text-teal-600"></i>
-            {showFullNegotiation ? 'Quotation Rounds & Negotiation History' : 'Vendor Quotation Files'}
-          </h3>
-          <div className="space-y-4">
-            {vendors.map((vendor) =>
-              vendor.rounds.length > 0 ? (
-                <div key={vendor.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 px-4 py-2 font-semibold text-sm text-gray-800 flex items-center justify-between gap-2">
-                    <span className="truncate min-w-0" title={vendor.name}>{vendor.name}</span>
-                    {vendor.isRecommended && (
-                      <span className="text-xs text-emerald-600 font-medium flex-shrink-0">Recommended</span>
-                    )}
-                  </div>
-                  <div className="divide-y divide-gray-100">
-                    {vendor.rounds.map((round) => (
-                      <div key={round.submissionId} className="px-4 py-3 flex flex-wrap items-center gap-3 text-sm">
-                        <span className="font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded">
-                          Round {round.round}
-                        </span>
-                        <span className="text-gray-600">{round.submittedAt}</span>
-                        <span className="font-medium text-gray-900">
-                          ₹{Number(round.values.quotedPrice || 0).toLocaleString('en-IN')}
-                        </span>
-                        {round.values.leadTime != null && (
-                          <span className="text-gray-600">{String(round.values.leadTime)} days lead</span>
-                        )}
-                        {round.quotationFileName && onPreviewFile && (
-                          <button
-                            type="button"
-                            onClick={() => onPreviewFile(round.submissionId, vendor.name, round.quotationFileName)}
-                            className="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-xs font-semibold cursor-pointer"
-                          >
-                            <i className="ri-eye-line"></i>
-                            Preview
-                          </button>
-                        )}
-                      </div>
+      {vendors.some((v) => v.rounds.length > 0) && (() => {
+        const vendorsWithRounds = vendors.filter((v) => v.rounds.length > 0);
+        const maxRounds = Math.max(...vendorsWithRounds.map((v) => v.rounds.length), 1);
+        return (
+          <div className={compact ? 'bg-white border border-gray-200 rounded-xl overflow-hidden' : 'bg-white rounded-xl border border-gray-200 overflow-hidden'}>
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+              <i className="ri-line-chart-line text-teal-600"></i>
+              <p className="text-sm font-semibold text-gray-900">
+                {showFullNegotiation ? 'Price Negotiation Trend' : 'Vendor Quotation Files'}
+              </p>
+              {showFullNegotiation && (
+                <span className="text-xs text-gray-400 ml-1">— how prices changed across rounds</span>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[200px]">
+                      Vendor
+                    </th>
+                    {Array.from({ length: maxRounds }, (_, i) => (
+                      <th
+                        key={i}
+                        className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[160px]"
+                      >
+                        Quotation Round {i + 1}
+                      </th>
                     ))}
-                  </div>
-                </div>
-              ) : null
-            )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {vendorsWithRounds.map((vendor) => {
+                    const rounds = [...vendor.rounds].sort((a, b) => a.round - b.round);
+                    const last = rounds[rounds.length - 1];
+                    const lastPrice = Number(last?.values?.quotedPrice || 0);
+                    return (
+                      <tr key={vendor.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-5 py-4 align-top">
+                          <div className="flex items-start gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900">{vendor.name}</p>
+                              {vendor.isRecommended && (
+                                <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
+                                  <i className="ri-star-fill text-xs"></i> Recommended
+                                </span>
+                              )}
+                              <p className="text-xs text-gray-400 mt-1">
+                                {rounds.length} round{rounds.length !== 1 ? 's' : ''}
+                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                Last quotation: {lastPrice ? formatCurrency(lastPrice) : '—'}
+                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[180px]" title={last?.quotationFileName || undefined}>
+                                Last file: {last?.quotationFileName || '—'}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        {Array.from({ length: maxRounds }, (_, i) => {
+                          const round = rounds[i];
+                          if (!round) {
+                            return (
+                              <td key={i} className="px-4 py-4 text-center text-gray-300 text-sm align-top">
+                                —
+                              </td>
+                            );
+                          }
+                          const price = Number(round.values?.quotedPrice || 0);
+                          const prev = rounds[i - 1];
+                          const prevPrice = prev ? Number(prev.values?.quotedPrice || 0) : 0;
+                          const change = prev && prevPrice ? price - prevPrice : 0;
+                          const changePct = prev && prevPrice ? ((change / prevPrice) * 100).toFixed(1) : null;
+                          const isLast = i === rounds.length - 1;
+                          return (
+                            <td key={i} className={`px-4 py-4 text-center align-top ${isLast ? 'bg-teal-50/60' : ''}`}>
+                              <div className="inline-flex flex-col items-center gap-1.5 min-w-[120px]">
+                                <div>
+                                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Price</p>
+                                  <p className={`text-sm font-bold ${isLast ? 'text-teal-700' : 'text-gray-900'}`}>
+                                    {price ? formatCurrency(price) : '—'}
+                                  </p>
+                                  {changePct !== null && (
+                                    <p className={`text-xs font-semibold mt-0.5 ${change < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                      {change < 0 ? '▼' : '▲'} {Math.abs(Number(changePct))}%
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="w-full pt-1.5 border-t border-gray-100">
+                                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">File</p>
+                                  {round.quotationFileName ? (
+                                    onPreviewFile ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onPreviewFile(round.submissionId, vendor.name, round.quotationFileName)
+                                        }
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 hover:bg-red-100 max-w-[150px] cursor-pointer"
+                                        title={round.quotationFileName}
+                                      >
+                                        <i className="ri-file-pdf-2-line text-red-500 text-sm flex-shrink-0"></i>
+                                        <span className="text-xs font-medium text-teal-700 truncate">
+                                          {round.quotationFileName}
+                                        </span>
+                                        <i className="ri-eye-line text-teal-600 text-xs flex-shrink-0"></i>
+                                      </button>
+                                    ) : (
+                                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 max-w-[150px]">
+                                        <i className="ri-file-pdf-2-line text-red-500 text-sm flex-shrink-0"></i>
+                                        <span className="text-xs font-medium text-gray-700 truncate" title={round.quotationFileName}>
+                                          {round.quotationFileName}
+                                        </span>
+                                      </div>
+                                    )
+                                  ) : (
+                                    <span className="text-xs text-gray-300">—</span>
+                                  )}
+                                </div>
+                                {round.submittedAt && (
+                                  <p className="text-[10px] text-gray-400 mt-0.5">{round.submittedAt}</p>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

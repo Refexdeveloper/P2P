@@ -102,12 +102,19 @@ export async function saveLetterhead(poTypeInput, payload) {
 
     await conn.query(`DELETE FROM po_letterhead_clauses WHERE master_id = ?`, [master.id]);
 
+    const plainText = (value) =>
+      String(value || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
     const insertClause = async (sectionType, items) => {
       for (let i = 0; i < items.length; i += 1) {
         const item = items[i];
         const header = (item.termsHeader || '').trim();
         const description = item.termsDescription || '';
-        if (!header && !description.trim()) continue;
+        if (!plainText(header) && !plainText(description)) continue;
 
         await conn.query(
           `INSERT INTO po_letterhead_clauses (master_id, section_type, sort_order, terms_header, terms_description)
@@ -138,8 +145,16 @@ export async function seedLetterheadDefaults() {
      JOIN po_letterhead_masters m ON m.id = c.master_id
      WHERE m.po_type = 'short_po'`
   );
+  const headerPlain = (value) =>
+    String(value || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
   const hasShortParties = shortClauses.some(
-    (c) => c.section_type === 'annexure' && String(c.terms_header || '').toLowerCase() === 'parties'
+    (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'parties'
   );
   if (!shortClauses.length || !hasShortParties) {
     await saveLetterhead('short_po', SHORT_PO_LETTERHEAD_DEFAULTS);
@@ -153,7 +168,7 @@ export async function seedLetterheadDefaults() {
      WHERE m.po_type = 'long_po'`
   );
   const hasLongPacking = longClauses.some(
-    (c) => c.section_type === 'annexure' && String(c.terms_header || '').toLowerCase() === 'packing'
+    (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'packing'
   );
   if (!longClauses.length || !hasLongPacking) {
     await saveLetterhead('long_po', LONG_PO_LETTERHEAD_DEFAULTS);

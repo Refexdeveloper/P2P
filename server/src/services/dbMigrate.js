@@ -44,6 +44,8 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_orders ADD COLUMN entity VARCHAR(255) NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN header_logo LONGTEXT NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN footer_logo LONGTEXT NULL`,
+  `ALTER TABLE po_letterhead_clauses MODIFY COLUMN terms_header TEXT NOT NULL`,
+  `ALTER TABLE po_line_items ADD COLUMN tax_percentage DECIMAL(6, 2) NOT NULL DEFAULT 18`,
   `CREATE TABLE IF NOT EXISTS letterhead_branding (
     id INT PRIMARY KEY,
     entity VARCHAR(255) NULL,
@@ -110,6 +112,34 @@ const MIGRATIONS = [
   `ALTER TABLE departments ADD COLUMN status ENUM('active', 'inactive') NOT NULL DEFAULT 'active'`,
   `ALTER TABLE departments ADD COLUMN updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`,
   `ALTER TABLE entity_masters ADD COLUMN code VARCHAR(20) NULL`,
+  `CREATE TABLE IF NOT EXISTS entity_locations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    entity_id INT NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    gst_no VARCHAR(50) NULL,
+    footer_logo LONGTEXT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_entity_loc_entity (entity_id),
+    CONSTRAINT fk_entity_locations_entity
+      FOREIGN KEY (entity_id) REFERENCES entity_masters(id) ON DELETE CASCADE
+  )`,
+  `ALTER TABLE letterhead_masters ADD COLUMN location VARCHAR(255) NULL`,
+  `ALTER TABLE letterhead_masters ADD COLUMN gst_no VARCHAR(50) NULL`,
+  `CREATE TABLE IF NOT EXISTS letterhead_locations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    letterhead_id INT NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    gst_no VARCHAR(50) NULL,
+    footer_logo LONGTEXT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_lh_loc_letterhead (letterhead_id),
+    CONSTRAINT fk_letterhead_locations_master
+      FOREIGN KEY (letterhead_id) REFERENCES letterhead_masters(id) ON DELETE CASCADE
+  )`,
   `ALTER TABLE purchase_requests ADD COLUMN entity_id INT NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN entity_id INT NULL`,
   `ALTER TABLE purchase_requests MODIFY COLUMN pr_number VARCHAR(40) NOT NULL`,

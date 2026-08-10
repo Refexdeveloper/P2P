@@ -231,6 +231,7 @@ CREATE TABLE IF NOT EXISTS po_line_items (
   quantity INT NOT NULL DEFAULT 1,
   unit_price DECIMAL(15, 2) NOT NULL DEFAULT 0,
   discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  tax_percentage DECIMAL(6, 2) NOT NULL DEFAULT 18,
   total DECIMAL(15, 2) NOT NULL DEFAULT 0,
   FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
   INDEX idx_po_line_po (po_id)
@@ -306,7 +307,7 @@ CREATE TABLE IF NOT EXISTS po_letterhead_clauses (
   master_id INT NOT NULL,
   section_type ENUM('terms', 'annexure') NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
-  terms_header VARCHAR(255) NOT NULL,
+  terms_header TEXT NOT NULL,
   terms_description LONGTEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -327,6 +328,8 @@ CREATE TABLE IF NOT EXISTS letterhead_masters (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(200) NOT NULL,
   entity VARCHAR(255) NULL,
+  location VARCHAR(255) NULL,
+  gst_no VARCHAR(50) NULL,
   header_logo LONGTEXT NULL,
   footer_logo LONGTEXT NULL,
   status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
@@ -334,6 +337,20 @@ CREATE TABLE IF NOT EXISTS letterhead_masters (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_letterhead_status (status),
   INDEX idx_letterhead_name (name)
+);
+
+CREATE TABLE IF NOT EXISTS letterhead_locations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  letterhead_id INT NOT NULL,
+  location VARCHAR(255) NOT NULL,
+  gst_no VARCHAR(50) NULL,
+  footer_logo LONGTEXT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_lh_loc_letterhead (letterhead_id),
+  CONSTRAINT fk_letterhead_locations_master
+    FOREIGN KEY (letterhead_id) REFERENCES letterhead_masters(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS entity_masters (
@@ -348,6 +365,20 @@ CREATE TABLE IF NOT EXISTS entity_masters (
   INDEX idx_entity_status (status),
   INDEX idx_entity_cost_center (cost_center),
   INDEX idx_entity_code (code)
+);
+
+CREATE TABLE IF NOT EXISTS entity_locations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  entity_id INT NOT NULL,
+  location VARCHAR(255) NOT NULL,
+  gst_no VARCHAR(50) NULL,
+  footer_logo LONGTEXT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_entity_loc_entity (entity_id),
+  CONSTRAINT fk_entity_locations_entity
+    FOREIGN KEY (entity_id) REFERENCES entity_masters(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS vendor_documents (

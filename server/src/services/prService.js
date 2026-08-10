@@ -29,6 +29,34 @@ async function getLineItems(prId) {
   return rows;
 }
 
+function formatPrApprovalStage(stage) {
+  const labels = {
+    SUBMITTED: 'PR Submitted',
+    HOD_REVIEW: 'HOD / Manager Approval',
+    PR_MANAGER_REVIEW: 'L2 Manager Approval',
+    CFO_REVIEW: 'CFO Approval',
+    RFQ_REQUESTER_SUBMIT: 'RFQ Submitted — Vendor Final',
+    RFQ_MANAGER_REVIEW: 'Vendor Final Approval (Manager)',
+    RFQ_L2_REVIEW: 'Vendor Final — L2 Manager',
+    RFQ_CFO_REVIEW: 'Vendor Final — CFO Approval',
+    RFQ_SCM_BUYER_SELECTION: 'SCM Buyer Vendor Selection',
+    BUSINESS_REVIEW: 'SCM Manager Vendor Approval',
+    SCM_PO_CREATE: 'SCM Buyer Create PO',
+    PO_CREATED: 'PO Created',
+    PO_SIGNED: 'SCM Manager Sign',
+    PO_BUYER_VERIFIED: 'SCM Buyer Final Verify',
+    PO_BUYER_REJECTED: 'SCM Buyer Final Verify',
+    PO_REJECTED: 'SCM Manager Approval',
+    PO_UPDATED: 'PO Updated',
+  };
+  return (
+    labels[stage] ||
+    String(stage || '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
 async function getApprovalHistory(prId) {
   const [rows] = await pool.query(
     `SELECT pa.*, u.name AS approver_name, u.role AS approver_role
@@ -38,14 +66,51 @@ async function getApprovalHistory(prId) {
      ORDER BY pa.created_at ASC`,
     [prId]
   );
-  return rows.map((r) => ({
-    stage: r.stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+  const history = rows.map((r) => ({
+    stage: formatPrApprovalStage(r.stage),
     user: r.approver_name || 'System',
-    role: r.approver_role || r.stage,
+    role: r.approver_role || formatPrApprovalStage(r.stage),
     date: formatDateTime(r.created_at),
     status: r.action === 'submitted' ? 'Completed' : r.action.charAt(0).toUpperCase() + r.action.slice(1),
     remarks: r.remarks || '',
+    sortAt: new Date(r.created_at).getTime(),
   }));
+
+  const stages = new Set(rows.map((r) => r.stage));
+  const [cfgRows] = await pool.query(
+    `SELECT rc.requester_submitted_at, rc.finalized_at, ri.vendor_name
+     FROM rfq_configs rc
+     LEFT JOIN rfq_invitations ri ON ri.id = rc.recommended_invitation_id
+     WHERE rc.pr_id = ?
+     LIMIT 1`,
+    [prId]
+  );
+  const cfg = cfgRows[0];
+  if (cfg?.requester_submitted_at && !stages.has(STAGE.RFQ_REQUESTER_SUBMIT)) {
+    history.push({
+      stage: formatPrApprovalStage(STAGE.RFQ_REQUESTER_SUBMIT),
+      user: 'Requester',
+      role: 'Requester',
+      date: formatDateTime(cfg.requester_submitted_at),
+      status: 'Submitted',
+      remarks: `RFQ submitted for Vendor Final Approval${cfg.vendor_name ? `. Recommended vendor: ${cfg.vendor_name}` : ''}`,
+      sortAt: new Date(cfg.requester_submitted_at).getTime(),
+    });
+  }
+  if (cfg?.finalized_at && !stages.has(STAGE.RFQ_SCM_BUYER_SELECTION)) {
+    history.push({
+      stage: formatPrApprovalStage(STAGE.RFQ_SCM_BUYER_SELECTION),
+      user: 'SCM Buyer',
+      role: 'SCM Buyer',
+      date: formatDateTime(cfg.finalized_at),
+      status: 'Approved',
+      remarks: `SCM Buyer Vendor Selection${cfg.vendor_name ? ` — recommended vendor: ${cfg.vendor_name}` : ''}`,
+      sortAt: new Date(cfg.finalized_at).getTime(),
+    });
+  }
+
+  history.sort((a, b) => a.sortAt - b.sortAt);
+  return history.map(({ sortAt: _s, ...entry }) => entry);
 }
 
 async function enrichPR(row) {
@@ -285,10 +350,18 @@ export async function createPurchaseRequest(user, body) {
     let hodAssignment = null;
 
     if (submit) {
+      const vendorLabel =
+        vendorMode === 'own' ? 'Own Vendor' : 'SCM Vendor Selection';
       await conn.query(
         `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
          VALUES (?, ?, ?, ?, ?)`,
-        [prId, STAGE.SUBMITTED, user.id, 'submitted', 'PR submitted for approval']
+        [
+          prId,
+          STAGE.SUBMITTED,
+          user.id,
+          'submitted',
+          `PR submitted for approval · Vendor path: ${vendorLabel}`,
+        ]
       );
 
       hodAssignment = await createHodApprovalTask(conn, prId, user.email, deptRows[0].id);

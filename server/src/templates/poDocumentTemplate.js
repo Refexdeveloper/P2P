@@ -1,3 +1,7 @@
+import { PO_STYLES, PO_PDF_LAYOUT } from './poDocumentTemplate.styles.js';
+
+export { PO_PDF_LAYOUT };
+
 const ONES = [
   '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
   'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen',
@@ -97,43 +101,47 @@ function safeImgSrc(src) {
     .replace(/</g, '&lt;');
 }
 
-function logoHtml(po = {}) {
+function logoHtml(po = {}, opts = {}) {
+  const cls = opts.running ? 'header header-custom doc-header running-header' : 'header header-custom doc-header';
   const headerLogo = resolveBrandingValue(po, 'headerLogo', 'header_logo');
   if (headerLogo) {
     if (looksLikeHtml(headerLogo)) {
-      return `<div class="header header-custom">${headerLogo}</div>`;
+      return `<div class="${cls}">${headerLogo}</div>`;
     }
     if (looksLikeImageSrc(headerLogo)) {
-      return `<div class="header"><img class="header-logo-img" src="${safeImgSrc(headerLogo)}" alt="Header Logo" /></div>`;
+      return `<div class="header doc-header${opts.running ? ' running-header' : ''}"><img class="header-logo-img" src="${safeImgSrc(headerLogo)}" alt="Header Logo" /></div>`;
     }
-    return `<div class="header header-custom">${escapeHtml(headerLogo)}</div>`;
+    return `<div class="${cls}">${escapeHtml(headerLogo)}</div>`;
   }
-  return `<div class="header"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>`;
+  return `<div class="header doc-header${opts.running ? ' running-header' : ''}"><div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div></div>`;
 }
 
-function footerHtml(po = {}, pageLabel = '') {
+function footerHtml(po = {}, pageLabel = '', opts = {}) {
+  const running = !!opts.running;
+  const extra = running ? ' running-footer' : '';
   const footerLogo = resolveBrandingValue(po, 'footerLogo', 'footer_logo');
   const entity = resolveBrandingValue(po, 'entity', 'entity');
-  const pageNum = pageLabel ? `<div class="pagenum">${escapeHtml(pageLabel)}</div>` : '';
+  // Section labels only on in-page footers (preview); running print footer stays clean
+  const pageNum = !running && pageLabel ? `<div class="pagenum">${escapeHtml(pageLabel)}</div>` : '';
 
   // Master footer set → show only master footer image/HTML (no entity brand text, no default footer)
   if (footerLogo) {
     if (looksLikeHtml(footerLogo)) {
       return `
-  <div class="footer footer-custom">
+  <div class="footer footer-custom doc-footer${extra}">
     <div class="footer-master-content">${footerLogo}</div>
     ${pageNum}
   </div>`;
     }
     if (looksLikeImageSrc(footerLogo)) {
       return `
-  <div class="footer footer-custom">
+  <div class="footer footer-custom doc-footer${extra}">
     <img class="footer-logo-img" src="${safeImgSrc(footerLogo)}" alt="Footer" />
     ${pageNum}
   </div>`;
     }
     return `
-  <div class="footer footer-custom">
+  <div class="footer footer-custom doc-footer${extra}">
     <div class="footer-master-content">${escapeHtml(footerLogo)}</div>
     ${pageNum}
   </div>`;
@@ -142,15 +150,46 @@ function footerHtml(po = {}, pageLabel = '') {
   // Default footer only when Letterhead Master has no footer logo
   const brandName = entity || 'Refex Green Mobility Limited';
   return `
-  <div class="footer">
+  <div class="footer doc-footer${extra}">
     <div class="brand">${escapeHtml(brandName)}</div>
     <div class="sub">(Wholly-Owned Subsidiary of Refex Industries Limited)</div>
     <hr>
     <div class="cin-bar">CIN:U74909TN2023PLC158849</div>
-    <div class="reg"><strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
-    P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in</div>
+    <div class="reg offices">
+      <div class="office-col">
+        <strong>Registered Office:</strong> 2<sup>nd</sup> Floor, No.313, Refex Towers, Sterling Road, Valluvar Kottam High Road, Nungambakkam, Chennai, Tamil Nadu 600 034<br>
+        P: 044 - 3504 0050 | E: info@refex.co.in | W: www.refex.co.in
+      </div>
+    </div>
     ${pageNum}
   </div>`;
+}
+
+/**
+ * Puppeteer chrome: page numbers only.
+ * Letterhead header/footer stay in the HTML document (same as preview) so
+ * large master HTML/images always render in the downloaded PDF.
+ */
+export function buildPoPdfChromeTemplates(_po = {}) {
+  const side = `${PO_PDF_LAYOUT.marginMm}mm`;
+  const box =
+    'width:100%;box-sizing:border-box;font-size:9px;color:#333;' +
+    `-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:0 ${side};`;
+  return {
+    headerTemplate: `<div style="${box}height:1px;opacity:0;">&nbsp;</div>`,
+    footerTemplate:
+      `<div style="${box}text-align:center;padding-bottom:2mm;">` +
+      `Page <span class="pageNumber"></span> of <span class="totalPages"></span>` +
+      `</div>`,
+  };
+}
+
+function pageHeader(po) {
+  return logoHtml(po);
+}
+
+function pageFooter(po, pageLabel) {
+  return footerHtml(po, pageLabel);
 }
 
 function lineItemsHtml(po) {
@@ -158,31 +197,37 @@ function lineItemsHtml(po) {
   const rows = items.map((item, index) => `
     <tr>
       <td class="center">${index + 1}</td>
-      <td><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}${item.category ? `<p><strong>Category:</strong> ${escapeHtml(item.category)}</p>` : ''}</div></td>
-      <td class="center">${escapeHtml(item.uom || item.category || "No's")}</td>
+      <td><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}</div></td>
+      <td class="center">${escapeHtml(item.uom || "No's")}</td>
       <td class="center">${escapeHtml(item.quantity)}</td>
       <td class="right">${fmtMoney(item.unitPrice)}</td>
-      <td class="right">${fmtMoney(item.discount)}</td>
+      <td class="center">${escapeHtml(item.taxPercentage ?? item.tax_percentage ?? 0)}%</td>
       <td class="right">${fmtMoney(item.total)}</td>
     </tr>`).join('');
 
   return `
+  <div class="table-frame">
   <table class="price">
     <caption>PRICE SCHEDULE</caption>
+    <thead>
     <tr>
       <th style="width:5%">SI.No</th>
       <th>Description Of Work</th>
       <th style="width:7%">UOM</th>
       <th style="width:6%">Qty</th>
       <th style="width:12%">Unit Rate Rs.</th>
-      <th style="width:10%">Disc Amt Rs.</th>
+      <th style="width:8%">Tax %</th>
       <th style="width:12%">TOTAL Amt Rs.</th>
     </tr>
+    </thead>
+    <tbody>
     ${rows}
     <tr class="total"><td colspan="6">SubTotal</td><td class="right">${fmtMoney(po.subtotal)}</td></tr>
-    <tr class="total"><td colspan="6">Add: GST@${escapeHtml(po.gstPercentage)}% Extra</td><td class="right">${fmtMoney(po.taxAmount)}</td></tr>
+    <tr class="total"><td colspan="6">Add: Tax (per line)</td><td class="right">${fmtMoney(po.taxAmount)}</td></tr>
     <tr class="total"><td colspan="6">GrandTotal</td><td class="right">${fmtMoney(po.grandTotal)}</td></tr>
+    </tbody>
   </table>
+  </div>
   <div class="amount-words">
     <span class="label">Amount In Words:</span>
     <span class="value">${escapeHtml(numberToIndianWords(po.grandTotal))}</span>
@@ -200,57 +245,82 @@ function applyClausePlaceholders(html, po) {
     .replace(/\$accounts_aos_quotes_1_name_name/gi, vendor);
 }
 
+/** Header may be plain text or rich-text HTML from the editor */
+function clauseHeaderHtml(raw, po, fallback = 'Term') {
+  const value = String(raw || '').trim();
+  if (!value) return escapeHtml(fallback);
+  if (looksLikeHtml(value)) return applyClausePlaceholders(value, po);
+  return escapeHtml(value);
+}
+
 function termsSummaryHtml(po, terms) {
   if (!terms?.length) return '';
+  // All Terms & Conditions on a single page (footer pinned at bottom of that page)
   const rows = terms.map((term) => `
     <tr>
-      <th class="head-col">${escapeHtml(term.termsHeader || term.terms_header || 'Term')}</th>
+      <th class="head-col">${clauseHeaderHtml(term.termsHeader || term.terms_header, po, 'Term')}</th>
       <td>${applyClausePlaceholders(term.termsDescription || term.terms_description || '', po)}</td>
     </tr>`).join('');
 
   return `
-  <div class="page">
-    ${logoHtml(po)}
-    <table class="terms">
-      <caption>Terms and Conditions</caption>
-      ${rows}
-    </table>
-    ${footerHtml(po, 'Terms')}
+  <div class="page page-sheet page-terms">
+    ${pageHeader(po)}
+    <div class="page-body">
+      <div class="table-frame">
+        <table class="terms terms-compact">
+          <caption>Terms and Conditions</caption>
+          <thead>
+            <tr>
+              <th class="head-col">HEADERS</th>
+              <th>TERMS AND CONDITIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ${pageFooter(po)}
   </div>`;
 }
 
-function annexurePagesHtml(po, annexure, poTypeLabel) {
+function annexurePagesHtml(po, annexure, _poTypeLabel) {
   if (!annexure?.length) return '';
-  const chunks = chunkRows(annexure, 4);
-  let startIndex = 0;
 
-  return chunks.map((chunk, pageIndex) => {
-    const rows = chunk.map((item, idx) => {
-      const serial = startIndex + idx + 1;
-      return `
+  // One Annexure page after Terms — title + bordered table stay together (no empty Cont. pages)
+  const rows = annexure.map((item, idx) => `
       <tr>
-        <td class="sno-col">${serial}.</td>
-        <td><strong>${escapeHtml(item.termsHeader || item.terms_header || 'Header')}</strong></td>
+        <td class="sno-col">${idx + 1}.</td>
+        <td class="head-col"><strong>${clauseHeaderHtml(item.termsHeader || item.terms_header, po, 'Header')}</strong></td>
         <td>${applyClausePlaceholders(item.termsDescription || item.terms_description || '', po)}</td>
-      </tr>`;
-    }).join('');
-    startIndex += chunk.length;
+      </tr>`).join('');
 
-    const title = pageIndex === 0 ? 'ANNEXURE-I' : 'ANNEXURE-I (Cont.)';
-    const subtitle = pageIndex === 0 ? 'COMMERCIAL TERMS AND CONDITIONS' : '';
-
-    return `
-    <div class="page">
-      ${logoHtml(po)}
-      <h2 class="annexure-title">${title}</h2>
-      ${subtitle ? `<h3 class="annexure-sub">${subtitle}</h3>` : '<div style="height:8px"></div>'}
-      <table class="terms">
-        <tr><th class="sno-col">S.NO.</th><th style="width:14%">HEADERS</th><th>TERMS AND CONDITIONS</th></tr>
-        ${rows}
-      </table>
-      ${footerHtml(po, `${poTypeLabel} Annexure ${pageIndex + 1}`)}
-    </div>`;
-  }).join('');
+  return `
+  <div class="page page-sheet page-annexure">
+    ${pageHeader(po)}
+    <div class="page-body">
+      <div class="annexure-card">
+        <div class="annexure-card-title">
+          <h2 class="annexure-title">ANNEXURE-I</h2>
+          <h3 class="annexure-sub">COMMERCIAL TERMS AND CONDITIONS</h3>
+        </div>
+        <table class="terms terms-compact annexure-table">
+          <thead>
+            <tr>
+              <th class="sno-col">S.NO.</th>
+              <th class="head-col">HEADERS</th>
+              <th>TERMS AND CONDITIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ${pageFooter(po)}
+  </div>`;
 }
 
 function specialNotesHtml(po, options = {}) {
@@ -260,8 +330,9 @@ function specialNotesHtml(po, options = {}) {
   const paymentText = td.paymentTermsText || po.paymentTerms || '—';
   const siteAddress = td.siteAddress || po.deliveryAddress || '';
   return `
-  <div class="page">
-    ${logoHtml(po)}
+  <div class="page page-sheet">
+    ${pageHeader(po)}
+    <div class="page-body">
     <div class="special-notes">
       <p><strong>PO TERMS &amp; CONDITIONS DETAILS:</strong></p>
       <p><span class="lbl">Payment Terms:</span> ${escapeHtml(paymentText).replace(/\n/g, '<br>')}</p>
@@ -272,7 +343,19 @@ function specialNotesHtml(po, options = {}) {
       ${td.projectManagerHo ? `<p><span class="lbl">Project Manager at HO:</span> ${escapeHtml(td.projectManagerHo)}</p>` : ''}
       ${td.projectManagerContact ? `<p><span class="lbl">Project Manager Contact:</span> ${escapeHtml(td.projectManagerContact)}</p>` : ''}
       ${td.projectManagerEmail ? `<p><span class="lbl">Project Manager Email:</span> ${escapeHtml(td.projectManagerEmail)}</p>` : ''}
-      ${td.invoicingAddress ? `<p><span class="lbl">Invoicing Address:</span> ${escapeHtml(td.invoicingAddress).replace(/\n/g, '<br>')}</p>` : ''}
+      ${td.invoicingAddress || td.locationName || td.buyerGstNo ? `<p><span class="lbl">Invoicing Address:</span> ${escapeHtml(
+        [
+          td.invoicingAddress || '',
+          !String(td.invoicingAddress || '').includes(String(td.locationName || '')) && td.locationName
+            ? td.locationName
+            : '',
+          td.buyerGstNo && !String(td.invoicingAddress || '').toUpperCase().includes('GSTIN')
+            ? `GSTIN: ${td.buyerGstNo}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      ).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.mailingAddress ? `<p><span class="lbl">Mailing Address:</span> ${escapeHtml(td.mailingAddress).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.subject ? `<p><span class="lbl">Subject:</span> ${escapeHtml(td.subject).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.reasonForCancellation ? `<p><span class="lbl">Reason For Cancellation:</span> ${escapeHtml(td.reasonForCancellation).replace(/\n/g, '<br>')}</p>` : ''}
@@ -300,14 +383,16 @@ function specialNotesHtml(po, options = {}) {
       Name: ____________________<br>
       Designation: Head – SCM</p>`}
     </div>
-    ${footerHtml(po, 'Special Notes')}
+    </div>
+    ${pageFooter(po)}
   </div>`;
 }
 
 function acknowledgmentHtml(po) {
   return `
-  <div class="page">
-    ${logoHtml(po)}
+  <div class="page page-sheet">
+    ${pageHeader(po)}
+    <div class="page-body">
     <div class="ack-box">
       <p><strong>Acknowledgment and Acceptance by Seller/Supplier</strong></p>
       <p>We received, read, and understood the terms and conditions mentioned in this order. We hereby acknowledge, confirm and accept the above terms and conditions and the same shall be binding on us as &ldquo;Seller&rdquo;.</p>
@@ -317,89 +402,10 @@ function acknowledgmentHtml(po) {
       <strong>Dated:</strong><br>
       <strong>Place:</strong></p>
     </div>
-    ${footerHtml(po, 'Acknowledgment')}
+    </div>
+    ${pageFooter(po)}
   </div>`;
 }
-
-const PO_STYLES = `
-  @page { size: A4; margin: 18mm 15mm; }
-  * { box-sizing: border-box; }
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 12.5px;
-    color: #1a1a1a;
-    max-width: 850px;
-    margin: 0 auto;
-    padding: 30px 25px;
-    line-height: 1.4;
-  }
-  .page { padding-bottom: 40px; border-bottom: 1px dashed #ccc; margin-bottom: 40px; page-break-after: always; }
-  .page:last-child { border-bottom: none; page-break-after: auto; }
-  .header { display: flex; justify-content: flex-end; margin-bottom: 6px; }
-  .header-logo-img { max-height: 56px; max-width: 220px; object-fit: contain; display: block; }
-  .footer-custom { text-align: center; margin-top: 20px; padding-top: 8px; }
-  .footer-custom .footer-master-content { width: 100%; }
-  .footer-custom .footer-master-content img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
-  .footer-logo-img {
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-    max-height: 140px;
-    object-fit: contain;
-    object-position: center;
-    display: block;
-    margin: 0 auto;
-  }
-  .footer-custom .pagenum { text-align: center; font-size: 11px; margin-top: 6px; color: #555; }
-  .logo { font-size: 30px; font-weight: 800; font-style: italic; letter-spacing: -1px; }
-  .logo .r1 { color: #2e3192; } .logo .e1 { color: #27aae1; } .logo .f { color: #39b54a; }
-  .logo .e2 { color: #8dc63f; } .logo .x { color: #f7941d; }
-  .title { text-align: center; font-weight: bold; font-size: 16px; letter-spacing: 1px; margin: 10px 0 14px 0; }
-  .po-meta { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 10px; font-size: 13px; }
-  .info-box { border: 1px solid #000; padding: 10px 14px; margin-bottom: 16px; }
-  .info-box p { margin: 3px 0; }
-  .info-box a { color: #1155cc; text-decoration: underline; }
-  table.price { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-  table.price caption { border: 1px solid #000; border-bottom: none; padding: 5px; font-weight: bold; text-align: center; background: #f2f2f2; }
-  table.price th, table.price td { border: 1px solid #000; padding: 6px 8px; vertical-align: top; font-size: 12px; }
-  table.price th { background: #f2f2f2; text-align: center; }
-  table.price td.center { text-align: center; }
-  table.price td.right { text-align: right; }
-  table.price tr.total td { font-weight: bold; }
-  table.price .spec-block p { margin: 6px 0; }
-  .amount-words { border: 1px solid #000; border-top: none; padding: 8px 10px; display: flex; justify-content: space-between; font-size: 12.5px; }
-  .amount-words .label { font-weight: bold; white-space: nowrap; margin-right: 10px; }
-  .amount-words .value { font-weight: bold; text-align: right; }
-  table.terms { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  table.terms caption { font-weight: bold; padding: 6px; border: 1px solid #000; border-bottom: none; background: #f2f2f2; }
-  table.terms th, table.terms td { border: 1px solid #000; padding: 7px 9px; vertical-align: top; text-align: left; }
-  table.terms th { background: #f2f2f2; }
-  table.terms td.head-col, table.terms th.head-col { width: 15%; font-weight: bold; }
-  table.terms td.sno-col, table.terms th.sno-col { width: 6%; text-align: center; }
-  table.terms tr, table.price tr { page-break-inside: avoid; break-inside: avoid; }
-  table.terms thead, table.price thead { display: table-header-group; }
-  .footer { text-align: center; margin-top: 24px; padding-top: 10px; page-break-inside: avoid; break-inside: avoid; }
-  .footer .brand { font-weight: bold; color: #2e3192; font-size: 14px; }
-  .footer .sub { font-size: 11px; color: #333; margin-bottom: 6px; }
-  .footer .cin-bar { display: inline-block; background: linear-gradient(90deg,#2e3192,#27aae1,#39b54a,#f7941d); color: #fff; padding: 3px 14px; border-radius: 12px; font-size: 11px; font-weight: bold; margin: 6px 0; }
-  .footer .reg { font-size: 10.5px; color: #333; margin-top: 4px; }
-  .footer .pagenum { text-align: center; font-size: 11px; margin-top: 8px; }
-  .footer hr { border: none; border-top: 2px solid #27aae1; margin: 6px 0; }
-  h2.annexure-title { text-align: center; margin: 0 0 4px 0; font-size: 15px; }
-  h3.annexure-sub { text-align: center; margin: 0 0 14px 0; font-size: 13px; }
-  .special-notes, .ack-box { border: 1px solid #000; padding: 12px 16px; }
-  .special-notes p, .ack-box p { margin: 6px 0; }
-  .special-notes .lbl { font-weight: bold; }
-  .sig-space { min-height: 60px; margin: 8px 0 12px; }
-  .sig-space .sig-img {
-    max-height: 70px;
-    max-width: 220px;
-    object-fit: contain;
-    display: block;
-  }
-  .ack-box .sig-gap { height: 70px; }
-  .letterhead-block { margin-bottom: 10px; }
-`;
 
 export function buildPoDocumentHtml(po, options = {}) {
   const poTypeLabel = po.poType === 'long_po' ? 'Long PO' : 'Short PO';
@@ -410,8 +416,9 @@ export function buildPoDocumentHtml(po, options = {}) {
   const vendorPhone = po.vendorPhone || '—';
 
   const page1 = `
-  <div class="page">
-    ${logoHtml(po)}
+  <div class="page page-sheet">
+    ${pageHeader(po)}
+    <div class="page-body">
     <div class="title">PURCHASE ORDER</div>
     <div class="po-meta">
       <span>Purchase Order No. &nbsp;${escapeHtml(po.poNumber)}</span>
@@ -437,7 +444,8 @@ export function buildPoDocumentHtml(po, options = {}) {
       <p><strong>Requester:</strong> ${escapeHtml(po.requester || '—')}</p>
     </div>
     ${lineItemsHtml(po)}
-    ${footerHtml(po, '1')}
+    </div>
+    ${pageFooter(po)}
   </div>`;
 
   const terms = po.termsClauses || [];
@@ -450,7 +458,7 @@ export function buildPoDocumentHtml(po, options = {}) {
 <title>Purchase Order - ${escapeHtml(po.poNumber)}</title>
 <style>${PO_STYLES}</style>
 </head>
-<body>
+<body class="po-document">
 ${page1}
 ${termsSummaryHtml(po, terms)}
 ${annexurePagesHtml(po, annexure, poTypeLabel)}

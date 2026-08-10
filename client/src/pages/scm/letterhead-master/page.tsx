@@ -174,9 +174,122 @@ const emptyForm = {
   name: '',
   entity: '',
   headerLogo: '',
-  footerLogo: '',
   status: 'active' as 'active' | 'inactive',
 };
+
+type LocationRow = {
+  key: string;
+  id?: number;
+  location: string;
+  gstNo: string;
+  footerLogo: string;
+};
+
+function makeLocationKey() {
+  return `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function emptyLocationRow(): LocationRow {
+  return { key: makeLocationKey(), location: '', gstNo: '', footerLogo: '' };
+}
+
+function FooterLogoCell({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [mode, setMode] = useState<'url' | 'upload'>(
+    value.startsWith('data:image/') ? 'upload' : 'url'
+  );
+
+  const handleFile = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 2 * 1024 * 1024) return;
+    const reader = new FileReader();
+    reader.onload = () => onChange(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  };
+
+  const preview =
+    value.startsWith('data:image/') || /^https?:\/\//i.test(value.trim()) ? value.trim() : '';
+
+  return (
+    <div className="space-y-1.5 min-w-[180px]">
+      <div className="flex gap-1 p-0.5 bg-gray-100 rounded-md w-fit">
+        <button
+          type="button"
+          onClick={() => {
+            setMode('url');
+            if (value.startsWith('data:')) onChange('');
+          }}
+          className={`px-2 py-0.5 text-[10px] font-semibold rounded cursor-pointer ${
+            mode === 'url' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'
+          }`}
+        >
+          URL
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('upload')}
+          className={`px-2 py-0.5 text-[10px] font-semibold rounded cursor-pointer ${
+            mode === 'upload' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'
+          }`}
+        >
+          Upload
+        </button>
+      </div>
+      {mode === 'url' ? (
+        <input
+          type="url"
+          value={value.startsWith('data:') ? '' : value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://…/footer.png"
+          className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+        />
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0] || null)}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="px-2 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-md cursor-pointer"
+          >
+            <i className="ri-upload-2-line"></i> Image
+          </button>
+          {value.startsWith('data:image/') && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                if (fileRef.current) fileRef.current.value = '';
+              }}
+              className="text-xs text-red-600 cursor-pointer"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+      {preview && (
+        <img
+          src={preview}
+          alt="Footer"
+          className="max-h-8 max-w-[120px] object-contain border border-gray-100 rounded"
+        />
+      )}
+    </div>
+  );
+}
 
 function logoPreview(value: string) {
   if (!value?.trim()) return null;
@@ -199,6 +312,8 @@ export default function LetterheadMasterPage() {
   const [editing, setEditing] = useState<LetterheadMasterRecord | null>(null);
   const [viewing, setViewing] = useState<LetterheadMasterRecord | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [selectedLocationKey, setSelectedLocationKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -230,19 +345,142 @@ export default function LetterheadMasterPage() {
       .catch(() => setEntities([]));
   }, []);
 
+  const selectedEntity = entities.find((e) => e.name === form.entity);
+  const entityLocations = selectedEntity?.locations || [];
+
   const fillFormFromRecord = (row: LetterheadMasterRecord) => {
     setForm({
       name: row.name || '',
       entity: row.entity || '',
       headerLogo: row.headerLogo || '',
-      footerLogo: row.footerLogo || '',
       status: row.status || 'active',
+    });
+    const fromApi = (row.locations || []).filter(
+      (l) => l.location || l.gstNo || l.footerLogo
+    );
+    if (fromApi.length) {
+      const locs = fromApi.map((l) => ({
+        key: makeLocationKey(),
+        id: l.id,
+        location: l.location || '',
+        gstNo: l.gstNo || '',
+        footerLogo: l.footerLogo || '',
+      }));
+      setLocations(locs);
+      setSelectedLocationKey(locs[0]?.key || '');
+      return;
+    }
+    if (row.location || row.gstNo || row.footerLogo) {
+      const locRow: LocationRow = {
+        key: makeLocationKey(),
+        location: row.location || '',
+        gstNo: row.gstNo || '',
+        footerLogo: row.footerLogo || '',
+      };
+      setLocations([locRow]);
+      setSelectedLocationKey(locRow.key);
+      return;
+    }
+    setLocations([]);
+    setSelectedLocationKey('');
+  };
+
+  const onEntityChange = (entityName: string) => {
+    setForm((prev) => ({ ...prev, entity: entityName }));
+    const ent = entities.find((e) => e.name === entityName);
+    const fromEntity = (ent?.locations || []).filter((l) => l.location?.trim());
+    if (fromEntity.length) {
+      const locs = fromEntity.map((l) => ({
+        key: makeLocationKey(),
+        location: l.location || '',
+        gstNo: l.gstNo || '',
+        footerLogo: l.footerLogo || '',
+      }));
+      setLocations(locs);
+      setSelectedLocationKey(locs[0]?.key || '');
+    } else {
+      setLocations([]);
+      setSelectedLocationKey('');
+    }
+  };
+
+  const updateLocation = (key: string, patch: Partial<LocationRow>) => {
+    setLocations((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  };
+
+  /** Type location name; if it matches Entity Master, auto-fill GST + footer. */
+  const onLocationTyped = (key: string, locationName: string) => {
+    const match = entityLocations.find(
+      (l) => l.location.trim().toLowerCase() === locationName.trim().toLowerCase()
+    );
+    if (match) {
+      updateLocation(key, {
+        location: locationName,
+        gstNo: match.gstNo || '',
+        footerLogo: match.footerLogo || '',
+      });
+      return;
+    }
+    updateLocation(key, { location: locationName });
+  };
+
+  const syncNewLocationsToEntity = async (rowsToSync: LocationRow[]) => {
+    const ent = entities.find((e) => e.name === form.entity);
+    if (!ent?.id) return;
+    const existing = ent.locations || [];
+    const existingNames = new Set(existing.map((l) => l.location.trim().toLowerCase()));
+    const additions = rowsToSync
+      .filter((l) => l.location.trim())
+      .filter((l) => !existingNames.has(l.location.trim().toLowerCase()))
+      .map((l) => ({
+        location: l.location.trim(),
+        gstNo: l.gstNo.trim(),
+        footerLogo: l.footerLogo.trim(),
+      }));
+    if (!additions.length) return;
+    const merged = [
+      ...existing.map((l) => ({
+        location: l.location,
+        gstNo: l.gstNo || '',
+        footerLogo: l.footerLogo || '',
+      })),
+      ...additions,
+    ];
+    const res = await masterApi.updateEntity(ent.id, {
+      name: ent.name,
+      code: ent.code,
+      costCenter: ent.costCenter,
+      description: ent.description,
+      status: ent.status,
+      locations: merged,
+    });
+    setEntities((prev) =>
+      prev.map((e) =>
+        e.id === ent.id ? { ...e, ...(res.data || {}), locations: res.data?.locations || merged } : e
+      )
+    );
+  };
+
+  const addLocationRow = () => {
+    const row = emptyLocationRow();
+    setLocations((prev) => [...prev, row]);
+    setSelectedLocationKey(row.key);
+  };
+
+  const removeLocation = (key: string) => {
+    setLocations((prev) => {
+      const next = prev.filter((l) => l.key !== key);
+      if (selectedLocationKey === key) setSelectedLocationKey(next[0]?.key || '');
+      return next;
     });
   };
 
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
+    setLocations([]);
+    setSelectedLocationKey('');
+    setLoadingRecord(false);
     setError('');
     setShowForm(true);
   };
@@ -309,14 +547,40 @@ export default function LetterheadMasterPage() {
       setError('Letterhead name is required');
       return;
     }
+    const filledLocations = locations.filter(
+      (l) => l.location.trim() || l.gstNo.trim() || l.footerLogo.trim()
+    );
+    const blankLoc = filledLocations.find((l) => !l.location.trim());
+    if (blankLoc) {
+      setError('Enter a location name for each location row');
+      return;
+    }
+    const primary =
+      filledLocations.find((l) => l.key === selectedLocationKey && l.location.trim()) ||
+      filledLocations.find((l) => l.location.trim());
+    const locationPayload = filledLocations.map((l) => ({
+      location: l.location.trim(),
+      gstNo: l.gstNo.trim(),
+      footerLogo: l.footerLogo.trim(),
+    }));
+    const payload = {
+      ...form,
+      location: primary?.location || '',
+      gstNo: primary?.gstNo || '',
+      footerLogo: primary?.footerLogo || '',
+      locations: locationPayload,
+    };
     setSaving(true);
     setError('');
     try {
+      if (form.entity.trim() && filledLocations.length) {
+        await syncNewLocationsToEntity(filledLocations);
+      }
       if (editing) {
-        await letterheadMasterApi.update(editing.id, form);
+        await letterheadMasterApi.update(editing.id, payload);
         setToast('Letterhead updated');
       } else {
-        await letterheadMasterApi.create(form);
+        await letterheadMasterApi.create(payload);
         setToast('Letterhead created');
       }
       setShowForm(false);
@@ -337,6 +601,7 @@ export default function LetterheadMasterPage() {
         entity: row.entity,
         headerLogo: row.headerLogo,
         footerLogo: row.footerLogo,
+        locations: row.locations || [],
         status: next,
       });
       setToast(`Letterhead marked ${next}`);
@@ -348,6 +613,12 @@ export default function LetterheadMasterPage() {
     }
   };
 
+  const formatLocations = (row: LetterheadMasterRecord) => {
+    const locs = (row.locations || []).filter((l) => l.location?.trim());
+    if (locs.length) return locs.map((l) => l.location).join(', ');
+    return row.location || '';
+  };
+
   return (
     <DashboardLayout>
       <>
@@ -355,7 +626,7 @@ export default function LetterheadMasterPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Letterhead Master</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Manage company letterheads — entity, header logo, and footer logo
+              Manage company letterheads — one entity, multiple locations (GST / footer logo)
             </p>
           </div>
           <button
@@ -403,10 +674,10 @@ export default function LetterheadMasterPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px]">
+              <table className="w-full min-w-[960px]">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    {['Name', 'Entity', 'Header Logo', 'Footer Logo', 'Status', 'Action'].map((h) => (
+                    {['Name', 'Entity', 'Locations', 'Header Logo', 'Status', 'Action'].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
                         {h}
                       </th>
@@ -426,8 +697,25 @@ export default function LetterheadMasterPage() {
                         </button>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">{row.entity || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {(row.locations || []).length > 0 || row.location ? (
+                          <div>
+                            <p className="font-medium text-gray-800">
+                              {(row.locations || []).length || (row.location ? 1 : 0)} location
+                              {((row.locations || []).length || (row.location ? 1 : 0)) !== 1 ? 's' : ''}
+                            </p>
+                            <p
+                              className="text-xs text-gray-500 truncate max-w-[260px]"
+                              title={formatLocations(row)}
+                            >
+                              {formatLocations(row) || '—'}
+                            </p>
+                          </div>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td className="px-4 py-3">{logoPreview(row.headerLogo) || <span className="text-xs text-gray-400">—</span>}</td>
-                      <td className="px-4 py-3">{logoPreview(row.footerLogo) || <span className="text-xs text-gray-400">—</span>}</td>
                       <td className="px-4 py-3">
                         <span
                           className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
@@ -506,7 +794,50 @@ export default function LetterheadMasterPage() {
                 <p className="text-sm text-gray-800">{viewing.entity || '—'}</p>
               </div>
               {renderLogoDetail('Header Logo', viewing.headerLogo)}
-              {renderLogoDetail('Footer Logo', viewing.footerLogo)}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Locations ({(viewing.locations || []).length || (viewing.location ? 1 : 0)})
+                </p>
+                {(viewing.locations || []).length > 0 || viewing.location ? (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">#</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Location</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">GST No</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Footer Logo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {((viewing.locations || []).length
+                          ? viewing.locations!
+                          : [
+                              {
+                                location: viewing.location,
+                                gstNo: viewing.gstNo,
+                                footerLogo: viewing.footerLogo,
+                              },
+                            ]
+                        ).map((loc, idx) => (
+                          <tr key={loc.id || `${loc.location}-${idx}`}>
+                            <td className="px-3 py-2.5 text-gray-400">{idx + 1}</td>
+                            <td className="px-3 py-2.5 text-gray-800">{loc.location || '—'}</td>
+                            <td className="px-3 py-2.5 font-mono text-gray-700">{loc.gstNo || '—'}</td>
+                            <td className="px-3 py-2.5">
+                              {logoPreview(loc.footerLogo) || (
+                                <span className="text-xs text-gray-400">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No locations</p>
+                )}
+              </div>
               {viewing.updatedAt && (
                 <p className="text-xs text-gray-400">
                   Last updated: {new Date(viewing.updatedAt).toLocaleString('en-IN')}
@@ -533,7 +864,7 @@ export default function LetterheadMasterPage() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-xl shadow-xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-3xl shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
               <h2 className="text-lg font-bold text-gray-900">
                 {editing ? 'Edit Letterhead' : 'Add Letterhead'}
@@ -565,7 +896,7 @@ export default function LetterheadMasterPage() {
                 </label>
                 <select
                   value={form.entity}
-                  onChange={(e) => setForm((prev) => ({ ...prev, entity: e.target.value }))}
+                  onChange={(e) => onEntityChange(e.target.value)}
                   disabled={loadingRecord}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
                 >
@@ -598,24 +929,167 @@ export default function LetterheadMasterPage() {
                   />
                 )}
               </div>
+
               {loadingRecord ? (
-                <p className="text-sm text-gray-500">Loading logo & footer…</p>
+                <p className="text-sm text-gray-500">Loading logo & locations…</p>
               ) : (
-                <>
-                  <MediaField
-                    label="Header Logo"
-                    fieldKey={`hdr-${editing?.id || 'new'}`}
-                    value={form.headerLogo}
-                    onChange={(headerLogo) => setForm((prev) => ({ ...prev, headerLogo }))}
-                  />
-                  <MediaField
-                    label="Footer Logo"
-                    fieldKey={`ftr-${editing?.id || 'new'}`}
-                    value={form.footerLogo}
-                    onChange={(footerLogo) => setForm((prev) => ({ ...prev, footerLogo }))}
-                  />
-                </>
+                <MediaField
+                  label="Header Logo"
+                  fieldKey={`hdr-${editing?.id || 'new'}`}
+                  value={form.headerLogo}
+                  onChange={(headerLogo) => setForm((prev) => ({ ...prev, headerLogo }))}
+                />
               )}
+
+              {/* Locations: Add → type location in table */}
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex flex-wrap items-end gap-3 justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                      <i className="ri-map-pin-line text-teal-600"></i>
+                      Locations
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      One entity can have multiple locations. Type each location, GST No, and footer logo.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      addLocationRow();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer"
+                  >
+                    <i className="ri-add-line"></i>
+                    Add
+                  </button>
+                </div>
+
+                {locations.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-gray-500">
+                    <i className="ri-map-pin-add-line text-3xl text-gray-300 block mb-2"></i>
+                    No locations yet. Click <strong>Add</strong>, then type the location name.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white border-b border-gray-100">
+                        <tr>
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase w-10">
+                            #
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[180px]">
+                            Location
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[140px]">
+                            GST No
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[200px]">
+                            Footer Logo
+                          </th>
+                          <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase w-16">
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {locations.map((loc, idx) => {
+                          const highlight = selectedLocationKey === loc.key;
+                          return (
+                            <tr
+                              key={loc.key}
+                              className={highlight ? 'bg-teal-50/60' : 'bg-white'}
+                              onClick={() => setSelectedLocationKey(loc.key)}
+                            >
+                              <td className="px-3 py-3 text-gray-400">{idx + 1}</td>
+                              <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  value={loc.location}
+                                  onChange={(e) => onLocationTyped(loc.key, e.target.value)}
+                                  placeholder="e.g. Chennai / Vizag"
+                                  list={
+                                    entityLocations.length
+                                      ? `lh-loc-suggest-${editing?.id || 'new'}`
+                                      : undefined
+                                  }
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                />
+                              </td>
+                              <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  value={loc.gstNo}
+                                  onChange={(e) =>
+                                    updateLocation(loc.key, {
+                                      gstNo: e.target.value
+                                        .toUpperCase()
+                                        .replace(/[^A-Z0-9]/g, '')
+                                        .slice(0, 15),
+                                    })
+                                  }
+                                  placeholder="22AAAAA0000A1Z5"
+                                  maxLength={15}
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                />
+                              </td>
+                              <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                                <FooterLogoCell
+                                  value={loc.footerLogo}
+                                  onChange={(footerLogo) =>
+                                    updateLocation(loc.key, { footerLogo })
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeLocation(loc.key);
+                                  }}
+                                  className="w-8 h-8 inline-flex items-center justify-center text-red-500 hover:bg-red-50 rounded-lg cursor-pointer"
+                                  title="Remove row"
+                                >
+                                  <i className="ri-delete-bin-line"></i>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {entityLocations.length > 0 && (
+                      <datalist id={`lh-loc-suggest-${editing?.id || 'new'}`}>
+                        {entityLocations.map((opt) => (
+                          <option key={opt.id || opt.location} value={opt.location} />
+                        ))}
+                      </datalist>
+                    )}
+                  </div>
+                )}
+
+                {locations.length > 0 && (
+                  <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 flex justify-between items-center gap-2">
+                    <p className="text-[11px] text-gray-500">
+                      All rows are saved. New location names are also added to Entity Master.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        addLocationRow();
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800 cursor-pointer"
+                    >
+                      <i className="ri-add-line"></i>
+                      Add row
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
                 <select

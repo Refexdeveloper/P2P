@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import ApprovalHistoryPanel, {
+  ManagerL2CommentsHighlight,
+  type ApprovalHistoryEntry,
+} from '../../../../components/feature/ApprovalHistoryPanel';
 import VendorComparisonMatrix from '../../../../components/rfq/VendorComparisonMatrix';
 import { prApi, rfqApi, VendorComparisonData } from '../../../../services/api';
 
@@ -25,6 +29,7 @@ interface PRDetail {
   justification: string;
   statusUI: string;
   lineItems: LineItem[];
+  approvalHistory: ApprovalHistoryEntry[];
 }
 
 interface Props {
@@ -45,7 +50,7 @@ export default function PRBucketExpandedRow({
   showCreatePo = false,
   onCreatePo,
 }: Props) {
-  const [tab, setTab] = useState<'details' | 'items' | 'vendors'>('details');
+  const [tab, setTab] = useState<'details' | 'items' | 'vendors' | 'history'>('details');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pr, setPr] = useState<PRDetail | null>(null);
@@ -67,6 +72,7 @@ export default function PRBucketExpandedRow({
         if (prRes.status === 'fulfilled') {
           const d = prRes.value.data as Record<string, unknown>;
           const items = Array.isArray(d.lineItems) ? (d.lineItems as LineItem[]) : [];
+          const historyRaw = Array.isArray(d.approvalHistory) ? d.approvalHistory : [];
           setPr({
             id: Number(d.id),
             prNumber: String(d.prNumber || ''),
@@ -81,6 +87,19 @@ export default function PRBucketExpandedRow({
             justification: String(d.justification || ''),
             statusUI: String(d.statusUI || statusLabel),
             lineItems: items,
+            approvalHistory: historyRaw.map((item) => {
+              const h = item as Record<string, unknown>;
+              return {
+                stage: String(h.stage || ''),
+                approver: String(h.approver || h.user || 'System'),
+                user: String(h.user || h.approver || 'System'),
+                role: String(h.role || ''),
+                action: String(h.action || h.status || 'Updated'),
+                status: String(h.status || h.action || ''),
+                date: String(h.date || ''),
+                remarks: String(h.remarks || ''),
+              };
+            }),
           });
         } else {
           throw prRes.reason instanceof Error ? prRes.reason : new Error('Failed to load PR');
@@ -107,6 +126,11 @@ export default function PRBucketExpandedRow({
     { key: 'details' as const, label: 'PR Details', icon: 'ri-information-line' },
     { key: 'items' as const, label: 'Line Items', icon: 'ri-list-check-2' },
     { key: 'vendors' as const, label: 'Vendor Comparison', icon: 'ri-table-line' },
+    {
+      key: 'history' as const,
+      label: `Approval History${pr?.approvalHistory?.length ? ` (${pr.approvalHistory.length})` : ''}`,
+      icon: 'ri-history-line',
+    },
   ];
 
   return (
@@ -204,12 +228,25 @@ export default function PRBucketExpandedRow({
                       {pr.justification || 'No justification provided.'}
                     </p>
                   </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      Manager &amp; L2 Comments
+                    </h4>
+                    <ManagerL2CommentsHighlight history={pr.approvalHistory} />
+                  </div>
                   {comparison?.recommendedVendorName && (
                     <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800 break-words">
                       <i className="ri-star-fill mr-1"></i>
                       Recommended vendor: <strong>{comparison.recommendedVendorName}</strong>
                     </div>
                   )}
+                </div>
+              )}
+
+              {!loading && !error && pr && tab === 'history' && (
+                <div className="space-y-4">
+                  <ManagerL2CommentsHighlight history={pr.approvalHistory} />
+                  <ApprovalHistoryPanel history={pr.approvalHistory} />
                 </div>
               )}
 

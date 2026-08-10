@@ -34,7 +34,13 @@ import {
   getLetterheadBranding,
   saveLetterheadBranding,
 } from '../services/letterheadBrandingService.js';
-import { buildPoHtml, resolvePoDocumentPath } from '../services/poPdfService.js';
+import {
+  buildPoHtml,
+  resolvePoDocumentPath,
+  ensurePoPdf,
+  renderPoPdfToFile,
+} from '../services/poPdfService.js';
+import fs from 'fs';
 import {
   getPoExcelImportTemplateCsv,
   validatePoExcelImport,
@@ -272,6 +278,20 @@ router.post('/pr/:prId/preview-document', requireRoles('SCM Buyer'), async (req,
   }
 });
 
+router.post('/pr/:prId/preview-pdf', requireRoles('SCM Buyer'), async (req, res) => {
+  try {
+    // Same PO payload + HTML path as preview-document → PDF matches preview exactly
+    const po = await buildPoPreviewDocument(req.user, Number(req.params.prId), req.body);
+    const safeName = String(po.poNumber || `PR-${req.params.prId}`).replace(/[^\w.-]+/g, '_');
+    const { filePath, fileName } = await renderPoPdfToFile(po, `${safeName}_preview.pdf`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.post('/pr/:prId', requireRoles('SCM Buyer'), async (req, res) => {
   try {
     const data = await createPurchaseOrder(req.user, Number(req.params.prId), req.body);
@@ -380,12 +400,23 @@ router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manag
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
-    const { fullPath, fileName, isHtml } = resolvePoDocumentPath(po);
-    if (isHtml) {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.sendFile(fullPath);
+    const { fullPath, fileName } = await ensurePoPdf(po, {
+      fileName: `${po.poNumber || `PO-${po.id}`}_draft.pdf`,
+      signed: Boolean(po.signedPdfPath),
+      forceRegenerate: true,
+    });
+    // Persist regenerated PDF path when previous value was HTML-only
+    if (po.pdfPath !== fileName && !po.signedPdfPath) {
+      try {
+        const pool = (await import('../config/db.js')).default;
+        await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, po.id]);
+      } catch {
+        /* non-fatal */
+      }
     }
-    res.download(fullPath, fileName);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    fs.createReadStream(fullPath).pipe(res);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -407,6 +438,20 @@ router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer'), a
     const html = buildPoHtml(po);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/preview-pdf', requireRoles('SCM Manager', 'SCM Buyer'), async (req, res) => {
+  try {
+    // Same PO payload + HTML path as preview-document → PDF matches preview exactly
+    const po = await buildPoPreviewForPo(req.user, Number(req.params.id), req.body);
+    const safeName = String(po.poNumber || `PO-${req.params.id}`).replace(/[^\w.-]+/g, '_');
+    const { filePath, fileName } = await renderPoPdfToFile(po, `${safeName}_preview.pdf`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    fs.createReadStream(filePath).pipe(res);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

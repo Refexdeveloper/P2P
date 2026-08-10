@@ -3,7 +3,11 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
-import { buildPoDocumentHtml } from '../templates/poDocumentTemplate.js';
+import {
+  buildPoDocumentHtml,
+  buildPoPdfChromeTemplates,
+  PO_PDF_LAYOUT,
+} from '../templates/poDocumentTemplate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PO_UPLOAD_DIR = path.join(__dirname, '../../uploads/po');
@@ -44,7 +48,11 @@ export function buildPoHtml(po, options = {}) {
   return buildPoDocumentHtml(po, options);
 }
 
-export async function htmlToPdf(html, filePath) {
+/**
+ * Convert PO HTML → PDF.
+ * One margin system for all pages: content + header + footer share the same left/right inset.
+ */
+export async function htmlToPdf(html, filePath, chromeTemplates = null) {
   const executablePath = resolveBrowserExecutable();
   if (!executablePath) {
     throw new Error(
@@ -60,12 +68,40 @@ export async function htmlToPdf(html, filePath) {
 
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+    await page.emulateMediaType('print');
+    await page.evaluate(async () => {
+      const imgs = Array.from(document.images || []);
+      await Promise.all(
+        imgs.map((img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+                img.onload = img.onerror = () => resolve();
+              })
+        )
+      );
+    });
+
+    const chrome = chromeTemplates || buildPoPdfChromeTemplates();
+    const side = `${PO_PDF_LAYOUT.marginMm}mm`;
+
     await page.pdf({
       path: filePath,
       format: 'A4',
       printBackground: true,
-      margin: { top: '12mm', right: '10mm', bottom: '12mm', left: '10mm' },
+      preferCSSPageSize: false,
+      // Same margins on every page for all content
+      margin: {
+        top: `${PO_PDF_LAYOUT.topMm}mm`,
+        right: side,
+        bottom: `${PO_PDF_LAYOUT.bottomMm}mm`,
+        left: side,
+      },
+      displayHeaderFooter: true,
+      headerTemplate: chrome.headerTemplate,
+      footerTemplate: chrome.footerTemplate,
     });
   } finally {
     await browser.close();
@@ -81,10 +117,11 @@ export async function generatePoPdf(po, options = {}) {
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
 
   const html = buildPoHtml(po, options);
+  const chrome = buildPoPdfChromeTemplates(po);
   fs.writeFileSync(htmlPath, html, 'utf8');
 
   try {
-    await htmlToPdf(html, filePath);
+    await htmlToPdf(html, filePath, chrome);
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
     console.warn('HTML-to-PDF failed, HTML document saved:', err.message);
@@ -106,4 +143,60 @@ export function resolvePoDocumentPath(po) {
   }
   const isHtml = fullPath.toLowerCase().endsWith('.html');
   return { fullPath, fileName: path.basename(fileName), isHtml };
+}
+
+function looksLikePdfFile(filePath) {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(5);
+    fs.readSync(fd, buf, 0, 5, 0);
+    fs.closeSync(fd);
+    return buf.toString('utf8') === '%PDF-';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ensure a real PDF file exists for the PO (regenerate from HTML/template if needed).
+ */
+export async function ensurePoPdf(po, options = {}) {
+  const preferredName =
+    options.fileName ||
+    po.signedPdfPath ||
+    po.pdfPath ||
+    `${po.poNumber || 'PO'}_draft.pdf`;
+  const pdfName = String(preferredName).replace(/\.html$/i, '.pdf');
+  const pdfPath = path.join(PO_UPLOAD_DIR, path.basename(pdfName));
+
+  if (fs.existsSync(pdfPath) && looksLikePdfFile(pdfPath) && !options.forceRegenerate) {
+    return { fullPath: pdfPath, fileName: path.basename(pdfName), isHtml: false };
+  }
+
+  const generated = await generatePoPdf(po, {
+    ...options,
+    fileName: path.basename(pdfName),
+    signed: Boolean(po.signedPdfPath) || options.signed,
+  });
+
+  if (generated.htmlOnly || !looksLikePdfFile(generated.filePath)) {
+    throw new Error(
+      generated.htmlOnly
+        ? 'PDF engine unavailable (Chrome/Edge). Install Chrome or set PUPPETEER_EXECUTABLE_PATH.'
+        : 'Generated file is not a valid PDF'
+    );
+  }
+
+  return { fullPath: generated.filePath, fileName: generated.fileName, isHtml: false };
+}
+
+/** Generate a one-off PDF buffer/file for live preview (does not require saved PO). */
+export async function renderPoPdfToFile(po, fileName = 'PO_preview.pdf') {
+  const result = await generatePoPdf(po, { fileName });
+  if (result.htmlOnly || !looksLikePdfFile(result.filePath)) {
+    throw new Error(
+      'Could not generate PDF. Install Google Chrome / Microsoft Edge, or set PUPPETEER_EXECUTABLE_PATH.'
+    );
+  }
+  return result;
 }

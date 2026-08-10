@@ -63,6 +63,9 @@ export const EMPTY_PO_TERMS_DETAILS = {
   mailingAddress: '',
   reasonForCancellation: '',
   subject: '',
+  locationName: '',
+  buyerGstNo: '',
+  letterheadLocationId: '',
 };
 
 export function normalizePoTermsDetails(raw) {
@@ -99,11 +102,13 @@ async function getRecommendedVendor(prId) {
   return inv[0];
 }
 
-/** discount is absolute amount (₹), capped at line gross */
-function lineItemTotal(quantity, unitPrice, discount = 0) {
+function lineItemTotal(quantity, unitPrice) {
   const gross = (Number(quantity) || 0) * (Number(unitPrice) || 0);
-  const disc = Math.min(gross, Math.max(0, Number(discount) || 0));
-  return Math.round((gross - disc) * 100) / 100;
+  return Math.round(gross * 100) / 100;
+}
+
+function lineItemTax(total, taxPercentage) {
+  return Math.round(((Number(total) || 0) * (Number(taxPercentage) || 0)) / 100 * 100) / 100;
 }
 
 async function getLineItems(poId) {
@@ -116,6 +121,7 @@ async function getLineItems(poId) {
     quantity: r.quantity,
     unitPrice: Number(r.unit_price),
     discount: Number(r.discount) || 0,
+    taxPercentage: Number(r.tax_percentage) || 0,
     total: Number(r.total),
   }));
 }
@@ -226,12 +232,16 @@ function formatApprovalStage(stage) {
     PO_BUYER_VERIFIED: 'SCM Buyer Final Verify',
     PO_BUYER_REJECTED: 'SCM Buyer Final Verify',
     PO_REJECTED: 'SCM Manager Approval',
-    HOD_REVIEW: 'HOD Approval',
-    RFQ_MANAGER_REVIEW: 'HOD Vendor Final Approval',
-    RFQ_L2_REVIEW: 'L2 Manager Approval',
-    RFQ_CFO_REVIEW: 'CFO Approval',
-    BUSINESS_REVIEW: 'SCM Manager Vendor Approval',
+    HOD_REVIEW: 'HOD / Manager Approval',
     PR_MANAGER_REVIEW: 'L2 Manager Approval',
+    CFO_REVIEW: 'CFO Approval',
+    RFQ_REQUESTER_SUBMIT: 'RFQ Submitted — Vendor Final',
+    RFQ_MANAGER_REVIEW: 'Vendor Final Approval (Manager)',
+    RFQ_L2_REVIEW: 'Vendor Final — L2 Manager',
+    RFQ_CFO_REVIEW: 'Vendor Final — CFO Approval',
+    RFQ_SCM_BUYER_SELECTION: 'SCM Buyer Vendor Selection',
+    BUSINESS_REVIEW: 'SCM Manager Vendor Approval',
+    SCM_PO_CREATE: 'SCM Buyer Create PO',
     SUBMITTED: 'PR Submitted',
   };
   return labels[stage] || String(stage || '')
@@ -272,6 +282,41 @@ async function getFullPoApprovalHistory(row) {
   }));
 
   const stages = new Set(approvalRows.map((r) => r.stage));
+
+  // Backfill vendor-final submit + SCM buyer selection when RFQ exists but history rows are missing
+  if (row.pr_id) {
+    const [cfgRows] = await pool.query(
+      `SELECT rc.requester_submitted_at, rc.finalized_at, ri.vendor_name
+       FROM rfq_configs rc
+       LEFT JOIN rfq_invitations ri ON ri.id = rc.recommended_invitation_id
+       WHERE rc.pr_id = ?
+       LIMIT 1`,
+      [row.pr_id]
+    );
+    const cfg = cfgRows[0];
+    if (cfg?.requester_submitted_at && !stages.has('RFQ_REQUESTER_SUBMIT')) {
+      history.push({
+        stage: formatApprovalStage('RFQ_REQUESTER_SUBMIT'),
+        approver: 'Requester',
+        role: 'Requester',
+        action: 'Submitted',
+        date: formatDateTime(cfg.requester_submitted_at),
+        remarks: `RFQ submitted for Vendor Final Approval${cfg.vendor_name ? `. Recommended vendor: ${cfg.vendor_name}` : ''}`,
+        sortAt: new Date(cfg.requester_submitted_at).getTime(),
+      });
+    }
+    if (cfg?.finalized_at && !stages.has('RFQ_SCM_BUYER_SELECTION')) {
+      history.push({
+        stage: formatApprovalStage('RFQ_SCM_BUYER_SELECTION'),
+        approver: 'SCM Buyer',
+        role: 'SCM Buyer',
+        action: 'Approved',
+        date: formatDateTime(cfg.finalized_at),
+        remarks: `SCM Buyer Vendor Selection${cfg.vendor_name ? ` — recommended vendor: ${cfg.vendor_name}` : ''}`,
+        sortAt: new Date(cfg.finalized_at).getTime(),
+      });
+    }
+  }
 
   if (!stages.has('PO_CREATED')) {
     const [creator] = await pool.query(`SELECT name, role FROM users WHERE id = ?`, [row.created_by]);
@@ -419,20 +464,38 @@ async function resolvePoDraftContent(prId, body) {
   let resolvedAnnexure = annexure;
 
   // Branding from selected Letterhead Master (entity + logos) for PO PDF.
-  // Always take latest logos/entity from master when letterheadId is set,
-  // so Letterhead Master updates (header/footer) apply on create/update.
+  // Header always from master; footer from selected location when provided.
   try {
     if (resolvedLetterheadId) {
       const selected = await getLetterheadMasterById(resolvedLetterheadId);
       resolvedEntity = selected.entity || resolvedEntity || '';
       resolvedHeaderLogo = selected.headerLogo || '';
-      resolvedFooterLogo = selected.footerLogo || '';
+      const locs = selected.locations || [];
+      const locKey =
+        body?.letterheadLocationId ??
+        body?.poTermsDetails?.letterheadLocationId ??
+        '';
+      const locName =
+        body?.locationName || body?.poTermsDetails?.locationName || '';
+      const matchedLoc =
+        (locKey !== '' && locKey != null
+          ? locs.find((l) => String(l.id) === String(locKey)) ||
+            locs.find((l) => l.location === String(locKey))
+          : null) ||
+        (locName ? locs.find((l) => l.location === locName) : null);
+      if (matchedLoc) {
+        resolvedFooterLogo =
+          matchedLoc.footerLogo || body?.footerLogo || selected.footerLogo || '';
+      } else {
+        resolvedFooterLogo =
+          body?.footerLogo || selected.footerLogo || resolvedFooterLogo || '';
+      }
     } else {
       const branding = await getActiveLetterheadBranding();
       if (branding.id) resolvedLetterheadId = branding.id;
       resolvedEntity = branding.entity || resolvedEntity || '';
       resolvedHeaderLogo = branding.headerLogo || resolvedHeaderLogo || '';
-      resolvedFooterLogo = branding.footerLogo || resolvedFooterLogo || '';
+      resolvedFooterLogo = body?.footerLogo || branding.footerLogo || resolvedFooterLogo || '';
     }
   } catch (err) {
     if (resolvedLetterheadId) throw err;
@@ -450,21 +513,25 @@ async function resolvePoDraftContent(prId, body) {
   }
 
   const mappedLineItems = lineItems.map((item) => {
-    const gross = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
-    const discount = Math.min(gross, Math.max(0, Number(item.discount) || 0));
+    const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage ?? item.tax_percentage ?? gstPercentage) || 0));
+    const total = lineItemTotal(item.quantity, item.unitPrice);
     return {
       itemName: item.itemName || item.name || '',
       description: item.description,
       category: item.category || '',
       quantity: Number(item.quantity),
       unitPrice: Number(item.unitPrice),
-      discount,
-      total: lineItemTotal(item.quantity, item.unitPrice, discount),
+      discount: 0,
+      taxPercentage,
+      total,
+      taxAmount: lineItemTax(total, taxPercentage),
     };
   });
 
   const subtotal = mappedLineItems.reduce((sum, item) => sum + item.total, 0);
-  const taxAmount = (subtotal * Number(gstPercentage)) / 100;
+  const taxAmount = mappedLineItems.reduce((sum, item) => sum + item.taxAmount, 0);
+  const effectiveGst =
+    subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : Number(gstPercentage) || 0;
   const grandTotal = subtotal + taxAmount;
 
   return {
@@ -498,7 +565,7 @@ async function resolvePoDraftContent(prId, body) {
       paymentTermsText:
         resolvedPoTermsDetails.paymentTermsText || resolvedPaymentTerms || '',
     },
-    gstPercentage: Number(gstPercentage),
+    gstPercentage: effectiveGst,
     subtotal,
     taxAmount,
     grandTotal,
@@ -664,15 +731,14 @@ export async function createPurchaseOrder(user, prId, body) {
 
     const poId = result.insertId;
     for (const item of lineItems) {
-      const gross = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
-      const discount = Math.min(gross, Math.max(0, Number(item.discount) || 0));
-      const total = lineItemTotal(item.quantity, item.unitPrice, discount);
+      const total = lineItemTotal(item.quantity, item.unitPrice);
+      const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage) || 0));
       const itemName = String(item.itemName || item.name || '').trim();
       const description = String(item.description || itemName || '').trim() || '(no description)';
       await conn.query(
-        `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit_price, discount, total)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [poId, item.category || '', itemName || null, description, item.quantity, item.unitPrice, discount, total]
+        `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit_price, discount, tax_percentage, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [poId, '', itemName || null, description, item.quantity, item.unitPrice, 0, taxPercentage, total]
       );
     }
 
@@ -1387,15 +1453,14 @@ export async function updatePurchaseOrder(user, poId, body) {
 
     await conn.query(`DELETE FROM po_line_items WHERE po_id = ?`, [poId]);
     for (const item of lineItems) {
-      const gross = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
-      const discount = Math.min(gross, Math.max(0, Number(item.discount) || 0));
-      const total = lineItemTotal(item.quantity, item.unitPrice, discount);
+      const total = lineItemTotal(item.quantity, item.unitPrice);
+      const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage) || 0));
       const itemName = String(item.itemName || item.name || '').trim();
       const description = String(item.description || itemName || '').trim() || '(no description)';
       await conn.query(
-        `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit_price, discount, total)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [poId, item.category || '', itemName || null, description, item.quantity, item.unitPrice, discount, total]
+        `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit_price, discount, tax_percentage, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [poId, '', itemName || null, description, item.quantity, item.unitPrice, 0, taxPercentage, total]
       );
     }
 

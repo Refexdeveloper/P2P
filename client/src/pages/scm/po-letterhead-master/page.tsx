@@ -114,7 +114,7 @@ function ClauseTable({
           <thead>
             <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 bg-white border-b border-gray-100">
               <th className="px-5 py-3 w-12">#</th>
-              <th className="px-5 py-3 w-[220px]">{headerColumnLabel}</th>
+              <th className="px-5 py-3 w-[280px]">{headerColumnLabel}</th>
               <th className="px-5 py-3">{descriptionColumnLabel}</th>
               <th className="px-5 py-3 w-28 text-center">Actions</th>
             </tr>
@@ -125,18 +125,18 @@ function ClauseTable({
                 <td className="px-5 py-4 text-sm text-gray-400">{index + 1}</td>
                 <td className="px-5 py-4">
                   <label className="block text-xs text-gray-400 mb-1">Header</label>
-                  <input
-                    type="text"
+                  <RichTextEditor
+                    editorKey={`${row.clientKey}-header`}
                     value={row.termsHeader}
-                    onChange={(e) => updateRow(index, { termsHeader: e.target.value })}
+                    onChange={(html) => updateRow(index, { termsHeader: html })}
                     placeholder={headerPlaceholder}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
+                    minHeight={72}
                   />
                 </td>
                 <td className="px-5 py-4">
                   <label className="block text-xs text-gray-400 mb-1">{descriptionFieldLabel}</label>
                   <RichTextEditor
-                    editorKey={row.clientKey}
+                    editorKey={`${row.clientKey}-desc`}
                     value={row.termsDescription}
                     onChange={(html) => updateRow(index, { termsDescription: html })}
                     placeholder={descriptionPlaceholder}
@@ -297,11 +297,18 @@ export default function PoTypeMasterPage() {
     const terms = fromEditableClauses(current.terms as EditableClause[]);
     const annexure = fromEditableClauses(current.annexure as EditableClause[]);
 
+    const plain = (html: string) =>
+      String(html || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
     const hasContent =
       current.title?.trim() ||
       current.letterheadHeader?.trim() ||
-      terms.some((r) => r.termsHeader.trim() || r.termsDescription.trim()) ||
-      annexure.some((r) => r.termsHeader.trim() || r.termsDescription.trim());
+      terms.some((r) => plain(r.termsHeader) || plain(r.termsDescription)) ||
+      annexure.some((r) => plain(r.termsHeader) || plain(r.termsDescription));
 
     if (!hasContent) {
       showToast('Add at least one header or description before saving', 'error');

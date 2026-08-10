@@ -264,7 +264,7 @@ export default function RFQRoundsPanel({ vendors }: RFQRoundsPanelProps) {
         </div>
       </div>
 
-      {/* Price Trend Table */}
+      {/* Price Trend Table — price + file per quotation round */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-5">
         <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
           <i className="ri-line-chart-line text-teal-600"></i>
@@ -275,10 +275,10 @@ export default function RFQRoundsPanel({ vendors }: RFQRoundsPanelProps) {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[180px]">Vendor</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[200px]">Vendor</th>
                 {Array.from({ length: maxRounds }, (_, i) => (
-                  <th key={i} className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[130px]">
-                    Round {i + 1}
+                  <th key={i} className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[160px]">
+                    Quotation Round {i + 1}
                   </th>
                 ))}
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[120px]">Savings</th>
@@ -288,41 +288,72 @@ export default function RFQRoundsPanel({ vendors }: RFQRoundsPanelProps) {
               {vendorsWithRounds.map((vendor) => {
                 const rounds = vendor.quoteRounds || [];
                 const firstPrice = rounds[0]?.quotedPrice || 0;
-                const lastPrice = rounds[rounds.length - 1]?.quotedPrice || 0;
+                const lastRound = rounds[rounds.length - 1];
+                const lastPrice = lastRound?.quotedPrice || 0;
                 const savings = firstPrice - lastPrice;
                 const savingsPct = firstPrice > 0 ? ((savings / firstPrice) * 100).toFixed(1) : '0';
                 return (
                   <tr key={vendor.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-4 align-top">
                       <p className="text-sm font-semibold text-gray-900">{vendor.name}</p>
-                      <p className="text-xs text-gray-400">{rounds.length} rounds</p>
+                      <p className="text-xs text-gray-400 mt-1">{rounds.length} round{rounds.length !== 1 ? 's' : ''}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Last quotation: {lastPrice ? formatCurrency(lastPrice) : '—'}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[180px]" title={lastRound?.quotationFile || undefined}>
+                        Last file: {lastRound?.quotationFile || '—'}
+                      </p>
                     </td>
                     {Array.from({ length: maxRounds }, (_, i) => {
                       const round = rounds[i];
                       const prevRound = rounds[i - 1];
                       const isLast = i === rounds.length - 1;
                       if (!round) {
-                        return <td key={i} className="px-4 py-3 text-center text-gray-300 text-xs">—</td>;
+                        return (
+                          <td key={i} className="px-4 py-4 text-center text-gray-300 text-sm align-top">
+                            —
+                          </td>
+                        );
                       }
                       const change = prevRound ? round.quotedPrice - prevRound.quotedPrice : 0;
-                      const changePct = prevRound ? ((change / prevRound.quotedPrice) * 100).toFixed(1) : null;
+                      const changePct = prevRound && prevRound.quotedPrice
+                        ? ((change / prevRound.quotedPrice) * 100).toFixed(1)
+                        : null;
                       return (
-                        <td key={i} className={`px-4 py-3 text-center ${isLast ? 'bg-teal-50' : ''}`}>
-                          <p className={`text-sm font-bold ${isLast ? 'text-teal-700' : 'text-gray-800'}`}>
-                            {formatCurrency(round.quotedPrice)}
-                          </p>
-                          {changePct !== null && (
-                            <p className={`text-xs font-semibold mt-0.5 ${change < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                              {change < 0 ? '▼' : '▲'} {Math.abs(Number(changePct))}%
-                            </p>
-                          )}
-                          <div className="mt-1">
-                            <RoundStatusBadge status={round.status} />
+                        <td key={i} className={`px-4 py-4 text-center align-top ${isLast ? 'bg-teal-50/60' : ''}`}>
+                          <div className="inline-flex flex-col items-center gap-1.5 min-w-[120px]">
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Price</p>
+                              <p className={`text-sm font-bold ${isLast ? 'text-teal-700' : 'text-gray-900'}`}>
+                                {formatCurrency(round.quotedPrice)}
+                              </p>
+                              {changePct !== null && (
+                                <p className={`text-xs font-semibold mt-0.5 ${change < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                  {change < 0 ? '▼' : '▲'} {Math.abs(Number(changePct))}%
+                                </p>
+                              )}
+                            </div>
+                            <div className="w-full pt-1.5 border-t border-gray-100">
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">File</p>
+                              {round.quotationFile ? (
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 max-w-[150px]">
+                                  <i className="ri-file-pdf-2-line text-red-500 text-sm flex-shrink-0"></i>
+                                  <span className="text-xs font-medium text-gray-700 truncate" title={round.quotationFile}>
+                                    {round.quotationFile}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-300">—</span>
+                              )}
+                            </div>
+                            <div className="mt-0.5">
+                              <RoundStatusBadge status={round.status} />
+                            </div>
                           </div>
                         </td>
                       );
                     })}
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-4 text-center align-top">
                       {savings > 0 ? (
                         <div>
                           <p className="text-sm font-bold text-emerald-600">{formatCurrency(savings)}</p>

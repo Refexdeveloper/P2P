@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { Fragment, useState, useMemo } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { vendorRFQData, type VendorRFQItem, type RFQItemStatus } from '../../../mocks/vendor-quotation-portal-data';
 import PRDetailModal from './components/PRDetailModal';
 import QuoteSubmitModal from './components/QuoteSubmitModal';
+import VendorRfqExpandedRow from './components/VendorRfqExpandedRow';
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
@@ -35,6 +36,7 @@ export default function VendorQuotationPortalPage() {
   const [statusFilter, setStatusFilter] = useState<RFQItemStatus | 'All'>('All');
   const [priorityFilter, setPriorityFilter] = useState<'All' | 'High' | 'Medium' | 'Low'>('All');
   const [successMsg, setSuccessMsg] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const stats = useMemo(() => ({
     total: data.length,
@@ -207,6 +209,7 @@ export default function VendorQuotationPortalPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-3 py-3.5 w-10"></th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase">RFQ / PR</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase">PR Description</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase">Buyer</th>
@@ -222,7 +225,7 @@ export default function VendorQuotationPortalPage() {
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-5 py-16 text-center">
+                    <td colSpan={11} className="px-5 py-16 text-center">
                       <i className="ri-file-search-line text-4xl text-gray-200 block mb-3"></i>
                       <p className="text-gray-400 font-medium">No RFQs match your filters</p>
                     </td>
@@ -232,73 +235,94 @@ export default function VendorQuotationPortalPage() {
                   const sc = statusConfig[rfq.status];
                   const pc = priorityConfig[rfq.priority];
                   const canSubmit = rfq.status === 'Pending Quote' || rfq.status === 'Re-quote Requested';
+                  const open = expandedId === rfq.id;
                   return (
-                    <tr
-                      key={rfq.id}
-                      onClick={() => setDetailRFQ(rfq)}
-                      className="cursor-pointer hover:bg-teal-50/40 transition-colors"
-                      style={{ borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}
-                    >
-                      <td className="px-5 py-4">
-                        <p className="font-bold text-teal-600 text-xs">{rfq.rfqNumber}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{rfq.prNumber}</p>
-                      </td>
-                      <td className="px-5 py-4 max-w-xs">
-                        <p className="font-semibold text-gray-900 truncate">{rfq.prTitle}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{rfq.lineItems.length} item{rfq.lineItems.length !== 1 ? 's' : ''}</p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <p className="font-medium text-gray-900">{rfq.buyerName}</p>
-                        <p className="text-xs text-gray-400">{rfq.buyerDepartment}</p>
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: pc.bg, color: pc.text }}>
-                          {rfq.priority}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <p className={`text-sm font-semibold ${canSubmit ? 'text-red-600' : 'text-gray-600'}`}>{rfq.dueDate}</p>
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <span className="px-2.5 py-1 bg-teal-50 text-teal-700 rounded-full text-xs font-bold">Q{rfq.currentRound}</span>
-                      </td>
-                      <td className="px-5 py-4 text-right text-gray-500 text-sm">{formatCurrency(rfq.estimatedValue)}</td>
-                      <td className="px-5 py-4 text-right">
-                        {rfq.quotedValue
-                          ? <span className="font-bold text-teal-600">{formatCurrency(rfq.quotedValue)}</span>
-                          : <span className="text-gray-300 text-xs">—</span>}
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <span
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap"
-                          style={{ background: sc.bg, color: sc.text }}
-                        >
-                          <i className={sc.icon}></i>
-                          {rfq.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-center" onClick={e => e.stopPropagation()}>
-                        {canSubmit ? (
+                    <Fragment key={rfq.id}>
+                      <tr
+                        className="hover:bg-teal-50/40 transition-colors"
+                        style={{ borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}
+                      >
+                        <td className="px-3 py-4">
                           <button
-                            onClick={() => { setDetailRFQ(rfq); }}
-                            className="px-4 py-2 text-xs font-bold rounded-lg whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 mx-auto"
-                            style={{ background: '#0f766e', color: '#fff' }}
+                            type="button"
+                            onClick={() => setExpandedId(open ? null : rfq.id)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 cursor-pointer"
+                            aria-expanded={open}
+                            title={open ? 'Collapse details' : 'Expand full details'}
                           >
-                            <i className="ri-eye-line"></i>
-                            View & Quote
+                            <i className={`ri-arrow-${open ? 'down' : 'right'}-s-line text-lg`}></i>
                           </button>
-                        ) : (
-                          <button
-                            onClick={() => setDetailRFQ(rfq)}
-                            className="px-4 py-2 text-xs font-medium rounded-lg whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 mx-auto"
-                            style={{ background: '#f1f5f9', color: '#64748b' }}
+                        </td>
+                        <td className="px-5 py-4 cursor-pointer" onClick={() => setExpandedId(open ? null : rfq.id)}>
+                          <p className="font-bold text-teal-600 text-xs">{rfq.rfqNumber}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{rfq.prNumber}</p>
+                        </td>
+                        <td className="px-5 py-4 max-w-xs cursor-pointer" onClick={() => setExpandedId(open ? null : rfq.id)}>
+                          <p className="font-semibold text-gray-900 truncate">{rfq.prTitle}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{rfq.lineItems.length} item{rfq.lineItems.length !== 1 ? 's' : ''}</p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <p className="font-medium text-gray-900">{rfq.buyerName}</p>
+                          <p className="text-xs text-gray-400">{rfq.buyerDepartment}</p>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: pc.bg, color: pc.text }}>
+                            {rfq.priority}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <p className={`text-sm font-semibold ${canSubmit ? 'text-red-600' : 'text-gray-600'}`}>{rfq.dueDate}</p>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span className="px-2.5 py-1 bg-teal-50 text-teal-700 rounded-full text-xs font-bold">Q{rfq.currentRound}</span>
+                        </td>
+                        <td className="px-5 py-4 text-right text-gray-500 text-sm">{formatCurrency(rfq.estimatedValue)}</td>
+                        <td className="px-5 py-4 text-right">
+                          {rfq.quotedValue
+                            ? <span className="font-bold text-teal-600">{formatCurrency(rfq.quotedValue)}</span>
+                            : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap"
+                            style={{ background: sc.bg, color: sc.text }}
                           >
-                            <i className="ri-eye-line"></i>
-                            View Details
-                          </button>
-                        )}
-                      </td>
-                    </tr>
+                            <i className={sc.icon}></i>
+                            {rfq.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          {canSubmit ? (
+                            <button
+                              type="button"
+                              onClick={() => { setDetailRFQ(rfq); }}
+                              className="px-4 py-2 text-xs font-bold rounded-lg whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 mx-auto"
+                              style={{ background: '#0f766e', color: '#fff' }}
+                            >
+                              <i className="ri-eye-line"></i>
+                              View & Quote
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDetailRFQ(rfq)}
+                              className="px-4 py-2 text-xs font-medium rounded-lg whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 mx-auto"
+                              style={{ background: '#f1f5f9', color: '#64748b' }}
+                            >
+                              <i className="ri-eye-line"></i>
+                              View Details
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {open && (
+                        <VendorRfqExpandedRow
+                          rfq={rfq}
+                          colSpan={11}
+                          onQuote={() => setDetailRFQ(rfq)}
+                        />
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

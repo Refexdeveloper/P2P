@@ -50,6 +50,7 @@ const VendorPoAcceptPage = lazy(() => import('../pages/vendor/po-accept/page'));
 const VendorDashboardPage = lazy(() => import('../pages/vendor/dashboard/page'));
 const TechEvaluatorPage = lazy(() => import('../pages/tech-evaluator/rfq-evaluation/page'));
 const UserPermissionsPage = lazy(() => import('../pages/admin/user-permissions/page'));
+const AdminLoginPage = lazy(() => import('../pages/admin/login/page'));
 
 const routes: RouteObject[] = [
   {
@@ -59,6 +60,10 @@ const routes: RouteObject[] = [
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/admin/login',
+    element: <AdminLoginPage />,
   },
   {
     path: '/auth/refexone',

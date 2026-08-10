@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import PoSampleCsvTable from '../../../components/feature/PoSampleCsvTable';
+import TrackPoExpandedRow from './components/TrackPoExpandedRow';
 import { poApi, prApi } from '../../../services/api';
 import {
   downloadPoImportSampleCsv,
@@ -461,30 +462,7 @@ export default function TrackPoPage() {
                             </div>
                           </td>
                         </tr>
-                        {open && (
-                          <tr>
-                            <td colSpan={9} className="p-0 bg-slate-50 border-b">
-                              <div className="m-4 bg-white rounded-xl border border-gray-200 p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                                <div>
-                                  <p className="text-xs text-gray-500">Requester</p>
-                                  <p className="font-medium text-gray-900">{row.requester || '—'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-500">Vendor</p>
-                                  <p className="font-medium text-gray-900">{row.vendorName || '—'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-500">Required / Delivery</p>
-                                  <p className="font-medium text-gray-900">{row.requiredDate || '—'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-gray-500">Created / Submitted</p>
-                                  <p className="font-medium text-gray-900">{row.createdAt || '—'}</p>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
+                        {open && <TrackPoExpandedRow row={row} colSpan={9} />}
                       </Fragment>
                     );
                   })
