@@ -11,6 +11,7 @@ import {
   resetAllData,
 } from '../services/adminService.js';
 import { listEmailLogs } from '../services/emailLogService.js';
+import { listWhatsAppLogs } from '../services/whatsappLogService.js';
 
 const router = Router();
 router.use(authenticate);
@@ -89,6 +90,22 @@ router.get('/email-logs', async (req, res) => {
     const data = await listEmailLogs({
       status: req.query.status,
       emailType: req.query.emailType,
+      prId: req.query.prId,
+      search: req.query.search,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/whatsapp-logs', async (req, res) => {
+  try {
+    const data = await listWhatsAppLogs({
+      status: req.query.status,
+      notifyType: req.query.notifyType,
       prId: req.query.prId,
       search: req.query.search,
       page: req.query.page,

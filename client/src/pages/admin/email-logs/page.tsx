@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { adminApi, EmailLogRecord } from '../../../services/api';
+import { adminApi, EmailLogRecord, WhatsAppLogRecord } from '../../../services/api';
 
 const STATUS_COLORS: Record<string, string> = {
   sent: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -9,7 +9,7 @@ const STATUS_COLORS: Record<string, string> = {
   queued: 'bg-slate-50 text-slate-600 border-slate-200',
 };
 
-const TYPE_LABELS: Record<string, string> = {
+const EMAIL_TYPE_LABELS: Record<string, string> = {
   pr_raised: 'PR Raised (Ops)',
   pr_approval_pending: 'Approval Pending (L1/L2/CFO/SCM)',
   pr_post_rfq_action: 'PR Reject / Return',
@@ -21,6 +21,11 @@ const TYPE_LABELS: Record<string, string> = {
   generic: 'Other',
 };
 
+const WA_TYPE_LABELS: Record<string, string> = {
+  workflow: 'Workflow Notify',
+  whatsapp_test: 'WhatsApp Test',
+};
+
 function formatWhen(value?: string | null) {
   if (!value) return '—';
   try {
@@ -30,13 +35,17 @@ function formatWhen(value?: string | null) {
   }
 }
 
+type Channel = 'email' | 'whatsapp';
+
 export default function AdminEmailLogsPage() {
-  const [items, setItems] = useState<EmailLogRecord[]>([]);
+  const [channel, setChannel] = useState<Channel>('email');
+  const [emailItems, setEmailItems] = useState<EmailLogRecord[]>([]);
+  const [waItems, setWaItems] = useState<WhatsAppLogRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('');
-  const [emailType, setEmailType] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -45,37 +54,85 @@ export default function AdminEmailLogsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await adminApi.listEmailLogs({
-        status: status || undefined,
-        emailType: emailType || undefined,
-        search: search || undefined,
-        page,
-        limit,
-      });
-      setItems(res.data.items);
-      setTotal(res.data.total);
+      if (channel === 'email') {
+        const res = await adminApi.listEmailLogs({
+          status: status || undefined,
+          emailType: typeFilter || undefined,
+          search: search || undefined,
+          page,
+          limit,
+        });
+        setEmailItems(res.data.items);
+        setWaItems([]);
+        setTotal(res.data.total);
+      } else {
+        const res = await adminApi.listWhatsAppLogs({
+          status: status || undefined,
+          notifyType: typeFilter || undefined,
+          search: search || undefined,
+          page,
+          limit,
+        });
+        setWaItems(res.data.items);
+        setEmailItems([]);
+        setTotal(res.data.total);
+      }
     } catch {
-      setItems([]);
+      setEmailItems([]);
+      setWaItems([]);
       setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [status, emailType, search, page]);
+  }, [channel, status, typeFilter, search, page]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
+  const typeOptions = channel === 'email' ? EMAIL_TYPE_LABELS : WA_TYPE_LABELS;
+
+  const switchChannel = (next: Channel) => {
+    setChannel(next);
+    setPage(1);
+    setTypeFilter('');
+    setExpandedId(null);
+  };
 
   return (
     <DashboardLayout>
       <div className="p-6 max-w-7xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-slate-900">Email Logs</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Notification Logs</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Track whether PR raised, L1/L2 manager, and later workflow emails were sent successfully.
+            Check whether PR / L1 manager and later workflow emails and WhatsApp messages were sent.
           </p>
+        </div>
+
+        <div className="flex gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => switchChannel('email')}
+            className={`rounded-lg px-4 py-2 text-sm border ${
+              channel === 'email'
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-slate-700 border-slate-200'
+            }`}
+          >
+            Email
+          </button>
+          <button
+            type="button"
+            onClick={() => switchChannel('whatsapp')}
+            className={`rounded-lg px-4 py-2 text-sm border ${
+              channel === 'whatsapp'
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-slate-700 border-slate-200'
+            }`}
+          >
+            WhatsApp
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-3 mb-4 items-end">
@@ -90,7 +147,11 @@ export default function AdminEmailLogsPage() {
                   setSearch(searchInput.trim());
                 }
               }}
-              placeholder="PR number, subject, recipient…"
+              placeholder={
+                channel === 'email'
+                  ? 'PR number, subject, recipient…'
+                  : 'PR number, phone, stage, wamid…'
+              }
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
           </div>
@@ -114,15 +175,15 @@ export default function AdminEmailLogsPage() {
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Type</label>
             <select
-              value={emailType}
+              value={typeFilter}
               onChange={(e) => {
                 setPage(1);
-                setEmailType(e.target.value);
+                setTypeFilter(e.target.value);
               }}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
             >
               <option value="">All</option>
-              {Object.entries(TYPE_LABELS).map(([code, label]) => (
+              {Object.entries(typeOptions).map(([code, label]) => (
                 <option key={code} value={code}>
                   {label}
                 </option>
@@ -150,123 +211,247 @@ export default function AdminEmailLogsPage() {
 
         <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">When</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">PR / PO</th>
-                  <th className="px-4 py-3">To</th>
-                  <th className="px-4 py-3">Subject</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+            {channel === 'email' ? (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                      Loading…
-                    </td>
+                    <th className="px-4 py-3">When</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">PR / PO</th>
+                    <th className="px-4 py-3">To</th>
+                    <th className="px-4 py-3">Subject</th>
                   </tr>
-                ) : items.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                      No email logs yet. Raise a PR to see L1 / approval mails appear here.
-                    </td>
-                  </tr>
-                ) : (
-                  items.map((row) => {
-                    const open = expandedId === row.id;
-                    const role =
-                      row.meta && typeof row.meta === 'object' && 'assignedRole' in row.meta
-                        ? String((row.meta as { assignedRole?: string }).assignedRole || '')
-                        : '';
-                    return (
-                      <Fragment key={row.id}>
-                        <tr
-                          className="border-t border-slate-100 hover:bg-slate-50/80 cursor-pointer"
-                          onClick={() => setExpandedId(open ? null : row.id)}
-                        >
-                          <td className="px-4 py-3 whitespace-nowrap text-slate-600">
-                            {formatWhen(row.createdAt)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium capitalize ${
-                                STATUS_COLORS[row.status] || STATUS_COLORS.queued
-                              }`}
-                            >
-                              {row.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">
-                            <div>{TYPE_LABELS[row.emailType] || row.emailType}</div>
-                            {role ? (
-                              <div className="text-xs text-slate-400 mt-0.5">Role: {role}</div>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            {row.prNumber || (row.prId ? `PR#${row.prId}` : '—')}
-                            {row.poNumber ? (
-                              <div className="text-xs text-slate-400">{row.poNumber}</div>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-3 max-w-[220px] truncate text-slate-600" title={row.toAddresses}>
-                            {row.toAddresses || '—'}
-                          </td>
-                          <td className="px-4 py-3 max-w-[280px] truncate text-slate-700" title={row.subject}>
-                            {row.subject}
-                          </td>
-                        </tr>
-                        {open ? (
-                          <tr className="border-t border-slate-100 bg-slate-50/60">
-                            <td colSpan={6} className="px-4 py-3 text-xs text-slate-600 space-y-1">
-                              <div>
-                                <span className="font-medium text-slate-700">To:</span> {row.toAddresses || '—'}
-                              </div>
-                              {row.ccAddresses ? (
-                                <div>
-                                  <span className="font-medium text-slate-700">CC:</span> {row.ccAddresses}
-                                </div>
-                              ) : null}
-                              {row.bccAddresses ? (
-                                <div>
-                                  <span className="font-medium text-slate-700">BCC:</span> {row.bccAddresses}
-                                </div>
-                              ) : null}
-                              {row.messageId ? (
-                                <div>
-                                  <span className="font-medium text-slate-700">Message ID:</span> {row.messageId}
-                                </div>
-                              ) : null}
-                              {row.sentAt ? (
-                                <div>
-                                  <span className="font-medium text-slate-700">Sent at:</span>{' '}
-                                  {formatWhen(row.sentAt)}
-                                </div>
-                              ) : null}
-                              {row.errorMessage ? (
-                                <div className="text-red-600">
-                                  <span className="font-medium">Error:</span> {row.errorMessage}
-                                </div>
-                              ) : null}
-                              {row.meta ? (
-                                <div>
-                                  <span className="font-medium text-slate-700">Meta:</span>{' '}
-                                  <code className="text-[11px] bg-white border border-slate-200 rounded px-1 py-0.5">
-                                    {JSON.stringify(row.meta)}
-                                  </code>
-                                </div>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                        Loading…
+                      </td>
+                    </tr>
+                  ) : emailItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                        No email logs yet. Raise a PR to see L1 / approval mails appear here.
+                      </td>
+                    </tr>
+                  ) : (
+                    emailItems.map((row) => {
+                      const open = expandedId === row.id;
+                      const role =
+                        row.meta && typeof row.meta === 'object' && 'assignedRole' in row.meta
+                          ? String((row.meta as { assignedRole?: string }).assignedRole || '')
+                          : '';
+                      return (
+                        <Fragment key={row.id}>
+                          <tr
+                            className="border-t border-slate-100 hover:bg-slate-50/80 cursor-pointer"
+                            onClick={() => setExpandedId(open ? null : row.id)}
+                          >
+                            <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                              {formatWhen(row.createdAt)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium capitalize ${
+                                  STATUS_COLORS[row.status] || STATUS_COLORS.queued
+                                }`}
+                              >
+                                {row.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">
+                              <div>{EMAIL_TYPE_LABELS[row.emailType] || row.emailType}</div>
+                              {role ? (
+                                <div className="text-xs text-slate-400 mt-0.5">Role: {role}</div>
                               ) : null}
                             </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              {row.prNumber || (row.prId ? `PR#${row.prId}` : '—')}
+                              {row.poNumber ? (
+                                <div className="text-xs text-slate-400">{row.poNumber}</div>
+                              ) : null}
+                            </td>
+                            <td
+                              className="px-4 py-3 max-w-[220px] truncate text-slate-600"
+                              title={row.toAddresses}
+                            >
+                              {row.toAddresses || '—'}
+                            </td>
+                            <td
+                              className="px-4 py-3 max-w-[280px] truncate text-slate-700"
+                              title={row.subject}
+                            >
+                              {row.subject}
+                            </td>
                           </tr>
-                        ) : null}
-                      </Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                          {open ? (
+                            <tr className="border-t border-slate-100 bg-slate-50/60">
+                              <td colSpan={6} className="px-4 py-3 text-xs text-slate-600 space-y-1">
+                                <div>
+                                  <span className="font-medium text-slate-700">To:</span>{' '}
+                                  {row.toAddresses || '—'}
+                                </div>
+                                {row.ccAddresses ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">CC:</span>{' '}
+                                    {row.ccAddresses}
+                                  </div>
+                                ) : null}
+                                {row.bccAddresses ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">BCC:</span>{' '}
+                                    {row.bccAddresses}
+                                  </div>
+                                ) : null}
+                                {row.messageId ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">Message ID:</span>{' '}
+                                    {row.messageId}
+                                  </div>
+                                ) : null}
+                                {row.sentAt ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">Sent at:</span>{' '}
+                                    {formatWhen(row.sentAt)}
+                                  </div>
+                                ) : null}
+                                {row.errorMessage ? (
+                                  <div className="text-red-600">
+                                    <span className="font-medium">Error:</span> {row.errorMessage}
+                                  </div>
+                                ) : null}
+                                {row.meta ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">Meta:</span>{' '}
+                                    <code className="text-[11px] bg-white border border-slate-200 rounded px-1 py-0.5">
+                                      {JSON.stringify(row.meta)}
+                                    </code>
+                                  </div>
+                                ) : null}
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">When</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Stage</th>
+                    <th className="px-4 py-3">PR / PO</th>
+                    <th className="px-4 py-3">Phone</th>
+                    <th className="px-4 py-3">Template</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                        Loading…
+                      </td>
+                    </tr>
+                  ) : waItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                        No WhatsApp logs yet. Raise a PR (approval step) to see notifications here.
+                      </td>
+                    </tr>
+                  ) : (
+                    waItems.map((row) => {
+                      const open = expandedId === row.id;
+                      return (
+                        <Fragment key={row.id}>
+                          <tr
+                            className="border-t border-slate-100 hover:bg-slate-50/80 cursor-pointer"
+                            onClick={() => setExpandedId(open ? null : row.id)}
+                          >
+                            <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                              {formatWhen(row.createdAt)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium capitalize ${
+                                  STATUS_COLORS[row.status] || STATUS_COLORS.queued
+                                }`}
+                              >
+                                {row.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">
+                              <div>{row.stage || WA_TYPE_LABELS[row.notifyType] || row.notifyType}</div>
+                              <div className="text-xs text-slate-400 mt-0.5">
+                                {WA_TYPE_LABELS[row.notifyType] || row.notifyType}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              {row.prNumber || (row.prId ? `PR#${row.prId}` : '—')}
+                              {row.poNumber ? (
+                                <div className="text-xs text-slate-400">{row.poNumber}</div>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                              {row.toPhone || '—'}
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">{row.templateName || '—'}</td>
+                          </tr>
+                          {open ? (
+                            <tr className="border-t border-slate-100 bg-slate-50/60">
+                              <td colSpan={6} className="px-4 py-3 text-xs text-slate-600 space-y-1">
+                                <div>
+                                  <span className="font-medium text-slate-700">Phone:</span>{' '}
+                                  {row.toPhone || '—'}
+                                </div>
+                                {row.wamid ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">WAMID:</span>{' '}
+                                    {row.wamid}
+                                  </div>
+                                ) : null}
+                                {row.sentAt ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">Sent at:</span>{' '}
+                                    {formatWhen(row.sentAt)}
+                                  </div>
+                                ) : null}
+                                {row.parameters?.length ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">Params:</span>{' '}
+                                    <code className="text-[11px] bg-white border border-slate-200 rounded px-1 py-0.5">
+                                      {JSON.stringify(row.parameters)}
+                                    </code>
+                                  </div>
+                                ) : null}
+                                {row.errorMessage ? (
+                                  <div className="text-red-600">
+                                    <span className="font-medium">Error:</span> {row.errorMessage}
+                                  </div>
+                                ) : null}
+                                {row.meta ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">Meta:</span>{' '}
+                                    <code className="text-[11px] bg-white border border-slate-200 rounded px-1 py-0.5">
+                                      {JSON.stringify(row.meta)}
+                                    </code>
+                                  </div>
+                                ) : null}
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
 
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-sm text-slate-600">

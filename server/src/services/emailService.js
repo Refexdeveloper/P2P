@@ -13,6 +13,7 @@ import {
   queueWorkflowWhatsApp,
   resolvePhonesForEmails,
   getWhatsAppPublicBaseUrl,
+  getDefaultNotifyPhones,
 } from './whatsappService.js';
 import { createEmailLog, updateEmailLog } from './emailLogService.js';
 
@@ -140,34 +141,72 @@ async function notifyWorkflowWhatsApp({
   stage,
   actionUrl,
   requesterName,
+  assigneeName,
 }) {
   try {
-    const toPhones = await resolvePhonesForEmails(pool, emails, {
-      includeOpsCc: process.env.WHATSAPP_CC_OPS === 'true',
-      fallbackToDefault: process.env.WHATSAPP_FALLBACK_DEFAULT !== 'false',
+    const prId = pr?.id || pr?.prId || null;
+    const prNumber = pr?.prNumber || pr?.pr_number || (prId ? `PR-${prId}` : null);
+
+    // Always send to assignee mobile when available; ops number only as CC/fallback
+    const assigneePhones = await resolvePhonesForEmails(pool, emails, {
+      includeOpsCc: false,
+      fallbackToDefault: false,
     });
+    const opsPhones = getDefaultNotifyPhones();
+    const ccOps = process.env.WHATSAPP_CC_OPS === 'true';
+    const toPhones = [
+      ...new Set([
+        ...assigneePhones,
+        ...((ccOps || !assigneePhones.length) ? opsPhones : []),
+      ]),
+    ];
+
     if (!toPhones.length) {
       console.warn(
-        `WhatsApp skipped: no phone for assignees [${(emails || []).join(', ')}] on ${pr.prNumber || pr.id}`
+        `WhatsApp skipped: no phone for assignees [${(emails || []).join(', ')}] on ${prNumber || prId}`
       );
+      const { createWhatsAppLog } = await import('./whatsappLogService.js');
+      await createWhatsAppLog({
+        notifyType: 'workflow',
+        status: 'skipped',
+        prId,
+        prNumber,
+        toPhone: '(none)',
+        stage,
+        errorMessage: `No phone for assignees: ${(emails || []).join(', ') || '(none)'}`,
+        meta: { emails },
+      });
       return;
     }
     console.log(
-      `WhatsApp assignees ${(emails || []).join(', ') || '(none)'} → ${toPhones.join(', ')}`
+      `WhatsApp approval notify → ${toPhones.join(', ')} (assignee phones: ${assigneePhones.join(', ') || 'none'}; emails: ${(emails || []).join(', ') || 'none'}) stage=${stage}`
     );
     const parameters = buildWorkflowWhatsAppParams({
-      appName: 'P2P',
-      documentNumber: pr.prNumber || `PR-${pr.id || pr.prId}`,
-      title: pr.title || 'Purchase Request',
+      appName: 'Procure to Pay',
+      documentNumber: prNumber || `PR-${prId}`,
       stage,
       actionUrl: actionUrl || `${getAppBaseUrl()}/tasks`,
-      requesterName: requesterName || pr.requester || 'Requester',
+      assigneeName: assigneeName || 'Approver',
     });
     queueWorkflowWhatsApp({
       toPhones,
       parameters,
-      documentNumber: pr.prNumber || `PR-${pr.id || pr.prId}`,
+      documentNumber: prNumber || `PR-${prId}`,
       stage,
+      logContext: {
+        notifyType: 'workflow',
+        prId,
+        prNumber,
+        emails,
+        stage,
+        meta: {
+          actionUrl,
+          assigneeName,
+          assigneePhones,
+          opsPhones: (ccOps || !assigneePhones.length) ? opsPhones : [],
+          requesterName: requesterName || null,
+        },
+      },
     });
   } catch (err) {
     console.error('WhatsApp notify failed:', err.message);
@@ -513,37 +552,44 @@ export function queuePrApprovalPendingNotification(pr, assignedRole, requester, 
   const emails = [
     ...((options.approverEmails || []).map((e) => String(e || '').trim()).filter(Boolean)),
   ];
-  // If assignee emails not passed yet, still try notify with empty → will resolve from task later in send path
-  // Prefer only the step assignee for WhatsApp (not ops PR_NOTIFY_EMAIL)
+  const roleLabel = formatRoleDisplayName(assignedRole);
   const stage =
     options.stageLabel ||
-    `${formatRoleDisplayName(assignedRole)} - Action Required`;
+    `${roleLabel} Approval`;
 
-  // Resolve assignee emails async for WhatsApp (same logic as mail, but WA is fire-and-forget)
+  // Resolve assignee email + name for WhatsApp (send to assignee mobile)
   (async () => {
     let assigneeEmails = emails;
-    if (!assigneeEmails.length) {
+    let assigneeName = options.approverName || null;
+
+    if (!assigneeEmails.length || !assigneeName) {
       try {
         const fromTask = await resolveAssignedUserForStep(pr.id || pr.prId, assignedRole);
-        assigneeEmails = fromTask.emails || [];
+        if (!assigneeEmails.length) assigneeEmails = fromTask.emails || [];
+        if (!assigneeName) assigneeName = fromTask.name || null;
       } catch {
         /* ignore */
       }
     }
-    if (!assigneeEmails.length) {
+    if (!assigneeEmails.length || !assigneeName) {
       try {
         const approvers = await getApproverRecipients(assignedRole, departmentId);
-        assigneeEmails = approvers.map((a) => a.email).filter(Boolean);
+        if (!assigneeEmails.length) {
+          assigneeEmails = approvers.map((a) => a.email).filter(Boolean);
+        }
+        if (!assigneeName) assigneeName = approvers[0]?.name || null;
       } catch {
         /* ignore */
       }
     }
+
     await notifyWorkflowWhatsApp({
       pr,
       emails: assigneeEmails,
       stage,
       actionUrl: buildWorkflowPortalUrl(pr, assignedRole, options),
       requesterName: requester?.name || pr.requester || 'Requester',
+      assigneeName: assigneeName || roleLabel || 'Approver',
     });
   })().catch((err) => console.error('WhatsApp assignee notify failed:', err.message));
 }
@@ -600,12 +646,19 @@ export function queuePostRfqActionNotification(pr, approverRole, action, remarks
     }
   );
 
+  const actionLabel =
+    action === 'reject'
+      ? 'Rejected'
+      : action === 'return' || action === 'rework'
+        ? 'Sent Back'
+        : action;
   notifyWorkflowWhatsApp({
     pr,
     emails: [requester?.email].filter(Boolean),
-    stage: `PR ${action === 'reject' ? 'Rejected' : action === 'return' || action === 'rework' ? 'Sent Back' : action}`,
+    stage: `PR ${actionLabel}`,
     actionUrl: `${getAppBaseUrl()}/requester/dashboard`,
     requesterName: requester?.name || pr.requester || 'Requester',
+    assigneeName: requester?.name || pr.requester || 'Requester',
   });
 }
 

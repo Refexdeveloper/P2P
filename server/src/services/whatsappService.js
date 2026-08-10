@@ -6,6 +6,8 @@
  * newlines, tabs, 4+ spaces, or (often) non-public / localhost URLs.
  */
 
+import { createWhatsAppLog, updateWhatsAppLog } from './whatsappLogService.js';
+
 const DEFAULT_API_URL = 'https://whatsapp.unfyd.com/unfyd-meta-api/api/v1/hsm/send';
 const DEFAULT_TEMPLATE = 'workflow_all_application';
 const DEFAULT_LANG = 'en_US';
@@ -52,11 +54,12 @@ export function normalizeWhatsAppTo(raw) {
   return digits.length >= 10 && digits.length <= 15 ? digits : null;
 }
 
+/** Ops / test notify numbers — default 6382739635 when env not set. */
 function getDefaultNotifyPhones() {
   const raw =
     process.env.WHATSAPP_NOTIFY_PHONES ||
     process.env.WHATSAPP_DEFAULT_TO ||
-    '';
+    '6382739635';
   return [
     ...new Set(
       raw
@@ -108,33 +111,75 @@ function rewriteLocalUrl(url) {
  * @param {object} opts
  * @param {string} opts.to - phone with country code
  * @param {string[]} opts.parameters - exactly 6 body text values
+ * @param {object} [opts.logContext] - admin log fields
  */
-export async function sendWhatsAppHsm({ to, parameters }) {
+export async function sendWhatsAppHsm({ to, parameters, logContext = {} }) {
+  const { apiUrl, appKey, appSecret, templateName, languageCode } = getConfig();
+  const phone = normalizeWhatsAppTo(to) || String(to || '').trim() || '(none)';
+  const stage = logContext.stage || parameters?.[3] || parameters?.[4] || null;
+  const baseLog = {
+    notifyType: logContext.notifyType || 'workflow',
+    prId: logContext.prId || null,
+    poId: logContext.poId || null,
+    relatedId: logContext.relatedId || null,
+    prNumber: logContext.prNumber || parameters?.[1] || null,
+    poNumber: logContext.poNumber || null,
+    toPhone: phone,
+    templateName,
+    stage,
+    parameters: parameters || null,
+    meta: logContext.meta || null,
+  };
+
   if (!isEnabled()) {
     console.log('WhatsApp skipped (WHATSAPP_ENABLED=false)');
+    await createWhatsAppLog({
+      ...baseLog,
+      status: 'skipped',
+      errorMessage: 'WHATSAPP_ENABLED=false',
+    });
     return null;
   }
 
-  const { apiUrl, appKey, appSecret, templateName, languageCode } = getConfig();
   if (!appKey || !appSecret) {
     console.warn('WhatsApp skipped: WHATSAPP_APP_KEY / WHATSAPP_APP_SECRET not set');
+    await createWhatsAppLog({
+      ...baseLog,
+      status: 'skipped',
+      errorMessage: 'WHATSAPP_APP_KEY / WHATSAPP_APP_SECRET not set',
+    });
     return null;
   }
 
-  const phone = normalizeWhatsAppTo(to);
-  if (!phone) throw new Error(`Invalid WhatsApp recipient: ${to}`);
+  const normalized = normalizeWhatsAppTo(to);
+  if (!normalized) {
+    await createWhatsAppLog({
+      ...baseLog,
+      status: 'failed',
+      errorMessage: `Invalid WhatsApp recipient: ${to}`,
+    });
+    throw new Error(`Invalid WhatsApp recipient: ${to}`);
+  }
+  baseLog.toPhone = normalized;
 
   const params = (parameters || []).slice(0, 6).map((t, i) => {
-    // 5th body param is usually the action URL
-    if (i === 4) return sanitizeWhatsAppText(rewriteLocalUrl(t), 200);
-    return sanitizeWhatsAppText(t, i === 2 ? 80 : 60);
+    // {{6}} (index 5) is the login / action URL
+    if (i === 5) return sanitizeWhatsAppText(rewriteLocalUrl(t), 200);
+    // Status / workflow can be a bit longer
+    return sanitizeWhatsAppText(t, i === 3 || i === 4 ? 80 : 60);
   });
   while (params.length < 6) params.push('-');
+  baseLog.parameters = params;
+
+  const logId = await createWhatsAppLog({
+    ...baseLog,
+    status: 'queued',
+  });
 
   const body = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
-    to: phone,
+    to: normalized,
     type: 'template',
     template: {
       name: templateName,
@@ -149,42 +194,57 @@ export async function sendWhatsAppHsm({ to, parameters }) {
   };
 
   console.log(
-    `WhatsApp HSM → ${phone} template=${templateName} params=`,
+    `WhatsApp HSM → ${normalized} template=${templateName} params=`,
     JSON.stringify(params)
   );
 
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'X-app-key': appKey,
-      'X-App-Secret': appSecret,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const text = await response.text().catch(() => '');
-  let json = null;
   try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    /* non-json */
-  }
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-app-key': appKey,
+        'X-App-Secret': appSecret,
+      },
+      body: JSON.stringify(body),
+    });
 
-  if (!response.ok) {
-    const detail = json ? JSON.stringify(json) : text || response.statusText;
-    throw new Error(`WhatsApp API ${response.status}: ${detail}`);
-  }
+    const text = await response.text().catch(() => '');
+    let json = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      /* non-json */
+    }
 
-  const wamid = json?.messages?.[0]?.id || null;
-  const waId = json?.contacts?.[0]?.wa_id || phone;
-  if (!wamid) {
-    console.warn('WhatsApp API 200 but no message id — delivery uncertain:', text.slice(0, 500));
-  } else {
-    console.log(`WhatsApp HSM accepted wamid=${wamid} wa_id=${waId}`);
+    if (!response.ok) {
+      const detail = json ? JSON.stringify(json) : text || response.statusText;
+      const errMsg = `WhatsApp API ${response.status}: ${detail}`;
+      await updateWhatsAppLog(logId, { status: 'failed', errorMessage: errMsg });
+      throw new Error(errMsg);
+    }
+
+    const wamid = json?.messages?.[0]?.id || null;
+    const waId = json?.contacts?.[0]?.wa_id || normalized;
+    if (!wamid) {
+      console.warn('WhatsApp API 200 but no message id — delivery uncertain:', text.slice(0, 500));
+      await updateWhatsAppLog(logId, {
+        status: 'sent',
+        wamid: null,
+        errorMessage: 'API 200 but no message id — delivery uncertain',
+      });
+    } else {
+      console.log(`WhatsApp HSM accepted wamid=${wamid} wa_id=${waId}`);
+      await updateWhatsAppLog(logId, { status: 'sent', wamid });
+    }
+    return json || { ok: true, to: normalized };
+  } catch (err) {
+    if (!String(err.message || '').startsWith('WhatsApp API')) {
+      await updateWhatsAppLog(logId, { status: 'failed', errorMessage: err.message });
+    }
+    throw err;
   }
-  return json || { ok: true, to: phone };
 }
 
 /** Fire-and-forget queue (does not block API). */
@@ -200,14 +260,15 @@ const recentKeys = new Map();
 const DEDUPE_MS = 45_000;
 
 function shouldSkipDuplicate(phone, documentNumber, stage) {
-  const key = `${phone}|${documentNumber}`;
+  // Include stage so each approval step (L1 → L2 → CFO…) can notify the same ops phone
+  const key = `${phone}|${documentNumber}|${String(stage || '').trim()}`;
   const now = Date.now();
   for (const [k, ts] of recentKeys) {
     if (now - ts > DEDUPE_MS) recentKeys.delete(k);
   }
   const prev = recentKeys.get(key);
   if (prev && now - prev < DEDUPE_MS) {
-    console.log(`WhatsApp deduped (already sent recently): ${key} stage=${stage}`);
+    console.log(`WhatsApp deduped (already sent recently): ${key}`);
     return true;
   }
   recentKeys.set(key, now);
@@ -307,37 +368,123 @@ async function resolvePhoneFromRefexOne(email) {
 }
 
 /**
- * Workflow notification → template body:
- * 1 app, 2 doc#, 3 title, 4 stage/action, 5 link, 6 requester/extra
+ * Meta template workflow_all_application body vars:
+ * Dear {{1}},
+ * Application  : {{2}}
+ * Reference ID : {{3}}
+ * Status       : {{4}}
+ * Workflow     : {{5}}
+ * {{6}}  ← login URL
+ * Thanks       ← hardcoded in template
  */
+export function formatWhatsAppApprovalStatus(stageOrRole) {
+  let label = String(stageOrRole || 'Approval').trim();
+  if (/rejected|sent back|rework|completed|cancelled/i.test(label)) {
+    return label;
+  }
+  label = label
+    .replace(/\s*-\s*Action Required\s*$/i, '')
+    .replace(/^Pending\s*-?\s*/i, '')
+    .trim();
+  if (!label) label = 'Approval';
+  if (!/approval$/i.test(label) && /manager|cfo|scm|hod|buyer|approver/i.test(label)) {
+    label = `${label} Approval`;
+  }
+  return `Pending - ${label}`;
+}
+
+export function formatWhatsAppWorkflowLabel(stageOrRole) {
+  let label = String(stageOrRole || 'Approval').trim();
+  label = label
+    .replace(/\s*-\s*Action Required\s*$/i, '')
+    .replace(/^Pending\s*-?\s*/i, '')
+    .trim();
+  if (!label) return 'Approval';
+  if (!/approval$/i.test(label) && /manager|cfo|scm|hod|buyer|approver/i.test(label)) {
+    label = `${label} Approval`;
+  }
+  return label;
+}
+
 export function buildWorkflowWhatsAppParams({
-  appName = 'P2P',
+  appName = 'Procure to Pay',
   documentNumber,
   title,
   stage,
+  status,
   actionUrl,
   requesterName,
+  assigneeName,
+  workflowLabel,
 }) {
+  const dearName = assigneeName || requesterName || 'Approver';
+  const statusText =
+    status ||
+    (stage ? formatWhatsAppApprovalStatus(stage) : 'Pending - Approval');
+  const workflow =
+    workflowLabel ||
+    (stage ? formatWhatsAppWorkflowLabel(stage) : title || 'Approval');
+
   return [
-    sanitizeWhatsAppText(appName, 40),
-    sanitizeWhatsAppText(documentNumber, 40),
-    sanitizeWhatsAppText(title, 80),
-    sanitizeWhatsAppText(stage, 80),
-    sanitizeWhatsAppText(rewriteLocalUrl(actionUrl), 200),
-    sanitizeWhatsAppText(requesterName, 60),
+    sanitizeWhatsAppText(dearName, 60), // {{1}} Dear
+    sanitizeWhatsAppText(appName || 'Procure to Pay', 40), // {{2}} Application
+    sanitizeWhatsAppText(documentNumber, 40), // {{3}} Reference ID = PR number
+    sanitizeWhatsAppText(statusText, 80), // {{4}} Status
+    sanitizeWhatsAppText(workflow, 80), // {{5}} Workflow
+    sanitizeWhatsAppText(rewriteLocalUrl(actionUrl), 200), // {{6}} URL
   ];
 }
 
-export function queueWorkflowWhatsApp({ toPhones, parameters, documentNumber, stage }) {
+export function queueWorkflowWhatsApp({
+  toPhones,
+  parameters,
+  documentNumber,
+  stage,
+  logContext = {},
+}) {
   const phones = [...new Set((toPhones || []).map(normalizeWhatsAppTo).filter(Boolean))];
+  const doc = documentNumber || parameters?.[2] || '-';
+  const resolvedStage = stage || parameters?.[3] || parameters?.[4] || null;
+  const ctx = {
+    notifyType: logContext.notifyType || 'workflow',
+    prId: logContext.prId || null,
+    poId: logContext.poId || null,
+    relatedId: logContext.relatedId || null,
+    prNumber: logContext.prNumber || doc || null,
+    poNumber: logContext.poNumber || null,
+    stage: resolvedStage,
+    meta: {
+      ...(logContext.meta || {}),
+      emails: logContext.emails || null,
+    },
+  };
+
   if (!phones.length) {
     console.warn('WhatsApp skipped: no recipient phones');
+    createWhatsAppLog({
+      ...ctx,
+      status: 'skipped',
+      toPhone: '(none)',
+      templateName: getConfig().templateName,
+      parameters,
+      errorMessage: 'No recipient phones',
+    });
     return;
   }
-  const doc = documentNumber || parameters?.[1] || '-';
+
   for (const to of phones) {
-    if (shouldSkipDuplicate(to, doc, stage || parameters?.[3])) continue;
-    queueWhatsAppHsm({ to, parameters });
+    if (shouldSkipDuplicate(to, doc, resolvedStage)) {
+      createWhatsAppLog({
+        ...ctx,
+        status: 'skipped',
+        toPhone: to,
+        templateName: getConfig().templateName,
+        parameters,
+        errorMessage: 'Deduped — already sent recently for this phone + document',
+      });
+      continue;
+    }
+    queueWhatsAppHsm({ to, parameters, logContext: ctx });
   }
 }
 

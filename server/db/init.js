@@ -265,6 +265,30 @@ async function init() {
       INDEX idx_email_logs_pr (pr_id),
       INDEX idx_email_logs_type (email_type)
     )`,
+    `CREATE TABLE IF NOT EXISTS whatsapp_logs (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      notify_type VARCHAR(64) NOT NULL DEFAULT 'workflow',
+      status ENUM('queued', 'sent', 'failed', 'skipped') NOT NULL DEFAULT 'queued',
+      pr_id INT NULL,
+      po_id INT NULL,
+      related_id INT NULL,
+      pr_number VARCHAR(40) NULL,
+      po_number VARCHAR(40) NULL,
+      to_phone VARCHAR(32) NOT NULL,
+      template_name VARCHAR(120) NULL,
+      stage VARCHAR(120) NULL,
+      wamid VARCHAR(255) NULL,
+      error_message TEXT NULL,
+      parameters_json JSON NULL,
+      meta_json JSON NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      sent_at TIMESTAMP NULL,
+      INDEX idx_wa_logs_created (created_at),
+      INDEX idx_wa_logs_status (status),
+      INDEX idx_wa_logs_pr (pr_id),
+      INDEX idx_wa_logs_type (notify_type),
+      INDEX idx_wa_logs_phone (to_phone)
+    )`,
   ];
   for (const sql of migrations) {
     try {

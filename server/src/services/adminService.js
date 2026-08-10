@@ -28,6 +28,7 @@ const RESET_TABLES = [
   'purchase_requests',
   'document_number_sequences',
   'email_logs',
+  'whatsapp_logs',
 ];
 
 function clearUploadDir(dirPath) {

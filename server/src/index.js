@@ -131,15 +131,23 @@ app.post('/api/health/whatsapp/send-test', authenticate, async (req, res) => {
 
     const phone = normalizeWhatsAppTo(to);
     const parameters = buildWorkflowWhatsAppParams({
-      appName: 'P2P',
+      appName: 'Procure to Pay',
       documentNumber: 'TEST-PR',
-      title: 'WhatsApp connectivity test',
-      stage: 'Test Notification',
+      stage: 'L1 Manager Approval',
       actionUrl: `${getWhatsAppPublicBaseUrl()}/tasks`,
-      requesterName: req.user?.name || 'P2P System',
+      assigneeName: req.user?.name || 'Approver',
     });
 
-    const result = await sendWhatsAppHsm({ to: phone, parameters });
+    const result = await sendWhatsAppHsm({
+      to: phone,
+      parameters,
+      logContext: {
+        notifyType: 'whatsapp_test',
+        stage: 'Test Notification',
+        prNumber: 'TEST-PR',
+        meta: { requestedBy: req.user?.email || null },
+      },
+    });
     res.json({
       status: 'ok',
       to: phone,

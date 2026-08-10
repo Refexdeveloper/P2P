@@ -256,9 +256,9 @@ const NAV_BY_CODE: Record<string, NavItem> = {
   },
   'nav.admin_email_logs': {
     code: 'nav.admin_email_logs',
-    label: 'Email Logs',
+    label: 'Notification Logs',
     path: '/admin/email-logs',
-    icon: 'ri-mail-check-line',
+    icon: 'ri-notification-3-line',
     group: 'Admin',
   },
 };
