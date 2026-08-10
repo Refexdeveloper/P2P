@@ -40,6 +40,7 @@ export const NAV_ITEMS = [
   { code: 'nav.tech_evaluation', label: 'Technical Evaluation', path: '/tech-evaluator/rfq-evaluation', icon: 'ri-star-line', group: 'Tech', sort: 100 },
   { code: 'nav.vendor_dashboard', label: 'Dashboard', path: '/vendor/dashboard', icon: 'ri-dashboard-line', group: 'Vendor', sort: 110 },
   { code: 'nav.admin_users', label: 'User Permissions', path: '/admin/user-permissions', icon: 'ri-shield-user-line', group: 'Admin', sort: 1 },
+  { code: 'nav.admin_email_logs', label: 'Email Logs', path: '/admin/email-logs', icon: 'ri-mail-check-line', group: 'Admin', sort: 2 },
 ];
 
 export const ROLE_DEFAULT_PERMISSIONS = {

@@ -1041,6 +1041,26 @@ export interface RefexOneSyncStats {
   syncedAt: string;
 }
 
+export interface EmailLogRecord {
+  id: number;
+  emailType: string;
+  status: 'queued' | 'sent' | 'failed' | 'skipped' | string;
+  prId?: number | null;
+  poId?: number | null;
+  relatedId?: number | null;
+  prNumber?: string;
+  poNumber?: string;
+  toAddresses: string;
+  ccAddresses?: string;
+  bccAddresses?: string;
+  subject: string;
+  messageId?: string;
+  errorMessage?: string;
+  meta?: Record<string, unknown> | null;
+  createdAt?: string;
+  sentAt?: string | null;
+}
+
 export const adminApi = {
   listUsers: () => request<{ data: AdminUserRecord[] }>('/api/admin/users'),
   syncUsers: () =>
@@ -1059,6 +1079,26 @@ export const adminApi = {
       method: 'PUT',
       body: JSON.stringify({ permissions }),
     }),
+  listEmailLogs: (params?: {
+    status?: string;
+    emailType?: string;
+    prId?: number | string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set('status', params.status);
+    if (params?.emailType) q.set('emailType', params.emailType);
+    if (params?.prId != null && params.prId !== '') q.set('prId', String(params.prId));
+    if (params?.search) q.set('search', params.search);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
+    const qs = q.toString();
+    return request<{
+      data: { items: EmailLogRecord[]; total: number; page: number; limit: number };
+    }>(`/api/admin/email-logs${qs ? `?${qs}` : ''}`);
+  },
   resetData: (confirm: string) =>
     request<{
       data: {

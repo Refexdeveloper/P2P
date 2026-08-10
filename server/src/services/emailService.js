@@ -14,6 +14,7 @@ import {
   resolvePhonesForEmails,
   getWhatsAppPublicBaseUrl,
 } from './whatsappService.js';
+import { createEmailLog, updateEmailLog } from './emailLogService.js';
 
 let transporter;
 let smtpReady = false;
@@ -197,27 +198,58 @@ export async function sendTestEmail(to) {
   const recipient = String(to || '').trim();
   if (!recipient) throw new Error('Recipient email is required');
 
+  const subject = 'P2P SMTP test';
+  const logId = await createEmailLog({
+    emailType: 'smtp_test',
+    status: 'queued',
+    toAddresses: recipient,
+    subject,
+  });
+
   const ok = await ensureSmtpReady();
   if (!ok) {
+    await updateEmailLog(logId, {
+      status: 'failed',
+      errorMessage: 'SMTP is not connected. Check SMTP_HOST / SMTP_USER / SMTP_PASSWORD.',
+    });
     throw new Error('SMTP is not connected. Check SMTP_HOST / SMTP_USER / SMTP_PASSWORD.');
   }
 
-  const info = await getTransporter().sendMail({
-    from: getFromAddress(),
-    to: recipient,
-    subject: 'P2P SMTP test',
-    text: `P2P SMTP test message sent at ${new Date().toISOString()}`,
-    html: `<p>P2P SMTP test message sent at <strong>${new Date().toISOString()}</strong></p>`,
-  });
+  try {
+    const info = await getTransporter().sendMail({
+      from: getFromAddress(),
+      to: recipient,
+      subject,
+      text: `P2P SMTP test message sent at ${new Date().toISOString()}`,
+      html: `<p>P2P SMTP test message sent at <strong>${new Date().toISOString()}</strong></p>`,
+    });
 
-  console.log(`SMTP test email sent to ${recipient} — ${info.messageId}`);
-  return info;
+    await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
+    console.log(`SMTP test email sent to ${recipient} — ${info.messageId}`);
+    return info;
+  } catch (err) {
+    await updateEmailLog(logId, { status: 'failed', errorMessage: err.message });
+    throw err;
+  }
 }
 
 export async function sendPrRaisedNotification(pr, requester, options = {}) {
   const recipients = getNotificationRecipients();
+  const prId = pr?.id || pr?.prId || null;
+  const prNumber = pr?.prNumber || pr?.pr_number || null;
+
   if (!recipients.length) {
     console.warn('PR email skipped: no PR_NOTIFY_EMAIL configured');
+    await createEmailLog({
+      emailType: 'pr_raised',
+      status: 'skipped',
+      prId,
+      prNumber,
+      toAddresses: '',
+      subject: `PR raised ${prNumber || ''}`.trim(),
+      errorMessage: 'No PR_NOTIFY_EMAIL configured',
+      meta: { isResubmit: Boolean(options.isResubmit) },
+    });
     return;
   }
 
@@ -227,11 +259,25 @@ export async function sendPrRaisedNotification(pr, requester, options = {}) {
     isResubmit: options.isResubmit || false,
   });
 
+  const logId = await createEmailLog({
+    emailType: 'pr_raised',
+    status: 'queued',
+    prId,
+    prNumber,
+    toAddresses: recipients,
+    subject,
+    meta: { isResubmit: Boolean(options.isResubmit) },
+  });
+
   const { host, user, pass } = getSmtpConfig();
   if (!host || !user || !pass) {
     console.log('PR notification email NOT sent (SMTP missing):');
     console.log('  To:', recipients.join(', '));
     console.log('  Subject:', subject);
+    await updateEmailLog(logId, {
+      status: 'skipped',
+      errorMessage: 'SMTP not configured (SMTP_HOST / SMTP_USER / SMTP_PASSWORD)',
+    });
     return;
   }
 
@@ -249,12 +295,14 @@ export async function sendPrRaisedNotification(pr, requester, options = {}) {
       html,
     });
 
+    await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
     console.log(
       `Email sent successfully to ${recipients.join(', ')} — ${info.messageId}`
     );
     return info;
   } catch (err) {
     smtpReady = false;
+    await updateEmailLog(logId, { status: 'failed', errorMessage: err.message });
     console.error('Email send failure:', err.message);
     if (err.response) console.error('SMTP response:', err.response);
     throw err;
@@ -287,12 +335,48 @@ async function getApproverRecipients(role, departmentId = null) {
 }
 
 async function sendMailToRecipients(recipients, subject, html, text, attachments = [], mailOptions = {}) {
+  const toList = (recipients || []).filter(Boolean);
+  const logCtx = {
+    emailType: mailOptions.emailType || 'generic',
+    prId: mailOptions.prId || null,
+    poId: mailOptions.poId || null,
+    relatedId: mailOptions.relatedId || null,
+    prNumber: mailOptions.prNumber || null,
+    poNumber: mailOptions.poNumber || null,
+    meta: mailOptions.meta || null,
+  };
+
+  if (!toList.length) {
+    await createEmailLog({
+      ...logCtx,
+      status: 'skipped',
+      toAddresses: '',
+      ccAddresses: '',
+      bccAddresses: mailOptions.bcc || [],
+      subject,
+      errorMessage: 'No recipients',
+    });
+    return;
+  }
+
+  const logId = await createEmailLog({
+    ...logCtx,
+    status: 'queued',
+    toAddresses: toList,
+    bccAddresses: mailOptions.bcc || [],
+    subject,
+  });
+
   const { host, user, pass } = getSmtpConfig();
   if (!host || !user || !pass) {
-    console.log('Email NOT sent (SMTP missing):', subject, '→', recipients.join(', '));
+    console.log('Email NOT sent (SMTP missing):', subject, '→', toList.join(', '));
     if (attachments?.length) {
       console.log(`  Attachments skipped (${attachments.length}):`, attachments.map((a) => a.filename).join(', '));
     }
+    await updateEmailLog(logId, {
+      status: 'skipped',
+      errorMessage: 'SMTP not configured (SMTP_HOST / SMTP_USER / SMTP_PASSWORD)',
+    });
     return;
   }
 
@@ -304,17 +388,19 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
     const transport = getTransporter();
     const info = await transport.sendMail({
       from: getFromAddress(),
-      to: recipients.join(', '),
+      to: toList.join(', '),
       bcc: mailOptions.bcc?.length ? mailOptions.bcc.join(', ') : undefined,
       subject,
       text,
       html,
       attachments: attachments?.length ? attachments : undefined,
     });
-    console.log(`Email sent to ${recipients.join(', ')} — ${info.messageId}`);
+    await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
+    console.log(`Email sent to ${toList.join(', ')} — ${info.messageId}`);
     return info;
   } catch (err) {
     smtpReady = false;
+    await updateEmailLog(logId, { status: 'failed', errorMessage: err.message });
     throw err;
   }
 }
@@ -367,6 +453,16 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
 
   if (!emails.length) {
     console.warn(`No recipients for PR approval email (role: ${assignedRole}, pr: ${pr.prNumber || pr.id})`);
+    await createEmailLog({
+      emailType: 'pr_approval_pending',
+      status: 'skipped',
+      prId: pr.id || pr.prId || null,
+      prNumber: pr.prNumber || pr.pr_number || null,
+      toAddresses: '',
+      subject: `Approval pending ${pr.prNumber || pr.id || ''}`.trim(),
+      errorMessage: `No recipients for role: ${assignedRole}`,
+      meta: { assignedRole, stageLabel: options.stageLabel || null },
+    });
     return;
   }
 
@@ -391,7 +487,19 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
     `Step mail → ${assignedRole} (${primaryName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}`
   );
 
-  return sendMailToRecipients(emails, subject, html, text, options.attachments || [], { bcc });
+  return sendMailToRecipients(emails, subject, html, text, options.attachments || [], {
+    bcc,
+    emailType: 'pr_approval_pending',
+    prId: pr.id || pr.prId || null,
+    prNumber: pr.prNumber || pr.pr_number || null,
+    meta: {
+      assignedRole,
+      approverName: primaryName,
+      stageLabel: options.stageLabel || null,
+      postRfq: Boolean(options.postRfq),
+      rfqEntry: Boolean(options.rfqEntry),
+    },
+  });
 }
 
 export function queuePrApprovalPendingNotification(pr, assignedRole, requester, departmentId = null, options = {}) {
@@ -452,6 +560,16 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
   const emails = requesterEmail ? [requesterEmail] : [];
   if (!emails.length) {
     console.warn(`No requester email for action notification on ${pr.prNumber || pr.id}`);
+    await createEmailLog({
+      emailType: 'pr_post_rfq_action',
+      status: 'skipped',
+      prId: pr.id || pr.prId || null,
+      prNumber: pr.prNumber || pr.pr_number || null,
+      toAddresses: '',
+      subject: `PR ${action} ${pr.prNumber || pr.id || ''}`.trim(),
+      errorMessage: 'No requester email',
+      meta: { action, approverRole },
+    });
     return;
   }
   const emailSet = new Set(emails.map((e) => e.toLowerCase()));
@@ -466,7 +584,13 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
   });
 
   console.log(`Step mail → Requester (${requesterName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}`);
-  return sendMailToRecipients(emails, subject, html, text, [], { bcc });
+  return sendMailToRecipients(emails, subject, html, text, [], {
+    bcc,
+    emailType: 'pr_post_rfq_action',
+    prId: pr.id || pr.prId || null,
+    prNumber: pr.prNumber || pr.pr_number || null,
+    meta: { action, approverRole },
+  });
 }
 
 export function queuePostRfqActionNotification(pr, approverRole, action, remarks, requester) {
@@ -487,7 +611,12 @@ export function queuePostRfqActionNotification(pr, approverRole, action, remarks
 
 export async function sendRfqVendorEmail(pr, vendorName, vendorEmail, submitUrl, round = 1) {
   const { subject, html, text } = buildRfqInvitationEmail({ pr, vendorName, submitUrl, round });
-  return sendMailToRecipients([vendorEmail], subject, html, text);
+  return sendMailToRecipients([vendorEmail], subject, html, text, [], {
+    emailType: 'rfq_vendor',
+    prId: pr?.id || pr?.prId || null,
+    prNumber: pr?.prNumber || pr?.pr_number || null,
+    meta: { vendorName, round },
+  });
 }
 
 export function queueRfqVendorEmail(pr, vendorName, vendorEmail, submitUrl, round = 1) {
@@ -505,7 +634,12 @@ export async function sendRfqSendBackEmail(pr, vendorName, vendorEmail, submitUr
     reason,
     fields,
   });
-  return sendMailToRecipients([vendorEmail], subject, html, text);
+  return sendMailToRecipients([vendorEmail], subject, html, text, [], {
+    emailType: 'rfq_send_back',
+    prId: pr?.id || pr?.prId || null,
+    prNumber: pr?.prNumber || pr?.pr_number || null,
+    meta: { vendorName, round },
+  });
 }
 
 export function queueRfqSendBackEmail(pr, vendorName, vendorEmail, submitUrl, round, reason, fields) {
@@ -529,7 +663,13 @@ export async function sendRfqSubmittedNotifyRequester(pr, vendorName, requesterE
     submission,
     reviewUrl,
   });
-  return sendMailToRecipients(recipients, subject, html, text, [], { bcc });
+  return sendMailToRecipients(recipients, subject, html, text, [], {
+    bcc,
+    emailType: 'rfq_submitted',
+    prId: pr?.id || pr?.prId || null,
+    prNumber: pr?.prNumber || pr?.pr_number || null,
+    meta: { vendorName },
+  });
 }
 
 export function queueRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail, requesterName, submission, reviewUrl) {
@@ -553,10 +693,26 @@ export async function sendPoVendorNotification(po, { signerName, signerComments,
   });
 
   const to = po.vendorEmail;
-  const cc = ccEmails.filter((e) => e && e.toLowerCase() !== to.toLowerCase());
+  const cc = (ccEmails || []).filter((e) => e && e.toLowerCase() !== String(to || '').toLowerCase());
+  const logId = await createEmailLog({
+    emailType: 'po_vendor',
+    status: 'queued',
+    poId: po?.id || po?.poId || null,
+    prId: po?.prId || po?.pr_id || null,
+    poNumber: po?.poNumber || po?.po_number || null,
+    prNumber: po?.prNumber || po?.pr_number || null,
+    toAddresses: to || '',
+    ccAddresses: cc,
+    subject,
+    meta: { signerName, hasPdf: Boolean(pdfPath) },
+  });
 
   if (!host || !user || !pass) {
     console.log('PO email NOT sent (SMTP missing):', subject, '→', to, 'CC:', cc.join(', '));
+    await updateEmailLog(logId, {
+      status: 'skipped',
+      errorMessage: 'SMTP not configured (SMTP_HOST / SMTP_USER / SMTP_PASSWORD)',
+    });
     return;
   }
 
@@ -575,11 +731,13 @@ export async function sendPoVendorNotification(po, { signerName, signerComments,
         ? [{ filename: `${po.poNumber}_signed.pdf`, path: pdfPath, contentType: 'application/pdf' }]
         : [],
     });
+    await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
     console.log(
       `Email sent successfully to ${to} (CC: ${cc.join(', ')}) — ${info.messageId}`
     );
     return info;
   } catch (err) {
+    await updateEmailLog(logId, { status: 'failed', errorMessage: err.message });
     console.error('Email send failure (PO vendor):', err.message);
     if (err.response) console.error('SMTP response:', err.response);
     throw err;

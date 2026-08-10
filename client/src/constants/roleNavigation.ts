@@ -254,6 +254,13 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-shield-user-line',
     group: 'Admin',
   },
+  'nav.admin_email_logs': {
+    code: 'nav.admin_email_logs',
+    label: 'Email Logs',
+    path: '/admin/email-logs',
+    icon: 'ri-mail-check-line',
+    group: 'Admin',
+  },
 };
 
 const MASTER_NAV_CODES = [
@@ -313,7 +320,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   'Functional Team': ['nav.functional_evaluate', 'nav.tasks'],
   'Tech Evaluator': ['nav.tech_evaluation'],
   Vendor: ['nav.vendor_dashboard', 'nav.vendor_quotation', 'nav.vendor_po_acceptance', 'nav.vendor_invoice'],
-  'Super Admin': ['nav.admin_users'],
+  'Super Admin': ['nav.admin_users', 'nav.admin_email_logs'],
 };
 
 export function getDefaultNavigationForRole(role?: string | null): NavItem[] {

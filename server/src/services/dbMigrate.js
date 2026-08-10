@@ -182,6 +182,29 @@ const MIGRATIONS = [
   `ALTER TABLE rfq_configs ADD COLUMN require_cfo_approval TINYINT(1) NULL`,
   // WhatsApp notify — optional mobile with country code preferred (e.g. 9198xxxxxxxx)
   `ALTER TABLE users ADD COLUMN phone VARCHAR(20) NULL`,
+  `CREATE TABLE IF NOT EXISTS email_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    email_type VARCHAR(64) NOT NULL,
+    status ENUM('queued', 'sent', 'failed', 'skipped') NOT NULL DEFAULT 'queued',
+    pr_id INT NULL,
+    po_id INT NULL,
+    related_id INT NULL,
+    pr_number VARCHAR(40) NULL,
+    po_number VARCHAR(40) NULL,
+    to_addresses TEXT NOT NULL,
+    cc_addresses TEXT NULL,
+    bcc_addresses TEXT NULL,
+    subject VARCHAR(500) NOT NULL,
+    message_id VARCHAR(255) NULL,
+    error_message TEXT NULL,
+    meta_json JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    sent_at TIMESTAMP NULL,
+    INDEX idx_email_logs_created (created_at),
+    INDEX idx_email_logs_status (status),
+    INDEX idx_email_logs_pr (pr_id),
+    INDEX idx_email_logs_type (email_type)
+  )`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

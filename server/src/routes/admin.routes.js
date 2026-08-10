@@ -10,6 +10,7 @@ import {
   syncUsersFromRefexOne,
   resetAllData,
 } from '../services/adminService.js';
+import { listEmailLogs } from '../services/emailLogService.js';
 
 const router = Router();
 router.use(authenticate);
@@ -78,6 +79,22 @@ router.post('/reset-data', async (req, res) => {
   try {
     const data = await resetAllData(req.user, { confirm: req.body?.confirm });
     res.json({ data, message: data.message });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/email-logs', async (req, res) => {
+  try {
+    const data = await listEmailLogs({
+      status: req.query.status,
+      emailType: req.query.emailType,
+      prId: req.query.prId,
+      search: req.query.search,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

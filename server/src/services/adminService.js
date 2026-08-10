@@ -27,6 +27,7 @@ const RESET_TABLES = [
   'purchase_orders',
   'purchase_requests',
   'document_number_sequences',
+  'email_logs',
 ];
 
 function clearUploadDir(dirPath) {
