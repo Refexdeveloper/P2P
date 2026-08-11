@@ -9,10 +9,11 @@
 import { createWhatsAppLog, updateWhatsAppLog } from './whatsappLogService.js';
 
 /**
- * Outbound WhatsApp master switch.
- * Default ON. Set WHATSAPP_SEND_ENABLED=false (or WHATSAPP_ENABLED=false) to disable.
+ * Outbound WhatsApp master switch — set manually here (no env).
+ * true  = send WhatsApp
+ * false = skip all outbound WhatsApp
  */
-const WHATSAPP_SEND_ENABLED = process.env.WHATSAPP_SEND_ENABLED !== 'false';
+const WHATSAPP_SEND_ENABLED = true;
 
 const DEFAULT_API_URL = 'https://whatsapp.unfyd.com/unfyd-meta-api/api/v1/hsm/send';
 const DEFAULT_TEMPLATE = 'workflow_all_application';
@@ -20,9 +21,7 @@ const DEFAULT_LANG = 'en_US';
 const LIVE_APP_URL = 'https://p2p-backend-645830234926.asia-south1.run.app';
 
 function isEnabled() {
-  // --- WHATSAPP SEND SERVICE COMMENTED / DISABLED ---
-  if (!WHATSAPP_SEND_ENABLED) return false;
-  return process.env.WHATSAPP_ENABLED !== 'false';
+  return WHATSAPP_SEND_ENABLED === true;
 }
 
 function getConfig() {
@@ -139,7 +138,6 @@ export async function sendWhatsAppHsm({ to, parameters, logContext = {} }) {
     meta: logContext.meta || null,
   };
 
-  // --- WHATSAPP SEND SERVICE COMMENTED / DISABLED ---
   if (!WHATSAPP_SEND_ENABLED) {
     console.log('WhatsApp send skipped (WHATSAPP_SEND_ENABLED=false)');
     await createWhatsAppLog({
@@ -295,7 +293,6 @@ function shouldSkipDuplicate(phone, documentNumber, stage) {
 }
 
 export function queueWhatsAppHsm(payload) {
-  // --- WHATSAPP SEND SERVICE COMMENTED / DISABLED ---
   if (!WHATSAPP_SEND_ENABLED) {
     console.log('WhatsApp queue skipped (WHATSAPP_SEND_ENABLED=false)');
     return;
@@ -466,7 +463,6 @@ export function queueWorkflowWhatsApp({
   stage,
   logContext = {},
 }) {
-  // --- WHATSAPP SEND SERVICE COMMENTED / DISABLED ---
   if (!WHATSAPP_SEND_ENABLED) {
     console.log('WhatsApp workflow skipped (WHATSAPP_SEND_ENABLED=false)');
     return;

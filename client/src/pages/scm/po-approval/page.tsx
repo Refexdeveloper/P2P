@@ -163,7 +163,7 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
                     onClick={onApprove}
                     className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
                   >
-                    <i className="ri-check-double-line"></i> Approve PO
+                    <i className="ri-quill-pen-line"></i> Sign &amp; Approve
                   </button>
                   <button
                     onClick={onReject}
@@ -812,9 +812,9 @@ export default function POApprovalPage() {
                               <button
                                 onClick={() => openModal(po.poNumber, 'approve')}
                                 className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                                title="Approve"
+                                title="Sign & Approve (digital signature)"
                               >
-                                <i className="ri-check-line text-sm"></i>
+                                <i className="ri-quill-pen-line text-sm"></i>
                               </button>
                               <button
                                 onClick={() => openModal(po.poNumber, 'reject')}

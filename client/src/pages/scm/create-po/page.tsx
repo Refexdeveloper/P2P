@@ -738,18 +738,19 @@ export default function CreatePOPage() {
     try {
       const res = await poApi.get(editPoId);
       const po = res.data as Record<string, unknown>;
-      const statusRaw = String(po.statusRaw || '');
-      const allowBuyerVerifyEdit =
-        searchParams.get('from') === 'buyer-verify' && statusRaw === 'pending_buyer_verify';
-      if (statusRaw !== 'pending_approval' && !allowBuyerVerifyEdit) {
+      const statusRaw = String(po.statusRaw || po.status || '').toLowerCase().replace(/\s+/g, '_');
+      const fromBuyerVerify = searchParams.get('from') === 'buyer-verify';
+      const isPendingApproval =
+        statusRaw === 'pending_approval' || statusRaw === 'pendingapproval';
+      const isBuyerVerifyStatus =
+        statusRaw === 'pending_buyer_verify' ||
+        statusRaw === 'pending_buyerverify' ||
+        statusRaw.includes('buyer_verify');
+      const allowBuyerVerifyEdit = fromBuyerVerify && isBuyerVerifyStatus;
+      if (!isPendingApproval && !allowBuyerVerifyEdit && !isBuyerVerifyStatus) {
         setLoadError('Only pending or buyer-verify POs can be edited');
         setPr(null);
         return;
-      }
-
-      // Buyer final-verify edit uses the same manual create-PO form layout
-      if (allowBuyerVerifyEdit || searchParams.get('mode') === 'manual') {
-        setPoEntryMode('manual');
       }
 
       const prDbId = Number(po.prId);
@@ -1396,10 +1397,12 @@ export default function CreatePOPage() {
     }
     if (!deliveryAddress.trim()) {
       alert('Please enter delivery address');
+      setActiveTab('terms');
       return;
     }
     if (!expectedDeliveryDate) {
       alert('Please select expected delivery date');
+      setActiveTab('terms');
       return;
     }
     setSubmitting(true);
@@ -1613,13 +1616,15 @@ export default function CreatePOPage() {
             <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <i className="ri-error-warning-line text-3xl text-amber-500"></i>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Purchase Request Not Found</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
+              {isEditMode ? 'Purchase Order Not Found' : 'Purchase Request Not Found'}
+            </h2>
             <p className="text-gray-500 text-sm mb-6">{loadError || "The PR you're trying to create a PO for doesn't exist."}</p>
             <button
-              onClick={() => navigate('/scm/purchase-requests')}
+              onClick={() => navigate(isEditMode ? editReturnPath : '/scm/purchase-requests')}
               className="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium"
             >
-              Back to Purchase Requests
+              {isBuyerVerifyEdit ? 'Back to Final Verify' : isEditMode ? 'Back' : 'Back to Purchase Requests'}
             </button>
           </div>
         </div>
@@ -2140,78 +2145,6 @@ export default function CreatePOPage() {
                 </div>
               </div>
 
-              {/* Delivery — full width */}
-              <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-5">
-                  <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-lg">
-                    <i className="ri-map-pin-line text-teal-600"></i>
-                  </div>
-                  <h3 className="text-sm font-bold text-gray-900">Delivery Information</h3>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                  <div className="sm:col-span-2 lg:col-span-4">
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                      Delivery Address <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={deliveryAddress}
-                      onChange={e => setDeliveryAddress(e.target.value)}
-                      rows={2}
-                      placeholder="Enter complete delivery address..."
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none bg-gray-50/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                      Expected Delivery Date <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={expectedDeliveryDate}
-                      onChange={e => setExpectedDeliveryDate(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                      Incoterms® 2020
-                    </label>
-                    <select
-                      value={normalizeIncoterm(incoterms)}
-                      onChange={(e) => setIncoterms(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50/50 cursor-pointer"
-                    >
-                      {INCOTERMS_OPTIONS.map((o) => (
-                        <option key={o.code} value={o.code}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                      Currency <span className="text-red-500">*</span>
-                    </label>
-                    <div className="inline-flex w-full rounded-lg border border-gray-200 bg-white p-0.5">
-                      {CURRENCY_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.code}
-                          type="button"
-                          onClick={() => setCurrency(opt.code)}
-                          className={`flex-1 px-2 py-2 rounded-md text-xs font-semibold cursor-pointer transition-colors ${
-                            currency === opt.code
-                              ? 'bg-teal-600 text-white'
-                              : 'text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          {opt.symbol} {opt.code}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">INR · USD · EUR — defaults from PR when available</p>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
@@ -2783,46 +2716,7 @@ export default function CreatePOPage() {
                 </div>
               </div>
 
-              {/* Right sidebar summary */}
               <div className="space-y-5">
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                  <h3 className="text-sm font-bold text-gray-900 mb-4">Financial Summary</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Subtotal</span>
-                      <span className="font-semibold">{fmt(subtotal)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Tax (per line)</span>
-                      <span className="font-semibold">{fmt(taxAmount)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-3 border-t border-gray-200">
-                      <span className="text-sm font-bold text-gray-900">Grand Total</span>
-                      <span className="text-xl font-bold text-teal-600">{fmt(grandTotal)}</span>
-                    </div>
-                    <div className="pt-3 border-t border-gray-100">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Amount In Words</p>
-                      <p className="text-xs text-gray-700 leading-relaxed">{amountInWords}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                  <div className="flex items-start gap-2.5">
-                    <i className="ri-information-line text-amber-600 text-lg flex-shrink-0 mt-0.5"></i>
-                    <div>
-                      <p className="text-xs font-semibold text-amber-800 mb-1">Before Submitting</p>
-                      <ul className="text-xs text-amber-700 space-y-1">
-                        <li>• Edit Terms &amp; Annexure — they print on the {docLabel} PDF</li>
-                        <li>• Verify all line item quantities and prices</li>
-                        <li>• Confirm delivery address is correct</li>
-                        <li>• Set expected delivery date</li>
-                        <li>• Review payment terms with vendor</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
                 <button
                   onClick={() => setActiveTab('preview')}
                   className="w-full py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors cursor-pointer text-sm font-semibold flex items-center justify-center gap-2 shadow-sm"

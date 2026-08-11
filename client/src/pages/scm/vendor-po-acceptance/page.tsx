@@ -163,18 +163,17 @@ export default function VendorPOAcceptancePage() {
         fileName: file?.name,
         fileData,
       });
-      showToast(res.message || 'Saved', 'success');
-      const poId = manualFor.id;
-      const poNumber = manualFor.poNumber;
       setManualFor(null);
       await load();
       if (manualAction === 'accept' || manualAction === 'partial') {
-        showToast('Opening GRN with original PO data…', 'success');
-        setTimeout(() => {
-          navigate(
-            `/grn?poId=${poId}&poNumber=${encodeURIComponent(poNumber)}&from=vendor-acceptance&create=1`
-          );
-        }, 600);
+        // Prepare GRN basic data on GRN page (awaiting row) — do NOT open GRN popup here.
+        // User opens enter-fields popup later via Mark as Received on GRN.
+        showToast(
+          res.message || 'Vendor acceptance saved. GRN is ready — open GRN and click Mark as Received.',
+          'success'
+        );
+      } else {
+        showToast(res.message || 'Saved', 'success');
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to save', 'error');
@@ -320,16 +319,10 @@ export default function VendorPOAcceptancePage() {
                           ) : accepted ? (
                             <button
                               type="button"
-                              onClick={() =>
-                                navigate(
-                                  `/grn?poId=${po.id}&poNumber=${encodeURIComponent(
-                                    po.poNumber
-                                  )}&from=vendor-acceptance&create=1`
-                                )
-                              }
+                              onClick={() => navigate('/grn')}
                               className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg"
                             >
-                              Next: Enter GRN
+                              Go to GRN
                             </button>
                           ) : (
                             <span className="text-xs text-gray-500">Completed</span>

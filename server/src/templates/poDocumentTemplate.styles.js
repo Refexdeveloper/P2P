@@ -2,18 +2,18 @@
  * PO / Work Order PDF layout
  *
  * EVERY page:
- *   TOP    = doc-shell thead (letterhead header logo)
+ *   TOP    = doc-shell thead  (letterhead header logo)
  *   BODY   = content
- *   BOTTOM = Puppeteer footerTemplate (letterhead footer logo + Page X of Y)
- *            — always at the true bottom of every page, including the last
+ *   BOTTOM = doc-shell tfoot  (letterhead footer logo) — repeats with content
+ *   PAGE # = Puppeteer footer margin only
  */
 export const PO_PDF_LAYOUT = {
   top: '4mm',
-  /** Reserved for footer logo + Page X of Y (must fit enlarged footer) */
-  bottom: '32mm',
+  /** Room for Page X of Y under the repeated tfoot logo */
+  bottom: '10mm',
   side: '10mm',
   marginTopPx: 15,
-  marginBottomPx: 120,
+  marginBottomPx: 38,
   marginSidePx: 38,
   get marginMm() {
     return 10;
@@ -22,7 +22,7 @@ export const PO_PDF_LAYOUT = {
     return 4;
   },
   get bottomMm() {
-    return 32;
+    return 10;
   },
 };
 
@@ -50,8 +50,10 @@ export const PO_STYLES = `
     margin: 0;
   }
   table.doc-shell > thead { display: table-header-group; }
+  table.doc-shell > tfoot { display: table-footer-group; }
   table.doc-shell > tbody { display: table-row-group; }
   table.doc-shell > thead > tr > td,
+  table.doc-shell > tfoot > tr > td,
   table.doc-shell > tbody > tr > td.doc-shell-body {
     border: none !important;
     padding: 0 !important;
@@ -90,13 +92,12 @@ export const PO_STYLES = `
     color: #111;
     margin-left: auto;
   }
-  /* Screen preview: footer at end of document */
   .pdf-run-footer {
     display: block;
     width: 100%;
     background: #fff;
-    margin: 24px 0 0;
-    padding: 0;
+    margin: 8px 0 0;
+    padding: 4px 0 0;
     border: none;
   }
   .pdf-run-footer-inner {
@@ -159,12 +160,14 @@ export const PO_STYLES = `
     }
 
     table.doc-shell > thead { display: table-header-group !important; }
+    table.doc-shell > tfoot { display: table-footer-group !important; }
 
     .pdf-run-header { margin: 0 0 8px; }
-
-    /* PDF footer is drawn by Puppeteer margin band — hide in-flow duplicate */
     .pdf-run-footer {
-      display: none !important;
+      display: block !important;
+      margin: 6px 0 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     .page-sheet { margin: 0; padding: 0; width: 100%; }
@@ -314,12 +317,14 @@ export const PO_STYLES = `
   }
   .special-notes p, .ack-box p { margin: 6px 0; }
   .special-notes .lbl { font-weight: bold; }
-  .sig-space { min-height: 60px; margin: 8px 0 12px; }
+  .sig-space { min-height: 72px; margin: 8px 0 12px; }
   .sig-space .sig-img {
-    max-height: 70px;
-    max-width: 220px;
+    max-height: 90px;
+    max-width: 260px;
     object-fit: contain;
     display: block;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 4px;
   }
   .ack-box .sig-gap { height: 70px; }
   .letterhead-block { margin-bottom: 10px; width: 100%; }

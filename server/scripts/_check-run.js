@@ -3,26 +3,20 @@ import { htmlToPdf } from '../src/services/poPdfService.js';
 import fs from 'fs';
 import path from 'path';
 
-// Tiny 1x1 PNG + a visible blue PNG header/footer to mimic uploaded letterhead images
-const tinyPng =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-
-// Larger-ish solid logo bars (still small) — proves data:image path works in fixed bands
 const headerPng =
   'data:image/svg+xml;base64,' +
   Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40"><rect width="160" height="40" fill="#2e3192"/><text x="80" y="26" fill="#fff" font-size="16" font-family="Arial" text-anchor="middle" font-weight="700">HEADER LOGO</text></svg>`
   ).toString('base64');
-const footerPng =
-  'data:image/svg+xml;base64,' +
-  Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="280" height="36"><rect width="280" height="36" fill="#27aae1"/><text x="140" y="24" fill="#fff" font-size="12" font-family="Arial" text-anchor="middle" font-weight="700">FOOTER LOGO</text></svg>`
-  ).toString('base64');
 
-const longTerms = Array.from({ length: 18 }, (_, i) => ({
-  termsHeader: `Term ${i + 1}`,
-  termsDescription: `<p>Clause ${i + 1}: ${'Work order commercial term text. '.repeat(8)}</p>`,
-}));
+// Realistic HTML footer like letterhead master (this was failing in Puppeteer chrome)
+const footerHtml = `
+<div style="text-align:center">
+  <div style="font-weight:700;color:#2e3192;font-size:14px">Refex Holding Private Limited</div>
+  <div style="font-size:10px;color:#666">(Formerly Sherisha Technologies Private Limited) A refex group company</div>
+  <div style="display:inline-block;background:#2e3192;color:#fff;padding:2px 10px;border-radius:12px;font-size:10px;margin:4px 0">CIN: U70200TN2010PTC074345</div>
+  <div style="font-size:9px;color:#444;margin-top:4px">Registered Office · Corporate Office · Chennai</div>
+</div>`;
 
 const po = {
   purchaseType: 'work_order',
@@ -41,11 +35,11 @@ const po = {
   entity: 'Refex Holding Private Limited',
   currency: 'INR',
   headerLogo: headerPng,
-  footerLogo: footerPng,
+  footerLogo: footerHtml,
   lineItems: [
     {
       itemName: 'Laptop',
-      description: `<p>14 inch business laptop ${tinyPng ? '' : ''}</p>`,
+      description: '<p>14 inch business laptop</p>',
       quantity: 1,
       unitPrice: 50000,
       taxPercentage: 18,
@@ -56,22 +50,20 @@ const po = {
   subtotal: 50000,
   taxAmount: 9000,
   grandTotal: 59000,
-  termsClauses: longTerms,
+  termsClauses: [{ termsHeader: 'Pay', termsDescription: '<p>Net 30</p>' }],
   annexureClauses: [{ termsHeader: 'Parties', termsDescription: '<p>Parties clause</p>' }],
-  poTermsDetails: { subject: 'Logo fix test' },
+  poTermsDetails: { subject: 'Footer fix test' },
   paymentTerms: 'Net 30',
 };
 
 const html = buildPoDocumentHtml(po);
-console.log('hasRunHeader', html.includes('pdf-run-header'));
-console.log('hasRunFooter', html.includes('pdf-run-footer'));
-console.log('hasHeaderImg', html.includes('run-header-img'));
-console.log('hasFooterImg', html.includes('run-footer-img'));
-console.log('printKeepsBands', !html.includes('.pdf-run-header,\n    .pdf-run-footer {\n      display: none'));
 const chrome = buildPoPdfChromeTemplates(po);
-console.log('chromeHasPage', chrome.footerTemplate.includes('pageNumber'));
-console.log('chromeHasFooterLogo', chrome.footerTemplate.includes('FOOTER LOGO') || chrome.footerTemplate.includes('run-footer') || chrome.footerTemplate.includes('<img'));
+console.log('hasTfoot', html.includes('<tfoot>'));
+console.log('hasRunFooter', html.includes('pdf-run-footer'));
+console.log('hasFooterCompany', html.includes('Refex Holding Private Limited'));
+console.log('chromePageOnly', chrome.footerTemplate.includes('pageNumber') && !chrome.footerTemplate.includes('Refex Holding'));
+console.log('printShowsFooter', !html.includes('.pdf-run-footer {\n      display: none'));
 
 const out = path.join('server/uploads/po', '_run_logo_test.pdf');
-await htmlToPdf(html, out, buildPoPdfChromeTemplates(po));
+await htmlToPdf(html, out, chrome);
 console.log('pdfBytes', fs.statSync(out).size);

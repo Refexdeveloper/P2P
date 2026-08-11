@@ -91,3 +91,20 @@ export async function getUserSignatureImage(userId, signatureId) {
   if (!dataUrl) throw new Error('Signature file missing');
   return { dataUrl, imagePath: rows[0].image_path };
 }
+
+/**
+ * Build PDF/HTML signature options from a PO record (enrichPO shape or DB row).
+ * Returns undefined when the PO has not been digitally signed yet.
+ */
+export function buildSignatureRenderOptions(po = {}) {
+  const name = po.signatureName || po.signature_name || '';
+  const imagePath = po.signatureImagePath || po.signature_image_path || '';
+  const imageDataUrl = imagePath ? signatureFileToDataUrl(imagePath) : null;
+  if (!name && !imageDataUrl) return undefined;
+  return {
+    name: name || 'SCM Manager',
+    date: po.signedAt || po.signed_at || '',
+    comments: po.signerComments || po.signer_comments || '',
+    imageDataUrl: imageDataUrl || undefined,
+  };
+}

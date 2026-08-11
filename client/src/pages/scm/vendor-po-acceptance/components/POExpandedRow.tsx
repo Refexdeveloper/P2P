@@ -122,14 +122,10 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
               {canGoGrn && (
                 <button
                   type="button"
-                  onClick={() =>
-                    navigate(
-                      `/grn?poId=${po.id}&poNumber=${encodeURIComponent(po.poNumber)}&from=vendor-acceptance&create=1`
-                    )
-                  }
+                  onClick={() => navigate('/grn')}
                   className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg"
                 >
-                  Next: Enter GRN <i className="ri-arrow-right-line ml-1"></i>
+                  Go to GRN <i className="ri-arrow-right-line ml-1"></i>
                 </button>
               )}
             </div>
@@ -263,14 +259,10 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                   {canGoGrn && (
                     <button
                       type="button"
-                      onClick={() =>
-                        navigate(
-                          `/grn?poId=${po.id}&poNumber=${encodeURIComponent(po.poNumber)}&from=vendor-acceptance&create=1`
-                        )
-                      }
+                      onClick={() => navigate('/grn')}
                       className="mt-4 w-full py-2 text-xs font-semibold text-white bg-emerald-600 rounded-lg"
                     >
-                      Next step: Enter GRN
+                      Go to GRN — then Mark as Received
                     </button>
                   )}
                 </div>

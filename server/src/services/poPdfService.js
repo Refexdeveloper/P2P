@@ -8,6 +8,7 @@ import {
   buildPoPdfChromeTemplates,
   PO_PDF_LAYOUT,
 } from '../templates/poDocumentTemplate.js';
+import { buildSignatureRenderOptions } from './signatureService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PO_UPLOAD_DIR = path.join(__dirname, '../../uploads/po');
@@ -50,7 +51,7 @@ export function buildPoHtml(po, options = {}) {
 
 /**
  * Convert PO / Work Order HTML → PDF.
- * Logos: HTML .pdf-run-* bands with position:fixed (every page; supports data:image).
+ * Header/footer logos: HTML doc-shell thead/tfoot (reliable for letterhead HTML).
  * Page numbers: Puppeteer footer chrome only.
  */
 export async function htmlToPdf(html, filePath, chromeTemplates = null) {
@@ -157,11 +158,13 @@ function looksLikePdfFile(filePath) {
 
 /**
  * Ensure a real PDF file exists for the PO (regenerate from HTML/template if needed).
+ * When the PO is digitally signed, re-embeds the SCM Manager signature image.
  */
 export async function ensurePoPdf(po, options = {}) {
+  const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || options.signed);
   const preferredName =
     options.fileName ||
-    po.signedPdfPath ||
+    (isSigned ? po.signedPdfPath : null) ||
     po.pdfPath ||
     `${po.poNumber || 'PO'}_draft.pdf`;
   const pdfName = String(preferredName).replace(/\.html$/i, '.pdf');
@@ -171,10 +174,15 @@ export async function ensurePoPdf(po, options = {}) {
     return { fullPath: pdfPath, fileName: path.basename(pdfName), isHtml: false };
   }
 
+  const signature =
+    options.signature ||
+    (isSigned ? buildSignatureRenderOptions(po) : undefined);
+
   const generated = await generatePoPdf(po, {
     ...options,
     fileName: path.basename(pdfName),
-    signed: Boolean(po.signedPdfPath) || options.signed,
+    signed: isSigned,
+    signature,
   });
 
   if (generated.htmlOnly || !looksLikePdfFile(generated.filePath)) {

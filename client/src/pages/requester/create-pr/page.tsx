@@ -121,11 +121,16 @@ export default function CreatePRPage() {
         setPrTitle(pr.title || '');
         setDepartment(pr.department || '');
         setEntityId(pr.entityId ? Number(pr.entityId) : '');
-        setRequestType(pr.requestType);
-        setPurchaseType(
+        const loadedPurchaseType =
           pr.purchaseType === 'work_order' || pr.purchaseType === 'Work Order'
             ? 'work_order'
-            : 'purchase_order'
+            : 'purchase_order';
+        setPurchaseType(loadedPurchaseType);
+        // Service is only allowed for Work Order
+        setRequestType(
+          loadedPurchaseType === 'purchase_order' && pr.requestType === 'Service'
+            ? 'Opex'
+            : pr.requestType
         );
         setVendorSelection(pr.vendorSelection === 'own' ? 'own' : 'scm');
         setPriority(pr.priority);
@@ -765,7 +770,13 @@ export default function CreatePRPage() {
                     key={opt.id}
                     type="button"
                     disabled={isEditMode}
-                    onClick={() => setPurchaseType(opt.id)}
+                    onClick={() => {
+                      setPurchaseType(opt.id);
+                      // Service is only valid for Work Order
+                      if (opt.id === 'purchase_order' && requestType === 'Service') {
+                        setRequestType('Opex');
+                      }
+                    }}
                     className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                       purchaseType === opt.id
                         ? 'bg-teal-600 text-white border-teal-600'
@@ -845,15 +856,20 @@ export default function CreatePRPage() {
               </div>
             </div>
 
-            {/* Request Type */}
+            {/* Request Type — Service only for Work Order */}
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Request Type <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
-                {(['Capex', 'Opex', 'Service'] as const).map(type => (
+                {(
+                  purchaseType === 'work_order'
+                    ? (['Capex', 'Opex', 'Service'] as const)
+                    : (['Capex', 'Opex'] as const)
+                ).map((type) => (
                   <button
                     key={type}
+                    type="button"
                     onClick={() => setRequestType(type)}
                     className={`flex-1 py-2.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer whitespace-nowrap ${
                       requestType === type

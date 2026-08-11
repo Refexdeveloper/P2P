@@ -293,11 +293,12 @@ export default function BuyerFinalVerifyPage() {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() =>
-                                navigate(
-                                  `/scm/create-po?prId=${po.prId}&poId=${po.id}&mode=manual&from=buyer-verify`
-                                )
-                              }
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                // Same edit page as SCM Manager (create-po?poId=…)
+                                navigate(`/scm/create-po?poId=${po.id}&from=buyer-verify`);
+                              }}
                               className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 cursor-pointer"
                             >
                               Edit PO
@@ -414,11 +415,11 @@ export default function BuyerFinalVerifyPage() {
                                   <div className="mt-4 flex gap-2 flex-wrap">
                                     <button
                                       type="button"
-                                      onClick={() =>
-                                navigate(
-                                  `/scm/create-po?prId=${po.prId}&poId=${po.id}&mode=manual&from=buyer-verify`
-                                )
-                              }
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        navigate(`/scm/create-po?poId=${po.id}&from=buyer-verify`);
+                                      }}
                                       className="px-4 py-2.5 text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 cursor-pointer"
                                     >
                                       Edit PO

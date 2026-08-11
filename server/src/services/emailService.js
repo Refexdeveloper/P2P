@@ -18,10 +18,11 @@ import {
 import { createEmailLog, updateEmailLog } from './emailLogService.js';
 
 /**
- * Outbound email master switch.
- * Default ON. Set EMAIL_SEND_ENABLED=false in env to disable.
+ * Outbound email master switch — set manually here (no env).
+ * true  = send emails
+ * false = skip all outbound email
  */
-const EMAIL_SEND_ENABLED = process.env.EMAIL_SEND_ENABLED !== 'false';
+const EMAIL_SEND_ENABLED = true;
 
 let transporter;
 let smtpReady = false;
@@ -74,7 +75,6 @@ function getTransporter() {
 /** Serialize outbound mail so Gmail isn't hit with parallel SMTP sessions. */
 let mailQueue = Promise.resolve();
 function enqueueMail(job) {
-  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
   if (!EMAIL_SEND_ENABLED) {
     console.log('Email send skipped (EMAIL_SEND_ENABLED=false)');
     return Promise.resolve(null);
@@ -244,7 +244,6 @@ function getFromAddress() {
 
 /** Send a one-off SMTP test message (used by /api/health/smtp/send-test). */
 export async function sendTestEmail(to) {
-  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
   if (!EMAIL_SEND_ENABLED) {
     throw new Error('Email send is disabled (EMAIL_SEND_ENABLED=false)');
   }
@@ -288,7 +287,6 @@ export async function sendTestEmail(to) {
 }
 
 export async function sendPrRaisedNotification(pr, requester, options = {}) {
-  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
   if (!EMAIL_SEND_ENABLED) {
     console.log('Email send skipped (PR raised): EMAIL_SEND_ENABLED=false');
     return null;
@@ -395,7 +393,6 @@ async function getApproverRecipients(role, departmentId = null) {
 }
 
 async function sendMailToRecipients(recipients, subject, html, text, attachments = [], mailOptions = {}) {
-  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
   if (!EMAIL_SEND_ENABLED) {
     console.log('Email send skipped (EMAIL_SEND_ENABLED=false):', subject);
     return null;
@@ -761,7 +758,6 @@ export function queueRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail,
 }
 
 export async function sendPoVendorNotification(po, { signerName, signerComments, ccEmails, pdfPath, portalUrl }) {
-  // --- EMAIL SEND SERVICE COMMENTED / DISABLED ---
   if (!EMAIL_SEND_ENABLED) {
     console.log('Email send skipped (PO vendor): EMAIL_SEND_ENABLED=false');
     return null;

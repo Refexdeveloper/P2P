@@ -110,7 +110,7 @@ function mapAcceptedPoToPendingGrn(po: ApiPo): GRNData {
         performedBy: po.vendorName || 'Vendor',
         role: 'Vendor',
         date: po.vendorAcceptedAt || po.createdAt || '',
-        notes: `PO ${po.poNumber} accepted by vendor. Enter GRN with original PO data.`,
+        notes: `PO ${po.poNumber} accepted by vendor. Click Mark as Received to enter GRN details.`,
       },
     ],
   };
@@ -281,9 +281,9 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
               {grn.awaitingEntry && onEnterGrn && (
                 <button
                   onClick={onEnterGrn}
-                  className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
                 >
-                  <i className="ri-add-circle-line"></i> Enter GRN
+                  <i className="ri-checkbox-circle-line"></i> Mark as Received
                 </button>
               )}
               {isPending && !grn.awaitingEntry && (
@@ -291,7 +291,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                   onClick={onMarkReceived}
                   className="px-4 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
                 >
-                  <i className="ri-checkbox-circle-line"></i> Mark as Received
+                  <i className="ri-checkbox-circle-line"></i> Confirm Receipt
                 </button>
               )}
               {isReceived && !grn.awaitingEntry && (
@@ -646,16 +646,16 @@ export default function GRNPage() {
   }, [newGRNs]);
 
   useEffect(() => {
-    const create = searchParams.get('create');
+    // Deep-link from Vendor Acceptance: highlight awaiting GRN only — do NOT auto-open popup.
+    // Enter-fields popup opens when user clicks Mark as Received.
     const poNumber = searchParams.get('poNumber') || undefined;
     const poIdRaw = searchParams.get('poId');
     const poId = poIdRaw ? Number(poIdRaw) : undefined;
-    if (create === '1' || poNumber || poId) {
+    if (poNumber || (poId && !Number.isNaN(poId))) {
       setPrefillPoNumber(poNumber);
       setPrefillPoId(poId && !Number.isNaN(poId) ? poId : undefined);
-      setCreateGRNOpen(true);
       if (searchParams.get('from') === 'vendor-acceptance') {
-        showToast('Original PO loaded — enter receipt details', 'success');
+        showToast('PO ready for GRN — click Mark as Received to enter details', 'success');
       }
       setSearchParams({}, { replace: true });
     }
@@ -1028,17 +1028,17 @@ export default function GRNPage() {
                           {grn.awaitingEntry && (
                             <button
                               onClick={() => openEnterGrn(grn)}
-                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                              title="Enter GRN"
+                              className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                              title="Mark as Received — enter GRN fields"
                             >
-                              <i className="ri-add-circle-line text-sm"></i>
+                              <i className="ri-checkbox-circle-line text-sm"></i>
                             </button>
                           )}
                           {isPending && !grn.awaitingEntry && (
                             <button
                               onClick={() => setReceiptModal({ isOpen: true, grn })}
                               className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
-                              title="Mark as Received"
+                              title="Confirm Receipt"
                             >
                               <i className="ri-checkbox-circle-line text-sm"></i>
                             </button>
@@ -1065,7 +1065,11 @@ export default function GRNPage() {
                     {isExpanded && (
                       <ExpandedGRNRow
                         grn={grn}
-                        onMarkReceived={() => setReceiptModal({ isOpen: true, grn })}
+                        onMarkReceived={() =>
+                          grn.awaitingEntry
+                            ? openEnterGrn(grn)
+                            : setReceiptModal({ isOpen: true, grn })
+                        }
                         onApprove={() => setApprovalModal({ isOpen: true, grn })}
                         onEnterGrn={() => openEnterGrn(grn)}
                       />

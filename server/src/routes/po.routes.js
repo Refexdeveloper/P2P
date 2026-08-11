@@ -51,7 +51,6 @@ import {
   listUserSignatures,
   saveUserSignature,
   deleteUserSignature,
-  signatureFileToDataUrl,
 } from '../services/signatureService.js';
 
 const router = Router();
@@ -379,15 +378,9 @@ router.get('/:id/document', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR 
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
+    const { buildSignatureRenderOptions } = await import('../services/signatureService.js');
     const html = buildPoHtml(po, {
-      signature: po.signatureName
-        ? {
-            name: po.signatureName,
-            date: po.signedAt || '',
-            comments: po.signerComments || '',
-            imageDataUrl: signatureFileToDataUrl(po.signatureImagePath),
-          }
-        : undefined,
+      signature: buildSignatureRenderOptions(po),
     });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
@@ -400,13 +393,18 @@ router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manag
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
+    const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath);
+    const preferredName = isSigned
+      ? po.signedPdfPath || `${po.poNumber || `PO-${po.id}`}_signed.pdf`
+      : po.pdfPath || `${po.poNumber || `PO-${po.id}`}_draft.pdf`;
     const { fullPath, fileName } = await ensurePoPdf(po, {
-      fileName: `${po.poNumber || `PO-${po.id}`}_draft.pdf`,
-      signed: Boolean(po.signedPdfPath),
-      forceRegenerate: true,
+      fileName: preferredName,
+      signed: isSigned,
+      // Prefer existing signed PDF on disk; only regenerate when missing/invalid
+      forceRegenerate: false,
     });
     // Persist regenerated PDF path when previous value was HTML-only
-    if (po.pdfPath !== fileName && !po.signedPdfPath) {
+    if (!isSigned && po.pdfPath !== fileName) {
       try {
         const pool = (await import('../config/db.js')).default;
         await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, po.id]);
@@ -415,7 +413,7 @@ router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manag
       }
     }
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
     fs.createReadStream(fullPath).pipe(res);
   } catch (err) {
     res.status(400).json({ message: err.message });

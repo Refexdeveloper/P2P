@@ -250,7 +250,7 @@ function buildRunningHeader(po = {}) {
   </div>`;
 }
 
-/** Footer logo band — on-screen preview only (PDF uses Puppeteer footer margin) */
+/** Footer logo band — repeated via doc-shell <tfoot> on every PDF page */
 function buildRunningFooter(po = {}) {
   const footerLogo = resolveBrandingValue(po, 'footerLogo', 'footer_logo');
   const entity = resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited';
@@ -272,42 +272,23 @@ function buildRunningFooter(po = {}) {
   </div>`;
 }
 
-/** Inner footer markup shared by preview HTML + Puppeteer bottom band */
-function footerBandInner(po = {}) {
-  const footerLogo = resolveBrandingValue(po, 'footerLogo', 'footer_logo');
-  const entity = resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited';
-  if (footerLogo) {
-    if (looksLikeHtml(footerLogo)) {
-      return `<div style="text-align:center;font-size:11px;line-height:1.3;">${constrainLogoHtml(footerLogo, 72, { enlargeFooter: true })}</div>`;
-    }
-    if (looksLikeImageSrc(footerLogo)) {
-      return `<div style="text-align:center;"><img src="${safeImgSrc(footerLogo)}" style="max-height:72px;max-width:100%;object-fit:contain;display:block;margin:0 auto;" /></div>`;
-    }
-    return `<div style="text-align:center;font-size:12px;font-weight:700;">${escapeHtml(footerLogo)}</div>`;
-  }
-  return `<div style="text-align:center;font-size:12px;font-weight:700;">${escapeHtml(entity)}</div>`;
-}
-
 /**
- * Puppeteer chrome:
- *  - Header empty (logo via doc-shell thead)
- *  - Footer logo + Page X of Y in the reserved bottom margin on EVERY page
- *    (guarantees last-page footer sits at the true page bottom)
+ * Puppeteer chrome — page numbers ONLY.
+ * Footer logo lives in HTML doc-shell <tfoot> (letterhead HTML/images render reliably;
+ * Puppeteer footerTemplate often drops complex letterhead markup).
  */
-export function buildPoPdfChromeTemplates(po = {}) {
+export function buildPoPdfChromeTemplates(_po = {}) {
   const side = '10mm';
   const base =
     'width:100%;box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;' +
-    'font-size:10px;color:#222;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
+    'font-size:9px;color:#333;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
 
   const headerTemplate = `<div style="${base}height:0;margin:0;padding:0;overflow:hidden;"></div>`;
 
   const footerTemplate =
-    `<div style="${base}padding:1mm ${side} 1.5mm ${side};text-align:center;">` +
-    `${footerBandInner(po)}` +
-    `<div style="font-size:9px;font-weight:600;margin-top:2px;color:#333;">` +
+    `<div style="${base}padding:0 ${side} 1.5mm ${side};text-align:center;font-weight:600;">` +
     `Page <span class="pageNumber"></span> of <span class="totalPages"></span>` +
-    `</div></div>`;
+    `</div>`;
 
   return { headerTemplate, footerTemplate };
 }
@@ -637,6 +618,9 @@ export function buildPoDocumentHtml(po, options = {}) {
   <thead>
     <tr><td>${buildRunningHeader(po)}</td></tr>
   </thead>
+  <tfoot>
+    <tr><td>${buildRunningFooter(po)}</td></tr>
+  </tfoot>
   <tbody>
     <tr><td class="doc-shell-body">
 ${page1}
@@ -647,7 +631,6 @@ ${acknowledgmentHtml(po)}
     </td></tr>
   </tbody>
 </table>
-${buildRunningFooter(po)}
 </body>
 </html>`;
 }
