@@ -24,6 +24,7 @@ export const SEND_BACK_TARGET_DEFS = {
     assignedRole: 'Requester',
     resetRfqSubmit: true,
     resetRfqFinalize: true,
+    clearRecommendation: true,
   },
   SCM_RFQ: {
     key: 'SCM_RFQ',
@@ -34,6 +35,7 @@ export const SEND_BACK_TARGET_DEFS = {
     assignedRole: 'SCM Buyer',
     resetRfqSubmit: false,
     resetRfqFinalize: true,
+    clearRecommendation: true,
   },
   HOD_PRE: {
     key: 'HOD_PRE',
@@ -117,8 +119,9 @@ const PREVIOUS_BY_STATUS = {
   [PR_STATUS.PENDING_RFQ_L2_APPROVAL]: ['REQUESTER', 'REQUESTER_RFQ', 'HOD_PRE', 'HOD_VENDOR'],
   [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: ['REQUESTER', 'REQUESTER_RFQ', 'HOD_PRE', 'HOD_VENDOR', 'L2_VENDOR'],
 
-  [PR_STATUS.PENDING_BUSINESS_APPROVAL]: ['REQUESTER', 'SCM_RFQ', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
-  [PR_STATUS.PENDING_SCM_PO]: ['REQUESTER', 'SCM_RFQ', 'SCM_MANAGER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
+  // SCM Manager vendor approval — default first target is SCM RFQ Entry
+  [PR_STATUS.PENDING_BUSINESS_APPROVAL]: ['SCM_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
+  [PR_STATUS.PENDING_SCM_PO]: ['SCM_MANAGER', 'SCM_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
 };
 
 const OWN_ONLY_KEYS = new Set(['REQUESTER_RFQ', 'HOD_VENDOR', 'L2_VENDOR', 'CFO_VENDOR']);
