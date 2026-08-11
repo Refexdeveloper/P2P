@@ -15,6 +15,10 @@ import { createWhatsAppLog, updateWhatsAppLog } from './whatsappLogService.js';
  */
 const WHATSAPP_SEND_ENABLED = true;
 
+/** Manual Unfyd credentials (override env). */
+const WHATSAPP_APP_KEY = "ak_9abbd541cca5faf62c";
+const WHATSAPP_APP_SECRET = "97375eca676e4e6488c7195f611b213c797d9ca04e6f4825";
+
 const DEFAULT_API_URL = 'https://whatsapp.unfyd.com/unfyd-meta-api/api/v1/hsm/send';
 const DEFAULT_TEMPLATE = 'workflow_all_application';
 const DEFAULT_LANG = 'en_US';
@@ -27,8 +31,8 @@ function isEnabled() {
 function getConfig() {
   return {
     apiUrl: (process.env.WHATSAPP_API_URL || DEFAULT_API_URL).trim(),
-    appKey: (process.env.WHATSAPP_APP_KEY || '').trim(),
-    appSecret: (process.env.WHATSAPP_APP_SECRET || '').trim(),
+    appKey: (WHATSAPP_APP_KEY || process.env.WHATSAPP_APP_KEY || '').trim(),
+    appSecret: (WHATSAPP_APP_SECRET || process.env.WHATSAPP_APP_SECRET || '').trim(),
     templateName: (process.env.WHATSAPP_TEMPLATE_NAME || DEFAULT_TEMPLATE).trim(),
     languageCode: (process.env.WHATSAPP_TEMPLATE_LANG || DEFAULT_LANG).trim(),
   };
