@@ -1,9 +1,9 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatusBadge from '../../../components/base/StatusBadge';
 import PriorityBadge from '../../../components/base/PriorityBadge';
-import { prApi } from '../../../services/api';
+import { prApi, RequesterPrListMeta } from '../../../services/api';
 
 type StatusFilter = 'all' | 'draft' | 'pending_approval' | 'approved' | 'returned' | 'rejected' | 'po_issued';
 type RequestTypeFilter = 'all' | 'Capex' | 'Opex' | 'Service';
@@ -182,20 +182,253 @@ function mapTrackStatus(rawStatus: string, statusFrontend: string): string {
   return 'pending_approval';
 }
 
+function personName(person: unknown, fallback = ''): string {
+  if (!person || typeof person !== 'object') return fallback;
+  const p = person as { name?: string | null; email?: string | null };
+  return String(p.name || p.email || fallback || '').trim();
+}
+
+function normalizeTimelineStageName(stageName: string): string {
+  const raw = String(stageName || '').replace(/_/g, ' ').trim();
+  const s = raw.toLowerCase();
+  if (!s) return 'Approval';
+  if (s.includes('pr submitted') || s === 'submitted') return 'Submitted';
+  if ((s.includes('hod') || s.includes('l1')) && !s.includes('vendor')) return 'L1 Manager Approval';
+  if ((s.includes('pr manager') || s.includes('l2')) && !s.includes('vendor') && !s.includes('rfq')) {
+    return 'L2 Manager Approval';
+  }
+  if (s.includes('cfo') && (s.includes('post') || s.includes('vendor') || s.includes('rfq'))) {
+    return 'CFO Approval (Post-RFQ)';
+  }
+  if (s.includes('cfo')) return 'CFO Approval';
+  if (s.includes('vendor final') && (s.includes('hod') || s.includes('l1') || s.includes('manager'))) {
+    return 'L1 Vendor Final';
+  }
+  if (s.includes('vendor final') && (s.includes('l2') || s.includes('pr manager'))) {
+    return 'L2 Manager Approval';
+  }
+  if (
+    s.includes('scm buyer vendor') ||
+    s.includes('scm vendor selection') ||
+    (s.includes('vendor selection') && s.includes('scm')) ||
+    s.includes('rfq scm buyer')
+  ) {
+    return 'SCM Vendor Selection';
+  }
+  if (
+    s.includes('scm manager') ||
+    s.includes('business review') ||
+    (s.includes('vendor approval') && s.includes('scm'))
+  ) {
+    return 'SCM Manager Approval';
+  }
+  if (
+    s.includes('scm po') ||
+    s.includes('create po') ||
+    s.includes('po create') ||
+    s.includes('po created')
+  ) {
+    return 'PO Create';
+  }
+  if (s.includes('po issued') || s.includes('po signed')) return 'PO Create';
+  return raw;
+}
+
 function currentStageLabel(rawStatus: string, statusUI: string): string | null {
-  if (rawStatus === 'PENDING_HOD_APPROVAL') return 'HOD Review';
-  if (rawStatus === 'PENDING_PR_MANAGER_APPROVAL') return 'Manager Review';
-  if (rawStatus === 'PENDING_CFO_APPROVAL') return 'CFO Review';
-  if (rawStatus === 'PENDING_RFQ_MANAGER_APPROVAL') return 'HOD Vendor Final';
+  if (rawStatus === 'PENDING_HOD_APPROVAL') return 'L1 Manager Approval';
+  if (rawStatus === 'PENDING_PR_MANAGER_APPROVAL') return 'L2 Manager Approval';
+  if (rawStatus === 'PENDING_CFO_APPROVAL') return 'CFO Approval';
+  if (rawStatus === 'PENDING_RFQ_MANAGER_APPROVAL') return 'L1 Vendor Final';
   if (rawStatus === 'PENDING_RFQ_L2_APPROVAL') return 'L2 Manager Approval';
   if (rawStatus === 'PENDING_RFQ_CFO_APPROVAL') return 'CFO Approval (Post-RFQ)';
-  if (rawStatus === 'PENDING_SCM_PO') return 'SCM PO Creation';
-  if (rawStatus === 'PENDING_BUSINESS_APPROVAL') return 'SCM Manager Vendor Approval';
+  if (rawStatus === 'PENDING_SCM_PO') return 'PO Create';
+  if (rawStatus === 'PENDING_BUSINESS_APPROVAL') return 'SCM Manager Approval';
   if (rawStatus === 'RETURNED') return 'Returned for Rework';
   if (rawStatus === 'REJECTED') return 'Rejected';
-  if (rawStatus === 'APPROVED') return 'PO Issued';
+  if (rawStatus === 'APPROVED') return 'PO Create';
   if (rawStatus === 'DRAFT') return null;
-  return statusUI || null;
+  return statusUI ? normalizeTimelineStageName(statusUI) : null;
+}
+
+function approverForCurrentStage(pr: Record<string, unknown>, rawStatus: string): string {
+  const current = personName(pr.currentApprover);
+  if (current) return current;
+  if (
+    rawStatus === 'PENDING_HOD_APPROVAL' ||
+    rawStatus === 'PENDING_RFQ_MANAGER_APPROVAL'
+  ) {
+    return personName(pr.l1Manager, 'L1 Manager');
+  }
+  if (rawStatus === 'PENDING_BUSINESS_APPROVAL') {
+    return personName(pr.scmManager, 'SCM Manager');
+  }
+  if (rawStatus === 'PENDING_SCM_PO') {
+    return personName(pr.scmBuyer, 'SCM Buyer');
+  }
+  return '—';
+}
+
+function stageNameMatches(stage: string, patterns: string[]): boolean {
+  const s = stage.toLowerCase();
+  return patterns.some((p) => s.includes(p));
+}
+
+function findTimelineStage(stages: TimelineStage[], patterns: string[]): TimelineStage | undefined {
+  return [...stages].reverse().find((s) => stageNameMatches(s.stage, patterns));
+}
+
+/** Ensure SCM Vendor Selection → SCM Manager Approval → PO Create appear on the timeline. */
+function ensureScmPipelineStages(
+  stages: TimelineStage[],
+  pr: Record<string, unknown>,
+  rawStatus: string,
+  prevDate: string | null
+): TimelineStage[] {
+  const vendorSelection = String(pr.vendorSelection || 'scm').toLowerCase();
+  const scmBuyerName = personName(pr.scmBuyer, 'SCM Buyer');
+  const scmManagerName = personName(pr.scmManager, 'SCM Manager');
+  const hasPurchaseOrder = Boolean(pr.hasPurchaseOrder || pr.poNumber);
+  const rfqFinalized =
+    Boolean(pr.rfqFinalized) ||
+    Boolean(
+      findTimelineStage(stages, ['scm vendor selection', 'scm buyer vendor', 'vendor selection'])
+    );
+  const terminal = ['REJECTED', 'RETURNED', 'DRAFT'].includes(rawStatus);
+  if (terminal) return stages;
+
+  const inScmStatuses =
+    rawStatus === 'PENDING_BUSINESS_APPROVAL' || rawStatus === 'PENDING_SCM_PO';
+  const scmPathApprovedWaiting =
+    rawStatus === 'APPROVED' && vendorSelection === 'scm';
+  const ownPathAtPo =
+    vendorSelection === 'own' && (rawStatus === 'PENDING_SCM_PO' || hasPurchaseOrder);
+  const historyHasScm = stages.some((s) =>
+    /scm|po create|vendor selection/i.test(s.stage)
+  );
+
+  if (!inScmStatuses && !scmPathApprovedWaiting && !ownPathAtPo && !historyHasScm && !hasPurchaseOrder) {
+    return stages;
+  }
+
+  // Own path skips SCM Manager Approval unless history already has it
+  const includeManagerApproval =
+    vendorSelection !== 'own' ||
+    Boolean(findTimelineStage(stages, ['scm manager'])) ||
+    rawStatus === 'PENDING_BUSINESS_APPROVAL';
+
+  type PipeStep = {
+    name: string;
+    patterns: string[];
+    defaultApprover: string;
+  };
+
+  const pipeline: PipeStep[] = [
+    {
+      name: 'SCM Vendor Selection',
+      patterns: ['scm vendor selection', 'scm buyer vendor', 'vendor selection'],
+      defaultApprover: scmBuyerName,
+    },
+  ];
+  if (includeManagerApproval) {
+    pipeline.push({
+      name: 'SCM Manager Approval',
+      patterns: ['scm manager'],
+      defaultApprover: scmManagerName,
+    });
+  }
+  pipeline.push({
+    name: 'PO Create',
+    patterns: ['po create', 'scm po', 'po issued', 'po created'],
+    defaultApprover: scmBuyerName,
+  });
+
+  /** Which step is current: index into pipeline, or -1 none, or pipeline.length all done */
+  let currentIdx = -1;
+  if (hasPurchaseOrder || (rawStatus === 'APPROVED' && rfqFinalized && hasPurchaseOrder)) {
+    currentIdx = pipeline.length; // all completed
+  } else if (hasPurchaseOrder) {
+    currentIdx = pipeline.length;
+  } else if (rawStatus === 'PENDING_SCM_PO') {
+    currentIdx = pipeline.findIndex((s) => s.name === 'PO Create');
+  } else if (rawStatus === 'PENDING_BUSINESS_APPROVAL') {
+    currentIdx = pipeline.findIndex((s) => s.name === 'SCM Manager Approval');
+  } else if (rawStatus === 'APPROVED' && vendorSelection === 'scm' && !rfqFinalized) {
+    currentIdx = 0; // waiting for SCM Vendor Selection / RFQ
+  } else if (rawStatus === 'APPROVED' && rfqFinalized && !hasPurchaseOrder) {
+    currentIdx = pipeline.findIndex((s) => s.name === 'PO Create');
+  } else if (hasPurchaseOrder) {
+    currentIdx = pipeline.length;
+  }
+
+  // If PO exists but history never recorded SCM steps, still mark full pipeline complete
+  if (hasPurchaseOrder) currentIdx = pipeline.length;
+
+  let lastDate = prevDate;
+  for (let i = 0; i < pipeline.length; i++) {
+    const step = pipeline[i];
+    const existing = findTimelineStage(stages, step.patterns);
+
+    let status: StageStatus = 'pending';
+    if (currentIdx >= pipeline.length || i < currentIdx) status = 'completed';
+    else if (i === currentIdx) status = 'current';
+    else status = 'pending';
+
+    if (existing) {
+      existing.stage = step.name;
+      if (
+        existing.status === 'rejected' ||
+        existing.status === 'returned'
+      ) {
+        lastDate = existing.date || lastDate;
+        continue;
+      }
+      // Prefer completed from history when already done
+      if (existing.status === 'completed' && status === 'pending') {
+        status = 'completed';
+      }
+      existing.status = status;
+      if (!existing.approver || existing.approver === '—' || existing.approver === 'Approver') {
+        existing.approver = step.defaultApprover;
+      }
+      existing.sla = computeSla(
+        status === 'pending' ? null : lastDate || existing.date || null,
+        status === 'completed' ? existing.date || lastDate : null,
+        status
+      );
+      if (status === 'completed') lastDate = existing.date || lastDate;
+      continue;
+    }
+
+    const date = status === 'completed' ? lastDate || toDateOnly(pr.submittedDate) || '' : '';
+    stages.push({
+      stage: step.name,
+      date,
+      approver: step.defaultApprover,
+      status,
+      sla: computeSla(
+        status === 'pending' ? null : lastDate,
+        status === 'completed' ? date || lastDate : null,
+        status
+      ),
+    });
+    if (status === 'completed') lastDate = date || lastDate;
+  }
+
+  // Drop legacy "PO Issued" and duplicate SCM pipeline labels
+  const scmKeys = new Set([
+    'scm vendor selection',
+    'scm manager approval',
+    'po create',
+  ]);
+  const seenScm = new Set<string>();
+  return stages.filter((s) => {
+    const key = s.stage.toLowerCase();
+    if (key.includes('po issued')) return false;
+    if (!scmKeys.has(key)) return true;
+    if (seenScm.has(key)) return false;
+    seenScm.add(key);
+    return true;
+  });
 }
 
 function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
@@ -224,9 +457,8 @@ function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
   let prevDate = submittedDate;
   for (const h of history) {
     const action = String(h.status || h.action || '').toLowerCase();
-    const stageName = String(h.stage || 'Approval');
-    if (stageName.toLowerCase().includes('submit') && (action === 'completed' || action === 'submitted' || action === 'resubmitted')) {
-      // Prefer history date for submitted stage when PR date was missing
+    let stageName = normalizeTimelineStageName(String(h.stage || 'Approval'));
+    if (stageName === 'Submitted' && (action === 'completed' || action === 'submitted' || action === 'resubmitted')) {
       const histDate = toDateOnly(h.date || h.timestamp);
       if (histDate && stages[0]) {
         stages[0].date = histDate;
@@ -244,8 +476,23 @@ function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
     if (action.includes('reject')) stageStatus = 'rejected';
     else if (action.includes('return') || action.includes('rework')) stageStatus = 'returned';
 
+    // Avoid duplicate consecutive same stage labels
+    const last = stages[stages.length - 1];
+    if (
+      last &&
+      last.stage === stageName &&
+      last.status === 'completed' &&
+      stageStatus === 'completed'
+    ) {
+      last.date = dateOnly || last.date;
+      last.approver = String(h.user || h.approver || last.approver);
+      if (h.remarks) last.remarks = String(h.remarks);
+      prevDate = dateOnly || prevDate;
+      continue;
+    }
+
     stages.push({
-      stage: stageName.replace(/_/g, ' '),
+      stage: stageName,
       date: dateOnly || '',
       approver: String(h.user || h.approver || 'Approver'),
       status: stageStatus,
@@ -257,54 +504,38 @@ function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
 
   const currentLabel = currentStageLabel(rawStatus, String(pr.statusUI || ''));
   const terminal = ['APPROVED', 'REJECTED', 'RETURNED', 'DRAFT'].includes(rawStatus);
-  if (currentLabel && !terminal) {
+  const scmCurrent =
+    rawStatus === 'PENDING_BUSINESS_APPROVAL' ||
+    rawStatus === 'PENDING_SCM_PO';
+
+  if (currentLabel && !terminal && !scmCurrent) {
     const already = stages.some(
       (s) =>
         s.stage.toLowerCase() === currentLabel.toLowerCase() &&
         (s.status === 'current' || s.status === 'completed')
     );
+    const currentApprover = approverForCurrentStage(pr, rawStatus);
     if (!already) {
       stages.push({
         stage: currentLabel,
         date: '',
-        approver: 'Pending',
+        approver: currentApprover,
         status: 'current',
         sla: computeSla(prevDate || submittedDate, null, 'current'),
       });
     } else {
-      // Mark the matching pending approval stage as current if history only has earlier stages
       const match = [...stages].reverse().find(
         (s) => s.stage.toLowerCase() === currentLabel.toLowerCase() && s.status !== 'completed'
       );
       if (match && match.status !== 'current') {
         match.status = 'current';
+        match.approver = currentApprover || match.approver;
         match.sla = computeSla(prevDate || submittedDate, null, 'current');
       }
     }
   }
 
-  if (rawStatus === 'APPROVED') {
-    const hasPo = stages.some((s) => s.stage.toLowerCase().includes('po'));
-    if (!hasPo) {
-      stages.push({
-        stage: 'PO Issued',
-        date: prevDate || '',
-        approver: 'SCM',
-        status: 'completed',
-        sla: computeSla(prevDate, prevDate, 'completed'),
-      });
-    }
-  } else if (!terminal && rawStatus !== 'PENDING_SCM_PO') {
-    stages.push({
-      stage: 'SCM / PO',
-      date: '',
-      approver: 'Pending',
-      status: 'pending',
-      sla: computeSla(null, null, 'pending'),
-    });
-  }
-
-  return stages;
+  return ensureScmPipelineStages(stages, pr, rawStatus, prevDate || submittedDate);
 }
 
 function mapApiPr(pr: Record<string, unknown>): TrackPR {
@@ -456,18 +687,48 @@ export default function TrackPRPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [requestTypeFilter, setRequestTypeFilter] = useState<RequestTypeFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [expandLoadingKey, setExpandLoadingKey] = useState<string | null>(null);
+  const [detailedKeys, setDetailedKeys] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  const [meta, setMeta] = useState<RequesterPrListMeta>({
+    page: 1,
+    pageSize: itemsPerPage,
+    total: 0,
+    totalPages: 1,
+  });
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, requestTypeFilter, debouncedSearch, dateFrom, dateTo]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await prApi.list();
+      const res = await prApi.list({
+        page: currentPage,
+        pageSize: itemsPerPage,
+        search: debouncedSearch || undefined,
+        status: statusFilter,
+        requestType: requestTypeFilter,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        scope: 'requester',
+      });
       const list = (res.data as Array<Record<string, unknown>>) || [];
       setRows(list.map(mapApiPr));
+      setDetailedKeys(new Set());
+      setExpandedRow(null);
+      if (res.meta) setMeta(res.meta);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load purchase requests');
@@ -475,36 +736,35 @@ export default function TrackPRPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentPage, statusFilter, requestTypeFilter, debouncedSearch, dateFrom, dateTo]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const filteredData = useMemo(() => {
-    return rows.filter((pr) => {
-      const matchesStatus = statusFilter === 'all' || pr.status === statusFilter;
-      const matchesRequestType = requestTypeFilter === 'all' || pr.requestType === requestTypeFilter;
-      const matchesSearch =
-        searchQuery === '' ||
-        pr.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        pr.title.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDateFrom = dateFrom === '' || new Date(pr.submittedDate) >= new Date(dateFrom);
-      const matchesDateTo = dateTo === '' || new Date(pr.submittedDate) <= new Date(dateTo);
-      return matchesStatus && matchesRequestType && matchesSearch && matchesDateFrom && matchesDateTo;
-    });
-  }, [rows, statusFilter, requestTypeFilter, searchQuery, dateFrom, dateTo]);
+  const paginatedData = rows;
+  const totalPages = meta.totalPages || 1;
 
-  const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
+  const toggleRow = async (id: string) => {
+    if (expandedRow === id) {
+      setExpandedRow(null);
+      return;
+    }
+    setExpandedRow(id);
+    const row = rows.find((r) => r.key === id);
+    if (!row?.prId || detailedKeys.has(id)) return;
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [statusFilter, requestTypeFilter, searchQuery, dateFrom, dateTo]);
-
-  const toggleRow = (id: string) => {
-    setExpandedRow(expandedRow === id ? null : id);
+    setExpandLoadingKey(id);
+    try {
+      const res = await prApi.get(row.prId);
+      const detailed = mapApiPr(res.data as Record<string, unknown>);
+      setRows((prev) => prev.map((r) => (r.key === id ? { ...detailed, key: r.key } : r)));
+      setDetailedKeys((prev) => new Set(prev).add(id));
+    } catch {
+      // keep lean row if detail fails
+    } finally {
+      setExpandLoadingKey(null);
+    }
   };
 
   const getSLASummary = (approvalHistory: TimelineStage[]) => {
@@ -621,7 +881,7 @@ export default function TrackPRPage() {
           </div>
           <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
             <p className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{filteredData.length}</span> results
+              Showing <span className="font-semibold text-gray-900">{meta.total}</span> results
             </p>
             <div className="flex items-center gap-4 text-xs text-gray-500">
               <span className="flex items-center gap-1">
@@ -774,6 +1034,9 @@ export default function TrackPRPage() {
                           {expandedRow === pr.key && (
                             <tr>
                               <td colSpan={8} className="bg-gray-50 border-b border-gray-200">
+                                {expandLoadingKey === pr.key && (
+                                  <div className="px-6 py-3 text-xs text-gray-500">Loading PR details…</div>
+                                )}
                                 <div className="px-6 py-6">
                                   <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                                     <div className="lg:col-span-2 space-y-4">
@@ -980,11 +1243,6 @@ export default function TrackPRPage() {
                                                         >
                                                           {stage.stage}
                                                         </span>
-                                                        {stage.status === 'current' && (
-                                                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
-                                                            Current
-                                                          </span>
-                                                        )}
                                                       </div>
                                                       <SLABadge status={sla.slaStatus} />
                                                     </div>
@@ -996,12 +1254,13 @@ export default function TrackPRPage() {
                                                         </p>
                                                         <p
                                                           className={`font-medium ${
-                                                            stage.status === 'pending'
+                                                            stage.status === 'pending' &&
+                                                            (!stage.approver || stage.approver === '—')
                                                               ? 'text-gray-400'
                                                               : 'text-gray-700'
                                                           }`}
                                                         >
-                                                          {stage.approver}
+                                                          {stage.approver || '—'}
                                                         </p>
                                                       </div>
                                                       <div>
@@ -1138,7 +1397,7 @@ export default function TrackPRPage() {
                 </div>
               )}
 
-              {filteredData.length === 0 && (
+              {!loading && paginatedData.length === 0 && (
                 <div className="px-6 py-12 text-center">
                   <i className="ri-file-list-3-line text-5xl text-gray-300 mb-4"></i>
                   <h3 className="text-sm font-medium text-gray-900 mb-1">

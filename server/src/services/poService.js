@@ -543,6 +543,7 @@ async function resolvePoDraftContent(prId, body) {
     subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : Number(gstPercentage) || 0;
   const grandTotal = subtotal + taxAmount;
   const resolvedCurrency = normalizeCurrency(body?.currency || pr.currency);
+  const resolvedPurchaseType = normalizePurchaseType(body?.purchaseType || pr.purchaseType);
 
   return {
     poNumber: poNumber || `DRAFT-${pr.prNumber}`,
@@ -563,6 +564,8 @@ async function resolvePoDraftContent(prId, body) {
     incoterms,
     specialInstructions,
     poType: normalizedPoType,
+    purchaseType: resolvedPurchaseType,
+    purchaseTypeLabel: purchaseTypeLabel(resolvedPurchaseType),
     letterheadHeader: resolvedLetterhead,
     letterheadId: resolvedLetterheadId,
     entity: resolvedEntity,

@@ -4,11 +4,13 @@ import {
   createPurchaseRequest,
   getPurchaseRequestById,
   listPurchaseRequests,
+  listRequesterPurchaseRequests,
   getRequesterStats,
   getManagerStats,
   processApproval,
   updatePurchaseRequest,
   resubmitPurchaseRequest,
+  previewL1Manager,
   toRequesterDashboardFormat,
   toManagerDashboardFormat,
   toCfoDashboardFormat,
@@ -33,6 +35,25 @@ router.get('/', async (req, res) => {
   try {
     const pendingOnly = req.query.pending === 'true';
     const bucket = req.query.bucket === 'scm' ? 'scm' : undefined;
+    const wantsRequesterList =
+      req.user.role === 'Requester' ||
+      req.query.scope === 'requester' ||
+      req.query.page != null;
+
+    // Fast paginated list for requester dashboard / track-pr (avoids heavy enrichPR N+1)
+    if (wantsRequesterList && !pendingOnly && !bucket) {
+      const result = await listRequesterPurchaseRequests(req.user, {
+        page: req.query.page,
+        pageSize: req.query.pageSize,
+        search: req.query.search,
+        status: req.query.status,
+        requestType: req.query.requestType,
+        dateFrom: req.query.dateFrom,
+        dateTo: req.query.dateTo,
+      });
+      return res.json(result);
+    }
+
     const list = await listPurchaseRequests(req.user, { pendingOnly, bucket });
 
     if (req.user.role === 'Requester') {
@@ -60,6 +81,15 @@ router.get('/stats/requester', requireRoles('Requester'), async (req, res) => {
     res.json({ data: stats });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/l1-manager', requireRoles('Requester'), async (req, res) => {
+  try {
+    const data = await previewL1Manager(req.user, req.query.department);
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 });
 

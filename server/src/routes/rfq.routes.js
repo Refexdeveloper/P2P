@@ -122,10 +122,11 @@ router.put('/pr/:prId/config', requireRoles('Requester', 'SCM Buyer'), async (re
 
 router.post('/pr/:prId/finalize', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
   try {
-    const { recommendedInvitationId, taskId } = req.body;
+    const { recommendedInvitationId, taskId, recommendationJustification } = req.body;
     const result = await finalizeRfq(req.user, Number(req.params.prId), {
       recommendedInvitationId,
       taskId,
+      recommendationJustification,
     });
     res.json({ data: result, message: result.message || 'RFQ submitted successfully' });
   } catch (err) {

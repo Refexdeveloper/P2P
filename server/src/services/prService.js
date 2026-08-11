@@ -40,17 +40,17 @@ async function getLineItems(prId) {
 function formatPrApprovalStage(stage) {
   const labels = {
     SUBMITTED: 'PR Submitted',
-    HOD_REVIEW: 'HOD / Manager Approval',
+    HOD_REVIEW: 'L1 Manager Approval',
     PR_MANAGER_REVIEW: 'L2 Manager Approval',
     CFO_REVIEW: 'CFO Approval',
     RFQ_REQUESTER_SUBMIT: 'RFQ Submitted — Vendor Final',
     RFQ_MANAGER_REVIEW: 'Vendor Final Approval (Manager)',
     RFQ_L2_REVIEW: 'Vendor Final — L2 Manager',
     RFQ_CFO_REVIEW: 'Vendor Final — CFO Approval',
-    RFQ_SCM_BUYER_SELECTION: 'SCM Buyer Vendor Selection',
-    BUSINESS_REVIEW: 'SCM Manager Vendor Approval',
-    SCM_PO_CREATE: 'SCM Buyer Create PO',
-    PO_CREATED: 'PO Created',
+    RFQ_SCM_BUYER_SELECTION: 'SCM Vendor Selection',
+    BUSINESS_REVIEW: 'SCM Manager Approval',
+    SCM_PO_CREATE: 'PO Create',
+    PO_CREATED: 'PO Create',
     PO_SIGNED: 'SCM Manager Sign',
     PO_BUYER_VERIFIED: 'SCM Buyer Final Verify',
     PO_BUYER_REJECTED: 'SCM Buyer Final Verify',
@@ -121,17 +121,143 @@ async function getApprovalHistory(prId) {
   return history.map(({ sortAt: _s, ...entry }) => entry);
 }
 
-async function enrichPR(row) {
-  const lineItems = await getLineItems(row.id);
-  const approvalHistory = await getApprovalHistory(row.id);
-  const [vendorRows] = await pool.query(
-    `SELECT ri.vendor_name
-     FROM rfq_configs rc
-     JOIN rfq_invitations ri ON ri.id = rc.recommended_invitation_id
-     WHERE rc.pr_id = ?
-     LIMIT 1`,
-    [row.id]
+let cachedScmBuyer = null;
+let cachedScmBuyerAt = 0;
+
+async function getCachedScmBuyer() {
+  const now = Date.now();
+  if (cachedScmBuyer && now - cachedScmBuyerAt < 60_000) return cachedScmBuyer;
+  cachedScmBuyer = await resolveScmBuyerUser();
+  cachedScmBuyerAt = now;
+  return cachedScmBuyer;
+}
+
+async function getTimelineAssignees(prId, requesterId, prStatus = null) {
+  const [taskRows] = await pool.query(
+    `SELECT wt.assigned_role, wt.task_type, u.name AS user_name, u.email AS user_email
+     FROM workflow_tasks wt
+     LEFT JOIN users u ON u.id = wt.assigned_user_id
+     WHERE wt.pr_id = ? AND wt.status = 'pending'
+     ORDER BY wt.id DESC
+     LIMIT 5`,
+    [prId]
   );
+
+  const byRole = (role) =>
+    taskRows.find((t) => String(t.assigned_role || '') === role && (t.user_name || t.user_email));
+
+  let l1Name = null;
+  let l1Email = null;
+  const hodTask = byRole('HOD Approver');
+  if (hodTask) {
+    l1Name = hodTask.user_name || null;
+    l1Email = hodTask.user_email || null;
+  }
+  if (!l1Email && requesterId) {
+    const [reqRows] = await pool.query(
+      `SELECT supervisor_name, supervisor_email FROM users WHERE id = ? LIMIT 1`,
+      [requesterId]
+    );
+    if (reqRows[0]?.supervisor_email) {
+      l1Email = reqRows[0].supervisor_email;
+      l1Name = reqRows[0].supervisor_name || reqRows[0].supervisor_email.split('@')[0];
+    }
+  }
+
+  let scmName = null;
+  let scmEmail = null;
+  const scmTask = byRole('SCM Buyer');
+  if (scmTask?.user_name || scmTask?.user_email) {
+    scmName = scmTask.user_name || null;
+    scmEmail = scmTask.user_email || null;
+  } else if (
+    prStatus === PR_STATUS.PENDING_SCM_PO ||
+    prStatus === PR_STATUS.APPROVED ||
+    !prStatus
+  ) {
+    const buyer = await getCachedScmBuyer();
+    if (buyer) {
+      scmName = buyer.name || null;
+      scmEmail = buyer.email || null;
+    }
+  }
+
+  let scmManagerName = null;
+  let scmManagerEmail = null;
+  const scmMgrTask = byRole('SCM Manager');
+  if (scmMgrTask?.user_name || scmMgrTask?.user_email) {
+    scmManagerName = scmMgrTask.user_name || null;
+    scmManagerEmail = scmMgrTask.user_email || null;
+  } else if (prStatus === PR_STATUS.PENDING_BUSINESS_APPROVAL) {
+    const [mgrRows] = await pool.query(
+      `SELECT name, email FROM users WHERE role = 'SCM Manager' AND is_active = 1 ORDER BY id ASC LIMIT 1`
+    );
+    if (mgrRows[0]) {
+      scmManagerName = mgrRows[0].name || null;
+      scmManagerEmail = mgrRows[0].email || null;
+    }
+  }
+
+  const pendingTask = taskRows[0];
+  const currentApproverName =
+    pendingTask?.user_name ||
+    (pendingTask?.assigned_role === 'HOD Approver' ? l1Name : null) ||
+    (pendingTask?.assigned_role === 'SCM Buyer' ? scmName : null) ||
+    (pendingTask?.assigned_role === 'SCM Manager' ? scmManagerName : null) ||
+    null;
+  const currentApproverEmail =
+    pendingTask?.user_email ||
+    (pendingTask?.assigned_role === 'HOD Approver' ? l1Email : null) ||
+    (pendingTask?.assigned_role === 'SCM Buyer' ? scmEmail : null) ||
+    (pendingTask?.assigned_role === 'SCM Manager' ? scmManagerEmail : null) ||
+    null;
+
+  return {
+    currentApprover: currentApproverName
+      ? { name: currentApproverName, email: currentApproverEmail, role: pendingTask?.assigned_role || null }
+      : null,
+    l1Manager: l1Name || l1Email ? { name: l1Name, email: l1Email } : null,
+    scmBuyer: scmName || scmEmail ? { name: scmName, email: scmEmail } : null,
+    scmManager:
+      scmManagerName || scmManagerEmail
+        ? { name: scmManagerName, email: scmManagerEmail }
+        : null,
+  };
+}
+
+async function enrichPR(row) {
+  const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows] = await Promise.all([
+    getLineItems(row.id),
+    getApprovalHistory(row.id),
+    getTimelineAssignees(row.id, row.requester_id, row.status),
+    pool
+      .query(
+        `SELECT ri.vendor_name
+         FROM rfq_configs rc
+         JOIN rfq_invitations ri ON ri.id = rc.recommended_invitation_id
+         WHERE rc.pr_id = ?
+         LIMIT 1`,
+        [row.id]
+      )
+      .then(([rows]) => rows),
+    pool
+      .query(
+        `SELECT id, po_number, status, created_at
+         FROM purchase_orders
+         WHERE pr_id = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        [row.id]
+      )
+      .then(([rows]) => rows),
+    pool
+      .query(
+        `SELECT finalized_at FROM rfq_configs WHERE pr_id = ? LIMIT 1`,
+        [row.id]
+      )
+      .then(([rows]) => rows),
+  ]);
+  const po = poRows[0] || null;
   return {
     id: row.id,
     prNumber: row.pr_number,
@@ -159,6 +285,13 @@ async function enrichPR(row) {
     vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
     recommendedVendor: vendorRows[0]?.vendor_name || '',
     currentStage: row.current_stage,
+    currentApprover: assignees.currentApprover,
+    l1Manager: assignees.l1Manager,
+    scmBuyer: assignees.scmBuyer,
+    scmManager: assignees.scmManager,
+    hasPurchaseOrder: Boolean(po),
+    poNumber: po?.po_number || '',
+    rfqFinalized: Boolean(rfqMetaRows[0]?.finalized_at),
     submittedDate: formatDate(row.submitted_at || row.created_at),
     createdAt: formatDate(row.created_at),
     lineItems: lineItems.map((li) => ({
@@ -173,6 +306,22 @@ async function enrichPR(row) {
     })),
     approvalHistory,
     items: lineItems.length,
+  };
+}
+
+export async function previewL1Manager(user, departmentName) {
+  let departmentId = null;
+  if (departmentName) {
+    const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ? LIMIT 1', [departmentName]);
+    departmentId = deptRows[0]?.id || null;
+  }
+  const assignment = await resolveHodAssignment(user.email, departmentId);
+  return {
+    nextStep: 'L1 Manager Approval',
+    l1Manager: {
+      name: assignment.hodName || null,
+      email: assignment.hodEmail || null,
+    },
   };
 }
 
@@ -401,6 +550,14 @@ export async function createPurchaseRequest(user, body) {
           stageLabel: 'L1 Manager Approval',
         }
       );
+      return {
+        ...pr,
+        nextStep: 'L1 Manager Approval',
+        l1Manager: {
+          name: hodAssignment?.hodName || null,
+          email: hodAssignment?.hodEmail || null,
+        },
+      };
     }
     return pr;
   } catch (err) {
@@ -457,7 +614,155 @@ function hodAssignedTaskSql(user) {
   };
 }
 
+const REQUESTER_PENDING_STATUSES = [
+  PR_STATUS.PENDING_HOD_APPROVAL,
+  PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
+  PR_STATUS.PENDING_CFO_APPROVAL,
+  PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL,
+  PR_STATUS.PENDING_RFQ_L2_APPROVAL,
+  PR_STATUS.PENDING_RFQ_CFO_APPROVAL,
+  PR_STATUS.PENDING_BUSINESS_APPROVAL,
+  PR_STATUS.PENDING_SCM_PO,
+];
+
+/** Fast requester list — no line items / approval history / assignee N+1. */
+export async function listRequesterPurchaseRequests(user, filters = {}) {
+  const page = Math.max(1, parseInt(filters.page, 10) || 1);
+  const pageSize = Math.min(50, Math.max(1, parseInt(filters.pageSize, 10) || 10));
+  const offset = (page - 1) * pageSize;
+  const search = String(filters.search || '').trim();
+  const statusGroup = String(filters.status || 'all').toLowerCase();
+  const requestType = String(filters.requestType || 'all');
+  const dateFrom = String(filters.dateFrom || '').trim();
+  const dateTo = String(filters.dateTo || '').trim();
+
+  let where = 'WHERE 1=1';
+  const params = [];
+
+  if (user.role === 'Requester') {
+    where += ' AND pr.requester_id = ?';
+    params.push(user.id);
+  }
+
+  if (statusGroup === 'draft') {
+    where += ' AND pr.status = ?';
+    params.push(PR_STATUS.DRAFT);
+  } else if (statusGroup === 'returned') {
+    where += ' AND pr.status = ?';
+    params.push(PR_STATUS.RETURNED);
+  } else if (statusGroup === 'approved' || statusGroup === 'po_issued') {
+    where += ' AND pr.status = ?';
+    params.push(PR_STATUS.APPROVED);
+  } else if (statusGroup === 'rejected') {
+    where += ' AND pr.status = ?';
+    params.push(PR_STATUS.REJECTED);
+  } else if (statusGroup === 'pending_approval' || statusGroup === 'pending') {
+    where += ` AND pr.status IN (${REQUESTER_PENDING_STATUSES.map(() => '?').join(',')})`;
+    params.push(...REQUESTER_PENDING_STATUSES);
+  }
+
+  if (requestType && requestType !== 'all') {
+    where += ' AND pr.request_type = ?';
+    params.push(requestType);
+  }
+
+  if (search) {
+    const like = `%${search}%`;
+    where += ` AND (
+      pr.pr_number LIKE ? OR pr.title LIKE ?
+      OR IFNULL(e.name, '') LIKE ? OR IFNULL(e.code, '') LIKE ?
+      OR d.name LIKE ?
+    )`;
+    params.push(like, like, like, like, like);
+  }
+
+  if (dateFrom) {
+    where += ' AND DATE(COALESCE(pr.submitted_at, pr.created_at)) >= ?';
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    where += ' AND DATE(COALESCE(pr.submitted_at, pr.created_at)) <= ?';
+    params.push(dateTo);
+  }
+
+  const fromSql = `
+    FROM purchase_requests pr
+    JOIN departments d ON d.id = pr.department_id
+    JOIN users u ON u.id = pr.requester_id
+    LEFT JOIN entity_masters e ON e.id = pr.entity_id
+    ${where}
+  `;
+
+  const [[countRow]] = await pool.query(`SELECT COUNT(*) AS total ${fromSql}`, params);
+  const total = Number(countRow?.total || 0);
+
+  const [rows] = await pool.query(
+    `SELECT pr.id, pr.pr_number, pr.title, pr.request_type, pr.priority, pr.status,
+            pr.total_amount, pr.justification, pr.required_date, pr.vendor_selection,
+            pr.current_stage, pr.submitted_at, pr.created_at, pr.entity_id,
+            d.name AS department_name, u.name AS requester_name,
+            e.name AS entity_name, e.code AS entity_code, e.cost_center AS entity_cost_center,
+            (SELECT COUNT(*) FROM pr_line_items pli WHERE pli.pr_id = pr.id) AS item_count
+     ${fromSql}
+     ORDER BY COALESCE(pr.submitted_at, pr.created_at) DESC, pr.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+
+  const data = rows.map((row) =>
+    toRequesterDashboardFormat({
+      id: row.id,
+      prNumber: row.pr_number,
+      title: row.title,
+      department: row.department_name,
+      entityId: row.entity_id || null,
+      entityName: row.entity_name || '',
+      entityCode: row.entity_code || '',
+      entityCostCenter: row.entity_cost_center || '',
+      totalAmount: Number(row.total_amount || 0),
+      status: row.status,
+      statusFrontend: mapStatusToFrontend(row.status),
+      statusUI: mapStatusToManagerUI(row.status),
+      priorityLower: mapPriorityToFrontend(row.priority),
+      submittedDate: formatDate(row.submitted_at || row.created_at),
+      createdAt: formatDate(row.created_at),
+      requiredDate: formatDate(row.required_date),
+      justification: row.justification || '',
+      lineItems: [],
+      approvalHistory: [],
+      requester: row.requester_name,
+      vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+      currentStage: row.current_stage,
+      items: Number(row.item_count || 0),
+      requestType: row.request_type,
+      currentApprover: null,
+      l1Manager: null,
+      scmBuyer: null,
+    })
+  );
+
+  return {
+    data,
+    meta: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize) || 1),
+    },
+  };
+}
+
 export async function listPurchaseRequests(user, filters = {}) {
+  // Requester lists use the lean paginated path — never N+1 enrich every PR
+  if (user.role === 'Requester' && !filters.pendingOnly && filters.bucket !== 'scm') {
+    const result = await listRequesterPurchaseRequests(user, {
+      ...filters,
+      page: filters.page || 1,
+      pageSize: filters.pageSize || 50,
+    });
+    return result.data;
+  }
+
   let sql = `
     SELECT pr.*, d.name AS department_name, u.name AS requester_name,
            e.name AS entity_name, e.code AS entity_code, e.cost_center AS entity_cost_center
@@ -628,18 +933,34 @@ export async function getRequesterStats(userId) {
     [userId]
   );
   const counts = Object.fromEntries(rows.map((r) => [r.status, r.cnt]));
-  const pending =
-    (counts[PR_STATUS.PENDING_HOD_APPROVAL] || 0) +
-    (counts[PR_STATUS.PENDING_PR_MANAGER_APPROVAL] || 0) +
-    (counts[PR_STATUS.PENDING_CFO_APPROVAL] || 0) +
-    (counts[PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL] || 0) +
-    (counts[PR_STATUS.PENDING_RFQ_L2_APPROVAL] || 0) +
-    (counts[PR_STATUS.PENDING_RFQ_CFO_APPROVAL] || 0) +
-    (counts[PR_STATUS.PENDING_SCM_PO] || 0);
+  const pendingStatuses = [
+    PR_STATUS.PENDING_HOD_APPROVAL,
+    PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
+    PR_STATUS.PENDING_CFO_APPROVAL,
+    PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL,
+    PR_STATUS.PENDING_RFQ_L2_APPROVAL,
+    PR_STATUS.PENDING_RFQ_CFO_APPROVAL,
+    PR_STATUS.PENDING_BUSINESS_APPROVAL,
+    PR_STATUS.PENDING_SCM_PO,
+  ];
+  const pending = pendingStatuses.reduce((sum, s) => sum + (counts[s] || 0), 0);
+
+  // Pending PRs past 1-day SLA from submit/create time
+  const [overdueRows] = await pool.query(
+    `SELECT COUNT(*) AS cnt
+     FROM purchase_requests
+     WHERE requester_id = ?
+       AND status IN (${pendingStatuses.map(() => '?').join(',')})
+       AND COALESCE(submitted_at, created_at) < (NOW() - INTERVAL 1 DAY)`,
+    [userId, ...pendingStatuses]
+  );
 
   return {
     myPRCount: rows.reduce((s, r) => s + r.cnt, 0),
     pendingApprovals: pending,
+    approved: counts[PR_STATUS.APPROVED] || 0,
+    rejected: counts[PR_STATUS.REJECTED] || 0,
+    overdueSla: Number(overdueRows[0]?.cnt || 0),
     returnedForRework: counts[PR_STATUS.RETURNED] || 0,
     poIssued: counts[PR_STATUS.APPROVED] || 0,
     rfqEntryPending: await countRequesterRfqTasks(userId),
@@ -1084,7 +1405,14 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
         stageLabel: 'L1 Manager Approval',
       }
     );
-    return updatedPr;
+    return {
+      ...updatedPr,
+      nextStep: 'L1 Manager Approval',
+      l1Manager: {
+        name: hodAssignment?.hodName || null,
+        email: hodAssignment?.hodEmail || null,
+      },
+    };
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -1380,6 +1708,10 @@ export function toRequesterDashboardFormat(pr) {
     prId: pr.id,
     title: pr.title,
     department: pr.department,
+    entityId: pr.entityId || null,
+    entityName: pr.entityName || '',
+    entityCode: pr.entityCode || '',
+    entityCostCenter: pr.entityCostCenter || '',
     amount: pr.totalAmount,
     status: pr.statusFrontend,
     priority: pr.priorityLower,
@@ -1402,6 +1734,9 @@ export function toRequesterDashboardFormat(pr) {
     requester: pr.requester,
     vendorSelection: pr.vendorSelection,
     currentStage: pr.currentStage,
+    currentApprover: pr.currentApprover || null,
+    l1Manager: pr.l1Manager || null,
+    scmBuyer: pr.scmBuyer || null,
   };
 }
 

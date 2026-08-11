@@ -1,7 +1,7 @@
 export const CURRENCY_OPTIONS = [
-  { code: 'EUR', label: 'EUR (Euro)', symbol: '€' },
   { code: 'INR', label: 'INR (Indian Rupee)', symbol: '₹' },
   { code: 'USD', label: 'USD (US Dollar)', symbol: '$' },
+  { code: 'EUR', label: 'EUR (Euro)', symbol: '€' },
 ] as const;
 
 export type CurrencyCode = (typeof CURRENCY_OPTIONS)[number]['code'];

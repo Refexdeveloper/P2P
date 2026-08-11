@@ -1,65 +1,173 @@
 /**
- * Single margin system for PO PDF — used by Puppeteer + preview CSS.
- * Every page: same left/right/top/bottom content inset.
+ * PO / Work Order PDF layout
+ *
+ * EVERY page:
+ *   TOP    = doc-shell thead (letterhead header logo)
+ *   BODY   = content
+ *   BOTTOM = Puppeteer footerTemplate (letterhead footer logo + Page X of Y)
+ *            — always at the true bottom of every page, including the last
  */
 export const PO_PDF_LAYOUT = {
-  /** Left & right margin on every page (mm) */
-  marginMm: 15,
-  /** Top margin — header is in-document (same as preview); keep a light band (mm) */
-  topMm: 12,
-  /** Bottom margin — room for Puppeteer page number only (mm) */
-  bottomMm: 14,
+  top: '4mm',
+  /** Reserved for footer logo + Page X of Y (must fit enlarged footer) */
+  bottom: '32mm',
+  side: '10mm',
+  marginTopPx: 15,
+  marginBottomPx: 120,
+  marginSidePx: 38,
+  get marginMm() {
+    return 10;
+  },
+  get topMm() {
+    return 4;
+  },
+  get bottomMm() {
+    return 32;
+  },
 };
 
 export const PO_STYLES = `
-  @page { size: A4; margin: 0; }
+  @page { size: A4; }
   * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
 
   body.po-document {
     font-family: Arial, Helvetica, sans-serif;
     font-size: 12.5px;
     color: #1a1a1a;
-    max-width: calc(210mm - ${PO_PDF_LAYOUT.marginMm * 2}mm);
+    max-width: calc(210mm - ${PO_PDF_LAYOUT.marginSidePx * 2}px);
     margin: 0 auto;
-    padding: ${PO_PDF_LAYOUT.topMm}mm ${PO_PDF_LAYOUT.marginMm}mm ${PO_PDF_LAYOUT.bottomMm}mm;
+    padding: 12px ${PO_PDF_LAYOUT.marginSidePx}px 20px;
     line-height: 1.35;
     background: #fff;
   }
 
-  /* Running chrome unused — PDF uses the same in-sheet header/footer as preview */
-  .running-header, .running-footer { display: none !important; }
+  /* ===== Document shell — logo bands repeat on every printed page ===== */
+  table.doc-shell {
+    width: 100%;
+    border-collapse: collapse;
+    border: none !important;
+    margin: 0;
+  }
+  table.doc-shell > thead { display: table-header-group; }
+  table.doc-shell > tbody { display: table-row-group; }
+  table.doc-shell > thead > tr > td,
+  table.doc-shell > tbody > tr > td.doc-shell-body {
+    border: none !important;
+    padding: 0 !important;
+    background: transparent;
+    vertical-align: top;
+  }
+
+  .pdf-run-header {
+    display: block;
+    width: 100%;
+    background: #fff;
+    margin: 0 0 10px;
+    padding: 2px 0 4px;
+  }
+  .pdf-run-header-inner {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-height: 44px;
+    padding: 2px 0 4px;
+  }
+  .pdf-run-header-inner .run-header-img,
+  .pdf-run-header-inner img {
+    max-height: 44px !important;
+    max-width: 200px !important;
+    height: auto !important;
+    width: auto !important;
+    object-fit: contain;
+    display: block;
+    margin-left: auto;
+  }
+  .pdf-run-header-inner .logo { font-size: 26px; margin-left: auto; }
+  .pdf-run-header-inner .run-header-text {
+    font-size: 14px;
+    font-weight: 700;
+    color: #111;
+    margin-left: auto;
+  }
+  /* Screen preview: footer at end of document */
+  .pdf-run-footer {
+    display: block;
+    width: 100%;
+    background: #fff;
+    margin: 24px 0 0;
+    padding: 0;
+    border: none;
+  }
+  .pdf-run-footer-inner {
+    text-align: center;
+    font-size: 11px;
+    line-height: 1.3;
+    color: #222;
+    max-height: 96px;
+    overflow: hidden;
+    border: none;
+  }
+  .pdf-run-footer-inner .run-footer-img,
+  .pdf-run-footer-inner img {
+    max-height: 82px !important;
+    max-width: 100% !important;
+    height: auto !important;
+    width: auto !important;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+  }
+  .pdf-run-footer-inner .run-footer-text {
+    font-size: 13px;
+    font-weight: 700;
+    color: #111;
+  }
+  .pdf-run-footer-inner .run-footer-html {
+    font-size: 11px;
+    line-height: 1.3;
+  }
+  .pdf-run-footer-inner .run-footer-html hr,
+  .pdf-run-footer-inner hr {
+    display: none !important;
+  }
 
   .page-sheet {
     width: 100%;
-    margin: 0 0 20px;
+    margin: 0;
     padding: 0;
-    page-break-after: always;
-    break-after: page;
+    page-break-after: auto;
+    break-after: auto;
   }
-  .page-sheet:last-child { page-break-after: auto; break-after: auto; margin-bottom: 0; }
-  .page-terms { page-break-before: always; break-before: page; }
-  .page-annexure { page-break-before: always; break-before: page; }
+
+  .page-terms,
+  .page-annexure,
+  .page-notes,
+  .page-ack {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  .page-body { width: 100%; }
 
   @media print {
     body.po-document {
       max-width: none;
       width: 100%;
       margin: 0;
-      padding: 0;
+      padding: 0 !important;
     }
 
-    /* Keep the same header/footer as HTML preview (do not hide for PDF) */
-    .page-sheet > .doc-header,
-    .page-sheet > .doc-footer {
-      display: block !important;
-      visibility: visible !important;
+    table.doc-shell > thead { display: table-header-group !important; }
+
+    .pdf-run-header { margin: 0 0 8px; }
+
+    /* PDF footer is drawn by Puppeteer margin band — hide in-flow duplicate */
+    .pdf-run-footer {
+      display: none !important;
     }
 
-    .page-sheet {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-    }
+    .page-sheet { margin: 0; padding: 0; width: 100%; }
 
     .page-body,
     .info-box,
@@ -75,100 +183,41 @@ export const PO_STYLES = `
     }
   }
 
-  .header { display: flex; justify-content: flex-end; align-items: flex-start; margin-bottom: 6px; width: 100%; }
-  .header-custom { width: 100%; }
-  .header-logo-img { max-height: 52px; max-width: 200px; object-fit: contain; display: block; margin-left: auto; }
-  .footer-custom { text-align: center; margin-top: 8px; padding-top: 4px; width: 100%; }
-  .footer-custom .footer-master-content {
-    width: 100%;
-    margin: 0 auto;
-    text-align: center;
-  }
-  .footer-custom .footer-master-content img {
-    max-width: 100%;
-    height: auto;
-    max-height: 88px;
-    display: block;
-    margin: 0 auto;
-  }
-  .footer-master-content table {
-    width: 100% !important;
-    max-width: 100%;
-    margin: 0 auto;
-    border-collapse: collapse;
-    table-layout: fixed;
-  }
-  .footer-master-content td,
-  .footer-master-content th {
-    vertical-align: top;
-    text-align: left;
-    font-size: 8.5px;
-    line-height: 1.35;
-    padding: 0 6px;
-    word-break: break-word;
-  }
-  .footer-master-content td:first-child { padding-left: 0; }
-  .footer-master-content td:last-child { padding-right: 0; }
-  .footer-master-content div[style*="display: flex"],
-  .footer-master-content div[style*="display:flex"] {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: flex-start !important;
-    gap: 12px;
-    width: 100%;
-    text-align: left;
-  }
-  .footer-master-content div[style*="display: flex"] > div,
-  .footer-master-content div[style*="display:flex"] > div {
-    flex: 1 1 0;
-    min-width: 0;
-    text-align: left;
-  }
-  .footer .offices {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    text-align: left;
-    margin-top: 4px;
-  }
-  .footer .office-col { flex: 1 1 0; font-size: 9px; line-height: 1.35; }
-  .footer-logo-img {
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-    max-height: 90px;
-    object-fit: contain;
-    object-position: center;
-    display: block;
-    margin: 0 auto;
-  }
-  .footer-custom .pagenum,
-  .footer .pagenum { display: none; }
   .logo { font-size: 30px; font-weight: 800; font-style: italic; letter-spacing: -1px; }
   .logo .r1 { color: #2e3192; } .logo .e1 { color: #27aae1; } .logo .f { color: #39b54a; }
   .logo .e2 { color: #8dc63f; } .logo .x { color: #f7941d; }
-  .title { text-align: center; font-weight: bold; font-size: 16px; letter-spacing: 1px; margin: 10px 0 14px 0; }
+
+  .title { text-align: center; font-weight: bold; font-size: 16px; letter-spacing: 1px; margin: 8px 0 12px 0; }
   .po-meta { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 10px; font-size: 13px; width: 100%; }
-  .info-box { border: 1px solid #000; padding: 10px 14px; margin-bottom: 16px; page-break-inside: avoid; width: 100%; }
+
+  .info-box {
+    border: 1px solid #000;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    width: 100%;
+  }
   .info-box p { margin: 3px 0; }
   .info-box a { color: #1155cc; text-decoration: underline; }
 
   .table-frame {
     width: 100%;
-    border: 1px solid #000;
+    border: none;
     margin: 6px 0 0;
     page-break-inside: auto;
     break-inside: auto;
   }
   .annexure-card {
     width: 100%;
-    border: 1px solid #000;
+    border: none;
     background: #fff;
     page-break-inside: auto;
     break-inside: auto;
   }
   .annexure-card-title {
-    border-bottom: 1px solid #000;
+    border: 1px solid #000;
+    border-bottom: none;
     padding: 8px 10px;
     text-align: center;
     background: #f2f2f2;
@@ -176,42 +225,56 @@ export const PO_STYLES = `
     break-after: avoid;
   }
   .annexure-card .annexure-table { border: none; width: 100%; }
-  .annexure-card .annexure-table thead th { border-top: none; }
   table.terms-compact th,
   table.terms-compact td { padding: 5px 7px; font-size: 11px; }
 
+  /*
+   * separate + spacing 0 keeps full black borders on page-break continuations.
+   * collapse often drops the right/top edge on the next page in Chromium.
+   */
   table.price, table.terms {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
     margin: 0;
-  }
-  table.price caption, table.terms caption {
-    caption-side: top;
-    font-weight: bold;
-    padding: 6px 8px;
-    text-align: center;
-    background: #f2f2f2;
-    border-bottom: 1px solid #000;
+    border: none;
   }
   table.price th, table.price td,
   table.terms th, table.terms td {
+    border-top: 1px solid #000;
+    border-left: 1px solid #000;
     border-right: 1px solid #000;
     border-bottom: 1px solid #000;
-    border-top: none;
-    border-left: none;
     padding: 7px 9px;
     vertical-align: top;
     font-size: 12px;
     word-wrap: break-word;
     overflow-wrap: anywhere;
   }
-  table.price th:last-child, table.price td:last-child,
-  table.terms th:last-child, table.terms td:last-child { border-right: none; }
-  table.price tr:last-child th, table.price tr:last-child td,
-  table.terms tr:last-child th, table.terms tr:last-child td { border-bottom: none; }
-  .annexure-card .annexure-table tr:last-child th,
-  .annexure-card .annexure-table tr:last-child td { border-bottom: none; }
+  /* Avoid double lines between cells */
+  table.price tr > * + *,
+  table.terms tr > * + * {
+    border-left: none;
+  }
+  table.price tr + tr > *,
+  table.terms tr + tr > * {
+    border-top: none;
+  }
+
+  /* Section title row inside thead — repeats on every continued page */
+  table.terms th.section-title,
+  table.price th.section-title {
+    text-align: center;
+    font-weight: bold;
+    background: #f2f2f2;
+    padding: 6px 8px;
+    border: 1px solid #000;
+  }
+  table.terms thead tr.col-heads th,
+  table.price thead tr.col-heads th {
+    border-top: none;
+  }
+
   table.price th, table.terms th { background: #f2f2f2; text-align: center; font-weight: bold; }
   table.terms th.head-col, table.terms td.head-col { width: 18%; text-align: left; font-weight: bold; }
   table.terms td { text-align: left; }
@@ -220,48 +283,34 @@ export const PO_STYLES = `
   table.price td.right { text-align: right; }
   table.price tr.total td { font-weight: bold; }
   table.price .spec-block p { margin: 6px 0; }
+
   table.terms thead, table.price thead { display: table-header-group; }
   table.terms tbody, table.price tbody { display: table-row-group; }
-  table.terms tr, table.price tr {
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
+  table.terms tr { page-break-inside: avoid; break-inside: avoid; }
+  table.price tr { page-break-inside: auto; break-inside: auto; }
 
   .amount-words {
     width: 100%;
     border: 1px solid #000;
+    border-top: none;
     padding: 8px 10px;
     display: flex;
     justify-content: space-between;
     font-size: 12.5px;
     page-break-inside: avoid;
+    break-inside: avoid;
   }
-  .table-frame + .amount-words { border-top: none; }
   .amount-words .label { font-weight: bold; white-space: nowrap; margin-right: 10px; }
   .amount-words .value { font-weight: bold; text-align: right; }
-  .footer { text-align: center; margin-top: 10px; padding-top: 4px; width: 100%; }
-  .footer .brand { font-weight: bold; color: #2e3192; font-size: 12px; }
-  .footer .sub { font-size: 9px; color: #333; margin-bottom: 4px; }
-  .footer .cin-bar {
-    display: inline-block;
-    background: linear-gradient(90deg,#2e3192,#27aae1,#39b54a,#f7941d);
-    color: #fff;
-    padding: 2px 10px;
-    border-radius: 10px;
-    font-size: 9px;
-    font-weight: bold;
-    margin: 4px 0;
-  }
-  .footer .reg { font-size: 8.5px; color: #333; margin-top: 2px; }
-  .footer hr { border: none; border-top: 2px solid #27aae1; margin: 4px 0; }
+
   h2.annexure-title { text-align: center; margin: 0 0 2px 0; font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }
   h3.annexure-sub { text-align: center; margin: 0; font-size: 12px; font-weight: 600; color: #333; }
   .special-notes, .ack-box {
     width: 100%;
     border: 1px solid #000;
     padding: 12px 16px;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    page-break-inside: auto;
+    break-inside: auto;
   }
   .special-notes p, .ack-box p { margin: 6px 0; }
   .special-notes .lbl { font-weight: bold; }

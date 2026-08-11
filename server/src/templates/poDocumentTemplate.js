@@ -177,23 +177,139 @@ function footerHtml(po = {}, pageLabel = '', opts = {}) {
   </div>`;
 }
 
-/**
- * Puppeteer chrome: page numbers only.
- * Letterhead header/footer stay in the HTML document (same as preview) so
- * large master HTML/images always render in the downloaded PDF.
- */
-export function buildPoPdfChromeTemplates(_po = {}) {
-  const side = `${PO_PDF_LAYOUT.marginMm}mm`;
-  const box =
-    'width:100%;box-sizing:border-box;font-size:9px;color:#333;' +
-    `-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:0 ${side};`;
+function resolveDocChromeMeta(po = {}) {
+  const isWorkOrder =
+    String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   return {
-    headerTemplate: `<div style="${box}height:1px;opacity:0;">&nbsp;</div>`,
-    footerTemplate:
-      `<div style="${box}text-align:center;padding-bottom:2mm;">` +
-      `Page <span class="pageNumber"></span> of <span class="totalPages"></span>` +
-      `</div>`,
+    isWorkOrder,
+    docTitle: isWorkOrder ? 'WORK ORDER' : 'PURCHASE ORDER',
+    docLabel: isWorkOrder ? 'Work Order' : 'Purchase Order',
+    poNumber: escapeHtml(po.poNumber || '—'),
+    poDate: escapeHtml(fmtDateDisplay(po.createdAt || new Date()) || '—'),
+    entity: escapeHtml(
+      resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited'
+    ),
   };
+}
+
+/** Limit images inside letterhead HTML for the repeating page bands */
+function constrainLogoHtml(html, maxImgHeightPx, opts = {}) {
+  let out = String(html || '')
+    // Letterhead HTML sometimes embeds its own <hr> / divider lines — remove them
+    .replace(/<hr\b[^>]*>/gi, '')
+    .replace(/border-(?:bottom|top)\s*:\s*[^;]+;?/gi, '')
+    .replace(/<div[^>]*(?:height\s*:\s*[12]px|border-top\s*:)[^>]*>\s*<\/div>/gi, '')
+    .replace(/<div[^>]*class=["'][^"']*(?:divider|line|rule|separator)[^"']*["'][^>]*>\s*<\/div>/gi, '');
+
+  if (opts.enlargeFooter) {
+    // Bump tiny letterhead footer fonts so the block reads larger on the PDF
+    out = out
+      .replace(/font-size\s*:\s*\d+(?:\.\d+)?px/gi, (m) => {
+        const n = parseFloat(m.replace(/[^0-9.]/g, ''));
+        const next = Number.isFinite(n) ? Math.min(Math.round(n * 1.35), 16) : 11;
+        return `font-size:${next}px`;
+      })
+      .replace(/font-size\s*:\s*\d+(?:\.\d+)?pt/gi, (m) => {
+        const n = parseFloat(m.replace(/[^0-9.]/g, ''));
+        const next = Number.isFinite(n) ? Math.min(Math.round(n * 1.35), 12) : 9;
+        return `font-size:${next}pt`;
+      })
+      .replace(/max-height\s*:\s*\d+px/gi, `max-height:${maxImgHeightPx}px`)
+      .replace(/height\s*:\s*\d+px/gi, (m) => {
+        const n = parseInt(m.replace(/\D/g, ''), 10);
+        if (!Number.isFinite(n) || n > 120) return m;
+        return `height:${Math.min(Math.round(n * 1.35), maxImgHeightPx)}px`;
+      });
+  }
+
+  return out.replace(/<img\b([^>]*)>/gi, (_m, attrs) => {
+    let a = String(attrs || '').replace(/\sstyle\s*=\s*("[^"]*"|'[^']*')/gi, '');
+    const align = opts.enlargeFooter ? 'margin:0 auto;' : 'margin-left:auto;';
+    return `<img${a} style="max-height:${maxImgHeightPx}px;max-width:100%;height:auto;width:auto;object-fit:contain;display:block;${align}" />`;
+  });
+}
+
+/** Header logo band — repeated via doc-shell <thead> on every page */
+function buildRunningHeader(po = {}) {
+  const headerLogo = resolveBrandingValue(po, 'headerLogo', 'header_logo');
+  let inner = '';
+  if (headerLogo) {
+    if (looksLikeHtml(headerLogo)) {
+      inner = constrainLogoHtml(headerLogo, 44);
+    } else if (looksLikeImageSrc(headerLogo)) {
+      inner = `<img class="run-header-img" src="${safeImgSrc(headerLogo)}" alt="Header Logo" />`;
+    } else {
+      inner = `<div class="run-header-text">${escapeHtml(headerLogo)}</div>`;
+    }
+  } else {
+    inner = `<div class="logo"><span class="r1">r</span><span class="e1">e</span><span class="f">f</span><span class="e2">e</span><span class="x">x</span></div>`;
+  }
+  return `
+  <div class="pdf-run-header">
+    <div class="pdf-run-header-inner">${inner}</div>
+  </div>`;
+}
+
+/** Footer logo band — on-screen preview only (PDF uses Puppeteer footer margin) */
+function buildRunningFooter(po = {}) {
+  const footerLogo = resolveBrandingValue(po, 'footerLogo', 'footer_logo');
+  const entity = resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited';
+  let inner = '';
+  if (footerLogo) {
+    if (looksLikeHtml(footerLogo)) {
+      inner = `<div class="run-footer-html">${constrainLogoHtml(footerLogo, 82, { enlargeFooter: true })}</div>`;
+    } else if (looksLikeImageSrc(footerLogo)) {
+      inner = `<img class="run-footer-img" src="${safeImgSrc(footerLogo)}" alt="Footer Logo" />`;
+    } else {
+      inner = `<div class="run-footer-text">${escapeHtml(footerLogo)}</div>`;
+    }
+  } else {
+    inner = `<div class="run-footer-text">${escapeHtml(entity)}</div>`;
+  }
+  return `
+  <div class="pdf-run-footer">
+    <div class="pdf-run-footer-inner">${inner}</div>
+  </div>`;
+}
+
+/** Inner footer markup shared by preview HTML + Puppeteer bottom band */
+function footerBandInner(po = {}) {
+  const footerLogo = resolveBrandingValue(po, 'footerLogo', 'footer_logo');
+  const entity = resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited';
+  if (footerLogo) {
+    if (looksLikeHtml(footerLogo)) {
+      return `<div style="text-align:center;font-size:11px;line-height:1.3;">${constrainLogoHtml(footerLogo, 72, { enlargeFooter: true })}</div>`;
+    }
+    if (looksLikeImageSrc(footerLogo)) {
+      return `<div style="text-align:center;"><img src="${safeImgSrc(footerLogo)}" style="max-height:72px;max-width:100%;object-fit:contain;display:block;margin:0 auto;" /></div>`;
+    }
+    return `<div style="text-align:center;font-size:12px;font-weight:700;">${escapeHtml(footerLogo)}</div>`;
+  }
+  return `<div style="text-align:center;font-size:12px;font-weight:700;">${escapeHtml(entity)}</div>`;
+}
+
+/**
+ * Puppeteer chrome:
+ *  - Header empty (logo via doc-shell thead)
+ *  - Footer logo + Page X of Y in the reserved bottom margin on EVERY page
+ *    (guarantees last-page footer sits at the true page bottom)
+ */
+export function buildPoPdfChromeTemplates(po = {}) {
+  const side = '10mm';
+  const base =
+    'width:100%;box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;' +
+    'font-size:10px;color:#222;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
+
+  const headerTemplate = `<div style="${base}height:0;margin:0;padding:0;overflow:hidden;"></div>`;
+
+  const footerTemplate =
+    `<div style="${base}padding:1mm ${side} 1.5mm ${side};text-align:center;">` +
+    `${footerBandInner(po)}` +
+    `<div style="font-size:9px;font-weight:600;margin-top:2px;color:#333;">` +
+    `Page <span class="pageNumber"></span> of <span class="totalPages"></span>` +
+    `</div></div>`;
+
+  return { headerTemplate, footerTemplate };
 }
 
 function pageHeader(po) {
@@ -220,9 +336,11 @@ function lineItemsHtml(po) {
   return `
   <div class="table-frame">
   <table class="price">
-    <caption>PRICE SCHEDULE</caption>
     <thead>
     <tr>
+      <th class="section-title" colspan="7">PRICE SCHEDULE</th>
+    </tr>
+    <tr class="col-heads">
       <th style="width:5%">SI.No</th>
       <th>Description Of Work</th>
       <th style="width:7%">UOM</th>
@@ -250,11 +368,22 @@ function lineItemsHtml(po) {
 function applyClausePlaceholders(html, po) {
   const company = escapeHtml(po.entity || po.entityName || 'Refex Group of Companies');
   const vendor = escapeHtml(po.vendorName || 'Vendor');
-  return String(html || '')
+  const isWorkOrder =
+    String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
+  let out = String(html || '')
     .replace(/\[Company Name\]/gi, company)
     .replace(/\[Vendor Name\]/gi, vendor)
     .replace(/\$aos_quotes_company_name_c/gi, company)
     .replace(/\$accounts_aos_quotes_1_name_name/gi, vendor);
+  if (isWorkOrder) {
+    out = out
+      .replace(/purchase\s+order\s*\/\s*work\s+order(?:\s*\/\s*service\s+order)?/gi, 'Work Order')
+      .replace(/work\s+order\s*\/\s*purchase\s+order/gi, 'Work Order')
+      .replace(/PURCHASE\s+ORDER/g, 'WORK ORDER')
+      .replace(/Purchase\s+Order/g, 'Work Order')
+      .replace(/purchase\s+order/gi, 'work order');
+  }
+  return out;
 }
 
 /** Header may be plain text or rich-text HTML from the editor */
@@ -267,7 +396,11 @@ function clauseHeaderHtml(raw, po, fallback = 'Term') {
 
 function termsSummaryHtml(po, terms) {
   if (!terms?.length) return '';
-  // All Terms & Conditions on a single page (footer pinned at bottom of that page)
+  const sectionTitle =
+    String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order'
+      ? 'Terms and Conditions — Work Order'
+      : 'Terms and Conditions — Purchase Order';
+  // Title + column heads live in <thead> so they repeat on every continued page
   const rows = terms.map((term) => `
     <tr>
       <th class="head-col">${clauseHeaderHtml(term.termsHeader || term.terms_header, po, 'Term')}</th>
@@ -276,13 +409,14 @@ function termsSummaryHtml(po, terms) {
 
   return `
   <div class="page page-sheet page-terms">
-    ${pageHeader(po)}
     <div class="page-body">
       <div class="table-frame">
         <table class="terms terms-compact">
-          <caption>Terms and Conditions</caption>
           <thead>
             <tr>
+              <th class="section-title" colspan="2">${escapeHtml(sectionTitle)}</th>
+            </tr>
+            <tr class="col-heads">
               <th class="head-col">HEADERS</th>
               <th>TERMS AND CONDITIONS</th>
             </tr>
@@ -293,11 +427,10 @@ function termsSummaryHtml(po, terms) {
         </table>
       </div>
     </div>
-    ${pageFooter(po)}
   </div>`;
 }
 
-function annexurePagesHtml(po, annexure, _poTypeLabel) {
+function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Order') {
   if (!annexure?.length) return '';
 
   // One Annexure page after Terms — title + bordered table stay together (no empty Cont. pages)
@@ -310,16 +443,14 @@ function annexurePagesHtml(po, annexure, _poTypeLabel) {
 
   return `
   <div class="page page-sheet page-annexure">
-    ${pageHeader(po)}
     <div class="page-body">
       <div class="annexure-card">
-        <div class="annexure-card-title">
-          <h2 class="annexure-title">ANNEXURE-I</h2>
-          <h3 class="annexure-sub">COMMERCIAL TERMS AND CONDITIONS</h3>
-        </div>
         <table class="terms terms-compact annexure-table">
           <thead>
             <tr>
+              <th class="section-title" colspan="3">ANNEXURE-I — ${escapeHtml(docLabel).toUpperCase()} COMMERCIAL TERMS AND CONDITIONS</th>
+            </tr>
+            <tr class="col-heads">
               <th class="sno-col">S.NO.</th>
               <th class="head-col">HEADERS</th>
               <th>TERMS AND CONDITIONS</th>
@@ -331,7 +462,6 @@ function annexurePagesHtml(po, annexure, _poTypeLabel) {
         </table>
       </div>
     </div>
-    ${pageFooter(po)}
   </div>`;
 }
 
@@ -342,8 +472,7 @@ function specialNotesHtml(po, options = {}) {
   const paymentText = td.paymentTermsText || po.paymentTerms || '—';
   const siteAddress = td.siteAddress || po.deliveryAddress || '';
   return `
-  <div class="page page-sheet">
-    ${pageHeader(po)}
+  <div class="page page-sheet page-notes">
     <div class="page-body">
     <div class="special-notes">
       <p><strong>PO TERMS &amp; CONDITIONS DETAILS:</strong></p>
@@ -399,14 +528,12 @@ function specialNotesHtml(po, options = {}) {
       Designation: Head – SCM</p>`}
     </div>
     </div>
-    ${pageFooter(po)}
   </div>`;
 }
 
 function acknowledgmentHtml(po) {
   return `
-  <div class="page page-sheet">
-    ${pageHeader(po)}
+  <div class="page page-sheet page-ack">
     <div class="page-body">
     <div class="ack-box">
       <p><strong>Acknowledgment and Acceptance by Seller/Supplier</strong></p>
@@ -418,28 +545,61 @@ function acknowledgmentHtml(po) {
       <strong>Place:</strong></p>
     </div>
     </div>
-    ${pageFooter(po)}
   </div>`;
 }
 
+/** Letterhead master often embeds a "PURCHASE ORDER" title — strip/adapt so it doesn't clash with doc title */
+function adaptLetterheadHeader(html, isWorkOrder) {
+  if (!html) return '';
+  let out = String(html);
+  // Remove standalone centered title rows (already shown via .title)
+  out = out.replace(
+    /<p[^>]*>\s*(?:<strong>\s*)?(?:PURCHASE|WORK)\s+ORDER(?:\s*<\/strong>)?\s*<\/p>/gi,
+    ''
+  );
+  out = out.replace(
+    /<(h[1-6]|div)[^>]*>\s*(?:<strong>\s*)?(?:PURCHASE|WORK)\s+ORDER(?:\s*<\/strong>)?\s*<\/\1>/gi,
+    ''
+  );
+  if (isWorkOrder) {
+    out = out
+      .replace(/purchase\s+order\s*\/\s*work\s+order(?:\s*\/\s*service\s+order)?/gi, 'Work Order')
+      .replace(/PURCHASE\s+ORDER/g, 'WORK ORDER')
+      .replace(/Purchase\s+Order/g, 'Work Order')
+      .replace(/purchase\s+order/gi, 'work order');
+  }
+  return out.trim();
+}
+
 export function buildPoDocumentHtml(po, options = {}) {
-  const poTypeLabel = po.poType === 'long_po' ? 'Long PO' : 'Short PO';
+  const isWorkOrder =
+    String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
+  const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
+  const docTitle = isWorkOrder ? 'WORK ORDER' : 'PURCHASE ORDER';
+  const poTypeLabel = isWorkOrder
+    ? po.poType === 'long_po'
+      ? 'Long WO'
+      : 'Short WO'
+    : po.poType === 'long_po'
+      ? 'Long PO'
+      : 'Short PO';
   const poDate = fmtDateDisplay(po.createdAt || new Date());
   const vendorAddress = po.vendorAddress || 'Address not available';
   const vendorGst = po.vendorGst || '—';
   const vendorPan = po.vendorPan || '—';
   const vendorPhone = po.vendorPhone || '—';
+  const subjectFallback = (po.poTermsDetails && po.poTermsDetails.subject) || po.prTitle || docLabel;
+  const letterheadHtml = adaptLetterheadHeader(po.letterheadHeader, isWorkOrder);
 
   const page1 = `
   <div class="page page-sheet">
-    ${pageHeader(po)}
     <div class="page-body">
-    <div class="title">PURCHASE ORDER</div>
+    <div class="title">${docTitle}</div>
     <div class="po-meta">
-      <span>Purchase Order No. &nbsp;${escapeHtml(po.poNumber)}</span>
+      <span>${escapeHtml(docLabel)} No. &nbsp;${escapeHtml(po.poNumber)}</span>
       <span>Date: ${poDate}</span>
     </div>
-    ${po.letterheadHeader ? `<div class="letterhead-block">${po.letterheadHeader}</div>` : ''}
+    ${letterheadHtml ? `<div class="letterhead-block">${letterheadHtml}</div>` : ''}
     <div class="info-box">
       <p><strong>To</strong></p>
       <p><strong>${escapeHtml(po.vendorName)},</strong></p>
@@ -451,16 +611,15 @@ export function buildPoDocumentHtml(po, options = {}) {
       <p>&nbsp;</p>
       <p><strong>Ref.No/Date.</strong> PR: ${escapeHtml(po.prNumber)}, Date: ${poDate}</p>
       <p>&nbsp;</p>
-      <p><strong>Subject:</strong> ${escapeHtml(po.prTitle || 'Purchase Order')}</p>
+      <p><strong>Subject:</strong> ${escapeHtml(subjectFallback)}</p>
       <p>&nbsp;</p>
-      <p><strong>PO Type:</strong> ${escapeHtml(poTypeLabel)}</p>
+      <p><strong>${escapeHtml(docLabel)} Type:</strong> ${escapeHtml(poTypeLabel)}</p>
       ${po.entity ? `<p><strong>Entity:</strong> ${escapeHtml(po.entity)}</p>` : ''}
       <p><strong>Department:</strong> ${escapeHtml(po.department || '—')}</p>
       <p><strong>Requester:</strong> ${escapeHtml(po.requester || '—')}</p>
     </div>
     ${lineItemsHtml(po)}
     </div>
-    ${pageFooter(po)}
   </div>`;
 
   const terms = po.termsClauses || [];
@@ -470,15 +629,25 @@ export function buildPoDocumentHtml(po, options = {}) {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Purchase Order - ${escapeHtml(po.poNumber)}</title>
+<title>${escapeHtml(docLabel)} - ${escapeHtml(po.poNumber)}</title>
 <style>${PO_STYLES}</style>
 </head>
 <body class="po-document">
+<table class="doc-shell">
+  <thead>
+    <tr><td>${buildRunningHeader(po)}</td></tr>
+  </thead>
+  <tbody>
+    <tr><td class="doc-shell-body">
 ${page1}
 ${termsSummaryHtml(po, terms)}
-${annexurePagesHtml(po, annexure, poTypeLabel)}
+${annexurePagesHtml(po, annexure, poTypeLabel, docLabel)}
 ${specialNotesHtml(po, options)}
 ${acknowledgmentHtml(po)}
+    </td></tr>
+  </tbody>
+</table>
+${buildRunningFooter(po)}
 </body>
 </html>`;
 }

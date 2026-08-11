@@ -114,10 +114,20 @@ export default function RfqApprovalDetailPage() {
           ? ' — sent to L2 → CFO → SCM Final'
           : ' — sent to L2 → SCM Final (skip CFO)'
         : modal.action === 'rework' && options?.returnTo
-          ? ' — returned to selected stage'
+          ? ` — sent back to ${options.returnTo === 'SCM_RFQ' ? 'SCM RFQ Entry' : 'selected stage'}`
           : '';
-    showToast(`RFQ ${modal.action} completed successfully${branchMsg}`);
-    navigate('/tasks');
+    showToast(
+      modal.action === 'rework'
+        ? `Send back completed${branchMsg}`
+        : `RFQ ${modal.action} completed successfully${branchMsg}`
+    );
+    if (user?.role === 'SCM Manager') {
+      navigate('/rfq-approval');
+    } else if (user?.role === 'SCM Buyer') {
+      navigate('/scm/rfq-entry');
+    } else {
+      navigate('/tasks');
+    }
   };
 
   const handlePreviewFile = async (submissionId: number, _vendorName: string, fileName: string) => {

@@ -115,10 +115,15 @@ function FooterLogoCell({
   );
 }
 
+const PAGE_SIZE = 10;
+
 export default function EntityMasterPage() {
   const [rows, setRows] = useState<EntityRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 });
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<EntityRecord | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -128,17 +133,31 @@ export default function EntityMasterPage() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await masterApi.listEntities({ search: search || undefined });
+      const res = await masterApi.listEntities({
+        search: debouncedSearch || undefined,
+        page,
+        pageSize: PAGE_SIZE,
+      });
       setRows(res.data);
+      if (res.meta) setMeta(res.meta);
     } catch {
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [debouncedSearch, page]);
 
   useEffect(() => {
     load();
@@ -346,6 +365,35 @@ export default function EntityMasterPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {meta.total > 0 && (
+            <div className="px-4 py-3 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-xs text-gray-500">
+                Showing {(page - 1) * meta.pageSize + 1}–{Math.min(page * meta.pageSize, meta.total)} of {meta.total}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={page <= 1 || loading}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 cursor-pointer"
+                >
+                  Previous
+                </button>
+                <span className="px-2 text-xs text-gray-600">
+                  Page {page} of {meta.totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={page >= meta.totalPages || loading}
+                  onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
+                  className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>

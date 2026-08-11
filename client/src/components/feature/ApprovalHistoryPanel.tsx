@@ -1,3 +1,5 @@
+import { formatRoleDisplayName } from '../../utils/roleDisplay';
+
 export type ApprovalHistoryEntry = {
   stage: string;
   approver?: string;
@@ -74,7 +76,7 @@ export function ManagerL2CommentsHighlight({
             </p>
             <p className="text-xs text-amber-700/80 mt-2">
               {manager.approver || manager.user || 'Manager'}
-              {manager.role ? ` · ${manager.role}` : ''}
+              {manager.role ? ` · ${formatRoleDisplayName(manager.role)}` : ''}
               {manager.date ? ` · ${manager.date}` : ''}
             </p>
           </>
@@ -95,7 +97,7 @@ export function ManagerL2CommentsHighlight({
             </p>
             <p className="text-xs text-violet-700/80 mt-2">
               {l2.approver || l2.user || 'L2 Manager'}
-              {l2.role ? ` · ${l2.role}` : ''}
+              {l2.role ? ` · ${formatRoleDisplayName(l2.role)}` : ''}
               {l2.date ? ` · ${l2.date}` : ''}
             </p>
           </>
@@ -189,7 +191,7 @@ export default function ApprovalHistoryPanel({
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {who}
-                    {item.role ? ` · ${item.role}` : ''}
+                    {item.role ? ` · ${formatRoleDisplayName(item.role)}` : ''}
                   </p>
                 </div>
                 <span

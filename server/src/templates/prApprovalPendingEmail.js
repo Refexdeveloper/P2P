@@ -49,74 +49,225 @@ function actionButton(label, url, bgColor, textColor = '#ffffff') {
     </td>`;
 }
 
-function buildNegotiationRoundsBlock(rfqSummary) {
-  if (!rfqSummary?.vendors?.length) return '';
+function buildRecommendationJustificationBlock(rfqSummary) {
+  const vendor = rfqSummary?.recommendedVendor || '';
+  const justification = String(rfqSummary?.recommendationJustification || '').trim();
+  if (!vendor && !justification) return '';
 
-  const vendorSections = rfqSummary.vendors
+  return `
+        <tr>
+          <td style="padding:0 32px 16px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:2px solid #6ee7b7;border-radius:12px;overflow:hidden;background:linear-gradient(90deg,#ecfdf5,#f0fdfa);">
+              <tr>
+                <td style="padding:12px 16px;background:#d1fae5;border-bottom:1px solid #a7f3d0;">
+                  <div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#065f46;">
+                    ★ Recommendation Justification
+                  </div>
+                  <div style="font-size:15px;font-weight:700;color:#064e3b;margin-top:4px;">
+                    ${escapeHtml(vendor || 'Recommended vendor')}
+                    <span style="font-size:12px;font-weight:600;color:#047857;"> · ${formatCurrency(rfqSummary?.quotedPrice || 0)}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:14px 16px;">
+                  <div style="font-size:14px;color:#064e3b;line-height:1.55;white-space:pre-wrap;">
+                    ${justification ? escapeHtml(justification) : '<em style="color:#047857;">No justification was provided with this recommendation.</em>'}
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
+}
+
+function buildPriceNegotiationTrendBlock(rfqSummary) {
+  const vendors = rfqSummary?.vendors || [];
+  if (!vendors.length) return '';
+
+  const totalRounds = Math.max(
+    Number(rfqSummary.totalRounds) || 1,
+    ...vendors.map((v) => Math.max(0, ...(v.rounds || []).map((r) => Number(r.round) || 0))),
+    1
+  );
+  const maxRoundsCap = Number(rfqSummary.maxRounds) || 0;
+  const roundsLabel =
+    maxRoundsCap > 0 ? `${totalRounds} of ${maxRoundsCap}` : String(totalRounds);
+
+  const roundHeaders = Array.from({ length: totalRounds }, (_, i) => {
+    return `<th style="padding:10px 8px;font-size:10px;color:#0f766e;text-align:center;border-bottom:1px solid #99f6e4;text-transform:uppercase;letter-spacing:0.04em;">Quotation Round ${i + 1}</th>`;
+  }).join('');
+
+  const vendorRows = vendors
     .map((vendor) => {
-      const rounds = (vendor.rounds || []).slice(0, 3);
-      if (!rounds.length) {
+      const rounds = [...(vendor.rounds || [])].sort((a, b) => Number(a.round) - Number(b.round));
+      const last = rounds[rounds.length - 1];
+      const lastPrice = Number(last?.quotedPrice || last?.values?.quotedPrice || 0);
+      const cells = Array.from({ length: totalRounds }, (_, i) => {
+        const roundNum = i + 1;
+        const use = rounds.find((r) => Number(r.round) === roundNum) || null;
+        if (!use) {
+          return `<td style="padding:12px 8px;text-align:center;font-size:13px;color:#cbd5e1;border-bottom:1px solid #f1f5f9;">—</td>`;
+        }
+        const price = Number(use.quotedPrice || use.values?.quotedPrice || 0);
+        const prev = rounds.find((r) => Number(r.round) === roundNum - 1) || null;
+        const prevPrice = prev ? Number(prev.quotedPrice || prev.values?.quotedPrice || 0) : 0;
+        const change = prev && prevPrice ? price - prevPrice : 0;
+        const changePct = prev && prevPrice ? ((change / prevPrice) * 100).toFixed(1) : null;
+        const isLast = use === last;
+        const changeHtml =
+          changePct !== null
+            ? `<div style="font-size:11px;font-weight:700;margin-top:2px;color:${change < 0 ? '#059669' : '#dc2626'};">${change < 0 ? '▼' : '▲'} ${Math.abs(Number(changePct))}%</div>`
+            : '';
+        const fileHtml = use.quotationFileName
+          ? `<div style="font-size:10px;color:#64748b;margin-top:6px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(use.quotationFileName)}</div>`
+          : '';
         return `
-          <div style="margin-bottom:12px;padding:12px 14px;background:#fff;border:1px solid #bbf7d0;border-radius:8px;">
-            <div style="font-size:13px;font-weight:700;color:#14532d;">
-              ${escapeHtml(vendor.name)}${vendor.isRecommended ? ' ★ Recommended' : ''}
-            </div>
-            <div style="font-size:12px;color:#64748b;margin-top:4px;">No submitted quotation rounds yet</div>
-          </div>`;
-      }
-
-      const roundRows = rounds
-        .map(
-          (r) => `
-          <tr>
-            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;font-weight:700;color:#166534;">R${r.round}</td>
-            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;text-align:right;font-weight:700;">${formatCurrency(r.quotedPrice)}</td>
-            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;text-align:center;">${r.leadTime ?? '—'}d</td>
-            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;">${escapeHtml(r.paymentTerms || '—')}</td>
-            <td style="padding:8px;border-bottom:1px solid #dcfce7;font-size:12px;">${escapeHtml(r.quotationFileName || '—')}</td>
-          </tr>`
-        )
-        .join('');
+          <td style="padding:12px 8px;text-align:center;border-bottom:1px solid #f1f5f9;${isLast ? 'background:#f0fdfa;' : ''}">
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Price</div>
+            <div style="font-size:13px;font-weight:800;color:${isLast ? '#0f766e' : '#0f172a'};margin-top:2px;">${price ? formatCurrency(price) : '—'}</div>
+            ${changeHtml}
+            ${fileHtml}
+            ${use.submittedAt ? `<div style="font-size:10px;color:#94a3b8;margin-top:4px;">${escapeHtml(String(use.submittedAt))}</div>` : ''}
+          </td>`;
+      }).join('');
 
       return `
-        <div style="margin-bottom:14px;">
-          <div style="font-size:13px;font-weight:700;color:#14532d;margin-bottom:6px;">
-            ${escapeHtml(vendor.name)}${vendor.isRecommended ? ' ★ Recommended' : ''}
-            <span style="font-weight:500;color:#64748b;font-size:11px;"> · ${rounds.length} round(s)</span>
-          </div>
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #bbf7d0;border-collapse:collapse;background:#fff;border-radius:8px;">
-            <thead><tr style="background:#ecfdf5;">
-              <th style="padding:8px;font-size:10px;color:#047857;text-align:left;">Round</th>
-              <th style="padding:8px;font-size:10px;color:#047857;text-align:right;">Price</th>
-              <th style="padding:8px;font-size:10px;color:#047857;text-align:center;">Lead</th>
-              <th style="padding:8px;font-size:10px;color:#047857;text-align:left;">Payment</th>
-              <th style="padding:8px;font-size:10px;color:#047857;text-align:left;">Quotation File</th>
-            </tr></thead>
-            <tbody>${roundRows}</tbody>
-          </table>
-        </div>`;
+        <tr>
+          <td style="padding:12px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top;${vendor.isRecommended ? 'background:#ecfdf5;' : ''}">
+            <div style="font-size:13px;font-weight:700;color:#0f172a;">${escapeHtml(vendor.name)}</div>
+            ${vendor.isRecommended ? '<div style="display:inline-block;margin-top:4px;padding:2px 8px;background:#d1fae5;color:#047857;font-size:10px;font-weight:700;border-radius:999px;">★ Recommended</div>' : ''}
+            <div style="font-size:11px;color:#94a3b8;margin-top:6px;">${rounds.length} round${rounds.length === 1 ? '' : 's'}</div>
+            <div style="font-size:11px;color:#64748b;">Last: ${lastPrice ? formatCurrency(lastPrice) : '—'}</div>
+          </td>
+          ${cells}
+        </tr>`;
     })
     .join('');
 
   return `
         <tr>
           <td style="padding:0 32px 16px 32px;">
-            <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">
-              Vendor Quotations &amp; Negotiation Rounds (up to 3)
-            </div>
-            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;">
-              <div style="font-size:13px;color:#14532d;margin-bottom:12px;line-height:1.5;">
-                <strong>Recommended Vendor:</strong> ${escapeHtml(rfqSummary.recommendedVendor || '—')}<br/>
-                <strong>Vendors Quoted:</strong> ${rfqSummary.vendorCount || 0}<br/>
-                <strong>Recommended Price:</strong> ${formatCurrency(rfqSummary.quotedPrice || 0)}
-              </div>
-              ${vendorSections}
-              <p style="font-size:11px;color:#64748b;margin:8px 0 0 0;">
-                Quotation PDF files for each round are attached to this email (when available).
-              </p>
-            </div>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #99f6e4;border-radius:12px;overflow:hidden;">
+              <tr>
+                <td style="padding:14px 16px;background:#f0fdfa;border-bottom:1px solid #99f6e4;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                    <td>
+                      <div style="font-size:15px;font-weight:800;color:#134e4a;">Price Negotiation Trend</div>
+                      <div style="font-size:12px;color:#0f766e;margin-top:2px;">How prices changed across quotation rounds</div>
+                    </td>
+                    <td align="right" style="white-space:nowrap;">
+                      <span style="display:inline-block;padding:4px 10px;background:#ccfbf1;color:#0f766e;font-size:11px;font-weight:700;border-radius:999px;">Total Rounds: ${escapeHtml(roundsLabel)}</span>
+                    </td>
+                  </tr></table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0;overflow-x:auto;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;min-width:480px;">
+                    <thead>
+                      <tr style="background:#f8fafc;">
+                        <th style="padding:10px;font-size:10px;color:#64748b;text-align:left;border-bottom:1px solid #e2e8f0;text-transform:uppercase;">Vendor</th>
+                        ${roundHeaders}
+                      </tr>
+                    </thead>
+                    <tbody>${vendorRows}</tbody>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11px;color:#64748b;">
+                  Quotation PDF files for each round are attached to this email (when available).
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>`;
+}
+
+function buildVendorComparisonBlock(rfqSummary) {
+  const vendors = rfqSummary?.vendors || [];
+  const rows = rfqSummary?.comparisonRows || [];
+  if (!vendors.length || !rows.length) return '';
+
+  const vendorHeaders = vendors
+    .map(
+      (v) => `
+        <th style="padding:10px 8px;font-size:12px;font-weight:700;color:#0f172a;text-align:center;border-bottom:1px solid #e2e8f0;${v.isRecommended ? 'background:#ecfdf5;' : 'background:#f8fafc;'}">
+          ${escapeHtml(v.name)}
+          ${v.isRecommended ? '<div style="margin-top:4px;font-size:10px;font-weight:700;color:#047857;">★ Recommended</div>' : ''}
+        </th>`
+    )
+    .join('');
+
+  const bodyRows = rows
+    .map((row) => {
+      const cells = vendors
+        .map((v) => {
+          const display = row.cells?.[v.id] ?? '—';
+          const isBest = row.bestVendorId === v.id;
+          return `<td style="padding:10px 8px;font-size:12px;text-align:center;border-bottom:1px solid #f1f5f9;${v.isRecommended ? 'background:#f0fdf4;' : ''}${isBest ? 'color:#047857;font-weight:700;' : 'color:#334155;'}">${escapeHtml(display)}</td>`;
+        })
+        .join('');
+      return `
+        <tr>
+          <td style="padding:10px 10px;font-size:12px;font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;background:#fff;">${escapeHtml(row.label)}</td>
+          ${cells}
+        </tr>`;
+    })
+    .join('');
+
+  const fileRow = `
+        <tr>
+          <td style="padding:10px 10px;font-size:12px;font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;">Quotation File</td>
+          ${vendors
+            .map(
+              (v) =>
+                `<td style="padding:10px 8px;font-size:11px;text-align:center;border-bottom:1px solid #f1f5f9;${v.isRecommended ? 'background:#f0fdf4;' : ''}color:#64748b;">${escapeHtml(v.quotationFileName || '—')}</td>`
+            )
+            .join('')}
+        </tr>`;
+
+  return `
+        <tr>
+          <td style="padding:0 32px 16px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+              <tr>
+                <td style="padding:14px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+                  <div style="font-size:15px;font-weight:800;color:#0f172a;">Vendor Comparison</div>
+                  <div style="font-size:12px;color:#64748b;margin-top:2px;">
+                    ${rfqSummary.vendorCount || vendors.length} vendors · Recommended: <strong style="color:#047857;">${escapeHtml(rfqSummary.recommendedVendor || '—')}</strong>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0;overflow-x:auto;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;min-width:480px;">
+                    <thead>
+                      <tr>
+                        <th style="padding:10px;font-size:10px;color:#64748b;text-align:left;border-bottom:1px solid #e2e8f0;background:#f8fafc;text-transform:uppercase;">Parameter</th>
+                        ${vendorHeaders}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${bodyRows}
+                      ${fileRow}
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
+}
+
+function buildNegotiationRoundsBlock(rfqSummary) {
+  if (!rfqSummary?.vendors?.length) return '';
+
+  return `
+        ${buildRecommendationJustificationBlock(rfqSummary)}
+        ${buildPriceNegotiationTrendBlock(rfqSummary)}
+        ${buildVendorComparisonBlock(rfqSummary)}`;
 }
 
 export function buildPrApprovalPendingEmail({
@@ -198,10 +349,11 @@ export function buildPrApprovalPendingEmail({
     )
     .join('');
 
-  const rfqBlock = postRfq || (isScmRfqEntry && rfqSummary?.vendors?.length)
-    ? buildNegotiationRoundsBlock(rfqSummary)
-    : rfqSummary
-      ? `
+  const rfqBlock =
+    rfqSummary?.vendors?.length && (postRfq || isScmRfqEntry || rfqSummary.recommendedVendor)
+      ? buildNegotiationRoundsBlock(rfqSummary)
+      : rfqSummary
+        ? `
         <tr>
           <td style="padding:0 32px 16px 32px;">
             <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">RFQ Summary</div>
@@ -209,10 +361,15 @@ export function buildPrApprovalPendingEmail({
               <strong>Recommended Vendor:</strong> ${escapeHtml(rfqSummary.recommendedVendor || '—')}<br/>
               <strong>Vendors Quoted:</strong> ${rfqSummary.vendorCount || 0}<br/>
               <strong>Quoted Price:</strong> ${formatCurrency(rfqSummary.quotedPrice || 0)}
+              ${
+                rfqSummary.recommendationJustification
+                  ? `<br/><br/><strong>Justification:</strong> ${escapeHtml(rfqSummary.recommendationJustification)}`
+                  : ''
+              }
             </td></tr></table>
           </td>
         </tr>`
-      : '';
+        : '';
 
   const entityLabel = formatEntity(pr);
   const headerEyebrow = isRfqEntryStep
@@ -291,6 +448,7 @@ export function buildPrApprovalPendingEmail({
             </table>
           </td>
         </tr>
+        ${rfqBlock}
         <tr>
           <td style="padding:0 32px 16px 32px;">
             <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">Business Justification</div>
@@ -312,7 +470,6 @@ export function buildPrApprovalPendingEmail({
             </table>
           </td>
         </tr>
-        ${rfqBlock}
         <tr>
           <td style="padding:8px 32px 28px 32px;">
             ${actionButtons}
@@ -344,6 +501,10 @@ export function buildPrApprovalPendingEmail({
     rfqSummary?.recommendedVendor
       ? `Recommended: ${rfqSummary.recommendedVendor} (${formatCurrency(rfqSummary.quotedPrice || 0)})`
       : '',
+    rfqSummary?.recommendationJustification
+      ? `Justification: ${rfqSummary.recommendationJustification}`
+      : '',
+    rfqSummary?.totalRounds ? `Total Rounds: ${rfqSummary.totalRounds}` : '',
     '',
     isRfqEntryStep ? `Open RFQ Entry: ${portalUrl}` : `Approve: ${approveUrl}`,
     !isRfqEntryStep && showSendBack ? `Send Back: ${returnUrl}` : '',

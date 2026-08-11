@@ -102,12 +102,15 @@ router.put('/categories/:id', canManageCategories, async (req, res) => {
 
 router.get('/items', requireRoles(...READ_ROLES), async (req, res) => {
   try {
-    const data = await listItems({
+    const result = await listItems({
       search: req.query.search,
       categoryId: req.query.categoryId,
       status: req.query.status,
+      page: req.query.page,
+      pageSize: req.query.pageSize,
     });
-    res.json({ data });
+    if (Array.isArray(result)) return res.json({ data: result });
+    return res.json(result);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -163,11 +166,14 @@ router.put('/items/:id', canManageItems, async (req, res) => {
 
 router.get('/entities', requireRoles(...READ_ROLES), async (req, res) => {
   try {
-    const data = await listEntities({
+    const result = await listEntities({
       search: req.query.search,
       status: req.query.status,
+      page: req.query.page,
+      pageSize: req.query.pageSize,
     });
-    res.json({ data });
+    if (Array.isArray(result)) return res.json({ data: result });
+    return res.json(result);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

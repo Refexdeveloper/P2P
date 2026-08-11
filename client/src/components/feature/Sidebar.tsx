@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { ensureNavigation, isMastersNavItem } from '../../constants/roleNavigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { invoiceData } from '../../mocks/invoice-data';
+import { formatRoleDisplayName } from '../../utils/roleDisplay';
 
 function badgeForPath(path: string): number | null {
   if (path === '/accounts/invoice-verification') {
@@ -171,9 +172,9 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       }}
       className={`
         bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ease-out z-50
-        fixed inset-y-0 left-0 w-64
+        fixed inset-y-0 left-0 w-64 h-[100dvh] max-h-[100dvh]
         ${mobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}
-        lg:static lg:translate-x-0 lg:shadow-none lg:shrink-0
+        lg:static lg:translate-x-0 lg:shadow-none lg:shrink-0 lg:h-full lg:max-h-full lg:min-h-0
         ${collapsed ? 'lg:w-20' : 'lg:w-64'}
       `}
     >
@@ -297,7 +298,9 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{user?.name || 'User'}</p>
-              <p className="text-xs text-gray-500 truncate">{user?.role || 'Role'}</p>
+              <p className="text-xs text-gray-500 truncate">
+                {formatRoleDisplayName(user?.role) || 'Role'}
+              </p>
             </div>
             <button
               onClick={logout}

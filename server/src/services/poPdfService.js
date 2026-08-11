@@ -49,8 +49,9 @@ export function buildPoHtml(po, options = {}) {
 }
 
 /**
- * Convert PO HTML → PDF.
- * One margin system for all pages: content + header + footer share the same left/right inset.
+ * Convert PO / Work Order HTML → PDF.
+ * Logos: HTML .pdf-run-* bands with position:fixed (every page; supports data:image).
+ * Page numbers: Puppeteer footer chrome only.
  */
 export async function htmlToPdf(html, filePath, chromeTemplates = null) {
   const executablePath = resolveBrowserExecutable();
@@ -68,7 +69,6 @@ export async function htmlToPdf(html, filePath, chromeTemplates = null) {
 
   try {
     const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
     await page.emulateMediaType('print');
     await page.evaluate(async () => {
@@ -85,19 +85,17 @@ export async function htmlToPdf(html, filePath, chromeTemplates = null) {
     });
 
     const chrome = chromeTemplates || buildPoPdfChromeTemplates();
-    const side = `${PO_PDF_LAYOUT.marginMm}mm`;
 
     await page.pdf({
       path: filePath,
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: false,
-      // Same margins on every page for all content
       margin: {
-        top: `${PO_PDF_LAYOUT.topMm}mm`,
-        right: side,
-        bottom: `${PO_PDF_LAYOUT.bottomMm}mm`,
-        left: side,
+        top: PO_PDF_LAYOUT.top,
+        right: PO_PDF_LAYOUT.side,
+        bottom: PO_PDF_LAYOUT.bottom,
+        left: PO_PDF_LAYOUT.side,
       },
       displayHeaderFooter: true,
       headerTemplate: chrome.headerTemplate,

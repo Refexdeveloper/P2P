@@ -1,9 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
 import SendBackModal from '../../scm/rfq-entry/components/SendBackModal';
 import CreateVendorForm from '../../scm/vendor-master/components/CreateVendorForm';
-import { rfqApi, RfqFieldDefinition, vendorApi, VendorRecord } from '../../../services/api';
+import {
+  rfqApi,
+  RfqFieldDefinition,
+  VendorComparisonData,
+  vendorApi,
+  VendorRecord,
+} from '../../../services/api';
+
+const REQUESTER_SCORE_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
+
+function normalizeFieldDef(f: RfqFieldDefinition): RfqFieldDefinition {
+  const filledBy =
+    f.filledBy === 'requester' || f.filledBy === 'vendor'
+      ? f.filledBy
+      : REQUESTER_SCORE_IDS.has(f.id)
+        ? 'requester'
+        : 'vendor';
+  return { ...f, filledBy };
+}
 
 interface DraftRow {
   key: string;
@@ -15,6 +34,8 @@ interface DraftRow {
 interface RfqConfig {
   fieldDefinitions: RfqFieldDefinition[];
   recommendedInvitationId: number | null;
+  recommendationJustification?: string;
+  sendBackRemarks?: string;
   maxRounds: number | null;
   requesterSubmittedAt?: string | null;
   finalizedAt: string | null;
@@ -77,6 +98,14 @@ export default function RfqEntryDetailPage() {
   const [newFieldFilledBy, setNewFieldFilledBy] = useState<'vendor' | 'requester'>('vendor');
   const [newFieldType, setNewFieldType] = useState<'text' | 'number' | 'boolean'>('text');
   const [recommendedId, setRecommendedId] = useState<number | null>(null);
+  const [recommendationJustification, setRecommendationJustification] = useState('');
+  const [recommendModal, setRecommendModal] = useState<{
+    invitationId: number;
+    vendorName: string;
+  } | null>(null);
+  const [recommendDraft, setRecommendDraft] = useState('');
+  const [comparison, setComparison] = useState<VendorComparisonData | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sendingMail, setSendingMail] = useState(false);
   const [addingManual, setAddingManual] = useState(false);
@@ -125,7 +154,7 @@ export default function RfqEntryDetailPage() {
     }));
   };
 
-  const fields = config?.fieldDefinitions || [];
+  const fields = (config?.fieldDefinitions || []).map(normalizeFieldDef);
   const vendorFields = fields.filter((f) => f.filledBy === 'vendor');
   const requesterFields = fields.filter((f) => f.filledBy === 'requester');
   // Requester locks after own-vendor submit; SCM continues until final finalize
@@ -134,32 +163,46 @@ export default function RfqEntryDetailPage() {
     : Boolean(config?.finalizedAt || config?.requesterSubmittedAt);
   const hasInvitations = tableRows.length > 0;
   const invitedVendorNames = new Set(tableRows.map((r) => r.vendorName.toLowerCase()));
-  const maxRoundSeen = Math.max(1, previewRound, ...tableRows.map((r) => r.round));
-  const recommendedRow = tableRows.find((r) => r.invitationId === recommendedId);
-  const canSubmitRfq = Boolean(recommendedRow?.hasActiveQuote);
+  const recommendedRow = tableRows.find(
+    (r) => Number(r.invitationId) === Number(recommendedId)
+  );
+  const canSubmitRfq = Boolean(
+    recommendedRow?.hasActiveQuote && recommendationJustification.trim()
+  );
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 4000);
   };
 
-  const loadRfq = useCallback(async () => {
+  const loadRfq = useCallback(async (opts?: { soft?: boolean }) => {
     if (!prId) return;
-    setLoading(true);
+    const soft = Boolean(opts?.soft);
+    if (!soft) setLoading(true);
     try {
       const res = await rfqApi.getByPr(Number(prId));
       const data = res.data;
       setPr(data.pr as typeof pr);
       const cfg = data.config as RfqConfig;
       setConfig(cfg);
-      setRecommendedId(cfg.recommendedInvitationId);
+      // Don't wipe a local Recommend choice during soft/poll refresh
+      setRecommendedId((prev) =>
+        soft && prev != null ? prev : cfg.recommendedInvitationId
+      );
+      setRecommendationJustification((prev) => {
+        if (soft && prev.trim()) return prev;
+        return String(cfg.recommendationJustification || '');
+      });
       const rows = (data.tableRows || []) as TableRow[];
       setTableRows(rows);
-      if (rows.length) setPreviewRound(Math.max(...rows.map((r) => r.round)));
+      if (rows.length) {
+        const rounds = rows.map((r) => Number(r.round) || 1);
+        setPreviewRound(Math.max(1, ...rounds));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load RFQ');
     } finally {
-      setLoading(false);
+      if (!soft) setLoading(false);
     }
   }, [prId]);
 
@@ -170,9 +213,32 @@ export default function RfqEntryDetailPage() {
 
   useEffect(() => {
     if (!hasInvitations || isFinalized) return;
-    const interval = setInterval(loadRfq, 15000);
+    const interval = setInterval(() => loadRfq({ soft: true }), 15000);
     return () => clearInterval(interval);
   }, [hasInvitations, isFinalized, loadRfq]);
+
+  useEffect(() => {
+    if (mode !== 'preview' || !prId || !hasInvitations) {
+      if (mode !== 'preview') setComparison(null);
+      return;
+    }
+    let cancelled = false;
+    setComparisonLoading(true);
+    rfqApi
+      .getComparison(Number(prId))
+      .then((res) => {
+        if (!cancelled) setComparison(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setComparison(null);
+      })
+      .finally(() => {
+        if (!cancelled) setComparisonLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, prId, hasInvitations, tableRows.length]);
 
   const saveConfig = async (updates: Partial<RfqConfig>) => {
     if (!prId) return;
@@ -180,23 +246,32 @@ export default function RfqEntryDetailPage() {
       fieldDefinitions: updates.fieldDefinitions ?? config?.fieldDefinitions ?? [],
       maxRounds: updates.maxRounds ?? config?.maxRounds ?? null,
       recommendedInvitationId: updates.recommendedInvitationId ?? recommendedId,
+      recommendationJustification:
+        updates.recommendationJustification ?? recommendationJustification,
     };
     const res = await rfqApi.saveConfig(Number(prId), next);
     setConfig(res.data.config as RfqConfig);
   };
 
+  const addFieldDef = async (field: RfqFieldDefinition) => {
+    if (fields.some((f) => f.id === field.id)) {
+      setError(`Field "${field.label}" is already added`);
+      return;
+    }
+    await saveConfig({ fieldDefinitions: [...fields, field] });
+    showToast(`${field.label} added — vendors will see it`);
+  };
+
   const addField = async () => {
     if (!newFieldLabel.trim()) return;
     const id = newFieldLabel.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40);
-    const field: RfqFieldDefinition = {
+    await addFieldDef({
       id: id || `field_${Date.now()}`,
       label: newFieldLabel.trim(),
       type: newFieldType,
       filledBy: newFieldFilledBy,
-    };
-    await saveConfig({ fieldDefinitions: [...fields, field] });
+    });
     setNewFieldLabel('');
-    showToast('Field added');
   };
 
   const removeField = async (fieldId: string) => {
@@ -204,6 +279,15 @@ export default function RfqEntryDetailPage() {
     if (f?.core) return;
     await saveConfig({ fieldDefinitions: fields.filter((x) => x.id !== fieldId) });
   };
+
+  const vendorFieldPresets: RfqFieldDefinition[] = [
+    { id: 'leadTime', label: 'Lead Time (days)', type: 'number', filledBy: 'vendor' },
+    { id: 'paymentTerms', label: 'Payment Terms', type: 'text', filledBy: 'vendor' },
+    { id: 'warranty', label: 'Warranty', type: 'text', filledBy: 'vendor' },
+    { id: 'deliveryTerms', label: 'Delivery Terms', type: 'text', filledBy: 'vendor' },
+    { id: 'compliance', label: 'Compliance', type: 'boolean', filledBy: 'vendor' },
+    { id: 'vendorNotes', label: 'Notes / Comments', type: 'text', filledBy: 'vendor' },
+  ];
 
   const inviteSelectedVendors = async (sendEmail: boolean) => {
     if (!prId) return;
@@ -414,6 +498,16 @@ export default function RfqEntryDetailPage() {
       setError('Select a recommended vendor before submitting RFQ');
       return;
     }
+    const justification = recommendationJustification.trim();
+    if (!justification) {
+      setError('Provide justification for the recommended vendor');
+      const rec = tableRows.find((r) => Number(r.invitationId) === Number(recommendedId));
+      if (rec) {
+        setRecommendDraft('');
+        setRecommendModal({ invitationId: rec.invitationId, vendorName: rec.vendorName });
+      }
+      return;
+    }
     const recRow = tableRows.find((r) => r.invitationId === recommendedId);
     if (!recRow?.hasActiveQuote) {
       if (recRow?.status === 'invited') {
@@ -432,8 +526,14 @@ export default function RfqEntryDetailPage() {
         fieldDefinitions: fields,
         recommendedInvitationId: recommendedId,
         maxRounds: config?.maxRounds ?? null,
+        recommendationJustification: justification,
       });
-      const res = await rfqApi.finalize(Number(prId), recommendedId, taskId ? Number(taskId) : undefined);
+      const res = await rfqApi.finalize(
+        Number(prId),
+        recommendedId,
+        taskId ? Number(taskId) : undefined,
+        justification
+      );
       showToast(res.message || 'RFQ submitted for HOD vendor final approval');
       await loadRfq();
     } catch (err) {
@@ -506,17 +606,69 @@ export default function RfqEntryDetailPage() {
   };
 
   const getDisplayQuote = (row: TableRow) => {
-    const active = row.quotes?.find(
-      (q) => q.round === row.round && q.status === 'submitted' && q.quotedPrice > 0
+    const quotes = Array.isArray(row.quotes) ? row.quotes : [];
+    if (mode === 'preview') {
+      const forRound =
+        quotes.find((q) => q.round === previewRound && Number(q.quotedPrice) > 0) ||
+        quotes.find((q) => q.round === previewRound) ||
+        null;
+      if (forRound) return forRound;
+    }
+    const active = quotes.find(
+      (q) => q.round === row.round && q.status === 'submitted' && Number(q.quotedPrice) > 0
     );
     if (active) return active;
     if (row.status === 'submitted') {
-      return [...(row.quotes || [])].reverse().find((q) => q.status === 'submitted' && q.quotedPrice > 0) || null;
+      return [...quotes].reverse().find((q) => q.status === 'submitted' && Number(q.quotedPrice) > 0) || null;
     }
-    if (mode === 'preview') {
-      return row.quotes?.find((q) => q.round === previewRound && q.quotedPrice > 0) || null;
+    // Fallback: latest quote with values so Recommend re-render never blanks the card
+    if (row.hasActiveQuote && quotes.length) {
+      return [...quotes].reverse().find((q) => Number(q.quotedPrice) > 0) || quotes[quotes.length - 1] || null;
     }
     return null;
+  };
+
+  const quoteFieldValues = (quote: ReturnType<typeof getDisplayQuote>, row?: TableRow) => {
+    const fromQuote = {
+      ...(quote?.fieldValues && typeof quote.fieldValues === 'object' ? quote.fieldValues : {}),
+      ...(quote?.requesterFields && typeof quote.requesterFields === 'object' ? quote.requesterFields : {}),
+    };
+    // Fall back to top-level quote columns when fieldValues is sparse
+    if (quote) {
+      if (fromQuote.quotedPrice == null && quote.quotedPrice != null) fromQuote.quotedPrice = quote.quotedPrice;
+    }
+    if (row && fromQuote.quotedPrice == null && row.fieldValues?.quotedPrice != null) {
+      fromQuote.quotedPrice = row.fieldValues.quotedPrice;
+    }
+    return fromQuote;
+  };
+
+  const openRecommendModal = (invitationId: number, vendorName: string) => {
+    setRecommendDraft(recommendationJustification);
+    setRecommendModal({ invitationId, vendorName });
+    setError('');
+  };
+
+  const confirmRecommend = async () => {
+    if (!recommendModal) return;
+    const text = recommendDraft.trim();
+    if (!text) {
+      setError('Justification is required to recommend a vendor');
+      return;
+    }
+    setRecommendedId(Number(recommendModal.invitationId));
+    setRecommendationJustification(text);
+    setRecommendModal(null);
+    setError('');
+    try {
+      await saveConfig({
+        recommendedInvitationId: Number(recommendModal.invitationId),
+        recommendationJustification: text,
+      });
+      showToast(`Recommended ${recommendModal.vendorName}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save recommendation');
+    }
   };
 
   return (
@@ -527,6 +679,7 @@ export default function RfqEntryDetailPage() {
         </div>
       )}
 
+      <div className="w-full max-w-full">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
         <div className="flex items-start gap-3">
           <Link to={listPath} className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-50">
@@ -549,21 +702,20 @@ export default function RfqEntryDetailPage() {
             <button type="button" onClick={() => setMode('entry')} className={`px-4 py-2 text-sm font-medium ${mode === 'entry' ? 'bg-teal-600 text-white' : 'bg-white'}`}>Entry</button>
             <button type="button" onClick={() => setMode('preview')} className={`px-4 py-2 text-sm font-medium border-l border-gray-300 ${mode === 'preview' ? 'bg-teal-600 text-white' : 'bg-white'}`}>Preview</button>
           </div>
-          {hasInvitations && mode === 'preview' && (
-            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
-              {Array.from({ length: maxRoundSeen }, (_, i) => i + 1).map((r) => (
-                <button key={r} type="button" onClick={() => setPreviewRound(r)} className={`px-3 py-2 text-xs font-bold border-l first:border-l-0 ${previewRound === r ? 'bg-violet-600 text-white' : 'bg-white'}`}>
-                  R{r}
-                </button>
-              ))}
-            </div>
-          )}
           {!isFinalized && hasInvitations && (
             <button
               type="button"
               onClick={handleSubmitRfq}
               disabled={submitting || !recommendedId || !canSubmitRfq}
-              title={!canSubmitRfq && recommendedId ? 'Recommended vendor needs a submitted quotation' : undefined}
+              title={
+                !recommendedId
+                  ? 'Recommend a vendor first'
+                  : !recommendedRow?.hasActiveQuote
+                    ? 'Recommended vendor needs a submitted quotation'
+                    : !recommendationJustification.trim()
+                      ? 'Add recommendation justification'
+                      : undefined
+              }
               className="px-5 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
             >
               {submitting ? 'Submitting...' : isScm ? 'Finalize RFQ' : 'Submit RFQ'}
@@ -573,6 +725,15 @@ export default function RfqEntryDetailPage() {
       </div>
 
       {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
+      {!isFinalized && config?.sendBackRemarks && (
+        <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-900">
+          <p className="font-semibold flex items-center gap-1.5 mb-1">
+            <i className="ri-arrow-go-back-line"></i>
+            Sent back — action required
+          </p>
+          <p className="whitespace-pre-wrap text-orange-800">{config.sendBackRemarks}</p>
+        </div>
+      )}
       {isFinalized && (
         <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
           {config?.finalizedAt
@@ -586,10 +747,13 @@ export default function RfqEntryDetailPage() {
       {loading ? (
         <div className="p-12 text-center text-gray-500">Loading...</div>
       ) : (
-        <div className="space-y-4 pb-8">
-          {!isFinalized && (
-            <div className="bg-white border border-gray-200 rounded-lg p-5 h-fit">
-              <h2 className="text-sm font-bold text-gray-900 mb-3">Quotation Fields (dynamic)</h2>
+        <div className="space-y-4 pb-4">
+          {!isFinalized && mode === 'entry' && (
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
+              <h2 className="text-sm font-bold text-gray-900 mb-1">Quotation Fields (dynamic)</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Vendors always see <strong>Quoted Price</strong> + <strong>Quotation File</strong>. Add more fields below for vendors to fill.
+              </p>
               <div className="flex flex-wrap gap-2 mb-3">
                 {fields.map((f) => (
                   <span key={f.id} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${f.filledBy === 'vendor' ? 'bg-teal-50 text-teal-800' : 'bg-violet-50 text-violet-800'}`}>
@@ -599,6 +763,20 @@ export default function RfqEntryDetailPage() {
                     )}
                   </span>
                 ))}
+              </div>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {vendorFieldPresets
+                  .filter((p) => !fields.some((f) => f.id === p.id))
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => addFieldDef(p)}
+                      className="px-2.5 py-1 rounded-full text-xs font-medium border border-teal-200 text-teal-700 bg-teal-50/50 hover:bg-teal-100 cursor-pointer"
+                    >
+                      + {p.label}
+                    </button>
+                  ))}
               </div>
               <div className="flex flex-wrap gap-2 items-end">
                 <input value={newFieldLabel} onChange={(e) => setNewFieldLabel(e.target.value)} placeholder="New field label" className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -616,8 +794,8 @@ export default function RfqEntryDetailPage() {
             </div>
           )}
 
-          {!isFinalized && (
-            <div className="bg-white border border-gray-200 rounded-lg p-5 h-fit">
+          {!isFinalized && mode === 'entry' && (
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-bold text-gray-900">Invite Vendors</h2>
                 <button type="button" onClick={() => setDraftRows((r) => [...r, newDraftRow()])} className="text-sm text-teal-700 font-medium">+ Add Row</button>
@@ -674,15 +852,52 @@ export default function RfqEntryDetailPage() {
             </div>
           )}
 
-          {hasInvitations && (
+          {hasInvitations && mode === 'preview' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900">Price Negotiation Trend &amp; Vendor Comparison</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Side-by-side fields, quotation files, and round-by-round price changes
+                  </p>
+                </div>
+                {comparison && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-xs font-semibold text-teal-800">
+                    <i className="ri-refresh-line"></i>
+                    Total Rounds:{' '}
+                    {comparison.maxRounds != null && comparison.maxRounds > 0
+                      ? `${comparison.totalRounds || 1} of ${comparison.maxRounds}`
+                      : comparison.totalRounds || 1}
+                  </span>
+                )}
+              </div>
+              {comparisonLoading ? (
+                <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
+                  Loading comparison…
+                </div>
+              ) : comparison ? (
+                <VendorComparisonMatrix
+                  data={comparison}
+                  selectedVendorId={recommendedId}
+                  onPreviewFile={(submissionId, _vendorName, fileName) => {
+                    void openFilePreview(submissionId, fileName);
+                  }}
+                />
+              ) : (
+                <div className="bg-white border border-amber-200 rounded-xl p-6 text-sm text-amber-800">
+                  Comparison data unavailable. Switch back to Entry or refresh the page.
+                </div>
+              )}
+            </div>
+          )}
+
+          {hasInvitations && mode === 'entry' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <h2 className="text-sm font-bold text-gray-900">Vendor Quotations</h2>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {mode === 'preview'
-                      ? `Read-only view for Round ${previewRound}`
-                      : 'Fill manual rows, review email quotes, then recommend one vendor'}
+                    Fill manual rows, review email quotes, then recommend one vendor
                   </p>
                 </div>
                 <div className="text-xs text-gray-500">
@@ -693,14 +908,15 @@ export default function RfqEntryDetailPage() {
               <div className="space-y-4">
                 {tableRows.map((row, i) => {
                   const quote = getDisplayQuote(row);
-                  const vals = { ...quote?.fieldValues, ...quote?.requesterFields };
+                  const vals = quoteFieldValues(quote, row);
                   const submissionId = quote?.submissionId || row.submissionId;
                   const isManualRow = row.inviteMode === 'manual';
                   const isEmailRow = row.inviteMode !== 'manual';
                   const awaitingManualEntry = isManualRow && !row.hasActiveQuote;
                   const awaitingVendorEmail =
                     isEmailRow && !row.hasActiveQuote && (row.status === 'invited' || row.status === 'sent_back');
-                  const isRecommended = recommendedId === row.invitationId || row.isRecommended;
+                  const isRecommended =
+                    Number(recommendedId) === Number(row.invitationId) || Boolean(row.isRecommended);
                   const statusLabel = awaitingManualEntry
                     ? 'Manual entry'
                     : awaitingVendorEmail
@@ -714,7 +930,7 @@ export default function RfqEntryDetailPage() {
                   return (
                     <div
                       key={row.id}
-                      className={`bg-white border rounded-xl shadow-sm h-fit self-start ${
+                      className={`bg-white border rounded-xl shadow-sm w-full block ${
                         isRecommended
                           ? 'border-teal-400 ring-1 ring-teal-200'
                           : awaitingManualEntry
@@ -758,32 +974,42 @@ export default function RfqEntryDetailPage() {
                             <p className="text-xs text-gray-500 mt-1">
                               {isManualRow ? 'You enter quote details' : 'Vendor submits via email'}
                             </p>
+                            {isRecommended && recommendationJustification.trim() && (
+                              <p className="text-xs text-teal-800 mt-1.5 bg-teal-50 border border-teal-100 rounded-md px-2 py-1.5 whitespace-pre-wrap">
+                                <span className="font-semibold">Justification:</span>{' '}
+                                {recommendationJustification}
+                              </p>
+                            )}
                           </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
                           {!isFinalized && mode === 'entry' && (
-                            <label
-                              className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium cursor-pointer ${
+                            <button
+                              type="button"
+                              disabled={!row.hasActiveQuote}
+                              onClick={() =>
+                                row.hasActiveQuote &&
+                                openRecommendModal(row.invitationId, row.vendorName)
+                              }
+                              className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium cursor-pointer disabled:cursor-not-allowed ${
                                 isRecommended
                                   ? 'bg-teal-600 text-white border-teal-600'
                                   : row.hasActiveQuote
                                     ? 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'
-                                    : 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
+                                    : 'bg-gray-50 text-gray-400 border-gray-200'
                               }`}
-                              title={!row.hasActiveQuote ? 'Enter or receive vendor quote first' : 'Mark as recommended'}
+                              title={
+                                !row.hasActiveQuote
+                                  ? 'Enter or receive vendor quote first'
+                                  : isRecommended
+                                    ? 'Edit recommendation justification'
+                                    : 'Recommend vendor with justification'
+                              }
                             >
-                              <input
-                                type="radio"
-                                name="recommended"
-                                className="sr-only"
-                                checked={recommendedId === row.invitationId}
-                                disabled={!row.hasActiveQuote}
-                                onChange={() => row.hasActiveQuote && setRecommendedId(row.invitationId)}
-                              />
                               <i className={`ri-star-${isRecommended ? 'fill' : 'line'}`}></i>
                               {isRecommended ? 'Recommended' : 'Recommend'}
-                            </label>
+                            </button>
                           )}
 
                           {mode === 'entry' && !isFinalized && awaitingManualEntry && (
@@ -827,11 +1053,11 @@ export default function RfqEntryDetailPage() {
                           </div>
                         ) : (
                           <>
-                            <div className="min-h-0">
+                            <div>
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Vendor fields</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start content-start">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
                                 {vendorFields.map((f) => (
-                                  <div key={f.id} className="space-y-1.5 min-w-0 self-start">
+                                  <div key={f.id} className="space-y-1.5 min-w-0 h-auto">
                                     <label className="block text-xs font-semibold text-gray-600">{f.label}</label>
                                     {mode === 'entry' && !isFinalized && awaitingManualEntry ? (
                                       renderFieldInput(
@@ -851,11 +1077,11 @@ export default function RfqEntryDetailPage() {
 
                             {(mode === 'entry' || requesterFields.some((f) => vals[f.id] !== undefined && vals[f.id] !== '')) &&
                               requesterFields.length > 0 && (
-                              <div className="min-h-0">
+                              <div>
                                 <p className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-3">Your scoring fields</p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start content-start">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
                                   {requesterFields.map((f) => (
-                                    <div key={f.id} className="space-y-1.5 min-w-0 self-start">
+                                    <div key={f.id} className="space-y-1.5 min-w-0 h-auto">
                                       <label className="block text-xs font-semibold text-violet-700">{f.label}</label>
                                       {mode === 'entry' && !isFinalized ? (
                                         awaitingManualEntry ? (
@@ -903,7 +1129,7 @@ export default function RfqEntryDetailPage() {
                               </div>
                             )}
 
-                            <div className="pt-3 border-t border-gray-100 min-h-0">
+                            <div className="pt-3 border-t border-gray-100">
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Quotation file</p>
                               {mode === 'entry' && !isFinalized && awaitingManualEntry ? (
                                 <label className="flex flex-wrap items-center gap-3 px-4 py-3 border border-dashed border-teal-300 rounded-lg bg-teal-50/40 cursor-pointer hover:bg-teal-50">
@@ -1001,6 +1227,58 @@ export default function RfqEntryDetailPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+      </div>
+
+      {recommendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Recommend Vendor</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{recommendModal.vendorName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRecommendModal(null)}
+                className="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <label className="block text-sm font-semibold text-gray-700">
+                Justification <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={recommendDraft}
+                onChange={(e) => setRecommendDraft(e.target.value)}
+                rows={4}
+                placeholder="Why is this vendor recommended? (price, quality, lead time, compliance…)"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+              />
+              <p className="text-xs text-gray-500">
+                Required before Submit / Finalize RFQ. Approvers will see this justification.
+              </p>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRecommendModal(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmRecommend()}
+                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+              >
+                Save Recommendation
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

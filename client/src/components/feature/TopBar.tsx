@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatRoleDisplayName } from '../../utils/roleDisplay';
 import BrandLogo from './BrandLogo';
 
 type TopBarProps = {
@@ -104,7 +105,9 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                 <div className="p-4 border-b border-gray-200">
                   <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
                   <p className="text-xs text-gray-500 mt-1 truncate">{user?.email}</p>
-                  <p className="text-xs text-sky-600 font-medium mt-1">{user?.role}</p>
+                  <p className="text-xs text-sky-600 font-medium mt-1">
+                    {formatRoleDisplayName(user?.role)}
+                  </p>
                 </div>
                 <div className="p-2">
                   <button

@@ -143,6 +143,8 @@ CREATE TABLE IF NOT EXISTS rfq_configs (
   pr_id INT PRIMARY KEY,
   field_definitions JSON NOT NULL,
   recommended_invitation_id INT NULL,
+  recommendation_justification TEXT NULL,
+  send_back_remarks TEXT NULL,
   max_rounds INT NULL,
   requester_submitted_at TIMESTAMP NULL,
   finalized_at TIMESTAMP NULL,

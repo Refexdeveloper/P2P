@@ -118,14 +118,14 @@ export function mapStatusToFrontend(status) {
 
 export function mapStatusToManagerUI(status) {
   const map = {
-    [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending HOD Approval',
+    [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending L1 Manager Approval',
     [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: 'Pending L2 Manager Approval',
     [PR_STATUS.PENDING_CFO_APPROVAL]: 'Pending CFO Approval',
-    [PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL]: 'Pending HOD Vendor Final',
+    [PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL]: 'Pending L1 Vendor Final',
     [PR_STATUS.PENDING_RFQ_L2_APPROVAL]: 'Pending L2 Manager Approval',
     [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: 'Pending RFQ CFO Approval',
     [PR_STATUS.PENDING_BUSINESS_APPROVAL]: 'Pending SCM Manager Vendor Approval',
-    [PR_STATUS.PENDING_SCM_PO]: 'Pending SCM PO',
+    [PR_STATUS.PENDING_SCM_PO]: 'Pending SCM Buyer Create PO',
     [PR_STATUS.APPROVED]: 'Approved',
     [PR_STATUS.REJECTED]: 'Rejected',
     [PR_STATUS.RETURNED]: 'Returned for Rework',

@@ -273,13 +273,28 @@ const MASTER_NAV_CODES = [
   'nav.letterhead_master',
 ] as const;
 
+const REQUESTER_MASTER_NAV_CODES = [
+  'nav.item_master',
+  'nav.vendor_master',
+  'nav.category_master',
+  'nav.entity_master',
+  'nav.department_master',
+] as const;
+
 const ROLE_DEFAULT_CODES: Record<string, string[]> = {
-  Requester: ['nav.requester_dashboard', 'nav.create_pr', 'nav.rfq_entry', 'nav.track_pr'],
+  Requester: [
+    'nav.requester_dashboard',
+    'nav.create_pr',
+    'nav.rfq_entry',
+    'nav.track_pr',
+    ...REQUESTER_MASTER_NAV_CODES,
+  ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
   CFO: ['nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
+    'nav.scm_rfq_entry',
     'nav.rfq_approval',
     'nav.create_po',
     'nav.track_po',
@@ -291,7 +306,6 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.department_master',
     'nav.po_letterhead_master',
     'nav.letterhead_master',
-    'nav.scm_rfq_entry',
     'nav.vendor_quotation',
     'nav.vendor_comparison',
     'nav.technical_clearance',
@@ -352,6 +366,30 @@ export function ensureNavigation(role: string | undefined | null, navigation?: N
 
   let merged = base;
 
+  // Requester always gets core menus + Masters (Item / Vendor / Category / Entity / Department)
+  if (role === 'Requester') {
+    const codes = new Set(merged.map((n) => n.code));
+    merged = [...merged];
+    for (const code of [
+      'nav.requester_dashboard',
+      'nav.create_pr',
+      'nav.rfq_entry',
+      'nav.track_pr',
+      ...REQUESTER_MASTER_NAV_CODES,
+    ]) {
+      if (!codes.has(code) && NAV_BY_CODE[code]) {
+        merged.push(NAV_BY_CODE[code]);
+      }
+    }
+    const order = ROLE_DEFAULT_CODES.Requester || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    merged = [...merged].sort((a, b) => {
+      const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;
+      const bi = rank.has(b.code) ? (rank.get(b.code) as number) : 1000;
+      return ai - bi;
+    });
+  }
+
   // SCM roles always get Item / Vendor / Category Master entries
   if (role === 'SCM Buyer' || role === 'SCM Manager') {
     const codes = new Set(merged.map((n) => n.code));
@@ -377,7 +415,61 @@ export function ensureNavigation(role: string | undefined | null, navigation?: N
     });
   }
 
-  return merged;
+  // SCM Buyer: Dashboard → RFQ Entry → …
+  if (role === 'SCM Buyer') {
+    const codes = new Set(merged.map((n) => n.code));
+    if (!codes.has('nav.scm_rfq_entry') && NAV_BY_CODE['nav.scm_rfq_entry']) {
+      merged = [...merged, NAV_BY_CODE['nav.scm_rfq_entry']];
+    }
+    if (!codes.has('nav.purchase_requests') && NAV_BY_CODE['nav.purchase_requests']) {
+      merged = [NAV_BY_CODE['nav.purchase_requests'], ...merged];
+    }
+    const order = ROLE_DEFAULT_CODES['SCM Buyer'] || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    merged = [...merged].sort((a, b) => {
+      const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;
+      const bi = rank.has(b.code) ? (rank.get(b.code) as number) : 1000;
+      return ai - bi;
+    });
+  }
+
+  // L2 Manager: one My Tasks entry (nav.pr_manager_dashboard), never also nav.tasks
+  if (role === 'PR Manager') {
+    const codes = new Set(merged.map((n) => n.code));
+    if (!codes.has('nav.pr_manager_dashboard') && NAV_BY_CODE['nav.pr_manager_dashboard']) {
+      merged = [NAV_BY_CODE['nav.pr_manager_dashboard'], ...merged];
+    }
+    merged = merged.filter((n) => n.code !== 'nav.tasks');
+    const order = ROLE_DEFAULT_CODES['PR Manager'] || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    merged = [...merged].sort((a, b) => {
+      const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;
+      const bi = rank.has(b.code) ? (rank.get(b.code) as number) : 1000;
+      return ai - bi;
+    });
+  }
+
+  // Drop duplicate menu entries that share the same path (e.g. My Tasks twice)
+  return dedupeNavigationByPath(merged);
+}
+
+/** Keep one nav item per path; prefer role-specific codes over generic nav.tasks. */
+function dedupeNavigationByPath(items: NavItem[]): NavItem[] {
+  const byPath = new Map<string, NavItem>();
+  for (const item of items) {
+    const prev = byPath.get(item.path);
+    if (!prev) {
+      byPath.set(item.path, item);
+      continue;
+    }
+    const prevGeneric = prev.code === 'nav.tasks' || prev.code === 'nav.home_dashboard';
+    const nextGeneric = item.code === 'nav.tasks' || item.code === 'nav.home_dashboard';
+    if (prevGeneric && !nextGeneric) {
+      byPath.set(item.path, item);
+    }
+  }
+  const keep = new Set([...byPath.values()].map((n) => n.code));
+  return items.filter((n) => keep.has(n.code) && byPath.get(n.path)?.code === n.code);
 }
 
 export function isMastersNavItem(item: Pick<NavItem, 'code' | 'group' | 'path'>) {

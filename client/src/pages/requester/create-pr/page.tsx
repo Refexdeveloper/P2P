@@ -51,6 +51,7 @@ export default function CreatePRPage() {
   const isEditMode = !!editPrId;
 
   const [prNumber, setPrNumber] = useState(isEditMode ? '' : 'Auto on save');
+  const [prTitle, setPrTitle] = useState('');
   const [department, setDepartment] = useState('');
   const [entityId, setEntityId] = useState<number | ''>('');
   const [entities, setEntities] = useState<EntityRecord[]>([]);
@@ -80,6 +81,9 @@ export default function CreatePRPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [createdPrNumber, setCreatedPrNumber] = useState('');
+  const [nextStepLabel, setNextStepLabel] = useState('L1 Manager Approval');
+  const [l1Manager, setL1Manager] = useState<{ name: string | null; email: string | null } | null>(null);
+  const [isLoadingL1, setIsLoadingL1] = useState(false);
   const [isLoadingPr, setIsLoadingPr] = useState(isEditMode);
   const [loadError, setLoadError] = useState('');
   const [prStatus, setPrStatus] = useState('');
@@ -99,6 +103,7 @@ export default function CreatePRPage() {
         const res = await prApi.get(editPrId);
         const pr = res.data as {
           prNumber: string;
+          title?: string;
           department: string;
           entityId?: number;
           requestType: 'Capex' | 'Opex' | 'Service';
@@ -113,6 +118,7 @@ export default function CreatePRPage() {
           approvalHistory?: { stage: string; user: string; role: string; date: string; status: string; remarks: string }[];
         };
         setPrNumber(pr.prNumber);
+        setPrTitle(pr.title || '');
         setDepartment(pr.department || '');
         setEntityId(pr.entityId ? Number(pr.entityId) : '');
         setRequestType(pr.requestType);
@@ -336,6 +342,7 @@ export default function CreatePRPage() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
+    if (!prTitle.trim()) newErrors.prTitle = 'PR Title is required';
     if (!entityId) newErrors.entityId = 'Entity is required';
     if (!department) newErrors.department = 'Department is required';
     if (!businessJustification.trim()) newErrors.businessJustification = 'Business justification is required';
@@ -358,15 +365,25 @@ export default function CreatePRPage() {
     await savePR(false);
   };
 
-  const handleSubmitPR = () => {
-    if (validateForm()) {
-      setSubmitAction('submit');
-      setShowConfirmModal(true);
+  const handleSubmitPR = async () => {
+    if (!validateForm()) return;
+    setSubmitAction('submit');
+    setShowConfirmModal(true);
+    setIsLoadingL1(true);
+    try {
+      const res = await prApi.previewL1Manager(department || undefined);
+      setNextStepLabel(res.data.nextStep || 'L1 Manager Approval');
+      setL1Manager(res.data.l1Manager || null);
+    } catch {
+      setNextStepLabel('L1 Manager Approval');
+      setL1Manager(null);
+    } finally {
+      setIsLoadingL1(false);
     }
   };
 
   const buildPayload = () => ({
-    title: lineItems[0]?.description || `${requestType} Request`,
+    title: prTitle.trim() || lineItems[0]?.description || `${requestType} Request`,
     requestType,
     purchaseType,
     department,
@@ -391,19 +408,40 @@ export default function CreatePRPage() {
       const payload = buildPayload();
       if (isEditMode && editPrId) {
         if (submit) {
-          await prApi.resubmit(editPrId, { ...payload, remarks: resubmitRemarks });
+          const res = await prApi.resubmit(editPrId, { ...payload, remarks: resubmitRemarks });
+          const data = res.data as {
+            prNumber?: string;
+            nextStep?: string;
+            l1Manager?: { name: string | null; email: string | null };
+          };
+          setCreatedPrNumber(data.prNumber || prNumber);
+          setNextStepLabel(data.nextStep || 'L1 Manager Approval');
+          setL1Manager(data.l1Manager || null);
         } else {
           await prApi.update(editPrId, payload);
+          setCreatedPrNumber(prNumber);
+          setNextStepLabel('');
+          setL1Manager(null);
         }
-        setCreatedPrNumber(prNumber);
         if (submit) setShowConfirmModal(false);
         setShowSuccessModal(true);
         return;
       }
       const res = await prApi.create({ ...payload, submit });
-      const data = res.data as { prNumber: string };
+      const data = res.data as {
+        prNumber: string;
+        nextStep?: string;
+        l1Manager?: { name: string | null; email: string | null };
+      };
       setCreatedPrNumber(data.prNumber);
-      if (submit) setShowConfirmModal(false);
+      if (submit) {
+        setNextStepLabel(data.nextStep || 'L1 Manager Approval');
+        setL1Manager(data.l1Manager || null);
+        setShowConfirmModal(false);
+      } else {
+        setNextStepLabel('');
+        setL1Manager(null);
+      }
       setShowSuccessModal(true);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to save PR');
@@ -551,7 +589,7 @@ export default function CreatePRPage() {
               <div>
                 <p className="text-sm font-semibold text-orange-800">Returned for Rework</p>
                 <p className="text-xs text-orange-700 mt-1">
-                  Review the feedback below, update the form fields, then resubmit for HOD approval.
+                  Review the feedback below, update the form fields, then resubmit for L1 Manager approval.
                 </p>
               </div>
             </div>
@@ -597,6 +635,32 @@ export default function CreatePRPage() {
                 <span className="ml-auto text-xs bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">Auto</span>
               </div>
               <p className="text-[11px] text-gray-400 mt-1">Format: PR-EntityCode-FY-####</p>
+            </div>
+
+            {/* PR Title */}
+            <div className="md:col-span-2 lg:col-span-2">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                PR Title <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={prTitle}
+                onChange={(e) => {
+                  setPrTitle(e.target.value);
+                  if (errors.prTitle) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.prTitle;
+                      return next;
+                    });
+                  }
+                }}
+                placeholder="Enter a short title for this purchase request"
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
+                  errors.prTitle ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                }`}
+              />
+              {errors.prTitle && <p className="text-xs text-red-500 mt-1">{errors.prTitle}</p>}
             </div>
 
             {/* Entity */}
@@ -758,22 +822,27 @@ export default function CreatePRPage() {
               {errors.requiredDate && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><i className="ri-error-warning-line"></i>{errors.requiredDate}</p>}
             </div>
 
-            {/* Currency */}
+            {/* Currency — INR / USD / EUR */}
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Currency <span className="text-red-500">*</span>
               </label>
-              <select
-                value={currency}
-                onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
-              >
+              <div className="inline-flex w-full rounded-xl border border-gray-200 bg-white p-0.5">
                 {CURRENCY_OPTIONS.map((opt) => (
-                  <option key={opt.code} value={opt.code}>
-                    {opt.label}
-                  </option>
+                  <button
+                    key={opt.code}
+                    type="button"
+                    onClick={() => setCurrency(opt.code)}
+                    className={`flex-1 px-2 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap ${
+                      currency === opt.code
+                        ? 'bg-slate-800 text-white shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt.symbol} {opt.code}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
 
             {/* Request Type */}
@@ -960,19 +1029,30 @@ export default function CreatePRPage() {
                     </div>
                   </div>
 
-                  {/* Unit Cost */}
+                  {/* Unit Price (estimated) — keep field; currency symbol updates with Currency above */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Unit Cost ({moneySymbol})</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                      Unit Price ({moneySymbol}) <span className="text-red-500">*</span>
+                    </label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">{moneySymbol}</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-semibold pointer-events-none">
+                        {moneySymbol}
+                      </span>
                       <input
                         type="number"
                         value={item.estimatedCost || ''}
-                        onChange={e => updateLineItem(item.id, 'estimatedCost', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const parsed = raw === '' || raw === '.' ? 0 : parseFloat(raw);
+                          updateLineItem(item.id, 'estimatedCost', Number.isFinite(parsed) ? Math.max(0, parsed) : 0);
+                        }}
                         min="0"
                         step="0.01"
+                        inputMode="decimal"
                         placeholder="0.00"
-                        className={`w-full pl-7 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${errors[`item_${index}_cost`] ? 'border-red-400' : 'border-gray-200'}`}
+                        className={`w-full pl-8 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${errors[`item_${index}_cost`] ? 'border-red-400' : 'border-gray-200'}`}
+                        title="Unit Price"
+                        aria-label="Unit Price"
                       />
                     </div>
                     {errors[`item_${index}_cost`] && <p className="text-xs text-red-500 mt-1">{errors[`item_${index}_cost`]}</p>}
@@ -1001,9 +1081,9 @@ export default function CreatePRPage() {
                     />
                   </div>
 
-                  {/* Line Total */}
+                  {/* Estimated Total */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Line Total</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Estimated Total</label>
                     <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
                       <span className="text-sm font-bold text-emerald-700">
                         {formatMoney(item.quantity * item.estimatedCost, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1042,7 +1122,7 @@ export default function CreatePRPage() {
                 </div>
                 <div className="w-px h-8 bg-emerald-200"></div>
                 <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">Avg Unit Cost</p>
+                    <p className="text-xs text-gray-500 mb-0.5">Avg Unit Price</p>
                   <p className="text-lg font-bold text-gray-800">
                     {formatMoney(lineItems.length > 0 ? lineItems.reduce((s, i) => s + i.estimatedCost, 0) / lineItems.length : 0, currency, { maximumFractionDigits: 0 })}
                   </p>
@@ -1050,7 +1130,7 @@ export default function CreatePRPage() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-right">
-                  <p className="text-xs text-gray-500 mb-0.5">Total Estimated Amount</p>
+                  <p className="text-xs text-gray-500 mb-0.5">Estimated Total</p>
                   <p className="text-2xl font-extrabold text-emerald-700">
                     {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
@@ -1144,28 +1224,28 @@ export default function CreatePRPage() {
         {submitError && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{submitError}</div>
         )}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="flex items-center justify-center sm:justify-start gap-2 text-sm text-gray-500">
             <i className="ri-shield-check-line text-emerald-500"></i>
             <span>All data is saved securely</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <Link
               to="/requester/dashboard"
-              className="px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap"
+              className="w-full sm:w-auto px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap text-center"
             >
               Cancel
             </Link>
             <button
               onClick={handleSaveDraft}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap"
             >
               <i className="ri-save-line"></i>
               Save Draft
             </button>
             <button
               onClick={handleSubmitPR}
-              className={`flex items-center gap-2 px-6 py-2.5 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm ${
+              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm ${
                 isResubmitFlow ? 'bg-orange-600 hover:bg-orange-700' : 'bg-slate-800 hover:bg-slate-700'
               }`}
             >
@@ -1191,13 +1271,34 @@ export default function CreatePRPage() {
                 <p className="text-xs text-gray-500">{prNumber}</p>
               </div>
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 space-y-2">
               <p className="text-sm text-amber-800">
                 <i className="ri-information-line mr-1"></i>
                 {isResubmitFlow
-                  ? 'Your updated PR will be sent to HOD for approval again.'
-                  : <>Once submitted, this PR will be sent for HOD approval and <strong>cannot be edited</strong>.</>}
+                  ? 'Your updated PR will be sent to L1 Manager for approval again.'
+                  : <>Once submitted, this PR will be sent for L1 Manager approval and <strong>cannot be edited</strong>.</>}
               </p>
+              <div className="flex justify-between text-sm gap-3 pt-2 border-t border-amber-200">
+                <span className="text-amber-700/80 shrink-0">Next Step</span>
+                <span className="font-semibold text-amber-900 text-right">{nextStepLabel || 'L1 Manager Approval'}</span>
+              </div>
+              <div className="flex justify-between text-sm gap-3">
+                <span className="text-amber-700/80 shrink-0">L1 Manager</span>
+                <span className="font-semibold text-amber-900 text-right">
+                  {isLoadingL1 ? (
+                    <span className="font-normal text-amber-700">Looking up…</span>
+                  ) : l1Manager?.name || l1Manager?.email ? (
+                    <>
+                      {l1Manager.name || '—'}
+                      {l1Manager.email ? (
+                        <span className="block text-xs font-normal text-amber-700/80 mt-0.5">{l1Manager.email}</span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="font-normal">Will be assigned on submit</span>
+                  )}
+                </span>
+              </div>
             </div>
             {isResubmitFlow && (
               <div className="mb-5">
@@ -1247,7 +1348,7 @@ export default function CreatePRPage() {
               <p className="text-sm text-gray-500 mt-1">
                 {submitAction === 'draft'
                   ? `${createdPrNumber || prNumber} saved. You can continue editing later.`
-                  : `${createdPrNumber || prNumber} has been ${isResubmitFlow ? 'resubmitted' : 'submitted'} and is pending HOD approval.`}
+                  : `${createdPrNumber || prNumber} has been ${isResubmitFlow ? 'resubmitted' : 'submitted'} and is pending L1 Manager approval.`}
               </p>
             </div>
             {submitAction === 'submit' && (
@@ -1260,9 +1361,24 @@ export default function CreatePRPage() {
                   <span className="text-gray-500">Total Amount</span>
                   <span className="font-bold text-emerald-700">{formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Next Step</span>
-                  <span className="font-medium text-amber-600">HOD Approval</span>
+                <div className="flex justify-between text-sm gap-3">
+                  <span className="text-gray-500 shrink-0">Next Step</span>
+                  <span className="font-medium text-amber-600 text-right">{nextStepLabel || 'L1 Manager Approval'}</span>
+                </div>
+                <div className="flex justify-between text-sm gap-3 pt-1 border-t border-gray-200">
+                  <span className="text-gray-500 shrink-0">L1 Manager</span>
+                  <span className="font-semibold text-gray-900 text-right">
+                    {l1Manager?.name || l1Manager?.email ? (
+                      <>
+                        {l1Manager.name || '—'}
+                        {l1Manager.email ? (
+                          <span className="block text-xs font-normal text-gray-500 mt-0.5">{l1Manager.email}</span>
+                        ) : null}
+                      </>
+                    ) : (
+                      'Will be assigned shortly'
+                    )}
+                  </span>
                 </div>
               </div>
             )}

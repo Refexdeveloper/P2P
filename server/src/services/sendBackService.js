@@ -83,11 +83,24 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor) 
     [pr.id]
   );
 
-  if (target.resetRfqSubmit || target.resetRfqFinalize) {
+  const remarksText = String(remarks || '').trim();
+  if (target.resetRfqSubmit || target.resetRfqFinalize || target.clearRecommendation || remarksText) {
     const sets = ['updated_at = NOW()'];
+    const params = [];
     if (target.resetRfqFinalize) sets.push('finalized_at = NULL');
     if (target.resetRfqSubmit) sets.push('requester_submitted_at = NULL');
-    await db.query(`UPDATE rfq_configs SET ${sets.join(', ')} WHERE pr_id = ?`, [pr.id]);
+    if (target.clearRecommendation) {
+      sets.push('recommended_invitation_id = NULL');
+      sets.push('recommendation_justification = NULL');
+    }
+    if (remarksText) {
+      sets.push('send_back_remarks = ?');
+      params.push(
+        `[${actor?.role || 'Approver'} → ${target.label}] ${remarksText}`
+      );
+    }
+    params.push(pr.id);
+    await db.query(`UPDATE rfq_configs SET ${sets.join(', ')} WHERE pr_id = ?`, params);
   }
 
   await db.query(
@@ -118,10 +131,13 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor) 
       assignee = await resolveRoleUser(target.assignedRole, db);
     }
 
+    // SCM Buyer / SCM Manager: role-queue (null user) so any active user of that role can act
+    const roleQueued =
+      target.assignedRole === 'SCM Buyer' || target.assignedRole === 'SCM Manager';
     await db.query(
       `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
        VALUES (?, ?, ?, ?, 'pending', ?)`,
-      [pr.id, target.taskType, target.assignedRole, assignee.userId, dueStr]
+      [pr.id, target.taskType, target.assignedRole, roleQueued ? null : assignee.userId, dueStr]
     );
   }
 
@@ -159,13 +175,28 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
       updatedPr,
       target.assignedRole,
       { name: updatedPr.requester, email: '' },
-      updatedPr.departmentId,
+      updatedPr.departmentId ?? updatedPr.department_id ?? null,
       {
         postRfq: target.taskType === 'RFQ_POST_APPROVAL',
-        rfqEntry: isRfqEntry && target.assignedRole === 'SCM Buyer',
+        rfqEntry: isRfqEntry,
         stageLabel: `Sent back — ${target.label}`,
         approverEmails: [assignee.email],
         approverName: assignee.name || undefined,
+      }
+    );
+    return;
+  }
+
+  // Fallback: notify requester when assignee email is missing
+  if (requester?.email || updatedPr.requester) {
+    queuePostRfqActionNotification(
+      updatedPr,
+      applyResult.actorRole || 'Approver',
+      'return',
+      applyResult.remarksLine,
+      {
+        name: requester?.name || updatedPr.requester,
+        email: requester?.email,
       }
     );
   }

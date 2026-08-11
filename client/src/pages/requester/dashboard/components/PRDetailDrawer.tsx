@@ -27,6 +27,10 @@ export interface PRDetail {
   title: string;
   requestType: string;
   department: string;
+  entityId?: number | null;
+  entityName?: string;
+  entityCode?: string;
+  entityCostCenter?: string;
   priority: string;
   justification: string;
   requiredDate: string;
@@ -114,6 +118,18 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
               {activeTab === 'details' && (
                 <>
                   <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                      <p className="text-xs text-gray-500 mb-0.5">Entity</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {pr.entityName || '—'}
+                        {pr.entityCode ? (
+                          <span className="text-gray-500 font-normal"> ({pr.entityCode})</span>
+                        ) : null}
+                      </p>
+                      {pr.entityCostCenter ? (
+                        <p className="text-xs text-gray-500 mt-1">Cost Center: {pr.entityCostCenter}</p>
+                      ) : null}
+                    </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Department</p>
                       <p className="text-sm font-medium text-gray-900">{pr.department}</p>

@@ -21,17 +21,24 @@ import {
 import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 
+/** Default RFQ fields: vendor sees only Quoted Price (+ file upload). Other vendor fields appear after requester adds them. */
 export const DEFAULT_FIELD_DEFINITIONS = [
   { id: 'quotedPrice', label: 'Quoted Price (₹)', type: 'number', filledBy: 'vendor', required: true, core: true },
-  { id: 'leadTime', label: 'Lead Time (days)', type: 'number', filledBy: 'vendor', core: true },
-  { id: 'paymentTerms', label: 'Payment Terms', type: 'text', filledBy: 'vendor', core: true },
-  { id: 'warranty', label: 'Warranty', type: 'text', filledBy: 'vendor', core: true },
-  { id: 'deliveryTerms', label: 'Delivery Terms', type: 'text', filledBy: 'vendor', core: true },
-  { id: 'compliance', label: 'Compliance', type: 'boolean', filledBy: 'vendor', core: true },
   { id: 'technicalScore', label: 'Technical Score', type: 'number', filledBy: 'requester' },
   { id: 'commercialScore', label: 'Commercial Score', type: 'number', filledBy: 'requester' },
   { id: 'overallScore', label: 'Overall Score', type: 'number', filledBy: 'requester' },
 ];
+
+/** Known vendor column fields — stored in dedicated DB columns when present in fieldDefinitions */
+const VENDOR_COLUMN_FIELD_IDS = new Set([
+  'quotedPrice',
+  'leadTime',
+  'paymentTerms',
+  'warranty',
+  'deliveryTerms',
+  'compliance',
+  'vendorNotes',
+]);
 
 function slugifyFieldId(label) {
   return label
@@ -70,17 +77,51 @@ function parseJsonObject(value) {
   return {};
 }
 
+const REQUESTER_SCORE_FIELD_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
+
+function normalizeFieldDefinitions(defs) {
+  if (!Array.isArray(defs) || !defs.length) return [...DEFAULT_FIELD_DEFINITIONS];
+  const normalized = defs.map((f) => {
+    if (!f || typeof f !== 'object') return null;
+    const id = String(f.id || '').trim();
+    if (!id) return null;
+    const filledBy =
+      f.filledBy === 'requester' || f.filledBy === 'vendor'
+        ? f.filledBy
+        : REQUESTER_SCORE_FIELD_IDS.has(id)
+          ? 'requester'
+          : 'vendor';
+    return {
+      ...f,
+      id,
+      label: f.label || id,
+      type: f.type || 'text',
+      filledBy,
+      required: Boolean(f.required),
+      core: Boolean(f.core) || id === 'quotedPrice',
+    };
+  }).filter(Boolean);
+
+  // Always keep Quoted Price as a vendor field
+  if (!normalized.some((f) => f.id === 'quotedPrice')) {
+    normalized.unshift({ ...DEFAULT_FIELD_DEFINITIONS[0] });
+  }
+  return normalized.length ? normalized : [...DEFAULT_FIELD_DEFINITIONS];
+}
+
 function parseJsonFieldDefinitions(value) {
-  if (Array.isArray(value) && value.length) return value;
+  if (Array.isArray(value) && value.length) return normalizeFieldDefinitions(value);
   if (typeof value === 'string') {
     try {
       const obj = JSON.parse(value);
-      return Array.isArray(obj) && obj.length ? obj : DEFAULT_FIELD_DEFINITIONS;
+      return Array.isArray(obj) && obj.length
+        ? normalizeFieldDefinitions(obj)
+        : [...DEFAULT_FIELD_DEFINITIONS];
     } catch {
-      return DEFAULT_FIELD_DEFINITIONS;
+      return [...DEFAULT_FIELD_DEFINITIONS];
     }
   }
-  return DEFAULT_FIELD_DEFINITIONS;
+  return [...DEFAULT_FIELD_DEFINITIONS];
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -143,6 +184,8 @@ async function getOrCreateRfqConfig(prId) {
       prId,
       fieldDefinitions: parseJsonFieldDefinitions(rows[0].field_definitions),
       recommendedInvitationId: rows[0].recommended_invitation_id,
+      recommendationJustification: rows[0].recommendation_justification || '',
+      sendBackRemarks: rows[0].send_back_remarks || '',
       maxRounds: rows[0].max_rounds,
       requesterSubmittedAt: rows[0].requester_submitted_at || null,
       finalizedAt: rows[0].finalized_at,
@@ -160,6 +203,8 @@ async function getOrCreateRfqConfig(prId) {
     prId,
     fieldDefinitions: [...DEFAULT_FIELD_DEFINITIONS],
     recommendedInvitationId: null,
+    recommendationJustification: '',
+    sendBackRemarks: '',
     maxRounds: null,
     requesterSubmittedAt: null,
     finalizedAt: null,
@@ -168,20 +213,34 @@ async function getOrCreateRfqConfig(prId) {
 }
 
 function extractCoreVendorValues(body, fieldDefinitions, customFields = {}) {
-  const defs = fieldDefinitions.filter((f) => f.filledBy === 'vendor');
+  const defs = fieldDefinitions.filter((f) => f.filledBy !== 'requester');
+  const enabledIds = new Set(defs.map((f) => f.id));
+  const merged = { ...customFields, ...(body.customFields || {}), ...body };
+
   const core = {
-    quotedPrice: body.quotedPrice,
-    leadTime: body.leadTime,
-    paymentTerms: body.paymentTerms,
-    warranty: body.warranty,
-    deliveryTerms: body.deliveryTerms,
-    compliance: body.compliance,
-    vendorNotes: body.vendorNotes,
+    quotedPrice: merged.quotedPrice ?? body.quotedPrice,
+    leadTime: enabledIds.has('leadTime') ? merged.leadTime ?? body.leadTime : body.leadTime ?? 0,
+    paymentTerms: enabledIds.has('paymentTerms')
+      ? merged.paymentTerms ?? body.paymentTerms
+      : body.paymentTerms || 'Net 30',
+    warranty: enabledIds.has('warranty') ? merged.warranty ?? body.warranty ?? '' : body.warranty || '',
+    deliveryTerms: enabledIds.has('deliveryTerms')
+      ? merged.deliveryTerms ?? body.deliveryTerms ?? ''
+      : body.deliveryTerms || '',
+    compliance: enabledIds.has('compliance')
+      ? Boolean(merged.compliance ?? body.compliance)
+      : body.compliance !== undefined
+        ? Boolean(body.compliance)
+        : true,
+    vendorNotes: enabledIds.has('vendorNotes')
+      ? merged.vendorNotes ?? body.vendorNotes ?? ''
+      : body.vendorNotes || '',
   };
+
   const extra = { ...customFields, ...(body.customFields || {}) };
   for (const field of defs) {
-    if (field.core) continue;
-    const val = body[field.id] ?? body.customFields?.[field.id];
+    if (VENDOR_COLUMN_FIELD_IDS.has(field.id)) continue;
+    const val = merged[field.id];
     if (val !== undefined && val !== '') extra[field.id] = val;
   }
   return { core, customFields: extra };
@@ -691,7 +750,11 @@ export async function sendBackVendorQuote(user, invitationId, reason, fields = [
   return getInvitationsWithSubmissions(inv.pr_id);
 }
 
-export async function saveRfqConfig(user, prId, { fieldDefinitions, maxRounds, recommendedInvitationId }) {
+export async function saveRfqConfig(
+  user,
+  prId,
+  { fieldDefinitions, maxRounds, recommendedInvitationId, recommendationJustification }
+) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
   if (user.role === 'Requester' && pr.requesterId !== user.id) throw new Error('Unauthorized');
@@ -711,14 +774,21 @@ export async function saveRfqConfig(user, prId, { fieldDefinitions, maxRounds, r
     }));
   }
 
+  const nextJustification =
+    recommendationJustification !== undefined
+      ? String(recommendationJustification || '').trim()
+      : config.recommendationJustification || '';
+
   await pool.query(
     `UPDATE rfq_configs
-     SET field_definitions = ?, max_rounds = ?, recommended_invitation_id = ?, updated_at = NOW()
+     SET field_definitions = ?, max_rounds = ?, recommended_invitation_id = ?,
+         recommendation_justification = ?, updated_at = NOW()
      WHERE pr_id = ?`,
     [
       JSON.stringify(defs),
       maxRounds ?? config.maxRounds,
       recommendedInvitationId ?? config.recommendedInvitationId,
+      nextJustification || null,
       prId,
     ]
   );
@@ -748,7 +818,7 @@ export async function updateSubmissionReviewFields(user, submissionId, requester
   return { success: true };
 }
 
-export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId }) {
+export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId, recommendationJustification }) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
   if (user.role === 'Requester' && pr.requesterId !== user.id) throw new Error('Unauthorized');
@@ -797,6 +867,13 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId 
     throw new Error(activeQuoteErrorMessage(recommended));
   }
 
+  const justification = String(
+    recommendationJustification ?? config.recommendationJustification ?? ''
+  ).trim();
+  if (!justification) {
+    throw new Error('Provide justification for the recommended vendor');
+  }
+
   const requesterFieldDefs = config.fieldDefinitions.filter((f) => f.filledBy === 'requester' && f.required);
   for (const field of requesterFieldDefs) {
     const val = latestQuote.requesterFields?.[field.id];
@@ -809,14 +886,16 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId 
   const quotePriceLabel = quotePrice
     ? `₹${quotePrice.toLocaleString('en-IN')}`
     : '—';
+  const justificationNote = ` Justification: ${justification}`;
 
   // Own vendor + Requester → HOD vendor final → L2 → CFO
   if (isOwnVendor && isRequester) {
     await pool.query(
       `UPDATE rfq_configs
-       SET recommended_invitation_id = ?, requester_submitted_at = NOW(), updated_at = NOW()
+       SET recommended_invitation_id = ?, recommendation_justification = ?,
+           requester_submitted_at = NOW(), updated_at = NOW()
        WHERE pr_id = ?`,
-      [recommendedInvitationId, prId]
+      [recommendedInvitationId, justification, prId]
     );
     if (taskId) {
       await completeRequesterTask(user, taskId);
@@ -828,7 +907,7 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId 
         prId,
         STAGE.RFQ_REQUESTER_SUBMIT,
         user.id,
-        `RFQ submitted for Vendor Final Approval. Recommended vendor: ${recommended.vendorName} (${quotePriceLabel})`,
+        `RFQ submitted for Vendor Final Approval. Recommended vendor: ${recommended.vendorName} (${quotePriceLabel}).${justificationNote}`,
       ]
     );
     await startOwnVendorPostRfqWorkflow(prId);
@@ -840,8 +919,10 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId 
   }
 
   await pool.query(
-    `UPDATE rfq_configs SET recommended_invitation_id = ?, finalized_at = NOW(), updated_at = NOW() WHERE pr_id = ?`,
-    [recommendedInvitationId, prId]
+    `UPDATE rfq_configs
+     SET recommended_invitation_id = ?, recommendation_justification = ?, finalized_at = NOW(), updated_at = NOW()
+     WHERE pr_id = ?`,
+    [recommendedInvitationId, justification, prId]
   );
 
   if (taskId) {
@@ -850,8 +931,8 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId 
 
   // SCM Buyer vendor selection / final RFQ — always record in approval history
   const selectionRemarks = isOwnVendor
-    ? `SCM Buyer Final RFQ — vendor selected: ${recommended.vendorName} (${quotePriceLabel}). Sent to Create PO.`
-    : `SCM Buyer Vendor Selection — recommended vendor: ${recommended.vendorName} (${quotePriceLabel}). Sent to SCM Manager Vendor Approval.`;
+    ? `SCM Buyer Final RFQ — vendor selected: ${recommended.vendorName} (${quotePriceLabel}). Sent to Create PO.${justificationNote}`
+    : `SCM Buyer Vendor Selection — recommended vendor: ${recommended.vendorName} (${quotePriceLabel}). Sent to SCM Manager Vendor Approval.${justificationNote}`;
 
   await pool.query(
     `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
@@ -926,9 +1007,13 @@ async function createPostRfqApprovalTask(conn, prId, level) {
   const assignee = await resolvePostRfqManager(requester.email, requester.departmentId, level);
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 2);
+  // SCM Manager / SCM Buyer are role-queued (any active user of that role can act).
+  // Person-assigned only for HOD / L2 / CFO via RefexOne.
+  const roleQueued = assignee.workflowRole === 'SCM Manager' || assignee.workflowRole === 'SCM Buyer';
+  const assignedUserId = roleQueued ? null : assignee.userId;
   const sql = `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'RFQ_POST_APPROVAL', ?, ?, 'pending', ?)`;
-  const params = [prId, assignee.workflowRole, assignee.userId, dueDate.toISOString().split('T')[0]];
+  const params = [prId, assignee.workflowRole, assignedUserId, dueDate.toISOString().split('T')[0]];
 
   if (conn) {
     await conn.query(sql, params);
@@ -945,13 +1030,13 @@ async function buildRfqSummary(prId) {
   if (!invitations.length) return null;
 
   const recommended = invitations.find((i) => i.id === config.recommendedInvitationId);
-  const latest = recommended?.submissions?.find((s) => s.status === 'submitted' && s.quotedPrice > 0);
+  const latest = findActiveSubmission(recommended) ||
+    recommended?.submissions?.find((s) => s.status === 'submitted' && Number(s.quotedPrice) > 0);
 
   const vendors = invitations.map((inv) => {
     const rounds = (inv.submissions || [])
       .filter((s) => s.status === 'submitted')
       .sort((a, b) => Number(a.round) - Number(b.round))
-      .slice(-3) // up to 3 negotiation rounds
       .map((s) => ({
         round: s.round,
         quotedPrice: s.quotedPrice,
@@ -962,22 +1047,54 @@ async function buildRfqSummary(prId) {
         quotationFilePath: s.quotationFilePath || '',
         submissionId: s.id,
         submittedAt: s.submittedAt,
+        values: submissionToFieldValues(s),
       }));
 
+    const active = findActiveSubmission(inv);
     return {
       id: inv.id,
       name: inv.vendorName,
       isRecommended: config.recommendedInvitationId === inv.id,
       rounds,
+      latest: submissionToFieldValues(active),
+      quotationFileName: active?.quotationFileName || '',
     };
+  });
+
+  const totalRounds = Math.max(
+    1,
+    ...vendors.map((v) => Math.max(0, ...(v.rounds || []).map((r) => Number(r.round) || 0))),
+    ...vendors.map((v) => (v.rounds || []).length)
+  );
+
+  const fieldDefs = normalizeFieldDefinitions(config.fieldDefinitions);
+  const comparisonRows = fieldDefs.map((f) => {
+    const cells = {};
+    let bestVendorId = null;
+    let bestVal = null;
+    for (const vendor of vendors) {
+      const raw = vendor.latest?.[f.id];
+      cells[vendor.id] = formatMatrixValue(f.id, raw, f.type);
+      if (typeof raw === 'number' && !Number.isNaN(raw)) {
+        const lower = isLowerBetter(f.id);
+        if (bestVal === null || (lower ? raw < bestVal : raw > bestVal)) {
+          bestVal = raw;
+          bestVendorId = vendor.id;
+        }
+      }
+    }
+    return { id: f.id, label: f.label, cells, bestVendorId };
   });
 
   return {
     recommendedVendor: recommended?.vendorName || '',
+    recommendationJustification: config.recommendationJustification || '',
     vendorCount: invitations.length,
     quotedPrice: latest?.quotedPrice || 0,
     maxRounds: config.maxRounds || 3,
+    totalRounds,
     vendors,
+    comparisonRows,
   };
 }
 
@@ -1151,12 +1268,29 @@ async function resolvePostRfqRoleConfigForUser(user, prId, prStatus) {
   const pendingTask = await getPendingPostRfqTask(prId);
   if (pendingTask?.assigned_user_id === user.id) {
     const cfg = getPostRfqRoleConfig(pendingTask.assigned_role);
-    if (cfg && cfg.status === prStatus) return { roleConfig: cfg, workflowRole: pendingTask.assigned_role, pendingTask };
+    if (cfg && cfg.status === prStatus) {
+      return { roleConfig: cfg, workflowRole: pendingTask.assigned_role, pendingTask };
+    }
   }
 
   const roleConfig = getPostRfqRoleConfig(user.role);
   if (roleConfig && roleConfig.status === prStatus) {
-    if (pendingTask?.assigned_user_id && pendingTask.assigned_user_id !== user.id) {
+    // Role-queued: SCM Manager / SCM Buyer — any user of that role may act
+    const roleQueued = user.role === 'SCM Manager' || user.role === 'SCM Buyer';
+    if (
+      pendingTask?.assigned_user_id &&
+      pendingTask.assigned_user_id !== user.id &&
+      !roleQueued
+    ) {
+      throw new Error('This RFQ approval is assigned to another manager');
+    }
+    // If pending task is for a different role, block
+    if (
+      pendingTask?.assigned_role &&
+      pendingTask.assigned_role !== user.role &&
+      pendingTask.assigned_user_id &&
+      pendingTask.assigned_user_id !== user.id
+    ) {
       throw new Error('This RFQ approval is assigned to another manager');
     }
     return { roleConfig, workflowRole: user.role, pendingTask };
@@ -1292,6 +1426,12 @@ export async function getVendorComparisonMatrix(user, prId) {
   }
 
   const recommendedVendor = vendors.find((v) => v.isRecommended);
+  const totalRounds = Math.max(
+    1,
+    ...vendors.map((v) => Math.max(Number(v.round) || 0, ...(v.rounds || []).map((r) => Number(r.round) || 0))),
+    ...vendors.map((v) => (v.rounds || []).length)
+  );
+  const configuredMaxRounds = config.maxRounds != null ? Number(config.maxRounds) : null;
 
   return {
     pr: {
@@ -1312,8 +1452,11 @@ export async function getVendorComparisonMatrix(user, prId) {
       approvalHistory: pr.approvalHistory,
     },
     vendorCount: vendors.length,
+    totalRounds,
+    maxRounds: configuredMaxRounds,
     recommendedVendorId: config.recommendedInvitationId,
     recommendedVendorName: recommendedVendor?.name || '',
+    recommendationJustification: config.recommendationJustification || '',
     showFullNegotiation,
     stageLabel: roleConfig?.label || null,
     /** Own-vendor HOD final: UI must ask Yes=CFO path / No=SCM vendor selection */
@@ -1333,7 +1476,11 @@ export async function getVendorComparisonMatrix(user, prId) {
               (user.role === 'SCM Buyer' &&
                 userRoleConfig.status === PR_STATUS.PENDING_SCM_PO &&
                 pr.status === PR_STATUS.APPROVED)) &&
-            (!pendingTask?.assigned_user_id || pendingTask.assigned_user_id === user.id)
+            (!pendingTask?.assigned_user_id ||
+              pendingTask.assigned_user_id === user.id ||
+              // Role-queued: any SCM Manager / SCM Buyer of matching role may act
+              ((user.role === 'SCM Manager' || user.role === 'SCM Buyer') &&
+                pendingTask.assigned_role === user.role))
     ),
     vendors,
     parameters,

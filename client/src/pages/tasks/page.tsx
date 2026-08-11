@@ -498,7 +498,10 @@ export default function TasksPage() {
   ];
 
   const renderRowActions = (task: TaskItem, isPending: boolean, compact = false) => (
-    <div className={`flex items-center ${compact ? 'gap-1 flex-wrap justify-end' : 'gap-1'}`}>
+    <div
+      className={`flex items-center ${compact ? 'gap-1 flex-wrap justify-end' : 'gap-1'}`}
+      onClick={(e) => e.stopPropagation()}
+    >
       {(task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) && (
         <button
           onClick={() => openPostRfqPage(task)}
@@ -697,7 +700,18 @@ export default function TasksPage() {
             return (
               <div
                 key={task.id}
-                className={`p-4 ${task.isOverdue && isPending ? 'bg-red-50/40' : 'bg-white'}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => openTaskDetail(task.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openTaskDetail(task.id);
+                  }
+                }}
+                className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                  task.isOverdue && isPending ? 'bg-red-50/40' : 'bg-white'
+                }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0 flex-1">
@@ -764,7 +778,7 @@ export default function TasksPage() {
           })}
         </div>
 
-        {/* Desktop / tablet table — auto layout + min widths so badges/actions never overlap */}
+        {/* Desktop / tablet table — horizontal scroll; Actions column fixed (sticky right) */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full min-w-[1280px] border-collapse">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -779,19 +793,26 @@ export default function TasksPage() {
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">SLA</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</th>
-                <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
+                <th className="sticky right-0 z-20 bg-gray-50 px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap border-l border-gray-200 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredTasks.map((task) => {
                 const slaInfo = getSlaInfo(task);
                 const isPending = task.status === 'pending_approval';
+                const rowOverdue = Boolean(task.isOverdue && isPending);
+                const stickyBg = rowOverdue
+                  ? 'bg-red-50 group-hover:bg-red-50'
+                  : 'bg-white group-hover:bg-gray-50';
 
                 return (
                   <tr
                     key={task.id}
-                    className={`hover:bg-gray-50 transition-colors ${
-                      task.isOverdue && isPending ? 'bg-red-50/40' : ''
+                    onClick={() => openTaskDetail(task.id)}
+                    className={`group hover:bg-gray-50 transition-colors cursor-pointer ${
+                      rowOverdue ? 'bg-red-50/40' : ''
                     }`}
                   >
                     <td className="px-3 py-3 align-middle whitespace-nowrap text-sm font-medium text-gray-900">
@@ -872,7 +893,10 @@ export default function TasksPage() {
                     <td className="px-3 py-3 align-middle whitespace-nowrap text-sm text-gray-700">
                       {formatDate(task.submittedDate)}
                     </td>
-                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm">
+                    <td
+                      className={`sticky right-0 z-10 px-3 py-3 align-middle whitespace-nowrap text-sm border-l border-gray-200 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)] ${stickyBg}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="flex items-center justify-end gap-0.5 min-w-[7.5rem]">
                         {renderRowActions(task, isPending)}
                       </div>

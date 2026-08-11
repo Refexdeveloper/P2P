@@ -105,28 +105,54 @@ export async function updateCategory(id, body) {
   return mapCategory(rows[0]);
 }
 
-export async function listItems({ search, categoryId, status } = {}) {
-  let sql = `
-    SELECT i.*, c.name AS category_name
-    FROM items i
-    LEFT JOIN categories c ON c.id = i.category_id
-    WHERE 1=1
-  `;
+export async function listItems({ search, categoryId, status, page, pageSize } = {}) {
+  let where = ` WHERE 1=1`;
   const params = [];
   if (search) {
-    sql += ` AND (i.item_code LIKE ? OR i.name LIKE ? OR i.description LIKE ? OR i.hsn_code LIKE ?)`;
+    where += ` AND (i.item_code LIKE ? OR i.name LIKE ? OR i.description LIKE ? OR i.hsn_code LIKE ?)`;
     params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (categoryId) {
-    sql += ` AND i.category_id = ?`;
+    where += ` AND i.category_id = ?`;
     params.push(Number(categoryId));
   }
   if (status) {
-    sql += ` AND i.status = ?`;
+    where += ` AND i.status = ?`;
     params.push(status);
   }
-  sql += ` ORDER BY i.name ASC`;
-  const [rows] = await pool.query(sql, params);
+
+  const fromSql = `
+    FROM items i
+    LEFT JOIN categories c ON c.id = i.category_id
+    ${where}
+  `;
+
+  const paginate = page != null && page !== '';
+  if (paginate) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const size = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 10));
+    const offset = (pageNum - 1) * size;
+    const [[countRow]] = await pool.query(`SELECT COUNT(*) AS total ${fromSql}`, params);
+    const total = Number(countRow?.total || 0);
+    const [rows] = await pool.query(
+      `SELECT i.*, c.name AS category_name ${fromSql} ORDER BY i.name ASC LIMIT ? OFFSET ?`,
+      [...params, size, offset]
+    );
+    return {
+      data: rows.map(mapItem),
+      meta: {
+        page: pageNum,
+        pageSize: size,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / size) || 1),
+      },
+    };
+  }
+
+  const [rows] = await pool.query(
+    `SELECT i.*, c.name AS category_name ${fromSql} ORDER BY i.name ASC`,
+    params
+  );
   return rows.map(mapItem);
 }
 
@@ -501,11 +527,28 @@ function mapDepartment(row) {
   };
 }
 
-export async function listEntities({ search, status } = {}) {
-  let sql = `SELECT * FROM entity_masters WHERE 1=1`;
+async function getEntityLocationsForIds(entityIds) {
+  if (!entityIds.length) return new Map();
+  const [rows] = await pool.query(
+    `SELECT * FROM entity_locations
+     WHERE entity_id IN (${entityIds.map(() => '?').join(',')})
+     ORDER BY entity_id ASC, sort_order ASC, id ASC`,
+    entityIds
+  );
+  const map = new Map();
+  for (const row of rows) {
+    const list = map.get(row.entity_id) || [];
+    list.push(row);
+    map.set(row.entity_id, list);
+  }
+  return map;
+}
+
+export async function listEntities({ search, status, page, pageSize } = {}) {
+  let where = ` WHERE 1=1`;
   const params = [];
   if (search) {
-    sql += ` AND (name LIKE ? OR IFNULL(code, '') LIKE ? OR cost_center LIKE ? OR description LIKE ?
+    where += ` AND (name LIKE ? OR IFNULL(code, '') LIKE ? OR cost_center LIKE ? OR description LIKE ?
       OR EXISTS (
         SELECT 1 FROM entity_locations el
         WHERE el.entity_id = entity_masters.id
@@ -514,17 +557,39 @@ export async function listEntities({ search, status } = {}) {
     params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (status) {
-    sql += ` AND status = ?`;
+    where += ` AND status = ?`;
     params.push(status);
   }
-  sql += ` ORDER BY name ASC`;
-  const [rows] = await pool.query(sql, params);
-  const result = [];
-  for (const row of rows) {
-    const locations = await getEntityLocations(row.id);
-    result.push(mapEntity(row, locations));
+
+  const fromSql = `FROM entity_masters ${where}`;
+  const paginate = page != null && page !== '';
+
+  let rows;
+  let meta = null;
+  if (paginate) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const size = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 10));
+    const offset = (pageNum - 1) * size;
+    const [[countRow]] = await pool.query(`SELECT COUNT(*) AS total ${fromSql}`, params);
+    const total = Number(countRow?.total || 0);
+    [rows] = await pool.query(
+      `SELECT * ${fromSql} ORDER BY name ASC LIMIT ? OFFSET ?`,
+      [...params, size, offset]
+    );
+    meta = {
+      page: pageNum,
+      pageSize: size,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / size) || 1),
+    };
+  } else {
+    [rows] = await pool.query(`SELECT * ${fromSql} ORDER BY name ASC`, params);
   }
-  return result;
+
+  const locMap = await getEntityLocationsForIds(rows.map((r) => r.id));
+  const data = rows.map((row) => mapEntity(row, locMap.get(row.id) || []));
+  if (meta) return { data, meta };
+  return data;
 }
 
 export async function createEntity(body) {

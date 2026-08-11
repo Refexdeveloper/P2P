@@ -70,7 +70,7 @@ export default function RequesterRfqTaskListPage() {
               <i className="ri-file-edit-line text-2xl text-gray-400"></i>
             </div>
             <p className="text-sm font-medium text-gray-700">No RFQ entry tasks</p>
-            <p className="text-xs text-gray-500 mt-1">Tasks appear here after HOD approves your purchase request</p>
+            <p className="text-xs text-gray-500 mt-1">Tasks appear here after L1 Manager approves your purchase request</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

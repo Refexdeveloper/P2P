@@ -152,11 +152,54 @@ export const authApi = {
   me: () => request<{ user: AuthUser }>('/api/auth/me'),
 };
 
+export type RequesterPrListParams = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  requestType?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  scope?: 'requester';
+};
+
+export type RequesterPrListMeta = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export const prApi = {
-  list: () => request<{ data: unknown[] }>('/api/purchase-requests'),
+  list: (params?: RequesterPrListParams) => {
+    const qs = new URLSearchParams();
+    if (params?.page != null) qs.set('page', String(params.page));
+    if (params?.pageSize != null) qs.set('pageSize', String(params.pageSize));
+    if (params?.search) qs.set('search', params.search);
+    if (params?.status && params.status !== 'all') qs.set('status', params.status);
+    if (params?.requestType && params.requestType !== 'all') qs.set('requestType', params.requestType);
+    if (params?.dateFrom) qs.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) qs.set('dateTo', params.dateTo);
+    if (params?.scope) qs.set('scope', params.scope);
+    // Default requester-fast path when any list params are used
+    if (params && !params.scope && (params.page != null || params.search || params.status)) {
+      qs.set('scope', 'requester');
+    }
+    const query = qs.toString();
+    return request<{ data: unknown[]; meta?: RequesterPrListMeta }>(
+      `/api/purchase-requests${query ? `?${query}` : ''}`
+    );
+  },
   listPending: () => request<{ data: unknown[] }>('/api/purchase-requests?pending=true'),
   listScmBucket: () => request<{ data: unknown[] }>('/api/purchase-requests?bucket=scm'),
   get: (id: number) => request<{ data: unknown }>(`/api/purchase-requests/${id}`),
+  previewL1Manager: (department?: string) =>
+    request<{
+      data: {
+        nextStep: string;
+        l1Manager: { name: string | null; email: string | null };
+      };
+    }>(`/api/purchase-requests/l1-manager${department ? `?department=${encodeURIComponent(department)}` : ''}`),
   create: (body: Record<string, unknown>) =>
     request<{ data: unknown }>('/api/purchase-requests', {
       method: 'POST',
@@ -235,10 +278,15 @@ export const rfqApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
-  finalize: (prId: number, recommendedInvitationId: number, taskId?: number) =>
+  finalize: (
+    prId: number,
+    recommendedInvitationId: number,
+    taskId?: number,
+    recommendationJustification?: string
+  ) =>
     request<{ data: unknown; message: string }>(`/api/rfq/pr/${prId}/finalize`, {
       method: 'POST',
-      body: JSON.stringify({ recommendedInvitationId, taskId }),
+      body: JSON.stringify({ recommendedInvitationId, taskId, recommendationJustification }),
     }),
   updateReviewFields: (submissionId: number, requesterFields: Record<string, unknown>) =>
     request<{ message: string }>(`/api/rfq/submissions/${submissionId}/review-fields`, {
@@ -356,8 +404,13 @@ export interface VendorComparisonData {
     approvalHistory: Array<{ stage: string; user: string; role: string; date: string; status: string; remarks: string }>;
   };
   vendorCount: number;
+  /** Highest quotation round reached across vendors */
+  totalRounds?: number;
+  /** Configured round limit (null = unlimited) */
+  maxRounds?: number | null;
   recommendedVendorId: number | null;
   recommendedVendorName: string;
+  recommendationJustification?: string;
   showFullNegotiation: boolean;
   stageLabel: string | null;
   /** Own-vendor HOD final: ask Yes=CFO / No=SCM vendor selection */
@@ -927,12 +980,22 @@ export const masterApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
-  listEntities: (params?: { search?: string; status?: string }) => {
+  listEntities: (params?: {
+    search?: string;
+    status?: string;
+    page?: number;
+    pageSize?: number;
+  }) => {
     const q = new URLSearchParams();
     if (params?.search) q.set('search', params.search);
     if (params?.status) q.set('status', params.status);
+    if (params?.page != null) q.set('page', String(params.page));
+    if (params?.pageSize != null) q.set('pageSize', String(params.pageSize));
     const qs = q.toString();
-    return request<{ data: EntityRecord[] }>(`/api/masters/entities${qs ? `?${qs}` : ''}`);
+    return request<{
+      data: EntityRecord[];
+      meta?: { page: number; pageSize: number; total: number; totalPages: number };
+    }>(`/api/masters/entities${qs ? `?${qs}` : ''}`);
   },
   createEntity: (body: Record<string, unknown>) =>
     request<{ data: EntityRecord; message: string }>('/api/masters/entities', {
@@ -985,13 +1048,24 @@ export const masterApi = {
       method: 'POST',
       body: JSON.stringify({ csv }),
     }),
-  listItems: (params?: { search?: string; categoryId?: number | string; status?: string }) => {
+  listItems: (params?: {
+    search?: string;
+    categoryId?: number | string;
+    status?: string;
+    page?: number;
+    pageSize?: number;
+  }) => {
     const q = new URLSearchParams();
     if (params?.search) q.set('search', params.search);
     if (params?.categoryId) q.set('categoryId', String(params.categoryId));
     if (params?.status) q.set('status', params.status);
+    if (params?.page != null) q.set('page', String(params.page));
+    if (params?.pageSize != null) q.set('pageSize', String(params.pageSize));
     const qs = q.toString();
-    return request<{ data: ItemRecord[] }>(`/api/masters/items${qs ? `?${qs}` : ''}`);
+    return request<{
+      data: ItemRecord[];
+      meta?: { page: number; pageSize: number; total: number; totalPages: number };
+    }>(`/api/masters/items${qs ? `?${qs}` : ''}`);
   },
   createItem: (body: Record<string, unknown>) =>
     request<{ data: ItemRecord; message: string }>('/api/masters/items', {

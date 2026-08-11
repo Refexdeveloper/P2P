@@ -12,7 +12,7 @@ import { createWhatsAppLog, updateWhatsAppLog } from './whatsappLogService.js';
  * Set true to re-enable outbound WhatsApp.
  * When false, all WhatsApp queue/send paths are no-ops (commented out).
  */
-const WHATSAPP_SEND_ENABLED = true;
+const WHATSAPP_SEND_ENABLED = false;
 
 const DEFAULT_API_URL = 'https://whatsapp.unfyd.com/unfyd-meta-api/api/v1/hsm/send';
 const DEFAULT_TEMPLATE = 'workflow_all_application';

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { adminApi, AdminUserRecord, AdminRoleRecord, NavItem } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
+import { formatRoleDisplayName } from '../../../utils/roleDisplay';
 
 export default function UserPermissionsPage() {
   const { refreshUser } = useAuth();
@@ -223,7 +224,7 @@ export default function UserPermissionsPage() {
                 <option value="">All roles</option>
                 {roles.map((r) => (
                   <option key={r.role} value={r.role}>
-                    {r.role}
+                    {formatRoleDisplayName(r.role)}
                   </option>
                 ))}
                 <option value="Super Admin">Super Admin</option>
@@ -246,7 +247,9 @@ export default function UserPermissionsPage() {
                   <p className="text-sm font-semibold text-gray-900">{u.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{u.email}</p>
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">{u.role}</span>
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                      {formatRoleDisplayName(u.role)}
+                    </span>
                     {u.source === 'refexone' && (
                       <span className="px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-600">RefexOne</span>
                     )}
@@ -333,7 +336,7 @@ export default function UserPermissionsPage() {
                     >
                       {roles.map((r) => (
                         <option key={r.role} value={r.role}>
-                          {r.role}
+                          {formatRoleDisplayName(r.role)}
                         </option>
                       ))}
                     </select>

@@ -180,6 +180,8 @@ const MIGRATIONS = [
   `ALTER TABLE document_number_sequences MODIFY COLUMN doc_type ENUM('PR', 'PO', 'WO') NOT NULL`,
   // Own-vendor HOD final: Yes → L2 → CFO; No → L2 → SCM Final (skip CFO)
   `ALTER TABLE rfq_configs ADD COLUMN require_cfo_approval TINYINT(1) NULL`,
+  `ALTER TABLE rfq_configs ADD COLUMN recommendation_justification TEXT NULL`,
+  `ALTER TABLE rfq_configs ADD COLUMN send_back_remarks TEXT NULL`,
   // WhatsApp notify — optional mobile with country code preferred (e.g. 9198xxxxxxxx)
   `ALTER TABLE users ADD COLUMN phone VARCHAR(20) NULL`,
   `CREATE TABLE IF NOT EXISTS email_logs (

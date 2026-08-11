@@ -9,14 +9,21 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  // Lock document scroll — only the main pane scrolls (prevents white gap below long pages)
   useEffect(() => {
-    if (!mobileNavOpen) return;
-    const prev = document.body.style.overflow;
+    const html = document.documentElement;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevBodyHeight = document.body.style.height;
+    html.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
+    document.body.style.height = '100%';
     return () => {
-      document.body.style.overflow = prev;
+      html.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+      document.body.style.height = prevBodyHeight;
     };
-  }, [mobileNavOpen]);
+  }, []);
 
   useEffect(() => {
     const onResize = () => {
@@ -27,7 +34,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, []);
 
   return (
-    <div className="flex h-[100dvh] bg-gray-50 overflow-hidden">
+    <div className="flex h-[100dvh] max-h-[100dvh] bg-gray-50 overflow-hidden">
       {mobileNavOpen && (
         <button
           type="button"
@@ -39,10 +46,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         <TopBar onMenuClick={() => setMobileNavOpen(true)} />
-        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-          <div className="p-3 sm:p-4 lg:p-6 min-h-0 h-auto">{children}</div>
+        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-gray-50">
+          <div className="p-3 sm:p-4 lg:p-6 pb-10 min-h-0 w-full">{children}</div>
         </main>
       </div>
     </div>

@@ -101,7 +101,84 @@ function buildInvoicingAddressFromLocation(loc: LetterheadLocationRecord) {
 
 type PoTermsDetails = typeof EMPTY_PO_TERMS_DETAILS;
 
-const INCOTERMS_OPTIONS = ['EXW', 'FOB', 'CIF', 'DDP', 'DAP', 'FCA'];
+/** Incoterms® 2020 — all 11 ICC rules (latest edition; no 2021 release) */
+const INCOTERMS_OPTIONS = [
+  { code: 'EXW', label: 'EXW — Ex Works' },
+  { code: 'FCA', label: 'FCA — Free Carrier' },
+  { code: 'CPT', label: 'CPT — Carriage Paid To' },
+  { code: 'CIP', label: 'CIP — Carriage and Insurance Paid To' },
+  { code: 'DAP', label: 'DAP — Delivered at Place' },
+  { code: 'DPU', label: 'DPU — Delivered at Place Unloaded' },
+  { code: 'DDP', label: 'DDP — Delivered Duty Paid' },
+  { code: 'FAS', label: 'FAS — Free Alongside Ship (sea)' },
+  { code: 'FOB', label: 'FOB — Free on Board (sea)' },
+  { code: 'CFR', label: 'CFR — Cost and Freight (sea)' },
+  { code: 'CIF', label: 'CIF — Cost, Insurance and Freight (sea)' },
+] as const;
+
+function normalizeIncoterm(value?: string | null): string {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return 'DDP';
+  // Map retired DAT (2010) → DPU (2020)
+  if (raw === 'DAT' || raw.includes('DAT')) return 'DPU';
+  const match = INCOTERMS_OPTIONS.find(
+    (o) => raw === o.code || raw.startsWith(`${o.code} `) || raw.startsWith(`${o.code}-`) || raw.includes(o.code)
+  );
+  return match?.code || 'DDP';
+}
+
+/** Gap between doc-type words (spaces, nbsp, or inline tags like </strong>) */
+const DOC_WORD_GAP = '((?:\\s|&nbsp;|&#160;|<[^>]*>)*)';
+
+/** Rewrite Purchase Order ↔ Work Order wording in clause / letterhead HTML */
+function adaptWordingForDocumentType(
+  html: string,
+  documentType: 'purchase_order' | 'work_order'
+): string {
+  if (!html) return html;
+  let out = String(html);
+  if (documentType === 'work_order') {
+    out = out
+      .replace(/purchase\s*order\s*\/\s*work\s*order(?:\s*\/\s*service\s*order)?/gi, 'Work Order')
+      .replace(/work\s*order\s*\/\s*purchase\s*order/gi, 'Work Order')
+      .replace(new RegExp(`PURCHASE${DOC_WORD_GAP}ORDER`, 'g'), 'WORK$1ORDER')
+      .replace(new RegExp(`Purchase${DOC_WORD_GAP}Order`, 'g'), 'Work$1Order')
+      .replace(new RegExp(`purchase${DOC_WORD_GAP}order`, 'gi'), 'work$1order');
+  } else {
+    out = out
+      .replace(/work\s*order\s*\/\s*purchase\s*order/gi, 'Purchase Order')
+      .replace(/purchase\s*order\s*\/\s*work\s*order(?:\s*\/\s*service\s*order)?/gi, 'Purchase Order')
+      .replace(new RegExp(`WORK${DOC_WORD_GAP}ORDER`, 'g'), 'PURCHASE$1ORDER')
+      .replace(new RegExp(`Work${DOC_WORD_GAP}Order`, 'g'), 'Purchase$1Order')
+      .replace(new RegExp(`work${DOC_WORD_GAP}order`, 'gi'), 'purchase$1order');
+  }
+  return out;
+}
+
+function adaptClausesForDocumentType(
+  clauses: PoLetterheadClause[],
+  documentType: 'purchase_order' | 'work_order'
+): PoLetterheadClause[] {
+  return (clauses || []).map((clause) => ({
+    ...clause,
+    termsHeader: adaptWordingForDocumentType(String(clause.termsHeader || ''), documentType),
+    termsDescription: adaptWordingForDocumentType(
+      String(clause.termsDescription || ''),
+      documentType
+    ),
+  }));
+}
+
+/** Letterhead master embeds "PURCHASE ORDER" — hide/adapt for Work Order preview */
+function adaptLetterheadPreviewHtml(html: string, isWorkOrder: boolean) {
+  if (!html) return '';
+  let out = adaptWordingForDocumentType(html, isWorkOrder ? 'work_order' : 'purchase_order');
+  out = out.replace(
+    /<p[^>]*>\s*(?:<strong>\s*)?(?:PURCHASE|WORK)\s+ORDER(?:\s*<\/strong>)?\s*<\/p>/gi,
+    ''
+  );
+  return out.trim();
+}
 
 const PO_TYPE_OPTIONS: { id: PoType; label: string }[] = [
   { id: 'short_po', label: 'Short PO' },
@@ -153,6 +230,8 @@ function ClauseTableEditor({
   onChange,
   onReloadFromMaster,
   reloadDisabled,
+  docLabel = 'Purchase Order',
+  editorRevision = '',
 }: {
   title: string;
   headerColumnLabel: string;
@@ -164,6 +243,9 @@ function ClauseTableEditor({
   onChange: (next: PoLetterheadClause[]) => void;
   onReloadFromMaster?: () => void;
   reloadDisabled?: boolean;
+  docLabel?: string;
+  /** Bump when document type changes so rich-text editors remount with new wording */
+  editorRevision?: string;
 }) {
   const [rows, setRows] = useState<EditableClauseRow[]>(() => toEditableClauseRows(clauses));
   const lastExternalSig = useRef(clauseListSignature(clauses));
@@ -216,7 +298,7 @@ function ClauseTableEditor({
             {rows.length} row{rows.length !== 1 ? 's' : ''}
           </span>
           <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
-            Editable · shown on PO PDF
+            Editable · shown on {docLabel} PDF
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -262,7 +344,7 @@ function ClauseTableEditor({
                 <td className="px-5 py-4">
                   <label className="block text-xs text-gray-400 mb-1">Header</label>
                   <RichTextEditor
-                    editorKey={`${row.clientKey}-header`}
+                    editorKey={`${row.clientKey}-header-${editorRevision}`}
                     value={row.termsHeader || ''}
                     onChange={(html) => updateRow(index, { termsHeader: html })}
                     placeholder={headerPlaceholder}
@@ -272,7 +354,7 @@ function ClauseTableEditor({
                 <td className="px-5 py-4">
                   <label className="block text-xs text-gray-400 mb-1">Description</label>
                   <RichTextEditor
-                    editorKey={`${row.clientKey}-desc`}
+                    editorKey={`${row.clientKey}-desc-${editorRevision}`}
                     value={row.termsDescription || ''}
                     onChange={(html) => updateRow(index, { termsDescription: html })}
                     placeholder={descriptionPlaceholder}
@@ -389,6 +471,8 @@ export default function CreatePOPage() {
   /** Effective GST % derived from line taxes (stored on PO for compatibility) */
   const [gstPercentage, setGstPercentage] = useState(18);
   const [poType, setPoType] = useState<PoType>('short_po');
+  /** Document type for this PO create — can differ from PR default */
+  const [documentType, setDocumentType] = useState<'purchase_order' | 'work_order'>('purchase_order');
   const [letterheadHeader, setLetterheadHeader] = useState('');
   const [letterheadOptions, setLetterheadOptions] = useState<LetterheadMasterRecord[]>([]);
   const [letterheadId, setLetterheadId] = useState<number | ''>('');
@@ -425,13 +509,22 @@ export default function CreatePOPage() {
   const brandingAutoApplied = useRef(false);
   const skipNextLetterheadLoad = useRef(false);
 
-  const loadLetterhead = useCallback(async (type: PoType) => {
+  const documentTypeRef = useRef(documentType);
+  documentTypeRef.current = documentType;
+
+  const loadLetterhead = useCallback(async (type: PoType, docType?: 'purchase_order' | 'work_order') => {
+    // Prefer explicit docType; otherwise use latest ref so in-flight loads
+    // after a Document Type switch don't overwrite with Purchase Order wording.
+    const targetType = docType || documentTypeRef.current;
     setLetterheadLoading(true);
     try {
       const res = await poLetterheadApi.get(type);
-      setLetterheadHeader(res.data.letterheadHeader || '');
-      setTermsClauses(res.data.terms || []);
-      setAnnexureClauses(res.data.annexure || []);
+      const applyAs = docType || documentTypeRef.current || targetType;
+      setLetterheadHeader(
+        adaptWordingForDocumentType(res.data.letterheadHeader || '', applyAs)
+      );
+      setTermsClauses(adaptClausesForDocumentType(res.data.terms || [], applyAs));
+      setAnnexureClauses(adaptClausesForDocumentType(res.data.annexure || [], applyAs));
     } catch {
       setLetterheadHeader('');
       setTermsClauses([]);
@@ -615,15 +708,27 @@ export default function CreatePOPage() {
     setLetterheadLoading(true);
     try {
       const res = await poLetterheadApi.get(poType);
-      setLetterheadHeader(res.data.letterheadHeader || '');
-      setTermsClauses(res.data.terms || []);
-      setAnnexureClauses(res.data.annexure || []);
+      setLetterheadHeader(
+        adaptWordingForDocumentType(res.data.letterheadHeader || '', documentType)
+      );
+      setTermsClauses(adaptClausesForDocumentType(res.data.terms || [], documentType));
+      setAnnexureClauses(adaptClausesForDocumentType(res.data.annexure || [], documentType));
     } catch {
       /* keep current clauses */
     } finally {
       setLetterheadLoading(false);
     }
-  }, [poType]);
+  }, [poType, documentType]);
+
+  // When switching Purchase Order ↔ Work Order, rewrite annexure/terms wording in the editors
+  const prevDocumentTypeRef = useRef(documentType);
+  useEffect(() => {
+    if (prevDocumentTypeRef.current === documentType) return;
+    prevDocumentTypeRef.current = documentType;
+    setTermsClauses((prev) => adaptClausesForDocumentType(prev, documentType));
+    setAnnexureClauses((prev) => adaptClausesForDocumentType(prev, documentType));
+    setLetterheadHeader((prev) => adaptWordingForDocumentType(prev, documentType));
+  }, [documentType]);
 
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;
@@ -662,21 +767,27 @@ export default function CreatePOPage() {
       setDeliveryAddress(String(po.deliveryAddress || ''));
       setExpectedDeliveryDate(String(po.expectedDeliveryDate || ''));
       setPaymentTerms(String(po.paymentTerms || 'Net 30 Days'));
-      setIncoterms(String(po.incoterms || 'DDP'));
+      setIncoterms(normalizeIncoterm(po.incoterms));
       setSpecialInstructions(String(po.specialInstructions || ''));
       setGstPercentage(Number(po.gstPercentage) || 18);
       setPoType((po.poType as PoType) || 'short_po');
-      setLetterheadHeader(String(po.letterheadHeader || ''));
       setLetterheadId(po.letterheadId ? Number(po.letterheadId) : '');
       setEntity(String(po.entity || ''));
       setHeaderLogo(String(po.headerLogo || ''));
       setFooterLogo(String(po.footerLogo || ''));
       setCurrency(normalizeCurrency(String(po.currency || DEFAULT_CURRENCY)));
+      const loadedDocType: 'purchase_order' | 'work_order' =
+        po.purchaseType === 'work_order' ? 'work_order' : 'purchase_order';
+      setDocumentType(loadedDocType);
+      prevDocumentTypeRef.current = loadedDocType;
       const loadedTerms = (po.termsClauses as PoLetterheadClause[]) || [];
       const loadedAnnexure = (po.annexureClauses as PoLetterheadClause[]) || [];
       const loadedType = ((po.poType as PoType) || 'short_po');
-      setTermsClauses(loadedTerms);
-      setAnnexureClauses(loadedAnnexure);
+      setLetterheadHeader(
+        adaptWordingForDocumentType(String(po.letterheadHeader || ''), loadedDocType)
+      );
+      setTermsClauses(adaptClausesForDocumentType(loadedTerms, loadedDocType));
+      setAnnexureClauses(adaptClausesForDocumentType(loadedAnnexure, loadedDocType));
       {
         const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
         setPoTermsDetails({
@@ -693,9 +804,17 @@ export default function CreatePOPage() {
         try {
           const masterRes = await poLetterheadApi.get(loadedType);
           const master = masterRes.data;
-          if (!po.letterheadHeader) setLetterheadHeader(master.letterheadHeader || '');
-          if (!loadedTerms.length) setTermsClauses(master.terms || []);
-          if (!loadedAnnexure.length) setAnnexureClauses(master.annexure || []);
+          if (!po.letterheadHeader) {
+            setLetterheadHeader(
+              adaptWordingForDocumentType(master.letterheadHeader || '', loadedDocType)
+            );
+          }
+          if (!loadedTerms.length) {
+            setTermsClauses(adaptClausesForDocumentType(master.terms || [], loadedDocType));
+          }
+          if (!loadedAnnexure.length) {
+            setAnnexureClauses(adaptClausesForDocumentType(master.annexure || [], loadedDocType));
+          }
         } catch {
           /* keep empty if master missing */
         }
@@ -743,6 +862,7 @@ export default function CreatePOPage() {
         priority: String(po.priority || 'medium'),
         currency: normalizeCurrency(String(po.currency || DEFAULT_CURRENCY)),
       });
+      setDocumentType(po.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
       setVendorMeta({
         name: String(po.vendorName || ''),
         email: String(po.vendorEmail || ''),
@@ -824,8 +944,14 @@ export default function CreatePOPage() {
           category: li.category,
         })),
       });
+      setDocumentType(prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
       setPaymentTerms(vendor.paymentTerms || 'Net 30 Days');
-      setIncoterms(vendor.deliveryTerms?.includes('DDP') ? 'DDP' : vendor.deliveryTerms || 'DDP');
+      setIncoterms(normalizeIncoterm(vendor.deliveryTerms));
+      setPoTermsDetails((prev) => ({
+        ...prev,
+        subject: prev.subject?.trim() ? prev.subject : String(prData.title || '').trim(),
+        paymentTermsText: prev.paymentTermsText || vendor.paymentTerms || 'Net 30 Days',
+      }));
       setVendorMeta({
         name: vendor.name,
         email: vendor.email,
@@ -946,6 +1072,7 @@ export default function CreatePOPage() {
     terms: termsClauses,
     annexure: annexureClauses,
     poTermsDetails,
+    purchaseType: documentType,
   }), [
     poNumber,
     lineItems,
@@ -966,6 +1093,7 @@ export default function CreatePOPage() {
     termsClauses,
     annexureClauses,
     poTermsDetails,
+    documentType,
   ]);
 
   useEffect(() => {
@@ -1023,13 +1151,15 @@ export default function CreatePOPage() {
       )
     );
 
-  const handlePriceChange = (id: string | number, val: number) =>
+  const handlePriceChange = (id: string | number, raw: string) =>
     setLineItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, unitPrice: val, total: calcLineTotal(item.quantity, val) }
-          : item
-      )
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        // Keep field editable; empty while typing does not wipe the column
+        const parsed = raw === '' || raw === '.' ? 0 : parseFloat(raw);
+        const val = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+        return { ...item, unitPrice: val, total: calcLineTotal(item.quantity, val) };
+      })
     );
 
   const handleTaxPercentageChange = (id: string | number, val: number) =>
@@ -1086,17 +1216,33 @@ export default function CreatePOPage() {
       setExpectedDeliveryDate(String(po.expectedDeliveryDate));
     }
     setPaymentTerms(String(po.paymentTerms || 'Net 30 Days'));
-    setIncoterms(String(po.incoterms || 'DDP'));
+    setIncoterms(normalizeIncoterm(po.incoterms));
     setSpecialInstructions(String(po.specialInstructions || ''));
     setGstPercentage(Number(po.gstPercentage) || 18);
     setPoType((po.poType as PoType) || 'short_po');
-    setLetterheadHeader(String(po.letterheadHeader || ''));
+    const nextDocType: 'purchase_order' | 'work_order' =
+      po.purchaseType === 'work_order'
+        ? 'work_order'
+        : po.purchaseType === 'purchase_order'
+          ? 'purchase_order'
+          : documentType;
+    if (po.purchaseType === 'work_order' || po.purchaseType === 'purchase_order') {
+      setDocumentType(po.purchaseType);
+      prevDocumentTypeRef.current = po.purchaseType;
+    }
+    setLetterheadHeader(
+      adaptWordingForDocumentType(String(po.letterheadHeader || ''), nextDocType)
+    );
     setLetterheadId(po.letterheadId ? Number(po.letterheadId) : '');
     setEntity(String(po.entity || ''));
     setHeaderLogo(String(po.headerLogo || ''));
     setFooterLogo(String(po.footerLogo || ''));
-    setTermsClauses((po.termsClauses as PoLetterheadClause[]) || []);
-    setAnnexureClauses((po.annexureClauses as PoLetterheadClause[]) || []);
+    setTermsClauses(
+      adaptClausesForDocumentType((po.termsClauses as PoLetterheadClause[]) || [], nextDocType)
+    );
+    setAnnexureClauses(
+      adaptClausesForDocumentType((po.annexureClauses as PoLetterheadClause[]) || [], nextDocType)
+    );
     {
       const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
       setPoTermsDetails({
@@ -1132,7 +1278,7 @@ export default function CreatePOPage() {
       prNumber: String(po.prNumber || ''),
       grandTotal: Number(po.grandTotal) || 0,
     });
-  }, []);
+  }, [documentType]);
 
   /** Enter existing PO number → auto-fill PO Details / Terms / line items */
   const loadPoDetailsByNumber = useCallback(
@@ -1180,7 +1326,7 @@ export default function CreatePOPage() {
     if (payload.deliveryAddress) setDeliveryAddress(payload.deliveryAddress);
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
     if (payload.paymentTerms) setPaymentTerms(payload.paymentTerms);
-    if (payload.incoterms) setIncoterms(payload.incoterms);
+    if (payload.incoterms) setIncoterms(normalizeIncoterm(String(payload.incoterms)));
     if (payload.gstPercentage != null) setGstPercentage(payload.gstPercentage);
     if (payload.specialInstructions) setSpecialInstructions(payload.specialInstructions);
     if (payload.poType) setPoType(payload.poType);
@@ -1233,12 +1379,19 @@ export default function CreatePOPage() {
 
   const handleSendForApproval = async () => {
     if ((!numericPrId && !editPoId) || !pr) return;
+    if (!String(poTermsDetails.subject || '').trim()) {
+      alert(`Please enter ${documentType === 'work_order' ? 'Work Order' : 'Purchase Order'} Subject`);
+      setActiveTab('details');
+      return;
+    }
     if (!skipApproval && !letterheadId) {
       alert('Please select a letterhead entity');
+      setActiveTab('terms');
       return;
     }
     if (!skipApproval && letterheadLocations.length > 0 && !letterheadLocationKey) {
       alert('Please select a location for the letterhead entity');
+      setActiveTab('terms');
       return;
     }
     if (!deliveryAddress.trim()) {
@@ -1287,7 +1440,7 @@ export default function CreatePOPage() {
         },
         referencePoNumber: referencePoNumber.trim() || undefined,
         changeSummary: changeSummary.trim() || undefined,
-        purchaseType: pr?.purchaseType || 'purchase_order',
+        purchaseType: documentType,
       };
 
       if (skipApproval) {
@@ -1332,7 +1485,7 @@ export default function CreatePOPage() {
   const fmt = (n: number) =>
     formatMoney(n, currency, { maximumFractionDigits: 0 });
 
-  const isWorkOrder = pr?.purchaseType === 'work_order';
+  const isWorkOrder = documentType === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
   const docNoLabel = isWorkOrder ? 'WO No' : 'PO No';
 
@@ -1494,6 +1647,9 @@ export default function CreatePOPage() {
                   <h1 className="text-base sm:text-lg font-bold text-gray-900">
                     {isEditMode ? `Edit ${docLabel}` : `Create ${docLabel}`}
                   </h1>
+                  <span className="px-2.5 py-0.5 border rounded-full text-xs font-semibold tracking-wide bg-slate-50 text-slate-700 border-slate-200">
+                    {docLabel === 'Work Order' ? 'WO' : 'PO'}
+                  </span>
                   <span className={`px-2.5 py-0.5 border rounded-full text-xs font-semibold tracking-wide ${
                     isBuyerVerifyEdit
                       ? 'bg-blue-50 text-blue-700 border-blue-200'
@@ -1568,7 +1724,12 @@ export default function CreatePOPage() {
           <div className="flex items-center gap-0 mt-3 sm:mt-4 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
             {[
               { key: 'details', label: 'PO Details', icon: 'ri-file-list-3-line', step: 1 },
-              { key: 'terms', label: 'Terms & Conditions', icon: 'ri-file-text-line', step: 2 },
+              {
+                key: 'terms',
+                label: isWorkOrder ? 'WO Terms & Conditions' : 'Terms & Conditions',
+                icon: 'ri-file-text-line',
+                step: 2,
+              },
               { key: 'preview', label: 'Preview & Submit', icon: 'ri-eye-line', step: 3 },
             ].map((tab) => (
               <button
@@ -1635,9 +1796,11 @@ export default function CreatePOPage() {
                       <i className="ri-search-eye-line text-teal-600 text-lg"></i>
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-sm font-bold text-gray-900">Load PO Details by PO Number</h3>
+                      <h3 className="text-sm font-bold text-gray-900">
+                        Load {docLabel} Details by Number
+                      </h3>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Enter an existing PO number to auto-fill delivery, terms, letterhead, line items and POD fields
+                        Enter an existing {docNoLabel} to auto-fill delivery, terms, letterhead, line items and POD fields
                       </p>
                     </div>
                   </div>
@@ -1699,150 +1862,22 @@ export default function CreatePOPage() {
                   )}
                 </div>
 
-                {/* PO Type */}
+                {/* Subject — prints on document PDF */}
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900">PO Type</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Terms and annexure load from PO Type Master
-                      </p>
-                    </div>
-                    <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
-                      {PO_TYPE_OPTIONS.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setPoType(option.id)}
-                          className={`px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
-                            poType === option.id
-                              ? 'bg-white text-teal-700 shadow-sm'
-                              : 'text-gray-600 hover:text-gray-900'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {letterheadLoading ? (
-                    <p className="text-xs text-gray-400 mt-3 flex items-center gap-1.5">
-                      <i className="ri-loader-4-line animate-spin"></i>
-                      Loading letterhead template...
-                    </p>
-                  ) : letterheadHeader ? (
-                    <div
-                      className="mt-4 p-4 bg-teal-50/50 border border-teal-100 rounded-lg text-sm text-gray-700 prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{ __html: letterheadHeader }}
-                    />
-                  ) : null}
-                </div>
-
-                {/* Letterhead / Entity */}
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-gray-900">Letterhead / Entity</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Select entity from Letterhead Master — header and footer logos appear on the PO PDF
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                      Entity <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={letterheadId === '' ? '' : String(letterheadId)}
-                      onChange={(e) => {
-                        const id = e.target.value ? Number(e.target.value) : '';
-                        if (!id) {
-                          applyLetterheadBranding(null);
-                          return;
-                        }
-                        const selected = letterheadOptions.find((o) => o.id === id) || null;
-                        applyLetterheadBranding(selected);
-                      }}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
-                    >
-                      <option value="">Select letterhead entity...</option>
-                      {letterheadOptions.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.entity ? `${opt.name} — ${opt.entity}` : opt.name}
-                        </option>
-                      ))}
-                    </select>
-                    {!letterheadOptions.length && (
-                      <p className="text-xs text-amber-600 mt-2">
-                        No active letterheads. Add one in Masters → Letterhead Master.
-                      </p>
-                    )}
-                  </div>
-
-                  {letterheadLocations.length > 0 && (
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                        Location <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        value={letterheadLocationKey}
-                        onChange={(e) => {
-                          const key = e.target.value;
-                          const idx = letterheadLocations.findIndex(
-                            (l, i) => letterheadLocKey(l, i) === key
-                          );
-                          if (idx < 0) {
-                            applyLetterheadLocation(null);
-                            return;
-                          }
-                          applyLetterheadLocation(letterheadLocations[idx], idx);
-                        }}
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
-                      >
-                        <option value="">Select location...</option>
-                        {letterheadLocations.map((loc, idx) => (
-                          <option key={letterheadLocKey(loc, idx)} value={letterheadLocKey(loc, idx)}>
-                            {loc.location}
-                            {loc.gstNo ? ` — ${loc.gstNo}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1.5">
-                        Selecting a location fills GSTIN &amp; footer into Invoicing Address (Terms tab) and PO PDF footer.
-                      </p>
-                    </div>
-                  )}
-
-                  {(entity || headerLogo || footerLogo || locationGstNo) && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
-                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Entity</p>
-                        <p className="text-sm text-gray-800">{entity || '—'}</p>
-                      </div>
-                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">GSTIN</p>
-                        <p className="text-sm font-mono text-gray-800">{locationGstNo || '—'}</p>
-                      </div>
-                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Header Logo</p>
-                        {headerLogo && (headerLogo.startsWith('data:image/') || /^https?:\/\//i.test(headerLogo)) ? (
-                          <img src={headerLogo} alt="Header logo" className="max-h-12 max-w-full object-contain" />
-                        ) : headerLogo && /<[a-z]/i.test(headerLogo) ? (
-                          <div className="text-xs" dangerouslySetInnerHTML={{ __html: headerLogo }} />
-                        ) : (
-                          <p className="text-sm text-gray-400">—</p>
-                        )}
-                      </div>
-                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Footer Logo</p>
-                        {footerLogo && (footerLogo.startsWith('data:image/') || /^https?:\/\//i.test(footerLogo)) ? (
-                          <img src={footerLogo} alt="Footer logo" className="max-h-12 max-w-full object-contain" />
-                        ) : footerLogo && /<[a-z]/i.test(footerLogo) ? (
-                          <div className="text-xs" dangerouslySetInnerHTML={{ __html: footerLogo }} />
-                        ) : (
-                          <p className="text-sm text-gray-400">—</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                    {docLabel} Subject <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={poTermsDetails.subject || ''}
+                    onChange={(e) => updatePoTermsField('subject', e.target.value)}
+                    placeholder="e.g. Supply of laptops for IT department"
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                  />
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    Shown as Subject on the {docLabel} document. Defaults from PR title when empty.
+                    Document type (PO / WO) is set on the Terms &amp; Conditions tab.
+                  </p>
                 </div>
 
               </div>
@@ -1908,63 +1943,6 @@ export default function CreatePOPage() {
                   </div>
                 </div>
 
-                {/* PO Summary Card */}
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg">
-                      <i className="ri-receipt-line text-gray-600"></i>
-                    </div>
-                    <h3 className="text-sm font-bold text-gray-900">PO Summary</h3>
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex justify-between items-center py-1.5 border-b border-gray-50">
-                      <span className="text-xs text-gray-500">PO Number</span>
-                      <span className="text-xs font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
-                    </div>
-                    <div className="py-1.5 border-b border-gray-50 space-y-1.5">
-                      <div className="flex justify-between items-center gap-2">
-                        <span className="text-xs text-gray-500 shrink-0">Reference PO</span>
-                        <button
-                          type="button"
-                          onClick={() => void loadPoDetailsByNumber()}
-                          disabled={referencePoLoading || !referencePoNumber.trim()}
-                          className="text-[11px] font-semibold text-teal-600 hover:text-teal-700 disabled:opacity-40 cursor-pointer"
-                        >
-                          {referencePoLoading ? 'Loading…' : 'Fill'}
-                        </button>
-                      </div>
-                      <input
-                        type="text"
-                        value={referencePoNumber}
-                        onChange={(e) => {
-                          setReferencePoNumber(e.target.value);
-                          setReferencePoError('');
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            void loadPoDetailsByNumber();
-                          }
-                        }}
-                        placeholder="Type PO no. + Fill"
-                        className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        disabled={referencePoLoading}
-                      />
-                    </div>
-                    {[
-                      { label: 'PR Reference', value: pr.prNumber },
-                      { label: 'Department', value: pr.department },
-                      { label: 'Requester', value: pr.requester },
-                      { label: 'Priority', value: pr.priority },
-                    ].map(row => (
-                      <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-gray-50 last:border-0">
-                        <span className="text-xs text-gray-500">{row.label}</span>
-                        <span className="text-xs font-semibold text-gray-800">{row.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
               </div>
 
               {/* Line Items — full width */}
@@ -1972,9 +1950,29 @@ export default function CreatePOPage() {
                 <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-bold text-gray-900">Line Items</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">{lineItems.length} item{lineItems.length !== 1 ? 's' : ''} — edit qty & price as needed</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{lineItems.length} item{lineItems.length !== 1 ? 's' : ''} — edit qty &amp; unit price as needed</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Currency</span>
+                      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
+                        {CURRENCY_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.code}
+                            type="button"
+                            onClick={() => setCurrency(opt.code)}
+                            title={opt.label}
+                            className={`px-2.5 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                              currency === opt.code
+                                ? 'bg-teal-600 text-white shadow-sm'
+                                : 'text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            {opt.symbol} {opt.code}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
                       {lineItems.length} Items
                     </span>
@@ -1987,26 +1985,17 @@ export default function CreatePOPage() {
                   </div>
                 </div>
 
-                <div className="w-full overflow-x-hidden">
-                  <table className="w-full table-fixed">
-                    <colgroup>
-                      <col className="w-9" />
-                      <col className="w-[18%]" />
-                      <col className="w-[32%]" />
-                      <col className="w-[8%]" />
-                      <col className="w-[14%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[14%]" />
-                    </colgroup>
+                <div className="w-full overflow-x-auto">
+                  <table className="w-full min-w-[860px]">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100">
-                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">#</th>
-                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Item Name</th>
-                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Item Description</th>
-                        <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Qty</th>
-                        <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Unit Price</th>
-                        <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tax %</th>
-                        <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Total</th>
+                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-9">#</th>
+                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide min-w-[140px]">Item Name</th>
+                        <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide min-w-[200px]">Item Description</th>
+                        <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-20">Qty</th>
+                        <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-36">Unit Price</th>
+                        <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-24">Tax %</th>
+                        <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-32">Total</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -2045,15 +2034,21 @@ export default function CreatePOPage() {
                             />
                           </td>
                           <td className="px-2 py-2.5 align-top">
-                            <div className="relative">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-medium">{moneySymbol}</span>
+                            <div className="relative min-w-[120px]">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-semibold pointer-events-none">
+                                {moneySymbol}
+                              </span>
                               <input
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                value={item.unitPrice}
-                                onChange={e => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
-                                className="w-full pl-5 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                                inputMode="decimal"
+                                value={item.unitPrice === 0 ? '' : item.unitPrice}
+                                placeholder="0.00"
+                                onChange={(e) => handlePriceChange(item.id, e.target.value)}
+                                className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                                title="Unit Price"
+                                aria-label="Unit Price"
                               />
                             </div>
                           </td>
@@ -2178,31 +2173,42 @@ export default function CreatePOPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Incoterms</label>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                      Incoterms® 2020
+                    </label>
                     <select
-                      value={incoterms}
-                      onChange={e => setIncoterms(e.target.value)}
+                      value={normalizeIncoterm(incoterms)}
+                      onChange={(e) => setIncoterms(e.target.value)}
                       className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50/50 cursor-pointer"
                     >
-                      {INCOTERMS_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                      {INCOTERMS_OPTIONS.map((o) => (
+                        <option key={o.code} value={o.code}>
+                          {o.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                       Currency <span className="text-red-500">*</span>
                     </label>
-                    <select
-                      value={currency}
-                      onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50/50 cursor-pointer"
-                    >
+                    <div className="inline-flex w-full rounded-lg border border-gray-200 bg-white p-0.5">
                       {CURRENCY_OPTIONS.map((opt) => (
-                        <option key={opt.code} value={opt.code}>
-                          {opt.label}
-                        </option>
+                        <button
+                          key={opt.code}
+                          type="button"
+                          onClick={() => setCurrency(opt.code)}
+                          className={`flex-1 px-2 py-2 rounded-md text-xs font-semibold cursor-pointer transition-colors ${
+                            currency === opt.code
+                              ? 'bg-teal-600 text-white'
+                              : 'text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {opt.symbol} {opt.code}
+                        </button>
                       ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">Defaults from PR currency when available</p>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">INR · USD · EUR — defaults from PR when available</p>
                   </div>
                 </div>
               </div>
@@ -2214,6 +2220,261 @@ export default function CreatePOPage() {
           ══════════════════════════════════════════ */}
           {activeTab === 'terms' && (
             <div className="space-y-5">
+            {/* Document Type — Purchase Order / Work Order (drives all headings below) */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <label className="block text-xs font-semibold text-gray-600 mb-2">
+                Document Type <span className="text-red-500">*</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    {
+                      id: 'purchase_order' as const,
+                      label: 'Purchase Order',
+                      hint: 'Number: PO-Entity-FY-####',
+                      icon: 'ri-shopping-bag-3-line',
+                    },
+                    {
+                      id: 'work_order' as const,
+                      label: 'Work Order',
+                      hint: 'Number: WO-Entity-FY-####',
+                      icon: 'ri-tools-line',
+                    },
+                  ]
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setDocumentType(opt.id);
+                      prevDocumentTypeRef.current = opt.id;
+                      setTermsClauses((prev) => adaptClausesForDocumentType(prev, opt.id));
+                      setAnnexureClauses((prev) => adaptClausesForDocumentType(prev, opt.id));
+                      setLetterheadHeader((prev) => adaptWordingForDocumentType(prev, opt.id));
+                    }}
+                    className={`flex-1 min-w-[160px] px-4 py-3 rounded-xl text-left border transition-colors cursor-pointer ${
+                      documentType === opt.id
+                        ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-teal-300'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <i className={opt.icon}></i>
+                      {opt.label}
+                    </span>
+                    <span
+                      className={`block text-[10px] font-normal mt-1 ${
+                        documentType === opt.id ? 'text-teal-100' : 'text-gray-400'
+                      }`}
+                    >
+                      {opt.hint}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {pr.purchaseType && pr.purchaseType !== documentType && (
+                <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5">
+                  <i className="ri-information-line"></i>
+                  PR default is {pr.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order'} — document type
+                  changed for this create.
+                </p>
+              )}
+            </div>
+
+            {/* Format type + Letterhead */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">{docLabel} Type</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Terms and annexure load from {docLabel} Type Master
+                    </p>
+                  </div>
+                  <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+                    {PO_TYPE_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setPoType(option.id)}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
+                          poType === option.id
+                            ? 'bg-white text-teal-700 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        {isWorkOrder
+                          ? option.id === 'long_po'
+                            ? 'Long WO'
+                            : 'Short WO'
+                          : option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {letterheadLoading ? (
+                  <p className="text-xs text-gray-400 mt-3 flex items-center gap-1.5">
+                    <i className="ri-loader-4-line animate-spin"></i>
+                    Loading letterhead template...
+                  </p>
+                ) : letterheadHeader ? (
+                  <div
+                    className="mt-4 p-4 bg-teal-50/50 border border-teal-100 rounded-lg text-sm text-gray-700 prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{
+                      __html: adaptLetterheadPreviewHtml(letterheadHeader, isWorkOrder),
+                    }}
+                  />
+                ) : null}
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">Letterhead / Entity</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Select entity from Letterhead Master — header and footer logos appear on the {docLabel} PDF
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                    Entity <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={letterheadId === '' ? '' : String(letterheadId)}
+                    onChange={(e) => {
+                      const id = e.target.value ? Number(e.target.value) : '';
+                      if (!id) {
+                        applyLetterheadBranding(null);
+                        return;
+                      }
+                      const selected = letterheadOptions.find((o) => o.id === id) || null;
+                      applyLetterheadBranding(selected);
+                    }}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                  >
+                    <option value="">Select letterhead entity...</option>
+                    {letterheadOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.entity ? `${opt.name} — ${opt.entity}` : opt.name}
+                      </option>
+                    ))}
+                  </select>
+                  {!letterheadOptions.length && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      No active letterheads. Add one in Masters → Letterhead Master.
+                    </p>
+                  )}
+                </div>
+
+                {letterheadLocations.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                      Location <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={letterheadLocationKey}
+                      onChange={(e) => {
+                        const key = e.target.value;
+                        const idx = letterheadLocations.findIndex(
+                          (l, i) => letterheadLocKey(l, i) === key
+                        );
+                        if (idx < 0) {
+                          applyLetterheadLocation(null);
+                          return;
+                        }
+                        applyLetterheadLocation(letterheadLocations[idx], idx);
+                      }}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                    >
+                      <option value="">Select location...</option>
+                      {letterheadLocations.map((loc, idx) => (
+                        <option key={letterheadLocKey(loc, idx)} value={letterheadLocKey(loc, idx)}>
+                          {loc.location}
+                          {loc.gstNo ? ` — ${loc.gstNo}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      Selecting a location fills GSTIN &amp; footer into Invoicing Address and {docLabel} PDF footer.
+                    </p>
+                  </div>
+                )}
+
+                {(entity || headerLogo || footerLogo || locationGstNo) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Entity</p>
+                      <p className="text-sm text-gray-800">{entity || '—'}</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">GSTIN</p>
+                      <p className="text-sm font-mono text-gray-800">{locationGstNo || '—'}</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Header Logo</p>
+                      {headerLogo && (headerLogo.startsWith('data:image/') || /^https?:\/\//i.test(headerLogo)) ? (
+                        <img src={headerLogo} alt="Header logo" className="max-h-12 max-w-full object-contain" />
+                      ) : headerLogo && /<[a-z]/i.test(headerLogo) ? (
+                        <div className="text-xs" dangerouslySetInnerHTML={{ __html: headerLogo }} />
+                      ) : (
+                        <p className="text-sm text-gray-400">—</p>
+                      )}
+                    </div>
+                    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Footer Logo</p>
+                      {footerLogo && (footerLogo.startsWith('data:image/') || /^https?:\/\//i.test(footerLogo)) ? (
+                        <img src={footerLogo} alt="Footer logo" className="max-h-12 max-w-full object-contain" />
+                      ) : footerLogo && /<[a-z]/i.test(footerLogo) ? (
+                        <div className="text-xs" dangerouslySetInnerHTML={{ __html: footerLogo }} />
+                      ) : (
+                        <p className="text-sm text-gray-400">—</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Terms & Annexure — headings follow Purchase Order / Work Order */}
+            {letterheadLoading ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm w-full">
+                <p className="text-sm text-gray-400 flex items-center gap-2">
+                  <i className="ri-loader-4-line animate-spin"></i>
+                  Loading terms &amp; annexure...
+                </p>
+              </div>
+            ) : (
+              <div className="w-full space-y-5">
+                <ClauseTableEditor
+                  title={`${docLabel} — Terms & Conditions`}
+                  headerColumnLabel="Terms Header"
+                  descriptionColumnLabel="Terms Description"
+                  headerPlaceholder="e.g. Payment Terms"
+                  descriptionPlaceholder={`Clause details (shown on ${docLabel} PDF)`}
+                  emptyHint={`No terms yet — reload from master or add rows. Edits appear on the ${docLabel} PDF.`}
+                  clauses={termsClauses}
+                  onChange={setTermsClauses}
+                  onReloadFromMaster={reloadClausesFromMaster}
+                  reloadDisabled={letterheadLoading}
+                  docLabel={docLabel}
+                  editorRevision={documentType}
+                />
+                <ClauseTableEditor
+                  title={`${docLabel} — Annexure`}
+                  headerColumnLabel="Annexure Header"
+                  descriptionColumnLabel="Annexure Description"
+                  headerPlaceholder="e.g. Scope of Work"
+                  descriptionPlaceholder={`Annexure details (shown on ${docLabel} PDF)`}
+                  emptyHint={`No annexure yet — reload from master or add rows. Edits appear on the ${docLabel} PDF.`}
+                  clauses={annexureClauses}
+                  onChange={setAnnexureClauses}
+                  onReloadFromMaster={reloadClausesFromMaster}
+                  reloadDisabled={letterheadLoading}
+                  docLabel={docLabel}
+                  editorRevision={documentType}
+                />
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
               <div className="lg:col-span-2 space-y-5">
                 {/* Quick load POD fields from existing PO */}
@@ -2221,7 +2482,7 @@ export default function CreatePOPage() {
                   <div className="flex flex-col sm:flex-row sm:items-end gap-2">
                     <div className="flex-1 min-w-0">
                       <label className="block text-xs font-semibold text-teal-800 mb-1.5">
-                        PO Number — auto-fill POD details
+                        {docNoLabel} — auto-fill POD details
                       </label>
                       <input
                         type="text"
@@ -2267,7 +2528,9 @@ export default function CreatePOPage() {
                       <i className="ri-file-list-3-line text-teal-600"></i>
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-gray-900">PO Terms &amp; Conditions Details</h3>
+                      <h3 className="text-sm font-bold text-gray-900">
+                        {docLabel} Terms &amp; Conditions Details
+                      </h3>
                       <p className="text-xs text-gray-500">Site, project manager, invoicing and mailing details</p>
                     </div>
                   </div>
@@ -2414,40 +2677,18 @@ export default function CreatePOPage() {
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="block text-xs font-semibold text-gray-700">Subject</label>
-                        <textarea
-                          value={poTermsDetails.subject}
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="block text-xs font-semibold text-gray-700">
+                          {docLabel} Subject <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={poTermsDetails.subject || ''}
                           onChange={(e) => updatePoTermsField('subject', e.target.value)}
-                          rows={3}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                          placeholder={`Same as ${docLabel} Details — prints on the ${docLabel} PDF`}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
                         />
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900">PO Type</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">Switch type to load different terms &amp; annexure</p>
-                    </div>
-                    <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
-                      {PO_TYPE_OPTIONS.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setPoType(option.id)}
-                          className={`px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
-                            poType === option.id
-                              ? 'bg-white text-teal-700 shadow-sm'
-                              : 'text-gray-600 hover:text-gray-900'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
                     </div>
                   </div>
                 </div>
@@ -2477,14 +2718,18 @@ export default function CreatePOPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Incoterms</label>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                        Incoterms® 2020
+                      </label>
                       <select
-                        value={incoterms}
+                        value={normalizeIncoterm(incoterms)}
                         onChange={(e) => setIncoterms(e.target.value)}
                         className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
                       >
                         {INCOTERMS_OPTIONS.map((o) => (
-                          <option key={o}>{o}</option>
+                          <option key={o.code} value={o.code}>
+                            {o.label}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -2568,7 +2813,7 @@ export default function CreatePOPage() {
                     <div>
                       <p className="text-xs font-semibold text-amber-800 mb-1">Before Submitting</p>
                       <ul className="text-xs text-amber-700 space-y-1">
-                        <li>• Edit Terms &amp; Annexure — they print on the PO PDF</li>
+                        <li>• Edit Terms &amp; Annexure — they print on the {docLabel} PDF</li>
                         <li>• Verify all line item quantities and prices</li>
                         <li>• Confirm delivery address is correct</li>
                         <li>• Set expected delivery date</li>
@@ -2582,47 +2827,10 @@ export default function CreatePOPage() {
                   onClick={() => setActiveTab('preview')}
                   className="w-full py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors cursor-pointer text-sm font-semibold flex items-center justify-center gap-2 shadow-sm"
                 >
-                  <i className="ri-eye-line"></i> Preview PO Document
+                  <i className="ri-eye-line"></i> Preview {docLabel} Document
                 </button>
               </div>
             </div>
-
-            {/* Terms & Annexure — full width below the form + sidebar */}
-            {letterheadLoading ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm w-full">
-                <p className="text-sm text-gray-400 flex items-center gap-2">
-                  <i className="ri-loader-4-line animate-spin"></i>
-                  Loading terms &amp; annexure...
-                </p>
-              </div>
-            ) : (
-              <div className="w-full space-y-5">
-                <ClauseTableEditor
-                  title="Terms & Conditions"
-                  headerColumnLabel="Terms Header"
-                  descriptionColumnLabel="Terms Description"
-                  headerPlaceholder="e.g. Payment Terms"
-                  descriptionPlaceholder="Clause details (shown on PO PDF)"
-                  emptyHint="No terms yet — reload from master or add rows. Edits appear on the PO PDF."
-                  clauses={termsClauses}
-                  onChange={setTermsClauses}
-                  onReloadFromMaster={reloadClausesFromMaster}
-                  reloadDisabled={letterheadLoading}
-                />
-                <ClauseTableEditor
-                  title="Annexure"
-                  headerColumnLabel="Annexure Header"
-                  descriptionColumnLabel="Annexure Description"
-                  headerPlaceholder="e.g. Scope of Work"
-                  descriptionPlaceholder="Annexure details (shown on PO PDF)"
-                  emptyHint="No annexure yet — reload from master or add rows. Edits appear on the PO PDF."
-                  clauses={annexureClauses}
-                  onChange={setAnnexureClauses}
-                  onReloadFromMaster={reloadClausesFromMaster}
-                  reloadDisabled={letterheadLoading}
-                />
-              </div>
-            )}
             </div>
           )}
 
@@ -2775,7 +2983,7 @@ export default function CreatePOPage() {
               <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
                 <i className="ri-checkbox-circle-fill text-4xl text-white"></i>
               </div>
-              <h3 className="text-xl font-bold text-white">Purchase Order Created!</h3>
+              <h3 className="text-xl font-bold text-white">{docLabel} Created!</h3>
               <p className="text-emerald-100 text-sm mt-1">Sent for SCM Manager approval</p>
             </div>
             <div className="p-6">
@@ -2800,7 +3008,7 @@ export default function CreatePOPage() {
                   }}
                   className="flex-1 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-sm font-semibold whitespace-nowrap"
                 >
-                  View PO PDF
+                  View {docLabel} PDF
                 </button>
                 <button
                   onClick={() => { setShowSuccessModal(false); navigate('/scm/purchase-requests'); }}

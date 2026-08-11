@@ -21,7 +21,7 @@ import { createEmailLog, updateEmailLog } from './emailLogService.js';
  * Set true to re-enable outbound email.
  * When false, all mail queue/send paths are no-ops (commented out).
  */
-const EMAIL_SEND_ENABLED = true;
+const EMAIL_SEND_ENABLED = false;
 
 let transporter;
 let smtpReady = false;

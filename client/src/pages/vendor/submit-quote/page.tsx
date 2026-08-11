@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { useParams } from 'react-router-dom';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'https://p2p-backend-645830234926.asia-south1.run.app').replace(
   /\/$/,
   ''
 );
+
+type VendorField = { id: string; label: string; type: string; core?: boolean; required?: boolean };
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
@@ -25,19 +27,11 @@ export default function VendorSubmitQuotePage() {
       justification: string;
       lineItems: { description: string; category: string; quantity: number; unitCost: number; total: number }[];
     };
-    fieldDefinitions?: { id: string; label: string; type: string; core?: boolean }[];
+    fieldDefinitions?: VendorField[];
     canSubmit: boolean;
   } | null>(null);
 
-  const [customFields, setCustomFields] = useState<Record<string, string | number | boolean>>({});
-
-  const [quotedPrice, setQuotedPrice] = useState('');
-  const [leadTime, setLeadTime] = useState('');
-  const [paymentTerms, setPaymentTerms] = useState('Net 30');
-  const [warranty, setWarranty] = useState('');
-  const [deliveryTerms, setDeliveryTerms] = useState('');
-  const [compliance, setCompliance] = useState(true);
-  const [vendorNotes, setVendorNotes] = useState('');
+  const [fieldValues, setFieldValues] = useState<Record<string, string | number | boolean>>({});
   const [quotationFile, setQuotationFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -70,14 +64,33 @@ export default function VendorSubmitQuotePage() {
       .then((res) => {
         if (res.message && !res.data) throw new Error(res.message);
         setRfqData(res.data);
+        const defs = (res.data?.fieldDefinitions || []) as VendorField[];
+        const initial: Record<string, string | number | boolean> = {};
+        for (const f of defs) {
+          if (f.id === 'quotedPrice') initial[f.id] = '';
+          else if (f.type === 'boolean') initial[f.id] = true;
+          else if (f.id === 'paymentTerms') initial[f.id] = 'Net 30';
+          else initial[f.id] = '';
+        }
+        if (!defs.some((f) => f.id === 'quotedPrice')) initial.quotedPrice = '';
+        setFieldValues(initial);
       })
       .catch((err) => setError(err.message || 'Failed to load RFQ'))
       .finally(() => setLoading(false));
   }, [token]);
 
+  const setField = (id: string, value: string | number | boolean) => {
+    setFieldValues((prev) => ({ ...prev, [id]: value }));
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!token) return;
+    const quotedPrice = Number(fieldValues.quotedPrice);
+    if (!quotedPrice || quotedPrice <= 0) {
+      setError('Quoted price is required');
+      return;
+    }
     if (!quotationFile) {
       setError('Please upload your quotation document (PDF or image)');
       return;
@@ -85,23 +98,25 @@ export default function VendorSubmitQuotePage() {
     setSubmitting(true);
     setError('');
     try {
-      let quotationFileData: string | undefined;
-      if (quotationFile) {
-        quotationFileData = await readFileAsBase64(quotationFile);
+      const quotationFileData = await readFileAsBase64(quotationFile);
+      const customFields: Record<string, string | number | boolean> = {};
+      for (const [key, val] of Object.entries(fieldValues)) {
+        if (key === 'quotedPrice') continue;
+        customFields[key] = val;
       }
       const res = await fetch(`${API_URL}/api/rfq/quote/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          quotedPrice: Number(quotedPrice),
-          leadTime: Number(leadTime) || 0,
-          paymentTerms,
-          warranty,
-          deliveryTerms,
-          compliance,
-          vendorNotes,
+          quotedPrice,
+          leadTime: Number(fieldValues.leadTime) || 0,
+          paymentTerms: String(fieldValues.paymentTerms || 'Net 30'),
+          warranty: String(fieldValues.warranty || ''),
+          deliveryTerms: String(fieldValues.deliveryTerms || ''),
+          compliance: fieldValues.compliance !== undefined ? Boolean(fieldValues.compliance) : true,
+          vendorNotes: String(fieldValues.vendorNotes || ''),
           customFields,
-          quotationFileName: quotationFile?.name,
+          quotationFileName: quotationFile.name,
           quotationFileData,
         }),
       });
@@ -118,7 +133,7 @@ export default function VendorSubmitQuotePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading RFQ details...</p>
+        <p className="text-sm text-gray-500">Loading RFQ…</p>
       </div>
     );
   }
@@ -126,10 +141,7 @@ export default function VendorSubmitQuotePage() {
   if (error && !rfqData) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white border border-red-200 rounded-xl p-8 max-w-md text-center">
-          <i className="ri-error-warning-line text-4xl text-red-500 mb-3"></i>
-          <p className="text-red-700">{error}</p>
-        </div>
+        <div className="bg-white border border-red-200 rounded-xl p-6 max-w-md text-sm text-red-700">{error}</div>
       </div>
     );
   }
@@ -137,21 +149,82 @@ export default function VendorSubmitQuotePage() {
   if (success) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white border border-emerald-200 rounded-xl p-8 max-w-md text-center shadow-lg">
-          <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i className="ri-check-line text-3xl text-emerald-600"></i>
-          </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Quotation Submitted</h1>
-          <p className="text-sm text-gray-600">
-            Your quote for <strong>{rfqData?.pr.prNumber}</strong> (Round {rfqData?.invitation.round}) has been received.
-          </p>
+        <div className="bg-white border border-emerald-200 rounded-xl p-8 max-w-md text-center">
+          <i className="ri-checkbox-circle-fill text-4xl text-emerald-500"></i>
+          <h1 className="text-lg font-bold text-gray-900 mt-3">Quotation Submitted</h1>
+          <p className="text-sm text-gray-500 mt-2">Thank you. The buyer has been notified.</p>
         </div>
       </div>
     );
   }
 
   const { invitation, pr, canSubmit, fieldDefinitions = [] } = rfqData!;
-  const extraVendorFields = fieldDefinitions.filter((f) => !f.core);
+  // Vendor fields from RFQ config (quotedPrice always; others only if requester added them)
+  const vendorFields = (() => {
+    const defs = fieldDefinitions.filter((f) => f.id !== 'quotationFile' && f.id !== 'quotation_file');
+    if (!defs.some((f) => f.id === 'quotedPrice')) {
+      return [
+        { id: 'quotedPrice', label: 'Quoted Price (₹)', type: 'number', core: true, required: true },
+        ...defs,
+      ];
+    }
+    return defs;
+  })();
+
+  const renderField = (field: VendorField) => {
+    const value = fieldValues[field.id];
+    if (field.type === 'boolean') {
+      return (
+        <label className="flex items-center gap-2 text-sm pt-1 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => setField(field.id, e.target.checked)}
+            className="accent-teal-600 w-4 h-4"
+          />
+          {Boolean(value) ? 'Yes' : 'No'}
+        </label>
+      );
+    }
+    if (field.id === 'paymentTerms') {
+      return (
+        <select
+          value={String(value || 'Net 30')}
+          onChange={(e) => setField(field.id, e.target.value)}
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
+        >
+          {['Net 30', 'Net 45', 'Net 60', 'Advance 50%', 'On Delivery', 'Deviated'].map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      );
+    }
+    if (field.id === 'vendorNotes' || field.type === 'textarea') {
+      return (
+        <textarea
+          value={String(value ?? '')}
+          onChange={(e) => setField(field.id, e.target.value)}
+          rows={3}
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm resize-none"
+          placeholder={field.label}
+        />
+      );
+    }
+    const isNumber = field.type === 'number' || field.id === 'quotedPrice' || field.id === 'leadTime';
+    return (
+      <input
+        type={isNumber ? 'number' : 'text'}
+        required={field.id === 'quotedPrice' || Boolean(field.required)}
+        min={isNumber ? (field.id === 'quotedPrice' ? 1 : 0) : undefined}
+        value={value === undefined || value === null ? '' : String(value)}
+        onChange={(e) =>
+          setField(field.id, isNumber ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)
+        }
+        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
+        placeholder={field.id === 'quotedPrice' ? 'Enter total quoted amount' : field.label}
+      />
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-teal-50 py-10 px-4">
@@ -218,70 +291,22 @@ export default function VendorSubmitQuotePage() {
           <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
             <h2 className="text-base font-bold text-gray-900">Your Quotation</h2>
             {error && <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</p>}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quoted Price (₹) *</label>
-                <input type="number" required min="1" value={quotedPrice} onChange={(e) => setQuotedPrice(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm" placeholder="Enter total quoted amount" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lead Time (days)</label>
-                <input type="number" min="0" value={leadTime} onChange={(e) => setLeadTime(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm" placeholder="e.g. 21" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
-                <select value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm">
-                  <option value="Net 30">Net 30</option>
-                  <option value="Net 45">Net 45</option>
-                  <option value="Net 60">Net 60</option>
-                  <option value="Advance 50%">Advance 50%</option>
-                  <option value="On Delivery">On Delivery</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Warranty</label>
-                <input type="text" value={warranty} onChange={(e) => setWarranty(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm" placeholder="e.g. 1 Year" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Terms</label>
-                <input type="text" value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm" placeholder="e.g. FOB" />
-              </div>
-              <div className="flex items-center gap-2 pt-6">
-                <input type="checkbox" id="compliance" checked={compliance} onChange={(e) => setCompliance(e.target.checked)} className="accent-teal-600" />
-                <label htmlFor="compliance" className="text-sm text-gray-700">Meets technical specifications</label>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes / Comments</label>
-              <textarea value={vendorNotes} onChange={(e) => setVendorNotes(e.target.value)} rows={3} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm resize-none" placeholder="Additional comments for the buyer" />
-            </div>
-            {extraVendorFields.map((field) => (
-              <div key={field.id}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
-                {field.type === 'boolean' ? (
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(customFields[field.id])}
-                      onChange={(e) => setCustomFields((c) => ({ ...c, [field.id]: e.target.checked }))}
-                      className="accent-teal-600"
-                    />
-                    Yes
+              {vendorFields.map((field) => (
+                <div
+                  key={field.id}
+                  className={field.id === 'vendorNotes' || field.type === 'textarea' ? 'md:col-span-2' : ''}
+                >
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {field.label}
+                    {(field.id === 'quotedPrice' || field.required) && ' *'}
                   </label>
-                ) : (
-                  <input
-                    type={field.type === 'number' ? 'number' : 'text'}
-                    value={String(customFields[field.id] ?? '')}
-                    onChange={(e) =>
-                      setCustomFields((c) => ({
-                        ...c,
-                        [field.id]: field.type === 'number' ? Number(e.target.value) : e.target.value,
-                      }))
-                    }
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
-                  />
-                )}
-              </div>
-            ))}
+                  {renderField(field)}
+                </div>
+              ))}
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Quotation File (PDF / Image) *</label>
               <label className="flex items-center gap-3 px-4 py-3 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-teal-400 hover:bg-teal-50 transition-colors">
