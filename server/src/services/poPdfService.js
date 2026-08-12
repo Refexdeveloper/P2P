@@ -94,8 +94,62 @@ async function launchPdfBrowser(executablePath) {
   }
 }
 
-export function buildPoHtml(po, options = {}) {
-  return buildPoDocumentHtml(po, options);
+function looksLikeHtml(value) {
+  return /<[a-z][\s\S]*>/i.test(String(value || '').trim());
+}
+
+function looksLikeImageSrc(value) {
+  const v = String(value || '').trim();
+  return /^data:image\//i.test(v) || /^https?:\/\//i.test(v) || /^\//.test(v);
+}
+
+async function inlineImageSrc(src) {
+  const s = String(src || '').trim();
+  if (!s || s.startsWith('data:')) return s;
+  if (!/^https?:\/\//i.test(s) && !s.startsWith('/')) return s;
+  try {
+    const url = s.startsWith('/')
+      ? `${String(process.env.API_PUBLIC_URL || process.env.APP_URL || '').replace(/\/$/, '')}${s}`
+      : s;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return s;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > 1_800_000) return s;
+    const mime = (res.headers.get('content-type') || 'image/png').split(';')[0] || 'image/png';
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch {
+    return s;
+  }
+}
+
+async function inlineHtmlImages(html) {
+  const re = /(<img\b[^>]*\bsrc\s*=\s*)(["'])([^"']+)\2/gi;
+  const matches = [...String(html || '').matchAll(re)];
+  let out = String(html || '');
+  for (const m of matches) {
+    const inlined = await inlineImageSrc(m[3]);
+    if (inlined !== m[3]) {
+      out = out.replace(m[0], `${m[1]}${m[2]}${inlined}${m[2]}`);
+    }
+  }
+  return out;
+}
+
+async function inlinePoBranding(po = {}) {
+  const next = { ...po };
+  const header = String(po.headerLogo || po.header_logo || '');
+  const footer = String(po.footerLogo || po.footer_logo || '');
+  if (header) {
+    next.headerLogo = looksLikeHtml(header)
+      ? await inlineHtmlImages(header)
+      : await inlineImageSrc(header);
+  }
+  if (footer) {
+    next.footerLogo = looksLikeHtml(footer)
+      ? await inlineHtmlImages(footer)
+      : await inlineImageSrc(footer);
+  }
+  return next;
 }
 
 /**
@@ -164,8 +218,9 @@ export async function generatePoPdf(po, options = {}) {
   const filePath = path.join(PO_UPLOAD_DIR, fileName);
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
 
-  const html = buildPoHtml(po, { ...options, forPdf: true });
-  const chrome = buildPoPdfChromeTemplates(po);
+  const branded = await inlinePoBranding(po);
+  const html = buildPoHtml(branded, { ...options, forPdf: true });
+  const chrome = buildPoPdfChromeTemplates(branded);
   fs.writeFileSync(htmlPath, html, 'utf8');
 
   try {

@@ -235,7 +235,7 @@ function buildRunningHeader(po = {}) {
   let inner = '';
   if (headerLogo) {
     if (looksLikeHtml(headerLogo)) {
-      inner = constrainLogoHtml(headerLogo, 44);
+      inner = sanitizeChromeHtml(headerLogo);
     } else if (looksLikeImageSrc(headerLogo)) {
       inner = `<img class="run-header-img" src="${safeImgSrc(headerLogo)}" alt="Header Logo" />`;
     } else {
@@ -257,7 +257,7 @@ function buildRunningFooter(po = {}) {
   let inner = '';
   if (footerLogo) {
     if (looksLikeHtml(footerLogo)) {
-      inner = `<div class="run-footer-html">${constrainLogoHtml(footerLogo, 82, { enlargeFooter: true })}</div>`;
+      inner = `<div class="run-footer-html">${sanitizeChromeHtml(footerLogo)}</div>`;
     } else if (looksLikeImageSrc(footerLogo)) {
       inner = `<img class="run-footer-img" src="${safeImgSrc(footerLogo)}" alt="Footer Logo" />`;
     } else {
@@ -272,37 +272,45 @@ function buildRunningFooter(po = {}) {
   </div>`;
 }
 
+function sanitizeChromeHtml(html) {
+  return String(html || '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/\{PAGENO\}(?:\s*[-–]\s*\{?nb\}?)?/gi, '')
+    .replace(/\{nb\}/gi, '')
+    .replace(/<p[^>]*>\s*<\/p>/gi, '');
+}
+
 /**
- * Puppeteer chrome — letterhead header + footer on EVERY page (including
- * continued line-items, Terms, Annexure). Outer HTML thead/tfoot is unreliable
- * in Chromium PDF when nested tables force page breaks.
+ * Puppeteer chrome — letterhead header + footer on EVERY page.
+ * Templates do not inherit page CSS; font-size MUST be set on the root
+ * (Chromium defaults chrome headers/footers to ~6px).
+ * Images must be data URIs (inlined in poPdfService) or they will not render.
  */
 export function buildPoPdfChromeTemplates(po = {}) {
   const side = PO_PDF_LAYOUT.side;
-  const base =
+  const root =
     'width:100%;box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;' +
-    'color:#222;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
+    'font-size:13px;line-height:1.4;color:#222;' +
+    '-webkit-print-color-adjust:exact;print-color-adjust:exact;';
 
   const headerLogo = resolveBrandingValue(po, 'headerLogo', 'header_logo');
   let headerInner = '';
   if (headerLogo) {
-    if (looksLikeImageSrc(headerLogo)) {
+    if (looksLikeImageSrc(headerLogo) && !looksLikeHtml(headerLogo)) {
       headerInner =
-        `<div style="display:flex;justify-content:flex-end;align-items:center;width:100%;">` +
-        `<img src="${safeImgSrc(headerLogo)}" style="max-height:42px;max-width:200px;height:auto;width:auto;object-fit:contain;display:block;" alt="" />` +
+        `<div style="width:100%;text-align:right;">` +
+        `<img src="${safeImgSrc(headerLogo)}" style="max-height:52px;max-width:240px;height:auto;width:auto;object-fit:contain;display:inline-block;" alt="Header" />` +
         `</div>`;
     } else if (looksLikeHtml(headerLogo)) {
       headerInner =
-        `<div style="display:flex;justify-content:flex-end;align-items:center;width:100%;font-size:11px;line-height:1.2;text-align:right;max-height:48px;overflow:hidden;">` +
-        `${constrainLogoHtml(headerLogo, 42)}` +
-        `</div>`;
+        `<div style="width:100%;font-size:13px;text-align:right;">${sanitizeChromeHtml(headerLogo)}</div>`;
     } else {
       headerInner =
-        `<div style="text-align:right;font-size:13px;font-weight:700;">${escapeHtml(headerLogo)}</div>`;
+        `<div style="width:100%;text-align:right;font-size:14px;font-weight:700;">${escapeHtml(headerLogo)}</div>`;
     }
   } else {
     headerInner =
-      `<div style="text-align:right;font-size:20px;font-weight:800;font-style:italic;letter-spacing:-1px;">` +
+      `<div style="width:100%;text-align:right;font-size:22px;font-weight:800;font-style:italic;letter-spacing:-1px;">` +
       `<span style="color:#2e3192;">r</span><span style="color:#27aae1;">e</span><span style="color:#39b54a;">f</span>` +
       `<span style="color:#8dc63f;">e</span><span style="color:#f7941d;">x</span></div>`;
   }
@@ -311,30 +319,27 @@ export function buildPoPdfChromeTemplates(po = {}) {
   const entity = resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited';
   let footerBrand = '';
   if (footerLogo) {
-    if (looksLikeImageSrc(footerLogo)) {
+    if (looksLikeImageSrc(footerLogo) && !looksLikeHtml(footerLogo)) {
       footerBrand =
-        `<img src="${safeImgSrc(footerLogo)}" style="max-height:72px;max-width:100%;height:auto;width:auto;object-fit:contain;display:block;margin:0 auto;" alt="" />`;
+        `<img src="${safeImgSrc(footerLogo)}" style="max-height:90px;max-width:100%;height:auto;width:auto;object-fit:contain;display:block;margin:0 auto;" alt="Footer" />`;
     } else if (looksLikeHtml(footerLogo)) {
-      footerBrand =
-        `<div style="font-size:10px;line-height:1.25;text-align:center;max-height:78px;overflow:hidden;">` +
-        `${constrainLogoHtml(footerLogo, 70, { enlargeFooter: true })}` +
-        `</div>`;
+      footerBrand = sanitizeChromeHtml(footerLogo);
     } else {
       footerBrand =
-        `<div style="font-size:11px;font-weight:700;text-align:center;">${escapeHtml(footerLogo)}</div>`;
+        `<div style="font-size:13px;font-weight:700;text-align:center;">${escapeHtml(footerLogo)}</div>`;
     }
   } else {
     footerBrand =
-      `<div style="font-size:11px;font-weight:700;text-align:center;">${escapeHtml(entity)}</div>`;
+      `<div style="font-size:13px;font-weight:700;text-align:center;">${escapeHtml(entity)}</div>`;
   }
 
   const headerTemplate =
-    `<div style="${base}padding:1.5mm ${side} 0 ${side};font-size:10px;">${headerInner}</div>`;
+    `<div style="${root}padding:2mm ${side} 0 ${side};">${headerInner}</div>`;
 
   const footerTemplate =
-    `<div style="${base}padding:0 ${side} 1mm ${side};font-size:10px;">` +
-    `${footerBrand}` +
-    `<div style="text-align:center;font-size:9px;font-weight:600;margin-top:2px;color:#333;">` +
+    `<div style="${root}padding:0 ${side} 1.5mm ${side};text-align:center;">` +
+    `<div style="width:100%;font-size:13px;line-height:1.45;text-align:center;">${footerBrand}</div>` +
+    `<div style="text-align:center;font-size:11px;font-weight:600;margin-top:4px;color:#333;">` +
     `Page <span class="pageNumber"></span> of <span class="totalPages"></span>` +
     `</div></div>`;
 

@@ -10,9 +10,9 @@
  */
 export const PO_PDF_LAYOUT = {
   /** Space for repeating header logo on every PDF page */
-  top: '20mm',
-  /** Space for repeating footer block + page number */
-  bottom: '38mm',
+  top: '24mm',
+  /** Space for full letterhead footer HTML + page number */
+  bottom: '48mm',
   side: '10mm',
   marginTopPx: 15,
   marginBottomPx: 38,
@@ -21,10 +21,10 @@ export const PO_PDF_LAYOUT = {
     return 10;
   },
   get topMm() {
-    return 20;
+    return 24;
   },
   get bottomMm() {
-    return 38;
+    return 48;
   },
 };
 
@@ -112,16 +112,14 @@ export const PO_STYLES = `
   }
   .pdf-run-footer-inner {
     text-align: center;
-    font-size: 11px;
-    line-height: 1.3;
+    font-size: 13px;
+    line-height: 1.45;
     color: #222;
-    max-height: 96px;
-    overflow: hidden;
     border: none;
   }
   .pdf-run-footer-inner .run-footer-img,
   .pdf-run-footer-inner img {
-    max-height: 82px !important;
+    max-height: 90px !important;
     max-width: 100% !important;
     height: auto !important;
     width: auto !important;
@@ -135,8 +133,13 @@ export const PO_STYLES = `
     color: #111;
   }
   .pdf-run-footer-inner .run-footer-html {
-    font-size: 11px;
-    line-height: 1.3;
+    font-size: 13px;
+    line-height: 1.45;
+    text-align: center;
+  }
+  .pdf-run-footer-inner .run-footer-html p {
+    margin: 2px 0;
+    text-align: center;
   }
   .pdf-run-footer-inner .run-footer-html hr,
   .pdf-run-footer-inner hr {
