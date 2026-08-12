@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS vendor_quotation_submissions (
   delivery_terms VARCHAR(100) NULL,
   quotation_file_name VARCHAR(255) NULL,
   quotation_file_path VARCHAR(500) NULL,
+  quotation_file_data LONGBLOB NULL,
   custom_fields JSON NULL,
   requester_fields JSON NULL,
   status ENUM('submitted', 'sent_back', 'accepted') DEFAULT 'submitted',

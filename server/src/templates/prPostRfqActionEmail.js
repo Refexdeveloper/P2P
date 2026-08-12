@@ -1,15 +1,31 @@
 import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
 
-export function buildPostRfqActionEmail({ pr, action, remarks, approverRole, requesterName }) {
+export function buildPostRfqActionEmail({
+  pr,
+  action,
+  remarks,
+  approverRole,
+  requesterName,
+  editPr = false,
+  appBaseUrl = null,
+}) {
   const isReject = action === 'reject';
   const actionLabel = isReject ? 'Rejected' : 'Sent Back for Rework';
   const subject = `PR ${pr.prNumber} ${actionLabel} — ${pr.title}`;
-  const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const portalUrl = isReject
     ? `${base}/requester/track-pr`
-    : `${base}/requester/rfq-entry/${pr.id}`;
+    : editPr
+      ? `${base}/requester/edit-pr/${pr.id}`
+      : `${base}/requester/rfq-entry/${pr.id}`;
   const entityLabel = formatEntity(pr);
   const roleDisplayName = formatRoleDisplayName(approverRole);
+  const ctaLabel = isReject
+    ? 'View PR Status'
+    : editPr
+      ? 'Edit PR & Resubmit'
+      : 'Revise RFQ & Resubmit';
+  const headerTitle = isReject ? `PR ${actionLabel}` : editPr ? `PR ${actionLabel}` : `RFQ ${actionLabel}`;
 
   const html = `
 <!DOCTYPE html>
@@ -19,8 +35,8 @@ export function buildPostRfqActionEmail({ pr, action, remarks, approverRole, req
   <table width="640" align="center" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">
     <tr>
       <td style="padding:24px 28px;background:${isReject ? '#dc2626' : '#ea580c'};">
-        <div style="color:#fff;font-size:20px;font-weight:800;">RFQ ${actionLabel}</div>
-        <div style="color:#fff;font-size:14px;margin-top:6px;opacity:0.9;">Hello ${escapeHtml(requesterName || 'Requester')}, your RFQ submission was reviewed by ${escapeHtml(roleDisplayName)}.</div>
+        <div style="color:#fff;font-size:20px;font-weight:800;">${escapeHtml(headerTitle)}</div>
+        <div style="color:#fff;font-size:14px;margin-top:6px;opacity:0.9;">Hello ${escapeHtml(requesterName || 'Requester')}, your request was reviewed by ${escapeHtml(roleDisplayName)}.</div>
       </td>
     </tr>
     <tr>
@@ -34,7 +50,7 @@ export function buildPostRfqActionEmail({ pr, action, remarks, approverRole, req
         </div>
         <p style="margin-top:20px;text-align:center;">
           <a href="${portalUrl}" style="display:inline-block;padding:12px 24px;background:#0369a1;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
-            ${isReject ? 'View PR Status' : 'Revise RFQ & Resubmit'}
+            ${escapeHtml(ctaLabel)}
           </a>
         </p>
       </td>
@@ -47,7 +63,7 @@ export function buildPostRfqActionEmail({ pr, action, remarks, approverRole, req
     `PR ${pr.prNumber} ${actionLabel}`,
     `Role: ${roleDisplayName}`,
     `Remarks: ${remarks}`,
-    `Open: ${portalUrl}`,
+    `${ctaLabel}: ${portalUrl}`,
   ].join('\n');
 
   return { subject, html, text };

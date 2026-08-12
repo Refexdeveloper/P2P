@@ -908,8 +908,8 @@ export default function LetterheadMasterPage() {
                   ))}
                 </select>
                 {form.entity && !entities.some((e) => e.name === form.entity) && (
-                  <input
-                    value={form.entity}
+                <input
+                  value={form.entity}
                     onChange={(e) => setForm((prev) => ({ ...prev, entity: e.target.value }))}
                     className="mt-2 w-full px-3 py-2.5 border border-amber-200 rounded-lg text-sm bg-amber-50"
                     placeholder="Custom entity name"
@@ -933,10 +933,10 @@ export default function LetterheadMasterPage() {
               {loadingRecord ? (
                 <p className="text-sm text-gray-500">Loading logo & locations…</p>
               ) : (
-                <MediaField
-                  label="Header Logo"
-                  fieldKey={`hdr-${editing?.id || 'new'}`}
-                  value={form.headerLogo}
+              <MediaField
+                label="Header Logo"
+                fieldKey={`hdr-${editing?.id || 'new'}`}
+                value={form.headerLogo}
                   onChange={(headerLogo) => setForm((prev) => ({ ...prev, headerLogo }))}
                 />
               )}

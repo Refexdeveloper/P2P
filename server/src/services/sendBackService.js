@@ -164,13 +164,18 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
       {
         name: requester?.name || updatedPr.requester,
         email: requester?.email,
-      }
+      },
+      { editPr: true }
     );
     return;
   }
 
   if (assignee?.email && target.assignedRole) {
     const isRfqEntry = target.taskType === 'RFQ_ENTRY';
+    const isCreatePo =
+      target.key === 'SCM_PO' ||
+      String(target.label || '').toLowerCase().includes('create po') ||
+      (target.taskType === 'RFQ_POST_APPROVAL' && target.assignedRole === 'SCM Buyer');
     queuePrApprovalPendingNotification(
       updatedPr,
       target.assignedRole,
@@ -179,6 +184,7 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
       {
         postRfq: target.taskType === 'RFQ_POST_APPROVAL',
         rfqEntry: isRfqEntry,
+        createPo: isCreatePo,
         stageLabel: `Sent back — ${target.label}`,
         approverEmails: [assignee.email],
         approverName: assignee.name || undefined,

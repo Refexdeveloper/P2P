@@ -4,6 +4,7 @@ import DashboardLayout from '../../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
 import SendBackModal from '../../scm/rfq-entry/components/SendBackModal';
 import CreateVendorForm from '../../scm/vendor-master/components/CreateVendorForm';
+import { useAuth } from '../../../contexts/AuthContext';
 import {
   rfqApi,
   RfqFieldDefinition,
@@ -21,7 +22,13 @@ function normalizeFieldDef(f: RfqFieldDefinition): RfqFieldDefinition {
       : REQUESTER_SCORE_IDS.has(f.id)
         ? 'requester'
         : 'vendor';
-  return { ...f, filledBy };
+  const showIn =
+    f.showIn === 'commercial' || f.showIn === 'technical'
+      ? f.showIn
+      : /make|brand|hdg|freight/i.test(f.id) || /make|brand|^hdg\b|freight/i.test(f.label || '')
+        ? 'commercial'
+        : 'technical';
+  return { ...f, filledBy, showIn };
 }
 
 interface DraftRow {
@@ -81,22 +88,43 @@ function formatFieldValue(field: RfqFieldDefinition, value: unknown) {
 }
 
 export default function RfqEntryDetailPage() {
+  const { user } = useAuth();
   const { prId } = useParams<{ prId: string }>();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const isScm = location.pathname.startsWith('/scm/rfq-entry');
   const listPath = isScm ? '/scm/rfq-entry' : '/requester/rfq-entry';
   const taskId = searchParams.get('taskId');
+  const canEditExistingQuote =
+    user?.role === 'Super Admin' ||
+    user?.role === 'SCM Manager' ||
+    user?.role === 'SCM Buyer' ||
+    user?.role === 'Requester';
 
   const [mode, setMode] = useState<'entry' | 'preview'>('entry');
   const [previewRound, setPreviewRound] = useState(1);
-  const [pr, setPr] = useState<{ prNumber: string; title: string; department: string; totalAmount: number } | null>(null);
+  const [pr, setPr] = useState<{
+    prNumber: string;
+    title: string;
+    department: string;
+    totalAmount: number;
+    lineItems?: Array<{
+      id: number | string;
+      description: string;
+      category?: string;
+      quantity: number;
+      unitCost: number;
+      total: number;
+    }>;
+  } | null>(null);
   const [config, setConfig] = useState<RfqConfig | null>(null);
   const [tableRows, setTableRows] = useState<TableRow[]>([]);
   const [draftRows, setDraftRows] = useState<DraftRow[]>([newDraftRow()]);
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [newFieldFilledBy, setNewFieldFilledBy] = useState<'vendor' | 'requester'>('vendor');
   const [newFieldType, setNewFieldType] = useState<'text' | 'number' | 'boolean'>('text');
+  const [newFieldShowIn, setNewFieldShowIn] = useState<'commercial' | 'technical'>('technical');
+  const [pendingPreset, setPendingPreset] = useState<RfqFieldDefinition | null>(null);
   const [recommendedId, setRecommendedId] = useState<number | null>(null);
   const [recommendationJustification, setRecommendationJustification] = useState('');
   const [recommendModal, setRecommendModal] = useState<{
@@ -118,6 +146,9 @@ export default function RfqEntryDetailPage() {
   const [manualFiles, setManualFiles] = useState<Record<number, File | null>>({});
   const [savingManualId, setSavingManualId] = useState<number | null>(null);
   const [resendingId, setResendingId] = useState<number | null>(null);
+  const [removingId, setRemovingId] = useState<number | null>(null);
+  /** Invitation IDs currently in admin/edit mode for an existing submitted quote */
+  const [editingQuoteIds, setEditingQuoteIds] = useState<Set<number>>(new Set());
   const [vendorCatalog, setVendorCatalog] = useState<VendorRecord[]>([]);
   const [addVendorRowKey, setAddVendorRowKey] = useState<string | null>(null);
 
@@ -154,8 +185,84 @@ export default function RfqEntryDetailPage() {
     }));
   };
 
+  const prLineItems = pr?.lineItems || [];
+
+  type ManualQuoteLine = {
+    lineItemId: string;
+    quotedUnitPrice?: number;
+    quantity?: number;
+    quotedTotal?: number;
+  };
+
+  const getManualLineDraft = (invitationId: number, lineItemId: string): ManualQuoteLine | undefined => {
+    const lines = (manualDrafts[invitationId]?.quoteLineItems as ManualQuoteLine[]) || [];
+    return lines.find((l) => String(l.lineItemId) === String(lineItemId));
+  };
+
+  const getManualLineUnitPrice = (invitationId: number, lineItemId: string): number | '' => {
+    const found = getManualLineDraft(invitationId, lineItemId);
+    if (!found || found.quotedUnitPrice === undefined || found.quotedUnitPrice === null) return '';
+    return Number(found.quotedUnitPrice) || 0;
+  };
+
+  const getManualLineQty = (invitationId: number, lineItemId: string, fallbackQty: number): number | '' => {
+    const found = getManualLineDraft(invitationId, lineItemId);
+    if (!found || found.quantity === undefined || found.quantity === null) return fallbackQty || '';
+    return Number(found.quantity) || 0;
+  };
+
+  const setManualLineField = (
+    invitationId: number,
+    lineItemId: string,
+    field: 'quotedUnitPrice' | 'quantity',
+    value: number | ''
+  ) => {
+    const nextLines = prLineItems.map((li) => {
+      const id = String(li.id);
+      const existing = getManualLineDraft(invitationId, id);
+      const price =
+        field === 'quotedUnitPrice' && id === String(lineItemId)
+          ? value === ''
+            ? 0
+            : Number(value) || 0
+          : Number(existing?.quotedUnitPrice) || 0;
+      const qty =
+        field === 'quantity' && id === String(lineItemId)
+          ? value === ''
+            ? 0
+            : Math.max(0, Number(value) || 0)
+          : Number(existing?.quantity ?? li.quantity) || 0;
+      return {
+        lineItemId: id,
+        description: li.description,
+        quantity: qty,
+        quotedUnitPrice: price,
+        quotedTotal: price * qty,
+      };
+    });
+    const total = nextLines.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
+    setManualDrafts((prev) => ({
+      ...prev,
+      [invitationId]: {
+        ...prev[invitationId],
+        quoteLineItems: nextLines,
+        quotedPrice: total,
+      },
+    }));
+  };
+
+  const getManualQuoteTotal = (invitationId: number) => {
+    const lines = (manualDrafts[invitationId]?.quoteLineItems as Array<{ quotedTotal?: number; quotedUnitPrice?: number; quantity?: number }>) || [];
+    if (!lines.length) return Number(manualDrafts[invitationId]?.quotedPrice) || 0;
+    return lines.reduce((sum, l) => {
+      if (l.quotedTotal != null) return sum + (Number(l.quotedTotal) || 0);
+      return sum + (Number(l.quotedUnitPrice) || 0) * (Number(l.quantity) || 0);
+    }, 0);
+  };
+
   const fields = (config?.fieldDefinitions || []).map(normalizeFieldDef);
   const vendorFields = fields.filter((f) => f.filledBy === 'vendor');
+  const vendorFieldsWithoutPrice = vendorFields.filter((f) => f.id !== 'quotedPrice');
   const requesterFields = fields.filter((f) => f.filledBy === 'requester');
   // Requester locks after own-vendor submit; SCM continues until final finalize
   const isFinalized = isScm
@@ -258,7 +365,7 @@ export default function RfqEntryDetailPage() {
       setError(`Field "${field.label}" is already added`);
       return;
     }
-    await saveConfig({ fieldDefinitions: [...fields, field] });
+    await saveConfig({ fieldDefinitions: [...fields, normalizeFieldDef(field)] });
     showToast(`${field.label} added — vendors will see it`);
   };
 
@@ -270,8 +377,17 @@ export default function RfqEntryDetailPage() {
       label: newFieldLabel.trim(),
       type: newFieldType,
       filledBy: newFieldFilledBy,
+      showIn: newFieldShowIn,
     });
     setNewFieldLabel('');
+  };
+
+  const setFieldShowIn = async (fieldId: string, showIn: 'commercial' | 'technical') => {
+    const f = fields.find((x) => x.id === fieldId);
+    if (!f || f.id === 'quotedPrice') return;
+    await saveConfig({
+      fieldDefinitions: fields.map((x) => (x.id === fieldId ? { ...x, showIn } : x)),
+    });
   };
 
   const removeField = async (fieldId: string) => {
@@ -281,13 +397,27 @@ export default function RfqEntryDetailPage() {
   };
 
   const vendorFieldPresets: RfqFieldDefinition[] = [
-    { id: 'leadTime', label: 'Lead Time (days)', type: 'number', filledBy: 'vendor' },
-    { id: 'paymentTerms', label: 'Payment Terms', type: 'text', filledBy: 'vendor' },
-    { id: 'warranty', label: 'Warranty', type: 'text', filledBy: 'vendor' },
-    { id: 'deliveryTerms', label: 'Delivery Terms', type: 'text', filledBy: 'vendor' },
-    { id: 'compliance', label: 'Compliance', type: 'boolean', filledBy: 'vendor' },
-    { id: 'vendorNotes', label: 'Notes / Comments', type: 'text', filledBy: 'vendor' },
+    { id: 'make', label: 'Make', type: 'text', filledBy: 'vendor', showIn: 'commercial' },
+    { id: 'hdg', label: 'HDG', type: 'text', filledBy: 'vendor', showIn: 'commercial' },
+    { id: 'freight', label: 'Freight', type: 'text', filledBy: 'vendor', showIn: 'commercial' },
+    { id: 'leadTime', label: 'Lead Time (days)', type: 'number', filledBy: 'vendor', showIn: 'technical' },
+    { id: 'paymentTerms', label: 'Payment Terms', type: 'text', filledBy: 'vendor', showIn: 'technical' },
+    { id: 'warranty', label: 'Warranty', type: 'text', filledBy: 'vendor', showIn: 'technical' },
+    { id: 'deliveryTerms', label: 'Delivery Terms', type: 'text', filledBy: 'vendor', showIn: 'technical' },
+    { id: 'compliance', label: 'Compliance', type: 'boolean', filledBy: 'vendor', showIn: 'technical' },
+    { id: 'vendorNotes', label: 'Notes / Comments', type: 'text', filledBy: 'vendor', showIn: 'technical' },
   ];
+
+  const addPresetField = async (preset: RfqFieldDefinition) => {
+    setPendingPreset(preset);
+  };
+
+  const confirmPresetPlacement = async (showIn: 'commercial' | 'technical') => {
+    if (!pendingPreset) return;
+    const preset = pendingPreset;
+    setPendingPreset(null);
+    await addFieldDef({ ...preset, showIn });
+  };
 
   const inviteSelectedVendors = async (sendEmail: boolean) => {
     if (!prId) return;
@@ -338,6 +468,47 @@ export default function RfqEntryDetailPage() {
   const handleSendMail = () => inviteSelectedVendors(true);
   const handleAddManualEntry = () => inviteSelectedVendors(false);
 
+  const handleRemoveVendor = async (row: TableRow) => {
+    if (isFinalized) return;
+    const ok = window.confirm(
+      `Remove "${row.vendorName}" from this RFQ?\n\nTheir invitation and any quoted data for this RFQ will be deleted.`
+    );
+    if (!ok) return;
+
+    setRemovingId(row.invitationId);
+    setError('');
+    try {
+      const res = await rfqApi.removeInvitation(row.invitationId);
+      const data = res.data as { tableRows?: TableRow[]; config?: RfqConfig };
+      if (data.tableRows) setTableRows(data.tableRows);
+      if (data.config) {
+        setConfig(data.config);
+        setRecommendedId(data.config.recommendedInvitationId ?? null);
+        setRecommendationJustification(data.config.recommendationJustification || '');
+      }
+      if (Number(recommendedId) === Number(row.invitationId)) {
+        setRecommendedId(null);
+        setRecommendationJustification('');
+      }
+      setManualDrafts((prev) => {
+        const next = { ...prev };
+        delete next[row.invitationId];
+        return next;
+      });
+      setManualFiles((prev) => {
+        const next = { ...prev };
+        delete next[row.invitationId];
+        return next;
+      });
+      showToast(res.message || `"${row.vendorName}" removed`);
+      await loadRfq();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove vendor');
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
   const handleResendMail = async (row: TableRow) => {
     setResendingId(row.invitationId);
     setError('');
@@ -351,11 +522,197 @@ export default function RfqEntryDetailPage() {
     }
   };
 
+  const startEditExistingQuote = (row: TableRow) => {
+    const quote = getDisplayQuote(row);
+    const vals = quoteFieldValues(quote, row);
+    const savedLines = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as Array<{
+      lineItemId?: string | number;
+      quotedUnitPrice?: number;
+      quantity?: number;
+      quotedTotal?: number;
+      description?: string;
+    }>;
+    const quoteLineItems =
+      prLineItems.length > 0
+        ? prLineItems.map((li) => {
+            const id = String(li.id);
+            const saved = savedLines.find((l) => String(l.lineItemId) === id);
+            const unit = Number(saved?.quotedUnitPrice) || 0;
+            const qty = Number(saved?.quantity ?? li.quantity) || 0;
+            return {
+              lineItemId: id,
+              description: li.description,
+              quantity: qty,
+              quotedUnitPrice: unit,
+              quotedTotal: unit * qty,
+            };
+          })
+        : [];
+    const quotedPrice =
+      quoteLineItems.length > 0
+        ? quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0)
+        : Number(vals.quotedPrice) || 0;
+
+    setManualDrafts((prev) => ({
+      ...prev,
+      [row.invitationId]: {
+        ...vals,
+        quotedPrice,
+        quoteLineItems,
+        leadTime: vals.leadTime ?? '',
+        paymentTerms: vals.paymentTerms ?? 'Net 30',
+        warranty: vals.warranty ?? '',
+        deliveryTerms: vals.deliveryTerms ?? '',
+        compliance: vals.compliance !== false,
+        vendorNotes: vals.vendorNotes ?? '',
+        technicalScore: vals.technicalScore ?? 0,
+        commercialScore: vals.commercialScore ?? 0,
+        overallScore: vals.overallScore ?? 0,
+      },
+    }));
+    setEditingQuoteIds((prev) => new Set(prev).add(row.invitationId));
+  };
+
+  const cancelEditExistingQuote = (invitationId: number) => {
+    setEditingQuoteIds((prev) => {
+      const next = new Set(prev);
+      next.delete(invitationId);
+      return next;
+    });
+    setManualDrafts((prev) => {
+      const next = { ...prev };
+      delete next[invitationId];
+      return next;
+    });
+    setManualFiles((prev) => {
+      const next = { ...prev };
+      delete next[invitationId];
+      return next;
+    });
+  };
+
+  const handleSaveExistingQuote = async (row: TableRow) => {
+    const submissionId = getDisplayQuote(row)?.submissionId || row.submissionId;
+    if (!submissionId) {
+      setError('No submission to update');
+      return;
+    }
+    const draft = manualDrafts[row.invitationId] || {};
+    const quoteLineItems =
+      prLineItems.length > 0
+        ? prLineItems.map((li) => {
+            const unit = Number(getManualLineUnitPrice(row.invitationId, String(li.id))) || 0;
+            const qty =
+              Number(getManualLineQty(row.invitationId, String(li.id), Number(li.quantity) || 0)) || 0;
+            return {
+              lineItemId: String(li.id),
+              description: li.description,
+              quantity: qty,
+              quotedUnitPrice: unit,
+              quotedTotal: unit * qty,
+            };
+          })
+        : [];
+    const quotedPrice =
+      quoteLineItems.length > 0
+        ? quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0)
+        : Number(draft.quotedPrice);
+    if (quoteLineItems.length > 0 && quoteLineItems.some((l) => !l.quantity || l.quantity <= 0)) {
+      setError('Enter quantity for every line item');
+      return;
+    }
+    if (
+      quoteLineItems.length > 0 &&
+      quoteLineItems.some((l) => !l.quotedUnitPrice || l.quotedUnitPrice <= 0)
+    ) {
+      setError('Enter quoted unit price for every line item');
+      return;
+    }
+    if (!quotedPrice || quotedPrice <= 0) {
+      setError('Quoted amount must be greater than 0');
+      return;
+    }
+
+    const file = manualFiles[row.invitationId];
+    if (file && file.size > 5 * 1024 * 1024) {
+      setError('Quotation file must be under 5MB');
+      return;
+    }
+
+    setSavingManualId(row.invitationId);
+    setError('');
+    try {
+      const body: Record<string, unknown> = {
+        quotedPrice,
+        quoteLineItems,
+        leadTime: Number(draft.leadTime) || 0,
+        paymentTerms: String(draft.paymentTerms || 'Net 30'),
+        warranty: String(draft.warranty || ''),
+        deliveryTerms: String(draft.deliveryTerms || ''),
+        compliance: draft.compliance !== false,
+        vendorNotes: String(draft.vendorNotes || ''),
+        technicalScore: Number(draft.technicalScore) || 0,
+        commercialScore: Number(draft.commercialScore) || 0,
+        overallScore: Number(draft.overallScore) || 0,
+        customFields: draft,
+      };
+      if (file) {
+        const quotationFileData = await readFileAsBase64(file);
+        if (!quotationFileData) {
+          setError('Could not read quotation file — try again');
+          return;
+        }
+        body.quotationFileName = file.name;
+        body.quotationFileData = quotationFileData;
+      }
+
+      const res = await rfqApi.updateSubmission(submissionId, body);
+      showToast(res.message || 'Quotation updated');
+      cancelEditExistingQuote(row.invitationId);
+      if (res.data?.tableRows) {
+        setTableRows(res.data.tableRows as TableRow[]);
+      }
+      if (res.data?.config) {
+        setConfig(res.data.config as RfqConfig);
+      }
+      await loadRfq();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update quotation');
+    } finally {
+      setSavingManualId(null);
+    }
+  };
+
   const handleSaveManualEntry = async (row: TableRow) => {
     const draft = manualDrafts[row.invitationId] || {};
-    const quotedPrice = Number(draft.quotedPrice);
+    const quoteLineItems =
+      prLineItems.length > 0
+        ? prLineItems.map((li) => {
+            const unit = Number(getManualLineUnitPrice(row.invitationId, String(li.id))) || 0;
+            const qty = Number(getManualLineQty(row.invitationId, String(li.id), Number(li.quantity) || 0)) || 0;
+            return {
+              lineItemId: String(li.id),
+              description: li.description,
+              quantity: qty,
+              quotedUnitPrice: unit,
+              quotedTotal: unit * qty,
+            };
+          })
+        : [];
+    const quotedPrice =
+      quoteLineItems.length > 0
+        ? quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0)
+        : Number(draft.quotedPrice);
+    if (quoteLineItems.length > 0 && quoteLineItems.some((l) => !l.quantity || l.quantity <= 0)) {
+      setError('Enter quantity for every line item');
+      return;
+    }
+    if (quoteLineItems.length > 0 && quoteLineItems.some((l) => !l.quotedUnitPrice || l.quotedUnitPrice <= 0)) {
+      setError('Enter quoted unit price for every line item');
+      return;
+    }
     if (!quotedPrice || quotedPrice <= 0) {
-      setError('Enter quoted price before saving manual entry');
+      setError('Enter quoted amount for line items before saving manual entry');
       return;
     }
     const file = manualFiles[row.invitationId];
@@ -384,6 +741,7 @@ export default function RfqEntryDetailPage() {
 
       const res = await rfqApi.manualSubmit(row.invitationId, {
         quotedPrice,
+        quoteLineItems,
         leadTime: Number(draft.leadTime) || 0,
         paymentTerms: String(draft.paymentTerms || 'Net 30'),
         warranty: String(draft.warranty || ''),
@@ -562,7 +920,16 @@ export default function RfqEntryDetailPage() {
       const res = await fetch(rfqApi.quotationFileUrl(submissionId), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) throw new Error('Could not load file');
+      if (!res.ok) {
+        const text = await res.text();
+        let message = 'Could not load quotation file';
+        try {
+          message = (JSON.parse(text) as { message?: string }).message || message;
+        } catch {
+          /* keep default */
+        }
+        throw new Error(message);
+      }
       const blob = await res.blob();
       setFilePreview({ url: URL.createObjectURL(blob), fileName });
     } catch (err) {
@@ -752,17 +1119,43 @@ export default function RfqEntryDetailPage() {
             <div className="bg-white border border-gray-200 rounded-lg p-5">
               <h2 className="text-sm font-bold text-gray-900 mb-1">Quotation Fields (dynamic)</h2>
               <p className="text-xs text-gray-500 mb-3">
-                Vendors always see <strong>Quoted Price</strong> + <strong>Quotation File</strong>. Add more fields below for vendors to fill.
+                Vendors always see <strong>Quoted Price</strong> + <strong>Quotation File</strong>. When you add a field,
+                choose whether it appears on the <strong>Comparison Sheet</strong> or <strong>Technical Specification</strong>.
               </p>
               <div className="flex flex-wrap gap-2 mb-3">
-                {fields.map((f) => (
-                  <span key={f.id} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${f.filledBy === 'vendor' ? 'bg-teal-50 text-teal-800' : 'bg-violet-50 text-violet-800'}`}>
-                    {f.label} ({f.filledBy})
-                    {!f.core && (
-                      <button type="button" onClick={() => removeField(f.id)} className="text-red-500 hover:text-red-700">×</button>
-                    )}
-                  </span>
-                ))}
+                {fields.map((f) => {
+                  const showIn = f.showIn === 'commercial' ? 'commercial' : 'technical';
+                  return (
+                    <span
+                      key={f.id}
+                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${
+                        f.filledBy === 'vendor' ? 'bg-teal-50 text-teal-800' : 'bg-violet-50 text-violet-800'
+                      }`}
+                    >
+                      <span>{f.label}</span>
+                      {f.id !== 'quotedPrice' ? (
+                        <select
+                          value={showIn}
+                          onChange={(e) =>
+                            void setFieldShowIn(f.id, e.target.value as 'commercial' | 'technical')
+                          }
+                          className="bg-white/80 border border-black/10 rounded px-1 py-0.5 text-[10px] font-semibold text-gray-700 cursor-pointer max-w-[120px]"
+                          title="Where this field appears"
+                        >
+                          <option value="commercial">Comparison Sheet</option>
+                          <option value="technical">Technical Spec</option>
+                        </select>
+                      ) : (
+                        <span className="text-[10px] opacity-70">(price)</span>
+                      )}
+                      {!f.core && (
+                        <button type="button" onClick={() => removeField(f.id)} className="text-red-500 hover:text-red-700">
+                          ×
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
               </div>
               <div className="flex flex-wrap gap-2 mb-3">
                 {vendorFieldPresets
@@ -771,7 +1164,7 @@ export default function RfqEntryDetailPage() {
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => addFieldDef(p)}
+                      onClick={() => void addPresetField(p)}
                       className="px-2.5 py-1 rounded-full text-xs font-medium border border-teal-200 text-teal-700 bg-teal-50/50 hover:bg-teal-100 cursor-pointer"
                     >
                       + {p.label}
@@ -779,26 +1172,97 @@ export default function RfqEntryDetailPage() {
                   ))}
               </div>
               <div className="flex flex-wrap gap-2 items-end">
-                <input value={newFieldLabel} onChange={(e) => setNewFieldLabel(e.target.value)} placeholder="New field label" className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                <select value={newFieldFilledBy} onChange={(e) => setNewFieldFilledBy(e.target.value as 'vendor' | 'requester')} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <input
+                  value={newFieldLabel}
+                  onChange={(e) => setNewFieldLabel(e.target.value)}
+                  placeholder="New field label"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+                <select
+                  value={newFieldShowIn}
+                  onChange={(e) => setNewFieldShowIn(e.target.value as 'commercial' | 'technical')}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium"
+                  title="Where this field appears on the comparative statement"
+                >
+                  <option value="commercial">Comparison Sheet</option>
+                  <option value="technical">Technical Specification</option>
+                </select>
+                <select
+                  value={newFieldFilledBy}
+                  onChange={(e) => setNewFieldFilledBy(e.target.value as 'vendor' | 'requester')}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
                   <option value="vendor">Vendor fills</option>
                   <option value="requester">You fill after quote</option>
                 </select>
-                <select value={newFieldType} onChange={(e) => setNewFieldType(e.target.value as 'text' | 'number' | 'boolean')} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <select
+                  value={newFieldType}
+                  onChange={(e) => setNewFieldType(e.target.value as 'text' | 'number' | 'boolean')}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
                   <option value="text">Text</option>
                   <option value="number">Number</option>
                   <option value="boolean">Yes/No</option>
                 </select>
-                <button type="button" onClick={addField} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">Add Field</button>
+                <button type="button" onClick={() => void addField()} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">
+                  Add Field
+                </button>
               </div>
+
+              {pendingPreset && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                  <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+                    <h3 className="text-base font-bold text-gray-900">Where should this field appear?</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Choose where <strong>{pendingPreset.label}</strong> shows on the comparative statement.
+                    </p>
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void confirmPresetPlacement('commercial')}
+                        className="px-4 py-3 rounded-lg border-2 border-teal-600 bg-teal-50 text-teal-900 text-sm font-semibold hover:bg-teal-100"
+                      >
+                        Comparison Sheet
+                        <span className="block text-[11px] font-medium text-teal-700 mt-0.5">Commercial comparison</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void confirmPresetPlacement('technical')}
+                        className="px-4 py-3 rounded-lg border-2 border-violet-600 bg-violet-50 text-violet-900 text-sm font-semibold hover:bg-violet-100"
+                      >
+                        Technical Specification
+                        <span className="block text-[11px] font-medium text-violet-700 mt-0.5">Tech / terms matrix</span>
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPendingPreset(null)}
+                      className="mt-3 w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-900"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {!isFinalized && mode === 'entry' && (
             <div className="bg-white border border-gray-200 rounded-lg p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold text-gray-900">Invite Vendors</h2>
-                <button type="button" onClick={() => setDraftRows((r) => [...r, newDraftRow()])} className="text-sm text-teal-700 font-medium">+ Add Row</button>
+              <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900">Add / Invite Vendors</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Select vendors below to add. Remove an invited vendor from their card anytime before finalize.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDraftRows((r) => [...r, newDraftRow()])}
+                  className="text-sm text-teal-700 font-semibold inline-flex items-center gap-1"
+                >
+                  <i className="ri-add-line"></i> Add Row
+                </button>
               </div>
               <div className="space-y-2 mb-3 max-h-[320px] overflow-y-auto pr-1">
                 {draftRows.map((row, i) => (
@@ -856,9 +1320,9 @@ export default function RfqEntryDetailPage() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-bold text-gray-900">Price Negotiation Trend &amp; Vendor Comparison</h2>
+                  <h2 className="text-sm font-bold text-gray-900">Price Negotiation &amp; RFQ Comparison</h2>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Side-by-side fields, quotation files, and round-by-round price changes
+                    All revisions in negotiation trend, then line-item Rate / Amount comparison sheet
                   </p>
                 </div>
                 {comparison && (
@@ -913,6 +1377,10 @@ export default function RfqEntryDetailPage() {
                   const isManualRow = row.inviteMode === 'manual';
                   const isEmailRow = row.inviteMode !== 'manual';
                   const awaitingManualEntry = isManualRow && !row.hasActiveQuote;
+                  const isEditingExisting = editingQuoteIds.has(row.invitationId);
+                  const quoteFieldsEditable =
+                    mode === 'entry' &&
+                    (awaitingManualEntry || (isEditingExisting && canEditExistingQuote));
                   const awaitingVendorEmail =
                     isEmailRow && !row.hasActiveQuote && (row.status === 'invited' || row.status === 'sent_back');
                   const isRecommended =
@@ -931,13 +1399,15 @@ export default function RfqEntryDetailPage() {
                     <div
                       key={row.id}
                       className={`bg-white border rounded-xl shadow-sm w-full block ${
-                        isRecommended
-                          ? 'border-teal-400 ring-1 ring-teal-200'
-                          : awaitingManualEntry
-                            ? 'border-teal-200'
-                            : awaitingVendorEmail
-                              ? 'border-amber-200'
-                              : 'border-gray-200'
+                        isEditingExisting
+                          ? 'border-teal-500 ring-2 ring-teal-200'
+                          : isRecommended
+                            ? 'border-teal-400 ring-1 ring-teal-200'
+                            : awaitingManualEntry
+                              ? 'border-teal-200'
+                              : awaitingVendorEmail
+                                ? 'border-amber-200'
+                                : 'border-gray-200'
                       }`}
                     >
                       <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 bg-gray-50/80">
@@ -1022,6 +1492,43 @@ export default function RfqEntryDetailPage() {
                               {savingManualId === row.invitationId ? 'Saving...' : 'Save Entry + File'}
                             </button>
                           )}
+                          {mode === 'entry' &&
+                            canEditExistingQuote &&
+                            row.hasActiveQuote &&
+                            !isEditingExisting &&
+                            (isScm || !isFinalized) && (
+                              <button
+                                type="button"
+                                onClick={() => startEditExistingQuote(row)}
+                                className="px-4 py-2 border border-teal-300 text-teal-800 text-sm font-medium rounded-lg hover:bg-teal-50 inline-flex items-center gap-1.5"
+                              >
+                                <i className="ri-edit-line"></i>
+                                Edit Quote
+                              </button>
+                            )}
+                          {mode === 'entry' && isEditingExisting && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => cancelEditExistingQuote(row.invitationId)}
+                                disabled={savingManualId === row.invitationId}
+                                className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveExistingQuote(row)}
+                                disabled={savingManualId === row.invitationId}
+                                className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+                              >
+                                <i className="ri-save-line"></i>
+                                {savingManualId === row.invitationId
+                                  ? 'Saving…'
+                                  : 'Save Amount + File'}
+                              </button>
+                            </>
+                          )}
                           {mode === 'entry' && !isFinalized && awaitingVendorEmail && (
                             <button
                               type="button"
@@ -1041,6 +1548,18 @@ export default function RfqEntryDetailPage() {
                               Send Back
                             </button>
                           )}
+                          {mode === 'entry' && !isFinalized && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveVendor(row)}
+                              disabled={removingId === row.invitationId}
+                              className="px-4 py-2 border border-red-200 text-red-700 text-sm font-medium rounded-lg hover:bg-red-50 disabled:opacity-50 inline-flex items-center gap-1.5"
+                              title="Remove this vendor from RFQ"
+                            >
+                              <i className="ri-delete-bin-line"></i>
+                              {removingId === row.invitationId ? 'Removing…' : 'Remove'}
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -1053,13 +1572,150 @@ export default function RfqEntryDetailPage() {
                           </div>
                         ) : (
                           <>
+                            {prLineItems.length > 0 && (
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
+                                  Line item quotes
+                                </p>
+                                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">
+                                          Item
+                                        </th>
+                                        <th className="px-3 py-2 text-center text-xs font-semibold text-teal-700 uppercase">
+                                          Qty
+                                        </th>
+                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">
+                                          Est. unit
+                                        </th>
+                                        <th className="px-3 py-2 text-center text-xs font-semibold text-teal-700 uppercase">
+                                          Quoted unit
+                                        </th>
+                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">
+                                          Line total
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {prLineItems.map((li) => {
+                                        const lineId = String(li.id);
+                                        const savedLines = (Array.isArray(vals.quoteLineItems)
+                                          ? vals.quoteLineItems
+                                          : []) as Array<{
+                                          lineItemId?: string | number;
+                                          quotedUnitPrice?: number;
+                                          quotedTotal?: number;
+                                          quantity?: number;
+                                        }>;
+                                        const saved = savedLines.find(
+                                          (l) => String(l.lineItemId) === lineId
+                                        );
+                                        const editable = quoteFieldsEditable;
+                                        const unitPrice = editable
+                                          ? getManualLineUnitPrice(row.invitationId, lineId)
+                                          : Number(saved?.quotedUnitPrice) || 0;
+                                        const qty = editable
+                                          ? getManualLineQty(row.invitationId, lineId, Number(li.quantity) || 0)
+                                          : Number(saved?.quantity ?? li.quantity) || 0;
+                                        const lineTotal = (Number(unitPrice) || 0) * (Number(qty) || 0);
+                                        return (
+                                          <tr key={lineId} className="border-t border-gray-100">
+                                            <td className="px-3 py-2">
+                                              <p className="font-medium text-gray-900">{li.description}</p>
+                                              {li.category ? (
+                                                <p className="text-xs text-gray-400">{li.category}</p>
+                                              ) : null}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                              {editable ? (
+                                                <input
+                                                  type="number"
+                                                  min={1}
+                                                  step="any"
+                                                  value={qty === '' ? '' : String(qty)}
+                                                  onChange={(e) =>
+                                                    setManualLineField(
+                                                      row.invitationId,
+                                                      lineId,
+                                                      'quantity',
+                                                      e.target.value === ''
+                                                        ? ''
+                                                        : Math.max(0, Number(e.target.value) || 0)
+                                                    )
+                                                  }
+                                                  className="w-20 mx-auto block border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                  placeholder="1"
+                                                />
+                                              ) : (
+                                                <div className="text-center font-semibold text-gray-900">{qty || '—'}</div>
+                                              )}
+                                            </td>
+                                            <td className="px-3 py-2 text-right text-xs text-gray-400">
+                                              {formatCurrency(Number(li.unitCost) || 0)}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                              {editable ? (
+                                                <input
+                                                  type="number"
+                                                  min={0}
+                                                  value={unitPrice === '' ? '' : String(unitPrice)}
+                                                  onChange={(e) =>
+                                                    setManualLineField(
+                                                      row.invitationId,
+                                                      lineId,
+                                                      'quotedUnitPrice',
+                                                      e.target.value === ''
+                                                        ? ''
+                                                        : Math.max(0, Number(e.target.value) || 0)
+                                                    )
+                                                  }
+                                                  className="w-28 mx-auto block border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                  placeholder="0"
+                                                />
+                                              ) : (
+                                                <div className="text-center font-medium text-gray-900">
+                                                  {unitPrice ? formatCurrency(Number(unitPrice)) : '—'}
+                                                </div>
+                                              )}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                              {lineTotal > 0 ? formatCurrency(lineTotal) : '—'}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                    <tfoot>
+                                      <tr className="border-t border-teal-200 bg-teal-50">
+                                        <td
+                                          colSpan={4}
+                                          className="px-3 py-2.5 text-right text-xs font-bold text-teal-900 uppercase"
+                                        >
+                                          Total quoted amount
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right text-sm font-bold text-teal-800">
+                                          {formatCurrency(
+                                            quoteFieldsEditable
+                                              ? getManualQuoteTotal(row.invitationId)
+                                              : Number(vals.quotedPrice) || 0
+                                          )}
+                                        </td>
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+
                             <div>
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Vendor fields</p>
                               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-                                {vendorFields.map((f) => (
+                                {(prLineItems.length > 0 ? vendorFieldsWithoutPrice : vendorFields).map((f) => (
                                   <div key={f.id} className="space-y-1.5 min-w-0 h-auto">
                                     <label className="block text-xs font-semibold text-gray-600">{f.label}</label>
-                                    {mode === 'entry' && !isFinalized && awaitingManualEntry ? (
+                                    {quoteFieldsEditable ? (
                                       renderFieldInput(
                                         f,
                                         getManualValue(row.invitationId, f.id, f.id === 'compliance' ? true : ''),
@@ -1072,6 +1728,20 @@ export default function RfqEntryDetailPage() {
                                     )}
                                   </div>
                                 ))}
+                                {prLineItems.length > 0 && (
+                                  <div className="space-y-1.5 min-w-0 h-auto">
+                                    <label className="block text-xs font-semibold text-gray-600">
+                                      Quoted Price (₹)
+                                    </label>
+                                    <div className="h-10 px-3 rounded-lg bg-teal-50 border border-teal-100 text-sm font-bold text-teal-800 flex items-center truncate">
+                                      {formatCurrency(
+                                        quoteFieldsEditable
+                                          ? getManualQuoteTotal(row.invitationId)
+                                          : Number(vals.quotedPrice) || 0
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -1083,8 +1753,8 @@ export default function RfqEntryDetailPage() {
                                   {requesterFields.map((f) => (
                                     <div key={f.id} className="space-y-1.5 min-w-0 h-auto">
                                       <label className="block text-xs font-semibold text-violet-700">{f.label}</label>
-                                      {mode === 'entry' && !isFinalized ? (
-                                        awaitingManualEntry ? (
+                                      {mode === 'entry' && (!isFinalized || isEditingExisting) ? (
+                                        quoteFieldsEditable ? (
                                           renderFieldInput(
                                             f,
                                             getManualValue(row.invitationId, f.id, vals[f.id]),
@@ -1150,70 +1820,95 @@ export default function RfqEntryDetailPage() {
                                     }}
                                   />
                                 </label>
-                              ) : quote?.submissionId && quote.quotationFileName ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openFilePreview(quote.submissionId!, quote.quotationFileName)}
-                                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm font-medium text-teal-700 hover:bg-teal-50"
-                                >
-                                  <i className="ri-file-look-line"></i>
-                                  {quote.quotationFileName}
-                                  <span className="text-xs text-gray-500">Preview</span>
-                                </button>
-                              ) : quote?.submissionId && !quote.quotationFileName && !config?.finalizedAt ? (
-                                <label className="flex flex-col gap-2 px-4 py-3 border border-dashed border-amber-300 rounded-lg bg-amber-50/50 cursor-pointer hover:bg-amber-50">
-                                  <div className="flex items-center gap-3">
-                                    <i className="ri-error-warning-line text-xl text-amber-600"></i>
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-sm font-medium text-amber-900">
-                                        {manualFiles[row.invitationId]?.name || 'Quotation file missing — upload now'}
-                                      </p>
-                                      <p className="text-xs text-amber-800">Required for Vendor Final Approval email / comparison</p>
-                                    </div>
-                                    <input
-                                      type="file"
-                                      accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
-                                      className="text-xs"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0] || null;
-                                        setManualFiles((prev) => ({ ...prev, [row.invitationId]: file }));
-                                      }}
-                                    />
-                                  </div>
-                                  <button
-                                    type="button"
-                                    disabled={!manualFiles[row.invitationId] || savingManualId === row.invitationId}
-                                    onClick={async (e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      const file = manualFiles[row.invitationId];
-                                      if (!file || !quote.submissionId) return;
-                                      setSavingManualId(row.invitationId);
-                                      setError('');
-                                      try {
-                                        const quotationFileData = await readFileAsBase64(file);
-                                        await rfqApi.attachQuotationFile(quote.submissionId, {
-                                          quotationFileName: file.name,
-                                          quotationFileData,
-                                        });
-                                        showToast('Quotation file attached');
-                                        setManualFiles((prev) => {
-                                          const next = { ...prev };
-                                          delete next[row.invitationId];
-                                          return next;
-                                        });
-                                        await loadRfq();
-                                      } catch (err) {
-                                        setError(err instanceof Error ? err.message : 'Failed to attach file');
-                                      } finally {
-                                        setSavingManualId(null);
+                              ) : quote?.submissionId ? (
+                                <div className="space-y-2">
+                                  {quote.quotationFileName ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        openFilePreview(quote.submissionId!, quote.quotationFileName)
                                       }
-                                    }}
-                                    className="self-start px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 text-white disabled:opacity-50"
-                                  >
-                                    {savingManualId === row.invitationId ? 'Uploading…' : 'Attach file'}
-                                  </button>
-                                </label>
+                                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm font-medium text-teal-700 hover:bg-teal-50"
+                                    >
+                                      <i className="ri-file-look-line"></i>
+                                      {quote.quotationFileName}
+                                      <span className="text-xs text-gray-500">Preview</span>
+                                    </button>
+                                  ) : (
+                                    <p className="text-sm text-amber-700">No quotation file on this submission yet.</p>
+                                  )}
+                                  {/* Admin / SCM can replace existing quotation file anytime; requester while RFQ open or Edit Quote */}
+                                  {(canEditExistingQuote || (!isFinalized && mode === 'entry') || isEditingExisting) && (
+                                    <label className="flex flex-col gap-2 px-4 py-3 border border-dashed border-amber-300 rounded-lg bg-amber-50/50 cursor-pointer hover:bg-amber-50">
+                                      <div className="flex items-center gap-3 flex-wrap">
+                                        <i className="ri-upload-cloud-2-line text-xl text-amber-600"></i>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-sm font-medium text-amber-900">
+                                            {manualFiles[row.invitationId]?.name ||
+                                              (quote.quotationFileName
+                                                ? 'Update existing quotation file'
+                                                : 'Attach quotation file')}
+                                          </p>
+                                          <p className="text-xs text-amber-800">
+                                            {quote.quotationFileName
+                                              ? 'Replace the current file (stored in database after upload)'
+                                              : 'Upload quotation PDF / image (max 5MB)'}
+                                          </p>
+                                        </div>
+                                        <input
+                                          type="file"
+                                          accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                                          className="text-xs"
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0] || null;
+                                            setManualFiles((prev) => ({ ...prev, [row.invitationId]: file }));
+                                          }}
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          !manualFiles[row.invitationId] || savingManualId === row.invitationId
+                                        }
+                                        onClick={async (e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          const file = manualFiles[row.invitationId];
+                                          if (!file || !quote.submissionId) return;
+                                          setSavingManualId(row.invitationId);
+                                          setError('');
+                                          try {
+                                            const quotationFileData = await readFileAsBase64(file);
+                                            const res = await rfqApi.attachQuotationFile(quote.submissionId, {
+                                              quotationFileName: file.name,
+                                              quotationFileData,
+                                            });
+                                            showToast(res.message || 'Quotation file updated');
+                                            setManualFiles((prev) => {
+                                              const next = { ...prev };
+                                              delete next[row.invitationId];
+                                              return next;
+                                            });
+                                            await loadRfq();
+                                          } catch (err) {
+                                            setError(
+                                              err instanceof Error ? err.message : 'Failed to update file'
+                                            );
+                                          } finally {
+                                            setSavingManualId(null);
+                                          }
+                                        }}
+                                        className="self-start px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 text-white disabled:opacity-50"
+                                      >
+                                        {savingManualId === row.invitationId
+                                          ? 'Uploading…'
+                                          : quote.quotationFileName
+                                            ? 'Update file'
+                                            : 'Attach file'}
+                                      </button>
+                                    </label>
+                                  )}
+                                </div>
                               ) : (
                                 <p className="text-sm text-gray-400">No file uploaded</p>
                               )}

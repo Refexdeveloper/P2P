@@ -23,7 +23,11 @@ export interface PaymentData {
   receiptFile: File | null;
 }
 
-export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit }: UploadPaymentModalProps) {
+interface UploadPaymentModalPropsFixed extends Omit<UploadPaymentModalProps, 'onSubmit'> {
+  onSubmit: (paymentData: PaymentData) => void | Promise<void>;
+}
+
+export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit }: UploadPaymentModalPropsFixed) {
   const [formData, setFormData] = useState<PaymentData>({
     paymentDate: new Date().toISOString().split('T')[0],
     paymentMode: '',
@@ -64,14 +68,12 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
 
     if (!formData.utrReference.trim()) {
       newErrors.utrReference = 'UTR/Reference number is required';
-    } else if (formData.utrReference.trim().length < 12) {
-      newErrors.utrReference = 'UTR/Reference must be at least 12 characters';
+    } else if (formData.utrReference.trim().length < 6) {
+      newErrors.utrReference = 'UTR/Reference must be at least 6 characters';
     }
 
     if (!formData.amountPaid || formData.amountPaid <= 0) {
       newErrors.amountPaid = 'Amount paid is required';
-    } else if (formData.amountPaid !== invoice.invoiceAmount) {
-      newErrors.amountPaid = `Warning: Amount differs from invoice amount (₹${invoice.invoiceAmount.toLocaleString('en-IN')})`;
     }
 
     if (!formData.receiptFile) {
@@ -82,16 +84,16 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (validateForm()) {
-      onSubmit(formData);
+    if (!validateForm()) return;
+    try {
+      await Promise.resolve(onSubmit(formData));
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
         onClose();
-        // Reset form
         setFormData({
           paymentDate: new Date().toISOString().split('T')[0],
           paymentMode: '',
@@ -101,7 +103,9 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
           remarks: '',
           receiptFile: null,
         });
-      }, 2000);
+      }, 1200);
+    } catch {
+      /* parent shows error toast */
     }
   };
 

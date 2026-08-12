@@ -280,12 +280,12 @@ export default function EntityMasterPage() {
               onImport={(csv) => masterApi.importEntitiesCsv(csv)}
               onImported={load}
             />
-            <button
-              onClick={openCreate}
-              className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer flex items-center gap-2"
-            >
-              <i className="ri-add-line"></i> Add Entity
-            </button>
+          <button
+            onClick={openCreate}
+            className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer flex items-center gap-2"
+          >
+            <i className="ri-add-line"></i> Add Entity
+          </button>
           </div>
         </div>
 
@@ -311,24 +311,24 @@ export default function EntityMasterPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
                     {['Entity Name', 'Code', 'Cost Center', 'Locations', 'Description', 'Status', 'Action'].map(
                       (h) => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                          {h}
-                        </th>
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
+                      {h}
+                    </th>
                       )
                     )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.name}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-gray-800">{row.code || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{row.costCenter || '—'}</td>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-b hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.name}</td>
+                    <td className="px-4 py-3 text-sm font-mono text-gray-800">{row.code || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{row.costCenter || '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {(row.locations || []).length > 0 ? (
                           <div className="space-y-0.5">
@@ -343,28 +343,28 @@ export default function EntityMasterPage() {
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{row.description || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            row.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          {row.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => openEdit(row)}
-                          className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                    <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{row.description || '—'}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          row.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => openEdit(row)}
+                        className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             </div>
           )}
 
@@ -413,60 +413,60 @@ export default function EntityMasterPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Entity Name *</label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="e.g. Refex Green Mobility Limited"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Entity Code *</label>
-                  <input
-                    value={form.code}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10),
-                      })
-                    }
-                    placeholder="e.g. RGML"
-                    maxLength={10}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Used in PR/PO numbers: PR-CODE-2025-26-0001</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Cost Center *</label>
-                  <input
-                    value={form.costCenter}
-                    onChange={(e) => setForm({ ...form, costCenter: e.target.value })}
-                    placeholder="e.g. CC-1001"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Description</label>
-                  <textarea
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    rows={2}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Entity Name *</label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Refex Green Mobility Limited"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Entity Code *</label>
+                <input
+                  value={form.code}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10),
+                    })
+                  }
+                  placeholder="e.g. RGML"
+                  maxLength={10}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Used in PR/PO numbers: PR-CODE-2025-26-0001</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Cost Center *</label>
+                <input
+                  value={form.costCenter}
+                  onChange={(e) => setForm({ ...form, costCenter: e.target.value })}
+                  placeholder="e.g. CC-1001"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+                <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    rows={2}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
 
               {/* Locations: dropdown + Add → table */}
               <div className="border border-gray-200 rounded-xl overflow-hidden">

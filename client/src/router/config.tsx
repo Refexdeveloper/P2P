@@ -38,6 +38,7 @@ const POApprovalPage = lazy(() => import('../pages/scm/po-approval/page'));
 const ScmManagerDashboardPage = lazy(() => import('../pages/scm/manager-dashboard/page'));
 const BuyerFinalVerifyPage = lazy(() => import('../pages/scm/buyer-final-verify/page'));
 const GRNPage = lazy(() => import('../pages/grn/page'));
+const AccountsDashboardPage = lazy(() => import('../pages/accounts/dashboard/page'));
 const InvoiceVerificationPage = lazy(() => import('../pages/accounts/invoice-verification/page'));
 const PaymentPage = lazy(() => import('../pages/accounts/payment/page'));
 const SCMPaymentApprovalPage = lazy(() => import('../pages/accounts/scm-payment-approval/page'));
@@ -48,6 +49,7 @@ const VendorInvoicePage = lazy(() => import('../pages/scm/vendor-invoice/page'))
 const VendorQuotationPortalPage = lazy(() => import('../pages/scm/vendor-quotation-portal/page'));
 const VendorSubmitQuotePage = lazy(() => import('../pages/vendor/submit-quote/page'));
 const VendorPoAcceptPage = lazy(() => import('../pages/vendor/po-accept/page'));
+const VendorInvoiceSubmitPage = lazy(() => import('../pages/vendor/invoice-submit/page'));
 const VendorDashboardPage = lazy(() => import('../pages/vendor/dashboard/page'));
 const TechEvaluatorPage = lazy(() => import('../pages/tech-evaluator/rfq-evaluation/page'));
 const UserPermissionsPage = lazy(() => import('../pages/admin/user-permissions/page'));
@@ -90,6 +92,10 @@ const routes: RouteObject[] = [
   {
     path: '/vendor/po-accept/:token',
     element: <VendorPoAcceptPage />,
+  },
+  {
+    path: '/vendor/invoice-submit/:token',
+    element: <VendorInvoiceSubmitPage />,
   },
   {
     path: '/dashboard',
@@ -210,6 +216,10 @@ const routes: RouteObject[] = [
   {
     path: '/grn',
     element: <ProtectedRoute><GRNPage /></ProtectedRoute>
+  },
+  {
+    path: '/accounts/dashboard',
+    element: <ProtectedRoute><AccountsDashboardPage /></ProtectedRoute>
   },
   {
     path: '/accounts/invoice-verification',

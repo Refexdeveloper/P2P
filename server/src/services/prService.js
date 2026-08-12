@@ -54,6 +54,7 @@ function formatPrApprovalStage(stage) {
     PO_SIGNED: 'SCM Manager Sign',
     PO_BUYER_VERIFIED: 'SCM Buyer Final Verify',
     PO_BUYER_REJECTED: 'SCM Buyer Final Verify',
+    PO_BUYER_SENT_BACK: 'SCM Buyer Final Verify',
     PO_REJECTED: 'SCM Manager Approval',
     PO_UPDATED: 'PO Updated',
   };
@@ -1253,6 +1254,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     requestType,
     purchaseType,
     department,
+    entityId,
     priority,
     justification,
     requiredDate,
@@ -1265,6 +1267,11 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
 
   const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ?', [department]);
   if (!deptRows.length) throw new Error('Invalid department');
+
+  let nextEntityId = pr.entity_id;
+  if (entityId !== undefined && entityId !== null && entityId !== '') {
+    nextEntityId = Number(entityId) || null;
+  }
 
   const totalAmount = lineItems.reduce(
     (sum, item) => sum + Number(item.quantity) * Number(item.unitCost ?? item.estimatedCost ?? 0),
@@ -1285,7 +1292,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
   const run = async (db) => {
     await db.query(
       `UPDATE purchase_requests
-       SET title = ?, request_type = ?, purchase_type = ?, department_id = ?, priority = ?, justification = ?,
+       SET title = ?, request_type = ?, purchase_type = ?, department_id = ?, entity_id = ?, priority = ?, justification = ?,
            required_date = ?, currency = ?, total_amount = ?, vendor_selection = ?, updated_at = NOW()
        WHERE id = ?`,
       [
@@ -1293,6 +1300,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
         requestType || pr.request_type,
         normalizedPurchaseType,
         deptRows[0].id,
+        nextEntityId,
         priority || pr.priority,
         justification,
         requiredDate || null,
@@ -1330,6 +1338,133 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     } finally {
       ownConn.release();
     }
+  }
+
+  return getPurchaseRequestById(prId);
+}
+
+/**
+ * Post-RFQ / admin edit of any PR header + line items (not limited to draft/returned).
+ * Used from RFQ Approval detail so approvers can correct PR details before decision.
+ */
+export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
+  const allowed = [
+    'Super Admin',
+    'SCM Manager',
+    'SCM Buyer',
+    'HOD Approver',
+    'PR Manager',
+    'CFO',
+  ];
+  if (!allowed.includes(user.role)) {
+    throw new Error('Unauthorized');
+  }
+
+  const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
+  if (!prRows.length) throw new Error('PR not found');
+  const pr = prRows[0];
+
+  const {
+    title,
+    requestType,
+    purchaseType,
+    department,
+    entityId,
+    priority,
+    justification,
+    requiredDate,
+    vendorSelection,
+    currency,
+    lineItems = [],
+  } = body;
+
+  if (!Array.isArray(lineItems) || !lineItems.length) {
+    throw new Error('At least one line item is required');
+  }
+
+  let departmentId = pr.department_id;
+  if (department) {
+    const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ? LIMIT 1', [
+      department,
+    ]);
+    if (!deptRows.length) throw new Error('Invalid department');
+    departmentId = deptRows[0].id;
+  }
+
+  let nextEntityId = pr.entity_id;
+  if (entityId !== undefined && entityId !== null && entityId !== '') {
+    nextEntityId = Number(entityId) || null;
+  }
+
+  const totalAmount = lineItems.reduce(
+    (sum, item) => sum + Number(item.quantity) * Number(item.unitCost ?? item.estimatedCost ?? 0),
+    0
+  );
+  const prTitle = title || lineItems[0]?.description || `${requestType || pr.request_type} Request`;
+  const vendorMode =
+    vendorSelection === 'own' || vendorSelection === 'scm'
+      ? vendorSelection
+      : pr.vendor_selection === 'own'
+        ? 'own'
+        : 'scm';
+  const normalizedPurchaseType = purchaseType
+    ? normalizePurchaseType(purchaseType)
+    : normalizePurchaseType(pr.purchase_type);
+  const normalizedCurrency = normalizeCurrency(currency ?? pr.currency);
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    await conn.query(
+      `UPDATE purchase_requests
+       SET title = ?, request_type = ?, purchase_type = ?, department_id = ?, entity_id = ?,
+           priority = ?, justification = ?, required_date = ?, currency = ?, total_amount = ?,
+           vendor_selection = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [
+        prTitle,
+        requestType || pr.request_type,
+        normalizedPurchaseType,
+        departmentId,
+        nextEntityId,
+        priority || pr.priority,
+        justification ?? pr.justification,
+        requiredDate || null,
+        normalizedCurrency,
+        totalAmount,
+        vendorMode,
+        prId,
+      ]
+    );
+
+    await conn.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
+    for (const item of lineItems) {
+      const qty = Number(item.quantity);
+      const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
+      await conn.query(
+        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit_cost, total)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [prId, item.category || '', item.description, qty, cost, qty * cost]
+      );
+    }
+
+    await conn.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PR_ADMIN_EDIT', ?, 'updated', ?)`,
+      [
+        prId,
+        user.id,
+        `PR details updated by ${user.name || user.role} (${user.role})`,
+      ]
+    );
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
   }
 
   return getPurchaseRequestById(prId);

@@ -1,16 +1,147 @@
+import { Fragment } from 'react';
 import type { VendorComparisonData } from '../../services/api';
 
 const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+  }).format(amount || 0);
+
+const formatNum = (amount: number) =>
+  new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 0 }).format(amount || 0);
+
+const GST_RATE = 0.18;
+const PRICE_PARAM_IDS = new Set(['quotedPrice']);
+const SCORE_PARAM_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
+
+function isMakeLikeParam(p: { id: string; label: string }) {
+  return /make|brand/i.test(p.id) || /make|brand/i.test(p.label);
+}
+
+function isHdgParam(p: { id: string; label: string }) {
+  return /^(hdg|hdg3)$/i.test(p.id) || /^hdg\b/i.test(p.label);
+}
+
+function isFreightParam(p: { id: string; label: string }) {
+  return /freight/i.test(p.id) || /freight/i.test(p.label);
+}
+
+function paramKeys(p: { id: string; label: string }) {
+  return [p.id, p.label, p.id.toLowerCase(), p.label.replace(/\s+/g, '')];
+}
+
+/** Neutral default table styling — no vendor color coding */
+const NEUTRAL = {
+  bar: 'bg-slate-700',
+  soft: 'bg-slate-50',
+  text: 'text-slate-800',
+  revBg: 'bg-slate-100',
+  revText: 'text-slate-700',
+  pill: 'bg-slate-50 text-slate-700 border-slate-200',
+};
+
+type QuoteLine = {
+  lineItemId?: string | number;
+  description?: string;
+  quantity?: number;
+  quotedUnitPrice?: number;
+  quotedTotal?: number;
+};
+
+type RevColumn = {
+  key: string;
+  vendorId: number;
+  vendorName: string;
+  vendorIndex: number;
+  round: number;
+  revisionLabel: string;
+  isRecommended: boolean;
+  isLatest: boolean;
+  values: Record<string, unknown>;
+  submissionId?: number;
+  quotationFileName?: string;
+};
 
 interface Props {
   data: VendorComparisonData;
   selectedVendorId?: number | null;
   onSelectVendor?: (id: number) => void;
   onPreviewFile?: (submissionId: number, vendorName: string, fileName: string) => void;
-  /** Nested in expand panels — tighter layout, no duplicate PR header card chrome */
   compact?: boolean;
 }
+
+function revisionLabel(round: number) {
+  return `Revision ${String(Math.max(0, round - 1)).padStart(2, '0')}`;
+}
+
+function formatDisplayDate(raw?: string | null) {
+  if (!raw) return '—';
+  // already dd.mm.yyyy or dd/mm/yyyy
+  if (/^\d{2}[.\/]\d{2}[.\/]\d{4}/.test(raw)) return raw.replace(/\//g, '.');
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return String(raw);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+function findQuoteLine(values: Record<string, unknown>, lineId: string, description: string): QuoteLine | null {
+  const lines = (Array.isArray(values.quoteLineItems) ? values.quoteLineItems : []) as QuoteLine[];
+  if (!lines.length) return null;
+  return (
+    lines.find((l) => String(l.lineItemId) === String(lineId)) ||
+    lines.find((l) => String(l.description || '').toLowerCase() === description.toLowerCase()) ||
+    null
+  );
+}
+
+function cellExtra(
+  values: Record<string, unknown>,
+  keys: string[]
+): { kind: 'number' | 'text' | 'empty'; value: number | string } {
+  for (const key of keys) {
+    const raw = values[key];
+    if (raw === undefined || raw === null || raw === '') continue;
+    if (typeof raw === 'number') return { kind: 'number', value: raw };
+    const text = String(raw).trim();
+    if (!text) continue;
+    const asNum = Number(text.replace(/[,₹\s]/g, ''));
+    if (!Number.isNaN(asNum) && /^-?\d/.test(text.replace(/[₹,\s]/g, ''))) {
+      return { kind: 'number', value: asNum };
+    }
+    return { kind: 'text', value: text };
+  }
+  return { kind: 'empty', value: '' };
+}
+
+function statusValueDisplay(extra: { kind: 'number' | 'text' | 'empty'; value: number | string }) {
+  if (extra.kind === 'empty') return { mode: 'empty' as const };
+  if (extra.kind === 'number') {
+    return { mode: 'number' as const, value: Number(extra.value) };
+  }
+  const text = String(extra.value);
+  const lower = text.toLowerCase();
+  if (lower.includes('include')) return { mode: 'included' as const, value: text };
+  if (lower.includes('extra')) return { mode: 'extra' as const, value: text };
+  return { mode: 'text' as const, value: text };
+}
+
+const cardClass =
+  'bg-white rounded-2xl border border-[#E5EAF0] shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden';
+
+const stickyEdge = 'md:shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]';
+
+/** Sticky helpers — mobile: Sr + Description only (~168px); desktop: all 4 (~312px) */
+const stSr = `sticky left-0 z-30 w-10 min-w-[40px] md:w-14 md:min-w-[56px] bg-inherit ${stickyEdge}`;
+const stDesc = `sticky left-10 md:left-14 z-30 w-[128px] min-w-[128px] md:w-[200px] md:min-w-[200px] bg-inherit ${stickyEdge}`;
+const stQty = `hidden md:table-cell md:sticky md:left-[256px] md:z-30 md:w-14 md:min-w-[56px] bg-inherit`;
+const stUom = `hidden md:table-cell md:sticky md:left-[312px] md:z-30 md:w-14 md:min-w-[56px] bg-inherit ${stickyEdge}`;
+/** Landed/GST labels: Desc-only sticky on mobile; span Desc+Qty+UOM on md+ */
+const stLabelMobile = `md:hidden sticky left-10 z-30 w-[128px] min-w-[128px] border-r border-[#E5EAF0] bg-inherit ${stickyEdge}`;
+const stLabelDesktop = `hidden md:table-cell sticky md:left-14 z-30 border-r border-[#E5EAF0] bg-inherit ${stickyEdge}`;
 
 export default function VendorComparisonMatrix({
   data,
@@ -19,349 +150,762 @@ export default function VendorComparisonMatrix({
   onPreviewFile,
   compact = false,
 }: Props) {
-  const { pr, vendors, parameters, matrix, recommendedVendorId, showFullNegotiation } = data;
+  const { pr, vendors, parameters, recommendedVendorId } = data;
   const activeVendorId = selectedVendorId ?? recommendedVendorId;
   const recommendationJustification = String(data.recommendationJustification || '').trim();
+  const lineItems = pr.lineItems || [];
+
   const totalRounds = Math.max(
     Number(data.totalRounds) || 0,
     ...vendors.map((v) => Math.max(Number(v.round) || 0, ...(v.rounds || []).map((r) => Number(r.round) || 0))),
     1
   );
-  const maxRoundsCap = data.maxRounds != null ? Number(data.maxRounds) : null;
-  const roundsLabel =
-    maxRoundsCap != null && maxRoundsCap > 0
-      ? `${totalRounds} of ${maxRoundsCap}`
-      : String(totalRounds);
 
-  const matrixTable = (
-    <div className="overflow-x-auto max-w-full">
-      <table className="w-full min-w-[720px] border-collapse table-fixed">
-        <thead>
-          <tr>
-            <th className="text-left p-2.5 bg-gray-50 border border-gray-200 text-xs font-semibold text-gray-500 uppercase w-44">
-              Parameter
-            </th>
-            {vendors.map((vendor) => (
-              <th
-                key={vendor.id}
-                className={`p-2.5 border border-gray-200 text-center align-top ${
-                  vendor.isRecommended ? 'bg-emerald-50' : 'bg-gray-50'
-                } ${activeVendorId === vendor.id ? 'ring-2 ring-teal-500 ring-inset' : ''}`}
-              >
-                {onSelectVendor && (
-                  <label className="flex items-center justify-center gap-2 cursor-pointer mb-2">
-                    <input
-                      type="radio"
-                      name="vendor-select"
-                      checked={activeVendorId === vendor.id}
-                      onChange={() => onSelectVendor(vendor.id)}
-                      className="text-teal-600"
-                    />
-                    <span className="text-xs text-gray-500">Select</span>
-                  </label>
-                )}
-                <div className="text-sm font-bold text-gray-900 break-words leading-snug">{vendor.name}</div>
-                {vendor.isRecommended && (
-                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
-                    <i className="ri-star-fill text-xs"></i> Recommended
-                  </span>
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {parameters.map((param) => {
-            const row = matrix[param.id];
-            return (
-              <tr key={param.id}>
-                <td className="p-2.5 border border-gray-200 bg-white align-top">
-                  <div className="flex items-start gap-2 text-sm font-medium text-gray-700">
-                    <i className={`${param.icon} text-gray-400 mt-0.5 flex-shrink-0`}></i>
-                    <span className="break-words">{param.label}</span>
-                  </div>
-                </td>
-                {vendors.map((vendor) => {
-                  const cell = row?.values?.[vendor.id];
-                  const isBest = row?.bestVendorId === vendor.id;
-                  return (
-                    <td
-                      key={vendor.id}
-                      className={`p-2.5 border border-gray-200 text-center text-sm break-words align-top ${
-                        vendor.isRecommended ? 'bg-emerald-50/50' : ''
-                      } ${isBest ? 'text-emerald-700 font-semibold' : 'text-gray-800'}`}
-                    >
-                      {cell?.display ?? '—'}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-          <tr>
-            <td className="p-2.5 border border-gray-200 bg-white">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <i className="ri-file-pdf-line text-gray-400"></i>
-                Quotation File
-              </div>
-            </td>
-            {vendors.map((vendor) => (
-              <td
-                key={vendor.id}
-                className={`p-2.5 border border-gray-200 text-center text-sm ${
-                  vendor.isRecommended ? 'bg-emerald-50/50' : ''
-                }`}
-              >
-                {vendor.quotationFileName && vendor.latestSubmissionId && onPreviewFile ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onPreviewFile(vendor.latestSubmissionId!, vendor.name, vendor.quotationFileName!)
-                    }
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-xs font-semibold cursor-pointer"
-                  >
-                    <i className="ri-eye-line"></i>
-                    Preview
-                  </button>
-                ) : (
-                  <span className="text-gray-400">—</span>
-                )}
-              </td>
-            ))}
-          </tr>
-        </tbody>
-      </table>
-    </div>
+  const revColumns: RevColumn[] = [];
+  vendors.forEach((vendor, vendorIndex) => {
+    const rounds = [...(vendor.rounds || [])].sort((a, b) => a.round - b.round);
+    const byRound = new Map<number, (typeof rounds)[number]>();
+    for (const r of rounds) {
+      byRound.set(Number(r.round) || 1, r);
+    }
+    if (byRound.size === 0 && vendor.latestSubmissionId) {
+      const rnum = Number(vendor.round) || 1;
+      byRound.set(rnum, {
+        round: rnum,
+        values: vendor.latest || {},
+        submissionId: vendor.latestSubmissionId,
+        quotationFileName: vendor.quotationFileName || '',
+        submittedAt: '',
+      });
+    }
+    if (byRound.size === 0) return;
+
+    const latestRound = Math.max(...byRound.keys());
+    // Only real quotation rounds for this vendor (e.g. Rev 00 + Rev 01 after Send Back)
+    const vendorRoundNums = [...byRound.keys()].sort((a, b) => a - b);
+
+    for (const roundNum of vendorRoundNums) {
+      const r = byRound.get(roundNum)!;
+      revColumns.push({
+        key: `${vendor.id}-r${roundNum}`,
+        vendorId: vendor.id,
+        vendorName: vendor.name,
+        vendorIndex,
+        round: roundNum,
+        revisionLabel: revisionLabel(roundNum),
+        isRecommended: vendor.isRecommended,
+        isLatest: roundNum === latestRound,
+        values: (r.values || {}) as Record<string, unknown>,
+        submissionId: r.submissionId,
+        quotationFileName: r.quotationFileName,
+      });
+    }
+  });
+
+  const vendorGroups = vendors
+    .map((v, vendorIndex) => ({
+      vendor: v,
+      vendorIndex,
+      theme: NEUTRAL,
+      cols: revColumns.filter((c) => c.vendorId === v.id),
+    }))
+    .filter((g) => g.cols.length > 0);
+
+  const commercialParams = parameters.filter((p) => !PRICE_PARAM_IDS.has(p.id));
+  const paramShowIn = (p: { id: string; label: string; showIn?: string }) =>
+    p.showIn === 'commercial' || p.showIn === 'technical'
+      ? p.showIn
+      : isMakeLikeParam(p) || isHdgParam(p) || isFreightParam(p)
+        ? 'commercial'
+        : 'technical';
+
+  /** RFQ fields assigned to Comparison Sheet (Commercial) */
+  const commercialSheetParams = commercialParams.filter(
+    (p) => !SCORE_PARAM_IDS.has(p.id) && paramShowIn(p) === 'commercial'
   );
+  /** RFQ fields assigned to Technical Specification */
+  const technicalSheetParams = commercialParams.filter(
+    (p) => !SCORE_PARAM_IDS.has(p.id) && paramShowIn(p) === 'technical'
+  );
+  const dynamicRfqLabels = commercialSheetParams;
+  const sheetMakeParams = commercialSheetParams.filter(
+    (p) => isMakeLikeParam(p) || (!isHdgParam(p) && !isFreightParam(p))
+  );
+  const sheetCostParams = commercialSheetParams.filter((p) => isHdgParam(p) || isFreightParam(p));
+  // Any commercial field that isn't make-like and isn't cost goes with make block (before GST)
+  const hdgParam = commercialSheetParams.find(isHdgParam) || null;
+  const freightParam = commercialSheetParams.find(isFreightParam) || null;
 
-  const negotiationTrend =
-    vendors.some((v) => v.rounds.length > 0) &&
-    (() => {
-      const vendorsWithRounds = vendors.filter((v) => v.rounds.length > 0);
-      const maxRounds = Math.max(
-        totalRounds,
-        ...vendorsWithRounds.map((v) => v.rounds.length),
-        1
-      );
-      return (
-        <div className={compact ? 'bg-white border border-gray-200 rounded-xl overflow-hidden' : 'bg-white rounded-xl border border-gray-200 overflow-hidden'}>
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex flex-wrap items-center gap-2 justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <i className="ri-line-chart-line text-teal-600"></i>
-              <p className="text-sm font-semibold text-gray-900">
-                {showFullNegotiation ? 'Price Negotiation Trend' : 'Vendor Quotation Files'}
-              </p>
-              {showFullNegotiation && (
-                <span className="text-xs text-gray-400 ml-1">— how prices changed across rounds</span>
-              )}
-            </div>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-50 border border-teal-200 text-xs font-semibold text-teal-800">
-              <i className="ri-refresh-line"></i>
-              Total Rounds: {roundsLabel}
-            </span>
+  const getLineRateAmount = (col: RevColumn, lineId: string, description: string, prQty: number) => {
+    const ql = findQuoteLine(col.values, lineId, description);
+    if (ql) {
+      const rate = Number(ql.quotedUnitPrice) || 0;
+      const qty = Number(ql.quantity) || prQty || 0;
+      const amount = Number(ql.quotedTotal) || rate * qty;
+      return { rate, amount, qty };
+    }
+    if (lineItems.length === 1) {
+      const amount = Number(col.values.quotedPrice) || 0;
+      const qty = prQty || 1;
+      return { rate: qty ? amount / qty : amount, amount, qty };
+    }
+    return { rate: 0, amount: 0, qty: prQty };
+  };
+
+  const colTotals = revColumns.map((col) => {
+    let material = 0;
+    if (lineItems.length) {
+      material = lineItems.reduce((sum, li) => {
+        const { amount } = getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
+        return sum + amount;
+      }, 0);
+    } else {
+      material = Number(col.values.quotedPrice) || 0;
+    }
+    const gst = material * GST_RATE;
+    const hdg = hdgParam
+      ? cellExtra(col.values, paramKeys(hdgParam))
+      : ({ kind: 'empty', value: '' } as const);
+    const freight = freightParam
+      ? cellExtra(col.values, paramKeys(freightParam))
+      : ({ kind: 'empty', value: '' } as const);
+    const hdgNum = hdg.kind === 'number' ? Number(hdg.value) : 0;
+    const freightNum = freight.kind === 'number' ? Number(freight.value) : 0;
+    const landed = material + gst + hdgNum + freightNum;
+    return { material, gst, hdg, freight, landed };
+  });
+
+  const bestLanded = colTotals
+    .map((t) => t.landed)
+    .filter((n) => n > 0)
+    .reduce((min, n) => (min === null || n < min ? n : min), null as number | null);
+
+  const displayLines =
+    lineItems.length > 0
+      ? lineItems
+      : [
+          {
+            id: 'total',
+            description: 'Quoted total',
+            category: '',
+            quantity: 1,
+            uom: 'Lot',
+            unitCost: 0,
+            total: 0,
+          },
+        ];
+
+  const latestRevNo = String(Math.max(0, totalRounds - 1)).padStart(2, '0');
+  const latestQuoteDate = vendors
+    .flatMap((v) => v.rounds || [])
+    .map((r) => r.submittedAt)
+    .filter(Boolean)
+    .sort()
+    .slice(-1)[0];
+  const historyDate =
+    pr.approvalHistory?.[pr.approvalHistory.length - 1]?.date || pr.approvalHistory?.[0]?.date;
+  const statementDate = formatDisplayDate(latestQuoteDate || historyDate || new Date().toISOString());
+  const siteLabel = pr.entityName || pr.department || '—';
+  const siteDate = formatDisplayDate(historyDate || latestQuoteDate || new Date().toISOString());
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <div className={`min-w-0 max-w-full ${compact ? 'space-y-4' : 'space-y-5'} print:space-y-4`}>
+      {/* Recommendation (existing) */}
+      {(data.recommendedVendorName || recommendationJustification) && !compact && (
+        <div className={`${cardClass} border-emerald-200`}>
+          <div className="px-5 py-2.5 border-b border-emerald-100 bg-emerald-50/80 flex flex-wrap items-center gap-2">
+            <i className="ri-award-line text-emerald-700"></i>
+            <p className="text-sm font-bold text-[#12284A]">
+              Recommended: {data.recommendedVendorName || '—'}
+            </p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[200px]">
-                    Vendor
-                  </th>
-                  {Array.from({ length: maxRounds }, (_, i) => (
+          {recommendationJustification ? (
+            <p className="px-5 py-3 text-sm text-[#64748B] whitespace-pre-wrap">{recommendationJustification}</p>
+          ) : null}
+        </div>
+      )}
+
+      {/* ── HEADER ── */}
+      {!compact && (
+        <section className={`${cardClass} p-5 sm:p-6`}>
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[22px] sm:text-[28px] lg:text-[30px] font-bold text-[#12284A] tracking-tight leading-snug">
+                Comparative Statement for {pr.title || pr.prNumber}
+              </h1>
+              <p className="text-xs text-[#64748B] mt-1">
+                PR: <span className="font-semibold text-[#12284A]">{pr.prNumber}</span>
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-stretch gap-3 shrink-0">
+              <div className="min-w-[96px] rounded-xl bg-[#EEF2FF] border border-[#E0E7FF] px-4 py-3">
+                <p className="text-[11px] font-medium text-[#64748B]">Rev. No</p>
+                <p className="text-2xl font-bold text-[#12284A] mt-0.5 leading-none">{latestRevNo}</p>
+              </div>
+              <div className="min-w-[120px] rounded-xl bg-[#E6F7F5] border border-[#C7EFE8] px-4 py-3">
+                <p className="text-[11px] font-medium text-[#64748B]">Date</p>
+                <p className="text-lg font-bold text-[#12284A] mt-0.5 leading-tight">{statementDate}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#6C4CCF] text-[#6C4CCF] text-sm font-semibold hover:bg-[#F3F0FF] transition-colors print:hidden"
+              >
+                <i className="ri-file-pdf-2-line text-base"></i>
+                Download PDF
+              </button>
+            </div>
+          </div>
+
+          {/* Site details bar */}
+          <div className="mt-5 pt-4 border-t border-[#E5EAF0] flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-8 h-8 rounded-full bg-[#EEF2FF] text-[#6C4CCF] flex items-center justify-center shrink-0">
+                <i className="ri-map-pin-line"></i>
+              </span>
+              <p className="text-[#12284A]">
+                <span className="font-bold">Site Details :</span>{' '}
+                <span className="text-[#334155]">{siteLabel}</span>
+              </p>
+            </div>
+            <div className="hidden sm:block w-px h-6 bg-[#E5EAF0]" />
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-full bg-[#E6F7F5] text-[#008F83] flex items-center justify-center shrink-0">
+                <i className="ri-calendar-line"></i>
+              </span>
+              <p className="text-[#12284A]">
+                <span className="font-bold">Date :</span>{' '}
+                <span className="text-[#334155]">{siteDate.replace(/\./g, '/')}</span>
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── COMMERCIAL COMPARISON ── */}
+      <section className={cardClass} aria-label="Commercial comparison">
+        <div className="px-4 sm:px-5 py-4 border-b border-[#E5EAF0]">
+          <p className="text-sm font-semibold text-[#64748B]">Quotation of:</p>
+          <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Commercial Comparison</h2>
+          {dynamicRfqLabels.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {dynamicRfqLabels.map((p) => (
+                <span
+                  key={`lbl-${p.id}`}
+                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                    isMakeLikeParam(p)
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-slate-50 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  {p.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        {revColumns.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-[#EEF2FF] text-[#6C4CCF] flex items-center justify-center mx-auto mb-3">
+              <i className="ri-inbox-line text-2xl"></i>
+            </div>
+            <p className="text-sm font-semibold text-[#12284A]">No vendor quotations available</p>
+            <p className="text-xs text-[#64748B] mt-1">Invite vendors and collect quotes to build this statement.</p>
+          </div>
+        ) : (
+          <div className="relative max-w-full">
+            <p className="md:hidden px-3 py-2 text-[11px] font-medium text-slate-500 bg-slate-50 border-b border-[#E5EAF0]">
+              Swipe sideways to compare vendors →
+            </p>
+            <div className="overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch]">
+              <table className="border-separate border-spacing-0 text-sm w-max min-w-full">
+                <thead>
+                  {/* Row 1: revision labels */}
+                  <tr>
                     <th
-                      key={i}
-                      className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[160px]"
+                      className={`${stSr} z-40 px-1 py-3 border-b border-[#E5EAF0] bg-slate-100 text-slate-700 text-center text-[10px] md:text-[12px] font-bold uppercase`}
                     >
-                      Quotation Round {i + 1}
+                      Sr
+                    </th>
+                    <th
+                      className={`${stDesc} z-40 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-slate-100 text-slate-700 text-left text-[10px] md:text-[12px] font-bold uppercase`}
+                    >
+                      Description
+                    </th>
+                    <th
+                      className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-slate-100 text-slate-700 text-center text-[12px] font-bold uppercase`}
+                    >
+                      Qty
+                    </th>
+                    <th
+                      className={`${stUom} px-2 py-3 border-b border-r border-[#E5EAF0] bg-slate-100 text-slate-700 text-center text-[12px] font-bold uppercase`}
+                    >
+                      UOM
+                    </th>
+                    {revColumns.map((col) => {
+                      const isRecRev = col.isRecommended && col.isLatest;
+                      return (
+                        <th
+                          key={`${col.key}-rev`}
+                          colSpan={2}
+                          className={`px-2 py-2.5 border-b border-l text-center text-xs font-bold whitespace-nowrap ${
+                            isRecRev
+                              ? 'bg-emerald-600 text-white border-emerald-700'
+                              : 'bg-slate-100 text-slate-700 border-[#E5EAF0]'
+                          }`}
+                        >
+                          <span className="inline-flex flex-col items-center gap-1">
+                            <span>{col.revisionLabel}</span>
+                            {isRecRev && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-bold uppercase tracking-wide">
+                                <i className="ri-checkbox-circle-fill text-[10px]"></i>
+                                Recommended
+                              </span>
+                            )}
+                          </span>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                  {/* Row 2: vendor names */}
+                  <tr>
+                    <th className={`${stSr} z-40 bg-slate-100 border-b border-[#E5EAF0]`} />
+                    <th className={`${stDesc} z-40 bg-slate-100 border-b border-[#E5EAF0]`} />
+                    <th className={`${stQty} bg-slate-100 border-b border-[#E5EAF0]`} />
+                    <th className={`${stUom} bg-slate-100 border-b border-r border-[#E5EAF0]`} />
+                    {revColumns.map((col) => {
+                      const isRecRev = col.isRecommended && col.isLatest;
+                      return (
+                        <th
+                          key={`${col.key}-vendor`}
+                          colSpan={2}
+                          className={`px-2 py-3 border-b border-l text-center text-xs sm:text-sm font-bold ${
+                            isRecRev
+                              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                              : 'bg-slate-200 text-slate-800 border-[#E5EAF0]'
+                          }`}
+                        >
+                          {onSelectVendor ? (
+                            <label className="inline-flex items-center justify-center gap-1.5 cursor-pointer max-w-full">
+                              <input
+                                type="radio"
+                                name="vendor-select"
+                                checked={activeVendorId === col.vendorId}
+                                onChange={() => onSelectVendor(col.vendorId)}
+                                className="accent-emerald-600 shrink-0"
+                              />
+                              <span className="truncate max-w-[120px] sm:max-w-[160px]" title={col.vendorName}>
+                                {col.vendorName}
+                              </span>
+                            </label>
+                          ) : (
+                            <span className="truncate inline-block max-w-[120px] sm:max-w-[160px]" title={col.vendorName}>
+                              {col.vendorName}
+                            </span>
+                          )}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                  {/* Row 3: Rate / Amount */}
+                  <tr>
+                    <th className={`${stSr} z-40 bg-white border-b border-[#E5EAF0]`} />
+                    <th className={`${stDesc} z-40 bg-white border-b border-[#E5EAF0]`} />
+                    <th className={`${stQty} bg-white border-b border-[#E5EAF0]`} />
+                    <th className={`${stUom} bg-white border-b border-r border-[#E5EAF0]`} />
+                    {revColumns.map((col) => (
+                      <Fragment key={`${col.key}-ra`}>
+                        <th className="px-2 py-2 border-b border-l border-[#E5EAF0] bg-white text-center text-[11px] font-bold text-[#12284A] uppercase min-w-[88px] sm:min-w-[100px]">
+                          Rate
+                        </th>
+                        <th className="px-2 py-2 border-b border-[#E5EAF0] bg-white text-center text-[11px] font-bold text-[#12284A] uppercase min-w-[96px] sm:min-w-[110px]">
+                          Amount
+                        </th>
+                      </Fragment>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {displayLines.map((li, lineIdx) => (
+                    <tr key={String(li.id)} className="hover:bg-[#F8FAFC]">
+                      <td
+                        className={`${stSr} z-10 px-1 py-3.5 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#12284A] text-xs md:text-sm`}
+                      >
+                        {lineIdx + 1}
+                      </td>
+                      <td className={`${stDesc} z-10 px-2 md:px-3 py-3.5 border-b border-[#E5EAF0] bg-white`}>
+                        <p className="font-bold text-[#12284A] text-[13px] md:text-[15px] leading-snug break-words">
+                          {li.description}
+                        </p>
+                        {li.category ? (
+                          <p className="text-[11px] md:text-xs text-[#64748B] mt-0.5 truncate">{li.category}</p>
+                        ) : null}
+                        <p className="md:hidden text-[11px] text-slate-500 mt-1 tabular-nums">
+                          Qty {li.quantity} · {li.uom || 'Nos'}
+                        </p>
+                      </td>
+                      <td
+                        className={`${stQty} px-2 py-3.5 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#12284A]`}
+                      >
+                        {li.quantity}
+                      </td>
+                      <td
+                        className={`${stUom} px-2 py-3.5 border-b border-r border-[#E5EAF0] bg-white text-center text-xs font-medium text-[#64748B]`}
+                      >
+                        {li.uom || 'Nos'}
+                      </td>
+                      {revColumns.map((col) => {
+                        const { rate, amount } =
+                          String(li.id) === 'total'
+                            ? {
+                                rate: Number(col.values.quotedPrice) || 0,
+                                amount: Number(col.values.quotedPrice) || 0,
+                              }
+                            : getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
+                        return (
+                          <Fragment key={`${col.key}-${li.id}`}>
+                            <td className="px-2 sm:px-3 py-3.5 border-b border-l border-[#E5EAF0] text-right tabular-nums text-[#334155] text-xs sm:text-sm whitespace-nowrap">
+                              {rate > 0 ? `₹${formatNum(rate)}` : '—'}
+                            </td>
+                            <td className="px-2 sm:px-3 py-3.5 border-b border-[#E5EAF0] text-right font-semibold tabular-nums text-[#12284A] text-xs sm:text-sm whitespace-nowrap">
+                              {amount > 0 ? `₹${formatNum(amount)}` : '—'}
+                            </td>
+                          </Fragment>
+                        );
+                      })}
+                    </tr>
+                  ))}
+
+                  {/* Dynamic Make (RFQ Entry) — above GST */}
+                  {sheetMakeParams.map((param) => (
+                    <tr key={`info-${param.id}`} className="hover:bg-[#F8FAFC]">
+                      <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-white`} />
+                      <td
+                        className={`${stLabelMobile} px-2 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A] text-xs`}
+                      >
+                        {param.label}
+                      </td>
+                      <td
+                        colSpan={3}
+                        className={`${stLabelDesktop} px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A]`}
+                      >
+                        {param.label}
+                      </td>
+                      {revColumns.map((col) => {
+                        const raw =
+                          col.values[param.id] ??
+                          col.values[param.label] ??
+                          col.values.make ??
+                          col.values.Make ??
+                          col.values.brand ??
+                          col.values.Brand;
+                        const display =
+                          raw === undefined || raw === null || raw === ''
+                            ? '—'
+                            : param.type === 'boolean'
+                              ? raw
+                                ? 'Yes'
+                                : 'No'
+                              : String(raw);
+                        return (
+                          <Fragment key={`${col.key}-info-${param.id}`}>
+                            <td className="px-2 sm:px-3 py-3 border-b border-l border-[#E5EAF0] text-right text-slate-300 tabular-nums">
+                              —
+                            </td>
+                            <td className="px-2 sm:px-3 py-3 border-b border-[#E5EAF0] text-right font-semibold text-[#12284A] text-xs sm:text-sm">
+                              {display}
+                            </td>
+                          </Fragment>
+                        );
+                      })}
+                    </tr>
+                  ))}
+
+                  {/* GST */}
+                  <tr className="bg-slate-50">
+                    <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-slate-50`} />
+                    <td
+                      className={`${stLabelMobile} px-2 py-3 border-b border-[#E5EAF0] bg-slate-50 font-bold text-slate-800 text-xs`}
+                    >
+                      Add: GST {(GST_RATE * 100).toFixed(0)}%
+                    </td>
+                    <td
+                      colSpan={3}
+                      className={`${stLabelDesktop} px-3 py-3 border-b border-[#E5EAF0] bg-slate-50 font-bold text-slate-800`}
+                    >
+                      Add: GST {(GST_RATE * 100).toFixed(0)}%
+                    </td>
+                    {colTotals.map((t, i) => (
+                      <Fragment key={`gst-${i}`}>
+                        <td className="px-2 sm:px-3 py-3 border-b border-l border-[#E5EAF0] bg-slate-50 text-right text-slate-300 tabular-nums">
+                          —
+                        </td>
+                        <td className="px-2 sm:px-3 py-3 border-b border-[#E5EAF0] bg-slate-50 text-right font-bold tabular-nums text-slate-800 text-xs sm:text-sm whitespace-nowrap">
+                          {t.material > 0 ? `₹${formatNum(t.gst)}` : '—'}
+                        </td>
+                      </Fragment>
+                    ))}
+                  </tr>
+
+                  {/* Dynamic HDG / Freight (RFQ Entry only) */}
+                  {sheetCostParams.map((param) => (
+                    <tr key={`cost-${param.id}`} className="hover:bg-[#F8FAFC]">
+                      <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-white`} />
+                      <td
+                        className={`${stLabelMobile} px-2 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A] text-xs`}
+                      >
+                        {param.label}
+                      </td>
+                      <td
+                        colSpan={3}
+                        className={`${stLabelDesktop} px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A]`}
+                      >
+                        {param.label}
+                      </td>
+                      {revColumns.map((col) => {
+                        const extra = cellExtra(col.values, paramKeys(param));
+                        const d = statusValueDisplay(extra);
+                        const isFreight = isFreightParam(param);
+                        return (
+                          <Fragment key={`${col.key}-cost-${param.id}`}>
+                            <td className="px-2 sm:px-3 py-3 border-b border-l border-[#E5EAF0] text-right text-slate-300 tabular-nums">
+                              —
+                            </td>
+                            <td className="px-2 sm:px-3 py-3 border-b border-[#E5EAF0] text-right align-middle">
+                              {d.mode === 'number' ? (
+                                isFreight ? (
+                                  <span className="inline-flex flex-col items-end gap-0.5">
+                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-slate-100 text-slate-700">
+                                      Extra
+                                    </span>
+                                    <span className="font-semibold tabular-nums text-slate-800 text-xs sm:text-sm whitespace-nowrap">
+                                      ₹{formatNum(d.value)}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="font-semibold tabular-nums text-xs sm:text-sm whitespace-nowrap">
+                                    ₹{formatNum(d.value)}
+                                  </span>
+                                )
+                              ) : d.mode === 'included' || d.mode === 'extra' || d.mode === 'text' ? (
+                                <span className="inline-flex max-w-full px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-slate-100 text-slate-700 truncate">
+                                  {d.value}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 tabular-nums">—</span>
+                              )}
+                            </td>
+                          </Fragment>
+                        );
+                      })}
+                    </tr>
+                  ))}
+
+                  {/* Landed Cost */}
+                  <tr>
+                    <td className={`${stSr} z-10 px-1 py-4 border-b border-[#E5EAF0] bg-[#F8FAFC]`} />
+                    <td className={`${stLabelMobile} px-2 py-4 border-b border-[#E5EAF0] bg-[#F8FAFC]`}>
+                      <span className="font-bold text-[#12284A] text-sm">Landed Cost</span>
+                    </td>
+                    <td colSpan={3} className={`${stLabelDesktop} px-3 py-4 border-b border-[#E5EAF0] bg-[#F8FAFC]`}>
+                      <span className="font-bold text-[#12284A] text-base">Landed Cost</span>
+                    </td>
+                    {colTotals.map((t, i) => {
+                      const col = revColumns[i];
+                      const isBest = bestLanded != null && t.landed > 0 && t.landed === bestLanded;
+                      const isRecRev = Boolean(col?.isRecommended && col?.isLatest);
+                      return (
+                        <Fragment key={`landed-${i}`}>
+                          <td
+                            className={`px-2 sm:px-3 py-4 border-b border-l text-right text-slate-300 tabular-nums ${
+                              isRecRev ? 'bg-emerald-50/80 border-emerald-100' : 'bg-[#F8FAFC] border-[#E5EAF0]'
+                            }`}
+                          >
+                            —
+                          </td>
+                          <td
+                            className={`px-2 sm:px-3 py-4 border-b text-right align-middle ${
+                              isRecRev ? 'bg-emerald-50/80 border-emerald-100' : 'bg-[#F8FAFC] border-[#E5EAF0]'
+                            }`}
+                          >
+                            <div className="flex flex-col items-end gap-1">
+                              <span
+                                className={`text-sm sm:text-base font-bold tabular-nums whitespace-nowrap leading-none ${
+                                  isRecRev ? 'text-emerald-800' : 'text-[#12284A]'
+                                }`}
+                              >
+                                {t.landed > 0 ? `₹${formatNum(t.landed)}` : '—'}
+                              </span>
+                              {(isRecRev || isBest) && (
+                                <div className="flex flex-wrap items-center justify-end gap-1">
+                                  {isRecRev && (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-600 border border-emerald-700 text-[10px] font-bold text-white whitespace-nowrap">
+                                      <i className="ri-checkbox-circle-fill text-[10px]"></i>
+                                      Recommended
+                                    </span>
+                                  )}
+                                  {isBest && (
+                                    <span
+                                      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${
+                                        isRecRev
+                                          ? 'bg-white border border-emerald-300 text-emerald-800'
+                                          : 'bg-slate-200 border border-slate-300 text-slate-700'
+                                      }`}
+                                    >
+                                      <i
+                                        className={`ri-star-fill text-[10px] ${
+                                          isRecRev ? 'text-emerald-600' : 'text-slate-500'
+                                        }`}
+                                      ></i>
+                                      Best
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </Fragment>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── TECHNICAL SPECIFICATION ── */}
+      {vendorGroups.length > 0 && (
+        <section className={cardClass} aria-label="Technical specification">
+          <div className="px-5 py-4 border-b border-[#E5EAF0]">
+            <p className="text-sm font-semibold text-[#64748B]">Quotation of:</p>
+            <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Technical Specification</h2>
+          </div>
+
+          <div className="overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] max-w-full">
+            <table className="border-separate border-spacing-0 text-sm w-max min-w-full">
+              <thead>
+                <tr>
+                  <th
+                    className={`sticky left-0 z-20 w-[132px] min-w-[132px] md:w-[220px] md:min-w-[220px] px-2.5 md:px-4 py-3.5 border-b border-r border-[#E5EAF0] bg-slate-100 text-slate-700 text-left text-[10px] md:text-[12px] font-bold uppercase ${stickyEdge}`}
+                  >
+                    Technical Specification
+                  </th>
+                  {vendorGroups.map(({ vendor }) => (
+                    <th
+                      key={`tech-h-${vendor.id}`}
+                      className="px-3 md:px-4 py-3.5 border-b border-l border-[#E5EAF0] text-center text-slate-800 text-xs md:text-sm font-bold min-w-[140px] md:min-w-[160px] bg-slate-200"
+                    >
+                      <span className="truncate inline-block max-w-[140px] md:max-w-[180px]" title={vendor.name}>
+                        {vendor.name}
+                      </span>
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {vendorsWithRounds.map((vendor) => {
-                  const rounds = [...vendor.rounds].sort((a, b) => a.round - b.round);
-                  const last = rounds[rounds.length - 1];
-                  const lastPrice = Number(last?.values?.quotedPrice || 0);
-                  return (
-                    <tr key={vendor.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-4 align-top">
-                        <div className="flex items-start gap-2">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900">{vendor.name}</p>
-                            {vendor.isRecommended && (
-                              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
-                                <i className="ri-star-fill text-xs"></i> Recommended
-                              </span>
-                            )}
-                            <p className="text-xs text-gray-400 mt-1">
-                              {rounds.length} round{rounds.length !== 1 ? 's' : ''}
-                            </p>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              Last quotation: {lastPrice ? formatCurrency(lastPrice) : '—'}
-                            </p>
-                            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[180px]" title={last?.quotationFileName || undefined}>
-                              Last file: {last?.quotationFileName || '—'}
-                            </p>
-                          </div>
-                        </div>
+              <tbody>
+                {technicalSheetParams.map((param) => (
+                  <tr key={param.id} className="hover:bg-[#F8FAFC]">
+                    <td
+                      className={`sticky left-0 z-10 w-[132px] min-w-[132px] md:w-[220px] md:min-w-[220px] px-2.5 md:px-4 py-3.5 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#12284A] text-xs md:text-sm break-words ${stickyEdge}`}
+                    >
+                      {param.label}
+                    </td>
+                    {vendorGroups.map(({ vendor, cols }) => {
+                      const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
+                      const raw =
+                        latestCol?.values?.[param.id] ??
+                        latestCol?.values?.[param.label] ??
+                        (isMakeLikeParam(param)
+                          ? latestCol?.values?.make ??
+                            latestCol?.values?.Make ??
+                            latestCol?.values?.brand ??
+                            latestCol?.values?.Brand
+                          : undefined);
+                      const display =
+                        raw === undefined || raw === null || raw === ''
+                          ? '—'
+                          : param.type === 'boolean'
+                            ? raw
+                              ? 'Yes'
+                              : 'No'
+                            : String(raw);
+                      return (
+                        <td
+                          key={`${vendor.id}-${param.id}`}
+                          className="px-4 py-3.5 border-b border-l border-[#E5EAF0] text-center text-[#334155] whitespace-pre-wrap"
+                        >
+                          {isMakeLikeParam(param) ? (
+                            <span className="font-bold text-slate-800">{display}</span>
+                          ) : (
+                            display
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+
+                <tr>
+                  <td
+                    className={`sticky left-0 z-10 w-[132px] min-w-[132px] md:w-[220px] md:min-w-[220px] px-2.5 md:px-4 py-3.5 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#12284A] text-xs md:text-sm ${stickyEdge}`}
+                  >
+                    Quotation File
+                  </td>
+                  {vendorGroups.map(({ vendor, cols }) => {
+                    const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
+                    return (
+                      <td
+                        key={`file-${vendor.id}`}
+                        className="px-4 py-3.5 border-b border-l border-[#E5EAF0] text-center"
+                      >
+                        {latestCol?.quotationFileName && latestCol.submissionId && onPreviewFile ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onPreviewFile(
+                                latestCol.submissionId!,
+                                vendor.name,
+                                latestCol.quotationFileName!
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5EAF0] text-xs font-semibold text-[#1769E0] hover:bg-[#EFF6FF] cursor-pointer print:hidden"
+                          >
+                            <i className="ri-eye-line"></i>
+                            Preview
+                          </button>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
-                      {Array.from({ length: maxRounds }, (_, i) => {
-                        const round = rounds[i];
-                        if (!round) {
-                          return (
-                            <td key={i} className="px-4 py-4 text-center text-gray-300 text-sm align-top">
-                              —
-                            </td>
-                          );
-                        }
-                        const price = Number(round.values?.quotedPrice || 0);
-                        const prev = rounds[i - 1];
-                        const prevPrice = prev ? Number(prev.values?.quotedPrice || 0) : 0;
-                        const change = prev && prevPrice ? price - prevPrice : 0;
-                        const changePct = prev && prevPrice ? ((change / prevPrice) * 100).toFixed(1) : null;
-                        const isLast = i === rounds.length - 1;
-                        return (
-                          <td key={i} className={`px-4 py-4 text-center align-top ${isLast ? 'bg-teal-50/60' : ''}`}>
-                            <div className="inline-flex flex-col items-center gap-1.5 min-w-[120px]">
-                              <div>
-                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Price</p>
-                                <p className={`text-sm font-bold ${isLast ? 'text-teal-700' : 'text-gray-900'}`}>
-                                  {price ? formatCurrency(price) : '—'}
-                                </p>
-                                {changePct !== null && (
-                                  <p className={`text-xs font-semibold mt-0.5 ${change < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                                    {change < 0 ? '▼' : '▲'} {Math.abs(Number(changePct))}%
-                                  </p>
-                                )}
-                              </div>
-                              <div className="w-full pt-1.5 border-t border-gray-100">
-                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">File</p>
-                                {round.quotationFileName ? (
-                                  onPreviewFile ? (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        onPreviewFile(round.submissionId, vendor.name, round.quotationFileName)
-                                      }
-                                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 hover:bg-red-100 max-w-[150px] cursor-pointer"
-                                      title={round.quotationFileName}
-                                    >
-                                      <i className="ri-file-pdf-2-line text-red-500 text-sm flex-shrink-0"></i>
-                                      <span className="text-xs font-medium text-teal-700 truncate">
-                                        {round.quotationFileName}
-                                      </span>
-                                      <i className="ri-eye-line text-teal-600 text-xs flex-shrink-0"></i>
-                                    </button>
-                                  ) : (
-                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-100 max-w-[150px]">
-                                      <i className="ri-file-pdf-2-line text-red-500 text-sm flex-shrink-0"></i>
-                                      <span className="text-xs font-medium text-gray-700 truncate" title={round.quotationFileName}>
-                                        {round.quotationFileName}
-                                      </span>
-                                    </div>
-                                  )
-                                ) : (
-                                  <span className="text-xs text-gray-300">—</span>
-                                )}
-                              </div>
-                              {round.submittedAt && (
-                                <p className="text-[10px] text-gray-400 mt-0.5">{round.submittedAt}</p>
-                              )}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
+                    );
+                  })}
+                </tr>
               </tbody>
             </table>
           </div>
-        </div>
-      );
-    })();
-
-  return (
-    <div className={compact ? 'space-y-4' : 'space-y-6'}>
-      {(data.recommendedVendorName || recommendationJustification) && !compact && (
-        <div className="rounded-xl border-2 border-emerald-300 bg-gradient-to-r from-emerald-50 to-teal-50 overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-emerald-200 bg-emerald-100/70 flex flex-wrap items-center gap-2">
-            <i className="ri-star-fill text-emerald-700"></i>
-            <span className="text-xs font-bold uppercase tracking-wide text-emerald-800">
-              Recommendation Justification
-            </span>
-            {data.recommendedVendorName && (
-              <span className="text-sm font-semibold text-emerald-950">
-                — {data.recommendedVendorName}
-              </span>
-            )}
-          </div>
-          <div className="px-4 py-3">
-            {recommendationJustification ? (
-              <p className="text-sm text-emerald-950 leading-relaxed whitespace-pre-wrap">
-                {recommendationJustification}
-              </p>
-            ) : (
-              <p className="text-sm text-emerald-700/80 italic">
-                No justification was provided with this recommendation.
-              </p>
-            )}
-          </div>
-        </div>
+        </section>
       )}
 
-      {negotiationTrend}
-
-      <div className={compact ? 'bg-white' : 'bg-white rounded-xl border border-gray-200 p-6'}>
-        {!compact && (
-          <div className="flex items-start gap-3 mb-6">
-            <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <i className="ri-file-list-3-line text-teal-600 text-xl"></i>
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-lg font-bold text-gray-900">Vendor Comparison</h2>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-gray-600">
-                <span>
-                  <strong>Entity:</strong>{' '}
-                  {pr.entityName || '—'}
-                  {pr.entityCode ? ` (${pr.entityCode})` : ''}
-                </span>
-                <span><strong>Department:</strong> {pr.department}</span>
-                <span><strong>Request Type:</strong> {pr.requestType}</span>
-                <span><strong>Estimated Budget:</strong> {formatCurrency(pr.estimatedBudget)}</span>
-                <span><strong>Total Vendors:</strong> {data.vendorCount} vendors</span>
-                <span><strong>Total Rounds:</strong> {roundsLabel}</span>
-                {data.recommendedVendorName && (
-                  <span><strong>Recommended:</strong> {data.recommendedVendorName}</span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        {compact && (
-          <div className="space-y-2 mb-3">
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
-              <span>
-                <strong>Entity:</strong> {pr.entityName || '—'}
-                {pr.entityCode ? ` (${pr.entityCode})` : ''}
-              </span>
-              <span><strong>Department:</strong> {pr.department}</span>
-              <span><strong>Budget:</strong> {formatCurrency(pr.estimatedBudget)}</span>
-              <span><strong>Vendors:</strong> {data.vendorCount}</span>
-              <span><strong>Total Rounds:</strong> {roundsLabel}</span>
-            </div>
-            {recommendationJustification && (
-              <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2">
-                <p className="text-[11px] font-semibold text-teal-800 uppercase tracking-wide mb-0.5">
-                  Recommendation Justification
-                </p>
-                <p className="text-xs text-teal-950 whitespace-pre-wrap">{recommendationJustification}</p>
-              </div>
-            )}
-          </div>
-        )}
-        {matrixTable}
-      </div>
+      {/* ── NOTE ── */}
+      {!compact && (
+        <div className="rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] px-5 py-4 flex items-start gap-3">
+          <span className="w-8 h-8 rounded-full bg-[#1769E0] text-white flex items-center justify-center shrink-0">
+            <i className="ri-information-line"></i>
+          </span>
+          <p className="text-sm text-[#334155] leading-relaxed">
+            <span className="font-bold text-[#12284A]">Note:</span> The comparative statement is based on
+            the technical &amp; commercial offers received from different vendors.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

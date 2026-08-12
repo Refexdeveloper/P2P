@@ -4,7 +4,10 @@ import InvoiceExpandedRow from './InvoiceExpandedRow';
 
 interface Props {
   invoices: InvoiceData[];
-  onAction: (type: 'approve' | 'hold' | 'reject' | 'manager_approve', invoice: InvoiceData) => void;
+  onAction: (
+    type: 'approve' | 'hold' | 'reject' | 'manager_approve' | 'upload',
+    invoice: InvoiceData
+  ) => void;
 }
 
 export default function InvoiceTable({ invoices, onAction }: Props) {
@@ -18,6 +21,7 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
       'Approved for Payment': 'bg-teal-100 text-teal-700',
       'On Hold': 'bg-yellow-100 text-yellow-700',
       'Pending Manager Approval': 'bg-blue-100 text-blue-700',
+      Paid: 'bg-emerald-100 text-emerald-700',
     };
     return styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-700';
   };
@@ -117,7 +121,19 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                    {invoice.status === 'Matched' && (
+                    {(invoice.statusRaw === 'awaiting_upload' || !invoice.hasInvoiceFile) &&
+                      invoice.status !== 'Approved for Payment' &&
+                      invoice.status !== 'Paid' && (
+                        <button
+                          onClick={() => onAction('upload', invoice)}
+                          className="px-3 py-1.5 bg-amber-600 text-white text-xs font-semibold rounded-lg hover:bg-amber-700 whitespace-nowrap"
+                          title="Upload invoice"
+                        >
+                          <i className="ri-upload-2-line mr-1"></i> Add Invoice
+                        </button>
+                      )}
+                    {(invoice.status === 'Pending Verification' || invoice.status === 'Matched') &&
+                      invoice.hasInvoiceFile && (
                       <>
                         <button
                           onClick={() => onAction('approve', invoice)}

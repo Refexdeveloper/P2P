@@ -205,6 +205,13 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-truck-line',
     group: 'SCM',
   },
+  'nav.accounts_dashboard': {
+    code: 'nav.accounts_dashboard',
+    label: 'Accounts Dashboard',
+    path: '/accounts/dashboard',
+    icon: 'ri-dashboard-line',
+    group: 'Accounts',
+  },
   'nav.invoice_verification': {
     code: 'nav.invoice_verification',
     label: 'Invoice Verification',
@@ -329,12 +336,23 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.po_letterhead_master',
     'nav.letterhead_master',
   ],
-  'Accounts Payable': ['nav.invoice_verification', 'nav.payment'],
-  'Accounts Manager': ['nav.invoice_verification', 'nav.payment', 'nav.payment_authorization'],
+  'Accounts Payable': ['nav.accounts_dashboard', 'nav.invoice_verification', 'nav.payment'],
+  'Accounts Manager': [
+    'nav.accounts_dashboard',
+    'nav.invoice_verification',
+    'nav.payment',
+    'nav.payment_authorization',
+  ],
   'Functional Team': ['nav.functional_evaluate', 'nav.tasks'],
   'Tech Evaluator': ['nav.tech_evaluation'],
   Vendor: ['nav.vendor_dashboard', 'nav.vendor_quotation', 'nav.vendor_po_acceptance', 'nav.vendor_invoice'],
-  'Super Admin': ['nav.admin_users', 'nav.admin_email_logs'],
+  'Super Admin': [
+    'nav.admin_users',
+    'nav.admin_email_logs',
+    'nav.track_pr',
+    'nav.scm_rfq_entry',
+    'nav.rfq_approval',
+  ],
 };
 
 export function getDefaultNavigationForRole(role?: string | null): NavItem[] {

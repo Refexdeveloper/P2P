@@ -6,6 +6,8 @@ import { buildRfqInvitationEmail, buildRfqSendBackEmail } from '../templates/rfq
 import { buildRfqSubmittedNotifyRequesterEmail } from '../templates/rfqSubmittedEmail.js';
 import { buildPostRfqActionEmail } from '../templates/prPostRfqActionEmail.js';
 import { buildPoVendorEmail } from '../templates/poVendorEmail.js';
+import { buildPoWorkflowEmail } from '../templates/poWorkflowEmail.js';
+import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceRequestEmail.js';
 import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
 import { formatRoleDisplayName } from '../templates/emailUtils.js';
 import {
@@ -22,7 +24,7 @@ import { createEmailLog, updateEmailLog } from './emailLogService.js';
  * true  = send emails
  * false = skip all outbound email
  */
-const EMAIL_SEND_ENABLED = true;
+const EMAIL_SEND_ENABLED = false;
 
 let transporter;
 let smtpReady = false;
@@ -135,14 +137,27 @@ function buildWorkflowPortalUrl(pr, assignedRole, options = {}) {
   const prId = pr.id || pr.prId;
   const postRfq = Boolean(options.postRfq);
   const rfqEntry = Boolean(options.rfqEntry);
+  const createPo = Boolean(options.createPo);
+  const stage = String(options.stageLabel || '').toLowerCase();
+  const isCreatePo =
+    createPo ||
+    stage.includes('po create') ||
+    stage.includes('create po') ||
+    (postRfq && assignedRole === 'SCM Buyer');
 
-  if (assignedRole === 'Requester') return `${base}/requester/rfq-entry/${prId}`;
+  if (isCreatePo) return `${base}/scm/create-po?prId=${prId}`;
+  if (assignedRole === 'Requester') {
+    if (options.editPr) return `${base}/requester/edit-pr/${prId}`;
+    return `${base}/requester/rfq-entry/${prId}`;
+  }
   if (rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq)) {
     return `${base}/scm/rfq-entry/${prId}`;
   }
+  if (assignedRole === 'SCM Manager' && postRfq) return `${base}/rfq-approval/${prId}`;
   if (postRfq) return `${base}/rfq-approval/${prId}`;
   if (assignedRole === 'CFO') return `${base}/cfo/dashboard?prId=${prId}`;
-  if (assignedRole === 'PR Manager') return `${base}/tasks?prId=${prId}`;
+  if (assignedRole === 'PR Manager') return `${base}/pr-manager/dashboard?prId=${prId}`;
+  if (assignedRole === 'SCM Manager') return `${base}/scm/po-approval`;
   return `${base}/tasks?prId=${prId}`;
 }
 
@@ -544,6 +559,8 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
     stageLabel: options.stageLabel || null,
     rfqSummary: options.rfqSummary || null,
     rfqEntry: options.rfqEntry || false,
+    createPo: options.createPo || false,
+    appBaseUrl: getAppBaseUrl(),
   });
 
   console.log(
@@ -618,7 +635,7 @@ export function queuePrApprovalPendingNotification(pr, assignedRole, requester, 
   })().catch((err) => console.error('WhatsApp assignee notify failed:', err.message));
 }
 
-export async function sendPostRfqActionNotification(pr, approverRole, action, remarks, requester) {
+export async function sendPostRfqActionNotification(pr, approverRole, action, remarks, requester, options = {}) {
   const [requesterRows] = await pool.query(
     `SELECT email, name FROM users WHERE id = ?`,
     [pr.requesterId || pr.requester_id]
@@ -651,6 +668,8 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
     remarks,
     approverRole,
     requesterName,
+    editPr: Boolean(options.editPr),
+    appBaseUrl: getAppBaseUrl(),
   });
 
   console.log(`Step mail → Requester (${requesterName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}`);
@@ -659,16 +678,16 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
     emailType: 'pr_post_rfq_action',
     prId: pr.id || pr.prId || null,
     prNumber: pr.prNumber || pr.pr_number || null,
-    meta: { action, approverRole },
+    meta: { action, approverRole, editPr: Boolean(options.editPr) },
   });
 }
 
-export function queuePostRfqActionNotification(pr, approverRole, action, remarks, requester) {
-  enqueueMail(() => sendPostRfqActionNotification(pr, approverRole, action, remarks, requester)).catch(
-    (err) => {
-      console.error('Email send failure (post-RFQ action):', err.message);
-    }
-  );
+export function queuePostRfqActionNotification(pr, approverRole, action, remarks, requester, options = {}) {
+  enqueueMail(() =>
+    sendPostRfqActionNotification(pr, approverRole, action, remarks, requester, options)
+  ).catch((err) => {
+    console.error('Email send failure (post-RFQ action):', err.message);
+  });
 
   const actionLabel =
     action === 'reject'
@@ -676,11 +695,16 @@ export function queuePostRfqActionNotification(pr, approverRole, action, remarks
       : action === 'return' || action === 'rework'
         ? 'Sent Back'
         : action;
+  const portal = options.editPr
+    ? `${getAppBaseUrl()}/requester/edit-pr/${pr.id || pr.prId}`
+    : action === 'reject'
+      ? `${getAppBaseUrl()}/requester/track-pr`
+      : `${getAppBaseUrl()}/requester/rfq-entry/${pr.id || pr.prId}`;
   notifyWorkflowWhatsApp({
     pr,
     emails: [requester?.email].filter(Boolean),
     stage: `PR ${actionLabel}`,
-    actionUrl: `${getAppBaseUrl()}/requester/dashboard`,
+    actionUrl: portal,
     requesterName: requester?.name || pr.requester || 'Requester',
     assigneeName: requester?.name || pr.requester || 'Requester',
   });
@@ -754,6 +778,145 @@ export function queueRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail,
     sendRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail, requesterName, submission, reviewUrl)
   ).catch((err) => {
     console.error('Email send failure (RFQ submitted):', err.message);
+  });
+}
+
+/**
+ * PO workflow mail — assign / sendback / reject (manager approval + buyer final verify).
+ * @param {'assign'|'sendback'|'reject'} action
+ */
+export async function sendPoWorkflowNotification(po, {
+  action,
+  stageLabel,
+  recipientEmails = [],
+  recipientName,
+  actorName,
+  actorRole,
+  remarks,
+  portalUrl,
+  ctaLabel,
+}) {
+  const emails = [...new Set((recipientEmails || []).map((e) => String(e || '').trim()).filter(Boolean))];
+  if (!emails.length) {
+    console.warn(`No recipients for PO workflow email (${action}) ${po?.poNumber || po?.id}`);
+    await createEmailLog({
+      emailType: 'po_workflow',
+      status: 'skipped',
+      poId: po?.id || po?.poId || null,
+      prId: po?.prId || po?.pr_id || null,
+      poNumber: po?.poNumber || po?.po_number || null,
+      prNumber: po?.prNumber || po?.pr_number || null,
+      toAddresses: '',
+      subject: `PO ${action} ${po?.poNumber || po?.id || ''}`.trim(),
+      errorMessage: 'No recipients',
+      meta: { action, stageLabel },
+    });
+    return;
+  }
+
+  const emailSet = new Set(emails.map((e) => e.toLowerCase()));
+  const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
+
+  const { subject, html, text } = buildPoWorkflowEmail({
+    po,
+    action,
+    stageLabel,
+    recipientName: recipientName || 'User',
+    actorName,
+    actorRole,
+    remarks,
+    portalUrl,
+    ctaLabel,
+  });
+
+  console.log(`PO workflow mail (${action}) → ${emails.join(', ')} for ${po?.poNumber || po?.id}`);
+
+  return sendMailToRecipients(emails, subject, html, text, [], {
+    bcc,
+    emailType: 'po_workflow',
+    poId: po?.id || po?.poId || null,
+    prId: po?.prId || po?.pr_id || null,
+    poNumber: po?.poNumber || po?.po_number || null,
+    prNumber: po?.prNumber || po?.pr_number || null,
+    meta: { action, stageLabel, actorRole },
+  });
+}
+
+export function queuePoWorkflowNotification(po, options = {}) {
+  enqueueMail(() => sendPoWorkflowNotification(po, options)).catch((err) => {
+    console.error('Email send failure (PO workflow):', err.message);
+  });
+
+  const action = options.action || 'assign';
+  const stageLabel =
+    options.stageLabel ||
+    (action === 'assign'
+      ? 'PO Approval'
+      : action === 'sendback'
+        ? 'PO Sent Back'
+        : 'PO Rejected');
+  const emails = (options.recipientEmails || []).map((e) => String(e || '').trim()).filter(Boolean);
+
+  const prLike = {
+    id: po?.prId || po?.pr_id || null,
+    prId: po?.prId || po?.pr_id || null,
+    prNumber: po?.prNumber || po?.pr_number || null,
+    title: po?.prTitle || po?.title || po?.poNumber || '',
+  };
+
+  notifyWorkflowWhatsApp({
+    pr: prLike,
+    emails,
+    stage: stageLabel,
+    actionUrl: options.portalUrl || `${getAppBaseUrl()}/scm/buyer-final-verify`,
+    requesterName: po?.requester || options.actorName || 'User',
+    assigneeName: options.recipientName || 'Approver',
+  });
+}
+
+export async function sendVendorInvoiceRequestNotification(po, invoice, { portalUrl, ccEmails = [] }) {
+  const { subject, html, text } = buildVendorInvoiceRequestEmail({ invoice, po, portalUrl });
+  const to = po.vendorEmail || po.vendor_email;
+  if (!to) {
+    await createEmailLog({
+      emailType: 'vendor_invoice_request',
+      status: 'skipped',
+      poId: po?.id || null,
+      prId: po?.prId || po?.pr_id || null,
+      poNumber: po?.poNumber || po?.po_number || null,
+      prNumber: po?.prNumber || po?.pr_number || null,
+      toAddresses: '',
+      subject,
+      errorMessage: 'No vendor email',
+    });
+    throw new Error('Vendor email is missing on this PO');
+  }
+
+  if (!EMAIL_SEND_ENABLED) {
+    console.log('Email send skipped (vendor invoice request): EMAIL_SEND_ENABLED=false →', to);
+    await createEmailLog({
+      emailType: 'vendor_invoice_request',
+      status: 'skipped',
+      poId: po?.id || null,
+      prId: po?.prId || po?.pr_id || null,
+      poNumber: po?.poNumber || po?.po_number || null,
+      prNumber: po?.prNumber || po?.pr_number || null,
+      toAddresses: to,
+      subject,
+      errorMessage: 'EMAIL_SEND_ENABLED=false',
+      meta: { portalUrl },
+    });
+    return { skipped: true, to, subject };
+  }
+
+  return sendMailToRecipients([to], subject, html, text, [], {
+    bcc: (ccEmails || []).filter((e) => e && e.toLowerCase() !== String(to).toLowerCase()),
+    emailType: 'vendor_invoice_request',
+    poId: po?.id || null,
+    prId: po?.prId || po?.pr_id || null,
+    poNumber: po?.poNumber || po?.po_number || null,
+    prNumber: po?.prNumber || po?.pr_number || null,
+    meta: { portalUrl, invoiceId: invoice?.id || null },
   });
 }
 

@@ -23,10 +23,10 @@ import { applySendBackToTarget, queueSendBackNotifications } from './sendBackSer
 
 /** Default RFQ fields: vendor sees only Quoted Price (+ file upload). Other vendor fields appear after requester adds them. */
 export const DEFAULT_FIELD_DEFINITIONS = [
-  { id: 'quotedPrice', label: 'Quoted Price (₹)', type: 'number', filledBy: 'vendor', required: true, core: true },
-  { id: 'technicalScore', label: 'Technical Score', type: 'number', filledBy: 'requester' },
-  { id: 'commercialScore', label: 'Commercial Score', type: 'number', filledBy: 'requester' },
-  { id: 'overallScore', label: 'Overall Score', type: 'number', filledBy: 'requester' },
+  { id: 'quotedPrice', label: 'Quoted Price (₹)', type: 'number', filledBy: 'vendor', required: true, core: true, showIn: 'commercial' },
+  { id: 'technicalScore', label: 'Technical Score', type: 'number', filledBy: 'requester', showIn: 'technical' },
+  { id: 'commercialScore', label: 'Commercial Score', type: 'number', filledBy: 'requester', showIn: 'technical' },
+  { id: 'overallScore', label: 'Overall Score', type: 'number', filledBy: 'requester', showIn: 'technical' },
 ];
 
 /** Known vendor column fields — stored in dedicated DB columns when present in fieldDefinitions */
@@ -78,6 +78,17 @@ function parseJsonObject(value) {
 }
 
 const REQUESTER_SCORE_FIELD_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
+const COMMERCIAL_DEFAULT_FIELD_IDS = new Set(['make', 'brand', 'hdg', 'hdg3', 'freight', 'freightCharges']);
+
+function defaultShowIn(id, label = '') {
+  if (id === 'quotedPrice') return 'commercial';
+  if (REQUESTER_SCORE_FIELD_IDS.has(id)) return 'technical';
+  if (COMMERCIAL_DEFAULT_FIELD_IDS.has(id)) return 'commercial';
+  if (/make|brand|hdg|freight/i.test(String(id)) || /make|brand|^hdg\b|freight/i.test(String(label))) {
+    return 'commercial';
+  }
+  return 'technical';
+}
 
 function normalizeFieldDefinitions(defs) {
   if (!Array.isArray(defs) || !defs.length) return [...DEFAULT_FIELD_DEFINITIONS];
@@ -91,12 +102,18 @@ function normalizeFieldDefinitions(defs) {
         : REQUESTER_SCORE_FIELD_IDS.has(id)
           ? 'requester'
           : 'vendor';
+    const label = f.label || id;
+    const showIn =
+      f.showIn === 'commercial' || f.showIn === 'technical'
+        ? f.showIn
+        : defaultShowIn(id, label);
     return {
       ...f,
       id,
-      label: f.label || id,
+      label,
       type: f.type || 'text',
       filledBy,
+      showIn,
       required: Boolean(f.required),
       core: Boolean(f.core) || id === 'quotedPrice',
     };
@@ -104,7 +121,7 @@ function normalizeFieldDefinitions(defs) {
 
   // Always keep Quoted Price as a vendor field
   if (!normalized.some((f) => f.id === 'quotedPrice')) {
-    normalized.unshift({ ...DEFAULT_FIELD_DEFINITIONS[0] });
+    normalized.unshift({ ...DEFAULT_FIELD_DEFINITIONS[0], showIn: 'commercial' });
   }
   return normalized.length ? normalized : [...DEFAULT_FIELD_DEFINITIONS];
 }
@@ -133,9 +150,12 @@ function ensureUploadDir() {
   }
 }
 
+/**
+ * Save quotation file to disk (best-effort) and return DB-ready buffer.
+ * Cloud Run disks are ephemeral — quotation_file_data in MySQL is the source of truth.
+ */
 function saveQuotationFile(invitationId, round, fileName, base64Data) {
-  if (!base64Data || !fileName) return { fileName: null, filePath: null };
-  ensureUploadDir();
+  if (!base64Data || !fileName) return { fileName: null, filePath: null, buffer: null };
   // Accept raw base64 or data-URL (data:application/pdf;base64,...)
   const raw = String(base64Data).includes(',')
     ? String(base64Data).split(',').pop()
@@ -143,7 +163,6 @@ function saveQuotationFile(invitationId, round, fileName, base64Data) {
   const safeName =
     path.basename(String(fileName)).replace(/[^a-zA-Z0-9._-]/g, '_') || 'quotation.pdf';
   const storedName = `${invitationId}_r${round}_${Date.now()}_${safeName}`;
-  const fullPath = path.join(UPLOAD_DIR, storedName);
   const buffer = Buffer.from(raw.replace(/\s/g, ''), 'base64');
   if (!buffer.length) {
     throw new Error('Quotation file data is empty or invalid');
@@ -151,13 +170,99 @@ function saveQuotationFile(invitationId, round, fileName, base64Data) {
   if (buffer.length > 5 * 1024 * 1024) {
     throw new Error('Quotation file must be under 5MB');
   }
-  fs.writeFileSync(fullPath, buffer);
-  return { fileName: safeName, filePath: storedName };
+  try {
+    ensureUploadDir();
+    fs.writeFileSync(path.join(UPLOAD_DIR, storedName), buffer);
+  } catch (err) {
+    console.warn('Quotation disk write skipped (will keep DB copy):', err.message);
+  }
+  return { fileName: safeName, filePath: storedName, buffer };
+}
+
+function normalizeQuoteLineItems(rawLines, prLineItems = []) {
+  const prLines = Array.isArray(prLineItems) ? prLineItems : [];
+  const byId = new Map(prLines.map((li) => [String(li.id), li]));
+  const incoming = Array.isArray(rawLines) ? rawLines : [];
+
+  // Prefer explicit payload; otherwise build empty shells from PR lines
+  const source =
+    incoming.length > 0
+      ? incoming
+      : prLines.map((li) => ({
+          lineItemId: li.id,
+          description: li.description,
+          quantity: li.quantity,
+          quotedUnitPrice: 0,
+        }));
+
+  const lines = [];
+  for (const raw of source) {
+    const id = String(raw.lineItemId ?? raw.id ?? '');
+    const prLine = byId.get(id) || null;
+    const qty = Number(raw.quantity ?? prLine?.quantity) || 0;
+    const unitPrice = Number(raw.quotedUnitPrice ?? raw.unitPrice ?? 0);
+    if (Number.isNaN(qty) || qty <= 0) {
+      throw new Error('Each line item quantity must be greater than 0');
+    }
+    if (Number.isNaN(unitPrice) || unitPrice < 0) {
+      throw new Error('Quoted unit price must be a non-negative number');
+    }
+    const lineTotal =
+      Number(raw.quotedTotal ?? raw.lineTotal) > 0
+        ? Number(raw.quotedTotal ?? raw.lineTotal)
+        : unitPrice * qty;
+    lines.push({
+      lineItemId: prLine?.id ?? (id || null),
+      description: prLine?.description || raw.description || '',
+      category: prLine?.category || raw.category || '',
+      quantity: qty,
+      orderedQuantity: Number(prLine?.quantity) || qty,
+      estimatedUnitCost: Number(prLine?.unitCost ?? prLine?.unitPrice ?? 0) || 0,
+      quotedUnitPrice: unitPrice,
+      quotedTotal: lineTotal,
+    });
+  }
+
+  const total = lines.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
+  return { lines, total };
+}
+
+/** Merge line-item quotes into body; sets quotedPrice = sum of line totals. */
+function applyQuoteLineItemsToSubmissionBody(body, pr) {
+  const hasLines =
+    Array.isArray(body?.quoteLineItems) && body.quoteLineItems.length > 0;
+  if (!hasLines) return { lines: [], total: Number(body?.quotedPrice) || 0 };
+
+  const prLines = pr?.lineItems || [];
+  const { lines, total } = normalizeQuoteLineItems(body.quoteLineItems, prLines);
+
+  if (prLines.length && lines.length < prLines.length) {
+    throw new Error('Enter quoted amount for every line item');
+  }
+  if (lines.some((l) => !l.quantity || l.quantity <= 0)) {
+    throw new Error('Each line item must have quantity greater than 0');
+  }
+  if (lines.some((l) => !l.quotedUnitPrice || l.quotedUnitPrice <= 0)) {
+    throw new Error('Each line item must have a quoted unit price greater than 0');
+  }
+  if (!total || total <= 0) {
+    throw new Error('Total quoted amount must be greater than 0');
+  }
+
+  body.quotedPrice = total;
+  body.customFields = {
+    ...(body.customFields || {}),
+    quoteLineItems: lines,
+  };
+  return { lines, total };
 }
 
 function mapSubmissionRow(s) {
   const customFields = parseJsonObject(s.custom_fields);
   const requesterFields = parseJsonObject(s.requester_fields);
+  const quoteLineItems = Array.isArray(customFields.quoteLineItems)
+    ? customFields.quoteLineItems
+    : [];
   return {
     id: s.id,
     round: s.round,
@@ -170,6 +275,7 @@ function mapSubmissionRow(s) {
     deliveryTerms: s.delivery_terms || '',
     quotationFileName: s.quotation_file_name || '',
     quotationFilePath: s.quotation_file_path || '',
+    quoteLineItems,
     customFields,
     requesterFields,
     status: s.status,
@@ -255,6 +361,7 @@ function submissionToFieldValues(submission) {
     deliveryTerms: submission?.deliveryTerms,
     compliance: submission?.compliance,
     vendorNotes: submission?.vendorNotes,
+    quoteLineItems: submission?.quoteLineItems || submission?.customFields?.quoteLineItems || [],
     ...(submission?.customFields || {}),
     ...(submission?.requesterFields || {}),
   };
@@ -296,6 +403,46 @@ function generateToken() {
 function appUrl(path) {
   const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   return `${base}${path}`;
+}
+
+/** Notify the RFQ-entry assignee when a vendor quote is submitted. */
+async function notifyQuoteSubmittedAssignees(pr, inv, submission) {
+  const isOwn = (pr.vendorSelection || pr.vendor_selection) === 'own';
+  const recipients = [];
+
+  if (isOwn) {
+    const [requesterRows] = await pool.query(
+      `SELECT u.email, u.name FROM users u WHERE u.id = ?`,
+      [pr.requesterId || pr.requester_id]
+    );
+    if (requesterRows[0]?.email) {
+      recipients.push({
+        email: requesterRows[0].email,
+        name: requesterRows[0].name,
+        reviewUrl: appUrl(`/requester/rfq-entry/${inv.pr_id}`),
+      });
+    }
+  } else {
+    const buyer = await resolveScmBuyerUser();
+    if (buyer?.email) {
+      recipients.push({
+        email: buyer.email,
+        name: buyer.name,
+        reviewUrl: appUrl(`/scm/rfq-entry/${inv.pr_id}`),
+      });
+    }
+  }
+
+  for (const r of recipients) {
+    queueRfqSubmittedNotifyRequester(
+      pr,
+      inv.vendor_name,
+      r.email,
+      r.name,
+      submission,
+      r.reviewUrl
+    );
+  }
 }
 
 async function getInvitationsWithSubmissions(prId) {
@@ -345,7 +492,7 @@ export async function inviteVendors(user, prId, vendors, fieldDefinitions = null
   if (fieldDefinitions?.length) {
     await pool.query(
       `UPDATE rfq_configs SET field_definitions = ?, updated_at = NOW() WHERE pr_id = ?`,
-      [JSON.stringify(fieldDefinitions), prId]
+      [JSON.stringify(normalizeFieldDefinitions(fieldDefinitions)), prId]
     );
   }
 
@@ -409,9 +556,64 @@ export async function inviteVendors(user, prId, vendors, fieldDefinitions = null
   };
 }
 
+/** Remove a vendor invitation (and their quote submissions) before RFQ finalize. */
+export async function removeRfqInvitation(user, invitationId) {
+  if (!['Requester', 'SCM Buyer'].includes(user.role)) {
+    throw new Error('Unauthorized');
+  }
+
+  const [rows] = await pool.query(
+    `SELECT ri.*, pr.requester_id
+     FROM rfq_invitations ri
+     JOIN purchase_requests pr ON pr.id = ri.pr_id
+     WHERE ri.id = ?`,
+    [invitationId]
+  );
+  if (!rows.length) throw new Error('Vendor invitation not found');
+
+  const inv = rows[0];
+  if (user.role === 'Requester' && inv.requester_id !== user.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const config = await getOrCreateRfqConfig(inv.pr_id);
+  if (config.finalizedAt) throw new Error('Cannot remove vendor after RFQ is finalized');
+  if (user.role === 'Requester' && config.requesterSubmittedAt) {
+    throw new Error('Cannot remove vendor after RFQ is submitted to SCM');
+  }
+
+  if (config.recommendedInvitationId === inv.id) {
+    await pool.query(
+      `UPDATE rfq_configs
+       SET recommended_invitation_id = NULL,
+           recommendation_justification = NULL,
+           updated_at = NOW()
+       WHERE pr_id = ?`,
+      [inv.pr_id]
+    );
+  }
+
+  await pool.query(`DELETE FROM rfq_invitations WHERE id = ?`, [invitationId]);
+
+  const rfq = await getInvitationsWithSubmissions(inv.pr_id);
+  const updatedConfig = await getOrCreateRfqConfig(inv.pr_id);
+  return {
+    prId: inv.pr_id,
+    removedVendorName: inv.vendor_name,
+    rfq,
+    config: updatedConfig,
+    tableRows: mapInvitationsToTableRows(rfq, updatedConfig),
+    quotations: mapInvitationsToQuotations(rfq),
+    message: `"${inv.vendor_name}" removed from RFQ`,
+  };
+}
+
 export async function getRfqByPrId(user, prId) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
+  if (!['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+    throw new Error('Unauthorized');
+  }
   if (user.role === 'Requester' && pr.requesterId !== user.id) {
     throw new Error('Unauthorized');
   }
@@ -469,7 +671,18 @@ export async function getRfqByToken(token) {
   };
 }
 
-export async function submitVendorQuotation(token, body) {
+export async function submitVendorQuotation(token, body = {}) {
+  const [rows] = await pool.query(`SELECT * FROM rfq_invitations WHERE access_token = ?`, [token]);
+  if (!rows.length) throw new Error('Invalid RFQ link');
+
+  const inv = rows[0];
+  if (inv.status !== 'invited' && inv.status !== 'sent_back') {
+    throw new Error('Quotation already submitted. Wait for buyer feedback if revision is needed.');
+  }
+
+  const pr = await getPurchaseRequestById(inv.pr_id);
+  applyQuoteLineItemsToSubmissionBody(body, pr);
+
   const {
     quotedPrice,
     leadTime,
@@ -482,14 +695,6 @@ export async function submitVendorQuotation(token, body) {
     quotationFileData,
   } = body;
   if (!quotedPrice || Number(quotedPrice) <= 0) throw new Error('Quoted price is required');
-
-  const [rows] = await pool.query(`SELECT * FROM rfq_invitations WHERE access_token = ?`, [token]);
-  if (!rows.length) throw new Error('Invalid RFQ link');
-
-  const inv = rows[0];
-  if (inv.status !== 'invited' && inv.status !== 'sent_back') {
-    throw new Error('Quotation already submitted. Wait for buyer feedback if revision is needed.');
-  }
 
   const config = await getOrCreateRfqConfig(inv.pr_id);
   const { core, customFields } = extractCoreVendorValues(body, config.fieldDefinitions);
@@ -509,8 +714,8 @@ export async function submitVendorQuotation(token, body) {
 
   await pool.query(
     `INSERT INTO vendor_quotation_submissions
-     (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes, warranty, delivery_terms, quotation_file_name, quotation_file_path, custom_fields, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
+     (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes, warranty, delivery_terms, quotation_file_name, quotation_file_path, quotation_file_data, custom_fields, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
     [
       inv.id,
       inv.round,
@@ -523,6 +728,7 @@ export async function submitVendorQuotation(token, body) {
       core.deliveryTerms || '',
       fileInfo.fileName,
       fileInfo.filePath,
+      fileInfo.buffer,
       JSON.stringify(customFields),
     ]
   );
@@ -532,30 +738,20 @@ export async function submitVendorQuotation(token, body) {
     [inv.id]
   );
 
-  const pr = await getPurchaseRequestById(inv.pr_id);
-  const [requesterRows] = await pool.query(
-    `SELECT u.email, u.name FROM users u WHERE u.id = ?`,
-    [pr.requesterId]
-  );
-  const requester = requesterRows[0];
-  const reviewUrl = appUrl(`/requester/rfq-entry/${inv.pr_id}`);
-
-  if (requester?.email) {
-    queueRfqSubmittedNotifyRequester(pr, inv.vendor_name, requester.email, requester.name, {
-      quotedPrice: Number(core.quotedPrice),
-      leadTime: Number(core.leadTime) || 0,
-      paymentTerms: core.paymentTerms || 'Net 30',
-      warranty: core.warranty || '',
-      deliveryTerms: core.deliveryTerms || '',
-      compliance: core.compliance !== false,
-      vendorNotes: core.vendorNotes || '',
-    }, reviewUrl);
-  }
+  await notifyQuoteSubmittedAssignees(pr, inv, {
+    quotedPrice: Number(core.quotedPrice),
+    leadTime: Number(core.leadTime) || 0,
+    paymentTerms: core.paymentTerms || 'Net 30',
+    warranty: core.warranty || '',
+    deliveryTerms: core.deliveryTerms || '',
+    compliance: core.compliance !== false,
+    vendorNotes: core.vendorNotes || '',
+  });
 
   return { message: 'Quotation submitted successfully', round: inv.round };
 }
 
-export async function submitManualVendorQuotation(user, invitationId, body) {
+export async function submitManualVendorQuotation(user, invitationId, body = {}) {
   if (!['Requester', 'SCM Buyer'].includes(user.role)) {
     throw new Error('Unauthorized');
   }
@@ -578,6 +774,9 @@ export async function submitManualVendorQuotation(user, invitationId, body) {
   if (inv.invite_mode === 'email') {
     throw new Error('This vendor was invited by email. Wait for vendor submission or use Resend Mail.');
   }
+
+  const pr = await getPurchaseRequestById(inv.pr_id);
+  applyQuoteLineItemsToSubmissionBody(body, pr);
 
   const config = await getOrCreateRfqConfig(inv.pr_id);
   const { core, customFields } = extractCoreVendorValues(body, config.fieldDefinitions);
@@ -619,8 +818,8 @@ export async function submitManualVendorQuotation(user, invitationId, body) {
 
   await pool.query(
     `INSERT INTO vendor_quotation_submissions
-     (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes, warranty, delivery_terms, quotation_file_name, quotation_file_path, custom_fields, requester_fields, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
+     (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes, warranty, delivery_terms, quotation_file_name, quotation_file_path, quotation_file_data, custom_fields, requester_fields, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
     [
       inv.id,
       inv.round,
@@ -633,6 +832,7 @@ export async function submitManualVendorQuotation(user, invitationId, body) {
       core.deliveryTerms || '',
       fileInfo.fileName,
       fileInfo.filePath,
+      fileInfo.buffer,
       JSON.stringify(customFields),
       JSON.stringify(requesterFields),
     ]
@@ -643,29 +843,15 @@ export async function submitManualVendorQuotation(user, invitationId, body) {
     [inv.id]
   );
 
-  const pr = await getPurchaseRequestById(inv.pr_id);
-  const [requesterRows] = await pool.query(`SELECT u.email, u.name FROM users u WHERE u.id = ?`, [pr.requesterId]);
-  const requester = requesterRows[0];
-  const reviewUrl = appUrl(`/requester/rfq-entry/${inv.pr_id}`);
-
-  if (requester?.email) {
-    queueRfqSubmittedNotifyRequester(
-      pr,
-      inv.vendor_name,
-      requester.email,
-      requester.name,
-      {
-        quotedPrice: Number(core.quotedPrice),
-        leadTime: Number(core.leadTime) || 0,
-        paymentTerms: core.paymentTerms || 'Net 30',
-        warranty: core.warranty || '',
-        deliveryTerms: core.deliveryTerms || '',
-        compliance: core.compliance !== false,
-        vendorNotes: manualNote,
-      },
-      reviewUrl
-    );
-  }
+  await notifyQuoteSubmittedAssignees(pr, inv, {
+    quotedPrice: Number(core.quotedPrice),
+    leadTime: Number(core.leadTime) || 0,
+    paymentTerms: core.paymentTerms || 'Net 30',
+    warranty: core.warranty || '',
+    deliveryTerms: core.deliveryTerms || '',
+    compliance: core.compliance !== false,
+    vendorNotes: manualNote,
+  });
 
   const rfq = await getInvitationsWithSubmissions(inv.pr_id);
   const full = await getRfqByPrId(user, inv.pr_id);
@@ -767,11 +953,13 @@ export async function saveRfqConfig(
 
   let defs = config.fieldDefinitions;
   if (fieldDefinitions?.length) {
-    defs = fieldDefinitions.map((f) => ({
-      ...f,
-      id: f.id || slugifyFieldId(f.label),
-      filledBy: f.filledBy === 'requester' ? 'requester' : 'vendor',
-    }));
+    defs = normalizeFieldDefinitions(
+      fieldDefinitions.map((f) => ({
+        ...f,
+        id: f.id || slugifyFieldId(f.label),
+        filledBy: f.filledBy === 'requester' ? 'requester' : 'vendor',
+      }))
+    );
   }
 
   const nextJustification =
@@ -1034,8 +1222,9 @@ async function buildRfqSummary(prId) {
     recommended?.submissions?.find((s) => s.status === 'submitted' && Number(s.quotedPrice) > 0);
 
   const vendors = invitations.map((inv) => {
+    // Include sent_back rounds — they are prior negotiation history (status flips on Send Back)
     const rounds = (inv.submissions || [])
-      .filter((s) => s.status === 'submitted')
+      .filter((s) => s.status === 'submitted' || s.status === 'sent_back')
       .sort((a, b) => Number(a.round) - Number(b.round))
       .map((s) => ({
         round: s.round,
@@ -1244,6 +1433,7 @@ async function moveToScmCreatePo(prId) {
     pr.departmentId,
     {
       postRfq: true,
+      createPo: true,
       stageLabel: 'SCM PO Create',
       rfqSummary,
       attachments,
@@ -1355,6 +1545,7 @@ export async function getVendorComparisonMatrix(user, prId) {
     user.role === 'SCM Manager' ||
     user.role === 'SCM Buyer' ||
     user.role === 'HOD Approver' ||
+    user.role === 'Super Admin' ||
     pendingTask?.assigned_user_id === user.id ||
     postRfqStatuses.includes(pr.status);
   if (!canView) throw new Error('Unauthorized');
@@ -1366,8 +1557,9 @@ export async function getVendorComparisonMatrix(user, prId) {
   const vendors = invitations.map((inv) => {
     const activeSubmission = findActiveSubmission(inv);
 
+    // Include sent_back — Round 1 stays visible after Send Back creates Round 2
     const allRounds = inv.submissions
-      .filter((s) => s.status === 'submitted')
+      .filter((s) => s.status === 'submitted' || s.status === 'sent_back')
       .map((s) => ({
         round: s.round,
         values: submissionToFieldValues(s),
@@ -1375,6 +1567,7 @@ export async function getVendorComparisonMatrix(user, prId) {
         quotationFileName: s.quotationFileName,
         submissionId: s.id,
         sendBackReason: inv.sendBackReason,
+        status: s.status,
       }));
 
     return {
@@ -1387,11 +1580,9 @@ export async function getVendorComparisonMatrix(user, prId) {
       latest: submissionToFieldValues(activeSubmission),
       latestSubmissionId: activeSubmission?.id || null,
       quotationFileName: activeSubmission?.quotationFileName || '',
-      rounds: showFullNegotiation
-        ? allRounds
-        : activeSubmission?.quotationFileName
-          ? allRounds.filter((r) => r.submissionId === activeSubmission.id)
-          : [],
+      // Always pass full round history for comparison sheet columns (Round 1 + Round 2…)
+      // Compact/manager views still use latest for matrix "best" cells via vendor.latest
+      rounds: allRounds,
     };
   });
 
@@ -1400,6 +1591,7 @@ export async function getVendorComparisonMatrix(user, prId) {
     label: f.label,
     type: f.type,
     icon: paramIcon(f.id),
+    showIn: f.showIn === 'commercial' ? 'commercial' : 'technical',
   }));
 
   const matrix = {};
@@ -1450,6 +1642,15 @@ export async function getVendorComparisonMatrix(user, prId) {
       vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
       justification: pr.justification,
       approvalHistory: pr.approvalHistory,
+      lineItems: (pr.lineItems || []).map((li) => ({
+        id: li.id,
+        description: li.description || li.item || '',
+        category: li.category || '',
+        quantity: Number(li.quantity) || 0,
+        uom: li.uom || li.unit || 'Nos',
+        unitCost: Number(li.unitCost ?? li.unitPrice) || 0,
+        total: Number(li.total) || 0,
+      })),
     },
     vendorCount: vendors.length,
     totalRounds,
@@ -1490,7 +1691,9 @@ export async function getVendorComparisonMatrix(user, prId) {
 }
 
 export async function listScmRfqEntryPrs(user) {
-  if (user.role !== 'SCM Buyer') throw new Error('Unauthorized');
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+    throw new Error('Unauthorized');
+  }
 
   // SCM vendor: after CFO pre-RFQ. Own vendor: after HOD→L2→CFO post-RFQ (APPROVED again).
   const [rows] = await pool.query(
@@ -1811,7 +2014,8 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       const attachments = await collectQuotationAttachments(prId);
       queuePrApprovalPendingNotification(updatedPr, nextRole, requester, updatedPr.departmentId, {
         postRfq: true,
-        stageLabel: nextCfg?.label,
+        createPo: nextRole === 'SCM Buyer',
+        stageLabel: nextCfg?.label || (nextRole === 'SCM Buyer' ? 'SCM PO Create' : undefined),
         rfqSummary,
         attachments,
         approverEmails: nextAssignee?.email ? [nextAssignee.email] : undefined,
@@ -1895,9 +2099,132 @@ export function mapInvitationsToTableRows(invitations, config = null) {
   });
 }
 
-/** Attach / replace quotation file on an existing submitted quote (fixes missing uploads). */
+/**
+ * Admin / SCM: update amounts + commercial fields on an existing submitted quotation.
+ * Optional quotation file replace in the same call.
+ */
+export async function adminUpdateVendorQuotationSubmission(user, submissionId, body = {}) {
+  const allowedRoles = ['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'];
+  if (!allowedRoles.includes(user.role)) {
+    throw new Error('Unauthorized');
+  }
+
+  const [rows] = await pool.query(
+    `SELECT vqs.*, ri.id AS invitation_id, ri.pr_id, ri.round AS inv_round, ri.vendor_name,
+            pr.requester_id
+     FROM vendor_quotation_submissions vqs
+     JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id
+     JOIN purchase_requests pr ON pr.id = ri.pr_id
+     WHERE vqs.id = ?`,
+    [submissionId]
+  );
+  if (!rows.length) throw new Error('Submission not found');
+  const row = rows[0];
+
+  if (user.role === 'Requester' && row.requester_id !== user.id) {
+    throw new Error('Unauthorized');
+  }
+  // Requester may only edit while RFQ not finalized; admins anytime
+  if (user.role === 'Requester') {
+    const config = await getOrCreateRfqConfig(row.pr_id);
+    if (config.finalizedAt || config.requesterSubmittedAt) {
+      throw new Error('RFQ already submitted — contact SCM to update quotation amounts');
+    }
+  }
+
+  const pr = await getPurchaseRequestById(row.pr_id);
+  applyQuoteLineItemsToSubmissionBody(body, pr);
+
+  const config = await getOrCreateRfqConfig(row.pr_id);
+  const existingCustom = parseJsonObject(row.custom_fields);
+  const { core, customFields } = extractCoreVendorValues(body, config.fieldDefinitions, existingCustom);
+
+  if (!core.quotedPrice || Number(core.quotedPrice) <= 0) {
+    throw new Error('Quoted price is required');
+  }
+
+  let fileName = row.quotation_file_name;
+  let filePath = row.quotation_file_path;
+  let fileBuffer = row.quotation_file_data;
+  if (body.quotationFileName && body.quotationFileData) {
+    const fileInfo = saveQuotationFile(
+      row.invitation_id,
+      row.round || row.inv_round || 1,
+      body.quotationFileName,
+      body.quotationFileData
+    );
+    if (!fileInfo.filePath && !fileInfo.buffer) {
+      throw new Error('Failed to save quotation file');
+    }
+    fileName = fileInfo.fileName;
+    filePath = fileInfo.filePath;
+    fileBuffer = fileInfo.buffer;
+  }
+
+  const existingRequester = parseJsonObject(row.requester_fields);
+  const requesterFields = {
+    ...existingRequester,
+    ...(body.requesterFields || {}),
+    technicalScore:
+      Number(body.requesterFields?.technicalScore ?? body.technicalScore ?? existingRequester.technicalScore) ||
+      0,
+    commercialScore:
+      Number(
+        body.requesterFields?.commercialScore ?? body.commercialScore ?? existingRequester.commercialScore
+      ) || 0,
+    overallScore:
+      Number(body.requesterFields?.overallScore ?? body.overallScore ?? existingRequester.overallScore) || 0,
+    lastEditedBy: user.name,
+    lastEditedRole: user.role,
+    entryMode: existingRequester.entryMode || 'manual',
+  };
+
+  const noteSuffix = `Updated by ${user.name} (${user.role})`;
+  const vendorNotes = body.vendorNotes?.trim()
+    ? String(body.vendorNotes).trim()
+    : row.vendor_notes
+      ? `${row.vendor_notes}`
+      : noteSuffix;
+
+  await pool.query(
+    `UPDATE vendor_quotation_submissions
+     SET quoted_price = ?, lead_time_days = ?, payment_terms = ?, compliance = ?,
+         vendor_notes = ?, warranty = ?, delivery_terms = ?,
+         quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?,
+         custom_fields = ?, requester_fields = ?
+     WHERE id = ?`,
+    [
+      Number(core.quotedPrice),
+      Number(core.leadTime) || 0,
+      core.paymentTerms || row.payment_terms || 'Net 30',
+      core.compliance !== false ? 1 : 0,
+      vendorNotes,
+      core.warranty ?? row.warranty ?? '',
+      core.deliveryTerms ?? row.delivery_terms ?? '',
+      fileName,
+      filePath,
+      fileBuffer,
+      JSON.stringify(customFields),
+      JSON.stringify(requesterFields),
+      submissionId,
+    ]
+  );
+
+  const full = await getRfqByPrId(user, row.pr_id);
+  const rfq = await getInvitationsWithSubmissions(row.pr_id);
+  return {
+    message: `Quotation updated for ${row.vendor_name}`,
+    submissionId,
+    quotations: mapInvitationsToQuotations(rfq),
+    tableRows: mapInvitationsToTableRows(rfq, full.config),
+    config: full.config,
+  };
+}
+
+/** Attach / replace quotation file on an existing quote (admin can update existing files). */
 export async function attachQuotationFileToSubmission(user, submissionId, body) {
-  if (!['Requester', 'SCM Buyer'].includes(user.role)) {
+  const allowedRoles = ['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'];
+  if (!allowedRoles.includes(user.role)) {
     throw new Error('Unauthorized');
   }
   const [rows] = await pool.query(
@@ -1913,7 +2240,11 @@ export async function attachQuotationFileToSubmission(user, submissionId, body) 
   if (user.role === 'Requester' && row.requester_id !== user.id) {
     throw new Error('Unauthorized');
   }
-  if (row.status !== 'submitted') {
+  // Super Admin / SCM Manager may repair files anytime; others only on submitted quotes
+  if (
+    !['Super Admin', 'SCM Manager'].includes(user.role) &&
+    row.status !== 'submitted'
+  ) {
     throw new Error('Can only attach files to submitted quotations');
   }
   if (!body?.quotationFileName || !body?.quotationFileData) {
@@ -1926,27 +2257,32 @@ export async function attachQuotationFileToSubmission(user, submissionId, body) 
     body.quotationFileName,
     body.quotationFileData
   );
-  if (!fileInfo.filePath) {
+  if (!fileInfo.filePath && !fileInfo.buffer) {
     throw new Error('Failed to save quotation file');
   }
 
+  const hadFile = Boolean(row.quotation_file_name || row.quotation_file_path || row.quotation_file_data);
   await pool.query(
     `UPDATE vendor_quotation_submissions
-     SET quotation_file_name = ?, quotation_file_path = ?
+     SET quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?
      WHERE id = ?`,
-    [fileInfo.fileName, fileInfo.filePath, submissionId]
+    [fileInfo.fileName, fileInfo.filePath, fileInfo.buffer, submissionId]
   );
 
   return {
     submissionId,
     quotationFileName: fileInfo.fileName,
-    message: 'Quotation file attached successfully',
+    replaced: hadFile,
+    message: hadFile
+      ? 'Quotation file updated successfully'
+      : 'Quotation file attached successfully',
   };
 }
 
 export async function getSubmissionFile(user, submissionId) {
   const [rows] = await pool.query(
-    `SELECT vqs.*, ri.pr_id, pr.requester_id
+    `SELECT vqs.id, vqs.quotation_file_name, vqs.quotation_file_path, vqs.quotation_file_data,
+            ri.pr_id, pr.requester_id
      FROM vendor_quotation_submissions vqs
      JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id
      JOIN purchase_requests pr ON pr.id = ri.pr_id
@@ -1956,22 +2292,36 @@ export async function getSubmissionFile(user, submissionId) {
   if (!rows.length) throw new Error('Quotation file not found');
 
   const row = rows[0];
-  const postRfqRoles = ['HOD Approver', 'PR Manager', 'SCM Manager', 'CFO', 'SCM Buyer'];
+  const postRfqRoles = ['HOD Approver', 'PR Manager', 'SCM Manager', 'CFO', 'SCM Buyer', 'Super Admin'];
   if (user.role === 'Requester' && row.requester_id !== user.id) {
     throw new Error('Unauthorized');
   }
-  if (!['Requester', 'SCM Buyer', ...postRfqRoles].includes(user.role)) {
+  if (!['Requester', 'SCM Buyer', 'Super Admin', ...postRfqRoles].includes(user.role)) {
     throw new Error('Unauthorized');
   }
-  if (!row.quotation_file_path) throw new Error('No quotation file attached');
 
-  const fullPath = path.join(UPLOAD_DIR, row.quotation_file_path);
-  if (!fs.existsSync(fullPath)) throw new Error('Quotation file not found on server');
+  const fileName = row.quotation_file_name || 'quotation.pdf';
+  const diskPath =
+    row.quotation_file_path && path.join(UPLOAD_DIR, row.quotation_file_path);
 
-  return {
-    fullPath,
-    fileName: row.quotation_file_name || 'quotation.pdf',
-  };
+  if (diskPath && fs.existsSync(diskPath)) {
+    return { fullPath: diskPath, fileName, buffer: null };
+  }
+
+  // Deployed Cloud Run: file lives in DB (disk is ephemeral)
+  if (row.quotation_file_data && row.quotation_file_data.length) {
+    const buffer = Buffer.isBuffer(row.quotation_file_data)
+      ? row.quotation_file_data
+      : Buffer.from(row.quotation_file_data);
+    return { fullPath: null, fileName, buffer };
+  }
+
+  if (!row.quotation_file_path && !row.quotation_file_name) {
+    throw new Error('No quotation file attached');
+  }
+  throw new Error(
+    'Quotation file missing after deploy. Re-upload via Attach file on the RFQ Entry card.'
+  );
 }
 
 export function mapInvitationsToQuotations(invitations) {

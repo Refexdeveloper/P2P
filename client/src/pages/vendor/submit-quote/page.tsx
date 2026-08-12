@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, FormEvent, ChangeEvent, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'https://p2p-backend-645830234926.asia-south1.run.app').replace(
@@ -8,8 +8,28 @@ const API_URL = (import.meta.env.VITE_API_URL || 'https://p2p-backend-6458302349
 
 type VendorField = { id: string; label: string; type: string; core?: boolean; required?: boolean };
 
+type PrLineItem = {
+  id?: number | string;
+  description: string;
+  category?: string;
+  quantity: number;
+  unitCost: number;
+  total: number;
+};
+
+type QuoteLineDraft = {
+  lineItemId: string;
+  description: string;
+  category: string;
+  quantity: number | '';
+  estimatedUnitCost: number;
+  quotedUnitPrice: number | '';
+};
+
 function formatCurrency(n: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
+    n || 0
+  );
 }
 
 export default function VendorSubmitQuotePage() {
@@ -25,15 +45,25 @@ export default function VendorSubmitQuotePage() {
       department: string;
       totalAmount: number;
       justification: string;
-      lineItems: { description: string; category: string; quantity: number; unitCost: number; total: number }[];
+      lineItems: PrLineItem[];
     };
     fieldDefinitions?: VendorField[];
     canSubmit: boolean;
   } | null>(null);
 
   const [fieldValues, setFieldValues] = useState<Record<string, string | number | boolean>>({});
+  const [quoteLines, setQuoteLines] = useState<QuoteLineDraft[]>([]);
   const [quotationFile, setQuotationFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const quoteTotal = useMemo(
+    () =>
+      quoteLines.reduce((sum, line) => {
+        const unit = Number(line.quotedUnitPrice) || 0;
+        return sum + unit * (Number(line.quantity) || 0);
+      }, 0),
+    [quoteLines]
+  );
 
   const readFileAsBase64 = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -74,6 +104,16 @@ export default function VendorSubmitQuotePage() {
         }
         if (!defs.some((f) => f.id === 'quotedPrice')) initial.quotedPrice = '';
         setFieldValues(initial);
+
+        const lines: QuoteLineDraft[] = ((res.data?.pr?.lineItems || []) as PrLineItem[]).map((li, idx) => ({
+          lineItemId: String(li.id ?? idx + 1),
+          description: li.description,
+          category: li.category || '',
+          quantity: Number(li.quantity) || 0,
+          estimatedUnitCost: Number(li.unitCost) || 0,
+          quotedUnitPrice: '',
+        }));
+        setQuoteLines(lines);
       })
       .catch((err) => setError(err.message || 'Failed to load RFQ'))
       .finally(() => setLoading(false));
@@ -83,12 +123,31 @@ export default function VendorSubmitQuotePage() {
     setFieldValues((prev) => ({ ...prev, [id]: value }));
   };
 
+  const updateLineField = (lineItemId: string, field: 'quotedUnitPrice' | 'quantity', value: string) => {
+    setQuoteLines((prev) =>
+      prev.map((line) => {
+        if (line.lineItemId !== lineItemId) return line;
+        if (value === '') return { ...line, [field]: '' };
+        const n = Number(value);
+        if (field === 'quantity') return { ...line, quantity: Math.max(1, Number.isNaN(n) ? 1 : n) };
+        return { ...line, quotedUnitPrice: Math.max(0, Number.isNaN(n) ? 0 : n) };
+      })
+    );
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!token) return;
-    const quotedPrice = Number(fieldValues.quotedPrice);
-    if (!quotedPrice || quotedPrice <= 0) {
-      setError('Quoted price is required');
+    if (quoteLines.some((l) => !l.quantity || Number(l.quantity) <= 0)) {
+      setError('Enter quantity for every line item');
+      return;
+    }
+    if (quoteLines.some((l) => !l.quotedUnitPrice || Number(l.quotedUnitPrice) <= 0)) {
+      setError('Enter quoted unit price for every line item');
+      return;
+    }
+    if (!quoteTotal || quoteTotal <= 0) {
+      setError('Total quoted amount must be greater than 0');
       return;
     }
     if (!quotationFile) {
@@ -104,11 +163,20 @@ export default function VendorSubmitQuotePage() {
         if (key === 'quotedPrice') continue;
         customFields[key] = val;
       }
+      const quoteLineItems = quoteLines.map((line) => ({
+        lineItemId: line.lineItemId,
+        description: line.description,
+        category: line.category,
+        quantity: line.quantity,
+        quotedUnitPrice: Number(line.quotedUnitPrice) || 0,
+        quotedTotal: (Number(line.quotedUnitPrice) || 0) * (Number(line.quantity) || 0),
+      }));
       const res = await fetch(`${API_URL}/api/rfq/quote/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          quotedPrice,
+          quotedPrice: quoteTotal,
+          quoteLineItems,
           leadTime: Number(fieldValues.leadTime) || 0,
           paymentTerms: String(fieldValues.paymentTerms || 'Net 30'),
           warranty: String(fieldValues.warranty || ''),
@@ -159,15 +227,10 @@ export default function VendorSubmitQuotePage() {
   }
 
   const { invitation, pr, canSubmit, fieldDefinitions = [] } = rfqData!;
-  // Vendor fields from RFQ config (quotedPrice always; others only if requester added them)
   const vendorFields = (() => {
-    const defs = fieldDefinitions.filter((f) => f.id !== 'quotationFile' && f.id !== 'quotation_file');
-    if (!defs.some((f) => f.id === 'quotedPrice')) {
-      return [
-        { id: 'quotedPrice', label: 'Quoted Price (₹)', type: 'number', core: true, required: true },
-        ...defs,
-      ];
-    }
+    const defs = fieldDefinitions.filter(
+      (f) => f.id !== 'quotationFile' && f.id !== 'quotation_file' && f.id !== 'quotedPrice'
+    );
     return defs;
   })();
 
@@ -194,7 +257,9 @@ export default function VendorSubmitQuotePage() {
           className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
         >
           {['Net 30', 'Net 45', 'Net 60', 'Advance 50%', 'On Delivery', 'Deviated'].map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
           ))}
         </select>
       );
@@ -210,25 +275,25 @@ export default function VendorSubmitQuotePage() {
         />
       );
     }
-    const isNumber = field.type === 'number' || field.id === 'quotedPrice' || field.id === 'leadTime';
+    const isNumber = field.type === 'number' || field.id === 'leadTime';
     return (
       <input
         type={isNumber ? 'number' : 'text'}
-        required={field.id === 'quotedPrice' || Boolean(field.required)}
-        min={isNumber ? (field.id === 'quotedPrice' ? 1 : 0) : undefined}
+        required={Boolean(field.required)}
+        min={isNumber ? 0 : undefined}
         value={value === undefined || value === null ? '' : String(value)}
         onChange={(e) =>
           setField(field.id, isNumber ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)
         }
         className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
-        placeholder={field.id === 'quotedPrice' ? 'Enter total quoted amount' : field.label}
+        placeholder={field.label}
       />
     );
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-teal-50 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-teal-100 text-teal-800 rounded-full text-xs font-bold mb-3">
             Round {invitation.round}
@@ -241,7 +306,12 @@ export default function VendorSubmitQuotePage() {
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
             <p className="text-sm font-bold text-amber-800 mb-1">Revision Requested</p>
             {invitation.sendBackFields?.map((f) => (
-              <span key={f} className="inline-block mr-2 mb-1 px-2 py-0.5 bg-amber-100 text-amber-800 text-xs rounded-full">{f}</span>
+              <span
+                key={f}
+                className="inline-block mr-2 mb-1 px-2 py-0.5 bg-amber-100 text-amber-800 text-xs rounded-full"
+              >
+                {f}
+              </span>
             ))}
             <p className="text-sm text-amber-900 mt-2 whitespace-pre-wrap">{invitation.sendBackReason}</p>
           </div>
@@ -254,32 +324,19 @@ export default function VendorSubmitQuotePage() {
             <p className="text-sm opacity-90">{pr.title}</p>
           </div>
           <div className="p-6 grid grid-cols-2 gap-4 text-sm">
-            <div><span className="text-gray-500">Department</span><p className="font-semibold">{pr.department}</p></div>
-            <div><span className="text-gray-500">Estimated Value</span><p className="font-bold text-teal-700">{formatCurrency(pr.totalAmount)}</p></div>
+            <div>
+              <span className="text-gray-500">Department</span>
+              <p className="font-semibold">{pr.department}</p>
+            </div>
+            <div>
+              <span className="text-gray-500">Estimated Value</span>
+              <p className="font-bold text-teal-700">{formatCurrency(pr.totalAmount)}</p>
+            </div>
           </div>
-          <div className="px-6 pb-6">
-            <p className="text-xs font-bold text-gray-500 uppercase mb-2">Line Items</p>
-            <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-left p-2">Description</th>
-                  <th className="text-center p-2">Qty</th>
-                  <th className="text-right p-2">Unit</th>
-                  <th className="text-right p-2">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pr.lineItems.map((item, i) => (
-                  <tr key={i} className="border-t border-gray-100">
-                    <td className="p-2">{item.description}</td>
-                    <td className="p-2 text-center">{item.quantity}</td>
-                    <td className="p-2 text-right">{formatCurrency(item.unitCost)}</td>
-                    <td className="p-2 text-right font-semibold">{formatCurrency(item.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="text-xs text-gray-500 mt-3"><strong>Justification:</strong> {pr.justification}</p>
+          <div className="px-6 pb-4">
+            <p className="text-xs text-gray-500">
+              <strong>Justification:</strong> {pr.justification}
+            </p>
           </div>
         </div>
 
@@ -292,20 +349,107 @@ export default function VendorSubmitQuotePage() {
             <h2 className="text-base font-bold text-gray-900">Your Quotation</h2>
             {error && <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</p>}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {vendorFields.map((field) => (
-                <div
-                  key={field.id}
-                  className={field.id === 'vendorNotes' || field.type === 'textarea' ? 'md:col-span-2' : ''}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {field.label}
-                    {(field.id === 'quotedPrice' || field.required) && ' *'}
-                  </label>
-                  {renderField(field)}
-                </div>
-              ))}
+            <div>
+              <p className="text-sm font-bold text-gray-800 mb-2 flex items-center gap-2">
+                <i className="ri-list-check-2 text-teal-600"></i>
+                Line items — enter unit price for each
+              </p>
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase">
+                        Description
+                      </th>
+                      <th className="text-center px-3 py-2.5 text-xs font-semibold text-teal-700 uppercase">
+                        Qty *
+                      </th>
+                      <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase">
+                        Est. unit
+                      </th>
+                      <th className="text-center px-3 py-2.5 text-xs font-semibold text-teal-700 uppercase">
+                        Your unit price *
+                      </th>
+                      <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase">
+                        Line total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quoteLines.map((line) => {
+                      const lineTotal =
+                        (Number(line.quotedUnitPrice) || 0) * (Number(line.quantity) || 0);
+                      return (
+                        <tr key={line.lineItemId} className="border-t border-gray-100">
+                          <td className="px-3 py-2.5">
+                            <p className="font-medium text-gray-900">{line.description}</p>
+                            {line.category ? (
+                              <p className="text-xs text-gray-400">{line.category}</p>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="number"
+                              min={1}
+                              step="any"
+                              required
+                              value={line.quantity === '' ? '' : String(line.quantity)}
+                              onChange={(e) => updateLineField(line.lineItemId, 'quantity', e.target.value)}
+                              className="w-20 mx-auto block border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              placeholder="1"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-xs text-gray-400">
+                            {formatCurrency(line.estimatedUnitCost)}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="number"
+                              min={1}
+                              required
+                              value={line.quotedUnitPrice === '' ? '' : String(line.quotedUnitPrice)}
+                              onChange={(e) => updateLineField(line.lineItemId, 'quotedUnitPrice', e.target.value)}
+                              className="w-32 mx-auto block border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              placeholder="0"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                            {lineTotal > 0 ? formatCurrency(lineTotal) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-teal-200 bg-teal-50">
+                      <td colSpan={4} className="px-3 py-3 text-right text-sm font-bold text-teal-900">
+                        Total quoted amount
+                      </td>
+                      <td className="px-3 py-3 text-right text-base font-bold text-teal-800">
+                        {formatCurrency(quoteTotal)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
+
+            {vendorFields.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {vendorFields.map((field) => (
+                  <div
+                    key={field.id}
+                    className={field.id === 'vendorNotes' || field.type === 'textarea' ? 'md:col-span-2' : ''}
+                  >
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {field.label}
+                      {field.required && ' *'}
+                    </label>
+                    {renderField(field)}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Quotation File (PDF / Image) *</label>
@@ -324,8 +468,12 @@ export default function VendorSubmitQuotePage() {
                 <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleFileChange} />
               </label>
             </div>
-            <button type="submit" disabled={submitting} className="w-full py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50">
-              {submitting ? 'Submitting...' : 'Submit Quotation'}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
+            >
+              {submitting ? 'Submitting...' : `Submit Quotation · ${formatCurrency(quoteTotal)}`}
             </button>
           </form>
         )}

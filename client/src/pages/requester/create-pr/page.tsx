@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { prApi, masterApi, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord } from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
 import {
   CURRENCY_OPTIONS,
   DEFAULT_CURRENCY,
@@ -10,6 +11,15 @@ import {
   formatMoney,
   normalizeCurrency,
 } from '../../../constants/currency';
+
+const ADMIN_EDIT_ROLES = [
+  'Super Admin',
+  'SCM Manager',
+  'SCM Buyer',
+  'HOD Approver',
+  'PR Manager',
+  'CFO',
+];
 
 interface LineItem {
   id: string;
@@ -46,9 +56,13 @@ interface ReturnFeedback {
 }
 
 export default function CreatePRPage() {
+  const { user } = useAuth();
   const { prId: prIdParam } = useParams<{ prId?: string }>();
   const editPrId = prIdParam ? Number(prIdParam) : null;
   const isEditMode = !!editPrId;
+  const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
+  /** Admin editing any PR (including in-flight) — save via admin API, all fields unlocked */
+  const isAdminEditFlow = isEditMode && isAdminEditor;
 
   const [prNumber, setPrNumber] = useState(isEditMode ? '' : 'Auto on save');
   const [prTitle, setPrTitle] = useState('');
@@ -92,7 +106,8 @@ export default function CreatePRPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isReturned = prStatus === 'RETURNED';
-  const isResubmitFlow = isEditMode && isReturned;
+  const isResubmitFlow = isEditMode && isReturned && !isAdminEditFlow;
+  const backTo = isAdminEditFlow || isEditMode ? '/requester/track-pr' : '/requester/dashboard';
 
   useEffect(() => {
     if (!editPrId) return;
@@ -372,8 +387,8 @@ export default function CreatePRPage() {
 
   const handleSubmitPR = async () => {
     if (!validateForm()) return;
-    setSubmitAction('submit');
-    setShowConfirmModal(true);
+      setSubmitAction('submit');
+      setShowConfirmModal(true);
     setIsLoadingL1(true);
     try {
       const res = await prApi.previewL1Manager(department || undefined);
@@ -412,6 +427,15 @@ export default function CreatePRPage() {
     try {
       const payload = buildPayload();
       if (isEditMode && editPrId) {
+        if (isAdminEditFlow) {
+          await prApi.adminUpdate(editPrId, payload);
+          setCreatedPrNumber(prNumber);
+          setNextStepLabel('');
+          setL1Manager(null);
+          setShowConfirmModal(false);
+          setShowSuccessModal(true);
+          return;
+        }
         if (submit) {
           const res = await prApi.resubmit(editPrId, { ...payload, remarks: resubmitRemarks });
           const data = res.data as {
@@ -424,7 +448,7 @@ export default function CreatePRPage() {
           setL1Manager(data.l1Manager || null);
         } else {
           await prApi.update(editPrId, payload);
-          setCreatedPrNumber(prNumber);
+        setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
         }
@@ -485,8 +509,8 @@ export default function CreatePRPage() {
         <div className="p-8">
           <div className="max-w-md mx-auto p-6 bg-red-50 border border-red-200 rounded-xl text-center">
             <p className="text-sm text-red-700 mb-4">{loadError}</p>
-            <Link to="/requester/dashboard" className="text-sm font-medium text-red-800 hover:underline">
-              Back to Dashboard
+            <Link to={backTo} className="text-sm font-medium text-red-800 hover:underline">
+              {isAdminEditFlow || isEditMode ? 'Back to Track PR' : 'Back to Dashboard'}
             </Link>
           </div>
         </div>
@@ -498,17 +522,33 @@ export default function CreatePRPage() {
           {/* Left: breadcrumb + title */}
           <div>
             <div className="flex items-center gap-2 text-slate-400 text-xs mb-2">
-              <Link to="/requester/dashboard" className="hover:text-white transition-colors cursor-pointer">Dashboard</Link>
+              <Link to={backTo} className="hover:text-white transition-colors cursor-pointer">
+                {isAdminEditFlow || isEditMode ? 'Track PR' : 'Dashboard'}
+              </Link>
               <i className="ri-arrow-right-s-line"></i>
               <span className="text-slate-300">
-                {isEditMode ? (isReturned ? 'Edit & Resubmit PR' : 'Edit Purchase Requisition') : 'Create Purchase Requisition'}
+                {isAdminEditFlow
+                  ? 'Admin Edit PR'
+                  : isEditMode
+                    ? isReturned
+                      ? 'Edit & Resubmit PR'
+                      : 'Edit Purchase Requisition'
+                    : 'Create Purchase Requisition'}
               </span>
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">
-              {isEditMode ? (isReturned ? 'Edit & Resubmit PR' : 'Edit Purchase Requisition') : 'New Purchase Requisition'}
+              {isAdminEditFlow
+                ? 'Admin Edit Purchase Requisition'
+                : isEditMode
+                  ? isReturned
+                    ? 'Edit & Resubmit PR'
+                    : 'Edit Purchase Requisition'
+                  : 'New Purchase Requisition'}
             </h1>
             <p className="text-slate-400 text-sm mt-1">
-              {isReturned
+              {isAdminEditFlow
+                ? 'Update any PR field or line item, then save changes'
+                : isReturned
                 ? 'Update the fields based on feedback, then resubmit for approval'
                 : isEditMode
                 ? 'Update your draft or submit when ready'
@@ -678,11 +718,8 @@ export default function CreatePRPage() {
                 <input
                   type="text"
                   value={entitySearch}
-                  disabled={isEditMode}
                   placeholder="Search entity by code, name, cost center…"
-                  onFocus={() => {
-                    if (!isEditMode) setEntityOpen(true);
-                  }}
+                  onFocus={() => setEntityOpen(true)}
                   onChange={(e) => {
                     setEntitySearch(e.target.value);
                     setEntityId('');
@@ -695,11 +732,11 @@ export default function CreatePRPage() {
                       });
                     }
                   }}
-                  className={`w-full pl-9 pr-9 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-gray-50 disabled:cursor-not-allowed ${
+                  className={`w-full pl-9 pr-9 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
                     errors.entityId ? 'border-red-400 bg-red-50' : 'border-gray-200'
                   }`}
                 />
-                {(entitySearch || entityId) && !isEditMode && (
+                {(entitySearch || entityId) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -714,7 +751,7 @@ export default function CreatePRPage() {
                   </button>
                 )}
               </div>
-              {entityOpen && !isEditMode && (
+              {entityOpen && (
                 <div className="absolute z-30 mt-1 w-full max-h-56 overflow-auto bg-white border border-gray-200 rounded-xl shadow-lg">
                   {filteredEntities.length === 0 ? (
                     <p className="px-3 py-2.5 text-sm text-gray-500">No entities match “{entitySearch}”</p>
@@ -769,7 +806,6 @@ export default function CreatePRPage() {
                   <button
                     key={opt.id}
                     type="button"
-                    disabled={isEditMode}
                     onClick={() => {
                       setPurchaseType(opt.id);
                       // Service is only valid for Work Order
@@ -777,7 +813,7 @@ export default function CreatePRPage() {
                         setRequestType('Opex');
                       }
                     }}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
                       purchaseType === opt.id
                         ? 'bg-teal-600 text-white border-teal-600'
                         : 'bg-white text-gray-700 border-gray-200 hover:border-teal-300'
@@ -1247,27 +1283,44 @@ export default function CreatePRPage() {
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <Link
-              to="/requester/dashboard"
+              to={backTo}
               className="w-full sm:w-auto px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap text-center"
             >
               Cancel
             </Link>
+            {isAdminEditFlow ? (
+              <button
+                onClick={() => {
+                  if (!validateForm()) return;
+                  setSubmitAction('draft');
+                  void savePR(false);
+                }}
+                disabled={isSubmitting}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
+              >
+                <i className="ri-save-line"></i>
+                {isSubmitting ? 'Saving…' : 'Save Changes'}
+              </button>
+            ) : (
+              <>
             <button
               onClick={handleSaveDraft}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap"
             >
               <i className="ri-save-line"></i>
               Save Draft
             </button>
             <button
               onClick={handleSubmitPR}
-              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm ${
+                  className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm ${
                 isResubmitFlow ? 'bg-orange-600 hover:bg-orange-700' : 'bg-slate-800 hover:bg-slate-700'
               }`}
             >
               <i className={isResubmitFlow ? 'ri-refresh-line' : 'ri-send-plane-fill'}></i>
               {isResubmitFlow ? 'Resubmit PR' : 'Submit PR'}
             </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1355,16 +1408,20 @@ export default function CreatePRPage() {
                 <i className={`text-3xl ${submitAction === 'draft' ? 'ri-save-line text-gray-600' : 'ri-check-line text-emerald-600'}`}></i>
               </div>
               <h3 className="text-lg font-bold text-gray-900">
-                {submitAction === 'draft'
+                {isAdminEditFlow
+                  ? 'PR Updated Successfully!'
+                  : submitAction === 'draft'
                   ? 'Changes Saved!'
                   : isResubmitFlow
                   ? 'PR Resubmitted Successfully!'
                   : 'PR Submitted Successfully!'}
               </h3>
               <p className="text-sm text-gray-500 mt-1">
-                {submitAction === 'draft'
+                {isAdminEditFlow
+                  ? `${createdPrNumber || prNumber} details have been updated.`
+                  : submitAction === 'draft'
                   ? `${createdPrNumber || prNumber} saved. You can continue editing later.`
-                  : `${createdPrNumber || prNumber} has been ${isResubmitFlow ? 'resubmitted' : 'submitted'} and is pending L1 Manager approval.`}
+                    : `${createdPrNumber || prNumber} has been ${isResubmitFlow ? 'resubmitted' : 'submitted'} and is pending L1 Manager approval.`}
               </p>
             </div>
             {submitAction === 'submit' && (
@@ -1399,10 +1456,13 @@ export default function CreatePRPage() {
               </div>
             )}
             <button
-              onClick={() => { setShowSuccessModal(false); window.REACT_APP_NAVIGATE('/requester/dashboard'); }}
+              onClick={() => {
+                setShowSuccessModal(false);
+                window.REACT_APP_NAVIGATE(backTo);
+              }}
               className="w-full py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-700 text-sm font-semibold cursor-pointer whitespace-nowrap"
             >
-              Go to Dashboard
+              {isAdminEditFlow || isEditMode ? 'Back to Track PR' : 'Go to Dashboard'}
             </button>
           </div>
         </div>

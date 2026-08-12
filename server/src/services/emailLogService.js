@@ -198,6 +198,8 @@ export const EMAIL_TYPE_LABELS = {
   rfq_send_back: 'RFQ Send Back',
   rfq_submitted: 'RFQ Quote Submitted',
   po_vendor: 'PO Vendor Acceptance',
+  po_workflow: 'PO Assign / Send Back / Reject',
+  vendor_invoice_request: 'Vendor Invoice Request',
   smtp_test: 'SMTP Test',
   generic: 'Other',
 };

@@ -12,6 +12,7 @@ import poRoutes from './routes/po.routes.js';
 import vendorRoutes from './routes/vendor.routes.js';
 import masterRoutes from './routes/master.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import accountsRoutes from './routes/accounts.routes.js';
 import { runStartupMigrations } from './services/dbMigrate.js';
 import { testSmtpConnection, sendTestEmail } from './services/emailService.js';
 import { sendWhatsAppHsm, buildWorkflowWhatsAppParams, normalizeWhatsAppTo, getWhatsAppPublicBaseUrl } from './services/whatsappService.js';
@@ -171,6 +172,7 @@ app.use('/api/po', poRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/masters', masterRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/accounts', accountsRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

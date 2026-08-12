@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useCallback, Fragment } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import { GRNData, GRNStatus } from '../../mocks/grn-data';
-import { poApi } from '../../services/api';
+import { accountsApi } from '../../services/api';
 import CreateGRNModal, { NewGRNData } from './components/CreateGRNModal';
 import GRNApprovalModal from './components/GRNApprovalModal';
 
@@ -601,6 +601,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
 }
 
 export default function GRNPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
@@ -624,14 +625,51 @@ export default function GRNPage() {
   const loadAcceptedPos = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await poApi.listVendorAcceptance();
-      const accepted = ((res.data as ApiPo[]) || []).filter(
-        (p) => p.vendorAcceptanceStatus === 'accepted' || p.vendorAcceptanceStatus === 'partial'
-      );
-      setPendingFromPos(accepted.map(mapAcceptedPoToPendingGrn));
+      const [pendingRes, grnRes] = await Promise.all([
+        accountsApi.listPendingGrnPos(),
+        accountsApi.listGrns(),
+      ]);
+      const pending = ((pendingRes.data as Record<string, unknown>[]) || []).map((row) => {
+        const mapped = mapAcceptedPoToPendingGrn({
+          id: Number(row.poId),
+          poNumber: String(row.poNumber || ''),
+          prNumber: String(row.prId || ''),
+          prTitle: String(row.prTitle || ''),
+          vendorName: String(row.vendor || ''),
+          department: String(row.department || ''),
+          requester: String(row.requester || ''),
+          createdAt: String(row.poDate || ''),
+          expectedDeliveryDate: String(row.expectedDeliveryDate || ''),
+          deliveryAddress: String(row.deliveryAddress || ''),
+          paymentTerms: String(row.paymentTerms || ''),
+          gstPercentage: Number(row.gstPercentage) || 18,
+          subtotal: Number(row.subtotal) || 0,
+          taxAmount: Number(row.taxAmount) || 0,
+          grandTotal: Number(row.grandTotal) || 0,
+          vendorAcceptanceStatus: String(row.vendorAcceptanceStatus || 'accepted'),
+          vendorAcceptedAt: row.vendorAcceptedAt ? String(row.vendorAcceptedAt) : null,
+          vendorAcceptanceRemarks: String(row.remarks || ''),
+          lineItems: ((row.lineItems as Array<Record<string, unknown>>) || []).map((li) => ({
+            id: li.id as string | number,
+            itemName: String(li.description || ''),
+            description: String(li.description || ''),
+            quantity: Number(li.orderedQty) || 0,
+            unitPrice: Number(li.unitPrice) || 0,
+            total: Number(li.total) || 0,
+          })),
+        });
+        return mapped;
+      });
+      setPendingFromPos(pending);
+
+      const saved = ((grnRes.data as Record<string, unknown>[]) || []).map((g) => ({
+        ...(g as unknown as GRNData),
+        awaitingEntry: false,
+      }));
+      setNewGRNs(saved);
     } catch (err) {
       setPendingFromPos([]);
-      showToast(err instanceof Error ? err.message : 'Failed to load vendor-accepted POs', 'error');
+      showToast(err instanceof Error ? err.message : 'Failed to load GRN queue', 'error');
     } finally {
       setLoading(false);
     }
@@ -640,10 +678,6 @@ export default function GRNPage() {
   useEffect(() => {
     loadAcceptedPos();
   }, [loadAcceptedPos]);
-
-  useEffect(() => {
-    saveStoredGrns(newGRNs);
-  }, [newGRNs]);
 
   useEffect(() => {
     // Deep-link from Vendor Acceptance: highlight awaiting GRN only — do NOT auto-open popup.
@@ -692,64 +726,44 @@ export default function GRNPage() {
     setExpandedRow(null);
   };
 
-  const handleCreateGRN = (data: NewGRNData) => {
-    const totalOrdered = data.lineItems.reduce((s, i) => s + i.orderedQty, 0);
-    const totalReceived = data.lineItems.reduce((s, i) => s + i.receivedQty, 0);
-    const allReceived = totalReceived === totalOrdered;
-    const noneReceived = totalReceived === 0;
+  const handleCreateGRN = async (data: NewGRNData) => {
     const matchedPo = pendingFromPos.find((p) => p.poNumber === data.poNumber);
-
-    const newGRN: GRNData = {
-      grnNumber: data.grnNumber,
-      poNumber: data.poNumber,
-      poId: matchedPo?.poId || prefillPoId,
-      prId: data.prId,
-      prTitle: data.prTitle,
-      vendor: data.vendor,
-      department: data.department,
-      requester: data.requester,
-      poDate: matchedPo?.poDate || new Date().toISOString().split('T')[0],
-      expectedDeliveryDate: data.expectedDeliveryDate,
-      receivedDate: data.receivedDate,
-      deliveryAddress: data.deliveryAddress,
-      paymentTerms: data.paymentTerms,
-      lineItems: data.lineItems.map(item => ({
-        id: item.id,
-        description: item.description,
-        orderedQty: item.orderedQty,
-        receivedQty: item.receivedQty,
-        pendingQty: item.orderedQty - item.receivedQty,
-        unitPrice: item.unitPrice,
-        total: item.receivedQty * item.unitPrice,
-        condition: item.condition,
-      })),
-      subtotal: data.subtotal,
-      gstPercentage: data.gstPercentage,
-      taxAmount: data.taxAmount,
-      grandTotal: data.grandTotal,
-      receivedValue: data.subtotal,
-      status: noneReceived ? 'Pending Receipt' : allReceived ? 'Fully Received' : 'Partially Received',
-      priority: matchedPo?.priority || 'medium',
-      receivedBy: data.receivedBy || null,
-      inspectedBy: data.inspectedBy || null,
-      remarks: data.remarks,
-      awaitingEntry: false,
-      receiptHistory: [
-        {
-          action: 'GRN Created',
-          performedBy: data.receivedBy || 'Store Keeper',
-          role: 'Store Keeper',
-          date: `${data.receivedDate} 10:00 AM`,
-          notes: `GRN created for ${data.poNumber}. ${data.remarks || 'Goods received and recorded.'}`,
-        },
-      ],
-    };
-
-    setNewGRNs(prev => [newGRN, ...prev.filter((g) => g.poNumber !== data.poNumber)]);
-    setCreateGRNOpen(false);
-    setPrefillPoNumber(undefined);
-    setPrefillPoId(undefined);
-    showToast(`${data.grnNumber} created successfully!`, 'success');
+    const poId = matchedPo?.poId || prefillPoId;
+    if (!poId) {
+      showToast('PO reference missing — cannot submit GRN', 'error');
+      return;
+    }
+    try {
+      const res = await accountsApi.submitGrn({
+        poId,
+        grnNumber: data.grnNumber,
+        receivedDate: data.receivedDate,
+        receivedBy: data.receivedBy,
+        inspectedBy: data.inspectedBy,
+        remarks: data.remarks,
+        lineItems: data.lineItems.map((item) => ({
+          id: item.id,
+          poLineItemId: item.id,
+          description: item.description,
+          orderedQty: item.orderedQty,
+          receivedQty: item.receivedQty,
+          unitPrice: item.unitPrice,
+          condition: item.condition,
+        })),
+      });
+      setCreateGRNOpen(false);
+      setPrefillPoId(undefined);
+      setPrefillPoNumber(undefined);
+      showToast(
+        res.message ||
+          'GRN submitted — invoice base created. Opening Vendor Invoice to add invoice…',
+        'success'
+      );
+      await loadAcceptedPos();
+      navigate('/scm/vendor-invoice');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'GRN submit failed', 'error');
+    }
   };
 
   const allGRNs = useMemo(() => {

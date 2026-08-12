@@ -96,6 +96,7 @@ async function init() {
     `ALTER TABLE vendor_quotation_submissions ADD COLUMN delivery_terms VARCHAR(100) NULL`,
     `ALTER TABLE vendor_quotation_submissions ADD COLUMN quotation_file_name VARCHAR(255) NULL`,
     `ALTER TABLE vendor_quotation_submissions ADD COLUMN quotation_file_path VARCHAR(500) NULL`,
+    `ALTER TABLE vendor_quotation_submissions ADD COLUMN quotation_file_data LONGBLOB NULL`,
     `ALTER TABLE vendor_quotation_submissions ADD COLUMN custom_fields JSON NULL`,
     `ALTER TABLE vendor_quotation_submissions ADD COLUMN requester_fields JSON NULL`,
     `ALTER TABLE rfq_invitations ADD COLUMN invite_mode ENUM('email', 'manual') NOT NULL DEFAULT 'email'`,

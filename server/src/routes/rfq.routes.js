@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireRoles } from '../middleware/auth.js';
 import {
   inviteVendors,
+  removeRfqInvitation,
   getRfqByPrId,
   getRfqByToken,
   submitVendorQuotation,
@@ -10,6 +11,7 @@ import {
   sendBackVendorQuote,
   getSubmissionFile,
   attachQuotationFileToSubmission,
+  adminUpdateVendorQuotationSubmission,
   saveRfqConfig,
   updateSubmissionReviewFields,
   finalizeRfq,
@@ -41,10 +43,26 @@ router.post('/quote/:token', async (req, res) => {
   }
 });
 
-router.get('/submissions/:id/file', authenticate, requireRoles('Requester', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'SCM Manager', 'CFO'), async (req, res) => {
+router.get('/submissions/:id/file', authenticate, requireRoles('Requester', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'SCM Manager', 'CFO', 'Super Admin'), async (req, res) => {
   try {
-    const { fullPath, fileName } = await getSubmissionFile(req.user, Number(req.params.id));
-    res.download(fullPath, fileName);
+    const { fullPath, fileName, buffer } = await getSubmissionFile(req.user, Number(req.params.id));
+    if (buffer) {
+      const lower = String(fileName || '').toLowerCase();
+      const contentType = lower.endsWith('.pdf')
+        ? 'application/pdf'
+        : lower.endsWith('.png')
+          ? 'image/png'
+          : lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+            ? 'image/jpeg'
+            : lower.endsWith('.webp')
+              ? 'image/webp'
+              : 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `inline; filename="${String(fileName).replace(/"/g, '')}"`);
+      res.setHeader('Content-Length', buffer.length);
+      return res.send(buffer);
+    }
+    return res.download(fullPath, fileName);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -54,7 +72,7 @@ router.use(authenticate);
 
 const POST_RFQ_ROLES = ['HOD Approver', 'PR Manager', 'SCM Manager', 'CFO', 'SCM Buyer'];
 
-router.get('/scm-entry/pending', requireRoles('SCM Buyer'), async (req, res) => {
+router.get('/scm-entry/pending', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const data = await listScmRfqEntryPrs(req.user);
     res.json({ data });
@@ -94,7 +112,7 @@ router.post('/pr/:prId/post-approve', async (req, res) => {
   }
 });
 
-router.get('/pr/:prId', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.get('/pr/:prId', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const data = await getRfqByPrId(req.user, Number(req.params.prId));
     res.json({
@@ -143,7 +161,7 @@ router.put('/submissions/:id/review-fields', requireRoles('Requester', 'SCM Buye
   }
 });
 
-router.post('/submissions/:id/attach-file', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.post('/submissions/:id/attach-file', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const result = await attachQuotationFileToSubmission(req.user, Number(req.params.id), req.body);
     res.json({ data: result, message: result.message });
@@ -151,6 +169,24 @@ router.post('/submissions/:id/attach-file', requireRoles('Requester', 'SCM Buyer
     res.status(400).json({ message: err.message });
   }
 });
+
+/** Admin / SCM / requester: edit quoted amounts (+ optional file) on an existing submission */
+router.put(
+  '/submissions/:id/admin',
+  requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'),
+  async (req, res) => {
+    try {
+      const result = await adminUpdateVendorQuotationSubmission(
+        req.user,
+        Number(req.params.id),
+        req.body
+      );
+      res.json({ data: result, message: result.message });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
 
 router.post('/invite', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
   try {
@@ -163,6 +199,23 @@ router.post('/invite', requireRoles('Requester', 'SCM Buyer'), async (req, res) 
         quotations: mapInvitationsToQuotations(result.rfq),
         tableRows: mapInvitationsToTableRows(result.rfq, result.config),
         config: result.config,
+      },
+      message: result.message,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.delete('/invitations/:id', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+  try {
+    const result = await removeRfqInvitation(req.user, Number(req.params.id));
+    res.json({
+      data: {
+        tableRows: result.tableRows,
+        quotations: result.quotations,
+        config: result.config,
+        removedVendorName: result.removedVendorName,
       },
       message: result.message,
     });

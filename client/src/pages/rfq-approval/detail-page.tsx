@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../components/rfq/VendorComparisonMatrix';
 import PostRfqApprovalModal from './components/PostRfqApprovalModal';
+import PrDetailsEditor from './components/PrDetailsEditor';
 import { rfqApi, VendorComparisonData } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -232,6 +233,20 @@ export default function RfqApprovalDetailPage() {
           Summary view for Manager Approval. SCM Buyer handles PO creation after manager approval.
         </div>
       )}
+
+      <PrDetailsEditor
+        prId={Number(prId)}
+        canEdit={Boolean(
+          user?.role &&
+            ['Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO'].includes(
+              user.role
+            )
+        )}
+        onToast={showToast}
+        onSaved={() => {
+          void load();
+        }}
+      />
 
       <VendorComparisonMatrix data={data} onPreviewFile={handlePreviewFile} />
 

@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import pool from '../config/db.js';
 import { getPurchaseRequestById } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath } from './poPdfService.js';
-import { sendPoVendorNotification } from './emailService.js';
+import { sendPoVendorNotification, queuePoWorkflowNotification } from './emailService.js';
 import { formatDate, formatDateTime, PR_STATUS } from '../utils/constants.js';
 import { getLetterheadByType } from './poLetterheadService.js';
 import {
@@ -18,6 +18,70 @@ import {
   purchaseTypeToDocType,
 } from './documentNumberService.js';
 import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
+
+function poPortalUrl(path) {
+  const base = getWhatsAppPublicBaseUrl().replace(/\/$/, '');
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+async function resolveRoleEmails(role) {
+  if (role === 'SCM Buyer') {
+    const buyer = await resolveScmBuyerUser();
+    return buyer?.email ? [{ email: buyer.email, name: buyer.name }] : [];
+  }
+  const [rows] = await pool.query(
+    `SELECT email, name FROM users WHERE role = ? AND is_active = 1`,
+    [role]
+  );
+  return rows.map((r) => ({ email: r.email, name: r.name }));
+}
+
+async function resolvePoNotifyParties(po) {
+  const emails = new Set();
+  const names = [];
+
+  if (po.createdBy || po.created_by) {
+    const [creator] = await pool.query(
+      `SELECT email, name FROM users WHERE id = ? AND is_active = 1`,
+      [po.createdBy || po.created_by]
+    );
+    if (creator[0]?.email) {
+      emails.add(creator[0].email);
+      names.push(creator[0].name);
+    }
+  }
+
+  if (po.prId || po.pr_id) {
+    const [reqRows] = await pool.query(
+      `SELECT u.email, u.name
+       FROM purchase_requests pr
+       JOIN users u ON u.id = pr.requester_id
+       WHERE pr.id = ? AND u.is_active = 1`,
+      [po.prId || po.pr_id]
+    );
+    if (reqRows[0]?.email) {
+      emails.add(reqRows[0].email);
+      names.push(reqRows[0].name);
+    }
+  }
+
+  if (po.signerId || po.signer_id) {
+    const [signer] = await pool.query(
+      `SELECT email, name FROM users WHERE id = ? AND is_active = 1`,
+      [po.signerId || po.signer_id]
+    );
+    if (signer[0]?.email) {
+      emails.add(signer[0].email);
+      names.push(signer[0].name);
+    }
+  }
+
+  return {
+    emails: [...emails],
+    name: names[0] || po.requester || 'User',
+  };
+}
 
 function normalizeCurrency(value) {
   const code = String(value || '')
@@ -229,6 +293,12 @@ function mapPoStatusUI(status, acceptanceStatus) {
     approved: 'PO Approved',
     rejected: 'PO Rejected',
     sent_to_vendor: 'Pending Vendor Acceptance',
+    awaiting_grn: 'Awaiting GRN',
+    grn_completed: 'GRN Completed',
+    invoice_entry: 'Invoice Entry',
+    pending_accounts_approval: 'Pending Accounts Approval',
+    approved_for_payment: 'Approved for Payment',
+    paid: 'Paid',
   };
   return map[status] || status;
 }
@@ -240,6 +310,7 @@ function formatApprovalStage(stage) {
     PO_SIGNED: 'SCM Manager Sign',
     PO_BUYER_VERIFIED: 'SCM Buyer Final Verify',
     PO_BUYER_REJECTED: 'SCM Buyer Final Verify',
+    PO_BUYER_SENT_BACK: 'SCM Buyer Final Verify',
     PO_REJECTED: 'SCM Manager Approval',
     HOD_REVIEW: 'HOD / Manager Approval',
     PR_MANAGER_REVIEW: 'L2 Manager Approval',
@@ -266,7 +337,7 @@ function mapApprovalAction(action) {
   if (normalized === 'created') return 'Created';
   if (normalized === 'updated') return 'Updated';
   if (normalized === 'verified') return 'Verified';
-  if (normalized === 'returned') return 'Returned';
+  if (normalized === 'return' || normalized === 'returned') return 'Returned';
   return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'Updated';
 }
 
@@ -802,6 +873,21 @@ export async function createPurchaseOrder(user, prId, body) {
     await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
     po.pdfPath = fileName;
 
+    if (!skipApproval) {
+      const managers = await resolveRoleEmails('SCM Manager');
+      queuePoWorkflowNotification(po, {
+        action: 'assign',
+        stageLabel: 'SCM Manager PO Approval',
+        recipientEmails: managers.map((m) => m.email),
+        recipientName: managers[0]?.name || 'SCM Manager',
+        actorName: user.name,
+        actorRole: user.role,
+        remarks: `PO ${poNumber} created and sent for approval`,
+        portalUrl: poPortalUrl('/scm/po-approval'),
+        ctaLabel: 'Open PO Approval',
+      });
+    }
+
     return po;
   } catch (err) {
     await conn.rollback();
@@ -856,6 +942,11 @@ function mapTrackPoStatus(statusRaw) {
   const s = String(statusRaw || '').toLowerCase();
   if (s === 'pending_approval') return { status: 'pending', statusLabel: 'Pending Approval' };
   if (s === 'pending_buyer_verify') return { status: 'pending', statusLabel: 'Pending Buyer Verify' };
+  if (s === 'invoice_entry') return { status: 'invoice', statusLabel: 'Invoice Entry' };
+  if (s === 'pending_accounts_approval') return { status: 'invoice', statusLabel: 'Pending Accounts Approval' };
+  if (s === 'approved_for_payment') return { status: 'payment', statusLabel: 'Approved for Payment' };
+  if (s === 'paid') return { status: 'paid', statusLabel: 'Paid' };
+  if (s === 'awaiting_grn' || s === 'grn_completed') return { status: 'grn', statusLabel: s === 'paid' ? 'Paid' : 'GRN' };
   if (s === 'rejected') return { status: 'rejected', statusLabel: 'Rejected' };
   if (s === 'sent_to_vendor') return { status: 'sent', statusLabel: 'Pending Vendor Acceptance' };
   if (s === 'approved') return { status: 'approved', statusLabel: 'PO Approved' };
@@ -1273,7 +1364,23 @@ export async function signPurchaseOrder(user, poId, {
     [po.prId, user.id, remarks.trim() || 'Signed — sent to SCM Buyer for final verify']
   );
 
-  return getPurchaseOrderById(poId);
+  const updated = await getPurchaseOrderById(poId);
+  const buyer = scmBuyer || (await resolveScmBuyerUser());
+  if (buyer?.email) {
+    queuePoWorkflowNotification(updated, {
+      action: 'assign',
+      stageLabel: 'SCM Buyer Final Verify',
+      recipientEmails: [buyer.email],
+      recipientName: buyer.name || 'SCM Buyer',
+      actorName: signName || user.name,
+      actorRole: user.role,
+      remarks: remarks.trim(),
+      portalUrl: poPortalUrl('/scm/buyer-final-verify'),
+      ctaLabel: 'Open Buyer Final Verify',
+    });
+  }
+
+  return updated;
 }
 
 export async function finalVerifyPurchaseOrder(user, poId, remarks) {
@@ -1344,7 +1451,85 @@ export async function rejectBuyerFinalVerify(user, poId, remarks) {
     [rows[0].pr_id, user.id, remarks.trim()]
   );
 
-  return getPurchaseOrderById(poId);
+  const updated = await getPurchaseOrderById(poId);
+  const parties = await resolvePoNotifyParties(rows[0]);
+  const managers = await resolveRoleEmails('SCM Manager');
+  const recipientEmails = [...new Set([...parties.emails, ...managers.map((m) => m.email)])];
+  queuePoWorkflowNotification(updated, {
+    action: 'reject',
+    stageLabel: 'SCM Buyer Final Verify — Rejected',
+    recipientEmails,
+    recipientName: parties.name || managers[0]?.name || 'Team',
+    actorName: user.name,
+    actorRole: user.role,
+    remarks: remarks.trim(),
+    portalUrl: poPortalUrl('/scm/track-po'),
+    ctaLabel: 'Track PO',
+  });
+
+  return updated;
+}
+
+/** Buyer sends PO back to SCM Manager for re-sign (clears signature). */
+export async function sendBackBuyerFinalVerify(user, poId, remarks) {
+  if (user.role !== 'SCM Buyer') throw new Error('Only SCM Buyer can send back at final verify');
+
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  if (rows[0].status !== 'pending_buyer_verify') {
+    throw new Error('PO is not pending buyer final verification');
+  }
+  if (!remarks?.trim()) throw new Error('Send-back remarks are required');
+
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'pending_approval',
+       signed_pdf_path = NULL,
+       signer_id = NULL,
+       signature_name = NULL,
+       signature_image_path = NULL,
+       signer_comments = NULL,
+       signed_at = NULL,
+       updated_at = NOW()
+     WHERE id = ?`,
+    [poId]
+  );
+
+  await pool.query(
+    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND task_type = 'PO_BUYER_VERIFY' AND assigned_role = 'SCM Buyer' AND status = 'pending'`,
+    [rows[0].pr_id]
+  );
+
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 2);
+  await pool.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
+     VALUES (?, 'PO_APPROVAL', 'SCM Manager', 'pending', ?)`,
+    [rows[0].pr_id, dueDate.toISOString().split('T')[0]]
+  );
+
+  await pool.query(
+    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+     VALUES (?, 'PO_BUYER_SENT_BACK', ?, 'return', ?)`,
+    [rows[0].pr_id, user.id, remarks.trim()]
+  );
+
+  const updated = await getPurchaseOrderById(poId);
+  const managers = await resolveRoleEmails('SCM Manager');
+  queuePoWorkflowNotification(updated, {
+    action: 'sendback',
+    stageLabel: 'SCM Manager PO Approval — Sent Back',
+    recipientEmails: managers.map((m) => m.email),
+    recipientName: managers[0]?.name || 'SCM Manager',
+    actorName: user.name,
+    actorRole: user.role,
+    remarks: remarks.trim(),
+    portalUrl: poPortalUrl('/scm/po-approval'),
+    ctaLabel: 'Review & Re-sign PO',
+  });
+
+  return updated;
 }
 
 export async function rejectPurchaseOrder(user, poId, remarks) {
@@ -1372,7 +1557,25 @@ export async function rejectPurchaseOrder(user, poId, remarks) {
     [rows[0].pr_id, user.id, remarks.trim()]
   );
 
-  return getPurchaseOrderById(poId);
+  const updated = await getPurchaseOrderById(poId);
+  const parties = await resolvePoNotifyParties(rows[0]);
+  const buyer = await resolveScmBuyerUser();
+  const recipientEmails = [
+    ...new Set([...parties.emails, ...(buyer?.email ? [buyer.email] : [])]),
+  ];
+  queuePoWorkflowNotification(updated, {
+    action: 'reject',
+    stageLabel: 'SCM Manager PO Approval — Rejected',
+    recipientEmails,
+    recipientName: parties.name || buyer?.name || 'Team',
+    actorName: user.name,
+    actorRole: user.role,
+    remarks: remarks.trim(),
+    portalUrl: poPortalUrl('/scm/track-po'),
+    ctaLabel: 'Track PO',
+  });
+
+  return updated;
 }
 
 export async function updatePurchaseOrder(user, poId, body) {
@@ -1654,6 +1857,10 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
        vendor_acceptance_file_path = COALESCE(?, vendor_acceptance_file_path),
        vendor_delivery_confirmed_date = ?,
        vendor_accepted_at = NOW(),
+       status = CASE
+         WHEN ? IN ('accepted', 'partial') THEN 'awaiting_grn'
+         ELSE status
+       END,
        updated_at = NOW()
      WHERE id = ?`,
     [
@@ -1662,6 +1869,7 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
       fileInfo.fileName,
       fileInfo.filePath,
       deliveryDate || null,
+      acceptanceStatus,
       poId,
     ]
   );
@@ -1754,6 +1962,10 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
        vendor_acceptance_file_path = COALESCE(?, vendor_acceptance_file_path),
        vendor_delivery_confirmed_date = ?,
        vendor_accepted_at = NOW(),
+       status = CASE
+         WHEN ? IN ('accepted', 'partial') THEN 'awaiting_grn'
+         ELSE status
+       END,
        updated_at = NOW()
      WHERE id = ?`,
     [
@@ -1762,6 +1974,7 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
       fileInfo.fileName,
       fileInfo.filePath,
       deliveryDate || null,
+      acceptanceStatus,
       row.id,
     ]
   );

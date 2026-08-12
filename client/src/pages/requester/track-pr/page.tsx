@@ -4,6 +4,16 @@ import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatusBadge from '../../../components/base/StatusBadge';
 import PriorityBadge from '../../../components/base/PriorityBadge';
 import { prApi, RequesterPrListMeta } from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
+
+const ADMIN_EDIT_ROLES = [
+  'Super Admin',
+  'SCM Manager',
+  'SCM Buyer',
+  'HOD Approver',
+  'PR Manager',
+  'CFO',
+];
 
 type StatusFilter = 'all' | 'draft' | 'pending_approval' | 'approved' | 'returned' | 'rejected' | 'po_issued';
 type RequestTypeFilter = 'all' | 'Capex' | 'Opex' | 'Service';
@@ -681,6 +691,8 @@ const formatCurrency = (amount: number) =>
 
 export default function TrackPRPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
   const [rows, setRows] = useState<TrackPR[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -1019,12 +1031,29 @@ export default function TrackPRPage() {
                                 >
                                   {expandedRow === pr.key ? 'Hide' : 'View Details'}
                                 </button>
-                                {(pr.status === 'draft' || pr.status === 'returned') && (
+                                {(isAdminEditor ||
+                                  pr.status === 'draft' ||
+                                  pr.status === 'returned') && (
                                   <button
                                     onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
                                     className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap"
                                   >
                                     Edit
+                                  </button>
+                                )}
+                                {isAdminEditor && pr.status !== 'draft' && (
+                                  <button
+                                    onClick={() =>
+                                      navigate(
+                                        user?.role === 'Requester'
+                                          ? `/requester/rfq-entry/${pr.prId}`
+                                          : `/scm/rfq-entry/${pr.prId}`
+                                      )
+                                    }
+                                    className="px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-300 rounded-md hover:bg-teal-50 transition-colors whitespace-nowrap"
+                                    title="Edit RFQ amounts and quotation files"
+                                  >
+                                    Edit RFQ
                                   </button>
                                 )}
                               </div>

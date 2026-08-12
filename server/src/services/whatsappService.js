@@ -13,7 +13,7 @@ import { createWhatsAppLog, updateWhatsAppLog } from './whatsappLogService.js';
  * true  = send WhatsApp
  * false = skip all outbound WhatsApp
  */
-const WHATSAPP_SEND_ENABLED = true;
+const WHATSAPP_SEND_ENABLED = false;
 
 /** Manual Unfyd credentials (override env). */
 const WHATSAPP_APP_KEY = "ak_9abbd541cca5faf62c";

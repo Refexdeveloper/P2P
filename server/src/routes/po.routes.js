@@ -13,6 +13,7 @@ import {
   rejectPurchaseOrder,
   finalVerifyPurchaseOrder,
   rejectBuyerFinalVerify,
+  sendBackBuyerFinalVerify,
   updatePurchaseOrder,
   buildPoPreviewForPo,
   sendVendorAcceptanceMail,
@@ -509,6 +510,18 @@ router.post('/:id/final-verify/reject', requireRoles('SCM Buyer'), async (req, r
   try {
     const data = await rejectBuyerFinalVerify(req.user, Number(req.params.id), req.body?.remarks);
     res.json({ data, message: 'PO rejected at buyer final verify' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/final-verify/send-back', requireRoles('SCM Buyer'), async (req, res) => {
+  try {
+    const data = await sendBackBuyerFinalVerify(req.user, Number(req.params.id), req.body?.remarks);
+    res.json({
+      data,
+      message: 'PO sent back to SCM Manager for re-approval',
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

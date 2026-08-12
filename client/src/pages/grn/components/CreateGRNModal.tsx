@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { poApi } from '../../../services/api';
+import { accountsApi, poApi } from '../../../services/api';
 
 interface CreateGRNModalProps {
   isOpen: boolean;
@@ -209,12 +209,34 @@ export default function CreateGRNModal({
           applyPoSelection(mapped);
           setStep(0);
         } else {
-          const res = await poApi.listVendorAcceptance();
-          const accepted = ((res.data as ApiPo[]) || [])
-            .filter(
-              (p) => p.vendorAcceptanceStatus === 'accepted' || p.vendorAcceptanceStatus === 'partial'
-            )
-            .map(mapApiPo);
+          const res = await accountsApi.listPendingGrnPos();
+          const accepted = ((res.data as Record<string, unknown>[]) || []).map((row) =>
+            mapApiPo({
+              id: Number(row.poId),
+              poNumber: String(row.poNumber || ''),
+              vendorName: String(row.vendor || ''),
+              prNumber: String(row.prId || ''),
+              prTitle: String(row.prTitle || ''),
+              department: String(row.department || ''),
+              requester: String(row.requester || ''),
+              paymentTerms: String(row.paymentTerms || ''),
+              deliveryAddress: String(row.deliveryAddress || ''),
+              expectedDeliveryDate: String(row.expectedDeliveryDate || ''),
+              gstPercentage: Number(row.gstPercentage) || 18,
+              subtotal: Number(row.subtotal) || 0,
+              taxAmount: Number(row.taxAmount) || 0,
+              grandTotal: Number(row.grandTotal) || 0,
+              vendorAcceptanceStatus: String(row.vendorAcceptanceStatus || 'accepted'),
+              lineItems: ((row.lineItems as Array<Record<string, unknown>>) || []).map((li) => ({
+                id: Number(li.poLineItemId || li.id) || 0,
+                itemName: String(li.description || ''),
+                description: String(li.description || ''),
+                quantity: Number(li.orderedQty) || 0,
+                unitPrice: Number(li.unitPrice) || 0,
+                total: Number(li.total) || 0,
+              })),
+            })
+          );
           if (cancelled) return;
           setApprovedPOs(accepted);
           setLockedPo(null);

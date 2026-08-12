@@ -1,4 +1,11 @@
-export type InvoiceStatus = 'Pending Verification' | 'Matched' | 'Discrepancy' | 'Approved for Payment' | 'On Hold' | 'Pending Manager Approval';
+export type InvoiceStatus =
+  | 'Pending Verification'
+  | 'Matched'
+  | 'Discrepancy'
+  | 'Approved for Payment'
+  | 'On Hold'
+  | 'Pending Manager Approval'
+  | 'Paid';
 
 export type PaymentStatus = 'Pending Payment' | 'Paid' | 'Overdue';
 
@@ -31,6 +38,7 @@ export interface InvoiceLineItem {
 }
 
 export interface InvoiceData {
+  id?: number;
   invoiceNumber: string;
   invoiceDate: string;
   submittedDate: string;
@@ -40,6 +48,10 @@ export interface InvoiceData {
   vendorAddress: string;
   poNumber: string;
   grnNumber: string;
+  poStatus?: string;
+  hasInvoiceFile?: boolean;
+  invoiceFileName?: string | null;
+  statusRaw?: string;
   prId: string;
   prTitle: string;
   department: string;

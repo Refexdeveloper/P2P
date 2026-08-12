@@ -6,6 +6,7 @@ const ROLE_PORTAL_PATH = {
   CFO: '/cfo/dashboard',
   Requester: '/requester/rfq-entry',
   'SCM Buyer': '/scm/rfq-entry',
+  'SCM Manager': '/scm/po-approval',
 };
 
 const POST_RFQ_PORTAL_PATH = {
@@ -13,7 +14,7 @@ const POST_RFQ_PORTAL_PATH = {
   'PR Manager': '/rfq-approval',
   'SCM Manager': '/rfq-approval',
   CFO: '/rfq-approval',
-  'SCM Buyer': '/rfq-approval',
+  'SCM Buyer': '/scm/create-po',
 };
 
 function getPortalPath(role, postRfq) {
@@ -21,8 +22,11 @@ function getPortalPath(role, postRfq) {
   return ROLE_PORTAL_PATH[role] || '/tasks';
 }
 
-function buildActionUrl(prId, action, role, postRfq = false, rfqEntry = false) {
-  const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+function buildActionUrl(prId, action, role, postRfq = false, rfqEntry = false, createPo = false, baseUrl = null) {
+  const base = (baseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+  if (createPo || (postRfq && role === 'SCM Buyer')) {
+    return `${base}/scm/create-po?prId=${prId}`;
+  }
   if (role === 'Requester') {
     return `${base}/requester/rfq-entry/${prId}`;
   }
@@ -35,6 +39,7 @@ function buildActionUrl(prId, action, role, postRfq = false, rfqEntry = false) {
   if (postRfq || path.includes('rfq-approval') || path.includes('dashboard') || path === '/tasks') {
     if (path === '/tasks') return `${base}${path}?prId=${prId}&action=${actionParam}`;
     if (path.includes('dashboard')) return `${base}${path}?prId=${prId}&action=${actionParam}`;
+    if (path === '/scm/create-po') return `${base}${path}?prId=${prId}`;
     return `${base}${path}/${prId}?action=${actionParam}`;
   }
   return `${base}${path}/${prId}?action=${actionParam}`;
@@ -279,34 +284,80 @@ export function buildPrApprovalPendingEmail({
   stageLabel = null,
   rfqSummary = null,
   rfqEntry = false,
+  createPo = false,
+  appBaseUrl = null,
 }) {
   const isRequesterStep = assignedRole === 'Requester';
   const isScmRfqEntry = rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq);
-  const isRfqEntryStep = isRequesterStep || isScmRfqEntry;
+  const stageLower = String(stageLabel || '').toLowerCase();
+  const isCreatePoStep =
+    createPo ||
+    stageLower.includes('po create') ||
+    stageLower.includes('create po') ||
+    (postRfq && assignedRole === 'SCM Buyer' && !isScmRfqEntry);
+  const isRfqEntryStep = (isRequesterStep || isScmRfqEntry) && !isCreatePoStep;
   const roleDisplayName = formatRoleDisplayName(assignedRole);
-  const stageText = stageLabel || (postRfq ? 'Post-RFQ Review' : isRfqEntryStep ? 'RFQ Entry' : 'Purchase Request');
-  const subject = isRfqEntryStep
-    ? `Action Required: RFQ Entry for ${pr.prNumber} — ${pr.title}`
-    : postRfq
-      ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
-      : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
-  const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const path = getPortalPath(assignedRole, postRfq);
-  const portalUrl = isRequesterStep
-    ? `${base}/requester/rfq-entry/${pr.id}`
-    : isScmRfqEntry
-      ? `${base}/scm/rfq-entry/${pr.id}`
+  const stageText =
+    stageLabel ||
+    (isCreatePoStep
+      ? 'SCM Create PO'
       : postRfq
-        ? `${base}${path}/${pr.id}`
-        : path === '/tasks'
-          ? `${base}${path}?prId=${pr.id}`
-          : `${base}${path}?prId=${pr.id}`;
+        ? 'Post-RFQ Review'
+        : isRfqEntryStep
+          ? 'RFQ Entry'
+          : 'Purchase Request');
+  const subject = isCreatePoStep
+    ? `Action Required: Create PO for ${pr.prNumber} — ${pr.title}`
+    : isRfqEntryStep
+      ? `Action Required: RFQ Entry for ${pr.prNumber} — ${pr.title}`
+      : postRfq
+        ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
+        : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
+  const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const path = getPortalPath(assignedRole, postRfq && !isCreatePoStep);
+  const portalUrl = isCreatePoStep
+    ? `${base}/scm/create-po?prId=${pr.id}`
+    : isRequesterStep
+      ? `${base}/requester/rfq-entry/${pr.id}`
+      : isScmRfqEntry
+        ? `${base}/scm/rfq-entry/${pr.id}`
+        : postRfq
+          ? path === '/scm/create-po'
+            ? `${base}${path}?prId=${pr.id}`
+            : `${base}${path}/${pr.id}`
+          : path === '/tasks'
+            ? `${base}${path}?prId=${pr.id}`
+            : `${base}${path}?prId=${pr.id}`;
 
-  const approveUrl = buildActionUrl(pr.id, 'approve', assignedRole, postRfq, isScmRfqEntry);
-  const returnUrl = buildActionUrl(pr.id, 'return', assignedRole, postRfq, isScmRfqEntry);
-  const rejectUrl = buildActionUrl(pr.id, 'reject', assignedRole, postRfq, isScmRfqEntry);
+  const approveUrl = buildActionUrl(
+    pr.id,
+    'approve',
+    assignedRole,
+    postRfq,
+    isScmRfqEntry,
+    isCreatePoStep,
+    base
+  );
+  const returnUrl = buildActionUrl(
+    pr.id,
+    'return',
+    assignedRole,
+    postRfq,
+    isScmRfqEntry,
+    isCreatePoStep,
+    base
+  );
+  const rejectUrl = buildActionUrl(
+    pr.id,
+    'reject',
+    assignedRole,
+    postRfq,
+    isScmRfqEntry,
+    isCreatePoStep,
+    base
+  );
 
-  const showSendBack = assignedRole !== 'CFO' && !isRfqEntryStep;
+  const showSendBack = assignedRole !== 'CFO' && !isRfqEntryStep && !isCreatePoStep;
 
   const rfqEntryHint = isScmRfqEntry
     ? stageLabel?.toLowerCase().includes('final')
@@ -314,7 +365,17 @@ export function buildPrApprovalPendingEmail({
       : 'CFO approved this PR — open SCM RFQ Entry to invite vendors and collect quotations.'
     : 'HOD approved your PR — enter vendor quotations to continue.';
 
-  const actionButtons = isRfqEntryStep
+  const actionButtons = isCreatePoStep
+    ? `
+    <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto 8px auto;">
+      <tr>
+        ${actionButton('Open Create PO →', portalUrl, '#0f766e')}
+      </tr>
+    </table>
+    <p style="text-align:center;font-size:12px;color:#64748b;margin:12px 0 0 0;">
+      Vendor approved — create the purchase order and send it for SCM Manager sign-off.
+    </p>`
+    : isRfqEntryStep
     ? `
     <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto 8px auto;">
       <tr>
@@ -506,9 +567,13 @@ export function buildPrApprovalPendingEmail({
       : '',
     rfqSummary?.totalRounds ? `Total Rounds: ${rfqSummary.totalRounds}` : '',
     '',
-    isRfqEntryStep ? `Open RFQ Entry: ${portalUrl}` : `Approve: ${approveUrl}`,
-    !isRfqEntryStep && showSendBack ? `Send Back: ${returnUrl}` : '',
-    !isRfqEntryStep ? `Reject: ${rejectUrl}` : '',
+    isCreatePoStep
+      ? `Open Create PO: ${portalUrl}`
+      : isRfqEntryStep
+        ? `Open RFQ Entry: ${portalUrl}`
+        : `Approve: ${approveUrl}`,
+    !isRfqEntryStep && !isCreatePoStep && showSendBack ? `Send Back: ${returnUrl}` : '',
+    !isRfqEntryStep && !isCreatePoStep ? `Reject: ${rejectUrl}` : '',
   ]
     .filter(Boolean)
     .join('\n');

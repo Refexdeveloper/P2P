@@ -9,6 +9,7 @@ import {
   getManagerStats,
   processApproval,
   updatePurchaseRequest,
+  adminUpdatePurchaseRequest,
   resubmitPurchaseRequest,
   previewL1Manager,
   toRequesterDashboardFormat,
@@ -129,6 +130,20 @@ router.put('/:id', requireRoles('Requester'), async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
+
+/** RFQ Approval / admin: edit full PR details at any status */
+router.put(
+  '/:id/admin',
+  requireRoles('Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO'),
+  async (req, res) => {
+    try {
+      const pr = await adminUpdatePurchaseRequest(req.user, Number(req.params.id), req.body);
+      res.json({ data: pr, message: 'PR details updated successfully' });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
 
 router.post('/:id/resubmit', requireRoles('Requester'), async (req, res) => {
   try {

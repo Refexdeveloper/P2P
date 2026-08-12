@@ -225,6 +225,12 @@ export const prApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  /** RFQ Approval / admin: edit any PR field + line items */
+  adminUpdate: (id: number, body: Record<string, unknown>) =>
+    request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/admin`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   requesterStats: () => request<{ data: Record<string, number> }>('/api/purchase-requests/stats/requester'),
   managerStats: () =>
     request<{ data: { stats: Record<string, number>; departmentBudget: unknown[] } }>(
@@ -263,6 +269,8 @@ export interface RfqFieldDefinition {
   label: string;
   type: 'text' | 'number' | 'boolean' | 'select';
   filledBy: 'vendor' | 'requester';
+  /** Where this field appears on the comparative statement */
+  showIn?: 'commercial' | 'technical';
   required?: boolean;
   core?: boolean;
   options?: string[];
@@ -301,6 +309,11 @@ export const rfqApi = {
       method: 'POST',
       body: JSON.stringify({ prId, vendors, fieldDefinitions, sendEmail }),
     }),
+  removeInvitation: (invitationId: number) =>
+    request<{
+      data: { tableRows: unknown[]; config: unknown; removedVendorName?: string };
+      message: string;
+    }>(`/api/rfq/invitations/${invitationId}`, { method: 'DELETE' }),
   sendBack: (invitationId: number, reason: string, fields: string[]) =>
     request<{ data: { tableRows: unknown[]; config: unknown }; message: string }>(`/api/rfq/invitations/${invitationId}/send-back`, {
       method: 'POST',
@@ -319,6 +332,15 @@ export const rfqApi = {
         body: JSON.stringify(body),
       }
     ),
+  /** Edit quoted amounts / line items (+ optional file) on an existing submission */
+  updateSubmission: (submissionId: number, body: Record<string, unknown>) =>
+    request<{
+      data: { tableRows: unknown[]; config: unknown; quotations: unknown[] };
+      message: string;
+    }>(`/api/rfq/submissions/${submissionId}/admin`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   resendInviteEmail: (invitationId: number) =>
     request<{ message: string }>(`/api/rfq/invitations/${invitationId}/resend-email`, {
       method: 'POST',
@@ -400,6 +422,15 @@ export interface VendorComparisonData {
     vendorSelection?: 'own' | 'scm';
     justification: string;
     approvalHistory: Array<{ stage: string; user: string; role: string; date: string; status: string; remarks: string }>;
+    lineItems?: Array<{
+      id: number | string;
+      description: string;
+      category?: string;
+      quantity: number;
+      uom?: string;
+      unitCost?: number;
+      total?: number;
+    }>;
   };
   vendorCount: number;
   /** Highest quotation round reached across vendors */
@@ -431,7 +462,13 @@ export interface VendorComparisonData {
       submissionId: number;
     }>;
   }>;
-  parameters: Array<{ id: string; label: string; type: string; icon: string }>;
+  parameters: Array<{
+    id: string;
+    label: string;
+    type: string;
+    icon: string;
+    showIn?: 'commercial' | 'technical';
+  }>;
   matrix: Record<string, { values: Record<number, { raw: unknown; display: string }>; bestVendorId: number | null }>;
 }
 
@@ -545,6 +582,11 @@ export const poApi = {
     }),
   rejectFinalVerify: (poId: number, remarks: string) =>
     request<{ data: unknown; message: string }>(`/api/po/${poId}/final-verify/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ remarks }),
+    }),
+  sendBackFinalVerify: (poId: number, remarks: string) =>
+    request<{ data: unknown; message: string }>(`/api/po/${poId}/final-verify/send-back`, {
       method: 'POST',
       body: JSON.stringify({ remarks }),
     }),
@@ -1225,4 +1267,64 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify({ confirm }),
     }),
+};
+
+export const accountsApi = {
+  dashboard: () => request<{ data: Record<string, unknown> }>('/api/accounts/dashboard'),
+  listPendingGrnPos: () => request<{ data: Record<string, unknown>[] }>('/api/accounts/grn/pending-pos'),
+  listGrns: () => request<{ data: Record<string, unknown>[] }>('/api/accounts/grn'),
+  submitGrn: (body: Record<string, unknown>) =>
+    request<{ data: Record<string, unknown>; message: string }>('/api/accounts/grn', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  listInvoices: (forPayment?: boolean) =>
+    request<{ data: Record<string, unknown>[] }>(
+      `/api/accounts/invoices${forPayment ? '?forPayment=true' : ''}`
+    ),
+  getInvoice: (id: number) =>
+    request<{ data: Record<string, unknown> }>(`/api/accounts/invoices/${id}`),
+  sendVendorInvoiceMail: (id: number) =>
+    request<{ data: Record<string, unknown>; message: string }>(
+      `/api/accounts/invoices/${id}/send-mail`,
+      { method: 'POST', body: JSON.stringify({}) }
+    ),
+  manualInvoiceEntry: (id: number, body: Record<string, unknown>) =>
+    request<{ data: Record<string, unknown>; message: string }>(`/api/accounts/invoices/${id}/manual`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  uploadInvoice: (id: number, body: Record<string, unknown>) =>
+    request<{ data: Record<string, unknown>; message: string }>(`/api/accounts/invoices/${id}/upload`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  verifyInvoice: (id: number, action: string, remarks?: string) =>
+    request<{ data: Record<string, unknown>; message: string }>(`/api/accounts/invoices/${id}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ action, remarks }),
+    }),
+  managerApprove: (id: number, action: string, remarks?: string) =>
+    request<{ data: Record<string, unknown>; message: string }>(
+      `/api/accounts/invoices/${id}/manager-approve`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ action, remarks }),
+      }
+    ),
+  uploadPayment: (id: number, body: Record<string, unknown>) =>
+    request<{ data: Record<string, unknown>; message: string }>(`/api/accounts/invoices/${id}/payment`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  invoiceFileUrl: (id: number) => `${API_URL}/api/accounts/invoices/${id}/file`,
+  getVendorInvoiceByToken: (token: string) =>
+    request<{ data: Record<string, unknown> }>(
+      `/api/accounts/vendor-invoice/${encodeURIComponent(token)}`
+    ),
+  submitVendorInvoiceByToken: (token: string, body: Record<string, unknown>) =>
+    request<{ data: Record<string, unknown>; message: string }>(
+      `/api/accounts/vendor-invoice/${encodeURIComponent(token)}`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
 };
