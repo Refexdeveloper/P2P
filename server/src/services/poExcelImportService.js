@@ -378,7 +378,7 @@ export async function buildPoExcelImportGroups(rawRows, conn = pool) {
       lineItems,
       subtotal,
       taxAmount,
-      grandTotal: subtotal + taxAmount,
+      grandTotal: Math.round((subtotal + taxAmount) * 100) / 100,
       excelRow: excelRowHint,
     });
   }
@@ -461,14 +461,15 @@ export async function importPoExcelRows(user, rawRows, { status } = {}) {
       for (const item of group.lineItems) {
         const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage) || 18));
         await conn.query(
-          `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit_price, discount, tax_percentage, total)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit, unit_price, discount, tax_percentage, total)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             poId,
             '',
             item.itemName || null,
             item.description,
             item.quantity,
+            String(item.unit || '').trim().slice(0, 50) || 'Nos',
             item.unitPrice,
             0,
             taxPercentage,

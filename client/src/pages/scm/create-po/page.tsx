@@ -56,6 +56,15 @@ function calcLineTax(total: number, taxPercentage: number) {
   return Math.round(((Number(total) || 0) * (Number(taxPercentage) || 0)) / 100 * 100) / 100;
 }
 
+function roundMoney(n: number) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function lineItemUnit(li: { unit?: unknown; uom?: unknown } | Record<string, unknown>) {
+  const unit = String(li.unit || li.uom || '').trim();
+  return unit || 'Nos';
+}
+
 const PAYMENT_TERMS_OPTIONS = [
   'Net 15 Days',
   'Net 30 Days',
@@ -427,7 +436,7 @@ export default function CreatePOPage() {
     requester: string;
     recommendedVendor: string;
     vendorEmail: string;
-    lineItems: Array<{ id: number; description: string; quantity: number; unitPrice: number; category?: string }>;
+    lineItems: Array<{ id: number; description: string; quantity: number; unitPrice: number; category?: string; unit?: string }>;
     requiredDate?: string;
     amount?: number;
     requestType?: string;
@@ -827,6 +836,7 @@ export default function CreatePOPage() {
             unitPrice,
             taxPercentage,
             total: Number(li.total) || calcLineTotal(quantity, unitPrice),
+            unit: lineItemUnit(li),
           };
         })
       );
@@ -844,6 +854,7 @@ export default function CreatePOPage() {
           quantity: Number(li.quantity) || 0,
           unitPrice: Number(li.unitPrice) || 0,
           category: String(li.category || ''),
+          unit: lineItemUnit(li),
         })),
         requiredDate: String(po.expectedDeliveryDate || ''),
         amount: Number(po.grandTotal) || Number(po.subtotal) || 0,
@@ -910,7 +921,7 @@ export default function CreatePOPage() {
         currency?: string;
         purchaseType?: 'purchase_order' | 'work_order';
         purchaseTypeLabel?: string;
-        lineItems: Array<{ id: number; description: string; quantity: number; unitCost: number; category?: string }>;
+        lineItems: Array<{ id: number; description: string; quantity: number; unitCost: number; category?: string; unit?: string; uom?: string }>;
       };
       const vendor = res.data.vendor as { name: string; email: string; paymentTerms: string; deliveryTerms: string };
       const prCurrency = normalizeCurrency(prData.currency);
@@ -935,6 +946,7 @@ export default function CreatePOPage() {
           quantity: li.quantity,
           unitPrice: li.unitCost,
           category: li.category,
+          unit: li.unit || li.uom || 'Nos',
         })),
       });
       setDocumentType(prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
@@ -1021,12 +1033,12 @@ export default function CreatePOPage() {
     }
   };
 
-  const subtotal = useMemo(() => lineItems.reduce((s, i) => s + i.total, 0), [lineItems]);
+  const subtotal = useMemo(() => roundMoney(lineItems.reduce((s, i) => s + i.total, 0)), [lineItems]);
   const taxAmount = useMemo(
-    () => lineItems.reduce((s, i) => s + calcLineTax(i.total, i.taxPercentage), 0),
+    () => roundMoney(lineItems.reduce((s, i) => s + calcLineTax(i.total, i.taxPercentage), 0)),
     [lineItems]
   );
-  const grandTotal = useMemo(() => subtotal + taxAmount, [subtotal, taxAmount]);
+  const grandTotal = useMemo(() => roundMoney(subtotal + taxAmount), [subtotal, taxAmount]);
   const amountInWords = useMemo(() => numberToIndianWords(grandTotal), [grandTotal]);
   const effectiveGstPercentage = useMemo(
     () => (subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : 0),
@@ -1043,6 +1055,7 @@ export default function CreatePOPage() {
       itemName: i.itemName || '',
       description: i.description,
       quantity: i.quantity,
+      unit: i.unit || 'Nos',
       unitPrice: i.unitPrice,
       taxPercentage: i.taxPercentage || 0,
       discount: 0,
@@ -1164,6 +1177,11 @@ export default function CreatePOPage() {
       )
     );
 
+  const handleUnitChange = (id: string | number, val: string) =>
+    setLineItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, unit: val } : item))
+    );
+
   const handleItemNameChange = (id: string | number, val: string) =>
     setLineItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, itemName: val } : item))
@@ -1259,6 +1277,7 @@ export default function CreatePOPage() {
         unitPrice,
         taxPercentage,
         total: Number(li.total) || calcLineTotal(qty, unitPrice),
+        unit: lineItemUnit(li),
       };
     });
     if (refLineItems.length) {
@@ -1312,7 +1331,7 @@ export default function CreatePOPage() {
           unitPrice: item.unitPrice,
           taxPercentage: item.taxPercentage ?? payload.gstPercentage ?? 18,
           total: item.total ?? calcLineTotal(item.quantity, item.unitPrice),
-          unit: item.unit,
+          unit: item.unit || 'Nos',
         }))
       );
     }
@@ -1360,6 +1379,7 @@ export default function CreatePOPage() {
         unitPrice: item.unitPrice,
         taxPercentage: 18,
         total: calcLineTotal(item.quantity, item.unitPrice),
+        unit: item.unit || 'Nos',
       }))
     );
   }, [pr, isEditMode, fromCsvParam, refPoParam, applyCsvImportPayload]);
@@ -1404,6 +1424,7 @@ export default function CreatePOPage() {
           itemName: i.itemName || '',
           description: i.description,
           quantity: i.quantity,
+          unit: i.unit || 'Nos',
           unitPrice: i.unitPrice,
           taxPercentage: i.taxPercentage || 0,
           discount: 0,
@@ -1983,13 +2004,14 @@ export default function CreatePOPage() {
                 </div>
 
                 <div className="w-full overflow-x-auto">
-                  <table className="w-full min-w-[860px]">
+                  <table className="w-full min-w-[940px]">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100">
                         <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-9">#</th>
                         <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide min-w-[140px]">Item Name</th>
                         <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide min-w-[200px]">Item Description</th>
                         <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-20">Qty</th>
+                        <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-24">Unit</th>
                         <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-36">Unit Price</th>
                         <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-24">Tax %</th>
                         <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-32">Total</th>
@@ -2028,6 +2050,17 @@ export default function CreatePOPage() {
                               value={item.quantity}
                               onChange={e => handleQtyChange(item.id, parseInt(e.target.value) || 1)}
                               className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                            />
+                          </td>
+                          <td className="px-2 py-2.5 align-top">
+                            <input
+                              type="text"
+                              value={item.unit || ''}
+                              onChange={(e) => handleUnitChange(item.id, e.target.value)}
+                              placeholder="Nos"
+                              className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                              title="Unit"
+                              aria-label="Unit"
                             />
                           </td>
                           <td className="px-2 py-2.5 align-top">
@@ -2087,7 +2120,7 @@ export default function CreatePOPage() {
                       ))}
                       {lineItems.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-6 py-10 text-center">
+                          <td colSpan={8} className="px-6 py-10 text-center">
                             <div className="flex flex-col items-center gap-2">
                               <div className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full">
                                 <i className="ri-file-list-3-line text-gray-400 text-lg"></i>

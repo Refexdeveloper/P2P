@@ -174,13 +174,58 @@ async function getRecommendedVendor(prId) {
   return inv[0];
 }
 
+function roundMoney(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function normalizeUnit(value) {
+  const unit = String(value || '').trim().slice(0, 50);
+  return unit || 'Nos';
+}
+
 function lineItemTotal(quantity, unitPrice) {
   const gross = (Number(quantity) || 0) * (Number(unitPrice) || 0);
-  return Math.round(gross * 100) / 100;
+  return roundMoney(gross);
 }
 
 function lineItemTax(total, taxPercentage) {
-  return Math.round(((Number(total) || 0) * (Number(taxPercentage) || 0)) / 100 * 100) / 100;
+  return roundMoney(((Number(total) || 0) * (Number(taxPercentage) || 0)) / 100);
+}
+
+function plainText(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+async function lookupUnitsFromItemMaster(lineItems) {
+  if (!lineItems?.length) return lineItems;
+  try {
+    const [rows] = await pool.query(`SELECT name, description, unit FROM items`);
+    const byName = new Map();
+    const byDesc = new Map();
+    for (const row of rows) {
+      const unit = normalizeUnit(row.unit);
+      const name = String(row.name || '').trim().toLowerCase();
+      const desc = String(row.description || '').trim().toLowerCase();
+      if (name) byName.set(name, unit);
+      if (desc) byDesc.set(desc, unit);
+    }
+    return lineItems.map((item) => {
+      const current = String(item.unit || item.uom || '').trim();
+      if (current && current.toLowerCase() !== 'nos' && current.toLowerCase() !== "no's") {
+        return { ...item, unit: current };
+      }
+      const name = plainText(item.itemName || item.name || '');
+      const desc = plainText(item.description || item.item || '');
+      const found = (name && byName.get(name)) || (desc && byName.get(desc)) || (desc && byDesc.get(desc));
+      return { ...item, unit: found || current || 'Nos' };
+    });
+  } catch {
+    return lineItems.map((item) => ({ ...item, unit: normalizeUnit(item.unit || item.uom) }));
+  }
 }
 
 async function getLineItems(poId) {
@@ -191,6 +236,8 @@ async function getLineItems(poId) {
     itemName: r.item_name || '',
     description: r.description,
     quantity: r.quantity,
+    unit: normalizeUnit(r.unit),
+    uom: normalizeUnit(r.unit),
     unitPrice: Number(r.unit_price),
     discount: Number(r.discount) || 0,
     taxPercentage: Number(r.tax_percentage) || 0,
@@ -454,6 +501,8 @@ export async function getPoCreateContext(user, prId) {
   );
   const quote = subRows[0] || {};
 
+  const lineItems = await lookupUnitsFromItemMaster(pr.lineItems || []);
+
   return {
     pr: {
       id: pr.id,
@@ -465,7 +514,7 @@ export async function getPoCreateContext(user, prId) {
       entityCode: pr.entityCode || '',
       requester: pr.requester,
       totalAmount: pr.totalAmount,
-      lineItems: pr.lineItems,
+      lineItems,
     },
     vendor: {
       name: vendor.vendor_name,
@@ -577,11 +626,14 @@ async function resolvePoDraftContent(prId, body) {
   const mappedLineItems = lineItems.map((item) => {
     const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage ?? item.tax_percentage ?? gstPercentage) || 0));
     const total = lineItemTotal(item.quantity, item.unitPrice);
+    const unit = normalizeUnit(item.unit || item.uom);
     return {
       itemName: item.itemName || item.name || '',
       description: item.description,
       category: item.category || '',
       quantity: Number(item.quantity),
+      unit,
+      uom: unit,
       unitPrice: Number(item.unitPrice),
       discount: 0,
       taxPercentage,
@@ -590,11 +642,11 @@ async function resolvePoDraftContent(prId, body) {
     };
   });
 
-  const subtotal = mappedLineItems.reduce((sum, item) => sum + item.total, 0);
-  const taxAmount = mappedLineItems.reduce((sum, item) => sum + item.taxAmount, 0);
+  const subtotal = roundMoney(mappedLineItems.reduce((sum, item) => sum + item.total, 0));
+  const taxAmount = roundMoney(mappedLineItems.reduce((sum, item) => sum + item.taxAmount, 0));
   const effectiveGst =
     subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : Number(gstPercentage) || 0;
-  const grandTotal = subtotal + taxAmount;
+  const grandTotal = roundMoney(subtotal + taxAmount);
   const resolvedCurrency = normalizeCurrency(body?.currency || pr.currency);
   const resolvedPurchaseType = normalizePurchaseType(body?.purchaseType || pr.purchaseType);
 
@@ -805,9 +857,9 @@ export async function createPurchaseOrder(user, prId, body) {
       const itemName = String(item.itemName || item.name || '').trim();
       const description = String(item.description || itemName || '').trim() || '(no description)';
       await conn.query(
-        `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit_price, discount, tax_percentage, total)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [poId, '', itemName || null, description, item.quantity, item.unitPrice, 0, taxPercentage, total]
+        `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit, unit_price, discount, tax_percentage, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [poId, '', itemName || null, description, item.quantity, normalizeUnit(item.unit || item.uom), item.unitPrice, 0, taxPercentage, total]
       );
     }
 
@@ -1662,9 +1714,9 @@ export async function updatePurchaseOrder(user, poId, body) {
       const itemName = String(item.itemName || item.name || '').trim();
       const description = String(item.description || itemName || '').trim() || '(no description)';
       await conn.query(
-        `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit_price, discount, tax_percentage, total)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [poId, '', itemName || null, description, item.quantity, item.unitPrice, 0, taxPercentage, total]
+        `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit, unit_price, discount, tax_percentage, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [poId, '', itemName || null, description, item.quantity, normalizeUnit(item.unit || item.uom), item.unitPrice, 0, taxPercentage, total]
       );
     }
 

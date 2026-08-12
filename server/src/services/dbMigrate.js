@@ -167,6 +167,8 @@ const MIGRATIONS = [
   `ALTER TABLE po_line_items MODIFY COLUMN discount DECIMAL(15, 2) NOT NULL DEFAULT 0`,
   `ALTER TABLE po_line_items MODIFY COLUMN description TEXT NOT NULL`,
   `ALTER TABLE po_line_items ADD COLUMN item_name VARCHAR(255) NULL`,
+  `ALTER TABLE po_line_items ADD COLUMN unit VARCHAR(50) NOT NULL DEFAULT 'Nos'`,
+  `ALTER TABLE pr_line_items ADD COLUMN unit VARCHAR(50) NOT NULL DEFAULT 'Nos'`,
   `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_token VARCHAR(64) NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_mode ENUM('email', 'manual') NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_status ENUM('pending', 'accepted', 'rejected', 'partial') NULL`,

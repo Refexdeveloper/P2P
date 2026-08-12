@@ -351,7 +351,14 @@ export const PO_STYLES = `
     break-inside: avoid;
   }
   .amount-words .label { font-weight: bold; white-space: nowrap; margin-right: 10px; }
-  .amount-words .value { font-weight: bold; text-align: right; }
+  .amount-words .value {
+    font-weight: bold;
+    text-align: right;
+    flex: 1;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 
   h2.annexure-title { text-align: center; margin: 0 0 2px 0; font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }
   h3.annexure-sub { text-align: center; margin: 0; font-size: 12px; font-weight: 600; color: #333; }

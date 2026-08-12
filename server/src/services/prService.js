@@ -311,6 +311,7 @@ async function enrichPR(row) {
       description: li.description,
       item: li.description,
       quantity: li.quantity,
+      unit: li.unit || li.uom || 'Nos',
       unitCost: Number(li.unit_cost),
       unitPrice: Number(li.unit_cost),
       total: Number(li.total),
@@ -513,9 +514,9 @@ export async function createPurchaseRequest(user, body) {
       const qty = Number(item.quantity);
       const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
       await conn.query(
-        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit_cost, total)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [prId, item.category || '', item.description, qty, cost, qty * cost]
+        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [prId, item.category || '', item.description, qty, String(item.unit || item.uom || 'Nos').trim().slice(0, 50) || 'Nos', cost, qty * cost]
       );
     }
 
@@ -1327,9 +1328,9 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
       const qty = Number(item.quantity);
       const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
       await db.query(
-        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit_cost, total)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [prId, item.category || '', item.description, qty, cost, qty * cost]
+        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [prId, item.category || '', item.description, qty, String(item.unit || item.uom || 'Nos').trim().slice(0, 50) || 'Nos', cost, qty * cost]
       );
     }
   };
@@ -1453,9 +1454,9 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
       const qty = Number(item.quantity);
       const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
       await conn.query(
-        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit_cost, total)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [prId, item.category || '', item.description, qty, cost, qty * cost]
+        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [prId, item.category || '', item.description, qty, String(item.unit || item.uom || 'Nos').trim().slice(0, 50) || 'Nos', cost, qty * cost]
       );
     }
 
@@ -2005,7 +2006,7 @@ export function toCfoDashboardFormat(pr) {
       itemName: li.description,
       description: li.description,
       quantity: li.quantity,
-      unit: 'Unit',
+      unit: li.unit || li.uom || 'Nos',
       estimatedPrice: li.unitPrice,
       totalPrice: li.total,
       category: li.category,

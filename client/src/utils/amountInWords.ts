@@ -52,15 +52,14 @@ function integerToWords(num: number) {
   return parts.join(' ');
 }
 
-/** Indian numbering system — e.g. "Forty One Thousand Three Hundred Rupees and Zero Paisa Only." */
+/** Indian numbering system — e.g. "Forty One Thousand Three Hundred Rupees Only." */
 export function numberToIndianWords(amount: number) {
-  const value = Math.round((Number(amount) || 0) * 100) / 100;
-  if (!Number.isFinite(value) || value === 0) return 'Zero Rupees and Zero Paisa Only.';
+  const cents = Math.round((Number(amount) || 0) * 100);
+  if (!Number.isFinite(cents) || cents === 0) return 'Zero Rupees Only.';
 
-  const rupees = Math.floor(value);
-  const paisa = Math.round((value - rupees) * 100);
+  const rupees = Math.floor(Math.abs(cents) / 100);
+  const paisa = Math.abs(cents) % 100;
   const rupeeWords = rupees > 0 ? integerToWords(rupees) : 'Zero';
-  const paisaWords = paisa > 0 ? integerToWords(paisa) : 'Zero';
-
-  return `${rupeeWords} Rupees and ${paisaWords} Paisa Only.`;
+  if (paisa === 0) return `${rupeeWords} Rupees Only.`;
+  return `${rupeeWords} Rupees and ${integerToWords(paisa)} Paisa Only.`;
 }

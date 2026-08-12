@@ -29,6 +29,7 @@ interface LineItem {
   quantity: number;
   estimatedCost: number;
   category: string;
+  unit?: string;
   hsnCode?: string;
   gstPercentage?: number;
 }
@@ -82,7 +83,7 @@ export default function CreatePRPage() {
   const [requiredDate, setRequiredDate] = useState('');
   const moneySymbol = currencySymbol(currency);
   const [lineItems, setLineItems] = useState<LineItem[]>([
-    { id: '1', itemId: null, itemName: '', description: '', quantity: 1, estimatedCost: 0, category: '', hsnCode: '', gstPercentage: 18 },
+    { id: '1', itemId: null, itemName: '', description: '', quantity: 1, estimatedCost: 0, category: '', unit: 'Nos', hsnCode: '', gstPercentage: 18 },
   ]);
   const [masterItems, setMasterItems] = useState<ItemRecord[]>([]);
   const [masterCategories, setMasterCategories] = useState<CategoryRecord[]>([]);
@@ -129,7 +130,7 @@ export default function CreatePRPage() {
           justification: string;
           requiredDate: string;
           status: string;
-          lineItems: { id?: number; description: string; quantity: number; unitCost: number; category: string }[];
+          lineItems: { id?: number; description: string; quantity: number; unitCost: number; category: string; unit?: string }[];
           approvalHistory?: { stage: string; user: string; role: string; date: string; status: string; remarks: string }[];
         };
         setPrNumber(pr.prNumber);
@@ -184,10 +185,11 @@ export default function CreatePRPage() {
                 quantity: item.quantity,
                 estimatedCost: item.unitCost,
                 category: item.category,
+                unit: item.unit || 'Nos',
                 hsnCode: '',
                 gstPercentage: 18,
               }))
-            : [{ id: '1', itemId: null, itemName: '', description: '', quantity: 1, estimatedCost: 0, category: '', hsnCode: '', gstPercentage: 18 }]
+            : [{ id: '1', itemId: null, itemName: '', description: '', quantity: 1, estimatedCost: 0, category: '', unit: 'Nos', hsnCode: '', gstPercentage: 18 }]
         );
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : 'Failed to load PR');
@@ -226,6 +228,7 @@ export default function CreatePRPage() {
               itemName: match.name,
               description: row.description || match.description || match.name,
               category: row.category || match.categoryName || '',
+              unit: match.unit || row.unit || 'Nos',
               hsnCode: match.hsnCode || '',
               gstPercentage: Number(match.gstPercentage ?? 18),
             };
@@ -296,6 +299,7 @@ export default function CreatePRPage() {
         quantity: 1,
         estimatedCost: 0,
         category: '',
+        unit: 'Nos',
         hsnCode: '',
         gstPercentage: 18,
       },
@@ -315,7 +319,7 @@ export default function CreatePRPage() {
       setLineItems((prev) =>
         prev.map((row) =>
           row.id === lineId
-            ? { ...row, itemId: null, itemName: '', description: '', hsnCode: '', gstPercentage: 18 }
+            ? { ...row, itemId: null, itemName: '', description: '', unit: 'Nos', hsnCode: '', gstPercentage: 18 }
             : row
         )
       );
@@ -332,6 +336,7 @@ export default function CreatePRPage() {
               itemName: master.name,
               description: master.description || master.name,
               category: master.categoryName || row.category,
+              unit: master.unit || 'Nos',
               hsnCode: master.hsnCode || '',
               gstPercentage: Number(master.gstPercentage ?? 18),
             }
@@ -418,6 +423,7 @@ export default function CreatePRPage() {
       description: item.description,
       quantity: item.quantity,
       unitCost: item.estimatedCost,
+      unit: item.unit || 'Nos',
     })),
   });
 
@@ -1079,6 +1085,7 @@ export default function CreatePRPage() {
                         <i className="ri-add-line text-sm"></i>
                       </button>
                     </div>
+                    <p className="text-[11px] text-gray-400 mt-1">Unit: {item.unit || 'Nos'}</p>
                   </div>
 
                   {/* Unit Price (estimated) — keep field; currency symbol updates with Currency above */}

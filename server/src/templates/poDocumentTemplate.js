@@ -37,15 +37,14 @@ function integerToWords(num) {
 }
 
 export function numberToIndianWords(amount) {
-  const value = Math.round((Number(amount) || 0) * 100) / 100;
-  if (!Number.isFinite(value) || value === 0) return 'Zero Rupees and Zero Paisa Only.';
+  const cents = Math.round((Number(amount) || 0) * 100);
+  if (!Number.isFinite(cents) || cents === 0) return 'Zero Rupees Only.';
 
-  const rupees = Math.floor(value);
-  const paisa = Math.round((value - rupees) * 100);
+  const rupees = Math.floor(Math.abs(cents) / 100);
+  const paisa = Math.abs(cents) % 100;
   const rupeeWords = rupees > 0 ? integerToWords(rupees) : 'Zero';
-  const paisaWords = paisa > 0 ? integerToWords(paisa) : 'Zero';
-
-  return `${rupeeWords} Rupees and ${paisaWords} Paisa Only.`;
+  if (paisa === 0) return `${rupeeWords} Rupees Only.`;
+  return `${rupeeWords} Rupees and ${integerToWords(paisa)} Paisa Only.`;
 }
 
 export function escapeHtml(value) {
@@ -376,7 +375,7 @@ function lineItemsHtml(po) {
     <tr>
       <td class="center">${index + 1}</td>
       <td><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}</div></td>
-      <td class="center">${escapeHtml(item.uom || "No's")}</td>
+      <td class="center">${escapeHtml(item.unit || item.uom || 'Nos')}</td>
       <td class="center">${escapeHtml(item.quantity)}</td>
       <td class="right">${fmtMoney(item.unitPrice, po.currency)}</td>
       <td class="center">${escapeHtml(item.taxPercentage ?? item.tax_percentage ?? 0)}%</td>
