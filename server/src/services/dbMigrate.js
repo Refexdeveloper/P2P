@@ -446,4 +446,17 @@ export async function runStartupMigrations() {
   } catch (err) {
     console.warn('Category seed skipped:', err.message);
   }
+
+  try {
+    const { ensurePreferredScmBuyerRole, reassignPendingScmBuyerTasks, getPreferredScmBuyerEmails } =
+      await import('../utils/scmAssignee.js');
+    const roleUpdated = await ensurePreferredScmBuyerRole();
+    const reassigned = await reassignPendingScmBuyerTasks();
+    console.log(
+      `SCM Buyer assignees: ${getPreferredScmBuyerEmails().join(', ')}` +
+        ` (role updates=${roleUpdated}, pending tasks role-queued=${reassigned.updated})`
+    );
+  } catch (err) {
+    console.warn('SCM Buyer assignee seed skipped:', err.message);
+  }
 }

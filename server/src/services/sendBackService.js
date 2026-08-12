@@ -1,5 +1,9 @@
 import pool from '../config/db.js';
-import { listSendBackTargets, resolveSendBackTarget } from '../utils/sendBackTargets.js';
+import {
+  listSendBackTargets,
+  listAdminSendBackTargets,
+  resolveSendBackTarget,
+} from '../utils/sendBackTargets.js';
 import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
 import {
   getL1ManagerForEmail,
@@ -48,26 +52,35 @@ async function resolveRoleUser(role, conn = null) {
   return { userId: rows[0].id, email: rows[0].email, name: rows[0].name };
 }
 
-export async function getSendBackTargetsForPr(prId) {
+export async function getSendBackTargetsForPr(prId, { admin = false } = {}) {
   const [rows] = await pool.query(
     `SELECT status, vendor_selection FROM purchase_requests WHERE id = ?`,
     [prId]
   );
   if (!rows[0]) throw new Error('PR not found');
+  if (admin) {
+    return listAdminSendBackTargets(rows[0].status, rows[0].vendor_selection);
+  }
   return listSendBackTargets(rows[0].status, rows[0].vendor_selection);
 }
 
 /**
  * Apply send-back to a selected previous stage.
  * `pr` is raw purchase_requests row.
+ * @param {{ admin?: boolean }} options — admin may target any prior stage for the path
  */
-export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor) {
+export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, options = {}) {
   const target = resolveSendBackTarget(returnTo);
   if (!target) {
     throw new Error('Select a previous stage to send back to');
   }
 
-  const allowed = listSendBackTargets(pr.status, pr.vendor_selection).map((t) => t.key);
+  const admin = Boolean(options.admin);
+  const allowed = (
+    admin
+      ? listAdminSendBackTargets(pr.status, pr.vendor_selection)
+      : listSendBackTargets(pr.status, pr.vendor_selection)
+  ).map((t) => t.key);
   if (!allowed.includes(target.key)) {
     throw new Error(`Cannot send back to ${target.label} from the current stage`);
   }
@@ -176,6 +189,10 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
       target.key === 'SCM_PO' ||
       String(target.label || '').toLowerCase().includes('create po') ||
       (target.taskType === 'RFQ_POST_APPROVAL' && target.assignedRole === 'SCM Buyer');
+    const notifyEmails =
+      target.assignedRole === 'SCM Buyer'
+        ? undefined
+        : [assignee.email];
     queuePrApprovalPendingNotification(
       updatedPr,
       target.assignedRole,
@@ -186,8 +203,8 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
         rfqEntry: isRfqEntry,
         createPo: isCreatePo,
         stageLabel: `Sent back — ${target.label}`,
-        approverEmails: [assignee.email],
-        approverName: assignee.name || undefined,
+        approverEmails: notifyEmails,
+        approverName: target.assignedRole === 'SCM Buyer' ? 'SCM Buyer' : assignee.name || undefined,
       }
     );
     return;

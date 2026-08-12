@@ -8,7 +8,7 @@ import { buildPostRfqActionEmail } from '../templates/prPostRfqActionEmail.js';
 import { buildPoVendorEmail } from '../templates/poVendorEmail.js';
 import { buildPoWorkflowEmail } from '../templates/poWorkflowEmail.js';
 import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceRequestEmail.js';
-import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import { resolveScmBuyerUsers, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
 import { formatRoleDisplayName } from '../templates/emailUtils.js';
 import {
   buildWorkflowWhatsAppParams,
@@ -393,8 +393,12 @@ export function queuePrRaisedNotification(pr, requester, options = {}) {
 
 async function getApproverRecipients(role, departmentId = null) {
   if (role === 'SCM Buyer') {
-    const buyer = await resolveScmBuyerUser();
-    return buyer?.email ? [{ email: buyer.email, name: buyer.name }] : [];
+    const buyers = await resolveScmBuyerUsers();
+    if (buyers.length) {
+      return buyers.map((b) => ({ email: b.email, name: b.name }));
+    }
+    const emails = await getScmBuyerNotifyEmails();
+    return emails.map((email) => ({ email, name: 'SCM Buyer' }));
   }
 
   let sql = `SELECT email, name FROM users WHERE role = ? AND is_active = 1`;
@@ -517,6 +521,12 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
   let emails = [...new Set(explicitEmails)];
   let primaryName = options.approverName || null;
 
+  if (assignedRole === 'SCM Buyer') {
+    const buyerEmails = await getScmBuyerNotifyEmails();
+    emails = [...new Set([...emails, ...buyerEmails])];
+    if (!primaryName && buyerEmails.length) primaryName = 'SCM Buyer';
+  }
+
   if (!emails.length) {
     const fromTask = await resolveAssignedUserForStep(pr.id || pr.prId, assignedRole);
     emails = fromTask.emails;
@@ -600,8 +610,18 @@ export function queuePrApprovalPendingNotification(pr, assignedRole, requester, 
 
   // Resolve assignee email + name for WhatsApp (send to assignee mobile)
   (async () => {
-    let assigneeEmails = emails;
+    let assigneeEmails = [...emails];
     let assigneeName = options.approverName || null;
+
+    if (assignedRole === 'SCM Buyer') {
+      try {
+        const extra = await getScmBuyerNotifyEmails();
+        assigneeEmails = [...new Set([...assigneeEmails, ...extra])];
+        if (!assigneeName) assigneeName = 'SCM Buyer';
+      } catch {
+        /* ignore */
+      }
+    }
 
     if (!assigneeEmails.length || !assigneeName) {
       try {

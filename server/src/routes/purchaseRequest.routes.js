@@ -10,6 +10,7 @@ import {
   processApproval,
   updatePurchaseRequest,
   adminUpdatePurchaseRequest,
+  adminSendBackPurchaseRequest,
   resubmitPurchaseRequest,
   previewL1Manager,
   toRequesterDashboardFormat,
@@ -156,14 +157,30 @@ router.post('/:id/resubmit', requireRoles('Requester'), async (req, res) => {
 
 router.get('/:id/send-back-targets', async (req, res) => {
   try {
-    const targets = await getSendBackTargetsForPr(Number(req.params.id));
+    const admin = String(req.query.admin || '') === '1' || String(req.query.admin || '') === 'true';
+    const targets = await getSendBackTargetsForPr(Number(req.params.id), { admin });
     res.json({ data: targets });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
 });
 
-router.post('/:id/approve', requireRoles('HOD Approver', 'PR Manager', 'CFO'), async (req, res) => {
+/** Admin (Track PR): send back to any prior step without holding the approval task */
+router.post(
+  '/:id/admin/send-back',
+  requireRoles('Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO'),
+  async (req, res) => {
+    try {
+      const { returnTo, remarks } = req.body || {};
+      const pr = await adminSendBackPurchaseRequest(req.user, Number(req.params.id), returnTo, remarks);
+      res.json({ data: pr, message: 'PR sent back successfully' });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
+
+router.post('/:id/approve', requireRoles('HOD Approver', 'PR Manager', 'CFO', 'Super Admin'), async (req, res) => {
   try {
     const { action = 'approve', remarks, returnTo } = req.body;
     const pr = await processApproval(req.user, req.params.id, action, remarks, { returnTo });

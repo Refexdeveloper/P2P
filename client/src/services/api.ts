@@ -203,8 +203,16 @@ export const prApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  sendBackTargets: (id: number) =>
-    request<{ data: { key: string; label: string }[] }>(`/api/purchase-requests/${id}/send-back-targets`),
+  sendBackTargets: (id: number, opts?: { admin?: boolean }) =>
+    request<{ data: { key: string; label: string }[] }>(
+      `/api/purchase-requests/${id}/send-back-targets${opts?.admin ? '?admin=1' : ''}`
+    ),
+  /** Track PR admin: send back to any prior workflow step */
+  adminSendBack: (id: number, body: { returnTo: string; remarks: string }) =>
+    request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/admin/send-back`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   approve: (
     id: number,
     action: 'approve' | 'reject' | 'return' | 'rework',

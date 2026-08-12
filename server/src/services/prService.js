@@ -21,7 +21,7 @@ import {
   formatDateTime,
 } from '../utils/constants.js';
 import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './documentNumberService.js';
-import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import { resolveScmBuyerUser, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 
 function normalizeCurrency(value) {
@@ -128,7 +128,17 @@ let cachedScmBuyerAt = 0;
 async function getCachedScmBuyer() {
   const now = Date.now();
   if (cachedScmBuyer && now - cachedScmBuyerAt < 60_000) return cachedScmBuyer;
-  cachedScmBuyer = await resolveScmBuyerUser();
+  const emails = await getScmBuyerNotifyEmails();
+  const primary = await resolveScmBuyerUser();
+  cachedScmBuyer = primary
+    ? {
+        ...primary,
+        email: emails.join(', ') || primary.email,
+        name: emails.length > 1 ? 'SCM Buyer' : primary.name,
+      }
+    : emails.length
+      ? { email: emails.join(', '), name: 'SCM Buyer' }
+      : null;
   cachedScmBuyerAt = now;
   return cachedScmBuyer;
 }
@@ -1169,15 +1179,15 @@ export async function processApproval(user, prId, action, remarks, options = {})
     }
 
     // SCM vendor: after CFO pre-RFQ → SCM Buyer RFQ Entry (/scm/rfq-entry)
-    let scmRfqBuyer = null;
+    let scmRfqBuyerEmails = [];
     if (user.role === 'CFO' && action === 'approve') {
       const rfqDue = new Date();
       rfqDue.setDate(rfqDue.getDate() + 5);
-      scmRfqBuyer = await resolveScmBuyerUser(conn);
+      scmRfqBuyerEmails = await getScmBuyerNotifyEmails(conn);
       await conn.query(
         `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
          VALUES (?, 'RFQ_ENTRY', 'SCM Buyer', ?, 'pending', ?)`,
-        [prId, scmRfqBuyer?.id || null, rfqDue.toISOString().split('T')[0]]
+        [prId, null, rfqDue.toISOString().split('T')[0]]
       );
     }
 
@@ -1209,7 +1219,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
         }
       );
     } else if (user.role === 'CFO' && action === 'approve') {
-      // SCM path: CFO done → SCM Buyer RFQ Entry mail
+      // SCM path: CFO done → SCM Buyer RFQ Entry mail (Gopi + Satish)
       queuePrApprovalPendingNotification(
         updatedPr,
         'SCM Buyer',
@@ -1218,8 +1228,8 @@ export async function processApproval(user, prId, action, remarks, options = {})
         {
           rfqEntry: true,
           stageLabel: 'SCM RFQ Entry',
-          approverEmails: scmRfqBuyer?.email ? [scmRfqBuyer.email] : undefined,
-          approverName: scmRfqBuyer?.name || undefined,
+          approverEmails: scmRfqBuyerEmails.length ? scmRfqBuyerEmails : undefined,
+          approverName: 'SCM Buyer',
         }
       );
     } else if (action === 'reject' || action === 'return' || action === 'rework') {
@@ -1468,6 +1478,71 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
   }
 
   return getPurchaseRequestById(prId);
+}
+
+const ADMIN_SEND_BACK_ROLES = [
+  'Super Admin',
+  'SCM Manager',
+  'SCM Buyer',
+  'HOD Approver',
+  'PR Manager',
+  'CFO',
+];
+
+/**
+ * Admin override: send PR back to any prior workflow step (Track PR).
+ * Does not require the actor to hold the current approval task.
+ */
+export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks) {
+  if (!ADMIN_SEND_BACK_ROLES.includes(user.role)) {
+    throw new Error('Unauthorized');
+  }
+  const remarksText = String(remarks || '').trim();
+  if (!remarksText) throw new Error('Remarks are required for send back');
+  if (!returnTo) throw new Error('Select a previous stage to send back to');
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [prRows] = await conn.query('SELECT * FROM purchase_requests WHERE id = ? FOR UPDATE', [
+      prId,
+    ]);
+    if (!prRows.length) throw new Error('PR not found');
+    const pr = prRows[0];
+
+    if (
+      pr.status === PR_STATUS.DRAFT ||
+      pr.status === PR_STATUS.REJECTED ||
+      pr.status === PR_STATUS.RETURNED
+    ) {
+      throw new Error('Cannot send back a draft, rejected, or already-returned PR from Track PR');
+    }
+
+    const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarksText, user, {
+      admin: true,
+    });
+
+    await conn.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
+      [
+        prId,
+        pr.current_stage || 'ADMIN_SEND_BACK',
+        user.id,
+        'rework',
+        `[Admin send-back by ${user.name || user.role}] ${applyResult.remarksLine}`,
+      ]
+    );
+
+    await conn.commit();
+    const updatedPr = await getPurchaseRequestById(prId);
+    queueSendBackNotifications(updatedPr, { ...applyResult, actorRole: user.role });
+    return updatedPr;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 export async function resubmitPurchaseRequest(user, prId, body = {}) {

@@ -1,17 +1,17 @@
 import {
   ensurePreferredScmBuyerRole,
-  getPreferredScmBuyerEmail,
+  getPreferredScmBuyerEmails,
   reassignPendingScmBuyerTasks,
-  resolveScmBuyerUser,
+  resolveScmBuyerUsers,
 } from '../src/utils/scmAssignee.js';
 import pool from '../src/config/db.js';
 
 await ensurePreferredScmBuyerRole();
-const buyer = await resolveScmBuyerUser();
+const buyers = await resolveScmBuyerUsers();
 const result = await reassignPendingScmBuyerTasks();
 
-console.log('Preferred SCM Buyer email:', getPreferredScmBuyerEmail());
-console.log('Resolved buyer:', buyer);
-console.log('Pending tasks reassigned:', result.updated);
+console.log('SCM Buyer emails:', getPreferredScmBuyerEmails());
+console.log('Resolved buyers:', buyers);
+console.log('Pending tasks role-queued:', result.updated);
 
 await pool.end();

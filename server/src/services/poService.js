@@ -17,7 +17,7 @@ import {
   purchaseTypeLabel,
   purchaseTypeToDocType,
 } from './documentNumberService.js';
-import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import { resolveScmBuyerUser, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 
 function poPortalUrl(path) {
@@ -27,8 +27,8 @@ function poPortalUrl(path) {
 
 async function resolveRoleEmails(role) {
   if (role === 'SCM Buyer') {
-    const buyer = await resolveScmBuyerUser();
-    return buyer?.email ? [{ email: buyer.email, name: buyer.name }] : [];
+    const emails = await getScmBuyerNotifyEmails();
+    return emails.map((email) => ({ email, name: 'SCM Buyer' }));
   }
   const [rows] = await pool.query(
     `SELECT email, name FROM users WHERE role = ? AND is_active = 1`,
@@ -1356,7 +1356,7 @@ export async function signPurchaseOrder(user, poId, {
   await pool.query(
     `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'PO_BUYER_VERIFY', 'SCM Buyer', ?, 'pending', ?)`,
-    [po.prId, scmBuyer?.id || rows[0].created_by || null, dueDate.toISOString().split('T')[0]]
+    [po.prId, null, dueDate.toISOString().split('T')[0]]
   );
 
   await pool.query(
@@ -1365,13 +1365,13 @@ export async function signPurchaseOrder(user, poId, {
   );
 
   const updated = await getPurchaseOrderById(poId);
-  const buyer = scmBuyer || (await resolveScmBuyerUser());
-  if (buyer?.email) {
+  const buyerEmails = await getScmBuyerNotifyEmails();
+  if (buyerEmails.length) {
     queuePoWorkflowNotification(updated, {
       action: 'assign',
       stageLabel: 'SCM Buyer Final Verify',
-      recipientEmails: [buyer.email],
-      recipientName: buyer.name || 'SCM Buyer',
+      recipientEmails: buyerEmails,
+      recipientName: scmBuyer?.name || 'SCM Buyer',
       actorName: signName || user.name,
       actorRole: user.role,
       remarks: remarks.trim(),

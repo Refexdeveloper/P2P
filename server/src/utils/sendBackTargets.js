@@ -122,7 +122,29 @@ const PREVIOUS_BY_STATUS = {
   // SCM Manager vendor approval — default first target is SCM RFQ Entry
   [PR_STATUS.PENDING_BUSINESS_APPROVAL]: ['SCM_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
   [PR_STATUS.PENDING_SCM_PO]: ['SCM_MANAGER', 'SCM_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
+
+  // During / after RFQ entry (status APPROVED until post-RFQ queue starts)
+  [PR_STATUS.APPROVED]: ['REQUESTER', 'REQUESTER_RFQ', 'SCM_RFQ', 'HOD_PRE', 'L2_PRE', 'CFO_PRE', 'HOD_VENDOR', 'L2_VENDOR', 'CFO_VENDOR'],
 };
+
+/** Full catalog for admin override — any prior workflow step for the PR path */
+const ADMIN_OWN_KEYS = [
+  'REQUESTER',
+  'HOD_PRE',
+  'REQUESTER_RFQ',
+  'HOD_VENDOR',
+  'L2_VENDOR',
+  'CFO_VENDOR',
+  'SCM_RFQ',
+];
+const ADMIN_SCM_KEYS = [
+  'REQUESTER',
+  'HOD_PRE',
+  'L2_PRE',
+  'CFO_PRE',
+  'SCM_RFQ',
+  'SCM_MANAGER',
+];
 
 const OWN_ONLY_KEYS = new Set(['REQUESTER_RFQ', 'HOD_VENDOR', 'L2_VENDOR', 'CFO_VENDOR']);
 const SCM_ONLY_KEYS = new Set(['SCM_RFQ', 'SCM_MANAGER', 'L2_PRE', 'CFO_PRE']);
@@ -145,6 +167,19 @@ export function listSendBackTargets(status, vendorSelection = 'scm') {
       const def = SEND_BACK_TARGET_DEFS[key];
       return { key: def.key, label: def.label };
     });
+}
+
+/**
+ * Admin: every prior stage for this vendor path (not limited to immediate predecessors).
+ * Excludes targets that would leave the PR at the same status.
+ */
+export function listAdminSendBackTargets(status, vendorSelection = 'scm') {
+  const isOwn = vendorSelection === 'own';
+  const keys = isOwn ? ADMIN_OWN_KEYS : ADMIN_SCM_KEYS;
+  return keys
+    .map((key) => SEND_BACK_TARGET_DEFS[key])
+    .filter((def) => def && def.status !== status)
+    .map((def) => ({ key: def.key, label: def.label }));
 }
 
 export function resolveSendBackTarget(returnTo) {

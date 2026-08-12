@@ -713,6 +713,64 @@ export default function TrackPRPage() {
     total: 0,
     totalPages: 1,
   });
+  const [sendBackModal, setSendBackModal] = useState<{
+    prId: number;
+    prNumber: string;
+    title: string;
+  } | null>(null);
+  const [sendBackTargets, setSendBackTargets] = useState<{ key: string; label: string }[]>([]);
+  const [sendBackReturnTo, setSendBackReturnTo] = useState('');
+  const [sendBackRemarks, setSendBackRemarks] = useState('');
+  const [sendBackLoading, setSendBackLoading] = useState(false);
+  const [sendBackError, setSendBackError] = useState('');
+  const [toast, setToast] = useState('');
+
+  const openAdminSendBack = async (pr: TrackPR) => {
+    setSendBackModal({ prId: pr.prId, prNumber: pr.id, title: pr.title });
+    setSendBackRemarks('');
+    setSendBackError('');
+    setSendBackReturnTo('');
+    setSendBackTargets([]);
+    setSendBackLoading(true);
+    try {
+      const res = await prApi.sendBackTargets(pr.prId, { admin: true });
+      const list = res.data || [];
+      setSendBackTargets(list);
+      setSendBackReturnTo(list[0]?.key || '');
+    } catch (err) {
+      setSendBackError(err instanceof Error ? err.message : 'Failed to load stages');
+    } finally {
+      setSendBackLoading(false);
+    }
+  };
+
+  const confirmAdminSendBack = async () => {
+    if (!sendBackModal) return;
+    if (!sendBackReturnTo) {
+      setSendBackError('Select a stage to send back to');
+      return;
+    }
+    if (!sendBackRemarks.trim()) {
+      setSendBackError('Remarks are required');
+      return;
+    }
+    setSendBackLoading(true);
+    setSendBackError('');
+    try {
+      const res = await prApi.adminSendBack(sendBackModal.prId, {
+        returnTo: sendBackReturnTo,
+        remarks: sendBackRemarks.trim(),
+      });
+      setToast(res.message || 'PR sent back successfully');
+      setSendBackModal(null);
+      await load();
+      setTimeout(() => setToast(''), 3500);
+    } catch (err) {
+      setSendBackError(err instanceof Error ? err.message : 'Send back failed');
+    } finally {
+      setSendBackLoading(false);
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
@@ -793,6 +851,11 @@ export default function TrackPRPage() {
 
   return (
     <DashboardLayout>
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+          {toast}
+        </div>
+      )}
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -1039,6 +1102,19 @@ export default function TrackPRPage() {
                                     className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap"
                                   >
                                     Edit
+                                  </button>
+                                )}
+                                {isAdminEditor &&
+                                  pr.status !== 'draft' &&
+                                  pr.status !== 'returned' &&
+                                  pr.status !== 'rejected' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void openAdminSendBack(pr)}
+                                    className="px-3 py-1.5 text-xs font-medium text-orange-700 border border-orange-300 rounded-md hover:bg-orange-50 transition-colors whitespace-nowrap"
+                                    title="Send PR back to any previous workflow step"
+                                  >
+                                    Send Back
                                   </button>
                                 )}
                                 {isAdminEditor && pr.status !== 'draft' && (
@@ -1441,6 +1517,76 @@ export default function TrackPRPage() {
           )}
         </div>
       </div>
+
+      {sendBackModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <i className="ri-arrow-go-back-line text-orange-600"></i>
+              Admin Send Back
+            </h3>
+            <p className="text-sm text-gray-600 mt-1 break-words">
+              <span className="font-semibold text-gray-900">{sendBackModal.prNumber}</span>
+              {' — '}
+              {sendBackModal.title}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              Choose any previous workflow step. The PR will move there and the assignee will be notified.
+            </p>
+
+            <label className="block text-xs font-semibold text-gray-700 mt-4 mb-1">
+              Send back to
+            </label>
+            <select
+              value={sendBackReturnTo}
+              onChange={(e) => setSendBackReturnTo(e.target.value)}
+              disabled={sendBackLoading || !sendBackTargets.length}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              {!sendBackTargets.length && <option value="">No stages available</option>}
+              {sendBackTargets.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+
+            <label className="block text-xs font-semibold text-gray-700 mt-3 mb-1">
+              Remarks <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={sendBackRemarks}
+              onChange={(e) => setSendBackRemarks(e.target.value)}
+              rows={3}
+              placeholder="Why is this PR being sent back?"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-y"
+            />
+
+            {sendBackError && (
+              <p className="mt-2 text-sm text-red-600">{sendBackError}</p>
+            )}
+
+            <div className="mt-4 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setSendBackModal(null)}
+                disabled={sendBackLoading}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmAdminSendBack()}
+                disabled={sendBackLoading || !sendBackReturnTo}
+                className="px-4 py-2 text-sm font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50"
+              >
+                {sendBackLoading ? 'Sending…' : 'Confirm Send Back'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

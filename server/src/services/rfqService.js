@@ -18,7 +18,7 @@ import {
   getL2ManagerForEmail,
   ensureApproverUser,
 } from './refexOneService.js';
-import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import { resolveScmBuyerUser, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 
 /** Default RFQ fields: vendor sees only Quoted Price (+ file upload). Other vendor fields appear after requester adds them. */
@@ -1378,7 +1378,7 @@ async function startScmVendorPostRfqWorkflow(prId) {
 
 /** Own path after CFO post-RFQ: notify SCM Buyer to run final RFQ (/scm/rfq-entry) */
 async function notifyScmBuyerForFinalRfq(prId) {
-  const buyer = await resolveScmBuyerUser();
+  const buyerEmails = await getScmBuyerNotifyEmails();
   const pr = await getPurchaseRequestById(prId);
   const rfqSummary = await buildRfqSummary(prId);
   const attachments = await collectQuotationAttachments(prId);
@@ -1388,7 +1388,7 @@ async function notifyScmBuyerForFinalRfq(prId) {
   await pool.query(
     `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'RFQ_ENTRY', 'SCM Buyer', ?, 'pending', ?)`,
-    [prId, buyer?.id || null, dueDate.toISOString().split('T')[0]]
+    [prId, null, dueDate.toISOString().split('T')[0]]
   );
 
   queuePrApprovalPendingNotification(
@@ -1401,8 +1401,8 @@ async function notifyScmBuyerForFinalRfq(prId) {
       stageLabel: 'SCM Final RFQ',
       rfqSummary,
       attachments,
-      approverEmails: buyer?.email ? [buyer.email] : undefined,
-      approverName: buyer?.name || undefined,
+      approverEmails: buyerEmails,
+      approverName: 'SCM Buyer',
     }
   );
 }
@@ -1414,13 +1414,13 @@ async function moveToScmCreatePo(prId) {
     [PR_STATUS.PENDING_SCM_PO, STAGE.SCM_PO_CREATE, prId]
   );
 
-  const buyer = await resolveScmBuyerUser();
+  const buyerEmails = await getScmBuyerNotifyEmails();
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 2);
   await pool.query(
     `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'RFQ_POST_APPROVAL', 'SCM Buyer', ?, 'pending', ?)`,
-    [prId, buyer?.id || null, dueDate.toISOString().split('T')[0]]
+    [prId, null, dueDate.toISOString().split('T')[0]]
   );
 
   const pr = await getPurchaseRequestById(prId);
@@ -1437,8 +1437,8 @@ async function moveToScmCreatePo(prId) {
       stageLabel: 'SCM PO Create',
       rfqSummary,
       attachments,
-      approverEmails: buyer?.email ? [buyer.email] : undefined,
-      approverName: buyer?.name || undefined,
+      approverEmails: buyerEmails,
+      approverName: 'SCM Buyer',
     }
   );
 }
@@ -1983,7 +1983,7 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
         dueDate.setDate(dueDate.getDate() + 2);
         let roleUser = null;
         if (nextRole === 'SCM Buyer') {
-          roleUser = await resolveScmBuyerUser(conn);
+          roleUser = null; // role-queue: Gopi + Satish both act / get mail
         } else {
           const [roleUsers] = await conn.query(
             `SELECT id, email, name FROM users WHERE role = ? AND is_active = 1 ORDER BY id ASC LIMIT 1`,
