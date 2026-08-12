@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
+import PrDetailsEditor from '../../rfq-approval/components/PrDetailsEditor';
 import SendBackModal from '../../scm/rfq-entry/components/SendBackModal';
 import CreateVendorForm from '../../scm/vendor-master/components/CreateVendorForm';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -1115,6 +1116,28 @@ export default function RfqEntryDetailPage() {
         <div className="p-12 text-center text-gray-500">Loading...</div>
       ) : (
         <div className="space-y-4 pb-4">
+          {prId && mode === 'entry' ? (
+            <PrDetailsEditor
+              prId={Number(prId)}
+              canEdit={Boolean(
+                user?.role &&
+                  [
+                    'Requester',
+                    'Super Admin',
+                    'SCM Manager',
+                    'SCM Buyer',
+                    'HOD Approver',
+                    'PR Manager',
+                    'CFO',
+                  ].includes(user.role)
+              )}
+              onToast={showToast}
+              onSaved={() => {
+                void loadRfq({ soft: true });
+              }}
+            />
+          ) : null}
+
           {!isFinalized && mode === 'entry' && (
             <div className="bg-white border border-gray-200 rounded-lg p-5">
               <h2 className="text-sm font-bold text-gray-900 mb-1">Quotation Fields (dynamic)</h2>

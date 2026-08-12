@@ -24,7 +24,7 @@ import { createEmailLog, updateEmailLog } from './emailLogService.js';
  * true  = send emails
  * false = skip all outbound email
  */
-const EMAIL_SEND_ENABLED = false;
+const EMAIL_SEND_ENABLED = true;
 
 let transporter;
 let smtpReady = false;

@@ -331,10 +331,10 @@ export default function VendorComparisonMatrix({
 
       {/* ── HEADER ── */}
       {!compact && (
-        <section className={`${cardClass} p-5 sm:p-6`}>
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-[22px] sm:text-[28px] lg:text-[30px] font-bold text-[#12284A] tracking-tight leading-snug">
+        <section className={`${cardClass} p-4 sm:p-6`}>
+          <div className="flex flex-col gap-4">
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-[22px] md:text-[28px] lg:text-[30px] font-bold text-[#12284A] tracking-tight leading-snug break-words">
                 Comparative Statement for {pr.title || pr.prNumber}
               </h1>
               <p className="text-xs text-[#64748B] mt-1">
@@ -342,19 +342,19 @@ export default function VendorComparisonMatrix({
               </p>
             </div>
 
-            <div className="flex flex-wrap items-stretch gap-3 shrink-0">
-              <div className="min-w-[96px] rounded-xl bg-[#EEF2FF] border border-[#E0E7FF] px-4 py-3">
+            <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
+              <div className="min-w-[88px] flex-1 sm:flex-none rounded-xl bg-[#EEF2FF] border border-[#E0E7FF] px-3 sm:px-4 py-3">
                 <p className="text-[11px] font-medium text-[#64748B]">Rev. No</p>
-                <p className="text-2xl font-bold text-[#12284A] mt-0.5 leading-none">{latestRevNo}</p>
+                <p className="text-xl sm:text-2xl font-bold text-[#12284A] mt-0.5 leading-none">{latestRevNo}</p>
               </div>
-              <div className="min-w-[120px] rounded-xl bg-[#E6F7F5] border border-[#C7EFE8] px-4 py-3">
+              <div className="min-w-[100px] flex-1 sm:flex-none rounded-xl bg-[#E6F7F5] border border-[#C7EFE8] px-3 sm:px-4 py-3">
                 <p className="text-[11px] font-medium text-[#64748B]">Date</p>
-                <p className="text-lg font-bold text-[#12284A] mt-0.5 leading-tight">{statementDate}</p>
+                <p className="text-base sm:text-lg font-bold text-[#12284A] mt-0.5 leading-tight">{statementDate}</p>
               </div>
               <button
                 type="button"
                 onClick={handlePrint}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#6C4CCF] text-[#6C4CCF] text-sm font-semibold hover:bg-[#F3F0FF] transition-colors print:hidden"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#6C4CCF] text-[#6C4CCF] text-sm font-semibold hover:bg-[#F3F0FF] transition-colors print:hidden"
               >
                 <i className="ri-file-pdf-2-line text-base"></i>
                 Download PDF
@@ -418,10 +418,187 @@ export default function VendorComparisonMatrix({
             <p className="text-xs text-[#64748B] mt-1">Invite vendors and collect quotes to build this statement.</p>
           </div>
         ) : (
-          <div className="relative max-w-full">
-            <p className="md:hidden px-3 py-2 text-[11px] font-medium text-slate-500 bg-slate-50 border-b border-[#E5EAF0]">
-              Swipe sideways to compare vendors →
-            </p>
+          <>
+            {/* Mobile: card layout (no table) */}
+            <div className="md:hidden p-3 space-y-3">
+              {revColumns.map((col, colIdx) => {
+                const t = colTotals[colIdx];
+                const isRecRev = Boolean(col.isRecommended && col.isLatest);
+                const isBest = bestLanded != null && t.landed > 0 && t.landed === bestLanded;
+                return (
+                  <article
+                    key={`m-card-${col.key}`}
+                    className={`rounded-xl border overflow-hidden ${
+                      isRecRev ? 'border-emerald-300 bg-emerald-50/40' : 'border-[#E5EAF0] bg-white'
+                    }`}
+                  >
+                    <div
+                      className={`px-3 py-2.5 flex flex-wrap items-start justify-between gap-2 ${
+                        isRecRev ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-800'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">
+                          {col.revisionLabel}
+                        </p>
+                        <p className="text-sm font-bold break-words leading-snug mt-0.5">{col.vendorName}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {isRecRev && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-bold">
+                            <i className="ri-checkbox-circle-fill text-[10px]"></i>
+                            Recommended
+                          </span>
+                        )}
+                        {isBest && (
+                          <span
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isRecRev
+                                ? 'bg-white text-emerald-800'
+                                : 'bg-slate-200 text-slate-700 border border-slate-300'
+                            }`}
+                          >
+                            <i className="ri-star-fill text-[10px]"></i>
+                            Best
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {onSelectVendor && (
+                      <label className="flex items-center gap-2 px-3 py-2 border-b border-[#E5EAF0] text-xs font-medium text-slate-700 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="vendor-select-mobile"
+                          checked={activeVendorId === col.vendorId}
+                          onChange={() => onSelectVendor(col.vendorId)}
+                          className="accent-emerald-600"
+                        />
+                        Select this vendor
+                      </label>
+                    )}
+
+                    <div className="divide-y divide-[#E5EAF0]">
+                      {displayLines.map((li, lineIdx) => {
+                        const { rate, amount } =
+                          String(li.id) === 'total'
+                            ? {
+                                rate: Number(col.values.quotedPrice) || 0,
+                                amount: Number(col.values.quotedPrice) || 0,
+                              }
+                            : getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
+                        return (
+                          <div key={`m-${col.key}-${li.id}`} className="px-3 py-3">
+                            <p className="text-[11px] font-semibold text-slate-500 uppercase">
+                              Item {lineIdx + 1}
+                            </p>
+                            <p className="text-sm font-bold text-[#12284A] leading-snug mt-0.5 break-words">
+                              {li.description}
+                            </p>
+                            {li.category ? (
+                              <p className="text-xs text-slate-500 mt-0.5">{li.category}</p>
+                            ) : null}
+                            <p className="text-xs text-slate-500 mt-1">
+                              Qty {li.quantity} · {li.uom || 'Nos'}
+                            </p>
+                            <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                              <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+                                <p className="text-[10px] font-semibold uppercase text-slate-500">Rate</p>
+                                <p className="font-semibold tabular-nums text-[#334155]">
+                                  {rate > 0 ? `₹${formatNum(rate)}` : '—'}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-slate-50 px-2.5 py-2 text-right">
+                                <p className="text-[10px] font-semibold uppercase text-slate-500">Amount</p>
+                                <p className="font-bold tabular-nums text-[#12284A]">
+                                  {amount > 0 ? `₹${formatNum(amount)}` : '—'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {sheetMakeParams.map((param) => {
+                        const raw =
+                          col.values[param.id] ??
+                          col.values[param.label] ??
+                          col.values.make ??
+                          col.values.Make ??
+                          col.values.brand ??
+                          col.values.Brand;
+                        const display =
+                          raw === undefined || raw === null || raw === ''
+                            ? '—'
+                            : param.type === 'boolean'
+                              ? raw
+                                ? 'Yes'
+                                : 'No'
+                              : String(raw);
+                        return (
+                          <div
+                            key={`m-${col.key}-info-${param.id}`}
+                            className="px-3 py-2.5 flex items-start justify-between gap-3"
+                          >
+                            <span className="text-xs font-semibold text-slate-600">{param.label}</span>
+                            <span className="text-sm font-semibold text-[#12284A] text-right break-words">
+                              {display}
+                            </span>
+                          </div>
+                        );
+                      })}
+
+                      <div className="px-3 py-2.5 flex items-center justify-between gap-3 bg-slate-50">
+                        <span className="text-xs font-bold text-slate-700">
+                          Add: GST {(GST_RATE * 100).toFixed(0)}%
+                        </span>
+                        <span className="text-sm font-bold tabular-nums text-slate-800">
+                          {t.material > 0 ? `₹${formatNum(t.gst)}` : '—'}
+                        </span>
+                      </div>
+
+                      {sheetCostParams.map((param) => {
+                        const extra = cellExtra(col.values, paramKeys(param));
+                        const d = statusValueDisplay(extra);
+                        return (
+                          <div
+                            key={`m-${col.key}-cost-${param.id}`}
+                            className="px-3 py-2.5 flex items-center justify-between gap-3"
+                          >
+                            <span className="text-xs font-semibold text-slate-600">{param.label}</span>
+                            <span className="text-sm font-semibold text-[#12284A] text-right">
+                              {d.mode === 'number'
+                                ? `₹${formatNum(d.value)}`
+                                : d.mode === 'included' || d.mode === 'extra' || d.mode === 'text'
+                                  ? String(d.value)
+                                  : '—'}
+                            </span>
+                          </div>
+                        );
+                      })}
+
+                      <div
+                        className={`px-3 py-3 flex items-center justify-between gap-3 ${
+                          isRecRev ? 'bg-emerald-100/70' : 'bg-[#F8FAFC]'
+                        }`}
+                      >
+                        <span className="text-sm font-bold text-[#12284A]">Landed Cost</span>
+                        <span
+                          className={`text-base font-bold tabular-nums ${
+                            isRecRev ? 'text-emerald-800' : 'text-[#12284A]'
+                          }`}
+                        >
+                          {t.landed > 0 ? `₹${formatNum(t.landed)}` : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {/* Desktop / tablet: table */}
+            <div className="hidden md:block relative max-w-full">
             <div className="overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch]">
               <table className="border-separate border-spacing-0 text-sm w-max min-w-full">
                 <thead>
@@ -777,19 +954,105 @@ export default function VendorComparisonMatrix({
                 </tbody>
               </table>
             </div>
-          </div>
+            </div>
+          </>
         )}
       </section>
 
       {/* ── TECHNICAL SPECIFICATION ── */}
       {vendorGroups.length > 0 && (
         <section className={cardClass} aria-label="Technical specification">
-          <div className="px-5 py-4 border-b border-[#E5EAF0]">
+          <div className="px-4 sm:px-5 py-4 border-b border-[#E5EAF0]">
             <p className="text-sm font-semibold text-[#64748B]">Quotation of:</p>
             <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Technical Specification</h2>
           </div>
 
-          <div className="overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] max-w-full">
+          {/* Mobile cards */}
+          <div className="md:hidden p-3 space-y-3">
+            {vendorGroups.map(({ vendor, cols }) => {
+              const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
+              const isRec = Boolean(vendor.isRecommended);
+              return (
+                <article
+                  key={`tech-m-${vendor.id}`}
+                  className={`rounded-xl border overflow-hidden ${
+                    isRec ? 'border-emerald-300' : 'border-[#E5EAF0]'
+                  }`}
+                >
+                  <div
+                    className={`px-3 py-2.5 flex items-start justify-between gap-2 ${
+                      isRec ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-800'
+                    }`}
+                  >
+                    <p className="text-sm font-bold break-words leading-snug">{vendor.name}</p>
+                    {isRec && (
+                      <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-bold">
+                        Recommended
+                      </span>
+                    )}
+                  </div>
+                  <div className="divide-y divide-[#E5EAF0] bg-white">
+                    {technicalSheetParams.map((param) => {
+                      const raw =
+                        latestCol?.values?.[param.id] ??
+                        latestCol?.values?.[param.label] ??
+                        (isMakeLikeParam(param)
+                          ? latestCol?.values?.make ??
+                            latestCol?.values?.Make ??
+                            latestCol?.values?.brand ??
+                            latestCol?.values?.Brand
+                          : undefined);
+                      const display =
+                        raw === undefined || raw === null || raw === ''
+                          ? '—'
+                          : param.type === 'boolean'
+                            ? raw
+                              ? 'Yes'
+                              : 'No'
+                            : String(raw);
+                      return (
+                        <div
+                          key={`tech-m-${vendor.id}-${param.id}`}
+                          className="px-3 py-2.5 flex items-start justify-between gap-3"
+                        >
+                          <span className="text-xs font-semibold text-slate-600 shrink-0 max-w-[45%]">
+                            {param.label}
+                          </span>
+                          <span className="text-sm text-[#12284A] text-right break-words font-medium">
+                            {display}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className="px-3 py-2.5 flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold text-slate-600">Quotation File</span>
+                      {latestCol?.quotationFileName && latestCol.submissionId && onPreviewFile ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onPreviewFile(
+                              latestCol.submissionId!,
+                              vendor.name,
+                              latestCol.quotationFileName!
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5EAF0] text-xs font-semibold text-[#1769E0]"
+                        >
+                          <i className="ri-eye-line"></i>
+                          Preview
+                        </button>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] max-w-full">
             <table className="border-separate border-spacing-0 text-sm w-max min-w-full">
               <thead>
                 <tr>

@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../components/rfq/VendorComparisonMatrix';
 import PostRfqApprovalModal from './components/PostRfqApprovalModal';
-import PrDetailsEditor from './components/PrDetailsEditor';
 import { rfqApi, VendorComparisonData } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -170,34 +169,47 @@ export default function RfqApprovalDetailPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <Link to="/rfq-approval" className="text-sm text-teal-600 hover:text-teal-800 mb-2 inline-flex items-center gap-1">
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="min-w-0">
+          <Link
+            to="/rfq-approval"
+            className="text-sm text-teal-600 hover:text-teal-800 mb-2 inline-flex items-center gap-1"
+          >
             <i className="ri-arrow-left-line"></i> Back to queue
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">{data.pr.prNumber} — {data.pr.title}</h1>
-          <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-600">
-            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-semibold text-xs">
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 break-words leading-snug">
+            <span className="block sm:inline text-teal-800">{data.pr.prNumber}</span>
+            <span className="hidden sm:inline"> — </span>
+            <span className="block sm:inline mt-1 sm:mt-0 text-base sm:text-xl md:text-2xl font-semibold sm:font-bold text-gray-900">
+              {data.pr.title}
+            </span>
+          </h1>
+          <div className="flex flex-col sm:flex-wrap sm:flex-row gap-2 sm:gap-3 mt-3 text-sm text-gray-600">
+            <span className="inline-flex self-start px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full font-semibold text-xs">
               {data.stageLabel || data.pr.statusUI}
             </span>
-            <span>
+            <span className="break-words">
               <strong>Entity:</strong> {data.pr.entityName || '—'}
               {data.pr.entityCode ? ` (${data.pr.entityCode})` : ''}
             </span>
-            <span><strong>Department:</strong> {data.pr.department || '—'}</span>
+            <span>
+              <strong>Department:</strong> {data.pr.department || '—'}
+            </span>
             <span>Requester stage complete · {data.vendorCount} vendors quoted</span>
             {data.recommendedVendorName && (
-              <span className="text-emerald-700 font-medium">⭐ Recommended: {data.recommendedVendorName}</span>
+              <span className="text-emerald-700 font-medium break-words">
+                ⭐ Recommended: {data.recommendedVendorName}
+              </span>
             )}
           </div>
         </div>
 
         {data.canApprove && (
-          <div className="flex gap-2">
+          <div className="flex flex-col xs:flex-row sm:flex-row flex-wrap gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setModal({ open: true, action: 'approve' })}
-              className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 cursor-pointer flex items-center gap-2"
+              className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 cursor-pointer inline-flex items-center justify-center gap-2"
             >
               <i className="ri-check-line"></i>
               {user?.role === 'SCM Buyer' ? 'Create PO' : 'Approve'}
@@ -205,14 +217,14 @@ export default function RfqApprovalDetailPage() {
             <button
               type="button"
               onClick={() => setModal({ open: true, action: 'rework' })}
-              className="px-4 py-2 bg-orange-600 text-white text-sm font-semibold rounded-lg hover:bg-orange-700 cursor-pointer flex items-center gap-2"
+              className="w-full sm:w-auto px-4 py-2.5 bg-orange-600 text-white text-sm font-semibold rounded-lg hover:bg-orange-700 cursor-pointer inline-flex items-center justify-center gap-2"
             >
               <i className="ri-arrow-go-back-line"></i> Send Back
             </button>
             <button
               type="button"
               onClick={() => setModal({ open: true, action: 'reject' })}
-              className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 cursor-pointer flex items-center gap-2"
+              className="w-full sm:w-auto px-4 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 cursor-pointer inline-flex items-center justify-center gap-2"
             >
               <i className="ri-close-line"></i> Reject
             </button>
@@ -233,20 +245,6 @@ export default function RfqApprovalDetailPage() {
           Summary view for Manager Approval. SCM Buyer handles PO creation after manager approval.
         </div>
       )}
-
-      <PrDetailsEditor
-        prId={Number(prId)}
-        canEdit={Boolean(
-          user?.role &&
-            ['Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO'].includes(
-              user.role
-            )
-        )}
-        onToast={showToast}
-        onSaved={() => {
-          void load();
-        }}
-      />
 
       <VendorComparisonMatrix data={data} onPreviewFile={handlePreviewFile} />
 
