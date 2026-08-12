@@ -1,16 +1,18 @@
 /**
  * PO / Work Order PDF layout
  *
- * EVERY page:
- *   TOP    = doc-shell thead  (letterhead header logo)
- *   BODY   = content
- *   BOTTOM = doc-shell tfoot  (letterhead footer logo) — repeats with content
- *   PAGE # = Puppeteer footer margin only
+ * EVERY printed page (Puppeteer chrome templates — reliable across page breaks):
+ *   TOP    = headerTemplate  (letterhead header logo)
+ *   BODY   = document content (line items / terms / annexure)
+ *   BOTTOM = footerTemplate  (letterhead footer + Page X of Y)
+ *
+ * HTML preview may still use a doc-shell thead/tfoot for on-screen branding.
  */
 export const PO_PDF_LAYOUT = {
-  top: '4mm',
-  /** Room for Page X of Y under the repeated tfoot logo */
-  bottom: '10mm',
+  /** Space for repeating header logo on every PDF page */
+  top: '20mm',
+  /** Space for repeating footer block + page number */
+  bottom: '38mm',
   side: '10mm',
   marginTopPx: 15,
   marginBottomPx: 38,
@@ -19,10 +21,10 @@ export const PO_PDF_LAYOUT = {
     return 10;
   },
   get topMm() {
-    return 4;
+    return 20;
   },
   get bottomMm() {
-    return 10;
+    return 38;
   },
 };
 
@@ -40,6 +42,14 @@ export const PO_STYLES = `
     padding: 12px ${PO_PDF_LAYOUT.marginSidePx}px 20px;
     line-height: 1.35;
     background: #fff;
+  }
+
+  /* PDF path: chrome templates own header/footer — body is content only */
+  body.po-document-pdf {
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 0 !important;
   }
 
   /* ===== Document shell — logo bands repeat on every printed page ===== */
@@ -145,8 +155,19 @@ export const PO_STYLES = `
   .page-annexure,
   .page-notes,
   .page-ack {
-    page-break-before: always;
-    break-before: page;
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Keep section title with at least one row when a table continues */
+  table.terms thead,
+  table.price thead {
+    display: table-header-group !important;
+  }
+  table.terms tr,
+  table.price tr.total {
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   .page-body { width: 100%; }

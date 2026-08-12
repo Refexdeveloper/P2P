@@ -273,22 +273,70 @@ function buildRunningFooter(po = {}) {
 }
 
 /**
- * Puppeteer chrome — page numbers ONLY.
- * Footer logo lives in HTML doc-shell <tfoot> (letterhead HTML/images render reliably;
- * Puppeteer footerTemplate often drops complex letterhead markup).
+ * Puppeteer chrome — letterhead header + footer on EVERY page (including
+ * continued line-items, Terms, Annexure). Outer HTML thead/tfoot is unreliable
+ * in Chromium PDF when nested tables force page breaks.
  */
-export function buildPoPdfChromeTemplates(_po = {}) {
-  const side = '10mm';
+export function buildPoPdfChromeTemplates(po = {}) {
+  const side = PO_PDF_LAYOUT.side;
   const base =
     'width:100%;box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;' +
-    'font-size:9px;color:#333;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
+    'color:#222;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
 
-  const headerTemplate = `<div style="${base}height:0;margin:0;padding:0;overflow:hidden;"></div>`;
+  const headerLogo = resolveBrandingValue(po, 'headerLogo', 'header_logo');
+  let headerInner = '';
+  if (headerLogo) {
+    if (looksLikeImageSrc(headerLogo)) {
+      headerInner =
+        `<div style="display:flex;justify-content:flex-end;align-items:center;width:100%;">` +
+        `<img src="${safeImgSrc(headerLogo)}" style="max-height:42px;max-width:200px;height:auto;width:auto;object-fit:contain;display:block;" alt="" />` +
+        `</div>`;
+    } else if (looksLikeHtml(headerLogo)) {
+      headerInner =
+        `<div style="display:flex;justify-content:flex-end;align-items:center;width:100%;font-size:11px;line-height:1.2;text-align:right;max-height:48px;overflow:hidden;">` +
+        `${constrainLogoHtml(headerLogo, 42)}` +
+        `</div>`;
+    } else {
+      headerInner =
+        `<div style="text-align:right;font-size:13px;font-weight:700;">${escapeHtml(headerLogo)}</div>`;
+    }
+  } else {
+    headerInner =
+      `<div style="text-align:right;font-size:20px;font-weight:800;font-style:italic;letter-spacing:-1px;">` +
+      `<span style="color:#2e3192;">r</span><span style="color:#27aae1;">e</span><span style="color:#39b54a;">f</span>` +
+      `<span style="color:#8dc63f;">e</span><span style="color:#f7941d;">x</span></div>`;
+  }
+
+  const footerLogo = resolveBrandingValue(po, 'footerLogo', 'footer_logo');
+  const entity = resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited';
+  let footerBrand = '';
+  if (footerLogo) {
+    if (looksLikeImageSrc(footerLogo)) {
+      footerBrand =
+        `<img src="${safeImgSrc(footerLogo)}" style="max-height:72px;max-width:100%;height:auto;width:auto;object-fit:contain;display:block;margin:0 auto;" alt="" />`;
+    } else if (looksLikeHtml(footerLogo)) {
+      footerBrand =
+        `<div style="font-size:10px;line-height:1.25;text-align:center;max-height:78px;overflow:hidden;">` +
+        `${constrainLogoHtml(footerLogo, 70, { enlargeFooter: true })}` +
+        `</div>`;
+    } else {
+      footerBrand =
+        `<div style="font-size:11px;font-weight:700;text-align:center;">${escapeHtml(footerLogo)}</div>`;
+    }
+  } else {
+    footerBrand =
+      `<div style="font-size:11px;font-weight:700;text-align:center;">${escapeHtml(entity)}</div>`;
+  }
+
+  const headerTemplate =
+    `<div style="${base}padding:1.5mm ${side} 0 ${side};font-size:10px;">${headerInner}</div>`;
 
   const footerTemplate =
-    `<div style="${base}padding:0 ${side} 1.5mm ${side};text-align:center;font-weight:600;">` +
+    `<div style="${base}padding:0 ${side} 1mm ${side};font-size:10px;">` +
+    `${footerBrand}` +
+    `<div style="text-align:center;font-size:9px;font-weight:600;margin-top:2px;color:#333;">` +
     `Page <span class="pageNumber"></span> of <span class="totalPages"></span>` +
-    `</div>`;
+    `</div></div>`;
 
   return { headerTemplate, footerTemplate };
 }
@@ -605,16 +653,21 @@ export function buildPoDocumentHtml(po, options = {}) {
 
   const terms = po.termsClauses || [];
   const annexure = po.annexureClauses || [];
+  const forPdf = options.forPdf === true;
+  const bodyClass = forPdf ? 'po-document po-document-pdf' : 'po-document';
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>${escapeHtml(docLabel)} - ${escapeHtml(po.poNumber)}</title>
-<style>${PO_STYLES}</style>
-</head>
-<body class="po-document">
-<table class="doc-shell">
+  const content = `
+${page1}
+${termsSummaryHtml(po, terms)}
+${annexurePagesHtml(po, annexure, poTypeLabel, docLabel)}
+${specialNotesHtml(po, options)}
+${acknowledgmentHtml(po)}`;
+
+  // PDF: header/footer come from Puppeteer chrome templates on every page.
+  // Preview HTML: keep doc-shell thead/tfoot so logos show on screen.
+  const bodyInner = forPdf
+    ? content
+    : `<table class="doc-shell">
   <thead>
     <tr><td>${buildRunningHeader(po)}</td></tr>
   </thead>
@@ -623,14 +676,20 @@ export function buildPoDocumentHtml(po, options = {}) {
   </tfoot>
   <tbody>
     <tr><td class="doc-shell-body">
-${page1}
-${termsSummaryHtml(po, terms)}
-${annexurePagesHtml(po, annexure, poTypeLabel, docLabel)}
-${specialNotesHtml(po, options)}
-${acknowledgmentHtml(po)}
+${content}
     </td></tr>
   </tbody>
-</table>
+</table>`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${escapeHtml(docLabel)} - ${escapeHtml(po.poNumber)}</title>
+<style>${PO_STYLES}</style>
+</head>
+<body class="${bodyClass}">
+${bodyInner}
 </body>
 </html>`;
 }

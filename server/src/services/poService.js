@@ -544,32 +544,14 @@ async function resolvePoDraftContent(prId, body) {
   let resolvedAnnexure = annexure;
 
   // Branding from selected Letterhead Master (entity + logos) for PO PDF.
-  // Header always from master; footer from selected location when provided.
+  // Header and footer are common on the letterhead; location only affects GST/invoicing.
   try {
     if (resolvedLetterheadId) {
       const selected = await getLetterheadMasterById(resolvedLetterheadId);
       resolvedEntity = selected.entity || resolvedEntity || '';
       resolvedHeaderLogo = selected.headerLogo || '';
-      const locs = selected.locations || [];
-      const locKey =
-        body?.letterheadLocationId ??
-        body?.poTermsDetails?.letterheadLocationId ??
-        '';
-      const locName =
-        body?.locationName || body?.poTermsDetails?.locationName || '';
-      const matchedLoc =
-        (locKey !== '' && locKey != null
-          ? locs.find((l) => String(l.id) === String(locKey)) ||
-            locs.find((l) => l.location === String(locKey))
-          : null) ||
-        (locName ? locs.find((l) => l.location === locName) : null);
-      if (matchedLoc) {
-        resolvedFooterLogo =
-          matchedLoc.footerLogo || body?.footerLogo || selected.footerLogo || '';
-      } else {
-        resolvedFooterLogo =
-          body?.footerLogo || selected.footerLogo || resolvedFooterLogo || '';
-      }
+      resolvedFooterLogo =
+        body?.footerLogo || selected.footerLogo || resolvedFooterLogo || '';
     } else {
       const branding = await getActiveLetterheadBranding();
       if (branding.id) resolvedLetterheadId = branding.id;

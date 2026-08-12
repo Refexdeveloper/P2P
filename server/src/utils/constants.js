@@ -141,12 +141,13 @@ export function mapPriorityToFrontend(priority) {
 export function formatDate(date) {
   if (!date) return '';
   const d = new Date(date);
-  return d.toISOString().split('T')[0];
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 }
 
 export function formatDateTime(date) {
   if (!date) return '';
   return new Date(date).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

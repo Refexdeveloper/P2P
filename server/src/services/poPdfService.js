@@ -15,19 +15,27 @@ export const PO_UPLOAD_DIR = path.join(__dirname, '../../uploads/po');
 
 const CHROME_PATHS = {
   win32: [
+    process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe')
+      : null,
+    process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, 'Microsoft', 'Edge', 'Application', 'msedge.exe')
+      : null,
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  ],
+  ].filter(Boolean),
   darwin: [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
   ],
   linux: [
+    '/usr/bin/google-chrome-stable',
     '/usr/bin/google-chrome',
-    '/usr/bin/chromium-browser',
     '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/lib/chromium/chromium',
   ],
 };
 
@@ -38,11 +46,24 @@ function ensurePoDir() {
 }
 
 function resolveBrowserExecutable() {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
+  if (fromEnv && fs.existsSync(fromEnv)) {
+    return fromEnv;
   }
   const candidates = CHROME_PATHS[os.platform()] || CHROME_PATHS.linux;
-  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || null;
+}
+
+function puppeteerLaunchArgs() {
+  return [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--no-zygote',
+    '--single-process',
+    '--font-render-hinting=none',
+  ];
 }
 
 export function buildPoHtml(po, options = {}) {
@@ -65,12 +86,16 @@ export async function htmlToPdf(html, filePath, chromeTemplates = null) {
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    args: puppeteerLaunchArgs(),
   });
 
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+    try {
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 90000 });
+    } catch {
+      await page.setContent(html, { waitUntil: 'load', timeout: 90000 });
+    }
     await page.emulateMediaType('print');
     await page.evaluate(async () => {
       const imgs = Array.from(document.images || []);
@@ -115,7 +140,7 @@ export async function generatePoPdf(po, options = {}) {
   const filePath = path.join(PO_UPLOAD_DIR, fileName);
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
 
-  const html = buildPoHtml(po, options);
+  const html = buildPoHtml(po, { ...options, forPdf: true });
   const chrome = buildPoPdfChromeTemplates(po);
   fs.writeFileSync(htmlPath, html, 'utf8');
 
@@ -124,7 +149,14 @@ export async function generatePoPdf(po, options = {}) {
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
     console.warn('HTML-to-PDF failed, HTML document saved:', err.message);
-    return { filePath: htmlPath, fileName: htmlFileName, htmlFileName, htmlPath, htmlOnly: true };
+    return {
+      filePath: htmlPath,
+      fileName: htmlFileName,
+      htmlFileName,
+      htmlPath,
+      htmlOnly: true,
+      pdfError: err.message,
+    };
   }
 }
 
@@ -200,8 +232,11 @@ export async function ensurePoPdf(po, options = {}) {
 export async function renderPoPdfToFile(po, fileName = 'PO_preview.pdf') {
   const result = await generatePoPdf(po, { fileName });
   if (result.htmlOnly || !looksLikePdfFile(result.filePath)) {
+    const detail = result.pdfError ? ` (${result.pdfError})` : '';
     throw new Error(
-      'Could not generate PDF. Install Google Chrome / Microsoft Edge, or set PUPPETEER_EXECUTABLE_PATH.'
+      result.htmlOnly
+        ? `Could not generate PDF. Install Google Chrome / Microsoft Edge, or set PUPPETEER_EXECUTABLE_PATH.${detail}`
+        : 'Generated file is not a valid PDF'
     );
   }
   return result;

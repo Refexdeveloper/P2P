@@ -46,6 +46,15 @@ spec:
               value: production
             - name: SERVE_CLIENT
               value: 'true'
+            # Required for PO PDF generation (puppeteer-core + Chrome in image)
+            - name: PUPPETEER_EXECUTABLE_PATH
+              value: /usr/bin/google-chrome-stable
+            - name: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+              value: 'true'
+            - name: XDG_CONFIG_HOME
+              value: /tmp/.chromium
+            - name: XDG_CACHE_HOME
+              value: /tmp/.chromium
             - name: DB_NAME
               value: p2p_system
             - name: DB_USER

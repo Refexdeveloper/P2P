@@ -571,7 +571,6 @@ export default function CreatePOPage() {
       const key = letterheadLocKey(loc, index);
       setLetterheadLocationKey(key);
       setLocationGstNo(loc.gstNo || '');
-      if (loc.footerLogo) setFooterLogo(loc.footerLogo);
       const invoicing = buildInvoicingAddressFromLocation(loc);
       setPoTermsDetails((prev) => ({
         ...prev,
@@ -597,6 +596,7 @@ export default function CreatePOPage() {
       setLetterheadId(row.id);
       setEntity(row.entity || '');
       setHeaderLogo(row.headerLogo || '');
+      setFooterLogo(row.footerLogo || '');
       const locs = row.locations?.length
         ? row.locations
         : row.location || row.gstNo
@@ -605,18 +605,14 @@ export default function CreatePOPage() {
                 id: row.id,
                 location: row.location || '',
                 gstNo: row.gstNo || '',
-                footerLogo: row.footerLogo || '',
+                footerLogo: '',
               },
             ]
           : [];
       if (locs.length) {
         if (opts?.keepLocation) {
-          // Refresh header/entity only; keep current location selection & its footer
           setLetterheadLocationKey((currentKey) => {
-            if (!currentKey) {
-              setFooterLogo(row.footerLogo || locs[0].footerLogo || '');
-              return currentKey;
-            }
+            if (!currentKey) return currentKey;
             const idx = locs.findIndex(
               (l, i) =>
                 letterheadLocKey(l, i) === currentKey ||
@@ -625,20 +621,16 @@ export default function CreatePOPage() {
             );
             if (idx >= 0) {
               const loc = locs[idx];
-              setFooterLogo(loc.footerLogo || row.footerLogo || '');
               setLocationGstNo(loc.gstNo || '');
               return letterheadLocKey(loc, idx);
             }
-            setFooterLogo(row.footerLogo || locs[0].footerLogo || '');
             return currentKey;
           });
           return;
         }
         applyLetterheadLocation(locs[0], 0);
-        if (!locs[0].footerLogo) setFooterLogo(row.footerLogo || '');
-      } else {
-        setFooterLogo(row.footerLogo || '');
-        if (!opts?.keepLocation) applyLetterheadLocation(null);
+      } else if (!opts?.keepLocation) {
+        applyLetterheadLocation(null);
       }
     },
     [applyLetterheadLocation]
@@ -2327,7 +2319,7 @@ export default function CreatePOPage() {
                       ))}
                     </select>
                     <p className="text-xs text-gray-500 mt-1.5">
-                      Selecting a location fills GSTIN &amp; footer into Invoicing Address and {docLabel} PDF footer.
+                      Selecting a location fills GSTIN into Invoicing Address. Footer comes from the letterhead.
                     </p>
                   </div>
                 )}
@@ -2574,7 +2566,7 @@ export default function CreatePOPage() {
                               (footerLogo.startsWith('data:image/') ||
                                 /^https?:\/\//i.test(footerLogo)) && (
                                 <div className="pt-1">
-                                  <p className="font-semibold mb-1">Footer (from location)</p>
+                                  <p className="font-semibold mb-1">Footer</p>
                                   <img
                                     src={footerLogo}
                                     alt="Location footer"

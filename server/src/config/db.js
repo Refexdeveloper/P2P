@@ -18,6 +18,9 @@ function buildPoolConfig() {
     database: process.env.DB_NAME || 'p2p_system',
     waitForConnections: true,
     connectionLimit: 10,
+    // Return TIMESTAMP values as UTC and parse them as UTC so local IST and
+    // Cloud Run (UTC) both produce the same correct Instant for formatting.
+    timezone: 'Z',
   };
 
   if (instance) {
@@ -35,6 +38,10 @@ function buildPoolConfig() {
 }
 
 const pool = mysql.createPool(buildPoolConfig());
+
+pool.on('connection', (connection) => {
+  connection.query("SET time_zone = '+00:00'");
+});
 
 export async function pingDatabase() {
   const [rows] = await pool.query('SELECT 1 AS ok');

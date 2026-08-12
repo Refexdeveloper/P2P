@@ -174,6 +174,7 @@ const emptyForm = {
   name: '',
   entity: '',
   headerLogo: '',
+  footerLogo: '',
   status: 'active' as 'active' | 'inactive',
 };
 
@@ -182,7 +183,6 @@ type LocationRow = {
   id?: number;
   location: string;
   gstNo: string;
-  footerLogo: string;
 };
 
 function makeLocationKey() {
@@ -190,105 +190,7 @@ function makeLocationKey() {
 }
 
 function emptyLocationRow(): LocationRow {
-  return { key: makeLocationKey(), location: '', gstNo: '', footerLogo: '' };
-}
-
-function FooterLogoCell({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [mode, setMode] = useState<'url' | 'upload'>(
-    value.startsWith('data:image/') ? 'upload' : 'url'
-  );
-
-  const handleFile = (file: File | null) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return;
-    if (file.size > 2 * 1024 * 1024) return;
-    const reader = new FileReader();
-    reader.onload = () => onChange(String(reader.result || ''));
-    reader.readAsDataURL(file);
-  };
-
-  const preview =
-    value.startsWith('data:image/') || /^https?:\/\//i.test(value.trim()) ? value.trim() : '';
-
-  return (
-    <div className="space-y-1.5 min-w-[180px]">
-      <div className="flex gap-1 p-0.5 bg-gray-100 rounded-md w-fit">
-        <button
-          type="button"
-          onClick={() => {
-            setMode('url');
-            if (value.startsWith('data:')) onChange('');
-          }}
-          className={`px-2 py-0.5 text-[10px] font-semibold rounded cursor-pointer ${
-            mode === 'url' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'
-          }`}
-        >
-          URL
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode('upload')}
-          className={`px-2 py-0.5 text-[10px] font-semibold rounded cursor-pointer ${
-            mode === 'upload' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'
-          }`}
-        >
-          Upload
-        </button>
-      </div>
-      {mode === 'url' ? (
-        <input
-          type="url"
-          value={value.startsWith('data:') ? '' : value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="https://…/footer.png"
-          className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
-        />
-      ) : (
-        <div className="flex items-center gap-1.5">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => handleFile(e.target.files?.[0] || null)}
-          />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="px-2 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-md cursor-pointer"
-          >
-            <i className="ri-upload-2-line"></i> Image
-          </button>
-          {value.startsWith('data:image/') && (
-            <button
-              type="button"
-              onClick={() => {
-                onChange('');
-                if (fileRef.current) fileRef.current.value = '';
-              }}
-              className="text-xs text-red-600 cursor-pointer"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      )}
-      {preview && (
-        <img
-          src={preview}
-          alt="Footer"
-          className="max-h-8 max-w-[120px] object-contain border border-gray-100 rounded"
-        />
-      )}
-    </div>
-  );
+  return { key: makeLocationKey(), location: '', gstNo: '' };
 }
 
 function logoPreview(value: string) {
@@ -353,29 +255,26 @@ export default function LetterheadMasterPage() {
       name: row.name || '',
       entity: row.entity || '',
       headerLogo: row.headerLogo || '',
+      footerLogo: row.footerLogo || '',
       status: row.status || 'active',
     });
-    const fromApi = (row.locations || []).filter(
-      (l) => l.location || l.gstNo || l.footerLogo
-    );
+    const fromApi = (row.locations || []).filter((l) => l.location || l.gstNo);
     if (fromApi.length) {
       const locs = fromApi.map((l) => ({
         key: makeLocationKey(),
         id: l.id,
         location: l.location || '',
         gstNo: l.gstNo || '',
-        footerLogo: l.footerLogo || '',
       }));
       setLocations(locs);
       setSelectedLocationKey(locs[0]?.key || '');
       return;
     }
-    if (row.location || row.gstNo || row.footerLogo) {
+    if (row.location || row.gstNo) {
       const locRow: LocationRow = {
         key: makeLocationKey(),
         location: row.location || '',
         gstNo: row.gstNo || '',
-        footerLogo: row.footerLogo || '',
       };
       setLocations([locRow]);
       setSelectedLocationKey(locRow.key);
@@ -394,7 +293,6 @@ export default function LetterheadMasterPage() {
         key: makeLocationKey(),
         location: l.location || '',
         gstNo: l.gstNo || '',
-        footerLogo: l.footerLogo || '',
       }));
       setLocations(locs);
       setSelectedLocationKey(locs[0]?.key || '');
@@ -408,7 +306,7 @@ export default function LetterheadMasterPage() {
     setLocations((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   };
 
-  /** Type location name; if it matches Entity Master, auto-fill GST + footer. */
+  /** Type location name; if it matches Entity Master, auto-fill GST. */
   const onLocationTyped = (key: string, locationName: string) => {
     const match = entityLocations.find(
       (l) => l.location.trim().toLowerCase() === locationName.trim().toLowerCase()
@@ -417,7 +315,6 @@ export default function LetterheadMasterPage() {
       updateLocation(key, {
         location: locationName,
         gstNo: match.gstNo || '',
-        footerLogo: match.footerLogo || '',
       });
       return;
     }
@@ -435,7 +332,7 @@ export default function LetterheadMasterPage() {
       .map((l) => ({
         location: l.location.trim(),
         gstNo: l.gstNo.trim(),
-        footerLogo: l.footerLogo.trim(),
+        footerLogo: '',
       }));
     if (!additions.length) return;
     const merged = [
@@ -548,7 +445,7 @@ export default function LetterheadMasterPage() {
       return;
     }
     const filledLocations = locations.filter(
-      (l) => l.location.trim() || l.gstNo.trim() || l.footerLogo.trim()
+      (l) => l.location.trim() || l.gstNo.trim()
     );
     const blankLoc = filledLocations.find((l) => !l.location.trim());
     if (blankLoc) {
@@ -561,13 +458,12 @@ export default function LetterheadMasterPage() {
     const locationPayload = filledLocations.map((l) => ({
       location: l.location.trim(),
       gstNo: l.gstNo.trim(),
-      footerLogo: l.footerLogo.trim(),
     }));
     const payload = {
       ...form,
       location: primary?.location || '',
       gstNo: primary?.gstNo || '',
-      footerLogo: primary?.footerLogo || '',
+      footerLogo: form.footerLogo.trim(),
       locations: locationPayload,
     };
     setSaving(true);
@@ -626,7 +522,7 @@ export default function LetterheadMasterPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Letterhead Master</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Manage company letterheads — one entity, multiple locations (GST / footer logo)
+              Header and footer logos are common for all locations. Locations table is for GST only.
             </p>
           </div>
           <button
@@ -794,6 +690,7 @@ export default function LetterheadMasterPage() {
                 <p className="text-sm text-gray-800">{viewing.entity || '—'}</p>
               </div>
               {renderLogoDetail('Header Logo', viewing.headerLogo)}
+              {renderLogoDetail('Footer Logo', viewing.footerLogo)}
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   Locations ({(viewing.locations || []).length || (viewing.location ? 1 : 0)})
@@ -806,29 +703,17 @@ export default function LetterheadMasterPage() {
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">#</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Location</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">GST No</th>
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Footer Logo</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {((viewing.locations || []).length
                           ? viewing.locations!
-                          : [
-                              {
-                                location: viewing.location,
-                                gstNo: viewing.gstNo,
-                                footerLogo: viewing.footerLogo,
-                              },
-                            ]
+                          : [{ location: viewing.location, gstNo: viewing.gstNo }]
                         ).map((loc, idx) => (
                           <tr key={loc.id || `${loc.location}-${idx}`}>
                             <td className="px-3 py-2.5 text-gray-400">{idx + 1}</td>
                             <td className="px-3 py-2.5 text-gray-800">{loc.location || '—'}</td>
                             <td className="px-3 py-2.5 font-mono text-gray-700">{loc.gstNo || '—'}</td>
-                            <td className="px-3 py-2.5">
-                              {logoPreview(loc.footerLogo) || (
-                                <span className="text-xs text-gray-400">—</span>
-                              )}
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -933,12 +818,20 @@ export default function LetterheadMasterPage() {
               {loadingRecord ? (
                 <p className="text-sm text-gray-500">Loading logo & locations…</p>
               ) : (
-              <MediaField
-                label="Header Logo"
-                fieldKey={`hdr-${editing?.id || 'new'}`}
-                value={form.headerLogo}
-                  onChange={(headerLogo) => setForm((prev) => ({ ...prev, headerLogo }))}
-                />
+                <>
+                  <MediaField
+                    label="Header Logo (common for all locations)"
+                    fieldKey={`hdr-${editing?.id || 'new'}`}
+                    value={form.headerLogo}
+                    onChange={(headerLogo) => setForm((prev) => ({ ...prev, headerLogo }))}
+                  />
+                  <MediaField
+                    label="Footer Logo (common for all locations)"
+                    fieldKey={`ftr-${editing?.id || 'new'}`}
+                    value={form.footerLogo}
+                    onChange={(footerLogo) => setForm((prev) => ({ ...prev, footerLogo }))}
+                  />
+                </>
               )}
 
               {/* Locations: Add → type location in table */}
@@ -950,7 +843,7 @@ export default function LetterheadMasterPage() {
                       Locations
                     </h3>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      One entity can have multiple locations. Type each location, GST No, and footer logo.
+                      Add each location with GST No only. Header and footer apply to all locations.
                     </p>
                   </div>
                   <button
@@ -985,9 +878,6 @@ export default function LetterheadMasterPage() {
                           </th>
                           <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[140px]">
                             GST No
-                          </th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[200px]">
-                            Footer Logo
                           </th>
                           <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase w-16">
                             Action
@@ -1031,14 +921,6 @@ export default function LetterheadMasterPage() {
                                   placeholder="22AAAAA0000A1Z5"
                                   maxLength={15}
                                   className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                />
-                              </td>
-                              <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                                <FooterLogoCell
-                                  value={loc.footerLogo}
-                                  onChange={(footerLogo) =>
-                                    updateLocation(loc.key, { footerLogo })
-                                  }
                                 />
                               </td>
                               <td className="px-3 py-3 text-center">

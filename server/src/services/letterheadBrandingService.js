@@ -5,7 +5,6 @@ function mapLocation(row) {
     id: row.id,
     location: row.location || '',
     gstNo: row.gst_no || '',
-    footerLogo: row.footer_logo || '',
     sortOrder: Number(row.sort_order || 0),
   };
 }
@@ -13,6 +12,9 @@ function mapLocation(row) {
 function mapRow(row, locations = []) {
   const locs = locations.map(mapLocation);
   const primary = locs[0];
+  // Footer is stored on letterhead_masters (common). Legacy per-location footers are
+  // used only when the master column is empty.
+  const legacyLocFooter = locations.find((l) => l.footer_logo)?.footer_logo || '';
   return {
     id: row.id,
     name: row.name || '',
@@ -20,7 +22,7 @@ function mapRow(row, locations = []) {
     location: primary?.location || row.location || '',
     gstNo: primary?.gstNo || row.gst_no || '',
     headerLogo: row.header_logo || '',
-    footerLogo: primary?.footerLogo || row.footer_logo || '',
+    footerLogo: row.footer_logo || legacyLocFooter || '',
     locations: locs,
     status: row.status === 'inactive' ? 'inactive' : 'active',
     updatedAt: row.updated_at || null,
@@ -36,7 +38,6 @@ function normalizeLocations(payload = {}) {
         gstNo: String(l?.gstNo || l?.gst_no || '')
           .trim()
           .toUpperCase(),
-        footerLogo: String(l?.footerLogo || l?.footer_logo || '').trim(),
         sortOrder: idx,
       }))
       .filter((l) => l.location);
@@ -46,10 +47,9 @@ function normalizeLocations(payload = {}) {
   const gstNo = String(payload.gstNo || payload.gst_no || '')
     .trim()
     .toUpperCase();
-  const footerLogo = String(payload.footerLogo || payload.footer_logo || '').trim();
-  if (!location && !gstNo && !footerLogo) return [];
+  if (!location && !gstNo) return [];
   if (!location) return [];
-  return [{ location, gstNo, footerLogo, sortOrder: 0 }];
+  return [{ location, gstNo, sortOrder: 0 }];
 }
 
 export async function ensureLetterheadMastersTable() {
@@ -153,28 +153,17 @@ async function replaceLetterheadLocations(letterheadId, locations) {
   for (const loc of locations) {
     await pool.query(
       `INSERT INTO letterhead_locations (letterhead_id, location, gst_no, footer_logo, sort_order)
-       VALUES (?, ?, ?, ?, ?)`,
-      [
-        letterheadId,
-        loc.location,
-        loc.gstNo || null,
-        loc.footerLogo || null,
-        loc.sortOrder ?? 0,
-      ]
+       VALUES (?, ?, ?, NULL, ?)`,
+      [letterheadId, loc.location, loc.gstNo || null, loc.sortOrder ?? 0]
     );
   }
 
   const primary = locations[0];
   await pool.query(
     `UPDATE letterhead_masters
-     SET location = ?, gst_no = ?, footer_logo = ?, updated_at = NOW()
+     SET location = ?, gst_no = ?, updated_at = NOW()
      WHERE id = ?`,
-    [
-      primary?.location || null,
-      primary?.gstNo || null,
-      primary?.footerLogo || null,
-      letterheadId,
-    ]
+    [primary?.location || null, primary?.gstNo || null, letterheadId]
   );
 }
 
@@ -275,6 +264,7 @@ export async function createLetterheadMaster(payload = {}) {
   const entity = String(payload.entity || '').trim();
   const locations = normalizeLocations(payload);
   const headerLogo = payload.headerLogo || '';
+  const footerLogo = payload.footerLogo ?? '';
   const status = payload.status === 'inactive' ? 'inactive' : 'active';
   const primary = locations[0];
 
@@ -287,7 +277,7 @@ export async function createLetterheadMaster(payload = {}) {
       primary?.location || null,
       primary?.gstNo || null,
       headerLogo,
-      primary?.footerLogo || '',
+      footerLogo,
       status,
     ]
   );
@@ -305,6 +295,7 @@ export async function updateLetterheadMaster(id, payload = {}) {
 
   const entity = String(payload.entity || '').trim();
   const headerLogo = payload.headerLogo ?? '';
+  const footerLogo = payload.footerLogo ?? '';
   const status = payload.status === 'inactive' ? 'inactive' : 'active';
   const locations = normalizeLocations(payload);
   const primary = locations[0];
@@ -319,7 +310,7 @@ export async function updateLetterheadMaster(id, payload = {}) {
       primary?.location || null,
       primary?.gstNo || null,
       headerLogo,
-      primary?.footerLogo || '',
+      footerLogo,
       status,
       id,
     ]
