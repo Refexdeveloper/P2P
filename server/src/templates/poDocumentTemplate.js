@@ -341,8 +341,24 @@ export function buildPoPdfChromeTemplates(po = {}) {
   return { headerTemplate, footerTemplate };
 }
 
-function pageHeader(po) {
-  return logoHtml(po);
+function wrapSheet(inner, extraClass, po, forPdf) {
+  const cls = ['page', 'page-sheet', extraClass].filter(Boolean).join(' ');
+  if (forPdf) {
+    return `
+  <div class="${cls}">
+    <div class="page-body">
+${inner}
+    </div>
+  </div>`;
+  }
+  return `
+  <div class="${cls}">
+    ${buildRunningHeader(po)}
+    <div class="page-body">
+${inner}
+    </div>
+    ${buildRunningFooter(po)}
+  </div>`;
 }
 
 function pageFooter(po, pageLabel) {
@@ -423,22 +439,20 @@ function clauseHeaderHtml(raw, po, fallback = 'Term') {
   return escapeHtml(value);
 }
 
-function termsSummaryHtml(po, terms) {
+function termsSummaryHtml(po, terms, forPdf) {
   if (!terms?.length) return '';
   const sectionTitle =
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order'
       ? 'Terms and Conditions — Work Order'
       : 'Terms and Conditions — Purchase Order';
-  // Title + column heads live in <thead> so they repeat on every continued page
   const rows = terms.map((term) => `
     <tr>
       <th class="head-col">${clauseHeaderHtml(term.termsHeader || term.terms_header, po, 'Term')}</th>
       <td>${applyClausePlaceholders(term.termsDescription || term.terms_description || '', po)}</td>
     </tr>`).join('');
 
-  return `
-  <div class="page page-sheet page-terms">
-    <div class="page-body">
+  return wrapSheet(
+    `
       <div class="table-frame">
         <table class="terms terms-compact">
           <thead>
@@ -454,15 +468,16 @@ function termsSummaryHtml(po, terms) {
             ${rows}
           </tbody>
         </table>
-      </div>
-    </div>
-  </div>`;
+      </div>`,
+    'page-terms',
+    po,
+    forPdf
+  );
 }
 
-function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Order') {
+function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Order', forPdf) {
   if (!annexure?.length) return '';
 
-  // One Annexure page after Terms — title + bordered table stay together (no empty Cont. pages)
   const rows = annexure.map((item, idx) => `
       <tr>
         <td class="sno-col">${idx + 1}.</td>
@@ -470,9 +485,8 @@ function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Orde
         <td>${applyClausePlaceholders(item.termsDescription || item.terms_description || '', po)}</td>
       </tr>`).join('');
 
-  return `
-  <div class="page page-sheet page-annexure">
-    <div class="page-body">
+  return wrapSheet(
+    `
       <div class="annexure-card">
         <table class="terms terms-compact annexure-table">
           <thead>
@@ -489,9 +503,11 @@ function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Orde
             ${rows}
           </tbody>
         </table>
-      </div>
-    </div>
-  </div>`;
+      </div>`,
+    'page-annexure',
+    po,
+    forPdf
+  );
 }
 
 function specialNotesHtml(po, options = {}) {
@@ -500,9 +516,8 @@ function specialNotesHtml(po, options = {}) {
   const td = po.poTermsDetails || {};
   const paymentText = td.paymentTermsText || po.paymentTerms || '—';
   const siteAddress = td.siteAddress || po.deliveryAddress || '';
-  return `
-  <div class="page page-sheet page-notes">
-    <div class="page-body">
+  return wrapSheet(
+    `
     <div class="special-notes">
       <p><strong>PO TERMS &amp; CONDITIONS DETAILS:</strong></p>
       <p><span class="lbl">Payment Terms:</span> ${escapeHtml(paymentText).replace(/\n/g, '<br>')}</p>
@@ -555,15 +570,16 @@ function specialNotesHtml(po, options = {}) {
       <p><strong>Authorized Signatory</strong><br>
       Name: ____________________<br>
       Designation: Head – SCM</p>`}
-    </div>
-    </div>
-  </div>`;
+    </div>`,
+    'page-notes',
+    po,
+    options.forPdf === true
+  );
 }
 
-function acknowledgmentHtml(po) {
-  return `
-  <div class="page page-sheet page-ack">
-    <div class="page-body">
+function acknowledgmentHtml(po, forPdf) {
+  return wrapSheet(
+    `
     <div class="ack-box">
       <p><strong>Acknowledgment and Acceptance by Seller/Supplier</strong></p>
       <p>We received, read, and understood the terms and conditions mentioned in this order. We hereby acknowledge, confirm and accept the above terms and conditions and the same shall be binding on us as &ldquo;Seller&rdquo;.</p>
@@ -572,9 +588,11 @@ function acknowledgmentHtml(po) {
       <p><strong>Authorized Signatory</strong><br>
       <strong>Dated:</strong><br>
       <strong>Place:</strong></p>
-    </div>
-    </div>
-  </div>`;
+    </div>`,
+    'page-ack',
+    po,
+    forPdf
+  );
 }
 
 /** Letterhead master often embeds a "PURCHASE ORDER" title — strip/adapt so it doesn't clash with doc title */
@@ -619,10 +637,11 @@ export function buildPoDocumentHtml(po, options = {}) {
   const vendorPhone = po.vendorPhone || '—';
   const subjectFallback = (po.poTermsDetails && po.poTermsDetails.subject) || po.prTitle || docLabel;
   const letterheadHtml = adaptLetterheadHeader(po.letterheadHeader, isWorkOrder);
+  const forPdf = options.forPdf === true;
+  const bodyClass = forPdf ? 'po-document po-document-pdf' : 'po-document po-document-preview';
 
-  const page1 = `
-  <div class="page page-sheet">
-    <div class="page-body">
+  const page1 = wrapSheet(
+    `
     <div class="title">${docTitle}</div>
     <div class="po-meta">
       <span>${escapeHtml(docLabel)} No. &nbsp;${escapeHtml(po.poNumber)}</span>
@@ -647,39 +666,21 @@ export function buildPoDocumentHtml(po, options = {}) {
       <p><strong>Department:</strong> ${escapeHtml(po.department || '—')}</p>
       <p><strong>Requester:</strong> ${escapeHtml(po.requester || '—')}</p>
     </div>
-    ${lineItemsHtml(po)}
-    </div>
-  </div>`;
+    ${lineItemsHtml(po)}`,
+    '',
+    po,
+    forPdf
+  );
 
   const terms = po.termsClauses || [];
   const annexure = po.annexureClauses || [];
-  const forPdf = options.forPdf === true;
-  const bodyClass = forPdf ? 'po-document po-document-pdf' : 'po-document';
 
   const content = `
 ${page1}
-${termsSummaryHtml(po, terms)}
-${annexurePagesHtml(po, annexure, poTypeLabel, docLabel)}
-${specialNotesHtml(po, options)}
-${acknowledgmentHtml(po)}`;
-
-  // PDF: header/footer come from Puppeteer chrome templates on every page.
-  // Preview HTML: keep doc-shell thead/tfoot so logos show on screen.
-  const bodyInner = forPdf
-    ? content
-    : `<table class="doc-shell">
-  <thead>
-    <tr><td>${buildRunningHeader(po)}</td></tr>
-  </thead>
-  <tfoot>
-    <tr><td>${buildRunningFooter(po)}</td></tr>
-  </tfoot>
-  <tbody>
-    <tr><td class="doc-shell-body">
-${content}
-    </td></tr>
-  </tbody>
-</table>`;
+${termsSummaryHtml(po, terms, forPdf)}
+${annexurePagesHtml(po, annexure, poTypeLabel, docLabel, forPdf)}
+${specialNotesHtml(po, { ...options, forPdf })}
+${acknowledgmentHtml(po, forPdf)}`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -689,7 +690,7 @@ ${content}
 <style>${PO_STYLES}</style>
 </head>
 <body class="${bodyClass}">
-${bodyInner}
+${content}
 </body>
 </html>`;
 }

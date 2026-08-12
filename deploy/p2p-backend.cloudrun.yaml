@@ -33,7 +33,7 @@ spec:
         run.googleapis.com/cloudsql-instances: master-diorama-489103-u2:asia-south1:p2p-mysql
         run.googleapis.com/startup-cpu-boost: 'true'
     spec:
-      containerConcurrency: 80
+      containerConcurrency: 20
       timeoutSeconds: 300
       serviceAccountName: p2p-app-sa@master-diorama-489103-u2.iam.gserviceaccount.com
       containers:
@@ -55,6 +55,8 @@ spec:
               value: /tmp/.chromium
             - name: XDG_CACHE_HOME
               value: /tmp/.chromium
+            - name: HOME
+              value: /tmp
             - name: DB_NAME
               value: p2p_system
             - name: DB_USER
@@ -100,8 +102,8 @@ spec:
 
           resources:
             limits:
-              cpu: '1'
-              memory: 1Gi
+              cpu: '2'
+              memory: 2Gi
           startupProbe:
             timeoutSeconds: 240
             periodSeconds: 240

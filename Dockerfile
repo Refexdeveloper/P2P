@@ -13,6 +13,7 @@ ENV PORT=8080
 
 # Chrome for PO PDF (puppeteer-core). Cloud Run needs system Chrome + /tmp writable dirs.
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV HOME=/tmp
 ENV XDG_CONFIG_HOME=/tmp/.chromium
 ENV XDG_CACHE_HOME=/tmp/.chromium
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable

@@ -172,6 +172,29 @@ export const PO_STYLES = `
 
   .page-body { width: 100%; }
 
+  @media screen {
+    body.po-document-preview {
+      background: #d1d5db;
+      max-width: none;
+      width: 100%;
+      margin: 0;
+      padding: 18px 12px 32px;
+    }
+    body.po-document-preview .page-sheet {
+      background: #fff;
+      width: 210mm;
+      max-width: 100%;
+      min-height: 297mm;
+      margin: 0 auto 18px;
+      padding: 10mm 12mm 12mm;
+      box-shadow: 0 2px 12px rgba(0,0,0,.16);
+      display: flex;
+      flex-direction: column;
+    }
+    body.po-document-preview .page-sheet .page-body { flex: 1 1 auto; }
+    body.po-document-preview .page-sheet .pdf-run-footer { margin-top: auto; }
+  }
+
   @media print {
     body.po-document {
       max-width: none;

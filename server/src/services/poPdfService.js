@@ -55,15 +55,43 @@ function resolveBrowserExecutable() {
 }
 
 function puppeteerLaunchArgs() {
+  // Do NOT use --single-process / --no-zygote on Cloud Run — they crash Chrome
+  // with "Protocol error (Target.setDiscoverTargets): Target closed".
   return [
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
     '--disable-gpu',
-    '--no-zygote',
-    '--single-process',
+    '--disable-software-rasterizer',
+    '--disable-extensions',
+    '--disable-background-networking',
+    '--disable-default-apps',
+    '--disable-sync',
+    '--no-first-run',
     '--font-render-hinting=none',
+    '--hide-scrollbars',
+    '--mute-audio',
   ];
+}
+
+async function launchPdfBrowser(executablePath) {
+  if (!process.env.HOME) process.env.HOME = '/tmp';
+  const opts = {
+    executablePath,
+    headless: true,
+    protocolTimeout: 120000,
+    timeout: 60000,
+    args: puppeteerLaunchArgs(),
+  };
+  try {
+    return await puppeteer.launch(opts);
+  } catch (err) {
+    console.warn('Puppeteer launch failed, retrying with minimal args:', err.message);
+    return puppeteer.launch({
+      ...opts,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+    });
+  }
 }
 
 export function buildPoHtml(po, options = {}) {
@@ -83,11 +111,7 @@ export async function htmlToPdf(html, filePath, chromeTemplates = null) {
     );
   }
 
-  const browser = await puppeteer.launch({
-    executablePath,
-    headless: true,
-    args: puppeteerLaunchArgs(),
-  });
+  const browser = await launchPdfBrowser(executablePath);
 
   try {
     const page = await browser.newPage();
