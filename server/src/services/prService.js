@@ -1686,11 +1686,52 @@ function mapApproverActionToTaskStatus(action) {
   return 'pending_approval';
 }
 
-function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null }) {
+/**
+ * Latest submitted quote for the recommended vendor (post-RFQ amount).
+ * Returns Map<prId, number>.
+ */
+export async function getRecommendedQuotedAmounts(prIds = []) {
+  const ids = [...new Set((prIds || []).map((id) => Number(id)).filter((id) => id > 0))];
+  const map = new Map();
+  if (!ids.length) return map;
+
+  const placeholders = ids.map(() => '?').join(',');
+  const [rows] = await pool.query(
+    `SELECT rc.pr_id AS pr_id,
+            (
+              SELECT vqs.quoted_price
+              FROM vendor_quotation_submissions vqs
+              WHERE vqs.rfq_invitation_id = rc.recommended_invitation_id
+                AND vqs.status IN ('submitted', 'sent_back')
+                AND vqs.quoted_price IS NOT NULL
+                AND vqs.quoted_price > 0
+              ORDER BY vqs.round DESC, vqs.id DESC
+              LIMIT 1
+            ) AS quoted_price
+     FROM rfq_configs rc
+     WHERE rc.pr_id IN (${placeholders})
+       AND rc.recommended_invitation_id IS NOT NULL`,
+    ids
+  );
+
+  for (const row of rows) {
+    const amount = Number(row.quoted_price);
+    if (Number.isFinite(amount) && amount > 0) {
+      map.set(Number(row.pr_id), amount);
+    }
+  }
+  return map;
+}
+
+function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, displayAmount = null }) {
   const due = new Date(pr.submittedDate || Date.now());
   due.setDate(due.getDate() + 1);
   const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
   const pending = status === 'pending_approval';
+  const amount =
+    displayAmount != null && Number.isFinite(Number(displayAmount))
+      ? Number(displayAmount)
+      : Number(pr.totalAmount) || 0;
 
   return {
     id: String(pr.id),
@@ -1703,7 +1744,7 @@ function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null }) {
     entityId: pr.entityId || null,
     entityName: pr.entityName || '',
     entityCode: pr.entityCode || '',
-    totalAmount: pr.totalAmount,
+    totalAmount: amount,
     priority: pr.priorityLower || mapPriorityToFrontend(pr.priority),
     status,
     statusUI: pr.statusUI,
@@ -1840,6 +1881,9 @@ export async function listTasks(user) {
     return Number(b.id) - Number(a.id);
   });
 
+  // Prefetch recommended vendor quote amounts for vendor-final / post-RFQ rows
+  const quoteAmountByPr = await getRecommendedQuotedAmounts(prs.map((p) => p.id));
+
   const tasks = prs.map((pr) => {
     const isPending = pendingIds.has(pr.id);
     const decision = decidedByPrId.get(pr.id);
@@ -1851,11 +1895,19 @@ export async function listTasks(user) {
     const isPostRfq = isPending
       ? postRfqStatuses.has(pr.status) || assignedPostRfqIds.has(pr.id)
       : decision?.myStage === POST_RFQ_ROLE_MAP[user.role]?.stage;
+    const recommendedQuote = quoteAmountByPr.get(Number(pr.id));
+    const displayAmount =
+      isPostRfq && recommendedQuote != null
+        ? recommendedQuote
+        : recommendedQuote != null && !(Number(pr.totalAmount) > 0)
+          ? recommendedQuote
+          : pr.totalAmount;
 
     return buildTaskRow(pr, {
       status,
       isPostRfq,
       decidedAt: !isPending ? decision?.decidedAt : null,
+      displayAmount,
     });
   });
 

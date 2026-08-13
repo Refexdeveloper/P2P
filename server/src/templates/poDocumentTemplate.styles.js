@@ -156,6 +156,7 @@ export const PO_STYLES = `
 
   .page-terms,
   .page-annexure,
+  .page-annexure-ii,
   .page-notes,
   .page-ack {
     page-break-before: always !important;
@@ -223,6 +224,7 @@ export const PO_STYLES = `
     .info-box,
     .table-frame,
     .annexure-card,
+    .annexure-ii,
     .special-notes,
     .ack-box,
     .amount-words,
@@ -275,6 +277,80 @@ export const PO_STYLES = `
     break-after: avoid;
   }
   .annexure-card .annexure-table { border: none; width: 100%; }
+
+  .annexure-ii {
+    width: 100%;
+    border: 1px solid #000;
+    background: #fff;
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+  .annexure-ii-title {
+    border-bottom: 1px solid #000;
+    padding: 8px 10px;
+    text-align: center;
+    background: #f2f2f2;
+    font-weight: bold;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  .annexure-ii-body {
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #111;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }
+  .annexure-ii-body p { margin: 6px 0; }
+  .annexure-ii-body ul,
+  .annexure-ii-body ol { margin: 6px 0 6px 22px; padding: 0; }
+  .annexure-ii-body li { margin: 3px 0; }
+  .annexure-ii-body h1,
+  .annexure-ii-body h2,
+  .annexure-ii-body h3 { margin: 10px 0 6px; font-weight: 700; }
+  .annexure-ii-body img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 10px auto;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .annexure-ii-body figure {
+    margin: 12px 0;
+    text-align: center;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .annexure-ii-body figcaption {
+    font-size: 11px;
+    color: #333;
+    margin-top: 4px;
+  }
+  .annexure-ii-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+  }
+  .annexure-ii-body table td,
+  .annexure-ii-body table th {
+    border: 1px solid #000;
+    padding: 5px 7px;
+    font-size: 11px;
+  }
+  table.annexure-ii-table thead {
+    display: table-header-group !important;
+  }
+  table.annexure-ii-table tr {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+  table.annexure-ii-table td .annexure-ii-body {
+    padding: 4px 2px;
+  }
   table.terms-compact th,
   table.terms-compact td { padding: 5px 7px; font-size: 11px; }
 

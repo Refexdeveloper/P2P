@@ -3,7 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
-import { getPurchaseRequestById, completeRequesterTask } from './prService.js';
+import {
+  getPurchaseRequestById,
+  completeRequesterTask,
+  getRecommendedQuotedAmounts,
+} from './prService.js';
 import { queueRfqVendorEmail, queueRfqSendBackEmail, queueRfqSubmittedNotifyRequester, sendRfqVendorEmail, queuePrApprovalPendingNotification, queuePostRfqActionNotification } from './emailService.js';
 import {
   formatDateTime,
@@ -1783,6 +1787,9 @@ export async function listPostRfqPending(user) {
 
   const rows = [...idSet].map((id) => ({ id }));
 
+  const candidateIds = rows.map((r) => r.id);
+  const quoteAmountByPr = await getRecommendedQuotedAmounts(candidateIds);
+
   const results = [];
   for (const row of rows) {
     const pr = await getPurchaseRequestById(row.id);
@@ -1812,6 +1819,7 @@ export async function listPostRfqPending(user) {
       ]);
       recommendedVendor = inv[0]?.vendor_name || '';
     }
+    const recommendedQuote = quoteAmountByPr.get(Number(pr.id));
     results.push({
       prId: pr.id,
       prNumber: pr.prNumber,
@@ -1821,7 +1829,10 @@ export async function listPostRfqPending(user) {
       entityName: pr.entityName || '',
       entityCode: pr.entityCode || '',
       requester: pr.requester,
-      totalAmount: pr.totalAmount,
+      totalAmount:
+        recommendedQuote != null && recommendedQuote > 0
+          ? recommendedQuote
+          : Number(pr.totalAmount) || 0,
       requestType: pr.requestType,
       priority: pr.priority,
       status: pr.statusUI,

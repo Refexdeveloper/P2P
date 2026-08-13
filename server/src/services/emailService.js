@@ -655,6 +655,65 @@ export function queuePrApprovalPendingNotification(pr, assignedRole, requester, 
   })().catch((err) => console.error('WhatsApp assignee notify failed:', err.message));
 }
 
+/** SLA overdue — email + WhatsApp to current assignee (once per task). */
+export async function sendSlaBreachNotification(pr, assignedRole, requester, departmentId = null, options = {}) {
+  const stageLabel =
+    options.stageLabel || `SLA Breached — ${formatRoleDisplayName(assignedRole)} action required`;
+
+  const result = await sendPrApprovalPendingNotification(pr, assignedRole, requester, departmentId, {
+    ...options,
+    stageLabel,
+  });
+
+  const emails = [
+    ...((options.approverEmails || []).map((e) => String(e || '').trim()).filter(Boolean)),
+  ];
+  let assigneeEmails = [...emails];
+  let assigneeName = options.approverName || null;
+
+  if (!assigneeEmails.length) {
+    try {
+      const fromTask = await resolveAssignedUserForStep(pr.id || pr.prId, assignedRole);
+      assigneeEmails = fromTask.emails || [];
+      assigneeName = assigneeName || fromTask.name;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!assigneeEmails.length && assignedRole === 'SCM Buyer') {
+    assigneeEmails = await getScmBuyerNotifyEmails();
+    assigneeName = assigneeName || 'SCM Buyer';
+  }
+  if (!assigneeEmails.length) {
+    try {
+      const approvers = await getApproverRecipients(assignedRole, departmentId);
+      assigneeEmails = approvers.map((a) => a.email).filter(Boolean);
+      assigneeName = assigneeName || approvers[0]?.name;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  await notifyWorkflowWhatsApp({
+    pr,
+    emails: assigneeEmails,
+    stage: stageLabel,
+    actionUrl: buildWorkflowPortalUrl(pr, assignedRole, { ...options, postRfq: options.postRfq }),
+    requesterName: requester?.name || pr.requester || 'Requester',
+    assigneeName: assigneeName || formatRoleDisplayName(assignedRole) || 'Approver',
+  });
+
+  return result;
+}
+
+export function queueSlaBreachNotification(pr, assignedRole, requester, departmentId = null, options = {}) {
+  enqueueMail(() =>
+    sendSlaBreachNotification(pr, assignedRole, requester, departmentId, options)
+  ).catch((err) => {
+    console.error('Email/WhatsApp send failure (SLA breach):', err.message);
+  });
+}
+
 export async function sendPostRfqActionNotification(pr, approverRole, action, remarks, requester, options = {}) {
   const [requesterRows] = await pool.query(
     `SELECT email, name FROM users WHERE id = ?`,

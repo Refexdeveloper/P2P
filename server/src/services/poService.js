@@ -292,6 +292,7 @@ async function enrichPO(row) {
     footerLogo: row.footer_logo || '',
     termsClauses: parseClauseJson(row.terms_clauses),
     annexureClauses: parseClauseJson(row.annexure_clauses),
+    annexureIiHtml: row.annexure_ii_html || '',
     poTermsDetails: normalizePoTermsDetails(row.po_terms_details),
     gstPercentage: Number(row.gst_percentage),
     currency: normalizeCurrency(row.currency),
@@ -574,6 +575,7 @@ async function resolvePoDraftContent(prId, body) {
     letterheadHeader,
     terms = [],
     annexure = [],
+    annexureIiHtml = '',
     poNumber,
     poTermsDetails: bodyPoTermsDetails,
   } = body || {};
@@ -591,6 +593,12 @@ async function resolvePoDraftContent(prId, body) {
   let resolvedFooterLogo = body?.footerLogo ?? '';
   let resolvedTerms = terms;
   let resolvedAnnexure = annexure;
+  let resolvedAnnexureIiHtml = String(
+    annexureIiHtml || body?.annexureIiHtml || body?.annexure_ii_html || ''
+  );
+  if (Array.isArray(body?.annexureIiRows) && body.annexureIiRows.length) {
+    resolvedAnnexureIiHtml = JSON.stringify(body.annexureIiRows);
+  }
 
   // Branding from selected Letterhead Master (entity + logos) for PO PDF.
   // Header and footer are common on the letterhead; location only affects GST/invoicing.
@@ -678,6 +686,7 @@ async function resolvePoDraftContent(prId, body) {
     footerLogo: resolvedFooterLogo,
     termsClauses: resolvedTerms,
     annexureClauses: resolvedAnnexure,
+    annexureIiHtml: resolvedAnnexureIiHtml,
     poTermsDetails: {
       ...resolvedPoTermsDetails,
       paymentTermsText:
@@ -716,6 +725,7 @@ export async function buildPoPreviewForPo(user, poId, body) {
     poNumber: rows[0].po_number,
     terms: body.terms ?? body.termsClauses,
     annexure: body.annexure ?? body.annexureClauses,
+    annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
   });
 }
 
@@ -773,6 +783,7 @@ export async function createPurchaseOrder(user, prId, body) {
     footerLogo: resolvedFooterLogo,
     termsClauses: resolvedTerms,
     annexureClauses: resolvedAnnexure,
+    annexureIiHtml: resolvedAnnexureIiHtml,
     poTermsDetails: resolvedPoTermsDetails,
     currency: resolvedCurrency,
     subtotal,
@@ -815,8 +826,8 @@ export async function createPurchaseOrder(user, prId, body) {
        (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
         delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
         po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
-        po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         poNumber,
         referencePoNumber,
@@ -840,6 +851,7 @@ export async function createPurchaseOrder(user, prId, body) {
         resolvedFooterLogo || '',
         JSON.stringify(resolvedTerms),
         JSON.stringify(resolvedAnnexure),
+        resolvedAnnexureIiHtml || '',
         JSON.stringify(resolvedPoTermsDetails || EMPTY_PO_TERMS_DETAILS),
         gstPercentage,
         resolvedCurrency || 'INR',
@@ -1629,6 +1641,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     currency: body.currency ?? existing.currency,
     terms: body.terms ?? body.termsClauses,
     annexure: body.annexure ?? body.annexureClauses,
+    annexureIiHtml: body.annexureIiHtml ?? existing.annexure_ii_html ?? '',
   });
 
   const {
@@ -1647,6 +1660,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     footerLogo: resolvedFooterLogo,
     termsClauses: resolvedTerms,
     annexureClauses: resolvedAnnexure,
+    annexureIiHtml: resolvedAnnexureIiHtml,
     poTermsDetails: resolvedPoTermsDetails,
     currency: resolvedCurrency,
     subtotal,
@@ -1679,7 +1693,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         delivery_address = ?, expected_delivery_date = ?, payment_terms = ?, incoterms = ?,
         special_instructions = ?, po_type = ?, letterhead_header = ?, letterhead_id = ?, entity = ?,
         header_logo = ?, footer_logo = ?, terms_clauses = ?,
-        annexure_clauses = ?, po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
+        annexure_clauses = ?, annexure_ii_html = ?, po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
         updated_at = NOW()
        WHERE id = ?`,
       [
@@ -1697,6 +1711,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         resolvedFooterLogo || '',
         JSON.stringify(resolvedTerms),
         JSON.stringify(resolvedAnnexure),
+        resolvedAnnexureIiHtml || '',
         JSON.stringify(resolvedPoTermsDetails || EMPTY_PO_TERMS_DETAILS),
         gstPercentage,
         resolvedCurrency || normalizeCurrency(existing.currency),

@@ -106,7 +106,7 @@ export default function TasksPage() {
 
     if (task.isPostRfq) {
       deepLinkHandled.current = true;
-      navigate(`/rfq-approval/${task.prId}?action=${action}`);
+      navigate(`/rfq-approval/${task.prId}?action=${action}&from=tasks`);
       setSearchParams({}, { replace: true });
       return;
     }
@@ -192,12 +192,14 @@ export default function TasksPage() {
       (task.statusUI === 'Pending SCM PO' || task.actionPath?.includes('/rfq-approval/')) &&
       (!action || action === 'approve')
     ) {
-      navigate(`/scm/create-po?prId=${task.prId}`);
+      navigate(`/scm/create-po?prId=${task.prId}&from=tasks`);
       return;
     }
     const base = task.actionPath || `/rfq-approval/${task.prId}`;
-    const url = action ? `${base}?action=${action}` : base;
-    navigate(url);
+    const params = new URLSearchParams();
+    params.set('from', 'tasks');
+    if (action) params.set('action', action);
+    navigate(`${base}?${params.toString()}`);
   };
 
   const openTaskDetail = async (taskId: string) => {

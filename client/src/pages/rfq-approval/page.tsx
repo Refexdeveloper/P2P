@@ -108,7 +108,7 @@ export default function RfqApprovalListPage() {
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-2">
                       <Link
-                        to={`/rfq-approval/${item.prId}`}
+                        to={`/rfq-approval/${item.prId}?from=rfq-approval`}
                         className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
                         title="Vendor Comparison"
                       >
@@ -117,8 +117,8 @@ export default function RfqApprovalListPage() {
                       <Link
                         to={
                           item.stageLabel === 'SCM PO Create'
-                            ? `/scm/create-po?prId=${item.prId}`
-                            : `/rfq-approval/${item.prId}?action=approve`
+                            ? `/scm/create-po?prId=${item.prId}&from=rfq-approval`
+                            : `/rfq-approval/${item.prId}?action=approve&from=rfq-approval`
                         }
                         className="inline-flex items-center gap-1 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 whitespace-nowrap"
                       >

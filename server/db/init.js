@@ -154,6 +154,7 @@ async function init() {
     `ALTER TABLE purchase_orders ADD COLUMN letterhead_id INT NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN terms_clauses JSON NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN annexure_clauses JSON NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN annexure_ii_html LONGTEXT NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN po_terms_details JSON NULL`,
     `ALTER TABLE po_letterhead_masters ADD COLUMN entity VARCHAR(255) NULL`,
     `ALTER TABLE po_letterhead_masters ADD COLUMN header_logo LONGTEXT NULL`,

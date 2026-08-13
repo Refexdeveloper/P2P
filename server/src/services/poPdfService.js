@@ -6,9 +6,15 @@ import puppeteer from 'puppeteer-core';
 import {
   buildPoDocumentHtml,
   buildPoPdfChromeTemplates,
+  parseAnnexureIi,
+  serializeAnnexureIi,
   PO_PDF_LAYOUT,
 } from '../templates/poDocumentTemplate.js';
 import { buildSignatureRenderOptions } from './signatureService.js';
+
+export function buildPoHtml(po, options = {}) {
+  return buildPoDocumentHtml(po, options);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PO_UPLOAD_DIR = path.join(__dirname, '../../uploads/po');
@@ -148,6 +154,19 @@ async function inlinePoBranding(po = {}) {
     next.footerLogo = looksLikeHtml(footer)
       ? await inlineHtmlImages(footer)
       : await inlineImageSrc(footer);
+  }
+  const annexureIiRaw = po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '';
+  const annexureRows = parseAnnexureIi(annexureIiRaw);
+  if (annexureRows.length) {
+    const inlined = [];
+    for (const row of annexureRows) {
+      inlined.push({
+        ...row,
+        html: await inlineHtmlImages(row.html),
+      });
+    }
+    next.annexureIiRows = inlined;
+    next.annexureIiHtml = serializeAnnexureIi(inlined);
   }
   return next;
 }

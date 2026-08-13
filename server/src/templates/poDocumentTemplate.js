@@ -479,6 +479,111 @@ function termsSummaryHtml(po, terms, forPdf) {
   );
 }
 
+function sanitizeAnnexureHtml(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+}
+
+function annexureHtmlIsEmpty(html) {
+  return !sanitizeAnnexureHtml(html)
+    .replace(/<img\b[^>]*>/gi, 'IMG')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeAnnexureIiRow(row, index = 0) {
+  if (!row || typeof row !== 'object') {
+    return { header: '', html: String(row || '') };
+  }
+  const html = String(row.html || row.termsDescription || row.terms_description || row.content || '');
+  const header = String(row.header || row.termsHeader || row.terms_header || row.title || '');
+  return {
+    id: row.id || `row-${index + 1}`,
+    header,
+    html,
+  };
+}
+
+/** Annexure II is stored as JSON rows, or a legacy single HTML blob. */
+export function parseAnnexureIi(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map(normalizeAnnexureIiRow).filter((r) => r.header.trim() || !annexureHtmlIsEmpty(r.html));
+  }
+  const s = String(raw || '').trim();
+  if (!s) return [];
+  if (s.startsWith('[') || s.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) {
+        return parsed.map(normalizeAnnexureIiRow).filter((r) => r.header.trim() || !annexureHtmlIsEmpty(r.html));
+      }
+      if (Array.isArray(parsed?.rows)) {
+        return parsed.rows.map(normalizeAnnexureIiRow).filter((r) => r.header.trim() || !annexureHtmlIsEmpty(r.html));
+      }
+      if (parsed?.html || parsed?.header) {
+        const row = normalizeAnnexureIiRow(parsed);
+        return row.header.trim() || !annexureHtmlIsEmpty(row.html) ? [row] : [];
+      }
+    } catch {
+      /* treat as HTML */
+    }
+  }
+  return annexureHtmlIsEmpty(s) ? [] : [{ header: '', html: s }];
+}
+
+export function serializeAnnexureIi(rows) {
+  const list = (Array.isArray(rows) ? rows : []).map(normalizeAnnexureIiRow)
+    .filter((r) => r.header.trim() || !annexureHtmlIsEmpty(r.html));
+  return list.length ? JSON.stringify(list) : '';
+}
+
+function annexureIiTableHtml(rows, docLabel, startIndex = 0) {
+  const body = rows.map((item, idx) => `
+      <tr>
+        <td class="sno-col">${startIndex + idx + 1}.</td>
+        <td class="head-col"><strong>${escapeHtml(item.header || `Item ${startIndex + idx + 1}`)}</strong></td>
+        <td><div class="annexure-ii-body">${sanitizeAnnexureHtml(item.html)}</div></td>
+      </tr>`).join('');
+
+  return `
+      <div class="annexure-card annexure-ii">
+        <table class="terms terms-compact annexure-table annexure-ii-table">
+          <thead>
+            <tr>
+              <th class="section-title" colspan="3">ANNEXURE-II — TECHNICAL DATA / SCOPE / SPECIFICATIONS (${escapeHtml(docLabel).toUpperCase()})</th>
+            </tr>
+            <tr class="col-heads">
+              <th class="sno-col">S.NO.</th>
+              <th class="head-col">HEADERS</th>
+              <th>DESCRIPTION / IMAGES</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${body}
+          </tbody>
+        </table>
+      </div>`;
+}
+
+function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
+  const rows = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '');
+  if (!rows.length) return '';
+
+  if (forPdf) {
+    return wrapSheet(annexureIiTableHtml(rows, docLabel), 'page-annexure-ii', po, true);
+  }
+
+  return rows
+    .map((row, idx) =>
+      wrapSheet(annexureIiTableHtml([row], docLabel, idx), 'page-annexure-ii', po, false)
+    )
+    .join('');
+}
+
 function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Order', forPdf) {
   if (!annexure?.length) return '';
 
@@ -683,6 +788,7 @@ export function buildPoDocumentHtml(po, options = {}) {
 ${page1}
 ${termsSummaryHtml(po, terms, forPdf)}
 ${annexurePagesHtml(po, annexure, poTypeLabel, docLabel, forPdf)}
+${annexureIiPagesHtml(po, docLabel, forPdf)}
 ${specialNotesHtml(po, { ...options, forPdf })}
 ${acknowledgmentHtml(po, forPdf)}`;
 

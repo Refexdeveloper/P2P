@@ -43,6 +43,26 @@ export default function RfqApprovalDetailPage() {
     }
   }, [prId]);
 
+  const fromParam = searchParams.get('from');
+  const backPath =
+    fromParam === 'tasks' || fromParam === '/tasks'
+      ? '/tasks'
+      : fromParam === 'rfq-approval' || fromParam === '/rfq-approval'
+        ? '/rfq-approval'
+        : fromParam === 'scm-rfq' || fromParam === '/scm/rfq-entry'
+          ? '/scm/rfq-entry'
+          : user?.role === 'HOD Approver' || user?.role === 'PR Manager' || user?.role === 'CFO'
+            ? '/tasks'
+            : user?.role === 'SCM Buyer'
+              ? '/scm/rfq-entry'
+              : '/rfq-approval';
+  const backLabel =
+    backPath === '/tasks'
+      ? 'Back to My Tasks'
+      : backPath === '/scm/rfq-entry'
+        ? 'Back to RFQ Entry'
+        : 'Back to queue';
+
   useEffect(() => {
     deepLinkHandled.current = false;
     pendingDeepLinkAction.current = null;
@@ -78,19 +98,22 @@ export default function RfqApprovalDetailPage() {
       modalAction === 'approve' &&
       (user?.role === 'SCM Buyer' || data.stageLabel === 'SCM PO Create')
     ) {
+      const from = searchParams.get('from');
       setSearchParams({}, { replace: true });
-      navigate(`/scm/create-po?prId=${prId}`);
+      navigate(`/scm/create-po?prId=${prId}${from ? `&from=${encodeURIComponent(from)}` : ''}`);
       return;
     }
 
     if (!data.canApprove) {
       showToast('You cannot approve this RFQ at the current stage');
-      setSearchParams({}, { replace: true });
+      const from = searchParams.get('from');
+      setSearchParams(from ? { from } : {}, { replace: true });
       return;
     }
 
     setModal({ open: true, action: modalAction });
-    setSearchParams({}, { replace: true });
+    const from = searchParams.get('from');
+    setSearchParams(from ? { from } : {}, { replace: true });
   }, [loading, data, searchParams, setSearchParams, showToast, user?.role, navigate, prId]);
 
   const handleApprove = async (
@@ -102,7 +125,7 @@ export default function RfqApprovalDetailPage() {
 
     // Buyer Create PO step: go straight to Create PO — do not mark PR APPROVED yet
     if (modal.action === 'approve' && isBuyerCreatePo) {
-      navigate(`/scm/create-po?prId=${prId}`);
+      navigate(`/scm/create-po?prId=${prId}${fromParam ? `&from=${encodeURIComponent(fromParam)}` : ''}`);
       return;
     }
 
@@ -121,12 +144,12 @@ export default function RfqApprovalDetailPage() {
         ? `Send back completed${branchMsg}`
         : `RFQ ${modal.action} completed successfully${branchMsg}`
     );
-    if (user?.role === 'SCM Manager') {
+    if (user?.role === 'SCM Manager' && backPath !== '/tasks') {
       navigate('/rfq-approval');
-    } else if (user?.role === 'SCM Buyer') {
+    } else if (user?.role === 'SCM Buyer' && backPath !== '/tasks') {
       navigate('/scm/rfq-entry');
     } else {
-      navigate('/tasks');
+      navigate(backPath);
     }
   };
 
@@ -156,7 +179,7 @@ export default function RfqApprovalDetailPage() {
     return (
       <DashboardLayout>
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error || 'Not found'}</div>
-        <Link to="/rfq-approval" className="text-teal-600 text-sm mt-4 inline-block">← Back to queue</Link>
+        <Link to={backPath} className="text-teal-600 text-sm mt-4 inline-block">← {backLabel}</Link>
       </DashboardLayout>
     );
   }
@@ -172,10 +195,10 @@ export default function RfqApprovalDetailPage() {
       <div className="flex flex-col gap-4 mb-6">
         <div className="min-w-0">
           <Link
-            to="/rfq-approval"
+            to={backPath}
             className="text-sm text-teal-600 hover:text-teal-800 mb-2 inline-flex items-center gap-1"
           >
-            <i className="ri-arrow-left-line"></i> Back to queue
+            <i className="ri-arrow-left-line"></i> {backLabel}
           </Link>
           <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 break-words leading-snug">
             <span className="block sm:inline text-teal-800">{data.pr.prNumber}</span>

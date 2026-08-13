@@ -228,6 +228,61 @@ function clauseListSignature(clauses: PoLetterheadClause[]) {
   );
 }
 
+type AnnexureIiRow = { id: string; header: string; html: string };
+
+function makeAnnexureIiId() {
+  return `a2-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function emptyAnnexureIiRow(): AnnexureIiRow {
+  return { id: makeAnnexureIiId(), header: '', html: '' };
+}
+
+function annexureIiHasContent(row: AnnexureIiRow) {
+  return Boolean(
+    String(row.header || '').trim() ||
+      plainTextFromHtml(row.html || '') ||
+      /<img\b/i.test(row.html || '')
+  );
+}
+
+function parseAnnexureIi(raw: unknown): AnnexureIiRow[] {
+  if (Array.isArray(raw)) {
+    const rows = raw.map((item, index) => {
+      const row = (item || {}) as Record<string, unknown>;
+      return {
+        id: String(row.id || makeAnnexureIiId() + index),
+        header: String(row.header || row.termsHeader || ''),
+        html: String(row.html || row.termsDescription || row.content || ''),
+      };
+    });
+    return rows.length ? rows : [emptyAnnexureIiRow()];
+  }
+  const s = String(raw || '').trim();
+  if (!s) return [emptyAnnexureIiRow()];
+  if (s.startsWith('[') || s.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parseAnnexureIi(parsed);
+      if (Array.isArray(parsed?.rows)) return parseAnnexureIi(parsed.rows);
+      if (parsed?.html || parsed?.header) {
+        return [{ id: makeAnnexureIiId(), header: String(parsed.header || ''), html: String(parsed.html || '') }];
+      }
+    } catch {
+      /* HTML blob */
+    }
+  }
+  return [{ id: makeAnnexureIiId(), header: '', html: s }];
+}
+
+function serializeAnnexureIi(rows: AnnexureIiRow[]) {
+  return JSON.stringify(rows.filter(annexureIiHasContent).map((r, i) => ({
+    id: r.id || `row-${i + 1}`,
+    header: r.header || '',
+    html: r.html || '',
+  })));
+}
+
 function ClauseTableEditor({
   title,
   headerColumnLabel,
@@ -492,6 +547,7 @@ export default function CreatePOPage() {
   const [footerLogo, setFooterLogo] = useState('');
   const [termsClauses, setTermsClauses] = useState<PoLetterheadClause[]>([]);
   const [annexureClauses, setAnnexureClauses] = useState<PoLetterheadClause[]>([]);
+  const [annexureIiRows, setAnnexureIiRows] = useState<AnnexureIiRow[]>([emptyAnnexureIiRow()]);
   const [poTermsDetails, setPoTermsDetails] = useState<PoTermsDetails>({ ...EMPTY_PO_TERMS_DETAILS });
   const [letterheadLoading, setLetterheadLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -790,6 +846,7 @@ export default function CreatePOPage() {
       );
       setTermsClauses(adaptClausesForDocumentType(loadedTerms, loadedDocType));
       setAnnexureClauses(adaptClausesForDocumentType(loadedAnnexure, loadedDocType));
+      setAnnexureIiRows(parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || ''));
       {
         const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
         setPoTermsDetails({
@@ -1077,6 +1134,8 @@ export default function CreatePOPage() {
     footerLogo,
     terms: termsClauses,
     annexure: annexureClauses,
+    annexureIiRows,
+    annexureIiHtml: serializeAnnexureIi(annexureIiRows),
     poTermsDetails,
     purchaseType: documentType,
   }), [
@@ -1098,6 +1157,7 @@ export default function CreatePOPage() {
     footerLogo,
     termsClauses,
     annexureClauses,
+    annexureIiRows,
     poTermsDetails,
     documentType,
   ]);
@@ -1254,6 +1314,9 @@ export default function CreatePOPage() {
     setAnnexureClauses(
       adaptClausesForDocumentType((po.annexureClauses as PoLetterheadClause[]) || [], nextDocType)
     );
+    if (po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html) {
+      setAnnexureIiRows(parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || ''));
+    }
     {
       const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
       setPoTermsDetails({
@@ -1446,6 +1509,8 @@ export default function CreatePOPage() {
         footerLogo,
         terms: filterNonEmptyClauses(termsClauses),
         annexure: filterNonEmptyClauses(annexureClauses),
+        annexureIiRows: annexureIiRows.filter(annexureIiHasContent),
+        annexureIiHtml: serializeAnnexureIi(annexureIiRows),
         poTermsDetails: {
           ...poTermsDetails,
           paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
@@ -2417,7 +2482,7 @@ export default function CreatePOPage() {
                   editorRevision={documentType}
                 />
                 <ClauseTableEditor
-                  title={`${docLabel} — Annexure`}
+                  title={`${docLabel} — Annexure I`}
                   headerColumnLabel="Annexure Header"
                   descriptionColumnLabel="Annexure Description"
                   headerPlaceholder="e.g. Scope of Work"
@@ -2430,6 +2495,138 @@ export default function CreatePOPage() {
                   docLabel={docLabel}
                   editorRevision={documentType}
                 />
+
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm w-full">
+                  <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50 flex-wrap">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-900">{docLabel} — Annexure II</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Add table rows for technical data, scope, specifications, and images. Extra rows print on additional pages.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 text-xs font-medium bg-white border border-gray-200 rounded-full text-gray-500">
+                        {annexureIiRows.length} row{annexureIiRows.length !== 1 ? 's' : ''}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAnnexureIiRows((prev) => [...prev, emptyAnnexureIiRow()])}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
+                      >
+                        <i className="ri-add-line"></i>
+                        Add row
+                      </button>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[820px]">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                          <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase w-12">#</th>
+                          <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase w-48">Header</th>
+                          <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase">Description / Images</th>
+                          <th className="px-2 py-2.5 w-20"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {annexureIiRows.map((row, idx) => (
+                          <tr key={row.id} className="align-top">
+                            <td className="px-2 py-3 text-center text-xs font-bold text-gray-500">{idx + 1}</td>
+                            <td className="px-2 py-3">
+                              <input
+                                type="text"
+                                value={row.header}
+                                onChange={(e) =>
+                                  setAnnexureIiRows((prev) =>
+                                    prev.map((r) => (r.id === row.id ? { ...r, header: e.target.value } : r))
+                                  )
+                                }
+                                placeholder="e.g. Scope of Work"
+                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50"
+                              />
+                            </td>
+                            <td className="px-2 py-3">
+                              <RichTextEditor
+                                editorKey={`annexure-ii-${row.id}`}
+                                value={row.html}
+                                onChange={(html) =>
+                                  setAnnexureIiRows((prev) =>
+                                    prev.map((r) => (r.id === row.id ? { ...r, html } : r))
+                                  )
+                                }
+                                placeholder="Add text and one or more images..."
+                                minHeight={160}
+                                advanced
+                                allowImages
+                              />
+                            </td>
+                            <td className="px-2 py-3">
+                              <div className="flex flex-col items-center gap-1">
+                                <button
+                                  type="button"
+                                  title="Move up"
+                                  disabled={idx === 0}
+                                  onClick={() =>
+                                    setAnnexureIiRows((prev) => {
+                                      if (idx === 0) return prev;
+                                      const next = [...prev];
+                                      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                      return next;
+                                    })
+                                  }
+                                  className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-30 cursor-pointer"
+                                >
+                                  <i className="ri-arrow-up-s-line"></i>
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Move down"
+                                  disabled={idx === annexureIiRows.length - 1}
+                                  onClick={() =>
+                                    setAnnexureIiRows((prev) => {
+                                      if (idx >= prev.length - 1) return prev;
+                                      const next = [...prev];
+                                      [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                                      return next;
+                                    })
+                                  }
+                                  className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-30 cursor-pointer"
+                                >
+                                  <i className="ri-arrow-down-s-line"></i>
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Remove row"
+                                  onClick={() =>
+                                    setAnnexureIiRows((prev) =>
+                                      prev.length <= 1 ? [emptyAnnexureIiRow()] : prev.filter((r) => r.id !== row.id)
+                                    )
+                                  }
+                                  className="w-7 h-7 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50 cursor-pointer"
+                                >
+                                  <i className="ri-delete-bin-line"></i>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-[11px] text-gray-400">
+                      Use <strong>Add images</strong> to insert multiple pictures in a row. Click <strong>Add row</strong> for another page/section.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setAnnexureIiRows((prev) => [...prev, emptyAnnexureIiRow()])}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-dashed border-teal-400 text-teal-600 rounded-lg hover:bg-teal-50 cursor-pointer"
+                    >
+                      <i className="ri-add-line"></i>
+                      Add another row
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 

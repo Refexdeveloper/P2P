@@ -16,6 +16,7 @@ import accountsRoutes from './routes/accounts.routes.js';
 import { runStartupMigrations } from './services/dbMigrate.js';
 import { testSmtpConnection, sendTestEmail } from './services/emailService.js';
 import { sendWhatsAppHsm, buildWorkflowWhatsAppParams, normalizeWhatsAppTo, getWhatsAppPublicBaseUrl } from './services/whatsappService.js';
+import { startSlaBreachScheduler } from './services/slaBreachService.js';
 import { pingDatabase } from './config/db.js';
 import { authenticate } from './middleware/auth.js';
 
@@ -202,6 +203,12 @@ app.listen(PORT, async () => {
     await testSmtpConnection();
   } catch (err) {
     console.error('SMTP connection test failed unexpectedly:', err.message);
+  }
+
+  try {
+    startSlaBreachScheduler();
+  } catch (err) {
+    console.error('SLA breach scheduler failed to start:', err.message);
   }
 
   console.log(`P2P API server running on http://localhost:${PORT}`);
