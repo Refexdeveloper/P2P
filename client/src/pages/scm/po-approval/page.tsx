@@ -1,6 +1,6 @@
 
 import { useState, useMemo, useEffect, useCallback, Fragment } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
@@ -69,12 +69,13 @@ interface ExpandedRowProps {
   poId?: number;
   onApprove: () => void;
   onReject: () => void;
+  onSendBack: () => void;
   onEdit: () => void;
   onViewPdf: () => void;
   isPending: boolean;
 }
 
-function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: ExpandedRowProps) {
+function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, isPending }: ExpandedRowProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'comparison' | 'history'>('details');
   const [comparisonData, setComparisonData] = useState<VendorComparisonData | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
@@ -164,6 +165,13 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
                     className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
                   >
                     <i className="ri-quill-pen-line"></i> Sign &amp; Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onSendBack}
+                    className="px-4 py-1.5 text-xs font-semibold text-orange-700 bg-white border border-orange-300 rounded-lg hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                  >
+                    <i className="ri-arrow-go-back-line"></i> Send Back
                   </button>
                   <button
                     onClick={onReject}
@@ -443,6 +451,7 @@ function ExpandedRow({ po, onApprove, onReject, onEdit, onViewPdf, isPending }: 
 
 export default function POApprovalPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [poList, setPoList] = useState<POData[]>([]);
   const [poIdMap, setPoIdMap] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -452,7 +461,7 @@ export default function POApprovalPage() {
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [modal, setModal] = useState<{
     isOpen: boolean;
-    type: 'approve' | 'reject';
+    type: 'approve' | 'reject' | 'sendback';
     poId: number;
     poNumber: string;
     prTitle: string;
@@ -522,12 +531,19 @@ export default function POApprovalPage() {
     loadPos();
   }, [loadPos]);
 
+  useEffect(() => {
+    const poId = Number(searchParams.get('poId') || 0);
+    if (!poId || !poList.length) return;
+    const poNumber = Object.entries(poIdMap).find(([, id]) => id === poId)?.[0];
+    if (poNumber) setExpandedRow(poNumber);
+  }, [searchParams, poList, poIdMap]);
+
   const showToast = (text: string, type: 'success' | 'error') => {
     setToast({ text, type });
     setTimeout(() => setToast(null), 3500);
   };
 
-  const openModal = (poNumber: string, type: 'approve' | 'reject') => {
+  const openModal = (poNumber: string, type: 'approve' | 'reject' | 'sendback') => {
     const po = poList.find((p) => p.poNumber === poNumber);
     const poId = poIdMap[poNumber];
     if (!po || !poId) return;
@@ -542,6 +558,9 @@ export default function POApprovalPage() {
       if (modal.type === 'approve') {
         const res = await poApi.sign(modal.poId, remarks, signature);
         showToast(res.message || `${modal.poNumber} signed — sent to SCM Buyer for final verify`, 'success');
+      } else if (modal.type === 'sendback') {
+        const res = await poApi.sendBack(modal.poId, remarks);
+        showToast(res.message || `${modal.poNumber} sent back to SCM Buyer for revision`, 'success');
       } else {
         await poApi.reject(modal.poId, remarks);
         showToast(`${modal.poNumber} has been rejected`, 'error');
@@ -817,6 +836,13 @@ export default function POApprovalPage() {
                                 <i className="ri-quill-pen-line text-sm"></i>
                               </button>
                               <button
+                                onClick={() => openModal(po.poNumber, 'sendback')}
+                                className="p-1.5 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors cursor-pointer"
+                                title="Send Back to Buyer"
+                              >
+                                <i className="ri-arrow-go-back-line text-sm"></i>
+                              </button>
+                              <button
                                 onClick={() => openModal(po.poNumber, 'reject')}
                                 className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                                 title="Reject"
@@ -837,6 +863,7 @@ export default function POApprovalPage() {
                         isPending={isPending}
                         onApprove={() => openModal(po.poNumber, 'approve')}
                         onReject={() => openModal(po.poNumber, 'reject')}
+                        onSendBack={() => openModal(po.poNumber, 'sendback')}
                         onEdit={() => {
                           const id = poIdMap[po.poNumber];
                           if (id) navigate(`/scm/create-po?poId=${id}`);

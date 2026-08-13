@@ -34,7 +34,7 @@ export async function processSlaBreaches() {
        JOIN users req ON req.id = pr.requester_id
        LEFT JOIN users asg ON asg.id = wt.assigned_user_id
        WHERE wt.status = 'pending'
-         AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL', 'PO_APPROVAL', 'PO_BUYER_VERIFY')
+         AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL', 'PO_APPROVAL', 'PO_BUYER_VERIFY', 'PO_REVISION')
          AND wt.sla_notified_at IS NULL
          AND (
            (wt.due_date IS NOT NULL AND wt.due_date < CURDATE())

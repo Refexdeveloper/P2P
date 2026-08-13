@@ -56,6 +56,7 @@ function formatPrApprovalStage(stage) {
     PO_BUYER_REJECTED: 'SCM Buyer Final Verify',
     PO_BUYER_SENT_BACK: 'SCM Buyer Final Verify',
     PO_REJECTED: 'SCM Manager Approval',
+    PO_SENT_BACK: 'SCM Manager Approval',
     PO_UPDATED: 'PO Updated',
   };
   return (
@@ -1957,6 +1958,110 @@ export async function listTasks(user) {
         justification: 'SCM Manager signed — final verify before sending to vendor',
         isPostRfq: false,
         actionPath: '/scm/buyer-final-verify',
+      });
+    }
+
+    const [buyerReviseRows] = await pool.query(
+      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, pr.title, pr.priority,
+              d.name AS department_name, u.name AS requester_name, wt.due_date,
+              e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
+       FROM purchase_orders po
+       JOIN purchase_requests pr ON pr.id = po.pr_id
+       JOIN departments d ON d.id = pr.department_id
+       JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN entity_masters e ON e.id = pr.entity_id
+       LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
+         AND wt.task_type = 'PO_REVISION' AND wt.status = 'pending'
+       WHERE po.status = 'draft'
+         AND EXISTS (
+           SELECT 1 FROM pr_approvals pa
+           WHERE pa.pr_id = po.pr_id AND pa.stage = 'PO_SENT_BACK'
+         )
+       ORDER BY po.updated_at DESC`
+    );
+    for (const row of buyerReviseRows) {
+      const due = row.due_date ? new Date(row.due_date) : new Date();
+      if (!row.due_date) due.setDate(due.getDate() + 2);
+      const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
+      tasks.push({
+        id: `po-revise-${row.po_id}`,
+        taskId: row.po_id,
+        poId: row.po_id,
+        prId: row.pr_id,
+        prNumber: row.po_number,
+        title: `${row.title} — Revise PO`,
+        requester: row.requester_name,
+        department: row.department_name,
+        entityId: row.entity_id || null,
+        entityName: row.entity_name || '',
+        entityCode: row.entity_code || '',
+        totalAmount: Number(row.grand_total),
+        priority: mapPriorityToFrontend(row.priority),
+        status: 'pending_approval',
+        statusUI: 'Sent Back — Revise PO',
+        submittedDate: formatDate(due),
+        dueDate: formatDate(due),
+        slaRemaining: hoursLeft || 48,
+        isOverdue: hoursLeft <= 0,
+        lineItems: 0,
+        requestType: 'PO',
+        requesterRole: 'SCM Manager',
+        requesterAvatar: 'S',
+        justification: 'SCM Manager sent the PO back — revise and resubmit for sign',
+        isPostRfq: false,
+        isPoRevise: true,
+        actionPath: `/scm/create-po?poId=${row.po_id}`,
+      });
+    }
+  }
+
+  if (user.role === 'SCM Manager') {
+    const [poSignRows] = await pool.query(
+      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, pr.title, pr.priority,
+              d.name AS department_name, u.name AS requester_name, wt.due_date,
+              e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
+       FROM purchase_orders po
+       JOIN purchase_requests pr ON pr.id = po.pr_id
+       JOIN departments d ON d.id = pr.department_id
+       JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN entity_masters e ON e.id = pr.entity_id
+       LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
+         AND wt.task_type = 'PO_APPROVAL' AND wt.status = 'pending'
+       WHERE po.status = 'pending_approval'
+       ORDER BY po.updated_at DESC`
+    );
+    for (const row of poSignRows) {
+      const due = row.due_date ? new Date(row.due_date) : new Date();
+      if (!row.due_date) due.setDate(due.getDate() + 2);
+      const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
+      tasks.push({
+        id: `po-sign-${row.po_id}`,
+        taskId: row.po_id,
+        poId: row.po_id,
+        prId: row.pr_id,
+        prNumber: row.po_number,
+        title: `${row.title} — PO Sign`,
+        requester: row.requester_name,
+        department: row.department_name,
+        entityId: row.entity_id || null,
+        entityName: row.entity_name || '',
+        entityCode: row.entity_code || '',
+        totalAmount: Number(row.grand_total),
+        priority: mapPriorityToFrontend(row.priority),
+        status: 'pending_approval',
+        statusUI: 'Pending PO Sign',
+        submittedDate: formatDate(due),
+        dueDate: formatDate(due),
+        slaRemaining: hoursLeft || 48,
+        isOverdue: hoursLeft <= 0,
+        lineItems: 0,
+        requestType: 'PO',
+        requesterRole: 'SCM Buyer',
+        requesterAvatar: 'B',
+        justification: 'PO awaiting SCM Manager signature',
+        isPostRfq: false,
+        isPoSign: true,
+        actionPath: '/scm/po-approval',
       });
     }
   }

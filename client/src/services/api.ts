@@ -701,6 +701,11 @@ export const poApi = {
       method: 'POST',
       body: JSON.stringify({ remarks }),
     }),
+  sendBack: (poId: number, remarks: string) =>
+    request<{ data: unknown; message: string }>(`/api/po/${poId}/send-back`, {
+      method: 'POST',
+      body: JSON.stringify({ remarks }),
+    }),
   update: (poId: number, body: Record<string, unknown>) =>
     request<{ data: Record<string, unknown>; message: string }>(`/api/po/${poId}`, {
       method: 'PUT',

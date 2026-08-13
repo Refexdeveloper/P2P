@@ -600,8 +600,15 @@ export default function CreatePOPage() {
   const numericPrId = prIdParam ? Number(prIdParam) : null;
   const editPoId = poIdParam ? Number(poIdParam) : null;
   const isEditMode = !!editPoId && !Number.isNaN(editPoId);
+  const fromParam = searchParams.get('from');
   const editReturnPath =
-    searchParams.get('from') === 'buyer-verify' ? '/scm/buyer-final-verify' : '/scm/po-approval';
+    fromParam === 'buyer-verify'
+      ? '/scm/buyer-final-verify'
+      : fromParam === 'tasks'
+        ? '/tasks'
+        : fromParam === 'purchase-requests'
+          ? '/scm/purchase-requests'
+          : '/scm/po-approval';
   const isBuyerVerifyEdit = searchParams.get('from') === 'buyer-verify';
 
   const [loading, setLoading] = useState(true);
@@ -956,13 +963,14 @@ export default function CreatePOPage() {
       const fromBuyerVerify = searchParams.get('from') === 'buyer-verify';
       const isPendingApproval =
         statusRaw === 'pending_approval' || statusRaw === 'pendingapproval';
+      const isDraft = statusRaw === 'draft';
       const isBuyerVerifyStatus =
         statusRaw === 'pending_buyer_verify' ||
         statusRaw === 'pending_buyerverify' ||
         statusRaw.includes('buyer_verify');
       const allowBuyerVerifyEdit = fromBuyerVerify && isBuyerVerifyStatus;
-      if (!isPendingApproval && !allowBuyerVerifyEdit && !isBuyerVerifyStatus) {
-        setLoadError('Only pending or buyer-verify POs can be edited');
+      if (!isPendingApproval && !allowBuyerVerifyEdit && !isBuyerVerifyStatus && !isDraft) {
+        setLoadError('Only draft, pending, or buyer-verify POs can be edited');
         setPr(null);
         return;
       }

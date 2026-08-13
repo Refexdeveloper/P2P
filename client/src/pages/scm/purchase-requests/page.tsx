@@ -10,7 +10,7 @@ import {
   storePoCsvImport,
 } from '../../../utils/poCsvImport';
 
-type RowStatus = 'Ready for PO' | 'Pending Approval' | 'PO Approved' | 'PO Rejected';
+type RowStatus = 'Ready for PO' | 'Pending Approval' | 'PO Approved' | 'PO Rejected' | 'Sent Back';
 
 interface BucketRow {
   key: string;
@@ -59,6 +59,7 @@ function mapTrackStatusToBucket(status: string, statusRaw?: string): RowStatus {
   if (s === 'ready') return 'Ready for PO';
   if (s === 'pending' || raw === 'pending_approval' || raw === 'pending_buyer_verify') return 'Pending Approval';
   if (s === 'rejected' || raw === 'rejected') return 'PO Rejected';
+  if (s === 'draft' || raw === 'draft') return 'Sent Back';
   return 'PO Approved';
 }
 
@@ -299,6 +300,8 @@ export default function SCMPurchaseRequestsPage() {
         return 'bg-blue-100 text-blue-700';
       case 'PO Rejected':
         return 'bg-red-100 text-red-700';
+      case 'Sent Back':
+        return 'bg-orange-100 text-orange-700';
       default:
         return 'bg-gray-100 text-gray-700';
     }
@@ -693,6 +696,15 @@ export default function SCMPurchaseRequestsPage() {
                                   className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
                                 >
                                   Create PO
+                                </button>
+                              )}
+                              {pr.status === 'Sent Back' && pr.poId && (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/scm/create-po?poId=${pr.poId}&from=purchase-requests`)}
+                                  className="px-2.5 py-1.5 bg-orange-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
+                                >
+                                  Revise PO
                                 </button>
                               )}
                               {pr.poId && (

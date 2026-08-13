@@ -362,6 +362,7 @@ function formatApprovalStage(stage) {
     PO_BUYER_REJECTED: 'SCM Buyer Final Verify',
     PO_BUYER_SENT_BACK: 'SCM Buyer Final Verify',
     PO_REJECTED: 'SCM Manager Approval',
+    PO_SENT_BACK: 'SCM Manager Approval',
     HOD_REVIEW: 'HOD / Manager Approval',
     PR_MANAGER_REVIEW: 'L2 Manager Approval',
     CFO_REVIEW: 'CFO Approval',
@@ -1579,6 +1580,69 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
   return updated;
 }
 
+/** Manager sends unsigned PO back to SCM Buyer for revision. */
+export async function sendBackPurchaseOrder(user, poId, remarks) {
+  if (user.role !== 'SCM Manager') throw new Error('Only SCM Manager can send back purchase orders');
+
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  if (rows[0].status !== 'pending_approval') throw new Error('PO is not pending approval');
+  if (!remarks?.trim()) throw new Error('Send-back remarks are required');
+
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'draft',
+       signed_pdf_path = NULL,
+       signer_id = NULL,
+       signature_name = NULL,
+       signature_image_path = NULL,
+       signer_comments = NULL,
+       signed_at = NULL,
+       updated_at = NOW()
+     WHERE id = ?`,
+    [poId]
+  );
+
+  await pool.query(
+    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
+    [rows[0].pr_id]
+  );
+
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 2);
+  await pool.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
+     VALUES (?, 'PO_REVISION', 'SCM Buyer', 'pending', ?)`,
+    [rows[0].pr_id, dueDate.toISOString().split('T')[0]]
+  );
+
+  await pool.query(
+    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+     VALUES (?, 'PO_SENT_BACK', ?, 'return', ?)`,
+    [rows[0].pr_id, user.id, remarks.trim()]
+  );
+
+  const updated = await getPurchaseOrderById(poId);
+  const buyerEmails = await getScmBuyerNotifyEmails();
+  const buyer = await resolveScmBuyerUser();
+  if (buyerEmails.length) {
+    queuePoWorkflowNotification(updated, {
+      action: 'sendback',
+      stageLabel: 'SCM Manager PO Sign — Sent Back',
+      recipientEmails: buyerEmails,
+      recipientName: buyer?.name || 'SCM Buyer',
+      actorName: user.name,
+      actorRole: user.role,
+      remarks: remarks.trim(),
+      portalUrl: poPortalUrl(`/scm/create-po?poId=${poId}`),
+      ctaLabel: 'Revise PO',
+    });
+  }
+
+  return updated;
+}
+
 export async function rejectPurchaseOrder(user, poId, remarks) {
   if (user.role !== 'SCM Manager') throw new Error('Only SCM Manager can reject purchase orders');
 
@@ -1632,7 +1696,8 @@ export async function updatePurchaseOrder(user, poId, body) {
 
   const canManagerEdit = user.role === 'SCM Manager' && existing.status === 'pending_approval';
   const canBuyerEdit = user.role === 'SCM Buyer' && existing.status === 'pending_buyer_verify';
-  if (!canManagerEdit && !canBuyerEdit) {
+  const canBuyerRevise = user.role === 'SCM Buyer' && existing.status === 'draft';
+  if (!canManagerEdit && !canBuyerEdit && !canBuyerRevise) {
     throw new Error('You are not allowed to edit this purchase order');
   }
 
@@ -1676,9 +1741,11 @@ export async function updatePurchaseOrder(user, poId, body) {
 
   const changeSummary =
     body.changeSummary?.trim() ||
-    (canBuyerEdit
-      ? 'PO updated by SCM Buyer during final verify'
-      : 'PO updated by SCM Manager before approval');
+    (canBuyerRevise
+      ? 'PO revised by SCM Buyer after manager send-back — resubmitted for sign'
+      : canBuyerEdit
+        ? 'PO updated by SCM Buyer during final verify'
+        : 'PO updated by SCM Manager before approval');
 
   const conn = await pool.getConnection();
   try {
@@ -1743,6 +1810,25 @@ export async function updatePurchaseOrder(user, poId, body) {
       [existing.pr_id, user.id, changeSummary]
     );
 
+    if (canBuyerRevise) {
+      await conn.query(
+        `UPDATE purchase_orders SET status = 'pending_approval', updated_at = NOW() WHERE id = ?`,
+        [poId]
+      );
+      await conn.query(
+        `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+         WHERE pr_id = ? AND task_type = 'PO_REVISION' AND assigned_role = 'SCM Buyer' AND status = 'pending'`,
+        [existing.pr_id]
+      );
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 2);
+      await conn.query(
+        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
+         VALUES (?, 'PO_APPROVAL', 'SCM Manager', 'pending', ?)`,
+        [existing.pr_id, dueDate.toISOString().split('T')[0]]
+      );
+    }
+
     await conn.commit();
   } catch (err) {
     await conn.rollback();
@@ -1778,6 +1864,23 @@ export async function updatePurchaseOrder(user, poId, body) {
     const { fileName } = await generatePoPdf(updatedPo, { fileName: `${updatedPo.poNumber}_draft.pdf` });
     await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
     updatedPo.pdfPath = fileName;
+  }
+
+  if (canBuyerRevise) {
+    const managers = await resolveRoleEmails('SCM Manager');
+    if (managers.length) {
+      queuePoWorkflowNotification(updatedPo, {
+        action: 'assign',
+        stageLabel: 'SCM Manager PO Approval',
+        recipientEmails: managers.map((m) => m.email),
+        recipientName: managers[0]?.name || 'SCM Manager',
+        actorName: user.name,
+        actorRole: user.role,
+        remarks: 'PO revised by SCM Buyer and resubmitted for sign',
+        portalUrl: poPortalUrl('/scm/po-approval'),
+        ctaLabel: 'Open PO Approval',
+      });
+    }
   }
 
   return updatedPo;

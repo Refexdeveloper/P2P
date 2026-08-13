@@ -11,6 +11,7 @@ import {
   getPurchaseOrderByNumber,
   signPurchaseOrder,
   rejectPurchaseOrder,
+  sendBackPurchaseOrder,
   finalVerifyPurchaseOrder,
   rejectBuyerFinalVerify,
   sendBackBuyerFinalVerify,
@@ -489,6 +490,18 @@ router.post('/:id/reject', requireRoles('SCM Manager'), async (req, res) => {
     const { remarks } = req.body;
     const data = await rejectPurchaseOrder(req.user, Number(req.params.id), remarks);
     res.json({ data, message: 'PO rejected' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/send-back', requireRoles('SCM Manager'), async (req, res) => {
+  try {
+    const data = await sendBackPurchaseOrder(req.user, Number(req.params.id), req.body?.remarks);
+    res.json({
+      data,
+      message: 'PO sent back to SCM Buyer for revision',
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

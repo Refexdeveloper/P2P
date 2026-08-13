@@ -117,7 +117,7 @@ export default function ApprovalModal({
     }
     // Prefer selected state; fall back to first loaded target (avoids empty value while dropdown shows a label)
     const selectedReturnTo = returnTo || targets[0]?.key || '';
-    if (type === 'return' && !selectedReturnTo) {
+    if (type === 'return' && prId && !selectedReturnTo) {
       setError('Select a previous stage to send back to');
       return;
     }
@@ -160,7 +160,7 @@ export default function ApprovalModal({
             <p className="text-sm font-medium text-gray-800">{prTitle}</p>
           </div>
 
-          {type === 'return' && (
+          {type === 'return' && Boolean(prId) && (
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Send back to <span className="text-red-500">*</span>

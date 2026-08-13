@@ -6,7 +6,7 @@ import StatusBadge from '../../components/base/StatusBadge';
 import PriorityBadge from '../../components/base/PriorityBadge';
 import ApprovalModal from './components/ApprovalModal';
 import TaskDetailDrawer from './components/TaskDetailDrawer';
-import { taskApi, prApi } from '../../services/api';
+import { taskApi, prApi, poApi } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface TaskItem {
@@ -33,6 +33,9 @@ interface TaskItem {
   isPostRfq?: boolean;
   actionPath?: string;
   statusUI?: string;
+  poId?: number;
+  isPoSign?: boolean;
+  isPoRevise?: boolean;
 }
 
 export default function TasksPage() {
@@ -79,6 +82,9 @@ export default function TasksPage() {
           isPostRfq: Boolean(t.isPostRfq),
           actionPath: t.actionPath ? String(t.actionPath) : undefined,
           statusUI: t.statusUI ? String(t.statusUI) : undefined,
+          poId: t.poId ? Number(t.poId) : undefined,
+          isPoSign: Boolean(t.isPoSign),
+          isPoRevise: Boolean(t.isPoRevise),
         };
       });
       setTasks(mapped);
@@ -211,6 +217,21 @@ export default function TasksPage() {
       openPostRfqPage(task);
       return;
     }
+    if (task.isPoSign || task.actionPath?.includes('/scm/po-approval')) {
+      const params = new URLSearchParams();
+      params.set('from', 'tasks');
+      if (task.poId) params.set('poId', String(task.poId));
+      navigate(`/scm/po-approval?${params.toString()}`);
+      return;
+    }
+    if (task.isPoRevise || task.actionPath?.includes('/scm/create-po')) {
+      navigate(task.actionPath || `/scm/create-po?poId=${task.poId || ''}&from=tasks`);
+      return;
+    }
+    if (task.actionPath?.includes('/scm/buyer-final-verify')) {
+      navigate(`${task.actionPath}?from=tasks`);
+      return;
+    }
 
     setSelectedTask(taskId);
     setDrawerLoading(true);
@@ -306,6 +327,17 @@ export default function TasksPage() {
       openPostRfqPage(task, type);
       return;
     }
+    if (task.isPoRevise) {
+      navigate(task.actionPath || `/scm/create-po?poId=${task.poId || ''}&from=tasks`);
+      return;
+    }
+    if (task.isPoSign && type === 'approve') {
+      const params = new URLSearchParams();
+      params.set('from', 'tasks');
+      if (task.poId) params.set('poId', String(task.poId));
+      navigate(`/scm/po-approval?${params.toString()}`);
+      return;
+    }
     setModalState({
       isOpen: true,
       type,
@@ -322,12 +354,22 @@ export default function TasksPage() {
     if (!task) return;
     const action = type === 'approve' ? 'approve' : type === 'return' ? 'return' : 'reject';
     try {
-      await prApi.approve(
-        task.prId,
-        action,
-        remarks,
-        type === 'return' && returnTo ? { returnTo } : undefined
-      );
+      if (task.isPoSign && task.poId) {
+        if (type === 'return') {
+          await poApi.sendBack(task.poId, remarks);
+        } else if (type === 'reject') {
+          await poApi.reject(task.poId, remarks);
+        } else {
+          return;
+        }
+      } else {
+        await prApi.approve(
+          task.prId,
+          action,
+          remarks,
+          type === 'return' && returnTo ? { returnTo } : undefined
+        );
+      }
       setActionUpdates((prev) => ({
         ...prev,
         [taskId]: type === 'approve' ? 'approved' : type === 'return' ? 'returned' : 'rejected',
@@ -336,7 +378,9 @@ export default function TasksPage() {
         type === 'approve'
           ? `${prNumber} has been approved successfully`
           : type === 'return'
-          ? `${prNumber} has been sent back for rework`
+          ? task.isPoSign
+            ? `${prNumber} sent back to SCM Buyer for revision`
+            : `${prNumber} has been sent back for rework`
           : `${prNumber} has been rejected`,
         type === 'reject' ? 'error' : 'success'
       );
@@ -524,7 +568,16 @@ export default function TasksPage() {
       >
         <i className="ri-eye-line"></i>
       </button>
-      {isPending && (
+      {isPending && task.isPoRevise && (
+        <button
+          onClick={() => openModal(task.id, 'approve')}
+          className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors cursor-pointer"
+          title="Revise PO"
+        >
+          <i className="ri-edit-line"></i>
+        </button>
+      )}
+      {isPending && !task.isPoRevise && (
         <>
           <button
             onClick={() => openModal(task.id, 'approve')}
@@ -532,15 +585,17 @@ export default function TasksPage() {
             title={
               task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
                 ? 'Approve (Vendor Comparison)'
-                : 'Approve'
+                : task.isPoSign
+                  ? 'Sign & Approve'
+                  : 'Approve'
             }
           >
-            <i className="ri-check-line"></i>
+            <i className={task.isPoSign ? 'ri-quill-pen-line' : 'ri-check-line'}></i>
           </button>
           <button
             onClick={() => openModal(task.id, 'return')}
             className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors cursor-pointer"
-            title="Send Back"
+            title={task.isPoSign ? 'Send Back to Buyer' : 'Send Back'}
           >
             <i className="ri-arrow-go-back-line"></i>
           </button>
@@ -956,7 +1011,11 @@ export default function TasksPage() {
         prNumber={modalState.prNumber}
         prTitle={modalState.prTitle}
         amount={modalState.amount}
-        prId={tasks.find((t) => t.id === modalState.taskId)?.prId}
+        prId={
+          tasks.find((t) => t.id === modalState.taskId)?.isPoSign
+            ? undefined
+            : tasks.find((t) => t.id === modalState.taskId)?.prId
+        }
         onConfirm={handleConfirm}
         onClose={() =>
           setModalState((prev) => ({ ...prev, isOpen: false }))
