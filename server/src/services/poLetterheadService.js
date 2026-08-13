@@ -160,9 +160,9 @@ export async function seedLetterheadDefaults() {
     await saveLetterhead('short_po', SHORT_PO_LETTERHEAD_DEFAULTS);
   }
 
-  // Long PO: apply Refex long commercial template when missing or still on stub defaults
+  // Long PO: apply Refex long commercial template (live terms + 25 annexure clauses)
   const [longClauses] = await pool.query(
-    `SELECT c.terms_header, c.section_type
+    `SELECT c.terms_header, c.terms_description, c.section_type
      FROM po_letterhead_clauses c
      JOIN po_letterhead_masters m ON m.id = c.master_id
      WHERE m.po_type = 'long_po'`
@@ -170,7 +170,13 @@ export async function seedLetterheadDefaults() {
   const hasLongPacking = longClauses.some(
     (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'packing'
   );
-  if (!longClauses.length || !hasLongPacking) {
+  const hasLiveInco = longClauses.some(
+    (c) =>
+      c.section_type === 'terms' &&
+      String(c.terms_description || '').includes('$aos_quotes_inco_terms_c')
+  );
+  const longAnnexureCount = longClauses.filter((c) => c.section_type === 'annexure').length;
+  if (!longClauses.length || !hasLongPacking || !hasLiveInco || longAnnexureCount !== 25) {
     await saveLetterhead('long_po', LONG_PO_LETTERHEAD_DEFAULTS);
   }
 }

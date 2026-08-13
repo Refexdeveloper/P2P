@@ -2,23 +2,33 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import RichTextEditor from '../../../components/base/RichTextEditor';
+import AddableSelect from '../../../components/base/AddableSelect';
 import {
   poApi,
   prApi,
   rfqApi,
   poLetterheadApi,
   letterheadMasterApi,
+  masterApi,
   triggerBlobDownload,
   PoType,
   PoLetterheadClause,
   LetterheadMasterRecord,
   LetterheadLocationRecord,
+  PoSiteLookupRecord,
 } from '../../../services/api';
 import {
   consumePoCsvImport,
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
 import { numberToIndianWords } from '../../../utils/amountInWords';
+import {
+  AnnexureIiRow,
+  emptyAnnexureIiRow,
+  parseAnnexureIi,
+  serializeAnnexureIi,
+  annexureIiRowIsEmpty,
+} from '../../../utils/annexureIi';
 import {
   CURRENCY_OPTIONS,
   DEFAULT_CURRENCY,
@@ -63,6 +73,13 @@ function roundMoney(n: number) {
 function lineItemUnit(li: { unit?: unknown; uom?: unknown } | Record<string, unknown>) {
   const unit = String(li.unit || li.uom || '').trim();
   return unit || 'Nos';
+}
+
+function upsertSiteLookup(list: PoSiteLookupRecord[], item: PoSiteLookupRecord) {
+  const rest = list.filter(
+    (row) => row.id !== item.id && row.label.trim().toLowerCase() !== item.label.trim().toLowerCase()
+  );
+  return [item, ...rest];
 }
 
 const PAYMENT_TERMS_OPTIONS = [
@@ -226,61 +243,6 @@ function clauseListSignature(clauses: PoLetterheadClause[]) {
   return JSON.stringify(
     (clauses || []).map((c) => [c.id ?? null, c.termsHeader || '', c.termsDescription || '', c.sortOrder ?? null])
   );
-}
-
-type AnnexureIiRow = { id: string; header: string; html: string };
-
-function makeAnnexureIiId() {
-  return `a2-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function emptyAnnexureIiRow(): AnnexureIiRow {
-  return { id: makeAnnexureIiId(), header: '', html: '' };
-}
-
-function annexureIiHasContent(row: AnnexureIiRow) {
-  return Boolean(
-    String(row.header || '').trim() ||
-      plainTextFromHtml(row.html || '') ||
-      /<img\b/i.test(row.html || '')
-  );
-}
-
-function parseAnnexureIi(raw: unknown): AnnexureIiRow[] {
-  if (Array.isArray(raw)) {
-    const rows = raw.map((item, index) => {
-      const row = (item || {}) as Record<string, unknown>;
-      return {
-        id: String(row.id || makeAnnexureIiId() + index),
-        header: String(row.header || row.termsHeader || ''),
-        html: String(row.html || row.termsDescription || row.content || ''),
-      };
-    });
-    return rows.length ? rows : [emptyAnnexureIiRow()];
-  }
-  const s = String(raw || '').trim();
-  if (!s) return [emptyAnnexureIiRow()];
-  if (s.startsWith('[') || s.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(s);
-      if (Array.isArray(parsed)) return parseAnnexureIi(parsed);
-      if (Array.isArray(parsed?.rows)) return parseAnnexureIi(parsed.rows);
-      if (parsed?.html || parsed?.header) {
-        return [{ id: makeAnnexureIiId(), header: String(parsed.header || ''), html: String(parsed.html || '') }];
-      }
-    } catch {
-      /* HTML blob */
-    }
-  }
-  return [{ id: makeAnnexureIiId(), header: '', html: s }];
-}
-
-function serializeAnnexureIi(rows: AnnexureIiRow[]) {
-  return JSON.stringify(rows.filter(annexureIiHasContent).map((r, i) => ({
-    id: r.id || `row-${i + 1}`,
-    header: r.header || '',
-    html: r.html || '',
-  })));
 }
 
 function ClauseTableEditor({
@@ -464,6 +426,170 @@ function ClauseTableEditor({
   );
 }
 
+type EditableAnnexureIiRow = AnnexureIiRow & { clientKey: string };
+
+function toEditableAnnexureIiRows(rows: AnnexureIiRow[]): EditableAnnexureIiRow[] {
+  const list = rows?.length ? rows : [emptyAnnexureIiRow()];
+  return list.map((row) => ({
+    ...emptyAnnexureIiRow(),
+    ...row,
+    clientKey: makeClauseClientKey(),
+  }));
+}
+
+function AnnexureIiTableEditor({
+  title,
+  rows,
+  onChange,
+  docLabel = 'Purchase Order',
+  editorRevision = '',
+}: {
+  title: string;
+  rows: AnnexureIiRow[];
+  onChange: (next: AnnexureIiRow[]) => void;
+  docLabel?: string;
+  editorRevision?: string;
+}) {
+  const [localRows, setLocalRows] = useState<EditableAnnexureIiRow[]>(() => toEditableAnnexureIiRows(rows));
+  const lastSig = useRef(serializeAnnexureIi(rows));
+
+  useEffect(() => {
+    const sig = serializeAnnexureIi(rows);
+    if (sig === lastSig.current) return;
+    lastSig.current = sig;
+    setLocalRows(toEditableAnnexureIiRows(rows.length ? rows : [emptyAnnexureIiRow()]));
+  }, [rows]);
+
+  const commit = (next: EditableAnnexureIiRow[]) => {
+    setLocalRows(next);
+    const payload = next.map(({ clientKey: _key, ...row }) => row);
+    lastSig.current = serializeAnnexureIi(payload);
+    onChange(payload);
+  };
+
+  const updateRow = (index: number, patch: Partial<AnnexureIiRow>) => {
+    commit(localRows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  };
+
+  const addRow = () =>
+    commit([...localRows, { ...emptyAnnexureIiRow(), clientKey: makeClauseClientKey() }]);
+
+  const removeRow = (index: number) => {
+    if (localRows.length <= 1) {
+      commit([{ ...emptyAnnexureIiRow(), clientKey: makeClauseClientKey() }]);
+      return;
+    }
+    commit(localRows.filter((_, i) => i !== index));
+  };
+
+  const moveRow = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= localRows.length) return;
+    const next = [...localRows];
+    [next[index], next[target]] = [next[target], next[index]];
+    commit(next);
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm w-full">
+      <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-sm font-bold text-gray-900">{title}</h3>
+          <span className="px-2 py-0.5 text-xs font-medium bg-white border border-gray-200 rounded-full text-gray-500">
+            {localRows.length} row{localRows.length !== 1 ? 's' : ''}
+          </span>
+          <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
+            Each row = one {docLabel} PDF page
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={addRow}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
+        >
+          <i className="ri-add-line"></i>
+          Add Row
+        </button>
+      </div>
+      <p className="px-5 pt-3 text-xs text-gray-500">
+        Add technical data, scope, specifications, and images. Use Add Row for another page. Formatting is kept on save, preview, and PDF.
+      </p>
+      <div className="divide-y divide-gray-100">
+        {localRows.map((row, index) => (
+          <div key={row.clientKey} className="p-4 sm:p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Row {index + 1} · PDF page
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => moveRow(index, -1)}
+                  disabled={index === 0}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                  title="Move up"
+                >
+                  <i className="ri-arrow-up-line"></i>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveRow(index, 1)}
+                  disabled={index === localRows.length - 1}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                  title="Move down"
+                >
+                  <i className="ri-arrow-down-line"></i>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeRow(index)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 cursor-pointer"
+                  title="Remove row"
+                >
+                  <i className="ri-delete-bin-line"></i>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Header</label>
+              <RichTextEditor
+                editorKey={`${row.clientKey}-h-${editorRevision}`}
+                value={row.header || ''}
+                onChange={(html) => updateRow(index, { header: html })}
+                placeholder="e.g. Technical specification / Scope of work"
+                minHeight={56}
+                advanced
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Description, images &amp; text</label>
+              <RichTextEditor
+                editorKey={`${row.clientKey}-d-${editorRevision}`}
+                value={row.description || ''}
+                onChange={(html) => updateRow(index, { description: html })}
+                placeholder="Add formatted text and images for this page..."
+                minHeight={180}
+                advanced
+                allowImages
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
+        <button
+          type="button"
+          onClick={addRow}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-dashed border-teal-300 rounded-lg hover:bg-teal-50 cursor-pointer"
+        >
+          <i className="ri-add-line"></i>
+          Add another row
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function CreatePOPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -525,7 +651,7 @@ export default function CreatePOPage() {
   });
 
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
-  const [deliveryAddress, setDeliveryAddress] = useState('Plot No. 42, Industrial Area Phase II, Chandigarh - 160002');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('Net 30 Days');
   const [incoterms, setIncoterms] = useState('DDP');
@@ -534,7 +660,7 @@ export default function CreatePOPage() {
   const moneySymbol = currencySymbol(currency);
   /** Effective GST % derived from line taxes (stored on PO for compatibility) */
   const [gstPercentage, setGstPercentage] = useState(18);
-  const [poType, setPoType] = useState<PoType>('short_po');
+  const [poType, setPoType] = useState<PoType>('long_po');
   /** Document type for this PO create — can differ from PR default */
   const [documentType, setDocumentType] = useState<'purchase_order' | 'work_order'>('purchase_order');
   const [letterheadHeader, setLetterheadHeader] = useState('');
@@ -549,6 +675,14 @@ export default function CreatePOPage() {
   const [annexureClauses, setAnnexureClauses] = useState<PoLetterheadClause[]>([]);
   const [annexureIiRows, setAnnexureIiRows] = useState<AnnexureIiRow[]>([emptyAnnexureIiRow()]);
   const [poTermsDetails, setPoTermsDetails] = useState<PoTermsDetails>({ ...EMPTY_PO_TERMS_DETAILS });
+  const [siteAddressOptions, setSiteAddressOptions] = useState<PoSiteLookupRecord[]>([]);
+  const [siteContactOptions, setSiteContactOptions] = useState<PoSiteLookupRecord[]>([]);
+  const [addingSiteAddress, setAddingSiteAddress] = useState(false);
+  const [addingSiteContact, setAddingSiteContact] = useState(false);
+  const [newSiteAddress, setNewSiteAddress] = useState('');
+  const [newSiteContact, setNewSiteContact] = useState({ label: '', email: '', phone: '' });
+  const [savingSiteLookup, setSavingSiteLookup] = useState(false);
+  const [siteLookupError, setSiteLookupError] = useState('');
   const [letterheadLoading, setLetterheadLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'terms' | 'preview'>('details');
@@ -705,6 +839,29 @@ export default function CreatePOPage() {
     let cancelled = false;
     (async () => {
       try {
+        const [addr, contact] = await Promise.all([
+          masterApi.listPoSiteLookups('site_address'),
+          masterApi.listPoSiteLookups('site_contact'),
+        ]);
+        if (cancelled) return;
+        setSiteAddressOptions(addr.data || []);
+        setSiteContactOptions(contact.data || []);
+      } catch {
+        if (!cancelled) {
+          setSiteAddressOptions([]);
+          setSiteContactOptions([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
         const res = await letterheadMasterApi.list({ status: 'active' });
         if (cancelled) return;
         const options = res.data || [];
@@ -846,13 +1003,18 @@ export default function CreatePOPage() {
       );
       setTermsClauses(adaptClausesForDocumentType(loadedTerms, loadedDocType));
       setAnnexureClauses(adaptClausesForDocumentType(loadedAnnexure, loadedDocType));
-      setAnnexureIiRows(parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || ''));
+      {
+        const loadedIi = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '');
+        setAnnexureIiRows(loadedIi.length ? loadedIi : [emptyAnnexureIiRow()]);
+      }
       {
         const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
+        const addr = loadedDetails.siteAddress || String(po.deliveryAddress || '');
+        setDeliveryAddress(addr);
         setPoTermsDetails({
           ...loadedDetails,
           paymentTermsText: loadedDetails.paymentTermsText || String(po.paymentTerms || ''),
-          siteAddress: loadedDetails.siteAddress || String(po.deliveryAddress || ''),
+          siteAddress: addr,
         });
         setLocationGstNo(loadedDetails.buyerGstNo || '');
         setLetterheadLocationKey(loadedDetails.letterheadLocationId || '');
@@ -1088,6 +1250,63 @@ export default function CreatePOPage() {
       const firstLine = value.trim().split('\n')[0]?.trim();
       if (firstLine) setPaymentTerms(firstLine.slice(0, 120));
     }
+    if (key === 'siteAddress') {
+      setDeliveryAddress(value);
+    }
+  };
+
+  const saveSiteAddressLookup = async () => {
+    const label = newSiteAddress.trim();
+    if (!label) {
+      setSiteLookupError('Site address is required');
+      return;
+    }
+    setSavingSiteLookup(true);
+    setSiteLookupError('');
+    try {
+      const res = await masterApi.createPoSiteLookup({ type: 'site_address', label });
+      const saved = res.data;
+      setSiteAddressOptions((prev) => upsertSiteLookup(prev, saved));
+      updatePoTermsField('siteAddress', saved.label);
+      setNewSiteAddress('');
+      setAddingSiteAddress(false);
+    } catch (err) {
+      setSiteLookupError(err instanceof Error ? err.message : 'Could not save site address');
+    } finally {
+      setSavingSiteLookup(false);
+    }
+  };
+
+  const saveSiteContactLookup = async () => {
+    const label = newSiteContact.label.trim();
+    if (!label) {
+      setSiteLookupError('Contact name is required');
+      return;
+    }
+    setSavingSiteLookup(true);
+    setSiteLookupError('');
+    try {
+      const res = await masterApi.createPoSiteLookup({
+        type: 'site_contact',
+        label,
+        email: newSiteContact.email.trim(),
+        phone: newSiteContact.phone.trim(),
+      });
+      const saved = res.data;
+      setSiteContactOptions((prev) => upsertSiteLookup(prev, saved));
+      setPoTermsDetails((prev) => ({
+        ...prev,
+        siteContactPerson: saved.label,
+        siteContactEmail: saved.email || prev.siteContactEmail,
+        siteContactPhone: saved.phone || prev.siteContactPhone,
+      }));
+      setNewSiteContact({ label: '', email: '', phone: '' });
+      setAddingSiteContact(false);
+    } catch (err) {
+      setSiteLookupError(err instanceof Error ? err.message : 'Could not save site contact');
+    } finally {
+      setSavingSiteLookup(false);
+    }
   };
 
   const subtotal = useMemo(() => roundMoney(lineItems.reduce((s, i) => s + i.total, 0)), [lineItems]);
@@ -1117,7 +1336,7 @@ export default function CreatePOPage() {
       taxPercentage: i.taxPercentage || 0,
       discount: 0,
     })),
-    deliveryAddress,
+    deliveryAddress: poTermsDetails.siteAddress || deliveryAddress,
     expectedDeliveryDate,
     paymentTerms,
     incoterms,
@@ -1134,9 +1353,12 @@ export default function CreatePOPage() {
     footerLogo,
     terms: termsClauses,
     annexure: annexureClauses,
-    annexureIiRows,
+    annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
     annexureIiHtml: serializeAnnexureIi(annexureIiRows),
-    poTermsDetails,
+    poTermsDetails: {
+      ...poTermsDetails,
+      siteAddress: poTermsDetails.siteAddress || deliveryAddress,
+    },
     purchaseType: documentType,
   }), [
     poNumber,
@@ -1314,15 +1536,18 @@ export default function CreatePOPage() {
     setAnnexureClauses(
       adaptClausesForDocumentType((po.annexureClauses as PoLetterheadClause[]) || [], nextDocType)
     );
-    if (po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html) {
-      setAnnexureIiRows(parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || ''));
+    {
+      const loadedIi = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '');
+      if (loadedIi.length) setAnnexureIiRows(loadedIi);
     }
     {
       const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
+      const addr = loadedDetails.siteAddress || String(po.deliveryAddress || '');
+      setDeliveryAddress(addr);
       setPoTermsDetails({
         ...loadedDetails,
         paymentTermsText: loadedDetails.paymentTermsText || String(po.paymentTerms || ''),
-        siteAddress: loadedDetails.siteAddress || String(po.deliveryAddress || ''),
+        siteAddress: addr,
       });
     }
 
@@ -1398,7 +1623,10 @@ export default function CreatePOPage() {
         }))
       );
     }
-    if (payload.deliveryAddress) setDeliveryAddress(payload.deliveryAddress);
+    if (payload.deliveryAddress) {
+      setDeliveryAddress(payload.deliveryAddress);
+      setPoTermsDetails((prev) => ({ ...prev, siteAddress: payload.deliveryAddress || prev.siteAddress }));
+    }
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
     if (payload.paymentTerms) setPaymentTerms(payload.paymentTerms);
     if (payload.incoterms) setIncoterms(normalizeIncoterm(String(payload.incoterms)));
@@ -1470,8 +1698,8 @@ export default function CreatePOPage() {
       setActiveTab('terms');
       return;
     }
-    if (!deliveryAddress.trim()) {
-      alert('Please enter delivery address');
+    if (!(poTermsDetails.siteAddress || deliveryAddress).trim()) {
+      alert('Please select site / delivery address');
       setActiveTab('terms');
       return;
     }
@@ -1492,7 +1720,7 @@ export default function CreatePOPage() {
           taxPercentage: i.taxPercentage || 0,
           discount: 0,
         })),
-        deliveryAddress,
+        deliveryAddress: poTermsDetails.siteAddress || deliveryAddress,
         expectedDeliveryDate,
         paymentTerms,
         incoterms,
@@ -1509,7 +1737,7 @@ export default function CreatePOPage() {
         footerLogo,
         terms: filterNonEmptyClauses(termsClauses),
         annexure: filterNonEmptyClauses(annexureClauses),
-        annexureIiRows: annexureIiRows.filter(annexureIiHasContent),
+        annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
         annexureIiHtml: serializeAnnexureIi(annexureIiRows),
         poTermsDetails: {
           ...poTermsDetails,
@@ -2496,142 +2724,18 @@ export default function CreatePOPage() {
                   editorRevision={documentType}
                 />
 
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm w-full">
-                  <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50 flex-wrap">
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900">{docLabel} — Annexure II</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Add table rows for technical data, scope, specifications, and images. Extra rows print on additional pages.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 text-xs font-medium bg-white border border-gray-200 rounded-full text-gray-500">
-                        {annexureIiRows.length} row{annexureIiRows.length !== 1 ? 's' : ''}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setAnnexureIiRows((prev) => [...prev, emptyAnnexureIiRow()])}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
-                      >
-                        <i className="ri-add-line"></i>
-                        Add row
-                      </button>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[820px]">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase w-12">#</th>
-                          <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase w-48">Header</th>
-                          <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase">Description / Images</th>
-                          <th className="px-2 py-2.5 w-20"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {annexureIiRows.map((row, idx) => (
-                          <tr key={row.id} className="align-top">
-                            <td className="px-2 py-3 text-center text-xs font-bold text-gray-500">{idx + 1}</td>
-                            <td className="px-2 py-3">
-                              <input
-                                type="text"
-                                value={row.header}
-                                onChange={(e) =>
-                                  setAnnexureIiRows((prev) =>
-                                    prev.map((r) => (r.id === row.id ? { ...r, header: e.target.value } : r))
-                                  )
-                                }
-                                placeholder="e.g. Scope of Work"
-                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50"
-                              />
-                            </td>
-                            <td className="px-2 py-3">
-                              <RichTextEditor
-                                editorKey={`annexure-ii-${row.id}`}
-                                value={row.html}
-                                onChange={(html) =>
-                                  setAnnexureIiRows((prev) =>
-                                    prev.map((r) => (r.id === row.id ? { ...r, html } : r))
-                                  )
-                                }
-                                placeholder="Add text and one or more images..."
-                                minHeight={160}
-                                advanced
-                                allowImages
-                              />
-                            </td>
-                            <td className="px-2 py-3">
-                              <div className="flex flex-col items-center gap-1">
-                                <button
-                                  type="button"
-                                  title="Move up"
-                                  disabled={idx === 0}
-                                  onClick={() =>
-                                    setAnnexureIiRows((prev) => {
-                                      if (idx === 0) return prev;
-                                      const next = [...prev];
-                                      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                                      return next;
-                                    })
-                                  }
-                                  className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-30 cursor-pointer"
-                                >
-                                  <i className="ri-arrow-up-s-line"></i>
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Move down"
-                                  disabled={idx === annexureIiRows.length - 1}
-                                  onClick={() =>
-                                    setAnnexureIiRows((prev) => {
-                                      if (idx >= prev.length - 1) return prev;
-                                      const next = [...prev];
-                                      [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
-                                      return next;
-                                    })
-                                  }
-                                  className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-30 cursor-pointer"
-                                >
-                                  <i className="ri-arrow-down-s-line"></i>
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Remove row"
-                                  onClick={() =>
-                                    setAnnexureIiRows((prev) =>
-                                      prev.length <= 1 ? [emptyAnnexureIiRow()] : prev.filter((r) => r.id !== row.id)
-                                    )
-                                  }
-                                  className="w-7 h-7 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50 cursor-pointer"
-                                >
-                                  <i className="ri-delete-bin-line"></i>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
-                    <p className="text-[11px] text-gray-400">
-                      Use <strong>Add images</strong> to insert multiple pictures in a row. Click <strong>Add row</strong> for another page/section.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setAnnexureIiRows((prev) => [...prev, emptyAnnexureIiRow()])}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-dashed border-teal-400 text-teal-600 rounded-lg hover:bg-teal-50 cursor-pointer"
-                    >
-                      <i className="ri-add-line"></i>
-                      Add another row
-                    </button>
-                  </div>
-                </div>
+                <AnnexureIiTableEditor
+                  title={`${docLabel} — Annexure II`}
+                  rows={annexureIiRows}
+                  onChange={setAnnexureIiRows}
+                  docLabel={docLabel}
+                  editorRevision={documentType}
+                />
               </div>
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-              <div className="lg:col-span-2 space-y-5">
+              <div className="lg:col-span-3 space-y-5">
                 {/* Quick load POD fields from existing PO */}
                 <div className="bg-teal-50/60 border border-teal-200 rounded-xl p-4">
                   <div className="flex flex-col sm:flex-row sm:items-end gap-2">
@@ -2690,46 +2794,156 @@ export default function CreatePOPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    {/* Payment Terms — full width */}
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold text-gray-700">Payment Terms</label>
-                      <textarea
-                        value={poTermsDetails.paymentTermsText || paymentTerms}
-                        onChange={(e) => updatePoTermsField('paymentTermsText', e.target.value)}
-                        rows={4}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                  <div className="space-y-5">
+                    <AddableSelect
+                        label="Site / Delivery Address"
+                        icon="ri-map-pin-2-line"
+                        multiline
+                        value={poTermsDetails.siteAddress || deliveryAddress}
+                        placeholder="Select site / delivery address"
+                        options={siteAddressOptions.map((opt) => ({
+                          id: opt.id,
+                          label: opt.label,
+                        }))}
+                        adding={addingSiteAddress}
+                        onOpenAdd={() => {
+                          setSiteLookupError('');
+                          setAddingSiteContact(false);
+                          setAddingSiteAddress(true);
+                          setNewSiteAddress(poTermsDetails.siteAddress || deliveryAddress || '');
+                        }}
+                        onCloseAdd={() => {
+                          setAddingSiteAddress(false);
+                          setSiteLookupError('');
+                        }}
+                        onSelect={(opt) => updatePoTermsField('siteAddress', opt.label)}
+                        addForm={
+                          <>
+                            <textarea
+                              value={newSiteAddress}
+                              onChange={(e) => setNewSiteAddress(e.target.value)}
+                              rows={4}
+                              placeholder="Enter site address"
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                            />
+                            {siteLookupError && addingSiteAddress ? (
+                              <p className="text-xs text-red-600">{siteLookupError}</p>
+                            ) : null}
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAddingSiteAddress(false);
+                                  setSiteLookupError('');
+                                }}
+                                className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void saveSiteAddressLookup()}
+                                disabled={savingSiteLookup}
+                                className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-60 cursor-pointer"
+                              >
+                                {savingSiteLookup ? 'Saving...' : 'Add'}
+                              </button>
+                            </div>
+                          </>
+                        }
                       />
-                    </div>
-
-                    {/* Site address + contact stack side by side */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                      <div className="space-y-1.5">
-                        <label className="block text-xs font-semibold text-gray-700">Site Address</label>
-                        <textarea
-                          value={poTermsDetails.siteAddress}
-                          onChange={(e) => updatePoTermsField('siteAddress', e.target.value)}
-                          rows={5}
-                          className="w-full h-full min-h-[132px] px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                        <AddableSelect
+                          label="Site Contact Person"
+                          icon="ri-user-3-line"
+                          value={poTermsDetails.siteContactPerson}
+                          placeholder="Select site contact person"
+                          options={siteContactOptions.map((opt) => ({
+                            id: opt.id,
+                            label: opt.label,
+                            subLabel: [opt.email, opt.phone].filter(Boolean).join(' · '),
+                            email: opt.email,
+                            phone: opt.phone,
+                          }))}
+                          adding={addingSiteContact}
+                          onOpenAdd={() => {
+                            setSiteLookupError('');
+                            setAddingSiteAddress(false);
+                            setAddingSiteContact(true);
+                            setNewSiteContact({
+                              label: poTermsDetails.siteContactPerson || '',
+                              email: poTermsDetails.siteContactEmail || '',
+                              phone: poTermsDetails.siteContactPhone || '',
+                            });
+                          }}
+                          onCloseAdd={() => {
+                            setAddingSiteContact(false);
+                            setSiteLookupError('');
+                          }}
+                          onSelect={(opt) => {
+                            setPoTermsDetails((prev) => ({
+                              ...prev,
+                              siteContactPerson: opt.label,
+                              siteContactEmail: opt.email || prev.siteContactEmail,
+                              siteContactPhone: opt.phone || prev.siteContactPhone,
+                            }));
+                          }}
+                          addForm={
+                            <>
+                              <input
+                                type="text"
+                                value={newSiteContact.label}
+                                onChange={(e) => setNewSiteContact((prev) => ({ ...prev, label: e.target.value }))}
+                                placeholder="Contact name"
+                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              />
+                              <input
+                                type="email"
+                                value={newSiteContact.email}
+                                onChange={(e) => setNewSiteContact((prev) => ({ ...prev, email: e.target.value }))}
+                                placeholder="Email"
+                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              />
+                              <input
+                                type="text"
+                                value={newSiteContact.phone}
+                                onChange={(e) => setNewSiteContact((prev) => ({ ...prev, phone: e.target.value }))}
+                                placeholder="Phone"
+                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              />
+                              {siteLookupError && addingSiteContact ? (
+                                <p className="text-xs text-red-600">{siteLookupError}</p>
+                              ) : null}
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAddingSiteContact(false);
+                                    setSiteLookupError('');
+                                  }}
+                                  className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void saveSiteContactLookup()}
+                                  disabled={savingSiteLookup}
+                                  className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-60 cursor-pointer"
+                                >
+                                  {savingSiteLookup ? 'Saving...' : 'Add'}
+                                </button>
+                              </div>
+                            </>
+                          }
                         />
-                      </div>
-                      <div className="space-y-3">
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold text-gray-700">Site Contact Person</label>
-                          <input
-                            type="text"
-                            value={poTermsDetails.siteContactPerson}
-                            onChange={(e) => updatePoTermsField('siteContactPerson', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          />
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                         <div className="space-y-1.5">
                           <label className="block text-xs font-semibold text-gray-700">Site Contact Person&apos;s Mail</label>
                           <input
                             type="email"
                             value={poTermsDetails.siteContactEmail}
                             onChange={(e) => updatePoTermsField('siteContactEmail', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -2738,10 +2952,9 @@ export default function CreatePOPage() {
                             type="text"
                             value={poTermsDetails.siteContactPhone}
                             onChange={(e) => updatePoTermsField('siteContactPhone', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
                           />
                         </div>
-                      </div>
                     </div>
 
                     {/* Project manager fields — equal 2-col pairs */}
@@ -2847,7 +3060,9 @@ export default function CreatePOPage() {
                     </div>
                   </div>
                 </div>
+              </div>
 
+              <div className="lg:col-span-2 space-y-5">
                 {/* Payment & Commercial Terms */}
                 <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
                   <div className="flex items-center gap-2 mb-5">
@@ -2900,23 +3115,6 @@ export default function CreatePOPage() {
                       />
                     </div>
                   </div>
-                </div>
-
-                {/* Delivery Address */}
-                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                  <div className="flex items-center gap-2 mb-5">
-                    <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-lg">
-                      <i className="ri-map-pin-2-line text-teal-600"></i>
-                    </div>
-                    <h3 className="text-sm font-bold text-gray-900">Delivery Address</h3>
-                  </div>
-                  <textarea
-                    value={deliveryAddress}
-                    onChange={e => setDeliveryAddress(e.target.value)}
-                    rows={3}
-                    placeholder="Enter complete delivery address..."
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none bg-gray-50/50"
-                  />
                 </div>
 
                 {/* Special Instructions */}

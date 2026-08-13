@@ -10,25 +10,23 @@ export const LONG_PO_LETTERHEAD_DEFAULTS = {
   terms: [
     {
       termsHeader: 'Inco Terms',
-      termsDescription: '<p>As specified in this Purchase Order (Incoterms field).</p>',
+      termsDescription: '<p>$aos_quotes_inco_terms_c</p>',
     },
     {
       termsHeader: 'Delivery Schedule',
-      termsDescription:
-        '<p>Delivery shall be completed on or before the expected delivery date mentioned in this Purchase Order.</p>',
+      termsDescription: '<p>$aos_quotes_delivery_schedule_c</p>',
     },
     {
       termsHeader: 'Mode of Shipment',
-      termsDescription:
-        '<p>As agreed and specified under the applicable Incoterms / delivery instructions in this PO.</p>',
+      termsDescription: '<p>$aos_quotes_shipment_mode_c</p>',
     },
     {
       termsHeader: 'Payment Terms',
-      termsDescription: '<p>As specified in the Payment Terms of this Purchase Order.</p>',
+      termsDescription: '<p>$aos_quotes_payment_terms_c</p>',
     },
     {
       termsHeader: 'Note',
-      termsDescription: '<p>As specified in the Special Instructions / Notes of this Purchase Order.</p>',
+      termsDescription: '<p>$aos_quotes_notes_c</p>',
     },
     {
       termsHeader: 'Annexures',
@@ -174,10 +172,6 @@ export const LONG_PO_LETTERHEAD_DEFAULTS = {
     {
       termsHeader: 'Miscellaneous',
       termsDescription: `<p>Seller shall not assign, transfer, delegate or subcontract any of its rights or obligations under the Order without Buyer’s prior written consent. Any purported assignment or delegation in violation of this Section shall be null and void. No assignment shall relieve the Seller of any of its obligations hereunder. No modification, alteration or amendment of the Order shall be binding unless agreed to in writing and signed by Buyer. The Buyer reserves the right to amend order or any part thereof without assigning any reason. No waiver by any party of any of the provisions of the Order shall be effective unless explicitly set forth in writing and signed by the party so waiving. No failure to exercise, or delay in exercising, any rights, remedy, power or privilege arising from the Order by Buyer shall operate or be construed as a waiver thereof, nor shall any single or partial exercise of any right, remedy, or privilege hereunder preclude any other exercise of any additional right, remedy, or privilege.</p>`,
-    },
-    {
-      termsHeader: 'Annexure II — Approved technical document',
-      termsDescription: `<p>Approved technical document / specifications as agreed during RFQ evaluation and attached to this Purchase Order (to be uploaded / referenced separately as applicable).</p>`,
     },
   ],
 };

@@ -12,6 +12,8 @@ export default function RfqApprovalListPage() {
   const [items, setItems] = useState<PostRfqPendingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved'>('all');
+  const isBuyer = user?.role === 'SCM Buyer';
 
   const load = useCallback(async () => {
     try {
@@ -29,25 +31,60 @@ export default function RfqApprovalListPage() {
     load();
   }, [load]);
 
+  const pendingCount = items.filter((i) => i.approvalState === 'pending').length;
+  const approvedCount = items.filter((i) => i.approvalState === 'approved').length;
+  const visible = items.filter((i) => {
+    if (!isBuyer || filter === 'all') return true;
+    if (filter === 'pending') return i.approvalState === 'pending';
+    return i.approvalState === 'approved';
+  });
+
   return (
     <DashboardLayout>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">RFQ Post-Approval Queue</h1>
         <p className="text-sm text-gray-600 mt-1">
-          Review vendor comparison, negotiation rounds, and approve as <strong>{user?.role}</strong>
+          {isBuyer
+            ? 'Pending SCM Manager approval and approved RFQs ready to create PO'
+            : `Review vendor comparison, negotiation rounds, and approve as ${user?.role}`}
         </p>
       </div>
+
+      {isBuyer && (
+        <div className="flex gap-2 mb-5 flex-wrap">
+          {(
+            [
+              ['all', `All (${items.length})`],
+              ['pending', `Pending (${pendingCount})`],
+              ['approved', `Approved (${approvedCount})`],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilter(key)}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold ${
+                filter === key ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading pending approvals...</p>
-      ) : items.length === 0 ? (
+        <p className="text-sm text-gray-500">Loading RFQ approvals...</p>
+      ) : visible.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <i className="ri-checkbox-circle-line text-4xl text-gray-300"></i>
-          <p className="text-gray-600 mt-3">No pending RFQ approvals</p>
+          <p className="text-gray-600 mt-3">
+            {filter === 'approved' ? 'No approved RFQs' : filter === 'pending' ? 'No pending RFQ approvals' : 'No RFQ approvals'}
+          </p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
@@ -67,7 +104,7 @@ export default function RfqApprovalListPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {visible.map((item) => (
                 <tr key={item.prId} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-3 py-3 text-sm font-bold text-gray-900 truncate" title={item.prNumber}>
                     {item.prNumber}
@@ -99,10 +136,14 @@ export default function RfqApprovalListPage() {
                   </td>
                   <td className="px-3 py-3 overflow-hidden">
                     <span
-                      className="inline-flex max-w-full px-2 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full truncate"
+                      className={`inline-flex max-w-full px-2 py-1 text-xs font-semibold rounded-full truncate ${
+                        item.approvalState === 'approved'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
                       title={item.stageLabel}
                     >
-                      {item.stageLabel}
+                      {item.approvalState === 'approved' ? 'Approved' : 'Pending'} · {item.stageLabel}
                     </span>
                   </td>
                   <td className="px-3 py-3">
@@ -116,13 +157,21 @@ export default function RfqApprovalListPage() {
                       </Link>
                       <Link
                         to={
-                          item.stageLabel === 'SCM PO Create'
+                          item.approvalState === 'approved' ||
+                          item.stageLabel === 'SCM PO Create' ||
+                          item.stageLabel === 'Approved — Create PO'
                             ? `/scm/create-po?prId=${item.prId}&from=rfq-approval`
-                            : `/rfq-approval/${item.prId}?action=approve&from=rfq-approval`
+                            : `/rfq-approval/${item.prId}?from=rfq-approval`
                         }
                         className="inline-flex items-center gap-1 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 whitespace-nowrap"
                       >
-                        {item.stageLabel === 'SCM PO Create' ? 'Create PO' : 'Review'}{' '}
+                        {item.approvalState === 'approved' ||
+                        item.stageLabel === 'SCM PO Create' ||
+                        item.stageLabel === 'Approved — Create PO'
+                          ? 'Create PO'
+                          : isBuyer
+                            ? 'View'
+                            : 'Review'}{' '}
                         <i className="ri-arrow-right-line"></i>
                       </Link>
                     </div>

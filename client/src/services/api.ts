@@ -396,6 +396,7 @@ export interface PostRfqPendingItem {
   vendorCount: number;
   recommendedVendor: string;
   stageLabel: string;
+  approvalState?: 'pending' | 'approved';
 }
 
 export interface ScmRfqEntryItem {
@@ -995,6 +996,15 @@ export interface DepartmentRecord {
   budgetUtilized?: number;
 }
 
+export interface PoSiteLookupRecord {
+  id: number;
+  type: 'site_address' | 'site_contact';
+  label: string;
+  email: string;
+  phone: string;
+  status: string;
+}
+
 export interface ItemRecord {
   id: number;
   itemCode: string;
@@ -1081,6 +1091,20 @@ export const masterApi = {
   updateDepartment: (id: number, body: Record<string, unknown>) =>
     request<{ data: DepartmentRecord; message: string }>(`/api/masters/departments/${id}`, {
       method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  listPoSiteLookups: (type: 'site_address' | 'site_contact') => {
+    const q = new URLSearchParams({ type });
+    return request<{ data: PoSiteLookupRecord[] }>(`/api/masters/po-site-lookups?${q.toString()}`);
+  },
+  createPoSiteLookup: (body: {
+    type: 'site_address' | 'site_contact';
+    label: string;
+    email?: string;
+    phone?: string;
+  }) =>
+    request<{ data: PoSiteLookupRecord; message: string }>('/api/masters/po-site-lookups', {
+      method: 'POST',
       body: JSON.stringify(body),
     }),
   exportCategoriesCsv: () =>

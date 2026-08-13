@@ -181,6 +181,17 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_orders ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE workflow_tasks ADD COLUMN sla_notified_at TIMESTAMP NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN annexure_ii_html LONGTEXT NULL`,
+  `CREATE TABLE IF NOT EXISTS po_site_lookups (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    lookup_type ENUM('site_address', 'site_contact') NOT NULL,
+    label TEXT NOT NULL,
+    email VARCHAR(150) NULL,
+    phone VARCHAR(50) NULL,
+    status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_po_site_lookup_type (lookup_type, status)
+  )`,
   `ALTER TABLE document_number_sequences MODIFY COLUMN doc_type ENUM('PR', 'PO', 'WO') NOT NULL`,
   // Own-vendor HOD final: Yes → L2 → CFO; No → L2 → SCM Final (skip CFO)
   `ALTER TABLE rfq_configs ADD COLUMN require_cfo_approval TINYINT(1) NULL`,

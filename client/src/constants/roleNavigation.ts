@@ -301,9 +301,10 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
-    'nav.scm_rfq_entry',
     'nav.rfq_approval',
+    'nav.tasks',
     'nav.create_po',
+    'nav.scm_rfq_entry',
     'nav.track_po',
     'nav.po_excel_import',
     'nav.item_master',
@@ -433,14 +434,14 @@ export function ensureNavigation(role: string | undefined | null, navigation?: N
     });
   }
 
-  // SCM Buyer: Dashboard → RFQ Entry → …
+  // SCM Buyer: Dashboard → RFQ Approval → My Tasks → Create PO → …
   if (role === 'SCM Buyer') {
     const codes = new Set(merged.map((n) => n.code));
-    if (!codes.has('nav.scm_rfq_entry') && NAV_BY_CODE['nav.scm_rfq_entry']) {
-      merged = [...merged, NAV_BY_CODE['nav.scm_rfq_entry']];
-    }
-    if (!codes.has('nav.purchase_requests') && NAV_BY_CODE['nav.purchase_requests']) {
-      merged = [NAV_BY_CODE['nav.purchase_requests'], ...merged];
+    for (const code of ['nav.purchase_requests', 'nav.rfq_approval', 'nav.tasks', 'nav.create_po', 'nav.scm_rfq_entry']) {
+      if (!codes.has(code) && NAV_BY_CODE[code]) {
+        merged = [...merged, NAV_BY_CODE[code]];
+        codes.add(code);
+      }
     }
     const order = ROLE_DEFAULT_CODES['SCM Buyer'] || [];
     const rank = new Map(order.map((code, i) => [code, i]));

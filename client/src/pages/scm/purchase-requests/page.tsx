@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, Fragment, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { poApi } from '../../../services/api';
+import { poApi, rfqApi, taskApi, PostRfqPendingItem } from '../../../services/api';
 import PRBucketExpandedRow from './components/PRBucketExpandedRow';
 import PoSampleCsvTable from '../../../components/feature/PoSampleCsvTable';
 import {
@@ -40,6 +40,15 @@ type TrackStats = {
   pending: number;
   approved: number;
   rejected: number;
+};
+
+type TaskPreview = {
+  id: string | number;
+  prId?: number;
+  prNumber?: string;
+  title?: string;
+  actionPath?: string;
+  statusUI?: string;
 };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
@@ -88,6 +97,8 @@ export default function SCMPurchaseRequestsPage() {
   const [importPoNumber, setImportPoNumber] = useState('');
   const [importError, setImportError] = useState('');
   const [importChecking, setImportChecking] = useState(false);
+  const [rfqPending, setRfqPending] = useState<PostRfqPendingItem[]>([]);
+  const [myTasks, setMyTasks] = useState<TaskPreview[]>([]);
   const csvFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -151,6 +162,38 @@ export default function SCMPurchaseRequestsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [rfqRes, taskRes] = await Promise.all([
+          rfqApi.listPostApprovalPending().catch(() => ({ data: [] as PostRfqPendingItem[] })),
+          taskApi.list().catch(() => ({ data: [] as unknown[] })),
+        ]);
+        if (cancelled) return;
+        setRfqPending(rfqRes.data || []);
+        setMyTasks(
+          ((taskRes.data as TaskPreview[]) || []).map((t) => ({
+            id: t.id,
+            prId: t.prId,
+            prNumber: t.prNumber,
+            title: t.title,
+            actionPath: t.actionPath,
+            statusUI: t.statusUI,
+          }))
+        );
+      } catch {
+        if (!cancelled) {
+          setRfqPending([]);
+          setMyTasks([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadReadyOptions = async (): Promise<BucketRow[]> => {
     try {
@@ -268,12 +311,28 @@ export default function SCMPurchaseRequestsPage() {
     <DashboardLayout>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Purchase Requests</h1>
+          <h1 className="text-2xl font-bold text-gray-900">SCM Buyer Dashboard</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Create PO from ready PRs, or import details from an existing reference PO
+            RFQ approval, My Tasks, and Create PO from ready purchase requests
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => navigate('/rfq-approval')}
+            className="px-4 py-2.5 border border-teal-300 text-teal-800 rounded-lg text-sm font-semibold hover:bg-teal-50 flex items-center gap-2"
+          >
+            <i className="ri-bar-chart-box-line"></i>
+            RFQ Approval
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/tasks')}
+            className="px-4 py-2.5 border border-slate-300 text-slate-800 rounded-lg text-sm font-semibold hover:bg-slate-50 flex items-center gap-2"
+          >
+            <i className="ri-task-line"></i>
+            My Tasks
+          </button>
           <button
             type="button"
             onClick={() => navigate('/scm/create-po')}
@@ -301,7 +360,181 @@ export default function SCMPurchaseRequestsPage() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
+        {[
+          {
+            label: 'RFQ Approvals',
+            value: rfqPending.length,
+            sub: `${rfqPending.filter((i) => i.approvalState === 'pending').length} pending · ${rfqPending.filter((i) => i.approvalState === 'approved').length} approved`,
+            icon: 'ri-bar-chart-box-line',
+            to: '/rfq-approval',
+            border: 'border-teal-100',
+            text: 'text-teal-700',
+            iconBg: 'bg-teal-100',
+          },
+          {
+            label: 'My Tasks',
+            value: myTasks.length,
+            sub: 'Open workflow tasks',
+            icon: 'ri-task-line',
+            to: '/tasks',
+            border: 'border-slate-100',
+            text: 'text-slate-700',
+            iconBg: 'bg-slate-100',
+          },
+          {
+            label: 'Ready for PO',
+            value: stats.readyForPO,
+            sub: 'PRs ready to convert',
+            icon: 'ri-checkbox-circle-line',
+            to: null as string | null,
+            border: 'border-emerald-100',
+            text: 'text-emerald-700',
+            iconBg: 'bg-emerald-100',
+            onClick: () => {
+              setStatusFilter('ready');
+              setPage(1);
+              setExpandedKey(null);
+            },
+          },
+          {
+            label: 'Create PO',
+            value: 'Open',
+            sub: 'Start a new purchase order',
+            icon: 'ri-shopping-cart-2-line',
+            to: '/scm/create-po',
+            border: 'border-teal-100',
+            text: 'text-teal-700',
+            iconBg: 'bg-teal-100',
+          },
+        ].map((card) => (
+          <button
+            key={card.label}
+            type="button"
+            onClick={() => {
+              if (card.to) navigate(card.to);
+              else card.onClick?.();
+            }}
+            className={`text-left bg-white rounded-xl border ${card.border} p-5 hover:shadow-md transition-shadow cursor-pointer`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{card.label}</p>
+                <p className="text-3xl font-bold text-gray-900">{card.value}</p>
+                <p className={`text-xs mt-1 ${card.text}`}>{card.sub}</p>
+              </div>
+              <div className={`w-11 h-11 ${card.iconBg} rounded-xl flex items-center justify-center shrink-0`}>
+                <i className={`${card.icon} text-xl ${card.text}`}></i>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">RFQ Approvals</h2>
+              <p className="text-xs text-gray-500">Pending manager approval and approved for Create PO</p>
+            </div>
+            <Link to="/rfq-approval" className="text-xs font-semibold text-teal-700 hover:text-teal-900">
+              Open queue →
+            </Link>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {rfqPending.length === 0 ? (
+              <p className="px-5 py-8 text-sm text-gray-400 text-center">No RFQ approvals waiting</p>
+            ) : (
+              rfqPending.slice(0, 5).map((item) => (
+                <button
+                  key={item.prId}
+                  type="button"
+                  onClick={() =>
+                    navigate(
+                      item.approvalState === 'approved'
+                        ? `/scm/create-po?prId=${item.prId}&from=rfq-approval`
+                        : `/rfq-approval/${item.prId}?from=rfq-approval`
+                    )
+                  }
+                  className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 text-left"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-teal-700 truncate">
+                      {item.prNumber || `PR #${item.prId}`}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {item.title || item.stageLabel || 'RFQ approval'}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      item.approvalState === 'approved'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {item.approvalState === 'approved' ? 'Approved' : 'Pending'}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">My Tasks</h2>
+              <p className="text-xs text-gray-500">Create PO and other workflow tasks</p>
+            </div>
+            <Link to="/tasks" className="text-xs font-semibold text-teal-700 hover:text-teal-900">
+              Open tasks →
+            </Link>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {myTasks.length === 0 ? (
+              <p className="px-5 py-8 text-sm text-gray-400 text-center">No open tasks</p>
+            ) : (
+              myTasks.slice(0, 5).map((task) => (
+                <button
+                  key={String(task.id)}
+                  type="button"
+                  onClick={() => {
+                    if (task.actionPath) {
+                      navigate(task.actionPath);
+                      return;
+                    }
+                    if (task.prId) {
+                      navigate(`/scm/create-po?prId=${task.prId}&from=tasks`);
+                      return;
+                    }
+                    navigate('/tasks');
+                  }}
+                  className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 text-left"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-teal-700 truncate">
+                      {task.prNumber || `Task #${task.id}`}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {task.title || task.statusUI || 'Workflow task'}
+                    </p>
+                  </div>
+                  <i className="ri-arrow-right-s-line text-gray-400 text-lg"></i>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
       {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
+
+      <div className="mb-3">
+        <h2 className="text-base font-bold text-gray-900">Purchase Requests</h2>
+        <p className="text-xs text-gray-500">Create PO from ready PRs, or import from an existing reference PO</p>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-5">
         {[

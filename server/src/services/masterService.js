@@ -836,3 +836,66 @@ export async function updateDepartment(id, body) {
   const [rows] = await pool.query(`SELECT * FROM departments WHERE id = ?`, [id]);
   return mapDepartment(rows[0]);
 }
+
+const SITE_LOOKUP_TYPES = new Set(['site_address', 'site_contact']);
+
+function mapSiteLookup(row) {
+  return {
+    id: row.id,
+    type: row.lookup_type,
+    label: row.label || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    status: row.status,
+  };
+}
+
+export async function listPoSiteLookups({ type, search } = {}) {
+  const lookupType = SITE_LOOKUP_TYPES.has(String(type || '')) ? String(type) : '';
+  let sql = `SELECT * FROM po_site_lookups WHERE status = 'active'`;
+  const params = [];
+  if (lookupType) {
+    sql += ` AND lookup_type = ?`;
+    params.push(lookupType);
+  }
+  if (search) {
+    sql += ` AND (label LIKE ? OR COALESCE(email,'') LIKE ? OR COALESCE(phone,'') LIKE ?)`;
+    const q = `%${search}%`;
+    params.push(q, q, q);
+  }
+  sql += ` ORDER BY updated_at DESC, id DESC`;
+  const [rows] = await pool.query(sql, params);
+  return rows.map(mapSiteLookup);
+}
+
+export async function createPoSiteLookup(body = {}) {
+  const lookupType = String(body.type || body.lookupType || '').trim();
+  if (!SITE_LOOKUP_TYPES.has(lookupType)) {
+    throw new Error('Lookup type must be site_address or site_contact');
+  }
+  const label = String(body.label || body.name || body.address || '').trim();
+  if (!label) {
+    throw new Error(lookupType === 'site_contact' ? 'Contact name is required' : 'Site address is required');
+  }
+  const email = String(body.email || '').trim();
+  const phone = String(body.phone || '').trim();
+
+  const [dup] = await pool.query(
+    `SELECT id FROM po_site_lookups
+     WHERE lookup_type = ? AND LOWER(label) = LOWER(?) AND status = 'active'
+     LIMIT 1`,
+    [lookupType, label]
+  );
+  if (dup.length) {
+    const [rows] = await pool.query(`SELECT * FROM po_site_lookups WHERE id = ?`, [dup[0].id]);
+    return mapSiteLookup(rows[0]);
+  }
+
+  const [result] = await pool.query(
+    `INSERT INTO po_site_lookups (lookup_type, label, email, phone, status)
+     VALUES (?, ?, ?, ?, 'active')`,
+    [lookupType, label, email || null, phone || null]
+  );
+  const [rows] = await pool.query(`SELECT * FROM po_site_lookups WHERE id = ?`, [result.insertId]);
+  return mapSiteLookup(rows[0]);
+}

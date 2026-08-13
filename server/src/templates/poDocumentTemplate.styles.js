@@ -296,6 +296,18 @@ export const PO_STYLES = `
     page-break-after: avoid;
     break-after: avoid;
   }
+  .annexure-ii-meta {
+    padding: 6px 14px 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: #333;
+  }
+  .annexure-ii-header {
+    padding: 8px 14px 0;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .annexure-ii-comments { margin-top: 10px; }
   .annexure-ii-body {
     padding: 12px 14px;
     font-size: 12px;
@@ -340,16 +352,6 @@ export const PO_STYLES = `
     border: 1px solid #000;
     padding: 5px 7px;
     font-size: 11px;
-  }
-  table.annexure-ii-table thead {
-    display: table-header-group !important;
-  }
-  table.annexure-ii-table tr {
-    page-break-inside: auto !important;
-    break-inside: auto !important;
-  }
-  table.annexure-ii-table td .annexure-ii-body {
-    padding: 4px 2px;
   }
   table.terms-compact th,
   table.terms-compact td { padding: 5px 7px; font-size: 11px; }

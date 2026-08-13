@@ -1783,6 +1783,14 @@ export async function listPostRfqPending(user) {
       [PR_STATUS.APPROVED]
     );
     for (const row of orphanRows) idSet.add(row.id);
+
+    // Also show RFQs still waiting on SCM Manager vendor approval
+    const [pendingMgrRows] = await pool.query(
+      `SELECT id FROM purchase_requests WHERE status = ?
+       ORDER BY COALESCE(submitted_at, created_at, updated_at) DESC, id DESC`,
+      [PR_STATUS.PENDING_BUSINESS_APPROVAL]
+    );
+    for (const row of pendingMgrRows) idSet.add(row.id);
   }
 
   const rows = [...idSet].map((id) => ({ id }));
@@ -1804,8 +1812,19 @@ export async function listPostRfqPending(user) {
     const buyerOrphan =
       user.role === 'SCM Buyer' &&
       pr.status === PR_STATUS.APPROVED &&
-      roleConfig.status === PR_STATUS.PENDING_SCM_PO;
-    if (!statusMatches && !buyerOrphan) continue;
+      (roleConfig.status === PR_STATUS.PENDING_SCM_PO || !pendingTask);
+    // Buyer also tracks RFQs still pending SCM Manager vendor approval
+    const buyerPendingManager =
+      user.role === 'SCM Buyer' && pr.status === PR_STATUS.PENDING_BUSINESS_APPROVAL;
+    if (!statusMatches && !buyerOrphan && !buyerPendingManager) continue;
+
+    const approvalState =
+      pr.status === PR_STATUS.PENDING_BUSINESS_APPROVAL ? 'pending' : 'approved';
+    const stageLabel = buyerPendingManager
+      ? 'Pending SCM Manager Approval'
+      : buyerOrphan
+        ? 'Approved — Create PO'
+        : roleConfig.label;
 
     const config = await getOrCreateRfqConfig(row.id);
     const [vendorCount] = await pool.query(
@@ -1839,7 +1858,8 @@ export async function listPostRfqPending(user) {
       submittedDate: pr.submittedDate,
       vendorCount: vendorCount[0].cnt,
       recommendedVendor,
-      stageLabel: roleConfig.label,
+      stageLabel,
+      approvalState,
     });
   }
   return results;

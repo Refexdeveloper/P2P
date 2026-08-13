@@ -61,9 +61,10 @@ export const ROLE_DEFAULT_PERMISSIONS = {
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
-    'nav.scm_rfq_entry',
     'nav.rfq_approval',
+    'nav.tasks',
     'nav.create_po',
+    'nav.scm_rfq_entry',
     'nav.track_po',
     'nav.po_excel_import',
     'nav.item_master',
@@ -192,6 +193,9 @@ export async function getUserPermissionCodes(userId, role) {
         if (role === 'SCM Buyer') {
           healCodes.push(
             'nav.purchase_requests',
+            'nav.rfq_approval',
+            'nav.tasks',
+            'nav.create_po',
             'nav.scm_rfq_entry',
             'nav.buyer_final_verify',
             'nav.track_po',

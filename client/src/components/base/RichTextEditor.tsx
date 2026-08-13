@@ -97,46 +97,27 @@ export default function RichTextEditor({
     emitHtml();
   };
 
-  const insertImageHtml = (src: string, alt: string) => {
-    const html =
-      `<figure class="annexure-figure" style="margin:12px 0;text-align:center;">` +
-      `<img src="${src}" alt="${alt.replace(/"/g, '')}" ` +
-      `style="max-width:100%;height:auto;display:block;margin:0 auto;border:1px solid #d1d5db;" />` +
-      `</figure><p><br></p>`;
-    editorRef.current?.focus();
-    document.execCommand('styleWithCSS', false, 'true');
-    const ok = document.execCommand('insertHTML', false, html);
-    if (!ok && editorRef.current) {
-      editorRef.current.insertAdjacentHTML('beforeend', html);
+  const insertImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      alert('Image is too large. Please use an image under 1.5 MB.');
+      return;
     }
-    emitHtml();
-  };
-
-  const insertImageFile = (file: File) =>
-    new Promise<void>((resolve) => {
-      if (!file.type.startsWith('image/')) {
-        resolve();
-        return;
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        alert(`"${file.name}" is too large. Use an image under 1.5 MB.`);
-        resolve();
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const src = String(reader.result || '');
-        if (src.startsWith('data:image/')) insertImageHtml(src, file.name);
-        resolve();
-      };
-      reader.onerror = () => resolve();
-      reader.readAsDataURL(file);
-    });
-
-  const insertImageFiles = async (files: File[]) => {
-    for (const file of files) {
-      await insertImageFile(file);
-    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = String(reader.result || '');
+      if (!src.startsWith('data:image/')) return;
+      editorRef.current?.focus();
+      document.execCommand('styleWithCSS', false, 'true');
+      const html =
+        `<figure class="annexure-figure" style="margin:12px 0;text-align:center;">` +
+        `<img src="${src}" alt="${file.name.replace(/"/g, '')}" ` +
+        `style="max-width:100%;height:auto;display:block;margin:0 auto;border:1px solid #d1d5db;" />` +
+        `</figure><p><br></p>`;
+      document.execCommand('insertHTML', false, html);
+      emitHtml();
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleInput = () => emitHtml();
@@ -148,7 +129,8 @@ export default function RichTextEditor({
       if (item.type.startsWith('image/')) {
         e.preventDefault();
         const file = item.getAsFile();
-        if (file) void insertImageFile(file);
+        if (file) insertImageFile(file);
+        return;
       }
     }
   };
@@ -252,17 +234,16 @@ export default function RichTextEditor({
               className="h-8 px-2 inline-flex items-center gap-1 rounded hover:bg-gray-200 text-gray-600 cursor-pointer text-xs font-medium"
             >
               <i className="ri-image-add-line text-sm"></i>
-              Add images
+              Image
             </button>
             <input
               ref={fileRef}
               type="file"
               accept="image/*"
-              multiple
               className="hidden"
               onChange={(e) => {
-                const files = Array.from(e.target.files || []);
-                if (files.length) void insertImageFiles(files);
+                const file = e.target.files?.[0];
+                if (file) insertImageFile(file);
                 e.target.value = '';
               }}
             />

@@ -1,4 +1,5 @@
 import { PO_STYLES, PO_PDF_LAYOUT } from './poDocumentTemplate.styles.js';
+import { parseAnnexureIi, annexureIiRowIsEmpty } from '../utils/annexureIi.js';
 
 export { PO_PDF_LAYOUT };
 
@@ -413,17 +414,49 @@ function lineItemsHtml(po) {
   </div>`;
 }
 
-/** Replace clause placeholders with live PO entity + vendor */
+function placeholderText(value, fallback = '—') {
+  const text = String(value || '').trim();
+  return escapeHtml(text || fallback).replace(/\n/g, '<br>');
+}
+
+/** Replace clause placeholders with live PO entity + vendor + commercial fields */
 function applyClausePlaceholders(html, po) {
   const company = escapeHtml(po.entity || po.entityName || 'Refex Group of Companies');
   const vendor = escapeHtml(po.vendorName || 'Vendor');
+  const td = po.poTermsDetails || {};
   const isWorkOrder =
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   let out = String(html || '')
     .replace(/\[Company Name\]/gi, company)
     .replace(/\[Vendor Name\]/gi, vendor)
     .replace(/\$aos_quotes_company_name_c/gi, company)
-    .replace(/\$accounts_aos_quotes_1_name_name/gi, vendor);
+    .replace(/\$accounts_aos_quotes_1_name_name/gi, vendor)
+    .replace(/\$aos_quotes_inco_terms_c/gi, placeholderText(po.incoterms))
+    .replace(/\$aos_quotes_delivery_schedule_c/gi, placeholderText(po.expectedDeliveryDate))
+    .replace(/\$aos_quotes_shipment_mode_c/gi, placeholderText(po.incoterms))
+    .replace(
+      /\$aos_quotes_payment_terms_c/gi,
+      placeholderText(td.paymentTermsText || po.paymentTerms)
+    )
+    .replace(/\$aos_quotes_notes_c/gi, placeholderText(po.specialInstructions))
+    .replace(
+      /\$aos_quotes_site_address_c/gi,
+      placeholderText(td.siteAddress || po.deliveryAddress)
+    )
+    .replace(/\$aos_quotes_contact_person_c/gi, placeholderText(td.siteContactPerson))
+    .replace(/\$aos_quotes_site_contact_phone_c/gi, placeholderText(td.siteContactPhone))
+    .replace(/\$aos_quotes_contact_person_mail_c/gi, placeholderText(td.siteContactEmail))
+    .replace(/\$aos_quotes_project_manager_c/gi, placeholderText(td.projectManagerHo))
+    .replace(
+      /\$aos_quotes_projectmanagercontactnumber_c/gi,
+      placeholderText(td.projectManagerContact)
+    )
+    .replace(/\$aos_quotes_pm_email_c/gi, placeholderText(td.projectManagerEmail))
+    .replace(
+      /\$aos_quotes_invoicing_address_c/gi,
+      placeholderText(td.invoicingAddress || td.locationName)
+    )
+    .replace(/\$aos_quotes_original_address_c/gi, placeholderText(td.mailingAddress));
   if (isWorkOrder) {
     out = out
       .replace(/purchase\s+order\s*\/\s*work\s+order(?:\s*\/\s*service\s+order)?/gi, 'Work Order')
@@ -495,92 +528,49 @@ function annexureHtmlIsEmpty(html) {
     .trim();
 }
 
-function normalizeAnnexureIiRow(row, index = 0) {
-  if (!row || typeof row !== 'object') {
-    return { header: '', html: String(row || '') };
-  }
-  const html = String(row.html || row.termsDescription || row.terms_description || row.content || '');
-  const header = String(row.header || row.termsHeader || row.terms_header || row.title || '');
-  return {
-    id: row.id || `row-${index + 1}`,
-    header,
-    html,
-  };
-}
-
-/** Annexure II is stored as JSON rows, or a legacy single HTML blob. */
-export function parseAnnexureIi(raw) {
-  if (Array.isArray(raw)) {
-    return raw.map(normalizeAnnexureIiRow).filter((r) => r.header.trim() || !annexureHtmlIsEmpty(r.html));
-  }
-  const s = String(raw || '').trim();
-  if (!s) return [];
-  if (s.startsWith('[') || s.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(s);
-      if (Array.isArray(parsed)) {
-        return parsed.map(normalizeAnnexureIiRow).filter((r) => r.header.trim() || !annexureHtmlIsEmpty(r.html));
-      }
-      if (Array.isArray(parsed?.rows)) {
-        return parsed.rows.map(normalizeAnnexureIiRow).filter((r) => r.header.trim() || !annexureHtmlIsEmpty(r.html));
-      }
-      if (parsed?.html || parsed?.header) {
-        const row = normalizeAnnexureIiRow(parsed);
-        return row.header.trim() || !annexureHtmlIsEmpty(row.html) ? [row] : [];
-      }
-    } catch {
-      /* treat as HTML */
-    }
-  }
-  return annexureHtmlIsEmpty(s) ? [] : [{ header: '', html: s }];
-}
-
-export function serializeAnnexureIi(rows) {
-  const list = (Array.isArray(rows) ? rows : []).map(normalizeAnnexureIiRow)
-    .filter((r) => r.header.trim() || !annexureHtmlIsEmpty(r.html));
-  return list.length ? JSON.stringify(list) : '';
-}
-
-function annexureIiTableHtml(rows, docLabel, startIndex = 0) {
-  const body = rows.map((item, idx) => `
-      <tr>
-        <td class="sno-col">${startIndex + idx + 1}.</td>
-        <td class="head-col"><strong>${escapeHtml(item.header || `Item ${startIndex + idx + 1}`)}</strong></td>
-        <td><div class="annexure-ii-body">${sanitizeAnnexureHtml(item.html)}</div></td>
-      </tr>`).join('');
-
-  return `
-      <div class="annexure-card annexure-ii">
-        <table class="terms terms-compact annexure-table annexure-ii-table">
-          <thead>
-            <tr>
-              <th class="section-title" colspan="3">ANNEXURE-II — TECHNICAL DATA / SCOPE / SPECIFICATIONS (${escapeHtml(docLabel).toUpperCase()})</th>
-            </tr>
-            <tr class="col-heads">
-              <th class="sno-col">S.NO.</th>
-              <th class="head-col">HEADERS</th>
-              <th>DESCRIPTION / IMAGES</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${body}
-          </tbody>
-        </table>
-      </div>`;
-}
-
 function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
-  const rows = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '');
+  const rows = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '').filter(
+    (row) => !annexureIiRowIsEmpty(row)
+  );
   if (!rows.length) return '';
 
-  if (forPdf) {
-    return wrapSheet(annexureIiTableHtml(rows, docLabel), 'page-annexure-ii', po, true);
-  }
-
+  const total = rows.length;
   return rows
-    .map((row, idx) =>
-      wrapSheet(annexureIiTableHtml([row], docLabel, idx), 'page-annexure-ii', po, false)
-    )
+    .map((row, idx) => {
+      const headerHtml = sanitizeAnnexureHtml(row.header || '');
+      const bodyHtml = sanitizeAnnexureHtml(row.description || '');
+      const extraImages = (row.images || [])
+        .map((img) => {
+          const src = String(img.src || '').trim();
+          if (!src) return '';
+          const caption = String(img.caption || '').trim();
+          return `<figure class="annexure-figure"><img src="${safeImgSrc(src)}" alt="" />${
+            caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''
+          }</figure>`;
+        })
+        .join('');
+      const comments = String(row.comments || '').trim();
+      return wrapSheet(
+        `
+      <div class="annexure-ii">
+        <div class="annexure-ii-title">ANNEXURE-II — TECHNICAL DATA / SCOPE / SPECIFICATIONS (${escapeHtml(
+          docLabel
+        ).toUpperCase()})</div>
+        <div class="annexure-ii-meta">Item ${idx + 1} of ${total}</div>
+        ${
+          headerHtml && !annexureHtmlIsEmpty(headerHtml)
+            ? `<div class="annexure-ii-header">${headerHtml}</div>`
+            : ''
+        }
+        <div class="annexure-ii-body">${bodyHtml}${extraImages}${
+          comments ? `<p class="annexure-ii-comments"><strong>Comments:</strong> ${escapeHtml(comments)}</p>` : ''
+        }</div>
+      </div>`,
+        'page-annexure-ii',
+        po,
+        forPdf
+      );
+    })
     .join('');
 }
 
@@ -628,16 +618,12 @@ function specialNotesHtml(po, options = {}) {
   return wrapSheet(
     `
     <div class="special-notes">
-      <p><strong>PO TERMS &amp; CONDITIONS DETAILS:</strong></p>
-      <p><span class="lbl">Payment Terms:</span> ${escapeHtml(paymentText).replace(/\n/g, '<br>')}</p>
+      <p><strong>SPECIAL NOTES (if any):</strong></p>
       ${siteAddress ? `<p><span class="lbl">Site Address:</span> ${escapeHtml(siteAddress).replace(/\n/g, '<br>')}</p>` : ''}
-      ${td.siteContactPerson ? `<p><span class="lbl">Site Contact Person:</span> ${escapeHtml(td.siteContactPerson)}</p>` : ''}
-      ${td.siteContactPhone ? `<p><span class="lbl">Site Contact Phone:</span> ${escapeHtml(td.siteContactPhone)}</p>` : ''}
-      ${td.siteContactEmail ? `<p><span class="lbl">Site Contact Email:</span> ${escapeHtml(td.siteContactEmail)}</p>` : ''}
-      ${td.projectManagerHo ? `<p><span class="lbl">Project Manager at HO:</span> ${escapeHtml(td.projectManagerHo)}</p>` : ''}
-      ${td.projectManagerContact ? `<p><span class="lbl">Project Manager Contact:</span> ${escapeHtml(td.projectManagerContact)}</p>` : ''}
-      ${td.projectManagerEmail ? `<p><span class="lbl">Project Manager Email:</span> ${escapeHtml(td.projectManagerEmail)}</p>` : ''}
-      ${td.invoicingAddress || td.locationName || td.buyerGstNo ? `<div><span class="lbl">Invoicing Address:</span> ${(() => {
+      ${td.siteContactPerson || td.siteContactPhone || td.siteContactEmail ? `<p><span class="lbl">Contact person at the site:</span> Name: ${escapeHtml(td.siteContactPerson || '—')}, Phone: ${escapeHtml(td.siteContactPhone || '—')}, Email: ${escapeHtml(td.siteContactEmail || '—')}</p>` : ''}
+      ${td.projectManagerHo || td.projectManagerContact || td.projectManagerEmail ? `<p><span class="lbl">Project Manager at the head office:</span> ${escapeHtml(td.projectManagerHo || '—')}, Phone: ${escapeHtml(td.projectManagerContact || '—')}, Email: ${escapeHtml(td.projectManagerEmail || '—')}</p>` : ''}
+      <p><span class="lbl">Payment Terms:</span> ${escapeHtml(paymentText).replace(/\n/g, '<br>')}</p>
+      ${td.invoicingAddress || td.locationName || td.buyerGstNo ? `<div><p><span class="lbl">Invoicing address:</span></p><p><strong>${escapeHtml(entityLabel)},</strong></p> ${(() => {
         const raw = String(td.invoicingAddress || '').trim();
         if (looksLikeHtml(raw)) return `<div class="inv-addr-rich">${raw}</div>`;
         const lines = [
@@ -653,11 +639,10 @@ function specialNotesHtml(po, options = {}) {
         }
         return escapeHtml(lines.join('\n')).replace(/\n/g, '<br>');
       })()}</div>` : ''}
-      ${td.mailingAddress ? `<p><span class="lbl">Mailing Address:</span> ${escapeHtml(td.mailingAddress).replace(/\n/g, '<br>')}</p>` : ''}
+      ${td.mailingAddress ? `<p><span class="lbl">Original invoice to be sent at:</span></p><p><strong>Refex Group of Companies,</strong></p><p>${escapeHtml(td.mailingAddress).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.subject ? `<p><span class="lbl">Subject:</span> ${escapeHtml(td.subject).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.reasonForCancellation ? `<p><span class="lbl">Reason For Cancellation:</span> ${escapeHtml(td.reasonForCancellation).replace(/\n/g, '<br>')}</p>` : ''}
-      <p><strong>SPECIAL NOTES (if any):</strong></p>
-      ${po.specialInstructions ? `<p><span class="lbl">Instructions:</span>${escapeHtml(po.specialInstructions).replace(/\n/g, '<br>')}</p>` : ''}
+      ${po.specialInstructions ? `<p><span class="lbl">Note:</span> ${escapeHtml(po.specialInstructions).replace(/\n/g, '<br>')}</p>` : ''}
       <p><span class="lbl">PR Reference:</span> ${escapeHtml(po.prNumber)}</p>
       <p><span class="lbl">Department:</span> ${escapeHtml(po.department || '—')}</p>
       <p><span class="lbl">Requester:</span> ${escapeHtml(po.requester || '—')}</p>

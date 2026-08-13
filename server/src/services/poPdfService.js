@@ -6,11 +6,10 @@ import puppeteer from 'puppeteer-core';
 import {
   buildPoDocumentHtml,
   buildPoPdfChromeTemplates,
-  parseAnnexureIi,
-  serializeAnnexureIi,
   PO_PDF_LAYOUT,
 } from '../templates/poDocumentTemplate.js';
 import { buildSignatureRenderOptions } from './signatureService.js';
+import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 
 export function buildPoHtml(po, options = {}) {
   return buildPoDocumentHtml(po, options);
@@ -155,14 +154,22 @@ async function inlinePoBranding(po = {}) {
       ? await inlineHtmlImages(footer)
       : await inlineImageSrc(footer);
   }
-  const annexureIiRaw = po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '';
-  const annexureRows = parseAnnexureIi(annexureIiRaw);
+  const annexureRows = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '');
   if (annexureRows.length) {
     const inlined = [];
     for (const row of annexureRows) {
+      const images = [];
+      for (const img of row.images || []) {
+        images.push({
+          ...img,
+          src: await inlineImageSrc(img.src),
+        });
+      }
       inlined.push({
         ...row,
-        html: await inlineHtmlImages(row.html),
+        header: await inlineHtmlImages(row.header || ''),
+        description: await inlineHtmlImages(row.description || ''),
+        images,
       });
     }
     next.annexureIiRows = inlined;

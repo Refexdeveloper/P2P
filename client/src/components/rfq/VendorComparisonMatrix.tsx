@@ -683,9 +683,9 @@ export default function VendorComparisonMatrix({
                           ) : (
                             <span className="truncate inline-block max-w-[120px] sm:max-w-[160px]" title={col.vendorName}>
                               {col.vendorName}
-                            </span>
-                          )}
-                        </th>
+                      </span>
+                    )}
+                  </th>
                       );
                     })}
                   </tr>
@@ -704,11 +704,11 @@ export default function VendorComparisonMatrix({
                           Amount
                         </th>
                       </Fragment>
-                    ))}
-                  </tr>
-                </thead>
+                ))}
+              </tr>
+            </thead>
 
-                <tbody>
+            <tbody>
                   {displayLines.map((li, lineIdx) => (
                     <tr key={String(li.id)} className="hover:bg-[#F8FAFC]">
                       <td
@@ -790,7 +790,7 @@ export default function VendorComparisonMatrix({
                                 ? 'Yes'
                                 : 'No'
                               : String(raw);
-                        return (
+                return (
                           <Fragment key={`${col.key}-info-${param.id}`}>
                             <td className="px-2 sm:px-3 py-3 border-b border-l border-[#E5EAF0] text-right text-slate-300 tabular-nums">
                               —
@@ -946,7 +946,7 @@ export default function VendorComparisonMatrix({
                                 </div>
                               )}
                             </div>
-                          </td>
+                        </td>
                         </Fragment>
                       );
                     })}
@@ -965,7 +965,7 @@ export default function VendorComparisonMatrix({
           <div className="px-4 sm:px-5 py-4 border-b border-[#E5EAF0]">
             <p className="text-sm font-semibold text-[#64748B]">Quotation of:</p>
             <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Technical Specification</h2>
-          </div>
+                  </div>
 
           {/* Mobile cards */}
           <div className="md:hidden p-3 space-y-3">
@@ -1027,9 +1027,9 @@ export default function VendorComparisonMatrix({
                     <div className="px-3 py-2.5 flex items-center justify-between gap-3">
                       <span className="text-xs font-semibold text-slate-600">Quotation File</span>
                       {latestCol?.quotationFileName && latestCol.submissionId && onPreviewFile ? (
-                        <button
-                          type="button"
-                          onClick={() =>
+                      <button
+                        type="button"
+                        onClick={() =>
                             onPreviewFile(
                               latestCol.submissionId!,
                               vendor.name,
@@ -1037,14 +1037,14 @@ export default function VendorComparisonMatrix({
                             )
                           }
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5EAF0] text-xs font-semibold text-[#1769E0]"
-                        >
-                          <i className="ri-eye-line"></i>
-                          Preview
-                        </button>
-                      ) : (
+                      >
+                        <i className="ri-eye-line"></i>
+                        Preview
+                      </button>
+                    ) : (
                         <span className="text-slate-300">—</span>
                       )}
-                    </div>
+      </div>
                   </div>
                 </article>
               );
@@ -1068,7 +1068,7 @@ export default function VendorComparisonMatrix({
                     >
                       <span className="truncate inline-block max-w-[140px] md:max-w-[180px]" title={vendor.name}>
                         {vendor.name}
-                      </span>
+                        </span>
                     </th>
                   ))}
                 </tr>

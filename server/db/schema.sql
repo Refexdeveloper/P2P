@@ -246,6 +246,18 @@ CREATE TABLE IF NOT EXISTS po_line_items (
   INDEX idx_po_line_po (po_id)
 );
 
+CREATE TABLE IF NOT EXISTS po_site_lookups (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  lookup_type ENUM('site_address', 'site_contact') NOT NULL,
+  label TEXT NOT NULL,
+  email VARCHAR(150) NULL,
+  phone VARCHAR(50) NULL,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_po_site_lookup_type (lookup_type, status)
+);
+
 CREATE TABLE IF NOT EXISTS categories (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(150) NOT NULL UNIQUE,

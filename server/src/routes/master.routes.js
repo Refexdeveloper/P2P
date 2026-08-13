@@ -22,6 +22,8 @@ import {
   listDepartments,
   createDepartment,
   updateDepartment,
+  listPoSiteLookups,
+  createPoSiteLookup,
 } from '../services/masterService.js';
 
 const router = Router();
@@ -252,6 +254,27 @@ router.put('/departments/:id', canManageDepartments, async (req, res) => {
   try {
     const data = await updateDepartment(Number(req.params.id), req.body);
     res.json({ data, message: 'Department updated successfully' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/po-site-lookups', requireRoles(...READ_ROLES, 'Super Admin'), async (req, res) => {
+  try {
+    const data = await listPoSiteLookups({
+      type: req.query.type,
+      search: req.query.search,
+    });
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/po-site-lookups', requireRoles(...READ_ROLES, 'Super Admin'), async (req, res) => {
+  try {
+    const data = await createPoSiteLookup(req.body);
+    res.json({ data, message: 'Saved successfully' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

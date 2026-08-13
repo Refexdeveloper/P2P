@@ -19,6 +19,7 @@ import {
 } from './documentNumberService.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
+import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 
 function poPortalUrl(path) {
   const base = getWhatsAppPublicBaseUrl().replace(/\/$/, '');
@@ -293,6 +294,7 @@ async function enrichPO(row) {
     termsClauses: parseClauseJson(row.terms_clauses),
     annexureClauses: parseClauseJson(row.annexure_clauses),
     annexureIiHtml: row.annexure_ii_html || '',
+    annexureIiRows: parseAnnexureIi(row.annexure_ii_html || ''),
     poTermsDetails: normalizePoTermsDetails(row.po_terms_details),
     gstPercentage: Number(row.gst_percentage),
     currency: normalizeCurrency(row.currency),
@@ -593,12 +595,9 @@ async function resolvePoDraftContent(prId, body) {
   let resolvedFooterLogo = body?.footerLogo ?? '';
   let resolvedTerms = terms;
   let resolvedAnnexure = annexure;
-  let resolvedAnnexureIiHtml = String(
-    annexureIiHtml || body?.annexureIiHtml || body?.annexure_ii_html || ''
+  const resolvedAnnexureIiHtml = serializeAnnexureIi(
+    body?.annexureIiRows || annexureIiHtml || body?.annexureIiHtml || body?.annexure_ii_html || ''
   );
-  if (Array.isArray(body?.annexureIiRows) && body.annexureIiRows.length) {
-    resolvedAnnexureIiHtml = JSON.stringify(body.annexureIiRows);
-  }
 
   // Branding from selected Letterhead Master (entity + logos) for PO PDF.
   // Header and footer are common on the letterhead; location only affects GST/invoicing.
@@ -687,6 +686,7 @@ async function resolvePoDraftContent(prId, body) {
     termsClauses: resolvedTerms,
     annexureClauses: resolvedAnnexure,
     annexureIiHtml: resolvedAnnexureIiHtml,
+    annexureIiRows: parseAnnexureIi(resolvedAnnexureIiHtml),
     poTermsDetails: {
       ...resolvedPoTermsDetails,
       paymentTermsText:
@@ -726,6 +726,7 @@ export async function buildPoPreviewForPo(user, poId, body) {
     terms: body.terms ?? body.termsClauses,
     annexure: body.annexure ?? body.annexureClauses,
     annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
+    annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? rows[0].annexure_ii_html),
   });
 }
 
@@ -1642,6 +1643,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     terms: body.terms ?? body.termsClauses,
     annexure: body.annexure ?? body.annexureClauses,
     annexureIiHtml: body.annexureIiHtml ?? existing.annexure_ii_html ?? '',
+    annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? existing.annexure_ii_html),
   });
 
   const {
