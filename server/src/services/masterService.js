@@ -837,7 +837,7 @@ export async function updateDepartment(id, body) {
   return mapDepartment(rows[0]);
 }
 
-const SITE_LOOKUP_TYPES = new Set(['site_address', 'site_contact']);
+const SITE_LOOKUP_TYPES = new Set(['site_address', 'site_contact', 'project_manager']);
 
 function mapSiteLookup(row) {
   return {
@@ -868,14 +868,91 @@ export async function listPoSiteLookups({ type, search } = {}) {
   return rows.map(mapSiteLookup);
 }
 
+const DEFAULT_SITE_CONTACTS = [
+  { label: 'Sathish Karunanithi', email: 'sathishbabu.k@refex.co.in', phone: '8553656560' },
+  { label: 'Nirmalantony S', email: 'nirmalantony.s@refex.co.in', phone: '7397783563' },
+  { label: 'Nambu Santhiya N', email: 'nambu.santhiya@refex.co.in', phone: '8754595292' },
+  { label: 'Naveen N', email: 'naveen.n@refexfleet.com', phone: '9771127799' },
+  { label: 'Mohd Sameeuddin', email: 'mohd.sameeuddin@refex.co.in', phone: '7993689327' },
+  { label: 'Mohd Arif Shaikh', email: 'mohd.arifshaikh@refex.co.in', phone: '9920400371' },
+  { label: 'Mokthiyar', email: 'mokthiyar.n@refex.co.in', phone: '9844444520' },
+  { label: 'Arjun Singh', email: 'emco5mw@refex.co.in', phone: '8426895998' },
+  { label: 'Pushpendra Kumar', email: 'diwana3.25mw@refex.co.in', phone: '9414943645' },
+  { label: 'Narendra Kumar', email: 'narendra.k@refex.co.in', phone: '9792435433' },
+  { label: 'Abhilash Ghatage', email: 'abhilash.ag@refex.co.in', phone: '9834684067' },
+  { label: 'Dhanunjay Patlolla', email: 'dhanunjay.p@refex.co.in', phone: '9043984072' },
+  { label: 'Suresh Kumar', email: 'sureshkumar.m@refex.co.in', phone: '9782530640' },
+  { label: 'Nikhil Kumar', email: 'jaipur.cluster.om@refex.co.in', phone: '9837570662' },
+  { label: 'Jagan Tamilarasu', email: 'jagan.tamilarasu@refex.co.in', phone: '7418635321' },
+  { label: 'Jaganraj.R', email: 'jaganraj.r@refex.co.in', phone: '8220817153' },
+  { label: 'Venkatesha', email: 'venkatesha.ncv@refex.co.in', phone: '6381881348' },
+  { label: 'Praveen', email: 'praveen@vyzagbioenergy.com', phone: '9739841093' },
+  { label: 'Rajesh Das', email: 'rajeshdas@refex.co.in', phone: '7014049317' },
+  { label: 'Nitesh Pawar', email: 'nitesh.p@refex.co.in', phone: '7489746407' },
+];
+
+const DEFAULT_PROJECT_MANAGERS = [
+  { label: 'Palani', email: 'palani.c@refex.co.in', phone: '9766865267' },
+  { label: 'Ramesh', email: 'ramesh.c@refex.co.in', phone: '7550048222' },
+  { label: 'Sarath Kumar', email: 'sharathkumar.b@refex.co.in', phone: '8754444250' },
+  { label: 'Babu Rathinam', email: 'babu.r@refex.co.in', phone: '9600811102' },
+  { label: 'Jones Basil T', email: 'jones.t@refex.co.in', phone: '8220920195' },
+  { label: 'Sangeetha', email: 'sangeetha.r@refex.co.in', phone: '7305394575' },
+  { label: 'Chinna Ashok Kumar', email: 'chinna.ashok@refex.co.in', phone: '8122504180' },
+];
+
+async function seedLookupRows(lookupType, rows) {
+  let upserted = 0;
+  for (const row of rows) {
+    const [existing] = await pool.query(
+      `SELECT id FROM po_site_lookups
+       WHERE lookup_type = ? AND LOWER(label) = LOWER(?) AND status = 'active'
+       LIMIT 1`,
+      [lookupType, row.label]
+    );
+    if (existing.length) {
+      await pool.query(
+        `UPDATE po_site_lookups
+         SET email = ?, phone = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [row.email, row.phone, existing[0].id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO po_site_lookups (lookup_type, label, email, phone, status)
+         VALUES (?, ?, ?, ?, 'active')`,
+        [lookupType, row.label, row.email, row.phone]
+      );
+    }
+    upserted += 1;
+  }
+  return upserted;
+}
+
+/** Seed / refresh default Site Contact Person options (name + email + phone). */
+export async function seedDefaultSiteContacts() {
+  return seedLookupRows('site_contact', DEFAULT_SITE_CONTACTS);
+}
+
+/** Seed / refresh default Project Manager at HO options. */
+export async function seedDefaultProjectManagers() {
+  return seedLookupRows('project_manager', DEFAULT_PROJECT_MANAGERS);
+}
+
 export async function createPoSiteLookup(body = {}) {
   const lookupType = String(body.type || body.lookupType || '').trim();
   if (!SITE_LOOKUP_TYPES.has(lookupType)) {
-    throw new Error('Lookup type must be site_address or site_contact');
+    throw new Error('Lookup type must be site_address, site_contact, or project_manager');
   }
   const label = String(body.label || body.name || body.address || '').trim();
   if (!label) {
-    throw new Error(lookupType === 'site_contact' ? 'Contact name is required' : 'Site address is required');
+    throw new Error(
+      lookupType === 'site_address'
+        ? 'Site address is required'
+        : lookupType === 'project_manager'
+          ? 'Project manager name is required'
+          : 'Contact name is required'
+    );
   }
   const email = String(body.email || '').trim();
   const phone = String(body.phone || '').trim();
@@ -887,6 +964,16 @@ export async function createPoSiteLookup(body = {}) {
     [lookupType, label]
   );
   if (dup.length) {
+    if (email || phone) {
+      await pool.query(
+        `UPDATE po_site_lookups
+         SET email = COALESCE(NULLIF(?, ''), email),
+             phone = COALESCE(NULLIF(?, ''), phone),
+             updated_at = NOW()
+         WHERE id = ?`,
+        [email, phone, dup[0].id]
+      );
+    }
     const [rows] = await pool.query(`SELECT * FROM po_site_lookups WHERE id = ?`, [dup[0].id]);
     return mapSiteLookup(rows[0]);
   }

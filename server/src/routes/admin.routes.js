@@ -11,6 +11,7 @@ import {
   resetAllData,
 } from '../services/adminService.js';
 import { listEmailLogs } from '../services/emailLogService.js';
+import { retriggerEmailLog } from '../services/emailService.js';
 import { listWhatsAppLogs } from '../services/whatsappLogService.js';
 
 const router = Router();
@@ -96,6 +97,20 @@ router.get('/email-logs', async (req, res) => {
       limit: req.query.limit,
     });
     res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/email-logs/:id/retrigger', async (req, res) => {
+  try {
+    const data = await retriggerEmailLog(Number(req.params.id), {
+      extraTo: req.body?.extraTo || req.body?.to || '',
+    });
+    res.json({
+      data,
+      message: `Email sent to ${Array.isArray(data.to) ? data.to.join(', ') : data.to}`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

@@ -183,7 +183,7 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_orders ADD COLUMN annexure_ii_html LONGTEXT NULL`,
   `CREATE TABLE IF NOT EXISTS po_site_lookups (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    lookup_type ENUM('site_address', 'site_contact') NOT NULL,
+    lookup_type ENUM('site_address', 'site_contact', 'project_manager') NOT NULL,
     label TEXT NOT NULL,
     email VARCHAR(150) NULL,
     phone VARCHAR(50) NULL,
@@ -192,6 +192,7 @@ const MIGRATIONS = [
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_po_site_lookup_type (lookup_type, status)
   )`,
+  `ALTER TABLE po_site_lookups MODIFY COLUMN lookup_type ENUM('site_address', 'site_contact', 'project_manager') NOT NULL`,
   `ALTER TABLE document_number_sequences MODIFY COLUMN doc_type ENUM('PR', 'PO', 'WO') NOT NULL`,
   // Own-vendor HOD final: Yes → L2 → CFO; No → L2 → SCM Final (skip CFO)
   `ALTER TABLE rfq_configs ADD COLUMN require_cfo_approval TINYINT(1) NULL`,
@@ -456,10 +457,15 @@ export async function runStartupMigrations() {
   }
 
   try {
-    const { seedDefaultCategories } = await import('./masterService.js');
+    const { seedDefaultCategories, seedDefaultSiteContacts, seedDefaultProjectManagers } =
+      await import('./masterService.js');
     await seedDefaultCategories();
+    const siteContacts = await seedDefaultSiteContacts();
+    const projectManagers = await seedDefaultProjectManagers();
+    console.log(`Site contact lookup seed: ${siteContacts} contacts`);
+    console.log(`Project manager lookup seed: ${projectManagers} managers`);
   } catch (err) {
-    console.warn('Category seed skipped:', err.message);
+    console.warn('Category / site-contact / project-manager seed skipped:', err.message);
   }
 
   try {

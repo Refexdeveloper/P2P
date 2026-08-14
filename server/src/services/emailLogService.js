@@ -86,7 +86,7 @@ export async function createEmailLog({
   }
 }
 
-export async function updateEmailLog(id, { status, messageId, errorMessage } = {}) {
+export async function updateEmailLog(id, { status, messageId, errorMessage, toAddresses, ccAddresses, meta } = {}) {
   if (!id) return;
   try {
     await ensureEmailLogsTable();
@@ -94,14 +94,33 @@ export async function updateEmailLog(id, { status, messageId, errorMessage } = {
       `UPDATE email_logs
        SET status = COALESCE(?, status),
            message_id = COALESCE(?, message_id),
-           error_message = COALESCE(?, error_message),
+           error_message = ?,
+           to_addresses = COALESCE(?, to_addresses),
+           cc_addresses = COALESCE(?, cc_addresses),
+           meta_json = COALESCE(?, meta_json),
            sent_at = CASE WHEN ? = 'sent' THEN NOW() ELSE sent_at END
        WHERE id = ?`,
-      [status || null, messageId || null, errorMessage || null, status || null, id]
+      [
+        status || null,
+        messageId || null,
+        errorMessage === undefined ? null : errorMessage,
+        toAddresses ? joinEmails(toAddresses) : null,
+        ccAddresses ? joinEmails(ccAddresses) : null,
+        meta ? JSON.stringify(meta) : null,
+        status || null,
+        id,
+      ]
     );
   } catch (err) {
     console.error('email_logs update failed:', err.message);
   }
+}
+
+export async function getEmailLogById(id) {
+  await ensureEmailLogsTable();
+  const [rows] = await pool.query(`SELECT * FROM email_logs WHERE id = ? LIMIT 1`, [Number(id)]);
+  if (!rows.length) return null;
+  return mapLogRow(rows[0]);
 }
 
 function mapLogRow(row) {

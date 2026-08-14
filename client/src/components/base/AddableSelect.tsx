@@ -61,6 +61,8 @@ export default function AddableSelect({
     });
   }, [options, query]);
 
+  const selected = options.find((opt) => opt.label === value);
+
   return (
     <div ref={boxRef}>
       <div className="flex items-center gap-2 mb-3">
@@ -82,9 +84,20 @@ export default function AddableSelect({
             open ? 'ring-2 ring-teal-500' : ''
           } ${multiline ? 'min-h-[88px] whitespace-pre-wrap' : ''}`}
         >
-          <span className={`block ${multiline ? '' : 'truncate'} ${value ? 'text-gray-800' : 'text-gray-400'}`}>
-            {value || placeholder}
-          </span>
+          {value ? (
+            <span className={`block ${multiline ? 'whitespace-pre-wrap' : 'truncate'} text-gray-800`}>
+              {value}
+              {selected?.email || selected?.phone ? (
+                <span className="block text-[11px] text-gray-500 font-normal mt-0.5 truncate">
+                  {[selected.email, selected.phone].filter(Boolean).join(' · ')}
+                </span>
+              ) : selected?.subLabel ? (
+                <span className="block text-[11px] text-gray-500 font-normal mt-0.5 truncate">{selected.subLabel}</span>
+              ) : null}
+            </span>
+          ) : (
+            <span className={`block ${multiline ? '' : 'truncate'} text-gray-400`}>{placeholder}</span>
+          )}
           <i className="ri-arrow-down-s-line absolute right-3 top-3 text-gray-400 text-lg"></i>
         </button>
 
@@ -99,7 +112,7 @@ export default function AddableSelect({
                 className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
-            <div className="max-h-48 overflow-y-auto">
+            <div className="max-h-64 overflow-y-auto">
               {filtered.length === 0 ? (
                 <p className="px-3 py-3 text-xs text-gray-400">No saved options yet</p>
               ) : (
@@ -113,12 +126,27 @@ export default function AddableSelect({
                       onCloseAdd();
                       setQuery('');
                     }}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer ${
+                    className={`w-full text-left px-3 py-2.5 text-sm hover:bg-teal-50 cursor-pointer border-b border-gray-50 last:border-0 ${
                       opt.label === value ? 'bg-teal-50 text-teal-800' : 'text-gray-800'
                     }`}
                   >
-                    <span className="block whitespace-pre-wrap">{opt.label}</span>
-                    {opt.subLabel ? (
+                    <span className="block font-medium whitespace-pre-wrap">{opt.label}</span>
+                    {opt.email || opt.phone ? (
+                      <span className="mt-1 flex flex-col gap-0.5 text-[11px] text-gray-500 font-normal">
+                        {opt.email ? (
+                          <span className="inline-flex items-center gap-1 truncate">
+                            <i className="ri-mail-line text-gray-400"></i>
+                            {opt.email}
+                          </span>
+                        ) : null}
+                        {opt.phone ? (
+                          <span className="inline-flex items-center gap-1">
+                            <i className="ri-phone-line text-gray-400"></i>
+                            {opt.phone}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : opt.subLabel ? (
                       <span className="block text-[11px] text-gray-500 mt-0.5">{opt.subLabel}</span>
                     ) : null}
                   </button>

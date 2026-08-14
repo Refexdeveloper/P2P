@@ -1001,9 +1001,11 @@ export interface DepartmentRecord {
   budgetUtilized?: number;
 }
 
+export type PoSiteLookupType = 'site_address' | 'site_contact' | 'project_manager';
+
 export interface PoSiteLookupRecord {
   id: number;
-  type: 'site_address' | 'site_contact';
+  type: PoSiteLookupType;
   label: string;
   email: string;
   phone: string;
@@ -1098,12 +1100,12 @@ export const masterApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
-  listPoSiteLookups: (type: 'site_address' | 'site_contact') => {
+  listPoSiteLookups: (type: PoSiteLookupType) => {
     const q = new URLSearchParams({ type });
     return request<{ data: PoSiteLookupRecord[] }>(`/api/masters/po-site-lookups?${q.toString()}`);
   },
   createPoSiteLookup: (body: {
-    type: 'site_address' | 'site_contact';
+    type: PoSiteLookupType;
     label: string;
     email?: string;
     phone?: string;
@@ -1269,6 +1271,14 @@ export const adminApi = {
       data: { items: EmailLogRecord[]; total: number; page: number; limit: number };
     }>(`/api/admin/email-logs${qs ? `?${qs}` : ''}`);
   },
+  retriggerEmailLog: (id: number, extraTo?: string) =>
+    request<{ data: { id: number; status: string; to: string[]; subject: string }; message: string }>(
+      `/api/admin/email-logs/${id}/retrigger`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ extraTo: extraTo || '' }),
+      }
+    ),
   listWhatsAppLogs: (params?: {
     status?: string;
     notifyType?: string;

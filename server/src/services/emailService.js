@@ -17,7 +17,7 @@ import {
   getWhatsAppPublicBaseUrl,
   getDefaultNotifyPhones,
 } from './whatsappService.js';
-import { createEmailLog, updateEmailLog } from './emailLogService.js';
+import { createEmailLog, updateEmailLog, getEmailLogById } from './emailLogService.js';
 
 /**
  * Outbound email master switch — set manually here (no env).
@@ -1064,6 +1064,285 @@ export async function sendPoVendorNotification(po, { signerName, signerComments,
     await updateEmailLog(logId, { status: 'failed', errorMessage: err.message });
     console.error('Email send failure (PO vendor):', err.message);
     if (err.response) console.error('SMTP response:', err.response);
+    throw err;
+  }
+}
+
+function parseEmailList(value) {
+  return [
+    ...new Set(
+      String(value || '')
+        .split(/[,;]+/)
+        .map((e) => e.trim())
+        .filter((e) => e && e !== '(none)' && e.includes('@'))
+    ),
+  ];
+}
+
+async function loadPrForRetrigger(prId) {
+  if (!prId) return null;
+  const { getPurchaseRequestById } = await import('./prService.js');
+  return getPurchaseRequestById(prId);
+}
+
+async function loadPoForRetrigger(poId) {
+  if (!poId) return null;
+  const { getPurchaseOrderById } = await import('./poService.js');
+  return getPurchaseOrderById(poId);
+}
+
+async function loadRequesterForRetrigger(pr) {
+  if (!pr) return { name: 'Requester', email: null };
+  const [rows] = await pool.query(`SELECT id, name, email FROM users WHERE id = ?`, [pr.requesterId]);
+  return rows[0] || { name: pr.requester || 'Requester', email: null };
+}
+
+/**
+ * Admin retrigger: rebuild skipped/failed/queued mail and send it.
+ * Optional extraTo emails are added to To (comma-separated).
+ */
+export async function retriggerEmailLog(logId, { extraTo } = {}) {
+  const log = await getEmailLogById(logId);
+  if (!log) throw new Error('Email log not found');
+  if (log.status === 'sent') throw new Error('This email was already sent');
+
+  const extra = parseEmailList(extraTo);
+  const originalTo = parseEmailList(log.toAddresses);
+  const meta = log.meta && typeof log.meta === 'object' ? { ...log.meta } : {};
+  const pr = await loadPrForRetrigger(log.prId);
+  const po = await loadPoForRetrigger(log.poId);
+  const requester = await loadRequesterForRetrigger(pr);
+
+  let to = [...new Set([...originalTo, ...extra])];
+  const cc = parseEmailList(log.ccAddresses);
+  const bcc = parseEmailList(log.bccAddresses);
+  let subject = log.subject;
+  let html = `<p>${String(log.subject || 'P2P notification').replace(/</g, '&lt;')}</p>`;
+  let text = log.subject || 'P2P notification';
+  let attachments = [];
+
+  const type = String(log.emailType || 'generic');
+
+  if (type === 'pr_raised') {
+    if (!pr) throw new Error('Related PR was not found — cannot rebuild this mail');
+    if (!to.length) to = getNotificationRecipients();
+    const built = buildPrRaisedEmail({ pr, requester, isResubmit: Boolean(meta.isResubmit) });
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+  } else if (type === 'pr_approval_pending') {
+    if (!pr) throw new Error('Related PR was not found — cannot rebuild this mail');
+    const assignedRole = meta.assignedRole || 'HOD Approver';
+    if (!to.length) {
+      const approvers = await getApproverRecipients(assignedRole, pr.departmentId);
+      to = approvers.map((a) => a.email).filter(Boolean);
+      if (assignedRole === 'SCM Buyer') {
+        to = [...new Set([...to, ...(await getScmBuyerNotifyEmails())])];
+      }
+    }
+    const built = buildPrApprovalPendingEmail({
+      pr,
+      requester,
+      assignedRole,
+      approverName: meta.approverName || 'Approver',
+      postRfq: Boolean(meta.postRfq),
+      stageLabel: meta.stageLabel || null,
+      rfqEntry: Boolean(meta.rfqEntry),
+      createPo: Boolean(meta.createPo),
+      appBaseUrl: getAppBaseUrl(),
+    });
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+  } else if (type === 'pr_post_rfq_action') {
+    if (!pr) throw new Error('Related PR was not found — cannot rebuild this mail');
+    if (!to.length && requester.email) to = [requester.email];
+    const built = buildPostRfqActionEmail({
+      pr,
+      action: meta.action || 'return',
+      remarks: meta.remarks || '',
+      approverRole: meta.approverRole || '',
+      requesterName: requester.name,
+      editPr: Boolean(meta.editPr),
+      appBaseUrl: getAppBaseUrl(),
+    });
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+  } else if (type === 'rfq_vendor' || type === 'rfq_send_back') {
+    if (!pr) throw new Error('Related PR was not found — cannot rebuild this mail');
+    const vendorEmail = originalTo[0] || extra[0] || '';
+    const [invRows] = await pool.query(
+      `SELECT vendor_name, vendor_email, access_token, round
+       FROM rfq_invitations
+       WHERE pr_id = ?
+         AND (
+           LOWER(vendor_email) = LOWER(?)
+           OR LOWER(vendor_name) = LOWER(?)
+         )
+       ORDER BY id DESC
+       LIMIT 1`,
+      [pr.id, vendorEmail || meta.vendorName || '', meta.vendorName || vendorEmail || '']
+    );
+    const inv = invRows[0];
+    if (!inv) throw new Error('RFQ invitation was not found for this mail');
+    if (!to.length) to = [inv.vendor_email].filter(Boolean);
+    const submitUrl = `${getAppBaseUrl()}/vendor/submit-quote/${inv.access_token}`;
+    const built =
+      type === 'rfq_send_back'
+        ? buildRfqSendBackEmail({
+            pr,
+            vendorName: inv.vendor_name,
+            submitUrl,
+            round: inv.round,
+            reason: meta.reason || 'Please resubmit your quotation',
+            fields: meta.fields || [],
+          })
+        : buildRfqInvitationEmail({
+            pr,
+            vendorName: inv.vendor_name,
+            submitUrl,
+            round: inv.round || meta.round || 1,
+          });
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+  } else if (type === 'rfq_submitted') {
+    if (!pr) throw new Error('Related PR was not found — cannot rebuild this mail');
+    if (!to.length && requester.email) to = [requester.email];
+    const built = buildRfqSubmittedNotifyRequesterEmail({
+      pr,
+      vendorName: meta.vendorName || 'Vendor',
+      requesterName: requester.name,
+      submission: {},
+      reviewUrl: `${getAppBaseUrl()}/requester/rfq-entry/${pr.id}`,
+    });
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+  } else if (type === 'po_workflow') {
+    if (!po) throw new Error('Related PO was not found — cannot rebuild this mail');
+    if (!to.length) {
+      const role = meta.action === 'assign' ? 'SCM Manager' : 'SCM Buyer';
+      const people = await getApproverRecipients(role);
+      to = people.map((a) => a.email).filter(Boolean);
+    }
+    const built = buildPoWorkflowEmail({
+      po,
+      action: meta.action || 'assign',
+      stageLabel: meta.stageLabel || 'PO Workflow',
+      recipientName: 'User',
+      actorName: meta.actorName || '',
+      actorRole: meta.actorRole || '',
+      remarks: meta.remarks || '',
+      portalUrl: meta.portalUrl || `${getAppBaseUrl()}/scm/po-approval`,
+      ctaLabel: meta.ctaLabel || 'Open',
+    });
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+  } else if (type === 'po_vendor') {
+    if (!po) throw new Error('Related PO was not found — cannot rebuild this mail');
+    if (!to.length && po.vendorEmail) to = [po.vendorEmail];
+    const portalUrl = `${getAppBaseUrl()}/scm/vendor-po-acceptance`;
+    const built = buildPoVendorEmail({
+      po,
+      signerName: meta.signerName || po.signatureName || '',
+      signerComments: po.signerComments || '',
+      portalUrl,
+    });
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+    try {
+      const { resolvePoDocumentPath } = await import('./poPdfService.js');
+      const pdfPath = resolvePoDocumentPath(po);
+      if (pdfPath) {
+        attachments = [{ filename: `${po.poNumber}_signed.pdf`, path: pdfPath, contentType: 'application/pdf' }];
+      }
+    } catch {
+      /* send without PDF */
+    }
+  } else if (type === 'vendor_invoice_request') {
+    if (!po) throw new Error('Related PO was not found — cannot rebuild this mail');
+    if (!to.length && (po.vendorEmail || po.vendor_email)) to = [po.vendorEmail || po.vendor_email];
+    const built = buildVendorInvoiceRequestEmail({
+      invoice: { id: meta.invoiceId || log.relatedId },
+      po,
+      portalUrl: meta.portalUrl || `${getAppBaseUrl()}/vendor/invoice`,
+    });
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+  } else if (type === 'smtp_test') {
+    if (!to.length) to = extra;
+    html = `<p>P2P SMTP test (admin retrigger) at <strong>${new Date().toISOString()}</strong></p>`;
+    text = `P2P SMTP test (admin retrigger) at ${new Date().toISOString()}`;
+    subject = subject || 'P2P SMTP test';
+  }
+
+  to = [...new Set([...to, ...extra])];
+  if (!to.length) {
+    throw new Error('No recipient on this log. Add an email address and retrigger.');
+  }
+
+  const { host, user, pass } = getSmtpConfig();
+  if (!host || !user || !pass) {
+    throw new Error('SMTP is not configured (SMTP_HOST / SMTP_USER / SMTP_PASSWORD)');
+  }
+  if (!smtpReady) {
+    const ok = await ensureSmtpReady();
+    if (!ok) throw new Error('SMTP is not connected. Check SMTP credentials.');
+  }
+
+  const retriggerMeta = {
+    ...meta,
+    retriggeredAt: new Date().toISOString(),
+    retriggeredFromStatus: log.status,
+    extraTo: extra,
+  };
+
+  await updateEmailLog(log.id, {
+    status: 'queued',
+    errorMessage: null,
+    toAddresses: to,
+    ccAddresses: cc,
+    meta: retriggerMeta,
+  });
+
+  try {
+    const info = await getTransporter().sendMail({
+      from: getFromAddress(),
+      to: to.join(', '),
+      cc: cc.length ? cc.join(', ') : undefined,
+      bcc: bcc.length ? bcc.join(', ') : undefined,
+      subject,
+      text,
+      html,
+      attachments: attachments.length ? attachments : undefined,
+    });
+    await updateEmailLog(log.id, {
+      status: 'sent',
+      messageId: info.messageId,
+      errorMessage: null,
+      toAddresses: to,
+      meta: retriggerMeta,
+    });
+    return {
+      id: log.id,
+      status: 'sent',
+      to,
+      subject,
+      messageId: info.messageId,
+    };
+  } catch (err) {
+    smtpReady = false;
+    await updateEmailLog(log.id, {
+      status: 'failed',
+      errorMessage: err.message,
+      toAddresses: to,
+      meta: retriggerMeta,
+    });
     throw err;
   }
 }

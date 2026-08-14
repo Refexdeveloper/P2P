@@ -17,6 +17,7 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
   rfq_send_back: 'RFQ Send Back',
   rfq_submitted: 'RFQ Quote Submitted',
   po_vendor: 'PO Vendor Acceptance',
+  po_workflow: 'PO Assign / Send Back / Reject',
   smtp_test: 'SMTP Test',
   generic: 'Other',
 };
@@ -49,6 +50,10 @@ export default function AdminEmailLogsPage() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [retriggerRow, setRetriggerRow] = useState<EmailLogRecord | null>(null);
+  const [extraTo, setExtraTo] = useState('');
+  const [retriggering, setRetriggering] = useState(false);
+  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const limit = 40;
 
   const load = useCallback(async () => {
@@ -98,6 +103,30 @@ export default function AdminEmailLogsPage() {
     setPage(1);
     setTypeFilter('');
     setExpandedId(null);
+  };
+
+  const showToast = (text: string, type: 'success' | 'error') => {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const canRetrigger = (status: string) =>
+    status === 'skipped' || status === 'failed' || status === 'queued';
+
+  const handleRetrigger = async () => {
+    if (!retriggerRow) return;
+    setRetriggering(true);
+    try {
+      const res = await adminApi.retriggerEmailLog(retriggerRow.id, extraTo.trim());
+      showToast(res.message || 'Email sent', 'success');
+      setRetriggerRow(null);
+      setExtraTo('');
+      await load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Retrigger failed', 'error');
+    } finally {
+      setRetriggering(false);
+    }
   };
 
   return (
@@ -221,18 +250,19 @@ export default function AdminEmailLogsPage() {
                     <th className="px-4 py-3">PR / PO</th>
                     <th className="px-4 py-3">To</th>
                     <th className="px-4 py-3">Subject</th>
+                    <th className="px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                      <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
                         Loading…
                       </td>
                     </tr>
                   ) : emailItems.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                      <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
                         No email logs yet. Raise a PR to see L1 / approval mails appear here.
                       </td>
                     </tr>
@@ -285,10 +315,27 @@ export default function AdminEmailLogsPage() {
                             >
                               {row.subject}
                             </td>
+                            <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              {canRetrigger(row.status) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRetriggerRow(row);
+                                    setExtraTo('');
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800 hover:bg-teal-100"
+                                >
+                                  <i className="ri-refresh-line"></i>
+                                  Retrigger
+                                </button>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
+                            </td>
                           </tr>
                           {open ? (
                             <tr className="border-t border-slate-100 bg-slate-50/60">
-                              <td colSpan={6} className="px-4 py-3 text-xs text-slate-600 space-y-1">
+                              <td colSpan={7} className="px-4 py-3 text-xs text-slate-600 space-y-1">
                                 <div>
                                   <span className="font-medium text-slate-700">To:</span>{' '}
                                   {row.toAddresses || '—'}
@@ -482,6 +529,74 @@ export default function AdminEmailLogsPage() {
           </div>
         </div>
       </div>
+
+      {retriggerRow ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !retriggering && setRetriggerRow(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-5 py-4 bg-teal-50 border-b border-teal-100">
+              <h3 className="text-base font-bold text-teal-900">Retrigger email</h3>
+              <p className="text-xs text-teal-800 mt-0.5">Rebuild and send this skipped / failed mail again</p>
+            </div>
+            <div className="px-5 py-4 space-y-3 text-sm">
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase">Subject</p>
+                <p className="text-slate-800 mt-0.5">{retriggerRow.subject}</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase mt-2">Original To</p>
+                <p className="text-slate-800 mt-0.5 break-all">{retriggerRow.toAddresses || '(none)'}</p>
+                {retriggerRow.errorMessage ? (
+                  <p className="text-xs text-red-600 mt-2">{retriggerRow.errorMessage}</p>
+                ) : null}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Add extra recipient (optional)
+                </label>
+                <input
+                  type="email"
+                  value={extraTo}
+                  onChange={(e) => setExtraTo(e.target.value)}
+                  placeholder="name@refex.co.in"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Leave blank to send only to the original To. If original To is empty, this email is required.
+                </p>
+              </div>
+            </div>
+            <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={retriggering}
+                onClick={() => setRetriggerRow(null)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={retriggering}
+                onClick={() => void handleRetrigger()}
+                className="rounded-lg bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                {retriggering ? 'Sending…' : 'Send now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {toast ? (
+        <div className="fixed bottom-6 right-6 z-50">
+          <div
+            className={`px-5 py-3 rounded-xl shadow-lg text-sm font-semibold ${
+              toast.type === 'success' ? 'bg-emerald-700 text-white' : 'bg-red-700 text-white'
+            }`}
+          >
+            {toast.text}
+          </div>
+        </div>
+      ) : null}
     </DashboardLayout>
   );
 }

@@ -82,6 +82,64 @@ function upsertSiteLookup(list: PoSiteLookupRecord[], item: PoSiteLookupRecord) 
   return [item, ...rest];
 }
 
+const DEFAULT_SITE_CONTACTS: PoSiteLookupRecord[] = [
+  { id: -1, type: 'site_contact', label: 'Sathish Karunanithi', email: 'sathishbabu.k@refex.co.in', phone: '8553656560', status: 'active' },
+  { id: -2, type: 'site_contact', label: 'Nirmalantony S', email: 'nirmalantony.s@refex.co.in', phone: '7397783563', status: 'active' },
+  { id: -3, type: 'site_contact', label: 'Nambu Santhiya N', email: 'nambu.santhiya@refex.co.in', phone: '8754595292', status: 'active' },
+  { id: -4, type: 'site_contact', label: 'Naveen N', email: 'naveen.n@refexfleet.com', phone: '9771127799', status: 'active' },
+  { id: -5, type: 'site_contact', label: 'Mohd Sameeuddin', email: 'mohd.sameeuddin@refex.co.in', phone: '7993689327', status: 'active' },
+  { id: -6, type: 'site_contact', label: 'Mohd Arif Shaikh', email: 'mohd.arifshaikh@refex.co.in', phone: '9920400371', status: 'active' },
+  { id: -7, type: 'site_contact', label: 'Mokthiyar', email: 'mokthiyar.n@refex.co.in', phone: '9844444520', status: 'active' },
+  { id: -8, type: 'site_contact', label: 'Arjun Singh', email: 'emco5mw@refex.co.in', phone: '8426895998', status: 'active' },
+  { id: -9, type: 'site_contact', label: 'Pushpendra Kumar', email: 'diwana3.25mw@refex.co.in', phone: '9414943645', status: 'active' },
+  { id: -10, type: 'site_contact', label: 'Narendra Kumar', email: 'narendra.k@refex.co.in', phone: '9792435433', status: 'active' },
+  { id: -11, type: 'site_contact', label: 'Abhilash Ghatage', email: 'abhilash.ag@refex.co.in', phone: '9834684067', status: 'active' },
+  { id: -12, type: 'site_contact', label: 'Dhanunjay Patlolla', email: 'dhanunjay.p@refex.co.in', phone: '9043984072', status: 'active' },
+  { id: -13, type: 'site_contact', label: 'Suresh Kumar', email: 'sureshkumar.m@refex.co.in', phone: '9782530640', status: 'active' },
+  { id: -14, type: 'site_contact', label: 'Nikhil Kumar', email: 'jaipur.cluster.om@refex.co.in', phone: '9837570662', status: 'active' },
+  { id: -15, type: 'site_contact', label: 'Jagan Tamilarasu', email: 'jagan.tamilarasu@refex.co.in', phone: '7418635321', status: 'active' },
+  { id: -16, type: 'site_contact', label: 'Jaganraj.R', email: 'jaganraj.r@refex.co.in', phone: '8220817153', status: 'active' },
+  { id: -17, type: 'site_contact', label: 'Venkatesha', email: 'venkatesha.ncv@refex.co.in', phone: '6381881348', status: 'active' },
+  { id: -18, type: 'site_contact', label: 'Praveen', email: 'praveen@vyzagbioenergy.com', phone: '9739841093', status: 'active' },
+  { id: -19, type: 'site_contact', label: 'Rajesh Das', email: 'rajeshdas@refex.co.in', phone: '7014049317', status: 'active' },
+  { id: -20, type: 'site_contact', label: 'Nitesh Pawar', email: 'nitesh.p@refex.co.in', phone: '7489746407', status: 'active' },
+];
+
+const DEFAULT_PROJECT_MANAGERS: PoSiteLookupRecord[] = [
+  { id: -101, type: 'project_manager', label: 'Palani', email: 'palani.c@refex.co.in', phone: '9766865267', status: 'active' },
+  { id: -102, type: 'project_manager', label: 'Ramesh', email: 'ramesh.c@refex.co.in', phone: '7550048222', status: 'active' },
+  { id: -103, type: 'project_manager', label: 'Sarath Kumar', email: 'sharathkumar.b@refex.co.in', phone: '8754444250', status: 'active' },
+  { id: -104, type: 'project_manager', label: 'Babu Rathinam', email: 'babu.r@refex.co.in', phone: '9600811102', status: 'active' },
+  { id: -105, type: 'project_manager', label: 'Jones Basil T', email: 'jones.t@refex.co.in', phone: '8220920195', status: 'active' },
+  { id: -106, type: 'project_manager', label: 'Sangeetha', email: 'sangeetha.r@refex.co.in', phone: '7305394575', status: 'active' },
+  { id: -107, type: 'project_manager', label: 'Chinna Ashok Kumar', email: 'chinna.ashok@refex.co.in', phone: '8122504180', status: 'active' },
+];
+
+function mergeLookups(defaults: PoSiteLookupRecord[], apiRows: PoSiteLookupRecord[]) {
+  const byName = new Map<string, PoSiteLookupRecord>();
+  for (const row of defaults) {
+    byName.set(row.label.trim().toLowerCase(), row);
+  }
+  for (const row of apiRows) {
+    const key = row.label.trim().toLowerCase();
+    const existing = byName.get(key);
+    byName.set(key, {
+      ...row,
+      email: row.email || existing?.email || '',
+      phone: row.phone || existing?.phone || '',
+    });
+  }
+  return [...byName.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function mergeSiteContacts(apiRows: PoSiteLookupRecord[]) {
+  return mergeLookups(DEFAULT_SITE_CONTACTS, apiRows);
+}
+
+function mergeProjectManagers(apiRows: PoSiteLookupRecord[]) {
+  return mergeLookups(DEFAULT_PROJECT_MANAGERS, apiRows);
+}
+
 const PAYMENT_TERMS_OPTIONS = [
   'Net 15 Days',
   'Net 30 Days',
@@ -683,11 +741,14 @@ export default function CreatePOPage() {
   const [annexureIiRows, setAnnexureIiRows] = useState<AnnexureIiRow[]>([emptyAnnexureIiRow()]);
   const [poTermsDetails, setPoTermsDetails] = useState<PoTermsDetails>({ ...EMPTY_PO_TERMS_DETAILS });
   const [siteAddressOptions, setSiteAddressOptions] = useState<PoSiteLookupRecord[]>([]);
-  const [siteContactOptions, setSiteContactOptions] = useState<PoSiteLookupRecord[]>([]);
+  const [siteContactOptions, setSiteContactOptions] = useState<PoSiteLookupRecord[]>(DEFAULT_SITE_CONTACTS);
+  const [projectManagerOptions, setProjectManagerOptions] = useState<PoSiteLookupRecord[]>(DEFAULT_PROJECT_MANAGERS);
   const [addingSiteAddress, setAddingSiteAddress] = useState(false);
   const [addingSiteContact, setAddingSiteContact] = useState(false);
+  const [addingProjectManager, setAddingProjectManager] = useState(false);
   const [newSiteAddress, setNewSiteAddress] = useState('');
   const [newSiteContact, setNewSiteContact] = useState({ label: '', email: '', phone: '' });
+  const [newProjectManager, setNewProjectManager] = useState({ label: '', email: '', phone: '' });
   const [savingSiteLookup, setSavingSiteLookup] = useState(false);
   const [siteLookupError, setSiteLookupError] = useState('');
   const [letterheadLoading, setLetterheadLoading] = useState(false);
@@ -846,17 +907,20 @@ export default function CreatePOPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [addr, contact] = await Promise.all([
+        const [addr, contact, managers] = await Promise.all([
           masterApi.listPoSiteLookups('site_address'),
           masterApi.listPoSiteLookups('site_contact'),
+          masterApi.listPoSiteLookups('project_manager'),
         ]);
         if (cancelled) return;
         setSiteAddressOptions(addr.data || []);
-        setSiteContactOptions(contact.data || []);
+        setSiteContactOptions(mergeSiteContacts(contact.data || []));
+        setProjectManagerOptions(mergeProjectManagers(managers.data || []));
       } catch {
         if (!cancelled) {
           setSiteAddressOptions([]);
-          setSiteContactOptions([]);
+          setSiteContactOptions(mergeSiteContacts([]));
+          setProjectManagerOptions(mergeProjectManagers([]));
         }
       }
     })();
@@ -1305,13 +1369,47 @@ export default function CreatePOPage() {
       setPoTermsDetails((prev) => ({
         ...prev,
         siteContactPerson: saved.label,
-        siteContactEmail: saved.email || prev.siteContactEmail,
-        siteContactPhone: saved.phone || prev.siteContactPhone,
+        siteContactEmail: saved.email || '',
+        siteContactPhone: saved.phone || '',
       }));
       setNewSiteContact({ label: '', email: '', phone: '' });
       setAddingSiteContact(false);
     } catch (err) {
       setSiteLookupError(err instanceof Error ? err.message : 'Could not save site contact');
+    } finally {
+      setSavingSiteLookup(false);
+    }
+  };
+
+  const saveProjectManagerLookup = async () => {
+    const label = newProjectManager.label.trim();
+    if (!label) {
+      setSiteLookupError('Project manager name is required');
+      return;
+    }
+    setSavingSiteLookup(true);
+    setSiteLookupError('');
+    try {
+      const res = await masterApi.createPoSiteLookup({
+        type: 'project_manager',
+        label,
+        email: newProjectManager.email.trim(),
+        phone: newProjectManager.phone.trim(),
+      });
+      const saved = res.data;
+      setProjectManagerOptions((prev) =>
+        upsertSiteLookup(prev, saved).sort((a, b) => a.label.localeCompare(b.label))
+      );
+      setPoTermsDetails((prev) => ({
+        ...prev,
+        projectManagerHo: saved.label,
+        projectManagerEmail: saved.email || '',
+        projectManagerContact: saved.phone || '',
+      }));
+      setNewProjectManager({ label: '', email: '', phone: '' });
+      setAddingProjectManager(false);
+    } catch (err) {
+      setSiteLookupError(err instanceof Error ? err.message : 'Could not save project manager');
     } finally {
       setSavingSiteLookup(false);
     }
@@ -2817,6 +2915,7 @@ export default function CreatePOPage() {
                         onOpenAdd={() => {
                           setSiteLookupError('');
                           setAddingSiteContact(false);
+                          setAddingProjectManager(false);
                           setAddingSiteAddress(true);
                           setNewSiteAddress(poTermsDetails.siteAddress || deliveryAddress || '');
                         }}
@@ -2876,6 +2975,7 @@ export default function CreatePOPage() {
                           onOpenAdd={() => {
                             setSiteLookupError('');
                             setAddingSiteAddress(false);
+                            setAddingProjectManager(false);
                             setAddingSiteContact(true);
                             setNewSiteContact({
                               label: poTermsDetails.siteContactPerson || '',
@@ -2891,8 +2991,8 @@ export default function CreatePOPage() {
                             setPoTermsDetails((prev) => ({
                               ...prev,
                               siteContactPerson: opt.label,
-                              siteContactEmail: opt.email || prev.siteContactEmail,
-                              siteContactPhone: opt.phone || prev.siteContactPhone,
+                              siteContactEmail: opt.email || '',
+                              siteContactPhone: opt.phone || '',
                             }));
                           }}
                           addForm={
@@ -2965,33 +3065,108 @@ export default function CreatePOPage() {
                         </div>
                     </div>
 
-                    {/* Project manager fields — equal 2-col pairs */}
+                    <AddableSelect
+                      label="Project Manager at HO"
+                      icon="ri-user-star-line"
+                      value={poTermsDetails.projectManagerHo}
+                      placeholder="Select project manager"
+                      options={projectManagerOptions.map((opt) => ({
+                        id: opt.id,
+                        label: opt.label,
+                        subLabel: [opt.email, opt.phone].filter(Boolean).join(' · '),
+                        email: opt.email,
+                        phone: opt.phone,
+                      }))}
+                      adding={addingProjectManager}
+                      onOpenAdd={() => {
+                        setSiteLookupError('');
+                        setAddingSiteAddress(false);
+                        setAddingSiteContact(false);
+                        setAddingProjectManager(true);
+                        setNewProjectManager({
+                          label: poTermsDetails.projectManagerHo || '',
+                          email: poTermsDetails.projectManagerEmail || '',
+                          phone: poTermsDetails.projectManagerContact || '',
+                        });
+                      }}
+                      onCloseAdd={() => {
+                        setAddingProjectManager(false);
+                        setSiteLookupError('');
+                      }}
+                      onSelect={(opt) => {
+                        setPoTermsDetails((prev) => ({
+                          ...prev,
+                          projectManagerHo: opt.label,
+                          projectManagerEmail: opt.email || '',
+                          projectManagerContact: opt.phone || '',
+                        }));
+                      }}
+                      addForm={
+                        <>
+                          <input
+                            type="text"
+                            value={newProjectManager.label}
+                            onChange={(e) => setNewProjectManager((prev) => ({ ...prev, label: e.target.value }))}
+                            placeholder="Project manager name"
+                            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                          <input
+                            type="email"
+                            value={newProjectManager.email}
+                            onChange={(e) => setNewProjectManager((prev) => ({ ...prev, email: e.target.value }))}
+                            placeholder="Email"
+                            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                          <input
+                            type="text"
+                            value={newProjectManager.phone}
+                            onChange={(e) => setNewProjectManager((prev) => ({ ...prev, phone: e.target.value }))}
+                            placeholder="Phone"
+                            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                          {siteLookupError && addingProjectManager ? (
+                            <p className="text-xs text-red-600">{siteLookupError}</p>
+                          ) : null}
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAddingProjectManager(false);
+                                setSiteLookupError('');
+                              }}
+                              className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void saveProjectManagerLookup()}
+                              disabled={savingSiteLookup}
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-60 cursor-pointer"
+                            >
+                              {savingSiteLookup ? 'Saving...' : 'Add'}
+                            </button>
+                          </div>
+                        </>
+                      }
+                    />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                      <div className="space-y-1.5">
-                        <label className="block text-xs font-semibold text-gray-700">Project Manager at HO</label>
-                        <input
-                          type="text"
-                          value={poTermsDetails.projectManagerHo}
-                          onChange={(e) => updatePoTermsField('projectManagerHo', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        />
-                      </div>
                       <div className="space-y-1.5">
                         <label className="block text-xs font-semibold text-gray-700">Project Manager&apos;s Contact</label>
                         <input
                           type="text"
                           value={poTermsDetails.projectManagerContact}
                           onChange={(e) => updatePoTermsField('projectManagerContact', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
                         />
                       </div>
-                      <div className="space-y-1.5 md:col-span-2">
+                      <div className="space-y-1.5">
                         <label className="block text-xs font-semibold text-gray-700">Project Manager&apos;s Email</label>
                         <input
                           type="email"
                           value={poTermsDetails.projectManagerEmail}
                           onChange={(e) => updatePoTermsField('projectManagerEmail', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
                         />
                       </div>
                     </div>
