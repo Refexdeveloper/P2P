@@ -293,29 +293,29 @@ export default function VendorInvoicePage() {
                               <i className={`ri-arrow-${open ? 'down' : 'right'}-s-line mr-1 text-gray-400`} />
                               {row.invoiceNumber}
                             </button>
-                          </td>
+                      </td>
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-800">{row.poNumber}</div>
                             <div className="text-xs text-gray-400">{row.grnNumber || '—'}</div>
-                          </td>
+                      </td>
                           <td className="px-4 py-3">
                             <div className="text-gray-700">{row.vendorName}</div>
                             <div className="text-xs text-gray-400">{row.vendorEmail || 'No email'}</div>
-                          </td>
+                      </td>
                           <td className="px-4 py-3 text-right font-semibold">
                             {formatCurrency(row.poGrandTotal)}
-                          </td>
+                      </td>
                           <td className="px-4 py-3 text-xs text-gray-600 capitalize">
                             {row.vendorInvoiceMode || '—'}
                             {row.vendorNotifiedAt ? (
                               <div className="text-[10px] text-gray-400 mt-0.5">Sent {row.vendorNotifiedAt}</div>
                             ) : null}
-                          </td>
+                      </td>
                           <td className="px-4 py-3">
                             <span className="px-2 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700">
                               {row.status}
                             </span>
-                          </td>
+                      </td>
                           <td className="px-4 py-3">
                             {row.canSendMail || row.canManualEntry ? (
                               <div className="flex flex-wrap gap-2">
@@ -331,13 +331,13 @@ export default function VendorInvoicePage() {
                                   </button>
                                 )}
                                 {row.canManualEntry && (
-                                  <button
+                          <button
                                     type="button"
                                     onClick={() => openManual(row)}
                                     className="px-3 py-1.5 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
                                   >
                                     Manual Entry
-                                  </button>
+                          </button>
                                 )}
                               </div>
                             ) : (
@@ -365,7 +365,7 @@ export default function VendorInvoicePage() {
                                 {(row.canSendMail || row.canManualEntry) && (
                                   <div className="md:col-span-3 flex flex-wrap gap-2">
                                     {row.canSendMail && (
-                                      <button
+                            <button
                                         type="button"
                                         disabled={busyId === row.id || !row.vendorEmail}
                                         onClick={() => handleSendMail(row)}

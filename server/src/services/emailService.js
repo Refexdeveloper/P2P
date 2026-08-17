@@ -26,16 +26,30 @@ import { createEmailLog, updateEmailLog, getEmailLogById } from './emailLogServi
  */
 const EMAIL_SEND_ENABLED = true;
 
+/** Hardcoded SMTP (used when env is missing, e.g. Cloud Run). Env still overrides. */
+const SMTP_DEFAULTS = {
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  user: 'support@refexone.com',
+  pass: 'skrmayqcqwvjanne',
+  fromEmail: 'support@refexone.com',
+  fromName: 'P2P Procurement',
+};
+
 let transporter;
 let smtpReady = false;
 
 function getSmtpConfig() {
-  const host = process.env.SMTP_HOST?.trim();
-  const port = Number(process.env.SMTP_PORT);
-  const user = process.env.SMTP_USER?.trim();
-  // SMTP_PASSWORD is the required name; SMTP_PASS kept as a deploy fallback
-  const pass = (process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '').trim();
-  const secure = process.env.SMTP_SECURE === 'true';
+  const host = (process.env.SMTP_HOST || SMTP_DEFAULTS.host).trim();
+  const port = Number(process.env.SMTP_PORT || SMTP_DEFAULTS.port);
+  const user = (process.env.SMTP_USER || SMTP_DEFAULTS.user).trim();
+  const rawPass = process.env.SMTP_PASSWORD || process.env.SMTP_PASS || SMTP_DEFAULTS.pass;
+  const pass = String(rawPass || '').replace(/\s+/g, '').trim();
+  const secure =
+    process.env.SMTP_SECURE != null
+      ? process.env.SMTP_SECURE === 'true'
+      : SMTP_DEFAULTS.secure;
 
   return { host, port, user, pass, secure };
 }
@@ -251,9 +265,9 @@ function getFromAddress() {
   const fromEmail =
     process.env.SMTP_FROM?.trim() ||
     process.env.SMTP_FROM_EMAIL?.trim() ||
-    user ||
-    'support@refexone.com';
-  const fromName = process.env.SMTP_FROM_NAME?.trim() || 'P2P Procurement';
+    SMTP_DEFAULTS.fromEmail ||
+    user;
+  const fromName = process.env.SMTP_FROM_NAME?.trim() || SMTP_DEFAULTS.fromName;
   return `"${fromName}" <${fromEmail}>`;
 }
 

@@ -240,8 +240,8 @@ export default function VendorPOAcceptancePage() {
             No POs in this queue. Final-verify a PO first, then it appears here.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+        <div className="overflow-x-auto">
+          <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   {['', 'PO Number', 'Vendor', 'PR', 'Amount', 'Mode', 'Status', 'Actions'].map((h) => (
@@ -249,18 +249,18 @@ export default function VendorPOAcceptancePage() {
                       key={h || 'expand'}
                       className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase"
                     >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
                 {filtered.map((po) => {
                   const pending = (po.vendorAcceptanceStatus || 'pending') === 'pending';
                   const accepted =
                     po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
                   const isExpanded = expandedId === po.id;
-                  return (
+                return (
                     <Fragment key={po.id}>
                       <tr
                         className={`border-b hover:bg-gray-50 cursor-pointer ${
@@ -317,21 +317,21 @@ export default function VendorPOAcceptancePage() {
                               </button>
                             </div>
                           ) : accepted ? (
-                            <button
+                              <button
                               type="button"
                               onClick={() => navigate('/grn')}
                               className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg"
                             >
                               Go to GRN
-                            </button>
+                              </button>
                           ) : (
                             <span className="text-xs text-gray-500">Completed</span>
                           )}
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <POExpandedRow
-                          po={po}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <POExpandedRow
+                        po={po}
                           busy={busyId === po.id}
                           onSendMail={() => handleSendMail(po)}
                           onManual={() => openManual(po)}
@@ -339,11 +339,11 @@ export default function VendorPOAcceptancePage() {
                         />
                       )}
                     </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         )}
       </div>
 
@@ -420,7 +420,7 @@ export default function VendorPOAcceptancePage() {
               >
                 Save &amp; continue
               </button>
-            </div>
+      </div>
           </div>
         </div>
       )}
