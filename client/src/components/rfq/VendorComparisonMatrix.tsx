@@ -130,7 +130,7 @@ function statusValueDisplay(extra: { kind: 'number' | 'text' | 'empty'; value: n
 }
 
 const cardClass =
-  'bg-white rounded-2xl border border-[#E5EAF0] shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden';
+  'bg-white rounded-2xl border border-[#E5EAF0] shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden min-w-0 max-w-full';
 
 const stickyEdge = 'md:shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]';
 
@@ -313,7 +313,7 @@ export default function VendorComparisonMatrix({
   };
 
   return (
-    <div className={`min-w-0 max-w-full ${compact ? 'space-y-4' : 'space-y-5'} print:space-y-4`}>
+    <div className={`min-w-0 w-full max-w-full overflow-hidden ${compact ? 'space-y-4' : 'space-y-5'} print:space-y-4`}>
       {/* Recommendation (existing) */}
       {(data.recommendedVendorName || recommendationJustification) && !compact && (
         <div className={`${cardClass} border-emerald-200`}>
@@ -597,9 +597,13 @@ export default function VendorComparisonMatrix({
               })}
             </div>
 
-            {/* Desktop / tablet: table */}
-            <div className="hidden md:block relative max-w-full">
-            <div className="overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch]">
+            {/* Desktop / tablet: horizontally scrollable table */}
+            <div className="hidden md:block w-full min-w-0 max-w-full">
+            <p className="px-4 py-2 text-xs text-slate-500 flex items-center gap-1.5 print:hidden border-b border-[#E5EAF0] bg-slate-50">
+              <i className="ri-arrow-left-right-line"></i>
+              Scroll sideways to see every vendor and revision
+            </p>
+            <div className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch]">
               <table className="border-separate border-spacing-0 text-sm w-max min-w-full">
                 <thead>
                   {/* Row 1: revision labels */}
@@ -676,12 +680,12 @@ export default function VendorComparisonMatrix({
                                 onChange={() => onSelectVendor(col.vendorId)}
                                 className="accent-emerald-600 shrink-0"
                               />
-                              <span className="truncate max-w-[120px] sm:max-w-[160px]" title={col.vendorName}>
+                              <span className="inline-block max-w-[160px] lg:max-w-[220px] leading-tight break-words" title={col.vendorName}>
                                 {col.vendorName}
                               </span>
                             </label>
                           ) : (
-                            <span className="truncate inline-block max-w-[120px] sm:max-w-[160px]" title={col.vendorName}>
+                            <span className="inline-block max-w-[160px] lg:max-w-[220px] leading-tight break-words" title={col.vendorName}>
                               {col.vendorName}
                       </span>
                     )}
@@ -1052,7 +1056,12 @@ export default function VendorComparisonMatrix({
           </div>
 
           {/* Desktop table */}
-          <div className="hidden md:block overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] max-w-full">
+          <div className="hidden md:block w-full min-w-0 max-w-full">
+          <p className="px-4 py-2 text-xs text-slate-500 flex items-center gap-1.5 print:hidden border-b border-[#E5EAF0] bg-slate-50">
+            <i className="ri-arrow-left-right-line"></i>
+            Scroll sideways to see every vendor
+          </p>
+          <div className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch]">
             <table className="border-separate border-spacing-0 text-sm w-max min-w-full">
               <thead>
                 <tr>
@@ -1153,6 +1162,7 @@ export default function VendorComparisonMatrix({
                 </tr>
               </tbody>
             </table>
+          </div>
           </div>
         </section>
       )}

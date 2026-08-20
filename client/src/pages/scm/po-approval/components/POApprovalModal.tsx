@@ -77,10 +77,10 @@ export default function POApprovalModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
-      <div className={`relative bg-white rounded-xl shadow-2xl w-full mx-4 overflow-hidden ${isApprove ? 'max-w-xl' : 'max-w-md'}`}>
-        <div className={`px-6 py-4 ${isApprove ? 'bg-emerald-50' : isSendBack ? 'bg-orange-50' : 'bg-red-50'}`}>
+      <div className={`relative bg-white rounded-t-2xl sm:rounded-xl shadow-2xl w-full mx-0 sm:mx-4 max-h-[92dvh] overflow-hidden flex flex-col ${isApprove ? 'max-w-xl' : 'max-w-md'}`}>
+        <div className={`px-4 sm:px-6 py-4 ${isApprove ? 'bg-emerald-50' : isSendBack ? 'bg-orange-50' : 'bg-red-50'}`}>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isApprove ? 'bg-emerald-100' : isSendBack ? 'bg-orange-100' : 'bg-red-100'}`}>
               <i className={`text-xl ${isApprove ? 'ri-check-double-line text-emerald-600' : isSendBack ? 'ri-arrow-go-back-line text-orange-600' : 'ri-close-circle-line text-red-600'}`} />
@@ -100,7 +100,7 @@ export default function POApprovalModal({
           </div>
         </div>
 
-        <div className={`px-6 py-4 space-y-4 ${isApprove ? 'max-h-[70vh] overflow-y-auto' : ''}`}>
+        <div className={`px-4 sm:px-6 py-4 space-y-4 overflow-y-auto flex-1 ${isApprove ? 'max-h-[70vh]' : ''}`}>
           <div className="bg-gray-50 rounded-lg p-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-bold text-gray-500">{poNumber}</span>
@@ -151,7 +151,7 @@ export default function POApprovalModal({
           </div>
         </div>
 
-        <div className="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3 border-t border-gray-100">
+        <div className="px-4 sm:px-6 py-4 bg-gray-50 flex items-center justify-end gap-3 border-t border-gray-100 flex-shrink-0">
           <button onClick={handleClose} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap">
             Cancel
           </button>

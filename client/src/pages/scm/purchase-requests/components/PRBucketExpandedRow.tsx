@@ -416,8 +416,8 @@ export default function PRBucketExpandedRow({
 
   return (
     <tr>
-      <td colSpan={colSpan} className="p-0 bg-slate-50 border-b border-teal-100">
-        <div className="w-full max-w-full overflow-hidden px-4 py-4 box-border">
+      <td colSpan={colSpan} className="p-0 max-w-0 bg-slate-50 border-b border-teal-100">
+        <div className="min-w-0 w-full max-w-full px-2 sm:px-4 py-4 box-border">
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
             <div className="flex items-center justify-between px-4 sm:px-5 py-3 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100 gap-3 flex-wrap">
               <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -598,7 +598,7 @@ export default function PRBucketExpandedRow({
 
               {!loading && !error && tab === 'vendors' && (
                 comparison ? (
-                  <div className="min-w-0 max-w-full overflow-x-auto">
+                  <div className="min-w-0 w-full max-w-full">
                     <VendorComparisonMatrix data={comparison} compact />
                   </div>
                 ) : (

@@ -130,20 +130,21 @@ function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, i
 
   return (
     <tr>
-      <td colSpan={9} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
-        <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <td colSpan={9} className="p-0 max-w-0 bg-slate-50 border-b border-teal-200">
+        <div className="min-w-0 w-full max-w-full my-3 sm:my-4 px-2 sm:px-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden min-w-0 max-w-full">
           {/* Expanded Header */}
-          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-3 px-3 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
                 <i className="ri-file-text-line text-teal-600 text-lg"></i>
               </div>
-              <div>
-                <p className="text-sm font-bold text-gray-900">{po.poNumber}</p>
-                <p className="text-xs text-gray-500">{po.prTitle}</p>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-gray-900 truncate">{po.poNumber}</p>
+                <p className="text-xs text-gray-500 truncate">{po.prTitle}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={onViewPdf}
@@ -162,20 +163,20 @@ function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, i
                   </button>
                   <button
                     onClick={onApprove}
-                    className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
+                    className="px-3 py-1.5 sm:px-4 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
                   >
                     <i className="ri-quill-pen-line"></i> Sign &amp; Approve
                   </button>
                   <button
                     type="button"
                     onClick={onSendBack}
-                    className="px-4 py-1.5 text-xs font-semibold text-orange-700 bg-white border border-orange-300 rounded-lg hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                    className="px-3 py-1.5 sm:px-4 text-xs font-semibold text-orange-700 bg-white border border-orange-300 rounded-lg hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                   >
                     <i className="ri-arrow-go-back-line"></i> Send Back
                   </button>
                   <button
                     onClick={onReject}
-                    className="px-4 py-1.5 text-xs font-semibold text-red-600 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                    className="px-3 py-1.5 sm:px-4 text-xs font-semibold text-red-600 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                   >
                     <i className="ri-close-circle-line"></i> Reject PO
                   </button>
@@ -185,7 +186,7 @@ function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, i
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-gray-100 px-6 bg-white">
+          <div className="flex border-b border-gray-100 px-2 sm:px-6 bg-white overflow-x-auto">
             {[
               { key: 'details', label: 'PO Details', icon: 'ri-information-line' },
               { key: 'items', label: 'Line Items', icon: 'ri-list-check-2' },
@@ -208,7 +209,7 @@ function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, i
           </div>
 
           {/* Tab Content */}
-          <div className="p-6">
+          <div className="p-3 sm:p-6 min-w-0 max-w-full overflow-x-auto">
             {activeTab === 'details' && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* PO Summary */}
@@ -385,7 +386,7 @@ function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, i
                     {comparisonError}
                   </div>
                 ) : comparisonData ? (
-                  <div className="space-y-4">
+                  <div className="space-y-4 min-w-0 max-w-full">
                     <div className="flex flex-wrap items-center gap-3 p-3 bg-teal-50 border border-teal-100 rounded-lg text-sm">
                       <span className="font-semibold text-teal-800">{comparisonData.pr.prNumber}</span>
                       <span className="text-teal-700">{comparisonData.vendorCount} vendors quoted</span>
@@ -416,6 +417,7 @@ function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, i
               </div>
             )}
           </div>
+        </div>
         </div>
 
         {filePreview && (
@@ -629,15 +631,15 @@ export default function POApprovalPage() {
   return (
     <DashboardLayout>
       {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">SCM Manager — PO Sign &amp; Approve</h1>
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">SCM Manager — PO Sign &amp; Approve</h1>
         <p className="text-sm text-gray-500 mt-1">Sign PO with comments — after sign-off, SCM Buyer final-verifies before the vendor email is sent</p>
       </div>
 
       {loading && <p className="text-sm text-gray-500 mb-4">Loading purchase orders...</p>}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-6">
         {[
           { key: 'pending', label: 'Pending Approval', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
           { key: 'approved', label: 'Approved', value: stats.approved, icon: 'ri-check-double-line', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
@@ -648,33 +650,33 @@ export default function POApprovalPage() {
             key={card.label}
             type="button"
             onClick={() => setFilter(card.key)}
-            className={`bg-white rounded-xl border ${card.border} p-5 flex items-center justify-between text-left transition-shadow hover:shadow-md cursor-pointer ${
+            className={`bg-white rounded-xl border ${card.border} p-3 sm:p-5 flex items-center justify-between text-left transition-shadow hover:shadow-md cursor-pointer ${
               filter === card.key ? 'ring-2 ring-teal-500/30' : ''
             }`}
           >
-            <div>
-              <p className="text-xs text-gray-500 mb-1">{card.label}</p>
-              <p className="text-3xl font-bold text-gray-900">{card.value}</p>
+            <div className="min-w-0 pr-2">
+              <p className="text-[11px] sm:text-xs text-gray-500 mb-1 truncate">{card.label}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{card.value}</p>
             </div>
-            <div className={`w-12 h-12 ${card.bg} rounded-xl flex items-center justify-center`}>
-              <i className={`${card.icon} text-2xl ${card.text}`}></i>
+            <div className={`w-10 h-10 sm:w-12 sm:h-12 ${card.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
+              <i className={`${card.icon} text-xl sm:text-2xl ${card.text}`}></i>
             </div>
           </button>
         ))}
       </div>
 
       {/* Pending Value Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-4 sm:p-5 mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
             <i className="ri-money-rupee-circle-line text-white text-2xl"></i>
           </div>
           <div>
             <p className="text-teal-100 text-sm">Total Pending Approval Value</p>
-            <p className="text-white text-2xl font-bold">{formatCurrency(stats.totalPendingValue)}</p>
+            <p className="text-white text-xl sm:text-2xl font-bold">{formatCurrency(stats.totalPendingValue)}</p>
           </div>
         </div>
-        <div className="text-right">
+        <div className="text-left sm:text-right">
           <p className="text-teal-100 text-xs">{stats.pending} PO{stats.pending !== 1 ? 's' : ''} awaiting your decision</p>
           <p className="text-white text-sm font-medium mt-0.5">Click any row to expand details</p>
         </div>
@@ -683,23 +685,23 @@ export default function POApprovalPage() {
       {/* Table Card */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         {/* Table Header / Filters */}
-        <div className="px-6 py-5 border-b border-gray-100">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="px-3 sm:px-6 py-4 sm:py-5 border-b border-gray-100">
+          <div className="flex flex-col lg:flex-row lg:flex-wrap items-stretch lg:items-center justify-between gap-3">
             <h2 className="text-base font-bold text-gray-900">Purchase Order Approvals</h2>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 min-w-0">
               {/* Search */}
-              <div className="relative">
+              <div className="relative min-w-0 flex-1 sm:flex-none">
                 <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                 <input
                   type="text"
                   placeholder="Search PO, vendor, requester..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 w-64"
+                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 w-full sm:w-64"
                 />
               </div>
               {/* Filter Tabs */}
-              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1 overflow-x-auto">
                 {[
                   { key: 'all', label: 'All' },
                   { key: 'pending', label: 'Pending' },
@@ -724,8 +726,65 @@ export default function POApprovalPage() {
           </p>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {filteredPOs.map((po) => {
+            const isExpanded = expandedRow === po.poNumber;
+            const isPending = isAwaitingManager(po.status);
+            return (
+              <div key={`m-${po.poNumber}`} className={isExpanded ? 'bg-teal-50/60' : 'bg-white'}>
+                <button
+                  type="button"
+                  onClick={() => toggleRow(po.poNumber)}
+                  className="w-full text-left px-3 py-3 flex items-start gap-3"
+                >
+                  <div className={`mt-0.5 w-6 h-6 flex items-center justify-center rounded flex-shrink-0 ${isExpanded ? 'bg-teal-100 text-teal-600' : 'text-gray-400'}`}>
+                    <i className={`text-sm ${isExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}`}></i>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-bold text-gray-900 truncate">{po.poNumber}</p>
+                      <StatusBadge status={po.status} />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5 truncate">{po.prTitle || po.prId}</p>
+                    <p className="text-xs text-gray-600 mt-1 truncate">{po.vendor}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-bold text-gray-900">{formatCurrency(po.grandTotal)}</span>
+                      <PriorityBadge priority={po.priority} />
+                    </div>
+                  </div>
+                </button>
+                {isExpanded && (
+                  <div className="px-0 pb-2">
+                    <table className="w-full">
+                      <tbody>
+                        <ExpandedRow
+                          po={po}
+                          poId={poIdMap[po.poNumber]}
+                          isPending={isPending}
+                          onApprove={() => openModal(po.poNumber, 'approve')}
+                          onReject={() => openModal(po.poNumber, 'reject')}
+                          onSendBack={() => openModal(po.poNumber, 'sendback')}
+                          onEdit={() => {
+                            const id = poIdMap[po.poNumber];
+                            if (id) navigate(`/scm/create-po?poId=${id}`);
+                          }}
+                          onViewPdf={() => {
+                            const id = poIdMap[po.poNumber];
+                            if (id) navigate(`/scm/po-pdf-view?poId=${id}`);
+                          }}
+                        />
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
@@ -919,7 +978,7 @@ export default function POApprovalPage() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50">
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-50">
           <div className={`px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-semibold ${
             toast.type === 'success' ? 'bg-emerald-700 text-white' : 'bg-red-700 text-white'
           }`}>
