@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { vendorApi, VendorRecord } from '../../../../services/api';
+import { useEffect, useState } from 'react';
+import { masterApi, CategoryRecord, vendorApi, VendorRecord } from '../../../../services/api';
 
 export interface CreateVendorFormData {
   vendorName: string;
@@ -8,8 +8,12 @@ export interface CreateVendorFormData {
   panNumber: string;
   email: string;
   phone: string;
+  contactName: string;
   address: string;
   category: string;
+  msme: 'yes' | 'no';
+  msmeType: '' | 'Micro' | 'Small' | 'Medium';
+  documentsComplete: 'yes' | 'no';
   accountNumber: string;
   ifscCode: string;
   bankName: string;
@@ -23,24 +27,19 @@ const EMPTY_FORM: CreateVendorFormData = {
   panNumber: '',
   email: '',
   phone: '',
+  contactName: '',
   address: '',
   category: '',
+  msme: 'no',
+  msmeType: '',
+  documentsComplete: 'no',
   accountNumber: '',
   ifscCode: '',
   bankName: '',
   branch: '',
 };
 
-const CATEGORIES = [
-  'IT Services',
-  'Professional Services',
-  'Raw Materials',
-  'Office Supplies',
-  'Consulting',
-  'Equipment',
-  'Maintenance',
-  'Transportation',
-];
+const MSME_TYPES = ['Micro', 'Small', 'Medium'] as const;
 
 type DocType = 'gst' | 'pan' | 'cheque' | 'msme' | 'kyc' | 'msme_declaration';
 
@@ -77,6 +76,16 @@ interface Props {
   compact?: boolean;
 }
 
+function asYesNo(value?: string): 'yes' | 'no' {
+  return String(value || '').toLowerCase() === 'yes' ? 'yes' : 'no';
+}
+
+function asMsmeType(value?: string): '' | 'Micro' | 'Small' | 'Medium' {
+  return MSME_TYPES.includes(value as (typeof MSME_TYPES)[number])
+    ? (value as 'Micro' | 'Small' | 'Medium')
+    : '';
+}
+
 function vendorToForm(v: VendorRecord): CreateVendorFormData {
   return {
     vendorName: v.name,
@@ -85,8 +94,12 @@ function vendorToForm(v: VendorRecord): CreateVendorFormData {
     panNumber: v.panNumber || '',
     email: v.email,
     phone: v.phone || '',
+    contactName: v.contactName || '',
     address: v.address || '',
     category: v.category || '',
+    msme: asYesNo(v.msme),
+    msmeType: asYesNo(v.msme) === 'yes' ? asMsmeType(v.msmeType) : '',
+    documentsComplete: asYesNo(v.documentsComplete),
     accountNumber: v.accountNumber || '',
     ifscCode: v.ifscCode || '',
     bankName: v.bankName || '',
@@ -104,9 +117,29 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [categories, setCategories] = useState<CategoryRecord[]>([]);
+
+  useEffect(() => {
+    masterApi
+      .listCategories({ status: 'active' })
+      .then((res) => setCategories(res.data || []))
+      .catch(() => setCategories([]));
+  }, []);
+
+  const categoryOptions = (() => {
+    const names = categories.map((c) => c.name);
+    if (form.category && !names.includes(form.category)) {
+      return [form.category, ...names];
+    }
+    return names;
+  })();
 
   const update = (name: keyof CreateVendorFormData, value: string) => {
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === 'msme' && value !== 'yes') next.msmeType = '';
+      return next;
+    });
     setError('');
   };
 
@@ -137,6 +170,10 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
     }
     if (!form.category) {
       setError('Category is required');
+      return;
+    }
+    if (form.msme === 'yes' && !form.msmeType) {
+      setError('Select MSME category (Micro, Small or Medium)');
       return;
     }
 
@@ -259,6 +296,15 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             />
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Contact Name</label>
+            <input
+              value={form.contactName}
+              onChange={(e) => update('contactName', e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              placeholder="Primary contact person"
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">GST Number</label>
             <input
               value={form.gstNumber}
@@ -284,11 +330,58 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
               className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
             >
               <option value="">Select category</option>
-              {CATEGORIES.map((c) => (
+              {categoryOptions.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
+            {form.category && (
+              <p className="mt-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2 py-1 inline-flex items-center gap-1">
+                <i className="ri-price-tag-3-line"></i>
+                Selected: <span className="font-semibold">{form.category}</span>
+              </p>
+            )}
+            {!categories.length && (
+              <p className="mt-1 text-xs text-gray-400">No active categories in Category Master</p>
+            )}
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">MSME</label>
+            <div className="flex gap-4 mt-2">
+              {(['yes', 'no'] as const).map((v) => (
+                <label key={v} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="msme"
+                    checked={form.msme === v}
+                    onChange={() => update('msme', v)}
+                    className="text-teal-600"
+                  />
+                  <span className="text-sm text-gray-700">{v === 'yes' ? 'Yes' : 'No'}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          {form.msme === 'yes' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">MSME Category *</label>
+              <select
+                value={form.msmeType}
+                onChange={(e) => update('msmeType', e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              >
+                <option value="">Select MSME category</option>
+                {MSME_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              {form.msmeType && (
+                <p className="mt-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2 py-1 inline-flex items-center gap-1">
+                  <i className="ri-building-4-line"></i>
+                  Selected: <span className="font-semibold">{form.msmeType}</span>
+                </p>
+              )}
+            </div>
+          )}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Address</label>
             <textarea
@@ -341,9 +434,28 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-4">
-          {isEdit ? 'Replace Documents (Optional)' : 'Upload Documents (Optional)'}
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide">
+            {isEdit ? 'Replace Documents (Optional)' : 'Upload Documents (Optional)'}
+          </h3>
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-1.5">Vendor documents complete</p>
+            <div className="flex gap-4">
+              {(['yes', 'no'] as const).map((v) => (
+                <label key={v} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="documentsComplete"
+                    checked={form.documentsComplete === v}
+                    onChange={() => update('documentsComplete', v)}
+                    className="text-teal-600"
+                  />
+                  <span className="text-sm text-gray-700">{v === 'yes' ? 'Yes' : 'No'}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {DOC_UPLOAD_FIELDS.map(({ type, label }) => (
             <div key={type}>

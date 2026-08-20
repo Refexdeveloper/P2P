@@ -37,6 +37,20 @@ async function getVendorDocuments(vendorId) {
   }));
 }
 
+function yesNo(value, fallback = 'no') {
+  const s = String(value ?? '').trim().toLowerCase();
+  if (s === 'yes' || s === '1' || s === 'true' || s === 'y') return 'yes';
+  if (s === 'no' || s === '0' || s === 'false' || s === 'n') return 'no';
+  return fallback;
+}
+
+function msmeTypeValue(msme, type) {
+  if (yesNo(msme) !== 'yes') return null;
+  const allowed = ['Micro', 'Small', 'Medium'];
+  const match = allowed.find((t) => t.toLowerCase() === String(type || '').trim().toLowerCase());
+  return match || null;
+}
+
 function mapVendor(row, documents = []) {
   return {
     id: row.id,
@@ -49,6 +63,10 @@ function mapVendor(row, documents = []) {
     phone: row.phone || '',
     address: row.address || '',
     category: row.category || '',
+    contactName: row.contact_name || '',
+    msme: row.msme || 'no',
+    msmeType: row.msme_type || '',
+    documentsComplete: row.documents_complete || 'no',
     accountNumber: row.account_number || '',
     ifscCode: row.ifsc_code || '',
     bankName: row.bank_name || '',
@@ -88,9 +106,9 @@ export async function listVendors({ search, includeInactive = false, page, limit
   const params = [];
 
   if (search?.trim()) {
-    where += ` AND (name LIKE ? OR email LIKE ? OR vendor_code LIKE ? OR category LIKE ?)`;
+    where += ` AND (name LIKE ? OR email LIKE ? OR vendor_code LIKE ? OR category LIKE ? OR contact_name LIKE ?)`;
     const q = `%${search.trim()}%`;
-    params.push(q, q, q, q);
+    params.push(q, q, q, q, q);
   }
 
   const pageNum = page != null ? Math.max(1, Number(page) || 1) : null;
@@ -150,11 +168,13 @@ export async function createVendor(user, body) {
 
   const vendorCode = await generateVendorCode();
 
+  const msme = yesNo(body.msme, 'no');
   const [result] = await pool.query(
     `INSERT INTO vendors (
       vendor_code, name, vendor_type, gst_number, pan_number, email, phone, address,
-      category, account_number, ifsc_code, bank_name, branch, created_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      category, contact_name, msme, msme_type, documents_complete,
+      account_number, ifsc_code, bank_name, branch, created_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       vendorCode,
       name,
@@ -165,6 +185,10 @@ export async function createVendor(user, body) {
       body.phone?.trim() || null,
       body.address?.trim() || null,
       body.category?.trim() || null,
+      body.contactName?.trim() || null,
+      msme,
+      msmeTypeValue(msme, body.msmeType),
+      yesNo(body.documentsComplete, 'no'),
       body.accountNumber?.trim() || null,
       body.ifscCode?.trim() || null,
       body.bankName?.trim() || null,
@@ -206,10 +230,12 @@ export async function updateVendor(vendorId, body) {
   const [existing] = await pool.query(`SELECT id FROM vendors WHERE email = ? AND id != ?`, [email, vendorId]);
   if (existing.length) throw new Error('A vendor with this email already exists');
 
+  const msme = yesNo(body.msme, 'no');
   await pool.query(
     `UPDATE vendors SET
       name = ?, vendor_type = ?, gst_number = ?, pan_number = ?, email = ?, phone = ?, address = ?,
-      category = ?, account_number = ?, ifsc_code = ?, bank_name = ?, branch = ?, updated_at = NOW()
+      category = ?, contact_name = ?, msme = ?, msme_type = ?, documents_complete = ?,
+      account_number = ?, ifsc_code = ?, bank_name = ?, branch = ?, updated_at = NOW()
      WHERE id = ?`,
     [
       name,
@@ -220,6 +246,10 @@ export async function updateVendor(vendorId, body) {
       body.phone?.trim() || null,
       body.address?.trim() || null,
       body.category?.trim() || null,
+      body.contactName?.trim() || null,
+      msme,
+      msmeTypeValue(msme, body.msmeType),
+      yesNo(body.documentsComplete, 'no'),
       body.accountNumber?.trim() || null,
       body.ifscCode?.trim() || null,
       body.bankName?.trim() || null,
@@ -275,10 +305,14 @@ const VENDOR_HEADERS = [
   'vendorType',
   'email',
   'phone',
+  'contactName',
   'gstNumber',
   'panNumber',
   'address',
   'category',
+  'msme',
+  'msmeType',
+  'documentsComplete',
   'accountNumber',
   'ifscCode',
   'bankName',
@@ -296,10 +330,14 @@ export async function exportVendorsCsv() {
       vendorType: r.vendorType,
       email: r.email,
       phone: r.phone,
+      contactName: r.contactName,
       gstNumber: r.gstNumber,
       panNumber: r.panNumber,
       address: r.address,
       category: r.category,
+      msme: r.msme,
+      msmeType: r.msmeType,
+      documentsComplete: r.documentsComplete,
       accountNumber: r.accountNumber,
       ifscCode: r.ifscCode,
       bankName: r.bankName,
@@ -317,10 +355,14 @@ export function getVendorImportTemplateCsv() {
       vendorType: 'Company',
       email: 'vendor@example.com',
       phone: '9876543210',
+      contactName: 'Rajesh Kumar',
       gstNumber: '',
       panNumber: '',
       address: 'Chennai',
       category: 'IT',
+      msme: 'no',
+      msmeType: '',
+      documentsComplete: 'no',
       accountNumber: '',
       ifscCode: '',
       bankName: '',
@@ -350,6 +392,10 @@ export async function importVendorsFromCsv(user, csvText) {
       panNumber: ['pannumber', 'pan', 'pan_number'],
       address: ['address'],
       category: ['category'],
+      contactName: ['contactname', 'contact_name', 'contactperson'],
+      msme: ['msme'],
+      msmeType: ['msmetype', 'msme_type', 'msmecategory'],
+      documentsComplete: ['documentscomplete', 'documents_complete', 'docscomplete'],
       accountNumber: ['accountnumber', 'account_number', 'account'],
       ifscCode: ['ifsccode', 'ifsc', 'ifsc_code'],
       bankName: ['bankname', 'bank', 'bank_name'],
@@ -370,6 +416,10 @@ export async function importVendorsFromCsv(user, csvText) {
         panNumber: mapped.panNumber || '',
         address: mapped.address || '',
         category: mapped.category || '',
+        contactName: mapped.contactName || '',
+        msme: mapped.msme || 'no',
+        msmeType: mapped.msmeType || '',
+        documentsComplete: mapped.documentsComplete || 'no',
         accountNumber: mapped.accountNumber || '',
         ifscCode: mapped.ifscCode || '',
         bankName: mapped.bankName || '',

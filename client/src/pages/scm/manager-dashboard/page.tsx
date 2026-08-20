@@ -279,12 +279,6 @@ export default function ScmManagerDashboardPage() {
           >
             RFQ Approval
           </Link>
-          <Link
-            to="/accounts/scm-payment-approval"
-            className="px-4 py-2 bg-teal-500/30 text-white border border-white/30 rounded-lg text-sm font-semibold hover:bg-teal-500/50"
-          >
-            Payment Auth
-          </Link>
         </div>
       </div>
     </DashboardLayout>

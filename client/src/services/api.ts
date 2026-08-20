@@ -980,6 +980,10 @@ export interface VendorRecord {
   phone: string;
   address: string;
   category: string;
+  contactName: string;
+  msme: 'yes' | 'no' | string;
+  msmeType: '' | 'Micro' | 'Small' | 'Medium' | string;
+  documentsComplete: 'yes' | 'no' | string;
   accountNumber: string;
   ifscCode: string;
   bankName: string;

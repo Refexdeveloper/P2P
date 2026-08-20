@@ -117,6 +117,20 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                     { label: 'Vendor Type', value: vendor.vendorType, icon: 'ri-building-line', color: 'text-gray-900' },
                     { label: 'Category', value: vendor.category || '—', icon: 'ri-price-tag-3-line', color: 'text-gray-900' },
                     { label: 'Created', value: vendor.createdAt, icon: 'ri-calendar-line', color: 'text-gray-700' },
+                    {
+                      label: 'MSME',
+                      value: vendor.msme === 'yes'
+                        ? `Yes${vendor.msmeType ? ` — ${vendor.msmeType}` : ''}`
+                        : 'No',
+                      icon: 'ri-building-4-line',
+                      color: 'text-gray-900',
+                    },
+                    {
+                      label: 'Documents Complete',
+                      value: vendor.documentsComplete === 'yes' ? 'Yes' : 'No',
+                      icon: 'ri-checkbox-circle-line',
+                      color: vendor.documentsComplete === 'yes' ? 'text-emerald-700' : 'text-amber-700',
+                    },
                   ].map((item) => (
                     <div key={item.label} className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
@@ -133,6 +147,10 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                       <i className="ri-contacts-line text-teal-500"></i> Contact Information
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-0.5">Contact Name</p>
+                        <p className="text-sm font-medium text-gray-900">{vendor.contactName || '—'}</p>
+                      </div>
                       <div>
                         <p className="text-xs text-gray-500 mb-0.5">Email</p>
                         <p className="text-sm font-medium text-gray-900">{vendor.email}</p>

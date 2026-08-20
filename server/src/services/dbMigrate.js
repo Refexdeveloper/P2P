@@ -355,6 +355,10 @@ const MIGRATIONS = [
     INDEX idx_pay_invoice (invoice_id),
     INDEX idx_pay_po (po_id)
   )`,
+  `ALTER TABLE vendors ADD COLUMN contact_name VARCHAR(150) NULL`,
+  `ALTER TABLE vendors ADD COLUMN msme ENUM('yes', 'no') NOT NULL DEFAULT 'no'`,
+  `ALTER TABLE vendors ADD COLUMN msme_type ENUM('Micro', 'Small', 'Medium') NULL`,
+  `ALTER TABLE vendors ADD COLUMN documents_complete ENUM('yes', 'no') NOT NULL DEFAULT 'no'`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */
