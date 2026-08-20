@@ -21,7 +21,7 @@ import {
   formatDateTime,
 } from '../utils/constants.js';
 import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './documentNumberService.js';
-import { resolveScmBuyerUser, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
+import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 
 function normalizeCurrency(value) {
@@ -201,12 +201,10 @@ async function getTimelineAssignees(prId, requesterId, prStatus = null) {
     scmManagerName = scmMgrTask.user_name || null;
     scmManagerEmail = scmMgrTask.user_email || null;
   } else if (prStatus === PR_STATUS.PENDING_BUSINESS_APPROVAL) {
-    const [mgrRows] = await pool.query(
-      `SELECT name, email FROM users WHERE role = 'SCM Manager' AND is_active = 1 ORDER BY id ASC LIMIT 1`
-    );
-    if (mgrRows[0]) {
-      scmManagerName = mgrRows[0].name || null;
-      scmManagerEmail = mgrRows[0].email || null;
+    const mgr = await resolveScmManagerUser();
+    if (mgr) {
+      scmManagerName = mgr.name || null;
+      scmManagerEmail = mgr.email || null;
     }
   }
 

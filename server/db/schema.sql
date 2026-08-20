@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   payment_terms TEXT DEFAULT NULL,
   incoterms VARCHAR(255) DEFAULT 'DDP',
   special_instructions TEXT,
-  po_type ENUM('short_po', 'long_po') NOT NULL DEFAULT 'short_po',
+  po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL DEFAULT 'short_po',
   purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order',
   letterhead_header LONGTEXT NULL,
   letterhead_id INT NULL,
@@ -313,7 +313,7 @@ CREATE TABLE IF NOT EXISTS vendors (
 
 CREATE TABLE IF NOT EXISTS po_letterhead_masters (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  po_type ENUM('short_po', 'long_po') NOT NULL UNIQUE,
+  po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL UNIQUE,
   title VARCHAR(200) NOT NULL DEFAULT 'Purchase Order',
   entity VARCHAR(255) NULL,
   letterhead_header LONGTEXT NULL,

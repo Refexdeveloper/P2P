@@ -652,11 +652,20 @@ function specialNotesHtml(po, options = {}) {
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space">
         ${signature.imageDataUrl
-          ? `<img class="sig-img" src="${signature.imageDataUrl}" alt="Authorized Signature" />`
+          ? `<img class="sig-img${signature.dsc ? ' sig-dsc' : ''}" src="${signature.imageDataUrl}" alt="${signature.dsc ? 'Digital Signature Certificate' : 'Authorized Signature'}" />`
           : ''}
+        ${signature.dsc && !signature.imageDataUrl ? `
+        <div class="dsc-box">
+          <div class="dsc-title">Digitally signed using DSC</div>
+          <p>Signed by: <strong>${escapeHtml(signature.dsc.holderName || signature.name || '')}</strong></p>
+          <p>Certificate serial: ${escapeHtml(signature.dsc.serial || '—')}</p>
+          <p>Issued by: ${escapeHtml(signature.dsc.issuer || '—')}</p>
+          <p>Valid till: ${escapeHtml(signature.dsc.validTill || '—')}</p>
+          <p>Date / time: ${escapeHtml(signature.date || '')}</p>
+        </div>` : ''}
       </div>
       <p>${escapeHtml(signature.date)}<br>
-      <strong>Authorized Signatory</strong><br>
+      <strong>Authorized Signatory${signature.dsc ? ' (DSC)' : ''}</strong><br>
       Name: ${escapeHtml(signature.name)}<br>
       Designation: SCM Manager${signature.comments ? `<br>Comments: ${escapeHtml(signature.comments)}` : ''}</p>` : `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
@@ -689,19 +698,19 @@ function acknowledgmentHtml(po, forPdf) {
   );
 }
 
-/** Letterhead master often embeds a "PURCHASE ORDER" title — strip/adapt so it doesn't clash with doc title */
+/** Letterhead master often embeds a "PURCHASE ORDER" / "WORK ORDER" title — strip so it doesn't duplicate .title */
 function adaptLetterheadHeader(html, isWorkOrder) {
   if (!html) return '';
   let out = String(html);
-  // Remove standalone centered title rows (already shown via .title)
-  out = out.replace(
-    /<p[^>]*>\s*(?:<strong>\s*)?(?:PURCHASE|WORK)\s+ORDER(?:\s*<\/strong>)?\s*<\/p>/gi,
-    ''
+  const gap = '(?:\\s|&nbsp;|&#160;)*';
+  const openInline = `(?:<(?:strong|b|span|em)[^>]*>${gap})*`;
+  const closeInline = `(?:${gap}<\\/(?:strong|b|span|em)>)*`;
+  const titleText = `(?:PURCHASE|WORK)${gap}ORDER(?:${gap}[-:]?${gap}\\d+)?`;
+  const titleBlock = new RegExp(
+    `<(p|h[1-6]|div)([^>]*)>${gap}${openInline}${titleText}${closeInline}${gap}<\\/\\1>`,
+    'gi'
   );
-  out = out.replace(
-    /<(h[1-6]|div)[^>]*>\s*(?:<strong>\s*)?(?:PURCHASE|WORK)\s+ORDER(?:\s*<\/strong>)?\s*<\/\1>/gi,
-    ''
-  );
+  out = out.replace(titleBlock, '');
   if (isWorkOrder) {
     out = out
       .replace(/purchase\s+order\s*\/\s*work\s+order(?:\s*\/\s*service\s+order)?/gi, 'Work Order')
@@ -717,13 +726,16 @@ export function buildPoDocumentHtml(po, options = {}) {
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
   const docTitle = isWorkOrder ? 'WORK ORDER' : 'PURCHASE ORDER';
-  const poTypeLabel = isWorkOrder
-    ? po.poType === 'long_po'
+  const poTypeLabel =
+    po.poType === 'long_wo'
       ? 'Long WO'
-      : 'Short WO'
-    : po.poType === 'long_po'
-      ? 'Long PO'
-      : 'Short PO';
+      : po.poType === 'short_wo'
+        ? 'Short WO'
+        : po.poType === 'long_po'
+          ? 'Long PO'
+          : isWorkOrder
+            ? 'Short WO'
+            : 'Short PO';
   const poDate = fmtDateDisplay(po.createdAt || new Date());
   const vendorAddress = po.vendorAddress || 'Address not available';
   const vendorGst = po.vendorGst || '—';

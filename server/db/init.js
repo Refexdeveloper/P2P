@@ -49,7 +49,7 @@ const USERS = [
   { name: 'Deepak Verma', email: 'prmanager@procure.com', role: 'PR Manager', department: null },
   { name: 'Michael Chen', email: 'cfo@procure.com', role: 'CFO', department: null },
   { name: 'Neha Gupta', email: 'scm@procure.com', role: 'SCM Buyer', department: null },
-  { name: 'Vikram Singh', email: 'scmmanager@procure.com', role: 'SCM Manager', department: null },
+  { name: 'Rajeev V', email: 'rajeev.v@refex.co.in', role: 'SCM Manager', department: null },
   { name: 'Priya Menon', email: 'accounts@procure.com', role: 'Accounts Payable', department: null },
   { name: 'Ramesh Iyer', email: 'accountsmanager@procure.com', role: 'Accounts Manager', department: null },
   { name: 'Tech Solutions', email: 'vendor@procure.com', role: 'Vendor', department: null },
@@ -131,7 +131,7 @@ async function init() {
     `ALTER TABLE users ADD COLUMN l2_manager_email VARCHAR(150) NULL`,
     `CREATE TABLE IF NOT EXISTS po_letterhead_masters (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      po_type ENUM('short_po', 'long_po') NOT NULL UNIQUE,
+      po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL UNIQUE,
       title VARCHAR(200) NOT NULL DEFAULT 'Purchase Order',
       letterhead_header LONGTEXT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -149,7 +149,9 @@ async function init() {
       FOREIGN KEY (master_id) REFERENCES po_letterhead_masters(id) ON DELETE CASCADE,
       INDEX idx_letterhead_section (master_id, section_type, sort_order)
     )`,
-    `ALTER TABLE purchase_orders ADD COLUMN po_type ENUM('short_po', 'long_po') NOT NULL DEFAULT 'short_po'`,
+    `ALTER TABLE purchase_orders ADD COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL DEFAULT 'short_po'`,
+    `ALTER TABLE po_letterhead_masters MODIFY COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL`,
+    `ALTER TABLE purchase_orders MODIFY COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL DEFAULT 'short_po'`,
     `ALTER TABLE purchase_orders ADD COLUMN letterhead_header LONGTEXT NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN letterhead_id INT NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN terms_clauses JSON NULL`,

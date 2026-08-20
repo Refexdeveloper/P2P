@@ -490,6 +490,60 @@ export const poApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  createManual: (body: Record<string, unknown>) =>
+    request<{ data: Record<string, unknown>; message: string }>('/api/po/manual', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  saveDraft: (body: Record<string, unknown>) =>
+    request<{ data: Record<string, unknown>; message: string }>('/api/po/draft', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  previewManualDocumentHtml: async (body: Record<string, unknown>) => {
+    const token = getToken();
+    const res = await fetch(`${PO_API_URL}/api/po/manual/preview-document`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let message = text.slice(0, 200) || 'Could not load PO preview';
+      try {
+        message = (JSON.parse(text) as { message?: string }).message || message;
+      } catch {
+        /* keep text */
+      }
+      throw new ApiError(res.status, message);
+    }
+    return res.text();
+  },
+  previewManualPdfBlob: async (body: Record<string, unknown>) => {
+    const token = getToken();
+    const res = await fetch(`${PO_API_URL}/api/po/manual/preview-pdf`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let message = text.slice(0, 200) || 'Could not generate preview PDF';
+      try {
+        message = (JSON.parse(text) as { message?: string }).message || message;
+      } catch {
+        /* keep text */
+      }
+      throw new ApiError(res.status, message);
+    }
+    return asPdfBlob(await res.arrayBuffer());
+  },
   list: (pending?: boolean) =>
     request<{ data: unknown[] }>(`/api/po${pending ? '?pending=true' : ''}`),
   listTrack: (params?: {
@@ -682,6 +736,25 @@ export const poApi = {
     }
     return asPdfBlob(await res.arrayBuffer());
   },
+  /** Prefer stored/generated PDF; fall back to live HTML document when Chrome/PDF is unavailable. */
+  fetchPreviewBlob: async (poId: number): Promise<{ blob: Blob; isHtml: boolean }> => {
+    const token = getToken();
+    const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+    const pdfRes = await fetch(`${PO_API_URL}/api/po/${poId}/pdf`, { headers: authHeaders });
+    if (pdfRes.ok) {
+      try {
+        return { blob: asPdfBlob(await pdfRes.arrayBuffer()), isHtml: false };
+      } catch {
+        /* not a real PDF — try HTML document */
+      }
+    }
+    const htmlRes = await fetch(`${PO_API_URL}/api/po/${poId}/document`, { headers: authHeaders });
+    if (!htmlRes.ok) {
+      const text = await htmlRes.text();
+      throw new ApiError(htmlRes.status, text.slice(0, 200) || 'Could not load document');
+    }
+    return { blob: new Blob([await htmlRes.text()], { type: 'text/html' }), isHtml: true };
+  },
   sign: (
     poId: number,
     remarks: string,
@@ -690,6 +763,12 @@ export const poApi = {
       signatureImage?: string;
       signatureId?: number;
       saveToGallery?: boolean;
+      dsc?: {
+        holderName: string;
+        serial: string;
+        issuer: string;
+        validTill: string;
+      };
     }
   ) =>
     request<{ data: unknown; message: string }>(`/api/po/${poId}/sign`, {
@@ -705,6 +784,17 @@ export const poApi = {
     request<{ data: unknown; message: string }>(`/api/po/${poId}/send-back`, {
       method: 'POST',
       body: JSON.stringify({ remarks }),
+    }),
+  cancel: (
+    poId: number,
+    body: {
+      reason: string;
+      attachments?: Array<{ fileName: string; fileData: string }>;
+    }
+  ) =>
+    request<{ data: unknown; message: string }>(`/api/po/${poId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
   update: (poId: number, body: Record<string, unknown>) =>
     request<{ data: Record<string, unknown>; message: string }>(`/api/po/${poId}`, {
@@ -766,7 +856,14 @@ export interface UserSignatureItem {
   createdAt?: string;
 }
 
-export type PoType = 'short_po' | 'long_po';
+export type PoType = 'short_po' | 'long_po' | 'short_wo' | 'long_wo';
+
+export const PO_TYPE_LABELS: Record<PoType, string> = {
+  short_po: 'Short PO',
+  long_po: 'Long PO',
+  short_wo: 'Short WO',
+  long_wo: 'Long WO',
+};
 
 export interface PoLetterheadClause {
   id?: number;

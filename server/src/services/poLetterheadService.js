@@ -1,20 +1,39 @@
 import pool from '../config/db.js';
 import { SHORT_PO_LETTERHEAD_DEFAULTS } from './shortPoLetterheadDefaults.js';
 import { LONG_PO_LETTERHEAD_DEFAULTS } from './longPoLetterheadDefaults.js';
+import {
+  SHORT_WO_LETTERHEAD_DEFAULTS,
+  LONG_WO_LETTERHEAD_DEFAULTS,
+} from './woLetterheadDefaults.js';
 
-export const PO_TYPES = ['short_po', 'long_po'];
+export const PO_TYPES = ['short_po', 'long_po', 'short_wo', 'long_wo'];
 
 export const PO_TYPE_LABELS = {
   short_po: 'Short PO',
   long_po: 'Long PO',
+  short_wo: 'Short WO',
+  long_wo: 'Long WO',
 };
 
-function normalizePoType(poType) {
-  const normalized = String(poType || '').trim().toLowerCase();
+export function normalizePoType(poType) {
+  const normalized = String(poType || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (!PO_TYPES.includes(normalized)) {
-    throw new Error('Invalid PO type. Use short_po or long_po.');
+    throw new Error('Invalid PO type. Use short_po, long_po, short_wo, or long_wo.');
   }
   return normalized;
+}
+
+/** Align template family with document kind (PO ↔ WO). */
+export function alignPoTypeWithPurchaseType(poType, purchaseType) {
+  const raw = String(poType || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const isLong = raw === 'long_po' || raw === 'long_wo' || raw === 'long';
+  const isWo =
+    String(purchaseType || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_') === 'work_order';
+  if (isWo) return isLong ? 'long_wo' : 'short_wo';
+  return isLong ? 'long_po' : 'short_po';
 }
 
 function mapClause(row) {
@@ -137,22 +156,28 @@ export async function saveLetterhead(poTypeInput, payload) {
   }
 }
 
-export async function seedLetterheadDefaults() {
-  // Short PO: apply Refex commercial template when missing, or when still on old stub defaults
-  const [shortClauses] = await pool.query(
-    `SELECT c.terms_header, c.section_type
+async function clauseHeadersForType(poType) {
+  const [rows] = await pool.query(
+    `SELECT c.terms_header, c.terms_description, c.section_type
      FROM po_letterhead_clauses c
      JOIN po_letterhead_masters m ON m.id = c.master_id
-     WHERE m.po_type = 'short_po'`
+     WHERE m.po_type = ?`,
+    [poType]
   );
-  const headerPlain = (value) =>
-    String(value || '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
+  return rows;
+}
 
+const headerPlain = (value) =>
+  String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+export async function seedLetterheadDefaults() {
+  // Short PO: apply Refex commercial template when missing, or when still on old stub defaults
+  const shortClauses = await clauseHeadersForType('short_po');
   const hasShortParties = shortClauses.some(
     (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'parties'
   );
@@ -161,12 +186,7 @@ export async function seedLetterheadDefaults() {
   }
 
   // Long PO: apply Refex long commercial template (live terms + 25 annexure clauses)
-  const [longClauses] = await pool.query(
-    `SELECT c.terms_header, c.terms_description, c.section_type
-     FROM po_letterhead_clauses c
-     JOIN po_letterhead_masters m ON m.id = c.master_id
-     WHERE m.po_type = 'long_po'`
-  );
+  const longClauses = await clauseHeadersForType('long_po');
   const hasLongPacking = longClauses.some(
     (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'packing'
   );
@@ -178,5 +198,16 @@ export async function seedLetterheadDefaults() {
   const longAnnexureCount = longClauses.filter((c) => c.section_type === 'annexure').length;
   if (!longClauses.length || !hasLongPacking || !hasLiveInco || longAnnexureCount !== 25) {
     await saveLetterhead('long_po', LONG_PO_LETTERHEAD_DEFAULTS);
+  }
+
+  // Short WO / Long WO — seed once when empty
+  const shortWoClauses = await clauseHeadersForType('short_wo');
+  if (!shortWoClauses.length) {
+    await saveLetterhead('short_wo', SHORT_WO_LETTERHEAD_DEFAULTS);
+  }
+
+  const longWoClauses = await clauseHeadersForType('long_wo');
+  if (!longWoClauses.length) {
+    await saveLetterhead('long_wo', LONG_WO_LETTERHEAD_DEFAULTS);
   }
 }

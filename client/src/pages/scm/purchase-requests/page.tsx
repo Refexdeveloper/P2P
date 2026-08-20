@@ -10,7 +10,7 @@ import {
   storePoCsvImport,
 } from '../../../utils/poCsvImport';
 
-type RowStatus = 'Ready for PO' | 'Pending Approval' | 'PO Approved' | 'PO Rejected' | 'Sent Back';
+type RowStatus = 'Ready for PO' | 'Pending Approval' | 'PO Approved' | 'PO Rejected' | 'Draft' | 'Cancelled';
 
 interface BucketRow {
   key: string;
@@ -40,6 +40,8 @@ type TrackStats = {
   pending: number;
   approved: number;
   rejected: number;
+  draft?: number;
+  cancelled?: number;
 };
 
 type TaskPreview = {
@@ -59,11 +61,12 @@ function mapTrackStatusToBucket(status: string, statusRaw?: string): RowStatus {
   if (s === 'ready') return 'Ready for PO';
   if (s === 'pending' || raw === 'pending_approval' || raw === 'pending_buyer_verify') return 'Pending Approval';
   if (s === 'rejected' || raw === 'rejected') return 'PO Rejected';
-  if (s === 'draft' || raw === 'draft') return 'Sent Back';
+  if (s === 'draft' || raw === 'draft') return 'Draft';
+  if (s === 'cancelled' || raw === 'cancelled') return 'Cancelled';
   return 'PO Approved';
 }
 
-function mapUiFilterToApi(filter: 'all' | 'ready' | 'created' | 'approved' | 'rejected'): string {
+function mapUiFilterToApi(filter: 'all' | 'ready' | 'created' | 'approved' | 'rejected' | 'draft' | 'cancelled'): string {
   if (filter === 'created') return 'pending';
   return filter;
 }
@@ -75,7 +78,7 @@ export default function SCMPurchaseRequestsPage() {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'created' | 'approved' | 'rejected'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'created' | 'approved' | 'rejected' | 'draft' | 'cancelled'>('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [pagination, setPagination] = useState<TrackPagination>({
@@ -90,6 +93,8 @@ export default function SCMPurchaseRequestsPage() {
     pendingApproval: 0,
     poApproved: 0,
     poRejected: 0,
+    draft: 0,
+    cancelled: 0,
   });
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [importTarget, setImportTarget] = useState<BucketRow | null>(null);
@@ -100,7 +105,13 @@ export default function SCMPurchaseRequestsPage() {
   const [importChecking, setImportChecking] = useState(false);
   const [rfqPending, setRfqPending] = useState<PostRfqPendingItem[]>([]);
   const [myTasks, setMyTasks] = useState<TaskPreview[]>([]);
+  const [cancelTarget, setCancelTarget] = useState<BucketRow | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelFiles, setCancelFiles] = useState<File[]>([]);
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [cancelError, setCancelError] = useState('');
   const csvFileRef = useRef<HTMLInputElement>(null);
+  const cancelFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -148,6 +159,8 @@ export default function SCMPurchaseRequestsPage() {
           pendingApproval: s.pending,
           poApproved: s.approved,
           poRejected: s.rejected,
+          draft: s.draft ?? 0,
+          cancelled: s.cancelled ?? 0,
         });
       }
       setError('');
@@ -164,37 +177,32 @@ export default function SCMPurchaseRequestsPage() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [rfqRes, taskRes] = await Promise.all([
-          rfqApi.listPostApprovalPending().catch(() => ({ data: [] as PostRfqPendingItem[] })),
-          taskApi.list().catch(() => ({ data: [] as unknown[] })),
-        ]);
-        if (cancelled) return;
-        setRfqPending(rfqRes.data || []);
-        setMyTasks(
-          ((taskRes.data as TaskPreview[]) || []).map((t) => ({
-            id: t.id,
-            prId: t.prId,
-            prNumber: t.prNumber,
-            title: t.title,
-            actionPath: t.actionPath,
-            statusUI: t.statusUI,
-          }))
-        );
-      } catch {
-        if (!cancelled) {
-          setRfqPending([]);
-          setMyTasks([]);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const loadQueues = useCallback(async () => {
+    try {
+      const [rfqRes, taskRes] = await Promise.all([
+        rfqApi.listPostApprovalPending().catch(() => ({ data: [] as PostRfqPendingItem[] })),
+        taskApi.list().catch(() => ({ data: [] as unknown[] })),
+      ]);
+      setRfqPending(rfqRes.data || []);
+      setMyTasks(
+        ((taskRes.data as TaskPreview[]) || []).map((t) => ({
+          id: t.id,
+          prId: t.prId,
+          prNumber: t.prNumber,
+          title: t.title,
+          actionPath: t.actionPath,
+          statusUI: t.statusUI,
+        }))
+      );
+    } catch {
+      setRfqPending([]);
+      setMyTasks([]);
+    }
   }, []);
+
+  useEffect(() => {
+    loadQueues();
+  }, [loadQueues]);
 
   const loadReadyOptions = async (): Promise<BucketRow[]> => {
     try {
@@ -300,10 +308,70 @@ export default function SCMPurchaseRequestsPage() {
         return 'bg-blue-100 text-blue-700';
       case 'PO Rejected':
         return 'bg-red-100 text-red-700';
-      case 'Sent Back':
-        return 'bg-orange-100 text-orange-700';
+      case 'Draft':
+        return 'bg-slate-100 text-slate-700';
+      case 'Cancelled':
+        return 'bg-rose-100 text-rose-700';
       default:
         return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const openCancelModal = (row: BucketRow) => {
+    setCancelTarget(row);
+    setCancelReason('');
+    setCancelFiles([]);
+    setCancelError('');
+  };
+
+  const closeCancelModal = () => {
+    if (cancelSubmitting) return;
+    setCancelTarget(null);
+    setCancelReason('');
+    setCancelFiles([]);
+    setCancelError('');
+  };
+
+  const handleCancelFileSelect = (files: FileList | null) => {
+    if (!files?.length) return;
+    setCancelFiles((prev) => [...prev, ...Array.from(files)].slice(0, 5));
+  };
+
+  const removeCancelFile = (idx: number) => {
+    setCancelFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+      reader.readAsDataURL(file);
+    });
+
+  const submitCancellation = async () => {
+    if (!cancelTarget?.poId) return;
+    const reason = cancelReason.trim();
+    if (reason.length < 5) {
+      setCancelError('Please enter cancellation reason (minimum 5 characters)');
+      return;
+    }
+    setCancelSubmitting(true);
+    setCancelError('');
+    try {
+      const attachments = await Promise.all(
+        cancelFiles.map(async (file) => ({
+          fileName: file.name,
+          fileData: await fileToDataUrl(file),
+        }))
+      );
+      await poApi.cancel(cancelTarget.poId, { reason, attachments });
+      closeCancelModal();
+      await Promise.all([load(), loadQueues()]);
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Failed to cancel PO');
+    } finally {
+      setCancelSubmitting(false);
     }
   };
 
@@ -343,6 +411,14 @@ export default function SCMPurchaseRequestsPage() {
           >
             <i className="ri-shopping-cart-2-line"></i>
             Create PO
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/scm/create-po?manual=1')}
+            className="px-4 py-2.5 border border-slate-300 text-slate-800 rounded-lg text-sm font-semibold hover:bg-slate-50 flex items-center gap-2"
+          >
+            <i className="ri-file-add-line"></i>
+            Manual PO (No PR)
           </button>
           <button
             type="button"
@@ -539,10 +615,11 @@ export default function SCMPurchaseRequestsPage() {
         <p className="text-xs text-gray-500">Create PO from ready PRs, or import from an existing reference PO</p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-5">
         {[
           { label: 'Total PRs', value: stats.total, color: 'text-gray-900', icon: 'ri-file-list-3-line', bg: 'bg-teal-100', ic: 'text-teal-600' },
           { label: 'Ready for PO', value: stats.readyForPO, color: 'text-emerald-600', icon: 'ri-checkbox-circle-line', bg: 'bg-emerald-100', ic: 'text-emerald-600' },
+          { label: 'Draft POs', value: stats.draft, color: 'text-slate-600', icon: 'ri-draft-line', bg: 'bg-slate-100', ic: 'text-slate-600' },
           { label: 'Pending Approval', value: stats.pendingApproval, color: 'text-amber-600', icon: 'ri-time-line', bg: 'bg-amber-100', ic: 'text-amber-600' },
           { label: 'PO Approved', value: stats.poApproved, color: 'text-blue-600', icon: 'ri-file-check-line', bg: 'bg-blue-100', ic: 'text-blue-600' },
           { label: 'PO Rejected', value: stats.poRejected, color: 'text-red-600', icon: 'ri-close-circle-line', bg: 'bg-red-100', ic: 'text-red-600' },
@@ -581,6 +658,8 @@ export default function SCMPurchaseRequestsPage() {
                 ['created', `Pending (${stats.pendingApproval})`],
                 ['approved', `Approved (${stats.poApproved})`],
                 ['rejected', `Rejected (${stats.poRejected})`],
+                ['draft', `Draft (${stats.draft})`],
+                ['cancelled', `Cancelled (${stats.cancelled})`],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -698,13 +777,15 @@ export default function SCMPurchaseRequestsPage() {
                                   Create PO
                                 </button>
                               )}
-                              {pr.status === 'Sent Back' && pr.poId && (
+                              {pr.status === 'Draft' && pr.poId && (
                                 <button
                                   type="button"
-                                  onClick={() => navigate(`/scm/create-po?poId=${pr.poId}&from=purchase-requests`)}
-                                  className="px-2.5 py-1.5 bg-orange-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
+                                  onClick={() =>
+                                    navigate(`/scm/create-po?poId=${pr.poId}&from=purchase-requests`)
+                                  }
+                                  className="px-2.5 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold whitespace-nowrap"
                                 >
-                                  Revise PO
+                                  Edit Draft
                                 </button>
                               )}
                               {pr.poId && (
@@ -714,6 +795,15 @@ export default function SCMPurchaseRequestsPage() {
                                   className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50 whitespace-nowrap"
                                 >
                                   View PDF
+                                </button>
+                              )}
+                              {pr.poId && pr.status !== 'Cancelled' && (
+                                <button
+                                  type="button"
+                                  onClick={() => openCancelModal(pr)}
+                                  className="px-2.5 py-1.5 border border-rose-300 text-rose-700 rounded-md text-xs font-medium hover:bg-rose-50 whitespace-nowrap"
+                                >
+                                  Cancel PO
                                 </button>
                               )}
                               {pr.status !== 'Ready for PO' && !pr.poId && pr.prId > 0 && (
@@ -728,11 +818,14 @@ export default function SCMPurchaseRequestsPage() {
                             </div>
                           </td>
                         </tr>
-                        {isExpanded && pr.prId > 0 && (
+                        {isExpanded && (pr.prId > 0 || !!pr.poId) && (
                           <PRBucketExpandedRow
                             prId={pr.prId}
                             colSpan={9}
                             statusLabel={pr.status}
+                            poId={pr.poId}
+                            poNumber={pr.poNumber}
+                            title={pr.title}
                             showCreatePo={pr.status === 'Ready for PO'}
                             onCreatePo={() => openCreatePo(pr.prId)}
                           />
@@ -944,6 +1037,101 @@ export default function SCMPurchaseRequestsPage() {
               >
                 <i className="ri-shopping-cart-2-line"></i>
                 Create PO manually
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl w-full max-w-xl p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Cancel Purchase Order</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {cancelTarget.poNumber || 'PO'} will be moved to Cancelled status.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCancelModal}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+              >
+                <i className="ri-close-line text-lg"></i>
+              </button>
+            </div>
+
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Cancellation Reason *</label>
+            <textarea
+              rows={4}
+              value={cancelReason}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                setCancelError('');
+              }}
+              placeholder="Enter reason for cancellation..."
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+            />
+
+            <div className="mt-4">
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Additional Attachments</label>
+              <button
+                type="button"
+                onClick={() => cancelFileRef.current?.click()}
+                className="px-3 py-2 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                <i className="ri-upload-2-line mr-1"></i>
+                Add files
+              </button>
+              <input
+                ref={cancelFileRef}
+                type="file"
+                className="hidden"
+                multiple
+                onChange={(e) => handleCancelFileSelect(e.target.files)}
+              />
+              {cancelFiles.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {cancelFiles.map((file, idx) => (
+                    <div key={`${file.name}-${idx}`} className="flex items-center justify-between text-xs bg-gray-50 px-3 py-2 rounded-lg">
+                      <span className="truncate pr-2">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeCancelFile(idx)}
+                        className="text-rose-600 hover:text-rose-700"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {cancelError && (
+              <p className="mt-3 text-xs text-red-600 flex items-center gap-1">
+                <i className="ri-error-warning-line"></i>
+                {cancelError}
+              </p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2 border-t border-gray-100 pt-4">
+              <button
+                type="button"
+                onClick={closeCancelModal}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+                disabled={cancelSubmitting}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={submitCancellation}
+                disabled={cancelSubmitting}
+                className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-50"
+              >
+                {cancelSubmitting ? 'Cancelling...' : 'Confirm Cancel'}
               </button>
             </div>
           </div>

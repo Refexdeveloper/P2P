@@ -38,7 +38,7 @@ export type PoCsvImportPayload = {
   referencePoNumber?: string;
   vendorName?: string;
   vendorEmail?: string;
-  poType?: 'short_po' | 'long_po';
+  poType?: 'short_po' | 'long_po' | 'short_wo' | 'long_wo';
   entity?: string;
   deliveryAddress?: string;
   expectedDeliveryDate?: string;
@@ -353,9 +353,11 @@ function collectClauses(
   return out;
 }
 
-function normalizePoType(raw: string): 'short_po' | 'long_po' | undefined {
+function normalizePoType(raw: string): 'short_po' | 'long_po' | 'short_wo' | 'long_wo' | undefined {
   const v = String(raw || '').trim().toLowerCase().replace(/[\s\-]+/g, '_');
   if (!v) return undefined;
+  if (v === 'long_wo' || v === 'longwo') return 'long_wo';
+  if (v === 'short_wo' || v === 'shortwo') return 'short_wo';
   if (v === 'long' || v === 'long_po' || v === 'longpo') return 'long_po';
   if (v === 'short' || v === 'short_po' || v === 'shortpo') return 'short_po';
   return undefined;

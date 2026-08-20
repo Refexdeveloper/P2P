@@ -100,11 +100,23 @@ export function buildSignatureRenderOptions(po = {}) {
   const name = po.signatureName || po.signature_name || '';
   const imagePath = po.signatureImagePath || po.signature_image_path || '';
   const imageDataUrl = imagePath ? signatureFileToDataUrl(imagePath) : null;
-  if (!name && !imageDataUrl) return undefined;
+  let dsc = po.signatureDsc || po.signature_dsc || null;
+  if (!dsc && po.signature_dsc_json) {
+    try {
+      dsc =
+        typeof po.signature_dsc_json === 'string'
+          ? JSON.parse(po.signature_dsc_json)
+          : po.signature_dsc_json;
+    } catch {
+      dsc = null;
+    }
+  }
+  if (!name && !imageDataUrl && !dsc) return undefined;
   return {
-    name: name || 'SCM Manager',
+    name: name || dsc?.holderName || 'SCM Manager',
     date: po.signedAt || po.signed_at || '',
     comments: po.signerComments || po.signer_comments || '',
     imageDataUrl: imageDataUrl || undefined,
+    dsc: dsc || undefined,
   };
 }

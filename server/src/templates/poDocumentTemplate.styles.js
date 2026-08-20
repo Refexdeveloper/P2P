@@ -458,6 +458,30 @@ export const PO_STYLES = `
     border-bottom: 1px solid #ccc;
     padding-bottom: 4px;
   }
+  .sig-space .dsc-box {
+    margin-top: 8px;
+    max-width: 320px;
+    border: 1.5px solid #1d4ed8;
+    background: #eff6ff;
+    padding: 8px 10px;
+    font-size: 10px;
+    line-height: 1.45;
+    color: #1e3a8a;
+  }
+  .sig-space .dsc-box .dsc-title {
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #1d4ed8;
+    margin-bottom: 4px;
+  }
+  .sig-space .sig-img.sig-dsc {
+    max-height: 120px;
+    max-width: 360px;
+    border-bottom: none;
+    padding-bottom: 0;
+  }
   .ack-box .sig-gap { height: 70px; }
   .letterhead-block { margin-bottom: 10px; width: 100%; }
 `;

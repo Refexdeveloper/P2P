@@ -264,10 +264,55 @@ function adaptLetterheadPreviewHtml(html: string, isWorkOrder: boolean) {
   return out.trim();
 }
 
-const PO_TYPE_OPTIONS: { id: PoType; label: string }[] = [
-  { id: 'short_po', label: 'Short PO' },
-  { id: 'long_po', label: 'Long PO' },
-];
+const PO_TYPE_OPTIONS_BY_DOC: Record<
+  'purchase_order' | 'work_order',
+  { id: PoType; label: string }[]
+> = {
+  purchase_order: [
+    { id: 'short_po', label: 'Short PO' },
+    { id: 'long_po', label: 'Long PO' },
+  ],
+  work_order: [
+    { id: 'short_wo', label: 'Short WO' },
+    { id: 'long_wo', label: 'Long WO' },
+  ],
+};
+
+function defaultTemplateForDocument(documentType: 'purchase_order' | 'work_order'): PoType {
+  return documentType === 'work_order' ? 'short_wo' : 'short_po';
+}
+
+function alignTemplateWithDocument(
+  poType: PoType,
+  documentType: 'purchase_order' | 'work_order'
+): PoType {
+  const isLong = poType === 'long_po' || poType === 'long_wo';
+  if (documentType === 'work_order') return isLong ? 'long_wo' : 'short_wo';
+  return isLong ? 'long_po' : 'short_po';
+}
+
+function coercePoType(raw: unknown, documentType: 'purchase_order' | 'work_order'): PoType {
+  const v = String(raw || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const allowed: PoType[] = ['short_po', 'long_po', 'short_wo', 'long_wo'];
+  const asType = (allowed.includes(v as PoType) ? v : defaultTemplateForDocument(documentType)) as PoType;
+  return alignTemplateWithDocument(asType, documentType);
+}
+
+function matchEntityFromLetterhead(
+  letterhead: LetterheadMasterRecord | null,
+  options: Array<{ id: number; name: string; code: string }>
+) {
+  if (!letterhead || !options.length) return null;
+  const entityName = String(letterhead.entity || '').trim().toLowerCase();
+  const letterheadName = String(letterhead.name || '').trim().toLowerCase();
+  return (
+    options.find((e) => entityName && e.name.toLowerCase() === entityName) ||
+    options.find((e) => letterheadName && e.code.toLowerCase() === letterheadName) ||
+    options.find((e) => letterheadName && e.name.toLowerCase() === letterheadName) ||
+    options.find((e) => entityName && e.code.toLowerCase() === entityName) ||
+    null
+  );
+}
 
 type EditableClauseRow = PoLetterheadClause & { clientKey: string };
 
@@ -658,6 +703,10 @@ export default function CreatePOPage() {
   const numericPrId = prIdParam ? Number(prIdParam) : null;
   const editPoId = poIdParam ? Number(poIdParam) : null;
   const isEditMode = !!editPoId && !Number.isNaN(editPoId);
+  const isManualMode =
+    !isEditMode &&
+    !numericPrId &&
+    (searchParams.get('manual') === '1' || searchParams.get('mode') === 'manual-no-pr');
   const fromParam = searchParams.get('from');
   const editReturnPath =
     fromParam === 'buyer-verify'
@@ -725,7 +774,7 @@ export default function CreatePOPage() {
   const moneySymbol = currencySymbol(currency);
   /** Effective GST % derived from line taxes (stored on PO for compatibility) */
   const [gstPercentage, setGstPercentage] = useState(18);
-  const [poType, setPoType] = useState<PoType>('long_po');
+  const [poType, setPoType] = useState<PoType>('short_po');
   /** Document type for this PO create — can differ from PR default */
   const [documentType, setDocumentType] = useState<'purchase_order' | 'work_order'>('purchase_order');
   const [letterheadHeader, setLetterheadHeader] = useState('');
@@ -752,9 +801,17 @@ export default function CreatePOPage() {
   const [savingSiteLookup, setSavingSiteLookup] = useState(false);
   const [siteLookupError, setSiteLookupError] = useState('');
   const [letterheadLoading, setLetterheadLoading] = useState(false);
+  const [templateLoadError, setTemplateLoadError] = useState('');
+  const [loadedTemplate, setLoadedTemplate] = useState<{
+    poType: PoType;
+    title: string;
+    termsCount: number;
+    annexureCount: number;
+  } | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'terms' | 'preview'>('details');
   const [draftSaved, setDraftSaved] = useState(false);
+  const [poEditStatus, setPoEditStatus] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [pageMode, setPageMode] = useState<'form' | 'pdf'>('form');
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
@@ -772,34 +829,59 @@ export default function CreatePOPage() {
   const [importedPoNumber, setImportedPoNumber] = useState('');
   const [importedVendorName, setImportedVendorName] = useState('');
   const [importedVendorEmail, setImportedVendorEmail] = useState('');
+  const [manualEntityId, setManualEntityId] = useState<number | ''>('');
+  const [entityOptions, setEntityOptions] = useState<Array<{ id: number; name: string; code: string }>>([]);
+  const [manualVendorName, setManualVendorName] = useState('');
+  const [manualVendorEmail, setManualVendorEmail] = useState('');
   const csvAppliedRef = useRef(false);
   const brandingAutoApplied = useRef(false);
   const skipNextLetterheadLoad = useRef(false);
 
   const documentTypeRef = useRef(documentType);
   documentTypeRef.current = documentType;
+  const letterheadLoadSeq = useRef(0);
 
   const loadLetterhead = useCallback(async (type: PoType, docType?: 'purchase_order' | 'work_order') => {
-    // Prefer explicit docType; otherwise use latest ref so in-flight loads
-    // after a Document Type switch don't overwrite with Purchase Order wording.
-    const targetType = docType || documentTypeRef.current;
+    const targetDoc = docType || documentTypeRef.current;
+    const alignedType = alignTemplateWithDocument(type, targetDoc);
+    const seq = ++letterheadLoadSeq.current;
     setLetterheadLoading(true);
+    setTemplateLoadError('');
     try {
-      const res = await poLetterheadApi.get(type);
-      const applyAs = docType || documentTypeRef.current || targetType;
-      setLetterheadHeader(
-        adaptWordingForDocumentType(res.data.letterheadHeader || '', applyAs)
-      );
-      setTermsClauses(adaptClausesForDocumentType(res.data.terms || [], applyAs));
-      setAnnexureClauses(adaptClausesForDocumentType(res.data.annexure || [], applyAs));
-    } catch {
+      const res = await poLetterheadApi.get(alignedType);
+      if (seq !== letterheadLoadSeq.current) return;
+      const terms = res.data.terms || [];
+      const annexure = res.data.annexure || [];
+      setLetterheadHeader(adaptWordingForDocumentType(res.data.letterheadHeader || '', targetDoc));
+      setTermsClauses(adaptClausesForDocumentType(terms, targetDoc));
+      setAnnexureClauses(adaptClausesForDocumentType(annexure, targetDoc));
+      setLoadedTemplate({
+        poType: alignedType,
+        title: res.data.title || res.data.poTypeLabel || alignedType,
+        termsCount: terms.length,
+        annexureCount: annexure.length,
+      });
+    } catch (err) {
+      if (seq !== letterheadLoadSeq.current) return;
       setLetterheadHeader('');
       setTermsClauses([]);
       setAnnexureClauses([]);
+      setLoadedTemplate(null);
+      setTemplateLoadError(err instanceof Error ? err.message : 'Could not load PO Type Master template');
     } finally {
-      setLetterheadLoading(false);
+      if (seq === letterheadLoadSeq.current) setLetterheadLoading(false);
     }
   }, []);
+
+  const applyPoTypeTemplate = useCallback(
+    (nextType: PoType, nextDoc?: 'purchase_order' | 'work_order') => {
+      skipNextLetterheadLoad.current = false;
+      setLetterheadLocked(false);
+      setPoType(nextType);
+      void loadLetterhead(nextType, nextDoc || documentTypeRef.current);
+    },
+    [loadLetterhead]
+  );
 
   const selectedLetterhead = useMemo(
     () => letterheadOptions.find((o) => o.id === letterheadId) || null,
@@ -986,34 +1068,35 @@ export default function CreatePOPage() {
       skipNextLetterheadLoad.current = false;
       return;
     }
-    loadLetterhead(poType);
-  }, [poType, loadLetterhead, letterheadLocked]);
+    void loadLetterhead(poType, documentType);
+  }, [poType, documentType, loadLetterhead, letterheadLocked]);
+
+  useEffect(() => {
+    if (!isManualMode) return;
+    const matched = matchEntityFromLetterhead(selectedLetterhead, entityOptions);
+    if (!matched) return;
+    setManualEntityId(matched.id);
+    setPr((prev) =>
+      prev
+        ? { ...prev, entityId: matched.id, entityName: matched.name, entityCode: matched.code }
+        : prev
+    );
+  }, [isManualMode, selectedLetterhead, entityOptions]);
 
   const reloadClausesFromMaster = useCallback(async () => {
-    setLetterheadLoading(true);
-    try {
-      const res = await poLetterheadApi.get(poType);
-      setLetterheadHeader(
-        adaptWordingForDocumentType(res.data.letterheadHeader || '', documentType)
-      );
-      setTermsClauses(adaptClausesForDocumentType(res.data.terms || [], documentType));
-      setAnnexureClauses(adaptClausesForDocumentType(res.data.annexure || [], documentType));
-    } catch {
-      /* keep current clauses */
-    } finally {
-      setLetterheadLoading(false);
-    }
-  }, [poType, documentType]);
+    skipNextLetterheadLoad.current = false;
+    setLetterheadLocked(false);
+    await loadLetterhead(poType, documentType);
+  }, [loadLetterhead, poType, documentType]);
 
-  // When switching Purchase Order ↔ Work Order, rewrite annexure/terms wording in the editors
+  // Keep Short/Long template family aligned with Purchase Order vs Work Order
   const prevDocumentTypeRef = useRef(documentType);
   useEffect(() => {
     if (prevDocumentTypeRef.current === documentType) return;
     prevDocumentTypeRef.current = documentType;
-    setTermsClauses((prev) => adaptClausesForDocumentType(prev, documentType));
-    setAnnexureClauses((prev) => adaptClausesForDocumentType(prev, documentType));
-    setLetterheadHeader((prev) => adaptWordingForDocumentType(prev, documentType));
-  }, [documentType]);
+    const nextType = alignTemplateWithDocument(poType, documentType);
+    if (nextType !== poType) setPoType(nextType);
+  }, [documentType, poType]);
 
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;
@@ -1028,6 +1111,7 @@ export default function CreatePOPage() {
       const isPendingApproval =
         statusRaw === 'pending_approval' || statusRaw === 'pendingapproval';
       const isDraft = statusRaw === 'draft';
+      setPoEditStatus(statusRaw);
       const isBuyerVerifyStatus =
         statusRaw === 'pending_buyer_verify' ||
         statusRaw === 'pending_buyerverify' ||
@@ -1057,19 +1141,19 @@ export default function CreatePOPage() {
       setIncoterms(normalizeIncoterm(po.incoterms));
       setSpecialInstructions(String(po.specialInstructions || ''));
       setGstPercentage(Number(po.gstPercentage) || 18);
-      setPoType((po.poType as PoType) || 'short_po');
+      const loadedDocType: 'purchase_order' | 'work_order' =
+        po.purchaseType === 'work_order' ? 'work_order' : 'purchase_order';
+      setPoType(coercePoType(po.poType, loadedDocType));
       setLetterheadId(po.letterheadId ? Number(po.letterheadId) : '');
       setEntity(String(po.entity || ''));
       setHeaderLogo(String(po.headerLogo || ''));
       setFooterLogo(String(po.footerLogo || ''));
       setCurrency(normalizeCurrency(String(po.currency || DEFAULT_CURRENCY)));
-      const loadedDocType: 'purchase_order' | 'work_order' =
-        po.purchaseType === 'work_order' ? 'work_order' : 'purchase_order';
       setDocumentType(loadedDocType);
       prevDocumentTypeRef.current = loadedDocType;
       const loadedTerms = (po.termsClauses as PoLetterheadClause[]) || [];
       const loadedAnnexure = (po.annexureClauses as PoLetterheadClause[]) || [];
-      const loadedType = ((po.poType as PoType) || 'short_po');
+      const loadedType = coercePoType(po.poType, loadedDocType);
       setLetterheadHeader(
         adaptWordingForDocumentType(String(po.letterheadHeader || ''), loadedDocType)
       );
@@ -1158,6 +1242,11 @@ export default function CreatePOPage() {
         currency: normalizeCurrency(String(po.currency || DEFAULT_CURRENCY)),
       });
       setDocumentType(po.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
+      if (!prDbId) {
+        setManualVendorName(String(po.vendorName || ''));
+        setManualVendorEmail(String(po.vendorEmail || ''));
+        setManualEntityId(Number(po.entityId) || '');
+      }
       setVendorMeta({
         name: String(po.vendorName || ''),
         email: String(po.vendorEmail || ''),
@@ -1194,8 +1283,60 @@ export default function CreatePOPage() {
   }, [isEditMode, loadExistingPo]);
 
   const loadContext = useCallback(async () => {
-    if (isEditMode || !numericPrId) {
-      if (!isEditMode) setLoading(false);
+    if (isEditMode) return;
+    if (isManualMode) {
+      setLoading(true);
+      try {
+        const entRes = await masterApi.listEntities({ status: 'active', pageSize: 200 }).catch(() => ({ data: [] }));
+        const ents = ((entRes.data || []) as Array<{ id: number; name: string; code: string }>).map((e) => ({
+          id: Number(e.id),
+          name: String(e.name || ''),
+          code: String(e.code || ''),
+        }));
+        setEntityOptions(ents);
+        setPr({
+          id: 0,
+          prNumber: '—',
+          title: '',
+          department: '',
+          entityId: null,
+          entityName: '',
+          entityCode: '',
+          requester: '',
+          recommendedVendor: '',
+          vendorEmail: '',
+          purchaseType: 'purchase_order',
+          purchaseTypeLabel: 'Purchase Order',
+          currency: DEFAULT_CURRENCY,
+          lineItems: [],
+        });
+        setLineItems([
+          {
+            id: `manual-${Date.now()}`,
+            itemName: '',
+            description: '',
+            quantity: 1,
+            unitPrice: 0,
+            taxPercentage: 18,
+            total: 0,
+            unit: 'Nos',
+          },
+        ]);
+        setManualVendorName('');
+        setManualVendorEmail('');
+        setManualEntityId('');
+        setDocumentType('purchase_order');
+        setLoadError('');
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : 'Failed to start manual PO');
+        setPr(null);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    if (!numericPrId) {
+      setLoading(false);
       return;
     }
     try {
@@ -1241,6 +1382,11 @@ export default function CreatePOPage() {
         })),
       });
       setDocumentType(prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
+      setPoType(
+        defaultTemplateForDocument(
+          prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order'
+        )
+      );
       setPaymentTerms(vendor.paymentTerms || 'Net 30 Days');
       setIncoterms(normalizeIncoterm(vendor.deliveryTerms));
       setPoTermsDetails((prev) => ({
@@ -1266,14 +1412,14 @@ export default function CreatePOPage() {
     } finally {
       setLoading(false);
     }
-  }, [numericPrId, isEditMode]);
+  }, [numericPrId, isEditMode, isManualMode]);
 
   useEffect(() => {
     loadContext();
   }, [loadContext]);
 
   useEffect(() => {
-    if (numericPrId || isEditMode) return;
+    if (numericPrId || isEditMode || isManualMode) return;
     setPickerLoading(true);
     Promise.all([prApi.listScmBucket(), rfqApi.listPostApprovalPending()])
       .then(([prRes, rfqRes]) => {
@@ -1308,7 +1454,7 @@ export default function CreatePOPage() {
       })
       .catch(() => setPickerItems([]))
       .finally(() => setPickerLoading(false));
-  }, [numericPrId, isEditMode]);
+  }, [numericPrId, isEditMode, isManualMode]);
 
   useEffect(() => {
     return () => {
@@ -1455,6 +1601,7 @@ export default function CreatePOPage() {
     locationName: poTermsDetails.locationName || undefined,
     currency,
     entity,
+    entityId: isManualMode ? manualEntityId || undefined : pr?.entityId || undefined,
     headerLogo,
     footerLogo,
     terms: termsClauses,
@@ -1466,6 +1613,15 @@ export default function CreatePOPage() {
       siteAddress: poTermsDetails.siteAddress || deliveryAddress,
     },
     purchaseType: documentType,
+    vendorName: isManualMode
+      ? manualVendorName.trim() || importedVendorName.trim() || undefined
+      : importedVendorName.trim() || pr?.recommendedVendor || undefined,
+    vendorEmail: isManualMode
+      ? manualVendorEmail.trim() || importedVendorEmail.trim() || undefined
+      : importedVendorEmail.trim() || pr?.vendorEmail || undefined,
+    title: poTermsDetails.subject || pr?.title || undefined,
+    department: pr?.department || undefined,
+    requester: pr?.requester || undefined,
   }), [
     poNumber,
     lineItems,
@@ -1488,10 +1644,17 @@ export default function CreatePOPage() {
     annexureIiRows,
     poTermsDetails,
     documentType,
+    isManualMode,
+    manualEntityId,
+    manualVendorName,
+    manualVendorEmail,
+    importedVendorName,
+    importedVendorEmail,
+    pr,
   ]);
 
   useEffect(() => {
-    if (activeTab !== 'preview' || (!numericPrId && !editPoId)) return;
+    if (activeTab !== 'preview' || (!numericPrId && !editPoId && !isManualMode)) return;
 
     let objectUrl: string | null = null;
     let cancelled = false;
@@ -1500,9 +1663,26 @@ export default function CreatePOPage() {
       setPreviewLoading(true);
       setPreviewError('');
       try {
-        const html = isEditMode && editPoId
-          ? await poApi.previewDocumentHtmlByPoId(editPoId, buildPreviewPayload())
-          : await poApi.previewDocumentHtml(numericPrId!, buildPreviewPayload());
+        const payload = buildPreviewPayload();
+        // Prefer live vendor fields + vendorMeta so preview matches what user typed
+        if (isManualMode) {
+          payload.vendorName =
+            String(payload.vendorName || '').trim() ||
+            manualVendorName.trim() ||
+            vendorMeta.name.trim() ||
+            'Vendor Name';
+          payload.vendorEmail =
+            String(payload.vendorEmail || '').trim() ||
+            manualVendorEmail.trim() ||
+            vendorMeta.email.trim() ||
+            'vendor@example.com';
+        }
+        const html =
+          isEditMode && editPoId
+            ? await poApi.previewDocumentHtmlByPoId(editPoId, payload)
+            : isManualMode
+              ? await poApi.previewManualDocumentHtml(payload)
+              : await poApi.previewDocumentHtml(numericPrId!, payload);
         if (cancelled) return;
         objectUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
         setPreviewHtmlUrl((prev) => {
@@ -1511,7 +1691,15 @@ export default function CreatePOPage() {
         });
       } catch (err) {
         if (!cancelled) {
-          setPreviewError(err instanceof Error ? err.message : 'Could not load preview');
+          const raw = err instanceof Error ? err.message : 'Could not load preview';
+          let friendly = raw;
+          try {
+            const parsed = JSON.parse(raw) as { message?: string };
+            if (parsed?.message) friendly = parsed.message;
+          } catch {
+            /* keep raw */
+          }
+          setPreviewError(friendly);
           setPreviewHtmlUrl((prev) => {
             if (prev) URL.revokeObjectURL(prev);
             return null;
@@ -1528,7 +1716,7 @@ export default function CreatePOPage() {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [activeTab, numericPrId, editPoId, isEditMode, buildPreviewPayload]);
+  }, [activeTab, numericPrId, editPoId, isEditMode, isManualMode, buildPreviewPayload, manualVendorName, manualVendorEmail, vendorMeta.name, vendorMeta.email]);
 
   useEffect(() => {
     return () => {
@@ -1601,9 +1789,86 @@ export default function CreatePOPage() {
     setLineItems(prev => prev.filter(item => item.id !== id));
   };
 
-  const handleSaveDraft = () => {
-    setDraftSaved(true);
-    setTimeout(() => setDraftSaved(false), 3000);
+  const resolvedManualEntityId =
+    Number(manualEntityId || pr?.entityId || matchEntityFromLetterhead(selectedLetterhead, entityOptions)?.id || 0) ||
+    '';
+
+  const handleSaveDraft = async () => {
+    if ((!numericPrId && !editPoId && !isManualMode) || !pr) return;
+    if (isManualMode && !resolvedManualEntityId && !letterheadId) {
+      alert('Select a letterhead entity on the Terms & Conditions tab before saving draft');
+      setActiveTab('terms');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const payload: Record<string, unknown> = {
+        lineItems: lineItems.map((i) => ({
+          itemName: i.itemName || '',
+          description: i.description,
+          quantity: i.quantity,
+          unit: i.unit || 'Nos',
+          unitPrice: i.unitPrice,
+          taxPercentage: i.taxPercentage || 0,
+          discount: 0,
+        })),
+        deliveryAddress: poTermsDetails.siteAddress || deliveryAddress,
+        expectedDeliveryDate: expectedDeliveryDate || undefined,
+        paymentTerms,
+        incoterms,
+        specialInstructions,
+        gstPercentage: effectiveGstPercentage,
+        poType,
+        letterheadHeader,
+        letterheadId: letterheadId || undefined,
+        letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || undefined,
+        locationName: poTermsDetails.locationName || undefined,
+        currency,
+        entity,
+        headerLogo,
+        footerLogo,
+        terms: filterNonEmptyClauses(termsClauses),
+        annexure: filterNonEmptyClauses(annexureClauses),
+        annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
+        annexureIiHtml: serializeAnnexureIi(annexureIiRows),
+        poTermsDetails: {
+          ...poTermsDetails,
+          paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
+          siteAddress: poTermsDetails.siteAddress || deliveryAddress,
+          letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
+          buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
+        },
+        referencePoNumber: referencePoNumber.trim() || undefined,
+        purchaseType: documentType,
+      };
+
+      if (isManualMode) {
+        payload.vendorName = manualVendorName.trim() || undefined;
+        payload.vendorEmail = manualVendorEmail.trim() || undefined;
+        payload.entityId = resolvedManualEntityId;
+        payload.title = poTermsDetails.subject || '';
+        payload.department = pr.department || '';
+        payload.requester = pr.requester || '';
+      }
+
+      if (editPoId) payload.poId = editPoId;
+      else if (numericPrId) payload.prId = numericPrId;
+
+      const res = await poApi.saveDraft(payload);
+      const savedId = Number((res.data as { id?: number }).id);
+      const savedPoNumber = String((res.data as { poNumber?: string }).poNumber || '');
+      if (savedId) setCreatedPoId(savedId);
+      if (savedPoNumber) setPoNumber(savedPoNumber);
+      setDraftSaved(true);
+      setTimeout(() => setDraftSaved(false), 3000);
+      if (!editPoId && savedId) {
+        navigate(`/scm/create-po?poId=${savedId}&from=purchase-requests`, { replace: true });
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not save draft');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const applyReferencePoDetails = useCallback((po: Record<string, unknown>) => {
@@ -1618,13 +1883,13 @@ export default function CreatePOPage() {
     setIncoterms(normalizeIncoterm(po.incoterms));
     setSpecialInstructions(String(po.specialInstructions || ''));
     setGstPercentage(Number(po.gstPercentage) || 18);
-    setPoType((po.poType as PoType) || 'short_po');
     const nextDocType: 'purchase_order' | 'work_order' =
       po.purchaseType === 'work_order'
         ? 'work_order'
         : po.purchaseType === 'purchase_order'
           ? 'purchase_order'
           : documentType;
+    setPoType(coercePoType(po.poType, nextDocType));
     if (po.purchaseType === 'work_order' || po.purchaseType === 'purchase_order') {
       setDocumentType(po.purchaseType);
       prevDocumentTypeRef.current = po.purchaseType;
@@ -1738,7 +2003,7 @@ export default function CreatePOPage() {
     if (payload.incoterms) setIncoterms(normalizeIncoterm(String(payload.incoterms)));
     if (payload.gstPercentage != null) setGstPercentage(payload.gstPercentage);
     if (payload.specialInstructions) setSpecialInstructions(payload.specialInstructions);
-    if (payload.poType) setPoType(payload.poType);
+    if (payload.poType) setPoType(coercePoType(payload.poType, documentType));
     if (payload.entity) setEntity(payload.entity);
     if (payload.letterheadHeader) setLetterheadHeader(payload.letterheadHeader);
     if (payload.referencePoNumber) setReferencePoNumber(payload.referencePoNumber);
@@ -1788,11 +2053,28 @@ export default function CreatePOPage() {
   }, [isEditMode, pr, refPoParam, referencePoLoaded, loadPoDetailsByNumber]);
 
   const handleSendForApproval = async () => {
-    if ((!numericPrId && !editPoId) || !pr) return;
+    if ((!numericPrId && !editPoId && !isManualMode) || !pr) return;
     if (!String(poTermsDetails.subject || '').trim()) {
       alert(`Please enter ${documentType === 'work_order' ? 'Work Order' : 'Purchase Order'} Subject`);
       setActiveTab('details');
       return;
+    }
+    if (isManualMode) {
+      if (!manualVendorName.trim()) {
+        alert('Please enter vendor name');
+        setActiveTab('details');
+        return;
+      }
+      if (!manualVendorEmail.trim()) {
+        alert('Please enter vendor email');
+        setActiveTab('details');
+        return;
+      }
+      if (!resolvedManualEntityId && !letterheadId) {
+        alert('Please select a letterhead entity for PO / WO numbering');
+        setActiveTab('terms');
+        return;
+      }
     }
     if (!skipApproval && !letterheadId) {
       alert('Please select a letterhead entity');
@@ -1858,6 +2140,15 @@ export default function CreatePOPage() {
         purchaseType: documentType,
       };
 
+      if (isManualMode) {
+        payload.vendorName = manualVendorName.trim();
+        payload.vendorEmail = manualVendorEmail.trim();
+        payload.entityId = resolvedManualEntityId;
+        payload.title = poTermsDetails.subject || '';
+        payload.department = pr.department || '';
+        payload.requester = pr.requester || '';
+      }
+
       if (skipApproval) {
         payload.skipApproval = true;
         payload.legacyImport = true;
@@ -1872,7 +2163,9 @@ export default function CreatePOPage() {
         return;
       }
 
-      const res = await poApi.create(numericPrId!, payload);
+      const res = isManualMode
+        ? await poApi.createManual(payload)
+        : await poApi.create(numericPrId!, payload);
       const data = res.data as { poNumber: string; id: number };
       setPoNumber(data.poNumber);
       setCreatedPoId(data.id);
@@ -1912,22 +2205,43 @@ export default function CreatePOPage() {
     );
   }
 
-  if (!numericPrId && !isEditMode) {
+  if (!numericPrId && !isEditMode && !isManualMode) {
     return (
       <DashboardLayout>
         <div className="p-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Purchase Order / Work Order</h1>
-          <p className="text-sm text-gray-600 mb-6">Select a purchase request ready for PO or Work Order creation</p>
+          <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Purchase Order / Work Order</h1>
+              <p className="text-sm text-gray-600">Select a purchase request, or create a PO manually without PR</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/scm/create-po?manual=1')}
+              className="px-4 py-2.5 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900 flex items-center gap-2"
+            >
+              <i className="ri-file-add-line"></i>
+              Create PO Manually (No PR)
+            </button>
+          </div>
           {pickerLoading ? (
             <p className="text-sm text-gray-500">Loading PRs...</p>
           ) : pickerItems.length === 0 ? (
             <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
               <i className="ri-inbox-line text-4xl text-gray-300"></i>
               <p className="text-gray-600 mt-3">No PRs ready for PO creation</p>
-              <p className="text-xs text-gray-500 mt-1">Complete RFQ CFO approval first</p>
-              <button onClick={() => navigate('/rfq-approval')} className="mt-4 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm">
-                Go to RFQ PO Approval
-              </button>
+              <p className="text-xs text-gray-500 mt-1">Complete RFQ CFO approval first, or create a PO without PR</p>
+              <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
+                <button onClick={() => navigate('/rfq-approval')} className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm">
+                  Go to RFQ PO Approval
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/scm/create-po?manual=1')}
+                  className="px-4 py-2 border border-slate-300 text-slate-800 rounded-lg text-sm font-semibold"
+                >
+                  Create PO Manually
+                </button>
+              </div>
             </div>
           ) : (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -2044,6 +2358,7 @@ export default function CreatePOPage() {
     );
   }
 
+  const canSaveDraft = !isEditMode || poEditStatus === 'draft';
   const vendor = vendorMeta;
 
   return (
@@ -2083,11 +2398,17 @@ export default function CreatePOPage() {
                   </span>
                   <span className="text-gray-300 text-xs hidden sm:inline">•</span>
                   <span className="text-xs text-gray-500">
-                    PR Ref: <span className="font-semibold text-gray-700">{pr.prNumber}</span>
+                    PR Ref:{' '}
+                    <span className="font-semibold text-gray-700">
+                      {isManualMode ? 'None (Manual)' : pr.prNumber}
+                    </span>
                   </span>
                   <span className="text-gray-300 text-xs hidden md:inline">•</span>
                   <span className="text-xs text-gray-500 truncate max-w-full md:max-w-[240px]">
-                    Vendor: <span className="font-semibold text-gray-700">{pr.recommendedVendor}</span>
+                    Vendor:{' '}
+                    <span className="font-semibold text-gray-700">
+                      {isManualMode ? manualVendorName || '—' : pr.recommendedVendor}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -2099,12 +2420,13 @@ export default function CreatePOPage() {
                   <i className="ri-checkbox-circle-fill"></i> Draft saved
                 </span>
               )}
-              {!isEditMode && (
+              {canSaveDraft && (
                 <button
                   onClick={handleSaveDraft}
-                  className="px-3 sm:px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium flex items-center gap-2"
+                  disabled={submitting}
+                  className="px-3 sm:px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium flex items-center gap-2 disabled:opacity-50"
                 >
-                  <i className="ri-save-line"></i> Save Draft
+                  <i className="ri-save-line"></i> {submitting ? 'Saving...' : 'Save Draft'}
                 </button>
               )}
               {isEditMode && pdfPreviewUrl && (
@@ -2292,10 +2614,85 @@ export default function CreatePOPage() {
                     className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
                   />
                   <p className="text-xs text-gray-500 mt-1.5">
-                    Shown as Subject on the {docLabel} document. Defaults from PR title when empty.
-                    Document type (PO / WO) is set on the Terms &amp; Conditions tab.
+                    Shown as Subject on the {docLabel} document
+                    {isManualMode ? '.' : '. Defaults from PR title when empty.'} Document type (PO / WO) is set on the Terms &amp; Conditions tab.
                   </p>
                 </div>
+
+                {isManualMode && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-900">Manual PO details</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">No PR reference — enter vendor and entity to continue</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                          Vendor Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={manualVendorName}
+                          onChange={(e) => {
+                            setManualVendorName(e.target.value);
+                            setVendorMeta((prev) => ({ ...prev, name: e.target.value }));
+                          }}
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          placeholder="Vendor / supplier name"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                          Vendor Email <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="email"
+                          value={manualVendorEmail}
+                          onChange={(e) => {
+                            setManualVendorEmail(e.target.value);
+                            setVendorMeta((prev) => ({ ...prev, email: e.target.value }));
+                          }}
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          placeholder="vendor@example.com"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                        Entity (for document number) <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={manualEntityId}
+                        onChange={(e) => {
+                          const id = e.target.value ? Number(e.target.value) : '';
+                          setManualEntityId(id);
+                          const selected = entityOptions.find((x) => x.id === id);
+                          if (selected) {
+                            setPr((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    entityId: selected.id,
+                                    entityName: selected.name,
+                                    entityCode: selected.code,
+                                  }
+                                : prev
+                            );
+                            if (!entity) setEntity(selected.name);
+                          }
+                        }}
+                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                      >
+                        <option value="">Select entity...</option>
+                        {entityOptions.map((ent) => (
+                          <option key={ent.id} value={ent.id}>
+                            {ent.name}{ent.code ? ` (${ent.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
 
               </div>
 
@@ -2308,7 +2705,9 @@ export default function CreatePOPage() {
                       <p className="text-emerald-100 text-xs font-medium uppercase tracking-wider">Selected Vendor</p>
                       <span className="px-2 py-0.5 bg-white/20 text-white rounded-full text-xs font-semibold">✓ Winner</span>
                     </div>
-                    <h3 className="text-white font-bold text-base leading-tight">{pr.recommendedVendor}</h3>
+                    <h3 className="text-white font-bold text-base leading-tight">
+                      {isManualMode ? manualVendorName || 'Enter vendor' : pr.recommendedVendor}
+                    </h3>
                     <div className="flex items-center gap-1 mt-2">
                       {[1,2,3,4,5].map(s => (
                         <i key={s} className={`ri-star-fill text-xs ${s <= Math.round(vendor.overallScore / 20) ? 'text-yellow-300' : 'text-white/30'}`}></i>
@@ -2603,11 +3002,11 @@ export default function CreatePOPage() {
                     key={opt.id}
                     type="button"
                     onClick={() => {
-                      setDocumentType(opt.id);
-                      prevDocumentTypeRef.current = opt.id;
-                      setTermsClauses((prev) => adaptClausesForDocumentType(prev, opt.id));
-                      setAnnexureClauses((prev) => adaptClausesForDocumentType(prev, opt.id));
-                      setLetterheadHeader((prev) => adaptWordingForDocumentType(prev, opt.id));
+                      const nextDoc = opt.id;
+                      const nextType = alignTemplateWithDocument(poType, nextDoc);
+                      setDocumentType(nextDoc);
+                      prevDocumentTypeRef.current = nextDoc;
+                      applyPoTypeTemplate(nextType, nextDoc);
                     }}
                     className={`flex-1 min-w-[160px] px-4 py-3 rounded-xl text-left border transition-colors cursor-pointer ${
                       documentType === opt.id
@@ -2649,22 +3048,18 @@ export default function CreatePOPage() {
                     </p>
                   </div>
                   <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
-                    {PO_TYPE_OPTIONS.map((option) => (
+                    {PO_TYPE_OPTIONS_BY_DOC[documentType].map((option) => (
                       <button
                         key={option.id}
                         type="button"
-                        onClick={() => setPoType(option.id)}
+                        onClick={() => applyPoTypeTemplate(option.id, documentType)}
                         className={`px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
                           poType === option.id
                             ? 'bg-white text-teal-700 shadow-sm'
                             : 'text-gray-600 hover:text-gray-900'
                         }`}
                       >
-                        {isWorkOrder
-                          ? option.id === 'long_po'
-                            ? 'Long WO'
-                            : 'Short WO'
-                          : option.label}
+                        {option.label}
                       </button>
                     ))}
                   </div>
@@ -2672,23 +3067,37 @@ export default function CreatePOPage() {
                 {letterheadLoading ? (
                   <p className="text-xs text-gray-400 mt-3 flex items-center gap-1.5">
                     <i className="ri-loader-4-line animate-spin"></i>
-                    Loading letterhead template...
+                    Loading {PO_TYPE_OPTIONS_BY_DOC[documentType].find((o) => o.id === poType)?.label || 'template'} from PO Type Master...
                   </p>
-                ) : letterheadHeader ? (
-                  <div
-                    className="mt-4 p-4 bg-teal-50/50 border border-teal-100 rounded-lg text-sm text-gray-700 prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{
-                      __html: adaptLetterheadPreviewHtml(letterheadHeader, isWorkOrder),
-                    }}
-                  />
-                ) : null}
+                ) : templateLoadError ? (
+                  <p className="text-xs text-red-600 mt-3">{templateLoadError}</p>
+                ) : (
+                  <div className="mt-4 p-4 bg-teal-50/50 border border-teal-100 rounded-lg text-sm text-gray-700">
+                    <p className="text-xs font-semibold text-teal-800 mb-1">
+                      Loaded from PO Type Master: {loadedTemplate?.title || PO_TYPE_OPTIONS_BY_DOC[documentType].find((o) => o.id === poType)?.label}
+                    </p>
+                    <p className="text-xs text-teal-700 mb-3">
+                      {loadedTemplate
+                        ? `${loadedTemplate.termsCount} terms · ${loadedTemplate.annexureCount} annexure`
+                        : 'Switch Short / Long to load terms and annexure'}
+                    </p>
+                    {letterheadHeader ? (
+                      <div
+                        className="prose prose-sm max-w-none text-gray-700"
+                        dangerouslySetInnerHTML={{ __html: letterheadHeader }}
+                      />
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">No header text in this template</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
                 <div>
                   <h3 className="text-sm font-bold text-gray-900">Letterhead / Entity</h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Select entity from Letterhead Master — header and footer logos appear on the {docLabel} PDF
+                    Select entity from Letterhead Master — header/footer logos and PO/WO numbering use this entity
                   </p>
                 </div>
                 <div>
@@ -2792,53 +3201,55 @@ export default function CreatePOPage() {
             </div>
 
             {/* Terms & Annexure — headings follow Purchase Order / Work Order */}
-            {letterheadLoading ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm w-full">
-                <p className="text-sm text-gray-400 flex items-center gap-2">
+            <div className="w-full space-y-5">
+              {letterheadLoading && (
+                <p className="text-xs text-teal-700 flex items-center gap-1.5">
                   <i className="ri-loader-4-line animate-spin"></i>
-                  Loading terms &amp; annexure...
+                  Loading terms &amp; annexure from PO Type Master...
                 </p>
-              </div>
-            ) : (
-              <div className="w-full space-y-5">
-                <ClauseTableEditor
-                  title={`${docLabel} — Terms & Conditions`}
-                  headerColumnLabel="Terms Header"
-                  descriptionColumnLabel="Terms Description"
-                  headerPlaceholder="e.g. Payment Terms"
-                  descriptionPlaceholder={`Clause details (shown on ${docLabel} PDF)`}
-                  emptyHint={`No terms yet — reload from master or add rows. Edits appear on the ${docLabel} PDF.`}
-                  clauses={termsClauses}
-                  onChange={setTermsClauses}
-                  onReloadFromMaster={reloadClausesFromMaster}
-                  reloadDisabled={letterheadLoading}
-                  docLabel={docLabel}
-                  editorRevision={documentType}
-                />
-                <ClauseTableEditor
-                  title={`${docLabel} — Annexure I`}
-                  headerColumnLabel="Annexure Header"
-                  descriptionColumnLabel="Annexure Description"
-                  headerPlaceholder="e.g. Scope of Work"
-                  descriptionPlaceholder={`Annexure details (shown on ${docLabel} PDF)`}
-                  emptyHint={`No annexure yet — reload from master or add rows. Edits appear on the ${docLabel} PDF.`}
-                  clauses={annexureClauses}
-                  onChange={setAnnexureClauses}
-                  onReloadFromMaster={reloadClausesFromMaster}
-                  reloadDisabled={letterheadLoading}
-                  docLabel={docLabel}
-                  editorRevision={documentType}
-                />
+              )}
+              {templateLoadError && (
+                <p className="text-xs text-red-600">{templateLoadError}</p>
+              )}
+              <ClauseTableEditor
+                key={`terms-${poType}`}
+                title={`${docLabel} — Terms & Conditions`}
+                headerColumnLabel="Terms Header"
+                descriptionColumnLabel="Terms Description"
+                headerPlaceholder="e.g. Payment Terms"
+                descriptionPlaceholder={`Clause details (shown on ${docLabel} PDF)`}
+                emptyHint={`No terms yet — reload from master or add rows. Edits appear on the ${docLabel} PDF.`}
+                clauses={termsClauses}
+                onChange={setTermsClauses}
+                onReloadFromMaster={reloadClausesFromMaster}
+                reloadDisabled={letterheadLoading}
+                docLabel={docLabel}
+                editorRevision={`${documentType}-${poType}`}
+              />
+              <ClauseTableEditor
+                key={`annexure-${poType}`}
+                title={`${docLabel} — Annexure I`}
+                headerColumnLabel="Annexure Header"
+                descriptionColumnLabel="Annexure Description"
+                headerPlaceholder="e.g. Scope of Work"
+                descriptionPlaceholder={`Annexure details (shown on ${docLabel} PDF)`}
+                emptyHint={`No annexure yet — reload from master or add rows. Edits appear on the ${docLabel} PDF.`}
+                clauses={annexureClauses}
+                onChange={setAnnexureClauses}
+                onReloadFromMaster={reloadClausesFromMaster}
+                reloadDisabled={letterheadLoading}
+                docLabel={docLabel}
+                editorRevision={`${documentType}-${poType}`}
+              />
 
-                <AnnexureIiTableEditor
-                  title={`${docLabel} — Annexure II`}
-                  rows={annexureIiRows}
-                  onChange={setAnnexureIiRows}
-                  docLabel={docLabel}
-                  editorRevision={documentType}
-                />
-              </div>
-            )}
+              <AnnexureIiTableEditor
+                title={`${docLabel} — Annexure II`}
+                rows={annexureIiRows}
+                onChange={setAnnexureIiRows}
+                docLabel={docLabel}
+                editorRevision={`${documentType}-${poType}`}
+              />
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
               <div className="lg:col-span-3 space-y-5">
@@ -3345,14 +3756,29 @@ export default function CreatePOPage() {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      disabled={pdfDownloading || previewLoading || (!numericPrId && !editPoId)}
+                      disabled={pdfDownloading || previewLoading || (!numericPrId && !editPoId && !isManualMode)}
                       onClick={async () => {
                         try {
                           setPdfDownloading(true);
+                          const payload = buildPreviewPayload();
+                          if (isManualMode) {
+                            payload.vendorName =
+                              String(payload.vendorName || '').trim() ||
+                              manualVendorName.trim() ||
+                              vendorMeta.name.trim() ||
+                              'Vendor Name';
+                            payload.vendorEmail =
+                              String(payload.vendorEmail || '').trim() ||
+                              manualVendorEmail.trim() ||
+                              vendorMeta.email.trim() ||
+                              'vendor@example.com';
+                          }
                           const blob =
                             isEditMode && editPoId
-                              ? await poApi.previewPdfBlobByPoId(editPoId, buildPreviewPayload())
-                              : await poApi.previewPdfBlob(numericPrId!, buildPreviewPayload());
+                              ? await poApi.previewPdfBlobByPoId(editPoId, payload)
+                              : isManualMode
+                                ? await poApi.previewManualPdfBlob(payload)
+                                : await poApi.previewPdfBlob(numericPrId!, payload);
                           triggerBlobDownload(
                             blob,
                             `${poNumber || pr?.prNumber || 'PO'}_preview.pdf`
@@ -3423,6 +3849,11 @@ export default function CreatePOPage() {
                   <div className="py-24 text-center text-gray-500 text-sm">
                     <p>Could not load document preview. Check line items and try again.</p>
                     {previewError && <p className="text-xs text-red-500 mt-2">{previewError}</p>}
+                    {isManualMode && (
+                      <p className="text-xs text-gray-400 mt-3 max-w-sm mx-auto">
+                        Preview can use placeholders. For submit, fill Vendor Name, Vendor Email, Entity and line items on PO Details.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -3447,12 +3878,13 @@ export default function CreatePOPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  {!isEditMode && (
+                  {canSaveDraft && (
                     <button
                       onClick={handleSaveDraft}
-                      className="px-5 py-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm font-medium whitespace-nowrap"
+                      disabled={submitting}
+                      className="px-5 py-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm font-medium whitespace-nowrap disabled:opacity-50"
                     >
-                      <i className="ri-save-line mr-1.5"></i> Save Draft
+                      <i className="ri-save-line mr-1.5"></i> {submitting ? 'Saving...' : 'Save Draft'}
                     </button>
                   )}
                   <button

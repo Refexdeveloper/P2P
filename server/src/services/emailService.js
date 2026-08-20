@@ -888,6 +888,7 @@ export async function sendPoWorkflowNotification(po, {
   remarks,
   portalUrl,
   ctaLabel,
+  bccOps = true,
 }) {
   const emails = [...new Set((recipientEmails || []).map((e) => String(e || '').trim()).filter(Boolean))];
   if (!emails.length) {
@@ -908,7 +909,9 @@ export async function sendPoWorkflowNotification(po, {
   }
 
   const emailSet = new Set(emails.map((e) => e.toLowerCase()));
-  const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
+  const bcc = bccOps
+    ? getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()))
+    : [];
 
   const { subject, html, text } = buildPoWorkflowEmail({
     po,
@@ -939,6 +942,8 @@ export function queuePoWorkflowNotification(po, options = {}) {
   enqueueMail(() => sendPoWorkflowNotification(po, options)).catch((err) => {
     console.error('Email send failure (PO workflow):', err.message);
   });
+
+  if (options.notifyWhatsApp === false) return;
 
   const action = options.action || 'assign';
   const stageLabel =

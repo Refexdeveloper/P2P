@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { authenticate, requireRoles } from '../middleware/auth.js';
-import {
+  import {
   getPoCreateContext,
   createPurchaseOrder,
+  createManualPurchaseOrder,
+  savePurchaseOrderDraft,
   buildPoPreviewDocument,
+  buildManualPoPreviewDocument,
   listPurchaseOrders,
   listTrackPurchaseOrders,
   listVendorAcceptancePOs,
@@ -12,6 +15,7 @@ import {
   signPurchaseOrder,
   rejectPurchaseOrder,
   sendBackPurchaseOrder,
+  cancelPurchaseOrder,
   finalVerifyPurchaseOrder,
   rejectBuyerFinalVerify,
   sendBackBuyerFinalVerify,
@@ -253,7 +257,7 @@ router.get('/letterhead/:poType', letterheadReadRoles, async (req, res) => {
 router.put('/letterhead/:poType', letterheadRoles, async (req, res) => {
   try {
     const data = await saveLetterhead(req.params.poType, req.body);
-    res.json({ data, message: `${data.poTypeLabel} PO type saved` });
+    res.json({ data, message: `${data.poTypeLabel} template saved` });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -297,6 +301,51 @@ router.post('/pr/:prId', requireRoles('SCM Buyer'), async (req, res) => {
   try {
     const data = await createPurchaseOrder(req.user, Number(req.params.prId), req.body);
     res.json({ data, message: `PO ${data.poNumber} created and sent for SCM Manager approval` });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/manual', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
+  try {
+    const data = await createManualPurchaseOrder(req.user, req.body || {});
+    res.json({
+      data,
+      message: `PO ${data.poNumber} created${data.statusRaw === 'approved' ? '' : ' and sent for SCM Manager approval'} (no PR)`,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/draft', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
+  try {
+    const data = await savePurchaseOrderDraft(req.user, req.body || {});
+    res.json({ data, message: `Draft saved — ${data.poNumber}` });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/manual/preview-document', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+  try {
+    const po = await buildManualPoPreviewDocument(req.user, req.body || {});
+    const html = buildPoHtml(po);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/manual/preview-pdf', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+  try {
+    const po = await buildManualPoPreviewDocument(req.user, req.body || {});
+    const safeName = String(po.poNumber || 'MANUAL-PO').replace(/[^\w.-]+/g, '_');
+    const { filePath, fileName } = await renderPoPdfToFile(po, `${safeName}_preview.pdf`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    fs.createReadStream(filePath).pipe(res);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -366,7 +415,7 @@ router.get('/', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) => {
   }
 });
 
-router.get('/by-number/:poNumber', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager'), async (req, res) => {
+router.get('/by-number/:poNumber', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin'), async (req, res) => {
   try {
     const data = await getPurchaseOrderByNumber(req.params.poNumber);
     if (!data) return res.status(404).json({ message: 'PO not found' });
@@ -376,7 +425,7 @@ router.get('/by-number/:poNumber', requireRoles('SCM Buyer', 'SCM Manager', 'CFO
   }
 });
 
-router.get('/:id/document', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager'), async (req, res) => {
+router.get('/:id/document', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin'), async (req, res) => {
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
@@ -391,7 +440,7 @@ router.get('/:id/document', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR 
   }
 });
 
-router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager'), async (req, res) => {
+router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin'), async (req, res) => {
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
@@ -422,7 +471,7 @@ router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manag
   }
 });
 
-router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin', 'CFO', 'PR Manager'), async (req, res) => {
   try {
     const data = await getPurchaseOrderById(Number(req.params.id));
     if (!data) return res.status(404).json({ message: 'PO not found' });
@@ -468,17 +517,18 @@ router.put('/:id', requireRoles('SCM Manager', 'SCM Buyer'), async (req, res) =>
 
 router.post('/:id/sign', requireRoles('SCM Manager'), async (req, res) => {
   try {
-    const { remarks, signatureName, signatureImage, signatureId, saveToGallery } = req.body;
+    const { remarks, signatureName, signatureImage, signatureId, saveToGallery, dsc } = req.body;
     const data = await signPurchaseOrder(req.user, Number(req.params.id), {
       remarks,
       signatureName,
       signatureImage,
       signatureId,
       saveToGallery,
+      dsc,
     });
     res.json({
       data,
-      message: `PO signed — sent to SCM Buyer for final verification before vendor dispatch`,
+      message: `PO signed. Next step: SCM Buyer Final Verify. Vendor mail is not sent at this step.`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -502,6 +552,15 @@ router.post('/:id/send-back', requireRoles('SCM Manager'), async (req, res) => {
       data,
       message: 'PO sent back to SCM Buyer for revision',
     });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/cancel', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+  try {
+    const data = await cancelPurchaseOrder(req.user, Number(req.params.id), req.body || {});
+    res.json({ data, message: 'PO cancelled successfully' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

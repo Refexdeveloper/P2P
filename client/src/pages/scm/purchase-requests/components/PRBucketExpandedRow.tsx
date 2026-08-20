@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
   type ApprovalHistoryEntry,
 } from '../../../../components/feature/ApprovalHistoryPanel';
 import VendorComparisonMatrix from '../../../../components/rfq/VendorComparisonMatrix';
-import { prApi, rfqApi, VendorComparisonData } from '../../../../services/api';
+import { poApi, prApi, rfqApi, VendorComparisonData } from '../../../../services/api';
 
 interface LineItem {
   id?: number;
@@ -34,10 +34,51 @@ interface PRDetail {
 
 interface Props {
   prId: number;
+  poId?: number | null;
+  poNumber?: string | null;
+  title?: string;
   colSpan: number;
   statusLabel: string;
   showCreatePo?: boolean;
   onCreatePo?: () => void;
+}
+
+interface CancellationAttachment {
+  fileName?: string;
+  filePath?: string;
+  uploadedAt?: string;
+}
+
+interface CancellationInfo {
+  reason: string;
+  cancelledAt: string;
+  cancelledByName: string;
+  attachments: CancellationAttachment[];
+}
+
+interface PoSummary {
+  poNumber: string;
+  vendorName: string;
+  vendorEmail: string;
+  entity: string;
+  purchaseTypeLabel: string;
+  poType: string;
+  createdBy: string;
+  referencePoNumber: string;
+}
+
+interface ReferencePoInfo {
+  id: number;
+  poNumber: string;
+  vendorName: string;
+  vendorEmail: string;
+  entity: string;
+  purchaseTypeLabel: string;
+  status: string;
+  grandTotal: number;
+  expectedDeliveryDate: string;
+  createdAt: string;
+  lineItems: LineItem[];
 }
 
 const formatCurrency = (amount: number) =>
@@ -45,70 +86,297 @@ const formatCurrency = (amount: number) =>
 
 export default function PRBucketExpandedRow({
   prId,
+  poId = null,
+  poNumber = null,
+  title = '',
   colSpan,
   statusLabel,
   showCreatePo = false,
   onCreatePo,
 }: Props) {
-  const [tab, setTab] = useState<'details' | 'items' | 'vendors' | 'history'>('details');
+  const [tab, setTab] = useState<
+    'details' | 'items' | 'vendors' | 'history' | 'cancellation' | 'pdf' | 'reference'
+  >('details');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pr, setPr] = useState<PRDetail | null>(null);
   const [comparison, setComparison] = useState<VendorComparisonData | null>(null);
+  const [cancellation, setCancellation] = useState<CancellationInfo | null>(null);
+  const [poSummary, setPoSummary] = useState<PoSummary | null>(null);
+  const [referencePo, setReferencePo] = useState<ReferencePoInfo | null>(null);
+  const [currentPdfUrl, setCurrentPdfUrl] = useState<string | null>(null);
+  const [referencePdfUrl, setReferencePdfUrl] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const currentPdfUrlRef = useRef<string | null>(null);
+  const referencePdfUrlRef = useRef<string | null>(null);
+  const isManualDoc = !(prId > 0);
+
+  const revokePdfUrl = (ref: { current: string | null }) => {
+    if (ref.current) {
+      URL.revokeObjectURL(ref.current);
+      ref.current = null;
+    }
+  };
+
+  const mapHistory = (historyRaw: unknown[]): ApprovalHistoryEntry[] =>
+    historyRaw.map((item) => {
+      const h = item as Record<string, unknown>;
+      return {
+        stage: String(h.stage || ''),
+        approver: String(h.approver || h.user || 'System'),
+        user: String(h.user || h.approver || 'System'),
+        role: String(h.role || ''),
+        action: String(h.action || h.status || 'Updated'),
+        status: String(h.status || h.action || ''),
+        date: String(h.date || ''),
+        remarks: String(h.remarks || ''),
+      };
+    });
+
+  const mapReferencePo = (po: Record<string, unknown>): ReferencePoInfo => {
+    const items = Array.isArray(po.lineItems) ? (po.lineItems as LineItem[]) : [];
+    return {
+      id: Number(po.id) || 0,
+      poNumber: String(po.poNumber || ''),
+      vendorName: String(po.vendorName || ''),
+      vendorEmail: String(po.vendorEmail || ''),
+      entity: String(po.entity || ''),
+      purchaseTypeLabel: String(
+        po.purchaseTypeLabel || (po.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order')
+      ),
+      status: String(po.status || po.statusRaw || ''),
+      grandTotal: Number(po.grandTotal || 0),
+      expectedDeliveryDate: String(po.expectedDeliveryDate || ''),
+      createdAt: String(po.createdAt || ''),
+      lineItems: items.map((item) => ({
+        ...item,
+        description: item.description || (item as { itemName?: string }).itemName || '',
+      })),
+    };
+  };
+
+  const loadRelatedDocs = async (
+    currentPoId: number | null,
+    referenceNumber: string,
+    cancelled: () => boolean
+  ) => {
+    setPdfError('');
+    setReferencePo(null);
+    revokePdfUrl(currentPdfUrlRef);
+    revokePdfUrl(referencePdfUrlRef);
+    setCurrentPdfUrl(null);
+    setReferencePdfUrl(null);
+
+    const resolvedPoId = Number(currentPoId) || 0;
+    if (resolvedPoId) {
+      setPdfLoading(true);
+      try {
+        const { blob } = await poApi.fetchPreviewBlob(resolvedPoId);
+        if (cancelled()) return;
+        const url = URL.createObjectURL(blob);
+        currentPdfUrlRef.current = url;
+        setCurrentPdfUrl(url);
+      } catch {
+        if (!cancelled()) setPdfError('Could not load document PDF');
+      } finally {
+        if (!cancelled()) setPdfLoading(false);
+      }
+    }
+
+    const refNo = String(referenceNumber || '').trim();
+    if (!refNo) return;
+    try {
+      const refRes = await poApi.getByNumber(refNo);
+      if (cancelled()) return;
+      const refPo = refRes.data as Record<string, unknown>;
+      setReferencePo(mapReferencePo(refPo));
+      const refId = Number(refPo.id);
+      if (refId) {
+        const { blob } = await poApi.fetchPreviewBlob(refId);
+        if (cancelled()) return;
+        const url = URL.createObjectURL(blob);
+        referencePdfUrlRef.current = url;
+        setReferencePdfUrl(url);
+      }
+    } catch {
+      if (!cancelled()) {
+        setReferencePo({
+          id: 0,
+          poNumber: refNo,
+          vendorName: '',
+          vendorEmail: '',
+          entity: '',
+          purchaseTypeLabel: '',
+          status: '',
+          grandTotal: 0,
+          expectedDeliveryDate: '',
+          createdAt: '',
+          lineItems: [],
+        });
+      }
+    }
+  };
+
+  const applyPoPayload = (po: Record<string, unknown>) => {
+    const terms = (po.poTermsDetails as Record<string, unknown> | undefined) || {};
+    const items = Array.isArray(po.lineItems) ? (po.lineItems as LineItem[]) : [];
+    const historyRaw = Array.isArray(po.approvalHistory) ? po.approvalHistory : [];
+    const poNo = String(po.poNumber || poNumber || '');
+    const poTitle =
+      String(terms.subject || po.prTitle || title || '').trim() ||
+      (String(po.purchaseType) === 'work_order' ? 'Manual Work Order' : 'Manual Purchase Order');
+    setPoSummary({
+      poNumber: poNo,
+      vendorName: String(po.vendorName || ''),
+      vendorEmail: String(po.vendorEmail || ''),
+      entity: String(po.entity || ''),
+      purchaseTypeLabel: String(po.purchaseTypeLabel || (po.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order')),
+      poType: String(po.poType || ''),
+      createdBy: String(po.createdBy || ''),
+      referencePoNumber: String(po.referencePoNumber || '').trim(),
+    });
+    setPr({
+      id: Number(po.id) || 0,
+      prNumber: String(po.prNumber || '') || 'None (Manual)',
+      title: poTitle,
+      department: String(po.department || po.entity || ''),
+      requester: String(po.requester || po.createdBy || ''),
+      requestType: String(po.purchaseTypeLabel || ''),
+      priority: String(po.poType || ''),
+      requiredDate: String(po.expectedDeliveryDate || ''),
+      submittedDate: String(po.createdAt || ''),
+      totalAmount: Number(po.grandTotal || po.totalAmount || 0),
+      justification: String(po.specialInstructions || 'Manual document — no PR reference.'),
+      statusUI: String(po.status || statusLabel),
+      lineItems: items.map((item) => ({
+        ...item,
+        description: item.description || (item as { itemName?: string }).itemName || '',
+      })),
+      approvalHistory: mapHistory(historyRaw),
+    });
+    const reason = String(po.cancellationReason || '').trim();
+    const attachments = Array.isArray(po.cancellationAttachments)
+      ? (po.cancellationAttachments as CancellationAttachment[])
+      : [];
+    if (reason || attachments.length) {
+      setCancellation({
+        reason,
+        cancelledAt: String(po.cancelledAt || ''),
+        cancelledByName: String(po.cancelledByName || po.cancelledBy || ''),
+        attachments,
+      });
+    } else {
+      setCancellation(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       setError('');
+      setReferencePo(null);
+      revokePdfUrl(currentPdfUrlRef);
+      revokePdfUrl(referencePdfUrlRef);
+      setCurrentPdfUrl(null);
+      setReferencePdfUrl(null);
       try {
-        const [prRes, cmpRes] = await Promise.allSettled([
-          prApi.get(prId),
-          rfqApi.getComparison(prId),
-        ]);
+        if (prId > 0) {
+          const [prRes, cmpRes, poRes] = await Promise.allSettled([
+            prApi.get(prId),
+            rfqApi.getComparison(prId),
+            poId ? poApi.get(poId) : Promise.resolve({ data: {} }),
+          ]);
 
-        if (cancelled) return;
+          if (cancelled) return;
 
-        if (prRes.status === 'fulfilled') {
-          const d = prRes.value.data as Record<string, unknown>;
-          const items = Array.isArray(d.lineItems) ? (d.lineItems as LineItem[]) : [];
-          const historyRaw = Array.isArray(d.approvalHistory) ? d.approvalHistory : [];
-          setPr({
-            id: Number(d.id),
-            prNumber: String(d.prNumber || ''),
-            title: String(d.title || ''),
-            department: String(d.department || ''),
-            requester: String(d.requester || ''),
-            requestType: String(d.requestType || ''),
-            priority: String(d.priority || d.priorityLower || ''),
-            requiredDate: String(d.requiredDate || ''),
-            submittedDate: String(d.submittedDate || ''),
-            totalAmount: Number(d.totalAmount || 0),
-            justification: String(d.justification || ''),
-            statusUI: String(d.statusUI || statusLabel),
-            lineItems: items,
-            approvalHistory: historyRaw.map((item) => {
-              const h = item as Record<string, unknown>;
-              return {
-                stage: String(h.stage || ''),
-                approver: String(h.approver || h.user || 'System'),
-                user: String(h.user || h.approver || 'System'),
-                role: String(h.role || ''),
-                action: String(h.action || h.status || 'Updated'),
-                status: String(h.status || h.action || ''),
-                date: String(h.date || ''),
-                remarks: String(h.remarks || ''),
-              };
-            }),
-          });
-        } else {
-          throw prRes.reason instanceof Error ? prRes.reason : new Error('Failed to load PR');
-        }
+          if (prRes.status === 'fulfilled') {
+            const d = prRes.value.data as Record<string, unknown>;
+            const items = Array.isArray(d.lineItems) ? (d.lineItems as LineItem[]) : [];
+            const historyRaw = Array.isArray(d.approvalHistory) ? d.approvalHistory : [];
+            setPr({
+              id: Number(d.id),
+              prNumber: String(d.prNumber || ''),
+              title: String(d.title || ''),
+              department: String(d.department || ''),
+              requester: String(d.requester || ''),
+              requestType: String(d.requestType || ''),
+              priority: String(d.priority || d.priorityLower || ''),
+              requiredDate: String(d.requiredDate || ''),
+              submittedDate: String(d.submittedDate || ''),
+              totalAmount: Number(d.totalAmount || 0),
+              justification: String(d.justification || ''),
+              statusUI: String(d.statusUI || statusLabel),
+              lineItems: items,
+              approvalHistory: mapHistory(historyRaw),
+            });
+          } else {
+            throw prRes.reason instanceof Error ? prRes.reason : new Error('Failed to load PR');
+          }
 
-        if (cmpRes.status === 'fulfilled') {
-          setComparison(cmpRes.value.data);
-        } else {
+          if (cmpRes.status === 'fulfilled') {
+            setComparison(cmpRes.value.data);
+          } else {
+            setComparison(null);
+          }
+
+          if (poId && poRes.status === 'fulfilled') {
+            const po = poRes.value.data as Record<string, unknown>;
+            const reason = String(po.cancellationReason || '').trim();
+            const attachments = Array.isArray(po.cancellationAttachments)
+              ? (po.cancellationAttachments as CancellationAttachment[])
+              : [];
+            if (reason || attachments.length) {
+              setCancellation({
+                reason,
+                cancelledAt: String(po.cancelledAt || ''),
+                cancelledByName: String(po.cancelledByName || po.cancelledBy || ''),
+                attachments,
+              });
+            } else {
+              setCancellation(null);
+            }
+            setPoSummary({
+              poNumber: String(po.poNumber || poNumber || ''),
+              vendorName: String(po.vendorName || ''),
+              vendorEmail: String(po.vendorEmail || ''),
+              entity: String(po.entity || ''),
+              purchaseTypeLabel: String(
+                po.purchaseTypeLabel || (po.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order')
+              ),
+              poType: String(po.poType || ''),
+              createdBy: String(po.createdBy || ''),
+              referencePoNumber: String(po.referencePoNumber || '').trim(),
+            });
+          } else {
+            setCancellation(null);
+          }
+          if (poId) {
+            const refNo =
+              poRes.status === 'fulfilled'
+                ? String((poRes.value.data as Record<string, unknown>).referencePoNumber || '')
+                : '';
+            await loadRelatedDocs(poId, refNo, () => cancelled);
+          }
+        } else if (poId) {
           setComparison(null);
+          try {
+            const poRes = await poApi.get(poId);
+            if (cancelled) return;
+            applyPoPayload(poRes.data as Record<string, unknown>);
+            await loadRelatedDocs(
+              poId,
+              String((poRes.data as Record<string, unknown>).referencePoNumber || ''),
+              () => cancelled
+            );
+          } catch (poErr) {
+            if (cancelled) return;
+            await loadRelatedDocs(poId, '', () => cancelled);
+            throw poErr;
+          }
+        } else {
+          throw new Error('No PR or PO details available');
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load details');
@@ -119,18 +387,31 @@ export default function PRBucketExpandedRow({
     load();
     return () => {
       cancelled = true;
+      revokePdfUrl(currentPdfUrlRef);
+      revokePdfUrl(referencePdfUrlRef);
     };
-  }, [prId, statusLabel]);
+  }, [prId, poId, poNumber, title, statusLabel]);
 
   const tabs = [
-    { key: 'details' as const, label: 'PR Details', icon: 'ri-information-line' },
+    { key: 'details' as const, label: isManualDoc ? 'WO / PO Details' : 'PR Details', icon: 'ri-information-line' },
     { key: 'items' as const, label: 'Line Items', icon: 'ri-list-check-2' },
-    { key: 'vendors' as const, label: 'Vendor Comparison', icon: 'ri-table-line' },
+    ...(!isManualDoc
+      ? [{ key: 'vendors' as const, label: 'Vendor Comparison', icon: 'ri-table-line' }]
+      : []),
     {
       key: 'history' as const,
       label: `Approval History${pr?.approvalHistory?.length ? ` (${pr.approvalHistory.length})` : ''}`,
       icon: 'ri-history-line',
     },
+    ...(poId
+      ? [{ key: 'pdf' as const, label: 'PDF', icon: 'ri-file-pdf-line' }]
+      : []),
+    ...(poSummary?.referencePoNumber
+      ? [{ key: 'reference' as const, label: `Reference PO (${poSummary.referencePoNumber})`, icon: 'ri-links-line' }]
+      : []),
+    ...(cancellation || statusLabel === 'Cancelled'
+      ? [{ key: 'cancellation' as const, label: 'Cancellation', icon: 'ri-close-circle-line' }]
+      : []),
   ];
 
   return (
@@ -145,10 +426,12 @@ export default function PRBucketExpandedRow({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-gray-900 truncate" title={pr ? `${pr.prNumber} — ${pr.title}` : undefined}>
-                    {pr?.prNumber || `PR #${prId}`}
-                    {pr?.title ? ` — ${pr.title}` : ''}
+                    {poSummary?.poNumber || poNumber || pr?.prNumber || (prId > 0 ? `PR #${prId}` : 'Document')}
+                    {pr?.title ? ` — ${pr.title}` : title ? ` — ${title}` : ''}
                   </p>
-                  <p className="text-xs text-gray-500">Expanded PR view</p>
+                  <p className="text-xs text-gray-500">
+                    {isManualDoc ? 'Expanded WO / PO view (no PR)' : 'Expanded PR view'}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
@@ -203,6 +486,20 @@ export default function PRBucketExpandedRow({
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {[
+                      ...(poSummary
+                        ? [
+                            ['Document No', poSummary.poNumber],
+                            ['Document Type', poSummary.purchaseTypeLabel],
+                            ['Template', poSummary.poType],
+                            ['Entity', poSummary.entity],
+                            ['Vendor', poSummary.vendorName],
+                            ['Vendor Email', poSummary.vendorEmail],
+                            ['Created By', poSummary.createdBy],
+                            ...(poSummary.referencePoNumber
+                              ? [['Reference PO', poSummary.referencePoNumber] as [string, string]]
+                              : []),
+                          ]
+                        : []),
                       ['Department', pr.department],
                       ['Requester', pr.requester],
                       ['Request Type', pr.requestType],
@@ -310,6 +607,134 @@ export default function PRBucketExpandedRow({
                     No vendor comparison data available for this PR
                   </div>
                 )
+              )}
+
+              {!loading && !error && tab === 'pdf' && (
+                <div className="space-y-3">
+                  {pdfLoading && !currentPdfUrl ? (
+                    <p className="text-sm text-gray-500 py-8 text-center">Loading document…</p>
+                  ) : pdfError && !currentPdfUrl ? (
+                    <p className="text-sm text-red-600 py-8 text-center">{pdfError}</p>
+                  ) : currentPdfUrl ? (
+                    <iframe
+                      title="Document PDF"
+                      src={currentPdfUrl}
+                      className="w-full h-[640px] border border-gray-200 rounded-lg bg-white"
+                    />
+                  ) : (
+                    <p className="text-sm text-gray-500 py-8 text-center">PDF is not available for this document.</p>
+                  )}
+                </div>
+              )}
+
+              {!loading && !error && tab === 'reference' && (
+                <div className="space-y-4">
+                  {!poSummary?.referencePoNumber ? (
+                    <p className="text-sm text-gray-500 py-8 text-center">No reference PO on this document.</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {[
+                          ['Reference PO No', referencePo?.poNumber || poSummary.referencePoNumber],
+                          ['Document Type', referencePo?.purchaseTypeLabel],
+                          ['Vendor', referencePo?.vendorName],
+                          ['Vendor Email', referencePo?.vendorEmail],
+                          ['Entity', referencePo?.entity],
+                          ['Status', referencePo?.status],
+                          ['Amount', referencePo ? formatCurrency(referencePo.grandTotal) : '—'],
+                          ['Delivery Date', referencePo?.expectedDeliveryDate],
+                        ].map(([label, value]) => (
+                          <div key={label} className="bg-gray-50 rounded-lg p-3 min-w-0">
+                            <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+                            <p className="text-sm font-medium text-gray-900 break-words">{value || '—'}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {referencePo?.lineItems?.length ? (
+                        <div className="overflow-x-auto">
+                          <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Reference line items</p>
+                          <table className="w-full min-w-[640px] text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                              <tr>
+                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-10">#</th>
+                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
+                                <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase w-16">Qty</th>
+                                <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase w-[110px]">Unit Price</th>
+                                <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase w-[110px]">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {referencePo.lineItems.map((item, idx) => (
+                                <tr key={item.id ?? idx}>
+                                  <td className="px-3 py-2.5 text-gray-500">{idx + 1}</td>
+                                  <td className="px-3 py-2.5 font-medium text-gray-900">{item.description || '—'}</td>
+                                  <td className="px-3 py-2.5 text-right tabular-nums">{item.quantity ?? '—'}</td>
+                                  <td className="px-3 py-2.5 text-right tabular-nums">{formatCurrency(Number(item.unitPrice || 0))}</td>
+                                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                                    {formatCurrency(Number(item.total ?? Number(item.quantity || 0) * Number(item.unitPrice || 0)))}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
+
+                      <div>
+                        <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Reference PO PDF</p>
+                        {referencePdfUrl ? (
+                          <iframe
+                            title="Reference PO PDF"
+                            src={referencePdfUrl}
+                            className="w-full h-[640px] border border-gray-200 rounded-lg bg-white"
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-500">Could not load the reference PO PDF.</p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {!loading && !error && tab === 'cancellation' && (
+                <div className="space-y-3">
+                  {cancellation ? (
+                    <>
+                      <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+                        <p className="text-xs text-rose-600 mb-1">Reason</p>
+                        <p className="text-sm text-rose-900">{cancellation.reason}</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 mb-1">Cancelled At</p>
+                          <p className="text-sm text-gray-900">{cancellation.cancelledAt || '—'}</p>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 mb-1">Cancelled By</p>
+                          <p className="text-sm text-gray-900">{cancellation.cancelledByName || '—'}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-600 mb-2">Attachments</p>
+                        {cancellation.attachments.length === 0 ? (
+                          <p className="text-sm text-gray-500">No attachments uploaded.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {cancellation.attachments.map((file, idx) => (
+                              <div key={`${file.filePath || file.fileName || idx}`} className="text-sm bg-gray-50 rounded-lg px-3 py-2">
+                                {file.fileName || file.filePath || `Attachment ${idx + 1}`}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-500">No cancellation details available.</p>
+                  )}
+                </div>
               )}
             </div>
           </div>

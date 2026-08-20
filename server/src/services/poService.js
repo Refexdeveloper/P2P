@@ -6,7 +6,7 @@ import { getPurchaseRequestById } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath } from './poPdfService.js';
 import { sendPoVendorNotification, queuePoWorkflowNotification } from './emailService.js';
 import { formatDate, formatDateTime, PR_STATUS } from '../utils/constants.js';
-import { getLetterheadByType } from './poLetterheadService.js';
+import { getLetterheadByType, alignPoTypeWithPurchaseType } from './poLetterheadService.js';
 import {
   getActiveLetterheadBranding,
   getLetterheadMasterById,
@@ -17,9 +17,48 @@ import {
   purchaseTypeLabel,
   purchaseTypeToDocType,
 } from './documentNumberService.js';
-import { resolveScmBuyerUser, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
+import {
+  resolveScmBuyerUser,
+  getScmBuyerNotifyEmails,
+  resolveScmManagerUser,
+  getScmManagerNotifyEmails,
+  insertScmManagerPoApprovalTask,
+} from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
+
+async function resolveEntityIdFromPoBody(body = {}, existing = null) {
+  const direct = Number(body.entityId || existing?.entity_id || 0);
+  if (direct) return direct;
+
+  const letterheadId = Number(body.letterheadId || existing?.letterhead_id || 0);
+  let entityName = String(body.entity || existing?.entity || '').trim();
+  let letterheadName = '';
+  if (letterheadId) {
+    try {
+      const selected = await getLetterheadMasterById(letterheadId);
+      entityName = String(selected.entity || entityName).trim();
+      letterheadName = String(selected.name || '').trim();
+    } catch {
+      /* optional */
+    }
+  }
+  if (!entityName && !letterheadName) return 0;
+
+  const [rows] = await pool.query(
+    `SELECT id FROM entity_masters
+     WHERE status = 'active'
+       AND (
+         LOWER(name) = LOWER(?)
+         OR LOWER(IFNULL(code, '')) = LOWER(?)
+         OR LOWER(name) = LOWER(?)
+         OR LOWER(IFNULL(code, '')) = LOWER(?)
+       )
+     LIMIT 1`,
+    [entityName, entityName, letterheadName, letterheadName]
+  );
+  return Number(rows[0]?.id || 0);
+}
 
 function poPortalUrl(path) {
   const base = getWhatsAppPublicBaseUrl().replace(/\/$/, '');
@@ -30,6 +69,11 @@ async function resolveRoleEmails(role) {
   if (role === 'SCM Buyer') {
     const emails = await getScmBuyerNotifyEmails();
     return emails.map((email) => ({ email, name: 'SCM Buyer' }));
+  }
+  if (role === 'SCM Manager') {
+    const emails = await getScmManagerNotifyEmails();
+    const manager = await resolveScmManagerUser();
+    return emails.map((email) => ({ email, name: manager?.name || 'SCM Manager' }));
   }
   const [rows] = await pool.query(
     `SELECT email, name FROM users WHERE role = ? AND is_active = 1`,
@@ -109,6 +153,28 @@ function saveVendorAcceptanceFile(poId, fileName, base64Data) {
   return { fileName: safeName, filePath: storedName };
 }
 
+function savePoAttachment(poId, prefix, fileName, base64Data) {
+  if (!base64Data || !fileName) return { fileName: null, filePath: null };
+  ensurePoUploadDir();
+  const safeName = path.basename(String(fileName)).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storedName = `po-${poId}-${prefix}-${Date.now()}-${safeName}`;
+  const fullPath = path.join(PO_UPLOAD_DIR, storedName);
+  const raw = String(base64Data).includes(',') ? String(base64Data).split(',').pop() : String(base64Data);
+  fs.writeFileSync(fullPath, Buffer.from(raw, 'base64'));
+  return { fileName: safeName, filePath: storedName };
+}
+
+function parseJsonArray(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function newVendorAcceptanceToken() {
   return crypto.randomBytes(24).toString('hex');
 }
@@ -120,6 +186,17 @@ function parseClauseJson(value) {
     return JSON.parse(value);
   } catch {
     return [];
+  }
+}
+
+function parseSignatureDsc(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
   }
 }
 
@@ -247,7 +324,14 @@ async function getLineItems(poId) {
 }
 
 async function enrichPO(row) {
-  const pr = row.pr_id ? await getPurchaseRequestById(row.pr_id) : null;
+  let pr = null;
+  if (row.pr_id) {
+    try {
+      pr = await getPurchaseRequestById(row.pr_id);
+    } catch {
+      pr = null;
+    }
+  }
   const lineItems = await getLineItems(row.id);
 
   const [vendorRows] = await pool.query(
@@ -260,6 +344,10 @@ async function enrichPO(row) {
   const vendor = vendorRows[0] || {};
   const [creatorRows] = await pool.query(`SELECT name, role FROM users WHERE id = ?`, [row.created_by]);
   const creator = creatorRows[0] || {};
+  const [cancelledByRows] = row.cancelled_by
+    ? await pool.query(`SELECT name FROM users WHERE id = ?`, [row.cancelled_by])
+    : [[]];
+  const cancelledBy = cancelledByRows[0] || {};
   const approvalHistory = await getFullPoApprovalHistory(row);
 
   return {
@@ -312,11 +400,17 @@ async function enrichPO(row) {
       ? formatDate(row.vendor_delivery_confirmed_date)
       : '',
     vendorAcceptedAt: row.vendor_accepted_at ? formatDateTime(row.vendor_accepted_at) : null,
+    cancellationReason: row.cancellation_reason || '',
+    cancellationAttachments: parseJsonArray(row.cancellation_attachments_json),
+    cancelledAt: row.cancelled_at ? formatDateTime(row.cancelled_at) : null,
+    cancelledBy: row.cancelled_by || null,
+    cancelledByName: cancelledBy.name || '',
     vendorAcceptanceToken: row.vendor_acceptance_token || null,
     pdfPath: row.pdf_path,
     signedPdfPath: row.signed_pdf_path,
     signatureName: row.signature_name,
     signatureImagePath: row.signature_image_path || null,
+    signatureDsc: parseSignatureDsc(row.signature_dsc_json),
     signerComments: row.signer_comments,
     signedAt: row.signed_at ? formatDateTime(row.signed_at) : null,
     createdAt: formatDate(row.created_at),
@@ -349,6 +443,7 @@ function mapPoStatusUI(status, acceptanceStatus) {
     pending_accounts_approval: 'Pending Accounts Approval',
     approved_for_payment: 'Approved for Payment',
     paid: 'Paid',
+    cancelled: 'Cancelled',
   };
   return map[status] || status;
 }
@@ -363,6 +458,7 @@ function formatApprovalStage(stage) {
     PO_BUYER_SENT_BACK: 'SCM Buyer Final Verify',
     PO_REJECTED: 'SCM Manager Approval',
     PO_SENT_BACK: 'SCM Manager Approval',
+    PO_CANCELLED: 'PO Cancellation',
     HOD_REVIEW: 'HOD / Manager Approval',
     PR_MANAGER_REVIEW: 'L2 Manager Approval',
     CFO_REVIEW: 'CFO Approval',
@@ -393,6 +489,20 @@ function mapApprovalAction(action) {
 }
 
 async function getFullPoApprovalHistory(row) {
+  if (!row.pr_id) {
+    const [creator] = await pool.query(`SELECT name, role FROM users WHERE id = ?`, [row.created_by]);
+    return [
+      {
+        stage: 'PO Created',
+        approver: creator[0]?.name || 'SCM Buyer',
+        role: creator[0]?.role || 'SCM Buyer',
+        action: 'Created',
+        date: formatDateTime(row.created_at),
+        remarks: `Manual PO ${row.po_number} created (no PR reference)`,
+      },
+    ];
+  }
+
   const [approvalRows] = await pool.query(
     `SELECT pa.*, u.name AS approver_name, u.role AS approver_role
      FROM pr_approvals pa
@@ -588,7 +698,8 @@ async function resolvePoDraftContent(prId, body) {
   const resolvedPaymentTerms =
     String(resolvedPoTermsDetails.paymentTermsText || '').trim() || paymentTerms;
 
-  const normalizedPoType = poType === 'long_po' ? 'long_po' : 'short_po';
+  const resolvedPurchaseTypeEarly = normalizePurchaseType(body?.purchaseType || pr.purchaseType);
+  const normalizedPoType = alignPoTypeWithPurchaseType(poType, resolvedPurchaseTypeEarly);
   let resolvedLetterhead = letterheadHeader ?? '';
   let resolvedLetterheadId = body?.letterheadId ? Number(body.letterheadId) : null;
   let resolvedEntity = body?.entity ?? '';
@@ -702,6 +813,162 @@ async function resolvePoDraftContent(prId, body) {
   };
 }
 
+/** Build PO draft payload without a Purchase Request (manual create). */
+export async function resolveManualPoDraftContent(body = {}, options = {}) {
+  const forPreview = Boolean(options.forPreview);
+  let vendorName = String(body.vendorName || '').trim();
+  let vendorEmail = String(body.vendorEmail || '').trim();
+  if (!vendorName) {
+    if (forPreview) vendorName = 'Vendor Name';
+    else throw new Error('Vendor name is required');
+  }
+  if (!vendorEmail) {
+    if (forPreview) vendorEmail = 'vendor@example.com';
+    else throw new Error('Vendor email is required');
+  }
+
+  const vendorMaster = await lookupVendorMaster(vendorEmail, vendorName);
+  const {
+    lineItems = [],
+    deliveryAddress = '',
+    expectedDeliveryDate = '',
+    paymentTerms = 'Net 30 Days',
+    incoterms = 'DDP',
+    specialInstructions = '',
+    gstPercentage = 18,
+    poType = 'short_po',
+    letterheadHeader,
+    terms = [],
+    annexure = [],
+    annexureIiHtml = '',
+    poNumber,
+    poTermsDetails: bodyPoTermsDetails,
+    title = '',
+    department = '',
+    requester = '',
+  } = body;
+
+  const resolvedPoTermsDetails = normalizePoTermsDetails(bodyPoTermsDetails);
+  const resolvedPaymentTerms =
+    String(resolvedPoTermsDetails.paymentTermsText || '').trim() || paymentTerms;
+  const resolvedPurchaseTypeEarly = normalizePurchaseType(body?.purchaseType);
+  const normalizedPoType = alignPoTypeWithPurchaseType(poType, resolvedPurchaseTypeEarly);
+
+  let resolvedLetterhead = letterheadHeader ?? '';
+  let resolvedLetterheadId = body?.letterheadId ? Number(body.letterheadId) : null;
+  let resolvedEntity = body?.entity ?? '';
+  let resolvedHeaderLogo = body?.headerLogo ?? '';
+  let resolvedFooterLogo = body?.footerLogo ?? '';
+  let resolvedTerms = terms;
+  let resolvedAnnexure = annexure;
+  const resolvedAnnexureIiHtml = serializeAnnexureIi(
+    body?.annexureIiRows || annexureIiHtml || body?.annexureIiHtml || body?.annexure_ii_html || ''
+  );
+
+  try {
+    if (resolvedLetterheadId) {
+      const selected = await getLetterheadMasterById(resolvedLetterheadId);
+      resolvedEntity = selected.entity || resolvedEntity || '';
+      resolvedHeaderLogo = selected.headerLogo || '';
+      resolvedFooterLogo = body?.footerLogo || selected.footerLogo || resolvedFooterLogo || '';
+    } else {
+      const branding = await getActiveLetterheadBranding();
+      if (branding.id) resolvedLetterheadId = branding.id;
+      resolvedEntity = branding.entity || resolvedEntity || '';
+      resolvedHeaderLogo = branding.headerLogo || resolvedHeaderLogo || '';
+      resolvedFooterLogo = body?.footerLogo || branding.footerLogo || resolvedFooterLogo || '';
+    }
+  } catch (err) {
+    if (resolvedLetterheadId) throw err;
+  }
+
+  if (!resolvedTerms.length || !resolvedAnnexure.length || !resolvedLetterhead) {
+    try {
+      const master = await getLetterheadByType(normalizedPoType);
+      resolvedLetterhead = resolvedLetterhead || master.letterheadHeader || '';
+      if (!resolvedTerms.length) resolvedTerms = master.terms || [];
+      if (!resolvedAnnexure.length) resolvedAnnexure = master.annexure || [];
+    } catch {
+      /* optional */
+    }
+  }
+
+  const mappedLineItems = lineItems.map((item) => {
+    const taxPercentage = Math.min(
+      100,
+      Math.max(0, Number(item.taxPercentage ?? item.tax_percentage ?? gstPercentage) || 0)
+    );
+    const total = lineItemTotal(item.quantity, item.unitPrice);
+    const unit = normalizeUnit(item.unit || item.uom);
+    return {
+      itemName: item.itemName || item.name || '',
+      description: item.description,
+      category: item.category || '',
+      quantity: Number(item.quantity),
+      unit,
+      uom: unit,
+      unitPrice: Number(item.unitPrice),
+      discount: 0,
+      taxPercentage,
+      total,
+      taxAmount: lineItemTax(total, taxPercentage),
+    };
+  });
+
+  const subtotal = roundMoney(mappedLineItems.reduce((sum, item) => sum + item.total, 0));
+  const taxAmount = roundMoney(mappedLineItems.reduce((sum, item) => sum + item.taxAmount, 0));
+  const effectiveGst =
+    subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : Number(gstPercentage) || 0;
+  const grandTotal = roundMoney(subtotal + taxAmount);
+  const resolvedCurrency = normalizeCurrency(body?.currency);
+  const resolvedPurchaseType = normalizePurchaseType(body?.purchaseType);
+  const subject = String(resolvedPoTermsDetails.subject || title || '').trim();
+
+  return {
+    poNumber: poNumber || 'DRAFT-MANUAL',
+    createdAt: new Date(),
+    prNumber: '',
+    prTitle: subject || 'Manual Purchase Order',
+    department: String(department || '').trim(),
+    requester: String(requester || '').trim() || 'SCM Buyer',
+    vendorName,
+    vendorEmail,
+    vendorAddress: vendorMaster.address || '',
+    vendorGst: vendorMaster.gst_number || '',
+    vendorPan: vendorMaster.pan_number || '',
+    vendorPhone: vendorMaster.phone || '',
+    deliveryAddress,
+    expectedDeliveryDate,
+    paymentTerms: resolvedPaymentTerms,
+    incoterms,
+    specialInstructions,
+    poType: normalizedPoType,
+    purchaseType: resolvedPurchaseType,
+    purchaseTypeLabel: purchaseTypeLabel(resolvedPurchaseType),
+    letterheadHeader: resolvedLetterhead,
+    letterheadId: resolvedLetterheadId,
+    entity: resolvedEntity,
+    headerLogo: resolvedHeaderLogo,
+    footerLogo: resolvedFooterLogo,
+    termsClauses: resolvedTerms,
+    annexureClauses: resolvedAnnexure,
+    annexureIiHtml: resolvedAnnexureIiHtml,
+    annexureIiRows: parseAnnexureIi(resolvedAnnexureIiHtml),
+    poTermsDetails: {
+      ...resolvedPoTermsDetails,
+      subject: subject || resolvedPoTermsDetails.subject || '',
+      paymentTermsText:
+        resolvedPoTermsDetails.paymentTermsText || resolvedPaymentTerms || '',
+    },
+    gstPercentage: effectiveGst,
+    currency: resolvedCurrency,
+    subtotal,
+    taxAmount,
+    grandTotal,
+    lineItems: mappedLineItems,
+  };
+}
+
 export async function buildPoPreviewDocument(user, prId, body) {
   if (user.role !== 'SCM Buyer' && user.role !== 'SCM Manager') {
     throw new Error('Unauthorized to preview purchase orders');
@@ -721,6 +988,18 @@ export async function buildPoPreviewForPo(user, poId, body) {
     (user.role === 'SCM Buyer' && rows[0].status === 'pending_buyer_verify');
   if (!editable) throw new Error('Only pending / buyer-verify POs can be edited');
   if (!body?.lineItems?.length) throw new Error('At least one line item is required for preview');
+  if (!rows[0].pr_id) {
+    return resolveManualPoDraftContent({
+      ...body,
+      poNumber: rows[0].po_number,
+      vendorName: body.vendorName || rows[0].vendor_name,
+      vendorEmail: body.vendorEmail || rows[0].vendor_email,
+      terms: body.terms ?? body.termsClauses,
+      annexure: body.annexure ?? body.annexureClauses,
+      annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
+      annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? rows[0].annexure_ii_html),
+    });
+  }
   return resolvePoDraftContent(rows[0].pr_id, {
     ...body,
     poNumber: rows[0].po_number,
@@ -880,11 +1159,7 @@ export async function createPurchaseOrder(user, prId, body) {
     if (!skipApproval) {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 2);
-      await conn.query(
-        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
-         VALUES (?, 'PO_APPROVAL', 'SCM Manager', 'pending', ?)`,
-        [prId, dueDate.toISOString().split('T')[0]]
-      );
+      await insertScmManagerPoApprovalTask(conn, prId, dueDate.toISOString().split('T')[0]);
     }
 
     // Complete SCM Create PO step and mark PR as PO created
@@ -945,6 +1220,517 @@ export async function createPurchaseOrder(user, prId, body) {
   }
 }
 
+/** Create PO / WO with no Purchase Request reference. */
+export async function createManualPurchaseOrder(user, body = {}) {
+  if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
+    throw new Error('Only SCM Buyer can create purchase orders');
+  }
+
+  const skipApproval = Boolean(body?.skipApproval || body?.legacyImport || body?.oldPoImport);
+  const draft = await resolveManualPoDraftContent(body);
+  const {
+    lineItems,
+    deliveryAddress,
+    expectedDeliveryDate,
+    paymentTerms,
+    incoterms,
+    specialInstructions,
+    gstPercentage,
+    poType: normalizedPoType,
+    letterheadHeader: resolvedLetterhead,
+    letterheadId: resolvedLetterheadId,
+    entity: resolvedEntity,
+    headerLogo: resolvedHeaderLogo,
+    footerLogo: resolvedFooterLogo,
+    termsClauses: resolvedTerms,
+    annexureClauses: resolvedAnnexure,
+    annexureIiHtml: resolvedAnnexureIiHtml,
+    poTermsDetails: resolvedPoTermsDetails,
+    currency: resolvedCurrency,
+    subtotal,
+    taxAmount,
+    grandTotal,
+    vendorName,
+    vendorEmail,
+  } = draft;
+
+  if (!lineItems.length) throw new Error('At least one line item is required');
+  if (!deliveryAddress?.trim()) throw new Error('Delivery address is required');
+  if (!expectedDeliveryDate) throw new Error('Expected delivery date is required');
+
+  const entityIdForNumber = await resolveEntityIdFromPoBody(body);
+  if (!entityIdForNumber) {
+    throw new Error('Select a letterhead entity to generate the PO / WO number');
+  }
+
+  const purchaseType = normalizePurchaseType(body.purchaseType || 'purchase_order');
+  const docLabel = purchaseTypeLabel(purchaseType);
+  const referencePoNumber = body.referencePoNumber?.trim() || null;
+  const requestedPoNumber = String(body?.poNumber || body?.existingPoNumber || '').trim() || null;
+  const initialStatus = skipApproval ? 'approved' : 'pending_approval';
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    let poNumber = requestedPoNumber;
+    if (poNumber) {
+      const [dup] = await conn.query(
+        `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) LIMIT 1`,
+        [poNumber]
+      );
+      if (dup.length) throw new Error(`${docLabel} number ${poNumber} already exists`);
+    } else {
+      poNumber = await generatePoNumber(entityIdForNumber, purchaseType, conn);
+    }
+
+    const [result] = await conn.query(
+      `INSERT INTO purchase_orders
+       (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
+        delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
+        po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
+        annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
+       VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        poNumber,
+        referencePoNumber,
+        vendorName,
+        vendorEmail,
+        user.id,
+        deliveryAddress,
+        expectedDeliveryDate,
+        paymentTerms,
+        incoterms,
+        specialInstructions,
+        normalizedPoType,
+        purchaseType,
+        resolvedLetterhead,
+        resolvedLetterheadId || null,
+        entityIdForNumber,
+        resolvedEntity || '',
+        resolvedHeaderLogo || '',
+        resolvedFooterLogo || '',
+        JSON.stringify(resolvedTerms),
+        JSON.stringify(resolvedAnnexure),
+        resolvedAnnexureIiHtml || '',
+        JSON.stringify(resolvedPoTermsDetails || EMPTY_PO_TERMS_DETAILS),
+        gstPercentage,
+        resolvedCurrency || 'INR',
+        subtotal,
+        taxAmount,
+        grandTotal,
+        initialStatus,
+      ]
+    );
+
+    const poId = result.insertId;
+    for (const item of lineItems) {
+      const total = lineItemTotal(item.quantity, item.unitPrice);
+      const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage) || 0));
+      const itemName = String(item.itemName || item.name || '').trim();
+      const description = String(item.description || itemName || '').trim() || '(no description)';
+      await conn.query(
+        `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit, unit_price, discount, tax_percentage, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          poId,
+          '',
+          itemName || null,
+          description,
+          item.quantity,
+          normalizeUnit(item.unit || item.uom),
+          item.unitPrice,
+          0,
+          taxPercentage,
+          total,
+        ]
+      );
+    }
+
+    await conn.commit();
+
+    const [poRows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+    const po = await enrichPO(poRows[0]);
+    const { fileName } = await generatePoPdf(po, { fileName: `${poNumber}_draft.pdf` });
+    await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
+    po.pdfPath = fileName;
+
+    if (!skipApproval) {
+      const managers = await resolveRoleEmails('SCM Manager');
+      queuePoWorkflowNotification(po, {
+        action: 'assign',
+        stageLabel: 'SCM Manager PO Approval',
+        recipientEmails: managers.map((m) => m.email),
+        recipientName: managers[0]?.name || 'SCM Manager',
+        actorName: user.name,
+        actorRole: user.role,
+        remarks: `Manual ${docLabel} ${poNumber} created (no PR) and sent for approval`,
+        portalUrl: poPortalUrl('/scm/po-approval'),
+        ctaLabel: 'Open PO Approval',
+      });
+    }
+
+    return po;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function buildManualPoPreviewDocument(user, body) {
+  if (user.role !== 'SCM Buyer' && user.role !== 'SCM Manager' && user.role !== 'Super Admin') {
+    throw new Error('Unauthorized to preview purchase orders');
+  }
+  const payload = { ...(body || {}) };
+  // Preview should render even while the form is incomplete
+  if (!Array.isArray(payload.lineItems) || !payload.lineItems.length) {
+    payload.lineItems = [
+      {
+        itemName: 'Sample item',
+        description: 'Add line items on the PO Details tab',
+        quantity: 1,
+        unitPrice: 0,
+        taxPercentage: 18,
+        unit: 'Nos',
+      },
+    ];
+  }
+  if (!String(payload.deliveryAddress || '').trim()) {
+    payload.deliveryAddress = 'Site / delivery address';
+  }
+  if (!payload.expectedDeliveryDate) {
+    payload.expectedDeliveryDate = new Date().toISOString().slice(0, 10);
+  }
+  return resolveManualPoDraftContent(payload, { forPreview: true });
+}
+
+function normalizeDraftSaveBody(body = {}) {
+  const payload = { ...body };
+  if (!Array.isArray(payload.lineItems) || !payload.lineItems.length) {
+    payload.lineItems = [
+      {
+        itemName: 'Draft item',
+        description: '',
+        quantity: 1,
+        unitPrice: 0,
+        taxPercentage: payload.gstPercentage ?? 18,
+        unit: 'Nos',
+      },
+    ];
+  }
+  const site = String(payload.poTermsDetails?.siteAddress || payload.deliveryAddress || '').trim();
+  if (!site) payload.deliveryAddress = 'TBD';
+  if (!payload.expectedDeliveryDate) {
+    payload.expectedDeliveryDate = new Date().toISOString().slice(0, 10);
+  }
+  return payload;
+}
+
+async function resolveDraftSaveContent({ prId, existing, body }) {
+  const payload = normalizeDraftSaveBody(body);
+  const effectivePrId = existing?.pr_id || prId;
+  if (effectivePrId) {
+    let vendor;
+    try {
+      vendor = await getRecommendedVendor(effectivePrId);
+    } catch {
+      vendor = {
+        vendor_name: String(payload.vendorName || existing?.vendor_name || 'Vendor Name').trim(),
+        vendor_email: String(payload.vendorEmail || existing?.vendor_email || 'vendor@example.com').trim(),
+        id: null,
+      };
+    }
+    if (payload.vendorName) {
+      vendor = {
+        ...vendor,
+        vendor_name: String(payload.vendorName).trim() || vendor.vendor_name,
+        vendor_email: String(payload.vendorEmail || '').trim() || vendor.vendor_email,
+      };
+    }
+    const draft = await resolvePoDraftContent(effectivePrId, {
+      ...payload,
+      poNumber: existing?.po_number || payload.poNumber,
+      vendorName: vendor.vendor_name,
+      vendorEmail: vendor.vendor_email,
+    });
+    return { ...draft, vendorName: vendor.vendor_name, vendorEmail: vendor.vendor_email, rfqInvitationId: vendor.id || null };
+  }
+
+  const needsPreviewVendor =
+    !String(payload.vendorName || existing?.vendor_name || '').trim() ||
+    !String(payload.vendorEmail || existing?.vendor_email || '').trim();
+  const draft = await resolveManualPoDraftContent(
+    {
+      ...payload,
+      poNumber: existing?.po_number || payload.poNumber,
+      vendorName: payload.vendorName || existing?.vendor_name,
+      vendorEmail: payload.vendorEmail || existing?.vendor_email,
+    },
+    { forPreview: needsPreviewVendor }
+  );
+  return draft;
+}
+
+async function persistDraftLineItems(conn, poId, lineItems) {
+  await conn.query(`DELETE FROM po_line_items WHERE po_id = ?`, [poId]);
+  for (const item of lineItems) {
+    const total = lineItemTotal(item.quantity, item.unitPrice);
+    const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage) || 0));
+    const itemName = String(item.itemName || item.name || '').trim();
+    const description = String(item.description || itemName || '').trim() || '(draft)';
+    await conn.query(
+      `INSERT INTO po_line_items (po_id, category, item_name, description, quantity, unit, unit_price, discount, tax_percentage, total)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        poId,
+        '',
+        itemName || null,
+        description,
+        item.quantity,
+        normalizeUnit(item.unit || item.uom),
+        item.unitPrice,
+        0,
+        taxPercentage,
+        total,
+      ]
+    );
+  }
+}
+
+/** Save or update a draft PO / WO (PR-linked or manual). */
+export async function savePurchaseOrderDraft(user, body = {}) {
+  if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
+    throw new Error('Only SCM Buyer can save PO drafts');
+  }
+
+  const poId = Number(body.poId || body.id || 0) || null;
+  const prId = Number(body.prId || 0) || null;
+
+  let existing = null;
+  if (poId) {
+    const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+    existing = rows[0] || null;
+    if (!existing) throw new Error('PO not found');
+    if (existing.status !== 'draft') throw new Error('Only draft POs can be saved with Save Draft');
+    if (user.role === 'SCM Buyer' && existing.created_by !== user.id) {
+      throw new Error('You can only edit your own draft POs');
+    }
+  } else if (prId) {
+    const [active] = await pool.query(
+      `SELECT id FROM purchase_orders WHERE pr_id = ? AND status IN ('pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor') LIMIT 1`,
+      [prId]
+    );
+    if (active.length) throw new Error('A purchase order already exists for this PR');
+
+    const [draftRows] = await pool.query(
+      `SELECT * FROM purchase_orders WHERE pr_id = ? AND status = 'draft' AND created_by = ? ORDER BY id DESC LIMIT 1`,
+      [prId, user.id]
+    );
+    existing = draftRows[0] || null;
+  }
+
+  const isManual = !existing?.pr_id && !prId;
+  const entityIdForNumber = await resolveEntityIdFromPoBody(body, existing);
+  if (isManual && !entityIdForNumber) {
+    throw new Error('Select a letterhead entity before saving a manual PO draft');
+  }
+
+  const resolved = await resolveDraftSaveContent({ prId, existing, body });
+  const {
+    lineItems,
+    deliveryAddress,
+    expectedDeliveryDate,
+    paymentTerms,
+    incoterms,
+    specialInstructions,
+    gstPercentage,
+    poType: normalizedPoType,
+    letterheadHeader: resolvedLetterhead,
+    letterheadId: resolvedLetterheadId,
+    entity: resolvedEntity,
+    headerLogo: resolvedHeaderLogo,
+    footerLogo: resolvedFooterLogo,
+    termsClauses: resolvedTerms,
+    annexureClauses: resolvedAnnexure,
+    annexureIiHtml: resolvedAnnexureIiHtml,
+    poTermsDetails: resolvedPoTermsDetails,
+    currency: resolvedCurrency,
+    subtotal,
+    taxAmount,
+    grandTotal,
+    vendorName,
+    vendorEmail,
+    rfqInvitationId,
+  } = resolved;
+
+  const purchaseType = normalizePurchaseType(
+    body.purchaseType || existing?.purchase_type || 'purchase_order'
+  );
+  const referencePoNumber =
+    body.referencePoNumber !== undefined
+      ? body.referencePoNumber?.trim() || null
+      : existing?.reference_po_number || null;
+
+  const conn = await pool.getConnection();
+  let savedPoId = existing?.id || null;
+  try {
+    await conn.beginTransaction();
+
+    let poNumber = existing?.po_number || null;
+
+    if (existing) {
+      await conn.query(
+        `UPDATE purchase_orders SET
+          reference_po_number = ?,
+          vendor_name = ?, vendor_email = ?,
+          delivery_address = ?, expected_delivery_date = ?, payment_terms = ?, incoterms = ?,
+          special_instructions = ?, po_type = ?, purchase_type = ?, letterhead_header = ?, letterhead_id = ?, entity_id = ?, entity = ?,
+          header_logo = ?, footer_logo = ?, terms_clauses = ?, annexure_clauses = ?, annexure_ii_html = ?,
+          po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
+          status = 'draft', updated_at = NOW()
+         WHERE id = ?`,
+        [
+          referencePoNumber,
+          vendorName,
+          vendorEmail,
+          deliveryAddress,
+          expectedDeliveryDate,
+          paymentTerms,
+          incoterms,
+          specialInstructions,
+          normalizedPoType,
+          purchaseType,
+          resolvedLetterhead,
+          resolvedLetterheadId || null,
+          entityIdForNumber || existing.entity_id,
+          resolvedEntity || '',
+          resolvedHeaderLogo || '',
+          resolvedFooterLogo || '',
+          JSON.stringify(resolvedTerms),
+          JSON.stringify(resolvedAnnexure),
+          resolvedAnnexureIiHtml || '',
+          JSON.stringify(resolvedPoTermsDetails || EMPTY_PO_TERMS_DETAILS),
+          gstPercentage,
+          resolvedCurrency || 'INR',
+          subtotal,
+          taxAmount,
+          grandTotal,
+          savedPoId,
+        ]
+      );
+      await persistDraftLineItems(conn, savedPoId, lineItems);
+    } else if (prId) {
+      const pr = await getPurchaseRequestById(prId);
+      if (!pr) throw new Error('PR not found');
+      const prEntityId = Number(pr.entityId || body.entityId || 0);
+      if (!prEntityId) throw new Error('PR has no entity. Set entity on the PR before saving a draft.');
+
+      poNumber = await generatePoNumber(prEntityId, purchaseType, conn);
+      const [result] = await conn.query(
+        `INSERT INTO purchase_orders
+         (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
+          delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
+          po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
+          annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+        [
+          poNumber,
+          referencePoNumber,
+          prId,
+          vendorName,
+          vendorEmail,
+          rfqInvitationId || null,
+          user.id,
+          deliveryAddress,
+          expectedDeliveryDate,
+          paymentTerms,
+          incoterms,
+          specialInstructions,
+          normalizedPoType,
+          purchaseType,
+          resolvedLetterhead,
+          resolvedLetterheadId || null,
+          prEntityId,
+          resolvedEntity || '',
+          resolvedHeaderLogo || '',
+          resolvedFooterLogo || '',
+          JSON.stringify(resolvedTerms),
+          JSON.stringify(resolvedAnnexure),
+          resolvedAnnexureIiHtml || '',
+          JSON.stringify(resolvedPoTermsDetails || EMPTY_PO_TERMS_DETAILS),
+          gstPercentage,
+          resolvedCurrency || 'INR',
+          subtotal,
+          taxAmount,
+          grandTotal,
+        ]
+      );
+      savedPoId = result.insertId;
+      await persistDraftLineItems(conn, savedPoId, lineItems);
+    } else {
+      poNumber = await generatePoNumber(entityIdForNumber, purchaseType, conn);
+      const [result] = await conn.query(
+        `INSERT INTO purchase_orders
+         (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
+          delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
+          po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
+          annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
+         VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+        [
+          poNumber,
+          referencePoNumber,
+          vendorName,
+          vendorEmail,
+          user.id,
+          deliveryAddress,
+          expectedDeliveryDate,
+          paymentTerms,
+          incoterms,
+          specialInstructions,
+          normalizedPoType,
+          purchaseType,
+          resolvedLetterhead,
+          resolvedLetterheadId || null,
+          entityIdForNumber,
+          resolvedEntity || '',
+          resolvedHeaderLogo || '',
+          resolvedFooterLogo || '',
+          JSON.stringify(resolvedTerms),
+          JSON.stringify(resolvedAnnexure),
+          resolvedAnnexureIiHtml || '',
+          JSON.stringify(resolvedPoTermsDetails || EMPTY_PO_TERMS_DETAILS),
+          gstPercentage,
+          resolvedCurrency || 'INR',
+          subtotal,
+          taxAmount,
+          grandTotal,
+        ]
+      );
+      savedPoId = result.insertId;
+      await persistDraftLineItems(conn, savedPoId, lineItems);
+    }
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+
+  const po = await getPurchaseOrderById(savedPoId);
+  try {
+    const { fileName } = await generatePoPdf(po, { fileName: `${po.poNumber}_draft.pdf` });
+    await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, savedPoId]);
+    po.pdfPath = fileName;
+  } catch {
+    /* draft PDF optional while form is incomplete */
+  }
+  return po;
+}
+
 export async function listPurchaseOrders(
   user,
   { pendingOnly = false, buyerVerifyOnly = false, approvalQueue = false } = {}
@@ -1000,12 +1786,13 @@ function mapTrackPoStatus(statusRaw) {
   if (s === 'approved') return { status: 'approved', statusLabel: 'PO Approved' };
   if (s === 'imported') return { status: 'imported', statusLabel: 'Imported' };
   if (s === 'draft') return { status: 'draft', statusLabel: 'Draft' };
+  if (s === 'cancelled') return { status: 'cancelled', statusLabel: 'Cancelled' };
   return { status: s || 'unknown', statusLabel: statusRaw || 'Unknown' };
 }
 
 /**
  * Paginated Track PO feed: Ready-for-PO PRs + purchase orders.
- * Query: page, limit, search, status (all|ready|pending|approved|rejected|sent|imported|draft)
+ * Query: page, limit, search, status (all|ready|pending|approved|rejected|sent|imported|draft|cancelled)
  * Uses indexed filters; stats use separate COUNT queries (no triple UNION scan).
  */
 export async function listTrackPurchaseOrders(
@@ -1033,7 +1820,7 @@ export async function listTrackPurchaseOrders(
   const includePo =
     statusFilter !== 'ready' &&
     (statusFilter === 'all' ||
-      ['pending', 'approved', 'rejected', 'sent', 'imported', 'draft'].includes(statusFilter));
+      ['pending', 'approved', 'rejected', 'sent', 'imported', 'draft', 'cancelled'].includes(statusFilter));
 
   const readyTypeFilter = typeSqlValue
     ? ` AND COALESCE(pr.purchase_type, 'purchase_order') = ?`
@@ -1095,7 +1882,7 @@ export async function listTrackPurchaseOrders(
       po.id AS po_id,
       COALESCE(pr.pr_number, '') COLLATE utf8mb4_unicode_ci AS pr_number,
       po.po_number COLLATE utf8mb4_unicode_ci AS po_number,
-      COALESCE(pr.title, '') COLLATE utf8mb4_unicode_ci AS title,
+      COALESCE(NULLIF(pr.title, ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(po.po_terms_details, '$.subject')), ''), CASE WHEN po.pr_id IS NULL THEN 'Manual PO' ELSE '' END) COLLATE utf8mb4_unicode_ci AS title,
       COALESCE(d.name, '') COLLATE utf8mb4_unicode_ci AS department,
       COALESCE(u.name, '') COLLATE utf8mb4_unicode_ci AS requester,
       COALESCE(po.vendor_name, '') COLLATE utf8mb4_unicode_ci AS vendor_name,
@@ -1151,6 +1938,8 @@ export async function listTrackPurchaseOrders(
     whereExtra += ` AND t.status_raw = 'imported'`;
   } else if (statusFilter === 'draft') {
     whereExtra += ` AND t.status_raw = 'draft'`;
+  } else if (statusFilter === 'cancelled') {
+    whereExtra += ` AND t.status_raw = 'cancelled'`;
   }
 
   if (q) {
@@ -1255,7 +2044,9 @@ async function getTrackListStats(user) {
       COUNT(*) AS po_total,
       SUM(CASE WHEN status IN ('pending_approval', 'pending_buyer_verify') THEN 1 ELSE 0 END) AS pending,
       SUM(CASE WHEN status IN ('approved', 'sent_to_vendor') THEN 1 ELSE 0 END) AS approved,
-      SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected
+      SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+      SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_count,
+      SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
     FROM purchase_orders
     WHERE 1=1
   `;
@@ -1278,6 +2069,8 @@ async function getTrackListStats(user) {
     pending: Number(poRows[0]?.pending || 0),
     approved: Number(poRows[0]?.approved || 0),
     rejected: Number(poRows[0]?.rejected || 0),
+    draft: Number(poRows[0]?.draft_count || 0),
+    cancelled: Number(poRows[0]?.cancelled_count || 0),
   };
 }
 
@@ -1335,6 +2128,7 @@ export async function signPurchaseOrder(user, poId, {
   signatureImage,
   signatureId,
   saveToGallery,
+  dsc,
 }) {
   if (user.role !== 'SCM Manager') throw new Error('Only SCM Manager can sign purchase orders');
 
@@ -1342,7 +2136,25 @@ export async function signPurchaseOrder(user, poId, {
   if (!rows.length) throw new Error('PO not found');
   if (rows[0].status !== 'pending_approval') throw new Error('PO is not pending approval');
 
-  const signName = signatureName?.trim() || user.name;
+  const dscDetails =
+    dsc && typeof dsc === 'object'
+      ? {
+          holderName: String(dsc.holderName || '').trim(),
+          serial: String(dsc.serial || '').trim(),
+          issuer: String(dsc.issuer || '').trim(),
+          validTill: String(dsc.validTill || '').trim(),
+        }
+      : null;
+  if (dscDetails && (!dscDetails.holderName || !dscDetails.serial)) {
+    throw new Error('DSC holder name and serial number are required');
+  }
+  if (dscDetails && !dscDetails.validTill) {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 1);
+    dscDetails.validTill = d.toISOString().slice(0, 10);
+  }
+
+  const signName = dscDetails?.holderName || signatureName?.trim() || user.name;
   if (!remarks?.trim()) throw new Error('Comments are required for signing');
 
   const {
@@ -1367,8 +2179,10 @@ export async function signPurchaseOrder(user, poId, {
     if (saveToGallery) {
       await saveUserSignature(user.id, { image: dataUrl, label: `${signName} Signature` });
     }
+  } else if (dscDetails) {
+    // DSC stamp is generated on the client and sent as signatureImage; allow text-only if missing
   } else {
-    throw new Error('Please provide a signature (draw, upload, or select from gallery)');
+    throw new Error('Please provide a signature (draw, upload, gallery, or Digital Signature / DSC)');
   }
 
   const po = await enrichPO(rows[0]);
@@ -1381,37 +2195,48 @@ export async function signPurchaseOrder(user, poId, {
       date: formatDateTime(new Date()),
       comments: remarks.trim(),
       imageDataUrl,
+      dsc: dscDetails || undefined,
     },
   });
 
   await pool.query(
     `UPDATE purchase_orders SET status = 'pending_buyer_verify', signed_pdf_path = ?, signer_id = ?,
      signature_name = ?, signature_image_path = ?, signer_comments = ?, signed_at = NOW(),
-     updated_at = NOW()
+     signature_dsc_json = ?, updated_at = NOW()
      WHERE id = ?`,
-    [fileName, user.id, signName, signatureImagePath, remarks.trim(), poId]
+    [
+      fileName,
+      user.id,
+      signName,
+      signatureImagePath,
+      remarks.trim(),
+      dscDetails ? JSON.stringify({ ...dscDetails, signedAt: new Date().toISOString() }) : null,
+      poId,
+    ]
   );
 
-  await pool.query(
-    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-     WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
-    [po.prId]
-  );
+  if (po.prId) {
+    await pool.query(
+      `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+       WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
+      [po.prId]
+    );
 
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 1);
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 1);
+    await pool.query(
+      `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+       VALUES (?, 'PO_BUYER_VERIFY', 'SCM Buyer', ?, 'pending', ?)`,
+      [po.prId, null, dueDate.toISOString().split('T')[0]]
+    );
+
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, 'PO_SIGNED', ?, 'approve', ?)`,
+      [po.prId, user.id, remarks.trim() || 'Signed — sent to SCM Buyer for final verify']
+    );
+  }
+
   const scmBuyer = await resolveScmBuyerUser();
-  await pool.query(
-    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
-     VALUES (?, 'PO_BUYER_VERIFY', 'SCM Buyer', ?, 'pending', ?)`,
-    [po.prId, null, dueDate.toISOString().split('T')[0]]
-  );
-
-  await pool.query(
-    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, 'PO_SIGNED', ?, 'approve', ?)`,
-    [po.prId, user.id, remarks.trim() || 'Signed — sent to SCM Buyer for final verify']
-  );
-
   const updated = await getPurchaseOrderById(poId);
   const buyerEmails = await getScmBuyerNotifyEmails();
   if (buyerEmails.length) {
@@ -1425,6 +2250,8 @@ export async function signPurchaseOrder(user, poId, {
       remarks: remarks.trim(),
       portalUrl: poPortalUrl('/scm/buyer-final-verify'),
       ctaLabel: 'Open Buyer Final Verify',
+      bccOps: false,
+      notifyWhatsApp: false,
     });
   }
 
@@ -1462,11 +2289,13 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     [rows[0].pr_id]
   );
 
-  await pool.query(
-    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
-     VALUES (?, 'PO_BUYER_VERIFIED', ?, 'verified', ?)`,
-    [rows[0].pr_id, user.id, verifyRemarks]
-  );
+  if (rows[0].pr_id) {
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_BUYER_VERIFIED', ?, 'verified', ?)`,
+      [rows[0].pr_id, user.id, verifyRemarks]
+    );
+  }
 
   // Email / manual acceptance is done next on Vendor PO Acceptance page
   return getPurchaseOrderById(poId);
@@ -1493,11 +2322,13 @@ export async function rejectBuyerFinalVerify(user, poId, remarks) {
     [rows[0].pr_id]
   );
 
-  await pool.query(
-    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
-     VALUES (?, 'PO_BUYER_REJECTED', ?, 'reject', ?)`,
-    [rows[0].pr_id, user.id, remarks.trim()]
-  );
+  if (rows[0].pr_id) {
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_BUYER_REJECTED', ?, 'reject', ?)`,
+      [rows[0].pr_id, user.id, remarks.trim()]
+    );
+  }
 
   const updated = await getPurchaseOrderById(poId);
   const parties = await resolvePoNotifyParties(rows[0]);
@@ -1549,19 +2380,17 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
     [rows[0].pr_id]
   );
 
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 2);
-  await pool.query(
-    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
-     VALUES (?, 'PO_APPROVAL', 'SCM Manager', 'pending', ?)`,
-    [rows[0].pr_id, dueDate.toISOString().split('T')[0]]
-  );
+  if (rows[0].pr_id) {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 2);
+    await insertScmManagerPoApprovalTask(pool, rows[0].pr_id, dueDate.toISOString().split('T')[0]);
 
-  await pool.query(
-    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
-     VALUES (?, 'PO_BUYER_SENT_BACK', ?, 'return', ?)`,
-    [rows[0].pr_id, user.id, remarks.trim()]
-  );
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_BUYER_SENT_BACK', ?, 'return', ?)`,
+      [rows[0].pr_id, user.id, remarks.trim()]
+    );
+  }
 
   const updated = await getPurchaseOrderById(poId);
   const managers = await resolveRoleEmails('SCM Manager');
@@ -1609,19 +2438,21 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
     [rows[0].pr_id]
   );
 
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 2);
-  await pool.query(
-    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
-     VALUES (?, 'PO_REVISION', 'SCM Buyer', 'pending', ?)`,
-    [rows[0].pr_id, dueDate.toISOString().split('T')[0]]
-  );
+  if (rows[0].pr_id) {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 2);
+    await pool.query(
+      `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
+       VALUES (?, 'PO_REVISION', 'SCM Buyer', 'pending', ?)`,
+      [rows[0].pr_id, dueDate.toISOString().split('T')[0]]
+    );
 
-  await pool.query(
-    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
-     VALUES (?, 'PO_SENT_BACK', ?, 'return', ?)`,
-    [rows[0].pr_id, user.id, remarks.trim()]
-  );
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_SENT_BACK', ?, 'return', ?)`,
+      [rows[0].pr_id, user.id, remarks.trim()]
+    );
+  }
 
   const updated = await getPurchaseOrderById(poId);
   const buyerEmails = await getScmBuyerNotifyEmails();
@@ -1635,11 +2466,93 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
       actorName: user.name,
       actorRole: user.role,
       remarks: remarks.trim(),
-      portalUrl: poPortalUrl(`/scm/create-po?poId=${poId}`),
+      portalUrl: poPortalUrl(rows[0].pr_id ? `/scm/create-po?poId=${poId}` : '/scm/purchase-requests'),
       ctaLabel: 'Revise PO',
     });
   }
 
+  return updated;
+}
+
+export async function cancelPurchaseOrder(user, poId, body = {}) {
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+    throw new Error('You are not allowed to cancel purchase orders');
+  }
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  const row = rows[0];
+  if (row.status === 'cancelled') throw new Error('PO is already cancelled');
+  if (row.status === 'paid') throw new Error('Paid PO cannot be cancelled');
+
+  const reason = String(body.reason || body.remarks || '').trim();
+  if (!reason) throw new Error('Cancellation reason is required');
+
+  const incomingFiles = Array.isArray(body.attachments) ? body.attachments : [];
+  const attachments = incomingFiles
+    .map((item) => {
+      const entry = item && typeof item === 'object' ? item : {};
+      const saved = savePoAttachment(
+        poId,
+        'cancel',
+        String(entry.fileName || entry.name || '').trim(),
+        String(entry.fileData || entry.base64 || '').trim()
+      );
+      if (!saved.filePath) return null;
+      return {
+        fileName: saved.fileName,
+        filePath: saved.filePath,
+        uploadedAt: new Date().toISOString(),
+      };
+    })
+    .filter(Boolean);
+
+  await pool.query(
+    `UPDATE purchase_orders
+     SET status = 'cancelled',
+         cancellation_reason = ?,
+         cancellation_attachments_json = ?,
+         cancelled_by = ?,
+         cancelled_at = NOW(),
+         updated_at = NOW()
+     WHERE id = ?`,
+    [reason, JSON.stringify(attachments), user.id, poId]
+  );
+
+  if (row.pr_id) {
+    await pool.query(
+      `UPDATE workflow_tasks
+       SET status = 'completed', completed_at = NOW()
+       WHERE pr_id = ?
+         AND status = 'pending'
+         AND task_type IN ('PO_APPROVAL', 'PO_BUYER_VERIFY', 'PO_REVISION', 'RFQ_POST_APPROVAL')`,
+      [row.pr_id]
+    );
+    await pool.query(
+      `UPDATE purchase_requests
+       SET current_stage = 'PO_CANCELLED', updated_at = NOW()
+       WHERE id = ?`,
+      [row.pr_id]
+    );
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_CANCELLED', ?, 'cancelled', ?)`,
+      [row.pr_id, user.id, reason]
+    );
+  }
+
+  const updated = await getPurchaseOrderById(poId);
+  const parties = await resolvePoNotifyParties(row);
+  queuePoWorkflowNotification(updated, {
+    action: 'reject',
+    stageLabel: 'PO Cancelled',
+    recipientEmails: parties.emails,
+    recipientName: parties.name || 'Team',
+    actorName: user.name,
+    actorRole: user.role,
+    remarks: reason,
+    portalUrl: poPortalUrl('/scm/track-po'),
+    ctaLabel: 'Track PO',
+  });
   return updated;
 }
 
@@ -1662,11 +2575,13 @@ export async function rejectPurchaseOrder(user, poId, remarks) {
     [rows[0].pr_id]
   );
 
-  await pool.query(
-    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
-     VALUES (?, 'PO_REJECTED', ?, 'reject', ?)`,
-    [rows[0].pr_id, user.id, remarks.trim()]
-  );
+  if (rows[0].pr_id) {
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_REJECTED', ?, 'reject', ?)`,
+      [rows[0].pr_id, user.id, remarks.trim()]
+    );
+  }
 
   const updated = await getPurchaseOrderById(poId);
   const parties = await resolvePoNotifyParties(rows[0]);
@@ -1701,15 +2616,27 @@ export async function updatePurchaseOrder(user, poId, body) {
     throw new Error('You are not allowed to edit this purchase order');
   }
 
-  const draft = await resolvePoDraftContent(existing.pr_id, {
-    ...body,
-    poNumber: existing.po_number,
-    currency: body.currency ?? existing.currency,
-    terms: body.terms ?? body.termsClauses,
-    annexure: body.annexure ?? body.annexureClauses,
-    annexureIiHtml: body.annexureIiHtml ?? existing.annexure_ii_html ?? '',
-    annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? existing.annexure_ii_html),
-  });
+  const draft = existing.pr_id
+    ? await resolvePoDraftContent(existing.pr_id, {
+        ...body,
+        poNumber: existing.po_number,
+        currency: body.currency ?? existing.currency,
+        terms: body.terms ?? body.termsClauses,
+        annexure: body.annexure ?? body.annexureClauses,
+        annexureIiHtml: body.annexureIiHtml ?? existing.annexure_ii_html ?? '',
+        annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? existing.annexure_ii_html),
+      })
+    : await resolveManualPoDraftContent({
+        ...body,
+        poNumber: existing.po_number,
+        vendorName: body.vendorName || existing.vendor_name,
+        vendorEmail: body.vendorEmail || existing.vendor_email,
+        currency: body.currency ?? existing.currency,
+        terms: body.terms ?? body.termsClauses,
+        annexure: body.annexure ?? body.annexureClauses,
+        annexureIiHtml: body.annexureIiHtml ?? existing.annexure_ii_html ?? '',
+        annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? existing.annexure_ii_html),
+      });
 
   const {
     lineItems,
@@ -1804,29 +2731,29 @@ export async function updatePurchaseOrder(user, poId, body) {
       );
     }
 
-    await conn.query(
-      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
-       VALUES (?, 'PO_UPDATED', ?, 'updated', ?)`,
-      [existing.pr_id, user.id, changeSummary]
-    );
+    if (existing.pr_id) {
+      await conn.query(
+        `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+         VALUES (?, 'PO_UPDATED', ?, 'updated', ?)`,
+        [existing.pr_id, user.id, changeSummary]
+      );
+    }
 
     if (canBuyerRevise) {
       await conn.query(
         `UPDATE purchase_orders SET status = 'pending_approval', updated_at = NOW() WHERE id = ?`,
         [poId]
       );
-      await conn.query(
-        `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-         WHERE pr_id = ? AND task_type = 'PO_REVISION' AND assigned_role = 'SCM Buyer' AND status = 'pending'`,
-        [existing.pr_id]
-      );
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 2);
-      await conn.query(
-        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
-         VALUES (?, 'PO_APPROVAL', 'SCM Manager', 'pending', ?)`,
-        [existing.pr_id, dueDate.toISOString().split('T')[0]]
-      );
+      if (existing.pr_id) {
+        await conn.query(
+          `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+           WHERE pr_id = ? AND task_type = 'PO_REVISION' AND assigned_role = 'SCM Buyer' AND status = 'pending'`,
+          [existing.pr_id]
+        );
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 2);
+        await insertScmManagerPoApprovalTask(conn, existing.pr_id, dueDate.toISOString().split('T')[0]);
+      }
     }
 
     await conn.commit();
@@ -1852,6 +2779,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         date: updatedPo.signedAt || formatDateTime(new Date()),
         comments: existing.signer_comments || '',
         imageDataUrl,
+        dsc: updatedPo.signatureDsc || parseSignatureDsc(existing.signature_dsc_json) || undefined,
       },
     });
     await pool.query(

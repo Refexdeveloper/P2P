@@ -1,19 +1,97 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { poApi, UserSignatureItem } from '../../../../services/api';
+import { useAuth } from '../../../../contexts/AuthContext';
+
+export type DscDetails = {
+  holderName: string;
+  serial: string;
+  issuer: string;
+  validTill: string;
+};
 
 export type SignaturePayload = {
   signatureImage?: string;
   signatureId?: number;
   saveToGallery?: boolean;
+  signatureName?: string;
+  dsc?: DscDetails;
 };
 
 interface Props {
   onChange: (payload: SignaturePayload | null) => void;
 }
 
-type Mode = 'draw' | 'upload' | 'gallery';
+type Mode = 'draw' | 'upload' | 'gallery' | 'dsc';
+
+const DSC_ISSUERS = [
+  'eMudhra Limited',
+  '(n)Code Solutions',
+  'Capricorn Identity Services',
+  'Protean eGov Technologies',
+  'CDAC',
+  'Safescrypt',
+  'Verasys',
+  'Other licensed CA',
+];
+
+function defaultValidTill() {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
+  const canvas = document.createElement('canvas');
+  canvas.width = 840;
+  canvas.height = 280;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#1d4ed8';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+  ctx.strokeStyle = '#93c5fd';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(18, 18, canvas.width - 36, canvas.height - 36);
+
+  ctx.fillStyle = '#1d4ed8';
+  ctx.beginPath();
+  ctx.arc(70, 70, 28, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 32px sans-serif';
+  ctx.fillText('✓', 58, 82);
+
+  ctx.fillStyle = '#1e3a8a';
+  ctx.font = 'bold 28px sans-serif';
+  ctx.fillText('DIGITALLY SIGNED USING DSC', 120, 62);
+  ctx.fillStyle = '#2563eb';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('Class 2 / Class 3 Digital Signature Certificate', 120, 92);
+
+  const lines = [
+    ['Signed by', dsc.holderName],
+    ['Certificate Serial', dsc.serial],
+    ['Issued by', dsc.issuer],
+    ['Valid till', dsc.validTill],
+    ['Date / Time', signedAt],
+  ];
+  ctx.font = '18px sans-serif';
+  lines.forEach((row, i) => {
+    const y = 132 + i * 28;
+    ctx.fillStyle = '#64748b';
+    ctx.font = '16px sans-serif';
+    ctx.fillText(`${row[0]}:`, 40, y);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(row[1] || '—', 220, y);
+  });
+
+  return canvas.toDataURL('image/png');
+}
 
 export default function SignatureCapture({ onChange }: Props) {
+  const { user } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawing = useRef(false);
   const inkRef = useRef(false);
@@ -23,6 +101,12 @@ export default function SignatureCapture({ onChange }: Props) {
   const [saveToGallery, setSaveToGallery] = useState(true);
   const [gallery, setGallery] = useState<UserSignatureItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
+  const [dsc, setDsc] = useState<DscDetails>({
+    holderName: user?.name || '',
+    serial: '',
+    issuer: DSC_ISSUERS[0],
+    validTill: defaultValidTill(),
+  });
   const emit = useCallback(
     (next: SignaturePayload | null) => {
       onChange(next);
@@ -141,6 +225,31 @@ export default function SignatureCapture({ onChange }: Props) {
     emit({ signatureId: item.id });
   };
 
+  const applyDsc = (next: DscDetails) => {
+    const filled: DscDetails = {
+      holderName: next.holderName.trim() || user?.name || '',
+      serial: next.serial.trim(),
+      issuer: next.issuer.trim() || DSC_ISSUERS[0],
+      validTill: next.validTill || defaultValidTill(),
+    };
+    setDsc(filled);
+    if (!filled.holderName || !filled.serial) {
+      setPreview(null);
+      emit(null);
+      return;
+    }
+    const signedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const stamp = generateDscStampPng(filled, `${signedAt} IST`);
+    setPreview(stamp);
+    setSelectedGalleryId(null);
+    emit({
+      signatureImage: stamp,
+      signatureName: filled.holderName,
+      saveToGallery: false,
+      dsc: filled,
+    });
+  };
+
   const removeGalleryItem = async (id: number) => {
     try {
       await poApi.deleteSignature(id);
@@ -156,18 +265,19 @@ export default function SignatureCapture({ onChange }: Props) {
   };
 
   useEffect(() => {
-    if (!preview) return;
+    if (!preview || mode === 'dsc') return;
     if (selectedGalleryId) {
       emit({ signatureId: selectedGalleryId });
     } else {
       emit({ signatureImage: preview, saveToGallery });
     }
-  }, [saveToGallery, selectedGalleryId, preview, emit]);
+  }, [saveToGallery, selectedGalleryId, preview, emit, mode]);
 
   const modes: { key: Mode; label: string; icon: string }[] = [
     { key: 'draw', label: 'Draw', icon: 'ri-pencil-line' },
     { key: 'upload', label: 'Upload', icon: 'ri-upload-2-line' },
     { key: 'gallery', label: 'Gallery', icon: 'ri-gallery-line' },
+    { key: 'dsc', label: 'Digital Signature / DSC', icon: 'ri-shield-keyhole-line' },
   ];
 
   return (
@@ -176,7 +286,7 @@ export default function SignatureCapture({ onChange }: Props) {
         <label className="text-sm font-medium text-gray-700">
           Signature <span className="text-red-500">*</span>
         </label>
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden flex-wrap justify-end">
           {modes.map((m) => (
             <button
               key={m.key}
@@ -185,6 +295,12 @@ export default function SignatureCapture({ onChange }: Props) {
                 setMode(m.key);
                 if (m.key === 'draw') {
                   setSelectedGalleryId(null);
+                }
+                if (m.key === 'dsc') {
+                  applyDsc({
+                    ...dsc,
+                    holderName: dsc.holderName || user?.name || '',
+                  });
                 }
               }}
               className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1 cursor-pointer ${
@@ -281,14 +397,73 @@ export default function SignatureCapture({ onChange }: Props) {
         </div>
       )}
 
-      {preview && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
-          <p className="text-xs font-semibold text-emerald-800 mb-2">Signature preview (will appear on PDF)</p>
-          <img src={preview} alt="Signature preview" className="h-16 object-contain bg-white rounded border border-emerald-100 px-3" />
+      {mode === 'dsc' && (
+        <div className="border border-blue-200 rounded-lg p-4 bg-blue-50/40 space-y-3">
+          <p className="text-xs text-blue-800">
+            Apply your Class 2 / Class 3 DSC. The stamp below is embedded on the signed PO PDF.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-700 mb-1">DSC holder name *</label>
+              <input
+                type="text"
+                value={dsc.holderName}
+                onChange={(e) => applyDsc({ ...dsc, holderName: e.target.value })}
+                placeholder="Name as on DSC token"
+                className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-700 mb-1">Certificate serial no. *</label>
+              <input
+                type="text"
+                value={dsc.serial}
+                onChange={(e) => applyDsc({ ...dsc, serial: e.target.value })}
+                placeholder="e.g. 4A2B9C11"
+                className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-700 mb-1">Issued by (CA)</label>
+              <select
+                value={dsc.issuer}
+                onChange={(e) => applyDsc({ ...dsc, issuer: e.target.value })}
+                className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {DSC_ISSUERS.map((issuer) => (
+                  <option key={issuer} value={issuer}>
+                    {issuer}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-700 mb-1">Valid till *</label>
+              <input
+                type="date"
+                value={dsc.validTill}
+                onChange={(e) => applyDsc({ ...dsc, validTill: e.target.value })}
+                className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
         </div>
       )}
 
-      {mode !== 'gallery' && (
+      {preview && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+          <p className="text-xs font-semibold text-emerald-800 mb-2">
+            {mode === 'dsc' ? 'DSC stamp preview (will appear on PDF)' : 'Signature preview (will appear on PDF)'}
+          </p>
+          <img
+            src={preview}
+            alt="Signature preview"
+            className={`${mode === 'dsc' ? 'h-24' : 'h-16'} object-contain bg-white rounded border border-emerald-100 px-3 w-full`}
+          />
+        </div>
+      )}
+
+      {mode !== 'gallery' && mode !== 'dsc' && (
         <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
           <input
             type="checkbox"

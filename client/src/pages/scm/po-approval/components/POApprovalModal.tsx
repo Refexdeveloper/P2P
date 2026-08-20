@@ -36,8 +36,13 @@ export default function POApprovalModal({
       setError('Please enter comments for signing (minimum 3 characters)');
       return;
     }
-    if (type === 'approve' && !signature?.signatureImage && !signature?.signatureId) {
-      setError('Please draw, upload, or select a signature from gallery');
+    const hasSignature = Boolean(
+      signature?.signatureImage ||
+      signature?.signatureId ||
+      (signature?.dsc?.holderName && signature?.dsc?.serial)
+    );
+    if (type === 'approve' && !hasSignature) {
+      setError('Fill DSC holder name and certificate serial no., or draw / upload a signature');
       return;
     }
     if (type === 'reject' && remarks.trim().length < 10) {
@@ -86,7 +91,7 @@ export default function POApprovalModal({
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 {isApprove
-                  ? 'Your signature will be embedded in the PDF, then SCM Buyer will final-verify before vendor email'
+                  ? 'Confirm to sign the PO. Next step is SCM Buyer Final Verify — vendor mail is not sent now.'
                   : isSendBack
                     ? 'PO returns to SCM Buyer as draft so they can revise and resubmit for sign'
                     : 'This action cannot be undone'}
@@ -130,7 +135,9 @@ export default function POApprovalModal({
               rows={3}
               maxLength={500}
               className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none ${
-                error ? 'border-red-300 focus:ring-red-500/20' : 'border-gray-200 focus:ring-teal-500/20 focus:border-teal-400'
+                error.toLowerCase().includes('comment') || error.toLowerCase().includes('remarks')
+                  ? 'border-red-300 focus:ring-red-500/20'
+                  : 'border-gray-200 focus:ring-teal-500/20 focus:border-teal-400'
               }`}
             />
             <div className="flex items-center justify-between mt-1">
@@ -156,7 +163,7 @@ export default function POApprovalModal({
             }`}
           >
             <i className={isApprove ? 'ri-check-double-line' : isSendBack ? 'ri-arrow-go-back-line' : 'ri-close-circle-line'} />
-            {submitting ? 'Processing...' : isApprove ? 'Confirm Sign & Send' : isSendBack ? 'Send Back to Buyer' : 'Confirm Reject'}
+            {submitting ? 'Processing...' : isApprove ? 'Confirm' : isSendBack ? 'Send Back to Buyer' : 'Confirm Reject'}
           </button>
         </div>
       </div>

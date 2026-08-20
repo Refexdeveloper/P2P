@@ -552,12 +552,21 @@ export default function POApprovalPage() {
 
   const handleConfirm = async (
     remarks: string,
-    signature?: { signatureImage?: string; signatureId?: number; saveToGallery?: boolean }
+    signature?: {
+      signatureImage?: string;
+      signatureId?: number;
+      saveToGallery?: boolean;
+      signatureName?: string;
+      dsc?: { holderName: string; serial: string; issuer: string; validTill: string };
+    }
   ) => {
     try {
       if (modal.type === 'approve') {
         const res = await poApi.sign(modal.poId, remarks, signature);
-        showToast(res.message || `${modal.poNumber} signed — sent to SCM Buyer for final verify`, 'success');
+        showToast(res.message || `${modal.poNumber} signed — SCM Buyer final verify next`, 'success');
+        setExpandedRow(null);
+        navigate(`/scm/po-pdf-view?poId=${modal.poId}&from=po-approval`);
+        return;
       } else if (modal.type === 'sendback') {
         const res = await poApi.sendBack(modal.poId, remarks);
         showToast(res.message || `${modal.poNumber} sent back to SCM Buyer for revision`, 'success');

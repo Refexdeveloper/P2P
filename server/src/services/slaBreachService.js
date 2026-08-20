@@ -3,7 +3,7 @@ import { formatRoleDisplayName } from '../templates/emailUtils.js';
 import {
   queueSlaBreachNotification,
 } from './emailService.js';
-import { getRecommendedQuotedAmounts } from './prService.js';
+import { getRecommendedQuotedAmounts, getPurchaseRequestById } from './prService.js';
 import { getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
 
 const SLA_CHECK_INTERVAL_MS = Number(process.env.SLA_CHECK_INTERVAL_MS) || 15 * 60 * 1000;
@@ -60,16 +60,49 @@ export async function processSlaBreaches() {
         const amount =
           quote != null && quote > 0 ? quote : Number(row.total_amount) || 0;
 
-        const pr = {
-          id: row.pr_id,
-          prId: row.pr_id,
-          prNumber: row.pr_number,
-          title: row.title,
-          totalAmount: amount,
-          priority: row.priority,
-          department: row.department_name,
-          requester: row.requester_name,
-        };
+        let fullPr = null;
+        try {
+          fullPr = await getPurchaseRequestById(row.pr_id);
+        } catch { /* fallback below */ }
+
+        const pr = fullPr
+          ? {
+              id: fullPr.id,
+              prId: fullPr.id,
+              prNumber: fullPr.prNumber,
+              title: fullPr.title,
+              totalAmount: amount,
+              priority: fullPr.priority || fullPr.priorityLower || row.priority,
+              department: fullPr.department || row.department_name,
+              requester: fullPr.requester || row.requester_name,
+              requestType: fullPr.requestType || '',
+              justification: fullPr.justification || '',
+              entityName: fullPr.entityName || '',
+              entityCode: fullPr.entityCode || '',
+              entityId: fullPr.entityId || null,
+              lineItems: (fullPr.lineItems || []).map((item) => ({
+                description: item.description || item.itemName || '',
+                category: item.category || '',
+                quantity: item.quantity || 0,
+                unitCost: item.unitCost || item.unitPrice || 0,
+                total: item.total || (item.quantity || 0) * (item.unitCost || item.unitPrice || 0),
+              })),
+            }
+          : {
+              id: row.pr_id,
+              prId: row.pr_id,
+              prNumber: row.pr_number,
+              title: row.title,
+              totalAmount: amount,
+              priority: row.priority,
+              department: row.department_name,
+              requester: row.requester_name,
+              requestType: '',
+              justification: '',
+              entityName: '',
+              entityCode: '',
+              lineItems: [],
+            };
         const requester = {
           name: row.requester_name,
           email: row.requester_email,

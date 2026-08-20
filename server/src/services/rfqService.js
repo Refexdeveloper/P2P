@@ -22,7 +22,7 @@ import {
   getL2ManagerForEmail,
   ensureApproverUser,
 } from './refexOneService.js';
-import { resolveScmBuyerUser, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
+import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 
 /** Default RFQ fields: vendor sees only Quoted Price (+ file upload). Other vendor fields appear after requester adds them. */
@@ -1167,14 +1167,12 @@ async function resolvePostRfqManager(requesterEmail, departmentId, level) {
     manager = await getL2ManagerForEmail(requesterEmail);
   } else if (level === 'scm_manager') {
     workflowRole = 'SCM Manager';
-    const [rows] = await pool.query(
-      `SELECT id, email, name FROM users WHERE role = 'SCM Manager' AND is_active = 1 ORDER BY id ASC LIMIT 1`
-    );
-    if (rows[0]?.email) {
+    const mgr = await resolveScmManagerUser();
+    if (mgr) {
       return {
-        userId: rows[0].id,
-        email: rows[0].email,
-        name: rows[0].name,
+        userId: mgr.id,
+        email: mgr.email,
+        name: mgr.name,
         workflowRole,
       };
     }
@@ -1199,9 +1197,8 @@ async function createPostRfqApprovalTask(conn, prId, level) {
   const assignee = await resolvePostRfqManager(requester.email, requester.departmentId, level);
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 2);
-  // SCM Manager / SCM Buyer are role-queued (any active user of that role can act).
-  // Person-assigned only for HOD / L2 / CFO via RefexOne.
-  const roleQueued = assignee.workflowRole === 'SCM Manager' || assignee.workflowRole === 'SCM Buyer';
+  // SCM Buyer is role-queued (any active buyer can act). SCM Manager is assigned to Rajeev.
+  const roleQueued = assignee.workflowRole === 'SCM Buyer';
   const assignedUserId = roleQueued ? null : assignee.userId;
   const sql = `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'RFQ_POST_APPROVAL', ?, ?, 'pending', ?)`;
@@ -1769,16 +1766,18 @@ export async function listPostRfqPending(user) {
     for (const row of statusRows) idSet.add(row.id);
   }
 
-  // Recover orphans: Buyer RFQ "approve" used to mark APPROVED before PO create
+  // Recover orphans: Buyer RFQ "approve" used to mark APPROVED before PO create.
+  // Exclude PRs that already have any PO (including cancelled/rejected) so cancelled
+  // POs do not reappear in RFQ Approvals as "Approved".
   if (user.role === 'SCM Buyer') {
     const [orphanRows] = await pool.query(
       `SELECT pr.id
        FROM purchase_requests pr
        JOIN rfq_configs rc ON rc.pr_id = pr.id AND rc.finalized_at IS NOT NULL
-       LEFT JOIN purchase_orders po ON po.pr_id = pr.id
-         AND po.status IN ('pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')
        WHERE pr.status = ?
-         AND po.id IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM purchase_orders po WHERE po.pr_id = pr.id
+         )
        ORDER BY COALESCE(pr.submitted_at, pr.created_at, pr.updated_at) DESC, pr.id DESC`,
       [PR_STATUS.APPROVED]
     );
@@ -1802,6 +1801,18 @@ export async function listPostRfqPending(user) {
   for (const row of rows) {
     const pr = await getPurchaseRequestById(row.id);
     if (!pr) continue;
+
+    // Cancelled / closed POs must not stay in RFQ Approvals or Create-PO queues
+    const [poStatusRows] = await pool.query(
+      `SELECT status FROM purchase_orders WHERE pr_id = ?`,
+      [row.id]
+    );
+    const hasCancelledPo = poStatusRows.some((p) => String(p.status) === 'cancelled');
+    const hasOpenPo = poStatusRows.some(
+      (p) => !['cancelled', 'rejected'].includes(String(p.status || '').toLowerCase())
+    );
+    if (hasCancelledPo && !hasOpenPo) continue;
+
     const pendingTask = await getPendingPostRfqTask(row.id);
     const roleConfig = getPostRfqRoleConfig(pendingTask?.assigned_role || user.role);
     if (!roleConfig) continue;
@@ -1812,6 +1823,7 @@ export async function listPostRfqPending(user) {
     const buyerOrphan =
       user.role === 'SCM Buyer' &&
       pr.status === PR_STATUS.APPROVED &&
+      !poStatusRows.length &&
       (roleConfig.status === PR_STATUS.PENDING_SCM_PO || !pendingTask);
     // Buyer also tracks RFQs still pending SCM Manager vendor approval
     const buyerPendingManager =

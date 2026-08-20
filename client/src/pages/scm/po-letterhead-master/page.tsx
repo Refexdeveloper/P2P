@@ -1,12 +1,41 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import RichTextEditor from '../../../components/base/RichTextEditor';
-import { poLetterheadApi, PoLetterheadClause, PoLetterheadConfig, PoType } from '../../../services/api';
+import {
+  poLetterheadApi,
+  PoLetterheadClause,
+  PoLetterheadConfig,
+  PoType,
+  PO_TYPE_LABELS,
+} from '../../../services/api';
 
-const PO_TYPES: { id: PoType; label: string }[] = [
-  { id: 'short_po', label: 'Short PO' },
-  { id: 'long_po', label: 'Long PO' },
+type DocGroup = 'purchase_order' | 'work_order';
+
+const DOC_GROUPS: { id: DocGroup; label: string }[] = [
+  { id: 'purchase_order', label: 'Purchase Order' },
+  { id: 'work_order', label: 'Work Order' },
 ];
+
+const TEMPLATES_BY_GROUP: Record<DocGroup, { id: PoType; label: string }[]> = {
+  purchase_order: [
+    { id: 'short_po', label: 'Short PO' },
+    { id: 'long_po', label: 'Long PO' },
+  ],
+  work_order: [
+    { id: 'short_wo', label: 'Short WO' },
+    { id: 'long_wo', label: 'Long WO' },
+  ],
+};
+
+const ALL_PO_TYPES: PoType[] = ['short_po', 'long_po', 'short_wo', 'long_wo'];
+
+function emptyConfigs(): Record<PoType, PoLetterheadConfig | null> {
+  return { short_po: null, long_po: null, short_wo: null, long_wo: null };
+}
+
+function emptySnapshots(): Record<PoType, string> {
+  return { short_po: '', long_po: '', short_wo: '', long_wo: '' };
+}
 
 type EditableClause = PoLetterheadClause & { clientKey: string };
 
@@ -33,8 +62,8 @@ function fromEditableClauses(clauses: EditableClause[]): PoLetterheadClause[] {
 function createEmptyConfig(poType: PoType): PoLetterheadConfig {
   return {
     poType,
-    poTypeLabel: poType === 'long_po' ? 'Long PO' : 'Short PO',
-    title: poType === 'long_po' ? 'Long PO' : 'Short PO',
+    poTypeLabel: PO_TYPE_LABELS[poType],
+    title: PO_TYPE_LABELS[poType],
     letterheadHeader: '',
     terms: [emptyRow()],
     annexure: [emptyRow()],
@@ -193,18 +222,15 @@ function serializeConfig(config: PoLetterheadConfig | null) {
 }
 
 export default function PoTypeMasterPage() {
+  const [activeGroup, setActiveGroup] = useState<DocGroup>('purchase_order');
   const [activeType, setActiveType] = useState<PoType>('short_po');
-  const [configs, setConfigs] = useState<Record<PoType, PoLetterheadConfig | null>>({
-    short_po: null,
-    long_po: null,
-  });
-  const [savedSnapshots, setSavedSnapshots] = useState<Record<PoType, string>>({
-    short_po: '',
-    long_po: '',
-  });
+  const [configs, setConfigs] = useState<Record<PoType, PoLetterheadConfig | null>>(emptyConfigs);
+  const [savedSnapshots, setSavedSnapshots] = useState<Record<PoType, string>>(emptySnapshots);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const groupTemplates = TEMPLATES_BY_GROUP[activeGroup];
 
   const showToast = (text: string, type: 'success' | 'error') => {
     setToast({ text, type });
@@ -215,39 +241,36 @@ export default function PoTypeMasterPage() {
     setLoading(true);
     try {
       const res = await poLetterheadApi.list();
-      const map: Record<PoType, PoLetterheadConfig | null> = {
-        short_po: null,
-        long_po: null,
-      };
-      const snapshots: Record<PoType, string> = { short_po: '', long_po: '' };
+      const map = emptyConfigs();
+      const snapshots = emptySnapshots();
 
       for (const item of res.data) {
+        if (!ALL_PO_TYPES.includes(item.poType)) continue;
         const normalized = normalizeConfig(item);
         map[item.poType] = normalized;
         snapshots[item.poType] = serializeConfig(normalized);
       }
 
-      for (const type of PO_TYPES) {
-        if (!map[type.id]) {
-          const empty = normalizeConfig(createEmptyConfig(type.id));
-          map[type.id] = empty;
-          snapshots[type.id] = serializeConfig(empty);
+      for (const type of ALL_PO_TYPES) {
+        if (!map[type]) {
+          const empty = normalizeConfig(createEmptyConfig(type));
+          map[type] = empty;
+          snapshots[type] = serializeConfig(empty);
         }
       }
 
       setConfigs(map);
       setSavedSnapshots(snapshots);
     } catch {
-      const fallback: Record<PoType, PoLetterheadConfig | null> = {
-        short_po: normalizeConfig(createEmptyConfig('short_po')),
-        long_po: normalizeConfig(createEmptyConfig('long_po')),
-      };
+      const fallback = emptyConfigs();
+      const snapshots = emptySnapshots();
+      for (const type of ALL_PO_TYPES) {
+        fallback[type] = normalizeConfig(createEmptyConfig(type));
+        snapshots[type] = serializeConfig(fallback[type]!);
+      }
       setConfigs(fallback);
-      setSavedSnapshots({
-        short_po: serializeConfig(fallback.short_po),
-        long_po: serializeConfig(fallback.long_po),
-      });
-      showToast('Could not load saved data. You can add and save a new PO type template.', 'error');
+      setSavedSnapshots(snapshots);
+      showToast('Could not load saved data. You can add and save a new template.', 'error');
     } finally {
       setLoading(false);
     }
@@ -265,11 +288,11 @@ export default function PoTypeMasterPage() {
   }, [current, savedSnapshots, activeType]);
 
   const dirtyTypes = useMemo(() => {
-    return PO_TYPES.filter((type) => {
-      const config = configs[type.id];
+    return ALL_PO_TYPES.filter((type) => {
+      const config = configs[type];
       if (!config) return false;
-      return serializeConfig(config) !== savedSnapshots[type.id];
-    }).map((t) => t.label);
+      return serializeConfig(config) !== savedSnapshots[type];
+    }).map((t) => PO_TYPE_LABELS[t]);
   }, [configs, savedSnapshots]);
 
   const updateCurrent = (patch: Partial<PoLetterheadConfig>) => {
@@ -284,10 +307,23 @@ export default function PoTypeMasterPage() {
     if (nextType === activeType) return;
     if (isDirty) {
       const ok = window.confirm(
-        `You have unsaved changes in ${PO_TYPES.find((t) => t.id === activeType)?.label}. Switch without saving?`
+        `You have unsaved changes in ${PO_TYPE_LABELS[activeType]}. Switch without saving?`
       );
       if (!ok) return;
     }
+    setActiveType(nextType);
+  };
+
+  const switchGroup = (nextGroup: DocGroup) => {
+    if (nextGroup === activeGroup) return;
+    const nextType = TEMPLATES_BY_GROUP[nextGroup][0].id;
+    if (isDirty) {
+      const ok = window.confirm(
+        `You have unsaved changes in ${PO_TYPE_LABELS[activeType]}. Switch without saving?`
+      );
+      if (!ok) return;
+    }
+    setActiveGroup(nextGroup);
     setActiveType(nextType);
   };
 
@@ -345,6 +381,9 @@ export default function PoTypeMasterPage() {
 
   const termsRows = (current?.terms as EditableClause[]) || [emptyRow()];
   const annexureRows = (current?.annexure as EditableClause[]) || [emptyRow()];
+  const activeLabel = PO_TYPE_LABELS[activeType];
+  const titleFieldLabel = activeGroup === 'work_order' ? 'WO Title' : 'PO Title';
+  const headerFieldLabel = activeGroup === 'work_order' ? 'WO Header' : 'PO Header';
 
   return (
     <DashboardLayout>
@@ -353,7 +392,7 @@ export default function PoTypeMasterPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">PO Type Master</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Configure Short PO and Long PO templates — header, terms, and annexure for each type.
+              Purchase Order and Work Order each have Short and Long templates — header, terms, and annexure.
             </p>
             {dirtyTypes.length > 0 && (
               <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
@@ -369,32 +408,51 @@ export default function PoTypeMasterPage() {
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
           >
             {saving ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-save-line"></i>}
-            Save {PO_TYPES.find((t) => t.id === activeType)?.label}
+            Save {activeLabel}
           </button>
         </div>
 
-        <div className="flex gap-2 p-1 bg-gray-100 rounded-xl w-fit">
-          {PO_TYPES.map((type) => {
-            const typeDirty =
-              configs[type.id] && serializeConfig(configs[type.id]) !== savedSnapshots[type.id];
-            return (
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
+            {DOC_GROUPS.map((group) => (
               <button
-                key={type.id}
+                key={group.id}
                 type="button"
-                onClick={() => switchPoType(type.id)}
-                className={`relative px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
-                  activeType === type.id
-                    ? 'bg-white text-teal-700 shadow-sm'
+                onClick={() => switchGroup(group.id)}
+                className={`px-4 py-2 text-sm font-semibold rounded-lg cursor-pointer transition-colors ${
+                  activeGroup === group.id
+                    ? 'bg-slate-800 text-white shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                {type.label}
-                {typeDirty && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
-                )}
+                {group.label}
               </button>
-            );
-          })}
+            ))}
+          </div>
+
+          <div className="flex gap-2 p-1 bg-gray-100 rounded-xl w-fit">
+            {groupTemplates.map((type) => {
+              const typeDirty =
+                configs[type.id] && serializeConfig(configs[type.id]!) !== savedSnapshots[type.id];
+              return (
+                <button
+                  key={type.id}
+                  type="button"
+                  onClick={() => switchPoType(type.id)}
+                  className={`relative px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
+                    activeType === type.id
+                      ? 'bg-white text-teal-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {type.label}
+                  {typeDirty && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {loading ? (
@@ -404,21 +462,21 @@ export default function PoTypeMasterPage() {
           </div>
         ) : !current ? (
           <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
-            <p className="text-gray-500 mb-4">No template configured for this PO type yet.</p>
+            <p className="text-gray-500 mb-4">No template configured for this type yet.</p>
             <button
               type="button"
               onClick={handleInitialize}
               className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 cursor-pointer text-sm font-medium"
             >
               <i className="ri-add-line"></i>
-              Create {PO_TYPES.find((t) => t.id === activeType)?.label}
+              Create {activeLabel}
             </button>
           </div>
         ) : (
           <div className="space-y-6">
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-base font-semibold text-gray-800">PO Title</h3>
+                <h3 className="text-base font-semibold text-gray-800">{titleFieldLabel}</h3>
                 {current.updatedAt && (
                   <span className="text-xs text-gray-400">
                     Last saved: {new Date(current.updatedAt).toLocaleString('en-IN')}
@@ -435,12 +493,12 @@ export default function PoTypeMasterPage() {
             </div>
 
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <h3 className="text-base font-semibold text-gray-800">PO Header</h3>
+              <h3 className="text-base font-semibold text-gray-800">{headerFieldLabel}</h3>
               <RichTextEditor
                 editorKey={`${activeType}-header`}
                 value={current.letterheadHeader}
                 onChange={(html) => updateCurrent({ letterheadHeader: html })}
-                placeholder="Company name, address, PO title..."
+                placeholder="Company name, address, document title..."
                 minHeight={80}
               />
             </div>

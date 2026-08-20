@@ -182,6 +182,8 @@ function parseDate(value) {
 
 function normalizePoType(raw) {
   const v = String(raw || '').trim().toLowerCase().replace(/[\s\-]+/g, '_');
+  if (v === 'long_wo' || v === 'longwo') return 'long_wo';
+  if (v === 'short_wo' || v === 'shortwo') return 'short_wo';
   if (v === 'long' || v === 'long_po' || v === 'longpo') return 'long_po';
   return 'short_po';
 }

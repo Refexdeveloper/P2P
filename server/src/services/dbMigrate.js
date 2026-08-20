@@ -3,7 +3,7 @@ import pool from '../config/db.js';
 const MIGRATIONS = [
   `CREATE TABLE IF NOT EXISTS po_letterhead_masters (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    po_type ENUM('short_po', 'long_po') NOT NULL UNIQUE,
+    po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL UNIQUE,
     title VARCHAR(200) NOT NULL DEFAULT 'Purchase Order',
     letterhead_header LONGTEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -21,11 +21,14 @@ const MIGRATIONS = [
     FOREIGN KEY (master_id) REFERENCES po_letterhead_masters(id) ON DELETE CASCADE,
     INDEX idx_letterhead_section (master_id, section_type, sort_order)
   )`,
-  `ALTER TABLE purchase_orders ADD COLUMN po_type ENUM('short_po', 'long_po') NOT NULL DEFAULT 'short_po'`,
+  `ALTER TABLE purchase_orders ADD COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL DEFAULT 'short_po'`,
+  `ALTER TABLE po_letterhead_masters MODIFY COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo') NOT NULL DEFAULT 'short_po'`,
   `ALTER TABLE purchase_orders ADD COLUMN letterhead_header LONGTEXT NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN terms_clauses JSON NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN annexure_clauses JSON NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN signature_image_path VARCHAR(500) NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN signature_dsc_json JSON NULL`,
   `CREATE TABLE IF NOT EXISTS user_signatures (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
@@ -157,7 +160,11 @@ const MIGRATIONS = [
     INDEX idx_doc_seq_entity (entity_id)
   )`,
   `ALTER TABLE vendor_documents MODIFY COLUMN doc_type ENUM('gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration') NOT NULL`,
-  `ALTER TABLE purchase_orders MODIFY COLUMN status ENUM('draft', 'imported', 'pending_approval', 'pending_buyer_verify', 'approved', 'rejected', 'sent_to_vendor') DEFAULT 'draft'`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN status ENUM(
+    'draft', 'imported', 'pending_approval', 'pending_buyer_verify', 'approved', 'rejected',
+    'sent_to_vendor', 'awaiting_grn', 'grn_completed', 'invoice_entry',
+    'pending_accounts_approval', 'approved_for_payment', 'paid', 'cancelled'
+  ) DEFAULT 'draft'`,
   // Excel / historical PO import may not link to a PR
   `ALTER TABLE purchase_orders MODIFY COLUMN pr_id INT NULL`,
   `ALTER TABLE purchase_orders MODIFY COLUMN incoterms VARCHAR(255) DEFAULT 'DDP'`,
@@ -181,6 +188,10 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_orders ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE workflow_tasks ADD COLUMN sla_notified_at TIMESTAMP NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN annexure_ii_html LONGTEXT NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN cancellation_reason TEXT NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN cancellation_attachments_json JSON NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN cancelled_by INT NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN cancelled_at TIMESTAMP NULL`,
   `CREATE TABLE IF NOT EXISTS po_site_lookups (
     id INT AUTO_INCREMENT PRIMARY KEY,
     lookup_type ENUM('site_address', 'site_contact', 'project_manager') NOT NULL,
@@ -251,7 +262,7 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_orders MODIFY COLUMN status ENUM(
     'draft', 'imported', 'pending_approval', 'pending_buyer_verify', 'approved', 'rejected',
     'sent_to_vendor', 'awaiting_grn', 'grn_completed', 'invoice_entry',
-    'pending_accounts_approval', 'approved_for_payment', 'paid'
+    'pending_accounts_approval', 'approved_for_payment', 'paid', 'cancelled'
   ) DEFAULT 'draft'`,
   `CREATE TABLE IF NOT EXISTS grn_headers (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -479,5 +490,29 @@ export async function runStartupMigrations() {
     );
   } catch (err) {
     console.warn('SCM Buyer assignee seed skipped:', err.message);
+  }
+
+  try {
+    const {
+      ensurePreferredScmManagerUser,
+      reassignPendingScmManagerTasks,
+      getPreferredScmManagerEmail,
+    } = await import('../utils/scmAssignee.js');
+    const managerId = await ensurePreferredScmManagerUser();
+    const reassignedMgr = await reassignPendingScmManagerTasks();
+    if (managerId) {
+      const { seedUserPermissionsForRole } = await import('./permissionService.js');
+      await seedUserPermissionsForRole(managerId, 'SCM Manager');
+      await pool.query(
+        `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
+        [managerId, 'nav.scm_manager_dashboard']
+      );
+    }
+    console.log(
+      `SCM Manager assignee: ${getPreferredScmManagerEmail()} id=${managerId}` +
+        ` (pending tasks assigned=${reassignedMgr.updated})`
+    );
+  } catch (err) {
+    console.warn('SCM Manager assignee seed skipped:', err.message);
   }
 }
