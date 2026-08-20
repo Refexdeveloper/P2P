@@ -39,6 +39,8 @@ function defaultValidTill() {
   d.setFullYear(d.getFullYear() + 1);
   return d.toISOString().slice(0, 10);
 }
+
+function generateDscStampPng(dsc: DscDetails, signedAt: string) {
   const canvas = document.createElement('canvas');
   canvas.width = 840;
   canvas.height = 280;
