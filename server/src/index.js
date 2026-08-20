@@ -191,6 +191,8 @@ if (fs.existsSync(path.join(CLIENT_OUT, 'index.html'))) {
   console.warn(`Frontend build not found at ${CLIENT_OUT} — run: npm run build --prefix client`);
 }
 
+
+
 app.listen(PORT, async () => {
   try {
     await runStartupMigrations();
