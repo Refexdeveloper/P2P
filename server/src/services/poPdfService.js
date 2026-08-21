@@ -5,9 +5,9 @@ import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
 import {
   buildPoDocumentHtml,
-  buildPoPdfChromeTemplates,
-  PO_PDF_LAYOUT,
+  buildPoPdfParts,
 } from '../templates/poDocumentTemplate.js';
+import { PO_STYLES } from '../templates/poDocumentTemplate.styles.js';
 import { buildSignatureRenderOptions } from './signatureService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 
@@ -178,12 +178,307 @@ async function inlinePoBranding(po = {}) {
   return next;
 }
 
+function wrapPoHtmlDocument(bodyInner, title, bodyClass) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>${PO_STYLES}</style>
+</head>
+<body class="${bodyClass}">
+${bodyInner}
+</body>
+</html>`;
+}
+
+function priceTableHtml(thead, rowsHtml) {
+  return `<div class="table-frame"><table class="price">${thead}<tbody>${rowsHtml}</tbody></table></div>`;
+}
+
+function termsTableHtml(thead, rowsHtml) {
+  return `<div class="table-frame"><table class="terms terms-compact">${thead}<tbody>${rowsHtml}</tbody></table></div>`;
+}
+
+function annexureTableHtml(thead, rowsHtml) {
+  return `<div class="table-frame"><table class="terms terms-compact annexure-table">${thead}<tbody>${rowsHtml}</tbody></table></div>`;
+}
+
+function pdfPageHtml(parts, contentHtml, pageNo, totalPages) {
+  return `
+<div class="pdf-page">
+  <header class="pdf-header">${parts.headerHtml}</header>
+  <main class="pdf-content">${contentHtml}</main>
+  <footer class="pdf-footer">${parts.footerHtml}<div class="pdf-page-no">Page ${pageNo} of ${totalPages}</div></footer>
+</div>`;
+}
+
+function buildMeasureHtml(parts) {
+  const itemTables = parts.itemRows
+    .map(
+      (row, i) =>
+        `<table class="price" style="width:100%"><tbody data-block="item-${i}">${row}</tbody></table>`
+    )
+    .join('');
+  const termTables = parts.termRows
+    .map(
+      (row, i) =>
+        `<table class="terms terms-compact" style="width:100%"><tbody data-block="term-${i}">${row}</tbody></table>`
+    )
+    .join('');
+  const annexTables = parts.annexureRows
+    .map(
+      (row, i) =>
+        `<table class="terms annexure-table" style="width:100%"><tbody data-block="annexure-${i}">${row}</tbody></table>`
+    )
+    .join('');
+  const annexIi = parts.annexureIiBlocks
+    .map((html, i) => `<div data-block="annexure-ii-${i}">${html}</div>`)
+    .join('');
+
+  return wrapPoHtmlDocument(
+    `
+    <div class="pdf-header" data-block="header">${parts.headerHtml}</div>
+    <div class="pdf-footer" data-block="footer">${parts.footerHtml}<div class="pdf-page-no">Page 1 of 1</div></div>
+    <div class="pdf-content">
+      <div data-block="details">${parts.detailsHtml}</div>
+      <table class="price" style="width:100%">${parts.priceThead}<tbody></tbody></table>
+      <div data-block="price-thead"></div>
+      ${itemTables}
+      <table class="price" style="width:100%"><tbody data-block="totals">${parts.totalsRows}</tbody></table>
+      ${parts.termsThead ? `<table class="terms terms-compact" style="width:100%">${parts.termsThead}</table>` : ''}
+      <div data-block="terms-thead"></div>
+      ${termTables}
+      ${parts.annexureThead ? `<table class="terms annexure-table" style="width:100%">${parts.annexureThead}</table>` : ''}
+      <div data-block="annexure-thead"></div>
+      ${annexTables}
+      ${annexIi}
+      <div data-block="notes">${parts.notesHtml}</div>
+      <div data-block="ack">${parts.ackHtml}</div>
+    </div>`,
+    'PO measure',
+    'po-document po-document-pdf-pages'
+  );
+}
+
+function heightOf(map, id, fallback = 48) {
+  const n = Number(map[id]);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function packPoPages(parts, heights) {
+  const pageH = (297 * 96) / 25.4;
+  const contentH = Math.max(
+    200,
+    pageH - heights.header - heights.footer - (7 * 96) / 25.4
+  );
+
+  const pages = [];
+  let current = [];
+  let used = 0;
+
+  const flush = () => {
+    if (current.length) pages.push(current);
+    current = [];
+    used = 0;
+  };
+
+  const addHtml = (html, h, forceNew = false) => {
+    if (forceNew) flush();
+    const need = Math.min(Math.max(h, 8), contentH);
+    if (used > 0 && used + need > contentH) flush();
+    current.push(html);
+    used += need;
+  };
+
+  addHtml(parts.detailsHtml, heights.details, false);
+
+  const theadH = heights.priceThead || 52;
+  const totalsH = heights.totals || 72;
+  let priceStarted = false;
+  let continued = false;
+  let bucket = [];
+
+  const flushPrice = () => {
+    if (!bucket.length) return;
+    current.push(
+      priceTableHtml(continued ? parts.priceTheadContinued : parts.priceThead, bucket.join(''))
+    );
+    bucket = [];
+    continued = true;
+    priceStarted = true;
+  };
+
+  const startPricePage = () => {
+    flushPrice();
+    flush();
+    continued = priceStarted;
+  };
+
+  parts.itemRows.forEach((_, i) => {
+    const rowH = heightOf(heights, `item-${i}`, 64);
+    const overhead = bucket.length === 0 ? theadH : 0;
+    if (used + overhead + rowH > contentH && (used > 0 || bucket.length > 0)) {
+      startPricePage();
+    } else if (bucket.length === 0) {
+      used += theadH;
+    }
+    bucket.push(parts.itemRows[i]);
+    used += rowH;
+  });
+
+  if (bucket.length || !priceStarted) {
+    if (used + (bucket.length ? 0 : theadH) + totalsH > contentH && (used > 0 || bucket.length > 0)) {
+      flushPrice();
+      flush();
+      continued = true;
+      bucket = [];
+      used = theadH;
+    }
+    bucket.push(parts.totalsRows);
+    used += totalsH;
+    flushPrice();
+  }
+
+  if (parts.termRows.length) {
+    flush();
+    let tBucket = [];
+    let tContinued = false;
+    const tHeadH = heights.termsThead || 48;
+    used = tHeadH;
+    const flushTerms = () => {
+      if (!tBucket.length) return;
+      current.push(
+        termsTableHtml(tContinued ? parts.termsTheadContinued : parts.termsThead, tBucket.join(''))
+      );
+      tBucket = [];
+      tContinued = true;
+    };
+    parts.termRows.forEach((_, i) => {
+      const rowH = heightOf(heights, `term-${i}`, 40);
+      if (used + rowH > contentH && tBucket.length) {
+        flushTerms();
+        flush();
+        used = tHeadH;
+      }
+      tBucket.push(parts.termRows[i]);
+      used += rowH;
+    });
+    flushTerms();
+  }
+
+  if (parts.annexureRows.length) {
+    flush();
+    let aBucket = [];
+    let aContinued = false;
+    const aHeadH = heights.annexureThead || 48;
+    used = aHeadH;
+    const flushAnn = () => {
+      if (!aBucket.length) return;
+      current.push(
+        annexureTableHtml(
+          aContinued ? parts.annexureTheadContinued : parts.annexureThead,
+          aBucket.join('')
+        )
+      );
+      aBucket = [];
+      aContinued = true;
+    };
+    parts.annexureRows.forEach((_, i) => {
+      const rowH = heightOf(heights, `annexure-${i}`, 40);
+      if (used + rowH > contentH && aBucket.length) {
+        flushAnn();
+        flush();
+        used = aHeadH;
+      }
+      aBucket.push(parts.annexureRows[i]);
+      used += rowH;
+    });
+    flushAnn();
+  }
+
+  parts.annexureIiBlocks.forEach((_, i) => {
+    addHtml(parts.annexureIiBlocks[i], heightOf(heights, `annexure-ii-${i}`, 180), true);
+  });
+
+  addHtml(parts.notesHtml, heights.notes || 220, true);
+  addHtml(parts.ackHtml, heights.ack || 180, true);
+  flush();
+  return pages;
+}
+
+async function waitForPdfAssets(page) {
+  await page.evaluate(async () => {
+    if (document.fonts?.ready) {
+      try {
+        await document.fonts.ready;
+      } catch {
+        /* ignore */
+      }
+    }
+    const imgs = Array.from(document.images || []);
+    await Promise.all(
+      imgs.map((img) =>
+        img.complete
+          ? Promise.resolve()
+          : new Promise((resolve) => {
+              img.onload = img.onerror = () => resolve();
+            })
+      )
+    );
+  });
+}
+
+async function paginatePoHtml(browser, po, options) {
+  const parts = buildPoPdfParts(po, options);
+  const measurePage = await browser.newPage();
+  await measurePage.setViewport({ width: 794, height: 1600, deviceScaleFactor: 1 });
+  await measurePage.setContent(buildMeasureHtml(parts), { waitUntil: 'load', timeout: 90000 });
+  await measurePage.emulateMediaType('print');
+  await waitForPdfAssets(measurePage);
+
+  const heights = await measurePage.evaluate(() => {
+    const h = (sel) => {
+      const el = document.querySelector(sel);
+      return el ? el.getBoundingClientRect().height : 0;
+    };
+    const map = {
+      header: h('[data-block="header"]'),
+      footer: h('[data-block="footer"]'),
+      details: h('[data-block="details"]'),
+      priceThead: document.querySelector('table.price thead')?.getBoundingClientRect().height || 52,
+      totals: h('[data-block="totals"]'),
+      termsThead: document.querySelector('table.terms thead')?.getBoundingClientRect().height || 48,
+      annexureThead:
+        document.querySelector('table.annexure-table thead')?.getBoundingClientRect().height || 48,
+      notes: h('[data-block="notes"]'),
+      ack: h('[data-block="ack"]'),
+    };
+    document.querySelectorAll('[data-block]').forEach((el) => {
+      map[el.getAttribute('data-block')] = el.getBoundingClientRect().height;
+    });
+    return map;
+  });
+  await measurePage.close();
+
+  const packed = packPoPages(parts, heights);
+  const total = Math.max(packed.length, 1);
+  const pagesHtml = packed
+    .map((chunks, i) => pdfPageHtml(parts, chunks.join('\n'), i + 1, total))
+    .join('\n');
+
+  return wrapPoHtmlDocument(
+    pagesHtml,
+    `${parts.docLabel} - ${parts.poNumber}`,
+    'po-document po-document-pdf-pages'
+  );
+}
+
 /**
- * Convert PO HTML → PDF.
- * Header/footer paint in page margins on EVERY page (including overflow
- * of line items, terms, and annexure). Body content flows with print CSS.
+ * Convert already-paginated PO HTML → A4 PDF.
+ * Header/footer live inside each .pdf-page (reserved bands).
  */
-export async function htmlToPdf(html, filePath, chromeTemplates = null) {
+export async function htmlToPdf(html, filePath) {
   const executablePath = resolveBrowserExecutable();
   if (!executablePath) {
     throw new Error(
@@ -202,42 +497,15 @@ export async function htmlToPdf(html, filePath, chromeTemplates = null) {
       await page.setContent(html, { waitUntil: 'load', timeout: 90000 });
     }
     await page.emulateMediaType('print');
-    await page.evaluate(async () => {
-      if (document.fonts?.ready) {
-        try {
-          await document.fonts.ready;
-        } catch {
-          /* ignore */
-        }
-      }
-      const imgs = Array.from(document.images || []);
-      await Promise.all(
-        imgs.map((img) =>
-          img.complete
-            ? Promise.resolve()
-            : new Promise((resolve) => {
-                img.onload = img.onerror = () => resolve();
-              })
-        )
-      );
-    });
-
-    const chrome = chromeTemplates || buildPoPdfChromeTemplates();
+    await waitForPdfAssets(page);
 
     await page.pdf({
       path: filePath,
       format: 'A4',
       printBackground: true,
-      preferCSSPageSize: false,
-      margin: {
-        top: PO_PDF_LAYOUT.top,
-        right: PO_PDF_LAYOUT.side,
-        bottom: PO_PDF_LAYOUT.bottom,
-        left: PO_PDF_LAYOUT.side,
-      },
-      displayHeaderFooter: true,
-      headerTemplate: chrome.headerTemplate,
-      footerTemplate: chrome.footerTemplate,
+      preferCSSPageSize: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      displayHeaderFooter: false,
     });
   } finally {
     await browser.close();
@@ -253,15 +521,47 @@ export async function generatePoPdf(po, options = {}) {
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
 
   const branded = await inlinePoBranding(po);
-  const html = buildPoHtml(branded, { ...options, forPdf: true });
-  const chrome = buildPoPdfChromeTemplates(branded);
-  fs.writeFileSync(htmlPath, html, 'utf8');
+  const executablePath = resolveBrowserExecutable();
+  if (!executablePath) {
+    const html = buildPoHtml(branded, { ...options, forPdf: false });
+    fs.writeFileSync(htmlPath, html, 'utf8');
+    return {
+      filePath: htmlPath,
+      fileName: htmlFileName,
+      htmlFileName,
+      htmlPath,
+      htmlOnly: true,
+      pdfError: 'Chrome/Edge not found',
+    };
+  }
 
+  const browser = await launchPdfBrowser(executablePath);
   try {
-    await htmlToPdf(html, filePath, chrome);
+    const html = await paginatePoHtml(browser, branded, options);
+    fs.writeFileSync(htmlPath, html, 'utf8');
+    const page = await browser.newPage();
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+    try {
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 90000 });
+    } catch {
+      await page.setContent(html, { waitUntil: 'load', timeout: 90000 });
+    }
+    await page.emulateMediaType('print');
+    await waitForPdfAssets(page);
+    await page.pdf({
+      path: filePath,
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      displayHeaderFooter: false,
+    });
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
     console.warn('HTML-to-PDF failed, HTML document saved:', err.message);
+    if (!fs.existsSync(htmlPath)) {
+      fs.writeFileSync(htmlPath, buildPoHtml(branded, { ...options, forPdf: false }), 'utf8');
+    }
     return {
       filePath: htmlPath,
       fileName: htmlFileName,
@@ -270,6 +570,8 @@ export async function generatePoPdf(po, options = {}) {
       htmlOnly: true,
       pdfError: err.message,
     };
+  } finally {
+    await browser.close();
   }
 }
 

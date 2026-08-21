@@ -300,7 +300,7 @@ export function buildPoPdfChromeTemplates(po = {}) {
     if (looksLikeImageSrc(headerLogo) && !looksLikeHtml(headerLogo)) {
       headerInner =
         `<div style="width:100%;text-align:right;">` +
-        `<img src="${safeImgSrc(headerLogo)}" style="max-height:52px;max-width:240px;height:auto;width:auto;object-fit:contain;display:inline-block;" alt="Header" />` +
+        `<img src="${safeImgSrc(headerLogo)}" style="max-height:40px;max-width:220px;height:auto;width:auto;object-fit:contain;display:inline-block;" alt="Header" />` +
         `</div>`;
     } else if (looksLikeHtml(headerLogo)) {
       headerInner =
@@ -319,11 +319,11 @@ export function buildPoPdfChromeTemplates(po = {}) {
   const footerInner = letterheadFooterInner(po);
 
   const headerTemplate =
-    `<div style="${root}height:18mm;overflow:hidden;padding:1.5mm ${side} 0 ${side};">${headerInner}</div>`;
+    `<div style="${root}height:20mm;max-height:20mm;overflow:hidden;padding:2mm ${side} 0 ${side};box-sizing:border-box;">${headerInner}</div>`;
 
   const footerTemplate =
-    `<div style="${root}height:52mm;max-height:52mm;overflow:hidden;padding:0 ${side} 1mm ${side};text-align:center;">` +
-    `<div style="width:100%;font-size:10px;line-height:1.25;text-align:center;">${footerInner}</div>` +
+    `<div style="${root}height:68mm;max-height:68mm;overflow:hidden;padding:1mm ${side} 2mm ${side};text-align:center;box-sizing:border-box;">` +
+    `<div style="width:122%;margin-left:-11%;transform:scale(0.82);transform-origin:top center;font-size:9px;line-height:1.2;text-align:center;">${footerInner}</div>` +
     `</div>`;
 
   return { headerTemplate, footerTemplate };
@@ -357,10 +357,9 @@ function tableCloseFoot(colSpan) {
   return `<tfoot class="tbl-end"><tr><td colspan="${colSpan}"></td></tr></tfoot>`;
 }
 
-function lineItemsHtml(po) {
-  const items = po.lineItems || [];
-  const rows = items.map((item, index) => `
-    <tr>
+function lineItemRowHtml(item, index, po) {
+  return `
+    <tr class="line-item" data-block="item-${index}">
       <td class="center">${index + 1}</td>
       <td><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}</div></td>
       <td class="center">${escapeHtml(item.unit || item.uom || 'Nos')}</td>
@@ -368,14 +367,15 @@ function lineItemsHtml(po) {
       <td class="right">${fmtMoney(item.unitPrice, po.currency)}</td>
       <td class="center">${escapeHtml(item.taxPercentage ?? item.tax_percentage ?? 0)}%</td>
       <td class="right">${fmtMoney(item.total, po.currency)}</td>
-    </tr>`).join('');
+    </tr>`;
+}
 
+function priceScheduleTheadHtml(continued = false) {
+  const title = continued ? 'PRICE SCHEDULE — Continued' : 'PRICE SCHEDULE';
   return `
-  <div class="table-frame">
-  <table class="price">
     <thead>
     <tr>
-      <th class="section-title" colspan="7">PRICE SCHEDULE</th>
+      <th class="section-title" colspan="7">${title}</th>
     </tr>
     <tr class="col-heads">
       <th style="width:5%">SI.No</th>
@@ -386,11 +386,11 @@ function lineItemsHtml(po) {
       <th style="width:8%">Tax %</th>
       <th style="width:12%">TOTAL Amt</th>
     </tr>
-    </thead>
-    <tbody class="price-items">
-    ${rows}
-    </tbody>
-    <tbody class="price-totals">
+    </thead>`;
+}
+
+function priceTotalsBodyHtml(po) {
+  return `
     <tr class="total"><td colspan="6">SubTotal</td><td class="right">${fmtMoney(po.subtotal, po.currency)}</td></tr>
     <tr class="total"><td colspan="6">Add: Tax (per line)</td><td class="right">${fmtMoney(po.taxAmount, po.currency)}</td></tr>
     <tr class="total"><td colspan="6">GrandTotal</td><td class="right">${fmtMoney(po.grandTotal, po.currency)}</td></tr>
@@ -401,7 +401,22 @@ function lineItemsHtml(po) {
           <span class="value">${escapeHtml(numberToIndianWords(po.grandTotal))}</span>
         </div>
       </td>
-    </tr>
+    </tr>`;
+}
+
+function lineItemsHtml(po) {
+  const items = po.lineItems || [];
+  const rows = items.map((item, index) => lineItemRowHtml(item, index, po)).join('');
+
+  return `
+  <div class="table-frame">
+  <table class="price">
+    ${priceScheduleTheadHtml(false)}
+    <tbody class="price-items">
+    ${rows}
+    </tbody>
+    <tbody class="price-totals">
+    ${priceTotalsBodyHtml(po)}
     </tbody>
     ${tableCloseFoot(7)}
   </table>
@@ -470,31 +485,67 @@ function clauseHeaderHtml(raw, po, fallback = 'Term') {
   return escapeHtml(value);
 }
 
-function termsSummaryHtml(po, terms, forPdf) {
-  if (!terms?.length) return '';
-  const sectionTitle =
-    String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order'
-      ? 'Terms and Conditions — Work Order'
-      : 'Terms and Conditions — Purchase Order';
-  const rows = terms.map((term) => `
-    <tr>
-      <th class="head-col">${clauseHeaderHtml(term.termsHeader || term.terms_header, po, 'Term')}</th>
-      <td>${applyClausePlaceholders(term.termsDescription || term.terms_description || '', po)}</td>
-    </tr>`).join('');
+function termsSectionTitle(po) {
+  return String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order'
+    ? 'Terms and Conditions — Work Order'
+    : 'Terms and Conditions — Purchase Order';
+}
 
-  return wrapSheet(
-    `
-      <div class="table-frame">
-        <table class="terms terms-compact">
+function termsTheadHtml(po, continued = false) {
+  const title = continued ? `${termsSectionTitle(po)} — Continued` : termsSectionTitle(po);
+  return `
           <thead>
             <tr>
-              <th class="section-title" colspan="2">${escapeHtml(sectionTitle)}</th>
+              <th class="section-title" colspan="2">${escapeHtml(title)}</th>
             </tr>
             <tr class="col-heads">
               <th class="head-col">HEADERS</th>
               <th>TERMS AND CONDITIONS</th>
             </tr>
-          </thead>
+          </thead>`;
+}
+
+function termRowHtml(term, po, index) {
+  return `
+    <tr class="terms-row" data-block="term-${index}">
+      <th class="head-col">${clauseHeaderHtml(term.termsHeader || term.terms_header, po, 'Term')}</th>
+      <td>${applyClausePlaceholders(term.termsDescription || term.terms_description || '', po)}</td>
+    </tr>`;
+}
+
+function annexureTheadHtml(docLabel, continued = false) {
+  const title = `ANNEXURE-I — ${escapeHtml(docLabel).toUpperCase()} COMMERCIAL TERMS AND CONDITIONS${continued ? ' — Continued' : ''}`;
+  return `
+            <thead>
+            <tr>
+              <th class="section-title" colspan="3">${title}</th>
+            </tr>
+            <tr class="col-heads">
+              <th class="sno-col">S.NO.</th>
+              <th class="head-col">HEADERS</th>
+              <th>TERMS AND CONDITIONS</th>
+            </tr>
+          </thead>`;
+}
+
+function annexureRowHtml(item, po, idx) {
+  return `
+      <tr class="terms-row" data-block="annexure-${idx}">
+        <td class="sno-col">${idx + 1}.</td>
+        <td class="head-col"><strong>${clauseHeaderHtml(item.termsHeader || item.terms_header, po, 'Header')}</strong></td>
+        <td>${applyClausePlaceholders(item.termsDescription || item.terms_description || '', po)}</td>
+      </tr>`;
+}
+
+function termsSummaryHtml(po, terms, forPdf) {
+  if (!terms?.length) return '';
+  const rows = terms.map((term, index) => termRowHtml(term, po, index)).join('');
+
+  return wrapSheet(
+    `
+      <div class="table-frame">
+        <table class="terms terms-compact">
+          ${termsTheadHtml(po, false)}
           <tbody>
             ${rows}
           </tbody>
@@ -523,30 +574,21 @@ function annexureHtmlIsEmpty(html) {
     .trim();
 }
 
-function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
-  const rows = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '').filter(
-    (row) => !annexureIiRowIsEmpty(row)
-  );
-  if (!rows.length) return '';
-
-  const total = rows.length;
-  return rows
-    .map((row, idx) => {
-      const headerHtml = sanitizeAnnexureHtml(row.header || '');
-      const bodyHtml = sanitizeAnnexureHtml(row.description || '');
-      const extraImages = (row.images || [])
-        .map((img) => {
-          const src = String(img.src || '').trim();
-          if (!src) return '';
-          const caption = String(img.caption || '').trim();
-          return `<figure class="annexure-figure"><img src="${safeImgSrc(src)}" alt="" />${
-            caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''
-          }</figure>`;
-        })
-        .join('');
-      const comments = String(row.comments || '').trim();
-      return wrapSheet(
-        `
+function annexureIiItemHtml(row, idx, total, docLabel) {
+  const headerHtml = sanitizeAnnexureHtml(row.header || '');
+  const bodyHtml = sanitizeAnnexureHtml(row.description || '');
+  const extraImages = (row.images || [])
+    .map((img) => {
+      const src = String(img.src || '').trim();
+      if (!src) return '';
+      const caption = String(img.caption || '').trim();
+      return `<figure class="annexure-figure"><img src="${safeImgSrc(src)}" alt="" />${
+        caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''
+      }</figure>`;
+    })
+    .join('');
+  const comments = String(row.comments || '').trim();
+  return `
       <div class="annexure-ii">
         <div class="annexure-ii-title">ANNEXURE-II — TECHNICAL DATA / SCOPE / SPECIFICATIONS (${escapeHtml(
           docLabel
@@ -560,39 +602,31 @@ function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
         <div class="annexure-ii-body">${bodyHtml}${extraImages}${
           comments ? `<p class="annexure-ii-comments"><strong>Comments:</strong> ${escapeHtml(comments)}</p>` : ''
         }</div>
-      </div>`,
-        'page-annexure-ii',
-        po,
-        forPdf
-      );
-    })
+      </div>`;
+}
+
+function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
+  const rows = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '').filter(
+    (row) => !annexureIiRowIsEmpty(row)
+  );
+  if (!rows.length) return '';
+
+  const total = rows.length;
+  return rows
+    .map((row, idx) => wrapSheet(annexureIiItemHtml(row, idx, total, docLabel), 'page-annexure-ii', po, forPdf))
     .join('');
 }
 
 function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Order', forPdf) {
   if (!annexure?.length) return '';
 
-  const rows = annexure.map((item, idx) => `
-      <tr>
-        <td class="sno-col">${idx + 1}.</td>
-        <td class="head-col"><strong>${clauseHeaderHtml(item.termsHeader || item.terms_header, po, 'Header')}</strong></td>
-        <td>${applyClausePlaceholders(item.termsDescription || item.terms_description || '', po)}</td>
-      </tr>`).join('');
+  const rows = annexure.map((item, idx) => annexureRowHtml(item, po, idx)).join('');
 
   return wrapSheet(
     `
       <div class="table-frame">
         <table class="terms terms-compact annexure-table">
-          <thead>
-            <tr>
-              <th class="section-title" colspan="3">ANNEXURE-I — ${escapeHtml(docLabel).toUpperCase()} COMMERCIAL TERMS AND CONDITIONS</th>
-            </tr>
-            <tr class="col-heads">
-              <th class="sno-col">S.NO.</th>
-              <th class="head-col">HEADERS</th>
-              <th>TERMS AND CONDITIONS</th>
-            </tr>
-          </thead>
+          ${annexureTheadHtml(docLabel, false)}
           <tbody>
             ${rows}
           </tbody>
@@ -605,7 +639,7 @@ function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Orde
   );
 }
 
-function specialNotesHtml(po, options = {}) {
+function specialNotesInnerHtml(po, options = {}) {
   const signature = options.signature;
   const entityLabel = po.entity || 'Refex Group of Companies';
   const td = po.poTermsDetails || {};
@@ -667,16 +701,15 @@ function specialNotesHtml(po, options = {}) {
       <p><strong>Authorized Signatory</strong><br>
       Name: ____________________<br>
       Designation: Head – SCM</p>`}
-    </div>`,
-    'page-notes',
-    po,
-    options.forPdf === true
-  );
+    </div>`;
 }
 
-function acknowledgmentHtml(po, forPdf) {
-  return wrapSheet(
-    `
+function specialNotesHtml(po, options = {}) {
+  return wrapSheet(specialNotesInnerHtml(po, options), 'page-notes', po, options.forPdf === true);
+}
+
+function acknowledgmentInnerHtml(po) {
+  return `
     <div class="ack-box">
       <p><strong>Acknowledgment and Acceptance by Seller/Supplier</strong></p>
       <p>We received, read, and understood the terms and conditions mentioned in this order. We hereby acknowledge, confirm and accept the above terms and conditions and the same shall be binding on us as &ldquo;Seller&rdquo;.</p>
@@ -685,11 +718,11 @@ function acknowledgmentHtml(po, forPdf) {
       <p><strong>Authorized Signatory</strong><br>
       <strong>Dated:</strong><br>
       <strong>Place:</strong></p>
-    </div>`,
-    'page-ack',
-    po,
-    forPdf
-  );
+    </div>`;
+}
+
+function acknowledgmentHtml(po, forPdf) {
+  return wrapSheet(acknowledgmentInnerHtml(po), 'page-ack', po, forPdf);
 }
 
 /** Letterhead master often embeds a "PURCHASE ORDER" / "WORK ORDER" title — strip so it doesn't duplicate .title */
@@ -715,21 +748,11 @@ function adaptLetterheadHeader(html, isWorkOrder) {
   return out.trim();
 }
 
-export function buildPoDocumentHtml(po, options = {}) {
+function poIntroHtml(po) {
   const isWorkOrder =
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
   const docTitle = isWorkOrder ? 'WORK ORDER' : 'PURCHASE ORDER';
-  const poTypeLabel =
-    po.poType === 'long_wo'
-      ? 'Long WO'
-      : po.poType === 'short_wo'
-        ? 'Short WO'
-        : po.poType === 'long_po'
-          ? 'Long PO'
-          : isWorkOrder
-            ? 'Short WO'
-            : 'Short PO';
   const poDate = fmtDateDisplay(po.createdAt || new Date());
   const vendorAddress = po.vendorAddress || 'Address not available';
   const vendorGst = po.vendorGst || '—';
@@ -737,11 +760,7 @@ export function buildPoDocumentHtml(po, options = {}) {
   const vendorPhone = po.vendorPhone || '—';
   const subjectFallback = (po.poTermsDetails && po.poTermsDetails.subject) || po.prTitle || docLabel;
   const letterheadHtml = adaptLetterheadHeader(po.letterheadHeader, isWorkOrder);
-  const forPdf = options.forPdf === true;
-  const bodyClass = forPdf ? 'po-document po-document-pdf' : 'po-document po-document-preview';
-
-  const page1 = wrapSheet(
-    `
+  return `
     <div class="title">${docTitle}</div>
     <div class="po-meta">
       <span>${escapeHtml(docLabel)} No. &nbsp;${escapeHtml(po.poNumber)}</span>
@@ -760,7 +779,29 @@ export function buildPoDocumentHtml(po, options = {}) {
       <p><strong>Ref.No/Date.</strong> PR: ${escapeHtml(po.prNumber)}, Date: ${poDate}</p>
       <p>&nbsp;</p>
       <p><strong>Subject:</strong> ${escapeHtml(subjectFallback)}</p>
-    </div>
+    </div>`;
+}
+
+export function buildPoDocumentHtml(po, options = {}) {
+  const isWorkOrder =
+    String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
+  const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
+  const poTypeLabel =
+    po.poType === 'long_wo'
+      ? 'Long WO'
+      : po.poType === 'short_wo'
+        ? 'Short WO'
+        : po.poType === 'long_po'
+          ? 'Long PO'
+          : isWorkOrder
+            ? 'Short WO'
+            : 'Short PO';
+  const forPdf = options.forPdf === true;
+  const bodyClass = forPdf ? 'po-document po-document-pdf' : 'po-document po-document-preview';
+
+  const page1 = wrapSheet(
+    `
+    ${poIntroHtml(po)}
     ${lineItemsHtml(po)}`,
     '',
     po,
@@ -789,4 +830,41 @@ ${acknowledgmentHtml(po, forPdf)}`;
 ${content}
 </body>
 </html>`;
+}
+
+/**
+ * Structured fragments for JS page-packing (PDF only).
+ * Preview continues to use buildPoDocumentHtml().
+ */
+export function buildPoPdfParts(po, options = {}) {
+  const isWorkOrder =
+    String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
+  const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
+  const items = po.lineItems || [];
+  const terms = po.termsClauses || [];
+  const annexure = po.annexureClauses || [];
+  const annexureIi = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '').filter(
+    (row) => !annexureIiRowIsEmpty(row)
+  );
+
+  return {
+    docLabel,
+    poNumber: po.poNumber,
+    headerHtml: buildRunningHeader(po),
+    footerHtml: buildRunningFooter(po),
+    detailsHtml: poIntroHtml(po),
+    priceThead: priceScheduleTheadHtml(false),
+    priceTheadContinued: priceScheduleTheadHtml(true),
+    itemRows: items.map((item, index) => lineItemRowHtml(item, index, po)),
+    totalsRows: priceTotalsBodyHtml(po),
+    termsThead: terms.length ? termsTheadHtml(po, false) : '',
+    termsTheadContinued: terms.length ? termsTheadHtml(po, true) : '',
+    termRows: terms.map((term, index) => termRowHtml(term, po, index)),
+    annexureThead: annexure.length ? annexureTheadHtml(docLabel, false) : '',
+    annexureTheadContinued: annexure.length ? annexureTheadHtml(docLabel, true) : '',
+    annexureRows: annexure.map((item, idx) => annexureRowHtml(item, po, idx)),
+    annexureIiBlocks: annexureIi.map((row, idx) => annexureIiItemHtml(row, idx, annexureIi.length, docLabel)),
+    notesHtml: specialNotesInnerHtml(po, options),
+    ackHtml: acknowledgmentInnerHtml(po),
+  };
 }

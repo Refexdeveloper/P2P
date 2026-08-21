@@ -10,10 +10,10 @@
  */
 export const PO_PDF_LAYOUT = {
   /** Space for repeating header logo on every PDF page */
-  top: '20mm',
-  /** Space for letterhead footer — must be taller than chrome footer max-height */
-  bottom: '56mm',
-  side: '10mm',
+  top: '24mm',
+  /** Space for full letterhead footer — must exceed chrome footer height */
+  bottom: '72mm',
+  side: '12mm',
   marginTopPx: 15,
   marginBottomPx: 38,
   marginSidePx: 38,
@@ -50,6 +50,72 @@ export const PO_STYLES = `
     width: 100%;
     margin: 0;
     padding: 0 !important;
+  }
+
+  body.po-document-pdf-pages {
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 0 !important;
+    background: #fff;
+  }
+  .pdf-page {
+    width: 210mm;
+    height: 297mm;
+    min-height: 297mm;
+    max-height: 297mm;
+    position: relative;
+    box-sizing: border-box;
+    background: #fff;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    page-break-after: always;
+    break-after: page;
+  }
+  .pdf-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .pdf-header {
+    flex: 0 0 auto;
+    padding: 6mm 8mm 2mm;
+  }
+  .pdf-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 3mm 8mm 4mm;
+    overflow: hidden;
+  }
+  .pdf-footer {
+    flex: 0 0 auto;
+    padding: 2mm 8mm 5mm;
+    margin-top: auto;
+  }
+  .pdf-page-no {
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #444;
+    margin-top: 4px;
+  }
+
+  @media print {
+    body.po-document-pdf-pages .pdf-page {
+      margin: 0;
+      box-shadow: none;
+      page-break-after: always;
+      break-after: page;
+    }
+    body.po-document-pdf-pages .pdf-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+  }
+  .line-item,
+  .terms-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   /* ===== Document shell — logo bands repeat on every printed page ===== */
@@ -239,6 +305,10 @@ export const PO_STYLES = `
       padding: 0 !important;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+    }
+
+    body.po-document-pdf {
+      padding: 3mm 2mm 4mm 2mm !important;
     }
 
     table.doc-shell > thead { display: table-header-group !important; }
