@@ -12,7 +12,17 @@ function getToken(): string | null {
   return localStorage.getItem('p2p_token');
 }
 
-/** Ensure blob is a real PDF (rejects HTML mistakenly saved as .pdf). */
+function errorMessageFromResponse(text: string, fallback: string) {
+  const raw = String(text || '').trim();
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw) as { message?: string };
+    if (parsed?.message) return String(parsed.message);
+  } catch {
+    /* keep raw */
+  }
+  return raw.slice(0, 200) || fallback;
+}
 function asPdfBlob(buffer: ArrayBuffer): Blob {
   const bytes = new Uint8Array(buffer);
   const header = String.fromCharCode(bytes[0] || 0, bytes[1] || 0, bytes[2] || 0, bytes[3] || 0, bytes[4] || 0);
@@ -707,7 +717,7 @@ export const poApi = {
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new ApiError(res.status, text.slice(0, 200) || 'Could not generate preview PDF');
+      throw new ApiError(res.status, errorMessageFromResponse(text, 'Could not generate preview PDF'));
     }
     return asPdfBlob(await res.arrayBuffer());
   },
@@ -723,7 +733,7 @@ export const poApi = {
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new ApiError(res.status, text.slice(0, 200) || 'Could not generate preview PDF');
+      throw new ApiError(res.status, errorMessageFromResponse(text, 'Could not generate preview PDF'));
     }
     return asPdfBlob(await res.arrayBuffer());
   },
@@ -734,7 +744,7 @@ export const poApi = {
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new ApiError(res.status, text.slice(0, 200) || 'Could not load PDF');
+      throw new ApiError(res.status, errorMessageFromResponse(text, 'Could not load PDF'));
     }
     return asPdfBlob(await res.arrayBuffer());
   },

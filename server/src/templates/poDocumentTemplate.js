@@ -370,6 +370,10 @@ function pageFooter(po, pageLabel) {
   return footerHtml(po, pageLabel);
 }
 
+function tableCloseFoot(colSpan) {
+  return `<tfoot class="tbl-end"><tr><td colspan="${colSpan}"></td></tr></tfoot>`;
+}
+
 function lineItemsHtml(po) {
   const items = po.lineItems || [];
   const rows = items.map((item, index) => `
@@ -414,6 +418,7 @@ function lineItemsHtml(po) {
       </td>
     </tr>
     </tbody>
+    ${tableCloseFoot(7)}
   </table>
   </div>`;
 }
@@ -508,6 +513,7 @@ function termsSummaryHtml(po, terms, forPdf) {
           <tbody>
             ${rows}
           </tbody>
+          ${tableCloseFoot(2)}
         </table>
       </div>`,
     'page-terms',
@@ -590,7 +596,7 @@ function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Orde
 
   return wrapSheet(
     `
-      <div class="annexure-card">
+      <div class="table-frame">
         <table class="terms terms-compact annexure-table">
           <thead>
             <tr>
@@ -605,6 +611,7 @@ function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Orde
           <tbody>
             ${rows}
           </tbody>
+          ${tableCloseFoot(3)}
         </table>
       </div>`,
     'page-annexure',

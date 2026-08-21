@@ -256,6 +256,7 @@ export const PO_STYLES = `
   .table-frame {
     width: 100%;
     border: 1px solid #000;
+    border-bottom: none;
     margin: 6px 0 0;
     page-break-inside: auto;
     break-inside: auto;
@@ -418,19 +419,47 @@ export const PO_STYLES = `
   table.price tr { page-break-inside: auto; break-inside: auto; }
 
   /* One 1px frame on left, right, and bottom — same as top. Cell outer edges sit on the frame. */
-  .table-frame table.price {
+  .table-frame table.price,
+  .table-frame table.terms {
     border: none;
   }
-  .table-frame table.price tr > *:first-child {
+  .table-frame table.price tr > *:first-child,
+  .table-frame table.terms tr > *:first-child {
     border-left: none;
   }
-  .table-frame table.price tr > *:last-child {
+  .table-frame table.price tr > *:last-child,
+  .table-frame table.terms tr > *:last-child {
     border-right: none;
   }
-  .table-frame table.price thead tr:first-child > * {
+  .table-frame table.price thead tr:first-child > *,
+  .table-frame table.terms thead tr:first-child > * {
     border-top: none;
   }
-  .table-frame table.price tbody tr:last-child > * {
+  .table-frame table.price tbody tr:last-child > *,
+  .table-frame table.terms tbody tr:last-child > * {
+    border-bottom: none;
+  }
+
+  /* Repeats at the bottom of every printed page when a table splits */
+  table.price tfoot,
+  table.terms tfoot {
+    display: table-footer-group !important;
+  }
+  table.price tfoot td,
+  table.terms tfoot td {
+    padding: 0 !important;
+    height: 0;
+    font-size: 0;
+    line-height: 0;
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #000;
+    border-left: 1px solid #000;
+    border-right: 1px solid #000;
+  }
+  .table-frame table.price tfoot td,
+  .table-frame table.terms tfoot td {
+    border-left: none;
+    border-right: none;
     border-bottom: none;
   }
 

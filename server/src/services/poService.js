@@ -983,10 +983,6 @@ export async function buildPoPreviewForPo(user, poId, body) {
   }
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
-  const editable =
-    (user.role === 'SCM Manager' && rows[0].status === 'pending_approval') ||
-    (user.role === 'SCM Buyer' && rows[0].status === 'pending_buyer_verify');
-  if (!editable) throw new Error('Only pending / buyer-verify POs can be edited');
   if (!body?.lineItems?.length) throw new Error('At least one line item is required for preview');
   if (!rows[0].pr_id) {
     return resolveManualPoDraftContent({
