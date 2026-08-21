@@ -11,7 +11,7 @@ export interface CreateVendorFormData {
   contactName: string;
   address: string;
   category: string;
-  msme: 'yes' | 'no';
+  msme: string;
   msmeType: '' | 'Micro' | 'Small' | 'Medium';
   documentsComplete: 'yes' | 'no';
   accountNumber: string;
@@ -30,7 +30,7 @@ const EMPTY_FORM: CreateVendorFormData = {
   contactName: '',
   address: '',
   category: '',
-  msme: 'no',
+  msme: '',
   msmeType: '',
   documentsComplete: 'no',
   accountNumber: '',
@@ -86,6 +86,12 @@ function asMsmeType(value?: string): '' | 'Micro' | 'Small' | 'Medium' {
     : '';
 }
 
+function asMsmeText(value?: string): string {
+  const v = String(value || '').trim();
+  if (!v || v.toLowerCase() === 'no' || v.toLowerCase() === 'yes') return '';
+  return v;
+}
+
 function vendorToForm(v: VendorRecord): CreateVendorFormData {
   return {
     vendorName: v.name,
@@ -97,8 +103,8 @@ function vendorToForm(v: VendorRecord): CreateVendorFormData {
     contactName: v.contactName || '',
     address: v.address || '',
     category: v.category || '',
-    msme: asYesNo(v.msme),
-    msmeType: asYesNo(v.msme) === 'yes' ? asMsmeType(v.msmeType) : '',
+    msme: asMsmeText(v.msme),
+    msmeType: asMsmeType(v.msmeType),
     documentsComplete: asYesNo(v.documentsComplete),
     accountNumber: v.accountNumber || '',
     ifscCode: v.ifscCode || '',
@@ -118,6 +124,9 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [categories, setCategories] = useState<CategoryRecord[]>([]);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
+  const [addingCategory, setAddingCategory] = useState(false);
 
   useEffect(() => {
     masterApi
@@ -135,12 +144,41 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
   })();
 
   const update = (name: keyof CreateVendorFormData, value: string) => {
-    setForm((prev) => {
-      const next = { ...prev, [name]: value };
-      if (name === 'msme' && value !== 'yes') next.msmeType = '';
-      return next;
-    });
+    setForm((prev) => ({ ...prev, [name]: value }));
     setError('');
+  };
+
+  const handleAddCategory = async () => {
+    const name = newCategory.trim();
+    if (!name) {
+      setError('Enter a category name');
+      return;
+    }
+    const exists = categoryOptions.some((c) => c.toLowerCase() === name.toLowerCase());
+    if (exists) {
+      update('category', categoryOptions.find((c) => c.toLowerCase() === name.toLowerCase()) || name);
+      setNewCategory('');
+      setShowAddCategory(false);
+      return;
+    }
+
+    setAddingCategory(true);
+    setError('');
+    try {
+      const res = await masterApi.createCategory({ name, requestType: 'All', status: 'active' });
+      const created = res.data;
+      setCategories((prev) =>
+        prev.some((c) => c.id === created.id) ? prev : [...prev, created]
+      );
+      update('category', created.name);
+    } catch {
+      setCategories((prev) => [...prev, { id: Date.now(), name, requestType: 'All', description: '', status: 'active' }]);
+      update('category', name);
+    } finally {
+      setAddingCategory(false);
+      setNewCategory('');
+      setShowAddCategory(false);
+    }
   };
 
   const handleFileChange = (type: DocType, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,14 +204,6 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
     }
     if (!form.email.trim()) {
       setError('Email is required');
-      return;
-    }
-    if (!form.category) {
-      setError('Category is required');
-      return;
-    }
-    if (form.msme === 'yes' && !form.msmeType) {
-      setError('Select MSME category (Micro, Small or Medium)');
       return;
     }
 
@@ -323,65 +353,89 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Category *</label>
-            <select
-              value={form.category}
-              onChange={(e) => update('category', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
-            >
-              <option value="">Select category</option>
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
+            <div className="flex gap-2">
+              <select
+                value={form.category}
+                onChange={(e) => update('category', e.target.value)}
+                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              >
+                <option value="">Select category</option>
+                {categoryOptions.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddCategory((open) => !open);
+                  setError('');
+                }}
+                className="px-3 py-2.5 text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer whitespace-nowrap flex items-center gap-1"
+              >
+                <i className="ri-add-line"></i>
+                Add
+              </button>
+            </div>
+            {showAddCategory && (
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCategory();
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                  placeholder="New category name"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCategory}
+                  disabled={addingCategory}
+                  className="px-3 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 cursor-pointer"
+                >
+                  {addingCategory ? 'Adding...' : 'Save'}
+                </button>
+              </div>
+            )}
             {form.category && (
               <p className="mt-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2 py-1 inline-flex items-center gap-1">
                 <i className="ri-price-tag-3-line"></i>
                 Selected: <span className="font-semibold">{form.category}</span>
               </p>
             )}
-            {!categories.length && (
-              <p className="mt-1 text-xs text-gray-400">No active categories in Category Master</p>
-            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">MSME</label>
-            <div className="flex gap-4 mt-2">
-              {(['yes', 'no'] as const).map((v) => (
-                <label key={v} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="msme"
-                    checked={form.msme === v}
-                    onChange={() => update('msme', v)}
-                    className="text-teal-600"
-                  />
-                  <span className="text-sm text-gray-700">{v === 'yes' ? 'Yes' : 'No'}</span>
-                </label>
-              ))}
-            </div>
+            <input
+              value={form.msme}
+              onChange={(e) => update('msme', e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              placeholder="UDYAM / MSME number"
+            />
           </div>
-          {form.msme === 'yes' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">MSME Category *</label>
-              <select
-                value={form.msmeType}
-                onChange={(e) => update('msmeType', e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
-              >
-                <option value="">Select MSME category</option>
-                {MSME_TYPES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-              {form.msmeType && (
-                <p className="mt-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2 py-1 inline-flex items-center gap-1">
-                  <i className="ri-building-4-line"></i>
-                  Selected: <span className="font-semibold">{form.msmeType}</span>
-                </p>
-              )}
-            </div>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">MSME Category</label>
+            <select
+              value={form.msmeType}
+              onChange={(e) => update('msmeType', e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+            >
+              <option value="">Select MSME category</option>
+              {MSME_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            {form.msmeType && (
+              <p className="mt-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2 py-1 inline-flex items-center gap-1">
+                <i className="ri-building-4-line"></i>
+                Selected: <span className="font-semibold">{form.msmeType}</span>
+              </p>
+            )}
+          </div>
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Address</label>
             <textarea

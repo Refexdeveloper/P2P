@@ -119,10 +119,14 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                     { label: 'Created', value: vendor.createdAt, icon: 'ri-calendar-line', color: 'text-gray-700' },
                     {
                       label: 'MSME',
-                      value: vendor.msme === 'yes'
-                        ? `Yes${vendor.msmeType ? ` — ${vendor.msmeType}` : ''}`
-                        : 'No',
+                      value: vendor.msme && vendor.msme !== 'no' && vendor.msme !== 'yes' ? vendor.msme : (vendor.msme === 'yes' ? 'Yes' : '—'),
                       icon: 'ri-building-4-line',
+                      color: 'text-gray-900',
+                    },
+                    {
+                      label: 'MSME Category',
+                      value: vendor.msmeType || '—',
+                      icon: 'ri-list-check-2',
                       color: 'text-gray-900',
                     },
                     {

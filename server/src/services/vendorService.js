@@ -44,8 +44,7 @@ function yesNo(value, fallback = 'no') {
   return fallback;
 }
 
-function msmeTypeValue(msme, type) {
-  if (yesNo(msme) !== 'yes') return null;
+function msmeTypeValue(type) {
   const allowed = ['Micro', 'Small', 'Medium'];
   const match = allowed.find((t) => t.toLowerCase() === String(type || '').trim().toLowerCase());
   return match || null;
@@ -64,7 +63,7 @@ function mapVendor(row, documents = []) {
     address: row.address || '',
     category: row.category || '',
     contactName: row.contact_name || '',
-    msme: row.msme || 'no',
+    msme: row.msme && row.msme !== 'no' ? row.msme : '',
     msmeType: row.msme_type || '',
     documentsComplete: row.documents_complete || 'no',
     accountNumber: row.account_number || '',
@@ -168,7 +167,7 @@ export async function createVendor(user, body) {
 
   const vendorCode = await generateVendorCode();
 
-  const msme = yesNo(body.msme, 'no');
+  const msme = String(body.msme || '').trim() || null;
   const [result] = await pool.query(
     `INSERT INTO vendors (
       vendor_code, name, vendor_type, gst_number, pan_number, email, phone, address,
@@ -187,7 +186,7 @@ export async function createVendor(user, body) {
       body.category?.trim() || null,
       body.contactName?.trim() || null,
       msme,
-      msmeTypeValue(msme, body.msmeType),
+      msmeTypeValue(body.msmeType),
       yesNo(body.documentsComplete, 'no'),
       body.accountNumber?.trim() || null,
       body.ifscCode?.trim() || null,
@@ -230,7 +229,7 @@ export async function updateVendor(vendorId, body) {
   const [existing] = await pool.query(`SELECT id FROM vendors WHERE email = ? AND id != ?`, [email, vendorId]);
   if (existing.length) throw new Error('A vendor with this email already exists');
 
-  const msme = yesNo(body.msme, 'no');
+  const msme = String(body.msme || '').trim() || null;
   await pool.query(
     `UPDATE vendors SET
       name = ?, vendor_type = ?, gst_number = ?, pan_number = ?, email = ?, phone = ?, address = ?,
@@ -248,7 +247,7 @@ export async function updateVendor(vendorId, body) {
       body.category?.trim() || null,
       body.contactName?.trim() || null,
       msme,
-      msmeTypeValue(msme, body.msmeType),
+      msmeTypeValue(body.msmeType),
       yesNo(body.documentsComplete, 'no'),
       body.accountNumber?.trim() || null,
       body.ifscCode?.trim() || null,
@@ -360,7 +359,7 @@ export function getVendorImportTemplateCsv() {
       panNumber: '',
       address: 'Chennai',
       category: 'IT',
-      msme: 'no',
+      msme: 'UDYAM-TN-00-0000000',
       msmeType: '',
       documentsComplete: 'no',
       accountNumber: '',
@@ -417,7 +416,7 @@ export async function importVendorsFromCsv(user, csvText) {
         address: mapped.address || '',
         category: mapped.category || '',
         contactName: mapped.contactName || '',
-        msme: mapped.msme || 'no',
+        msme: mapped.msme || '',
         msmeType: mapped.msmeType || '',
         documentsComplete: mapped.documentsComplete || 'no',
         accountNumber: mapped.accountNumber || '',

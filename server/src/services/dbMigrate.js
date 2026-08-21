@@ -359,6 +359,7 @@ const MIGRATIONS = [
   `ALTER TABLE vendors ADD COLUMN msme ENUM('yes', 'no') NOT NULL DEFAULT 'no'`,
   `ALTER TABLE vendors ADD COLUMN msme_type ENUM('Micro', 'Small', 'Medium') NULL`,
   `ALTER TABLE vendors ADD COLUMN documents_complete ENUM('yes', 'no') NOT NULL DEFAULT 'no'`,
+  `ALTER TABLE vendors MODIFY COLUMN msme VARCHAR(150) NULL`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

@@ -299,7 +299,7 @@ CREATE TABLE IF NOT EXISTS vendors (
   address TEXT NULL,
   category VARCHAR(100) NULL,
   contact_name VARCHAR(150) NULL,
-  msme ENUM('yes', 'no') NOT NULL DEFAULT 'no',
+  msme VARCHAR(150) NULL,
   msme_type ENUM('Micro', 'Small', 'Medium') NULL,
   documents_complete ENUM('yes', 'no') NOT NULL DEFAULT 'no',
   account_number VARCHAR(50) NULL,

@@ -981,7 +981,7 @@ export interface VendorRecord {
   address: string;
   category: string;
   contactName: string;
-  msme: 'yes' | 'no' | string;
+  msme: string;
   msmeType: '' | 'Micro' | 'Small' | 'Medium' | string;
   documentsComplete: 'yes' | 'no' | string;
   accountNumber: string;

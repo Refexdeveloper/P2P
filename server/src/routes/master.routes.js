@@ -84,7 +84,10 @@ router.post('/categories/import', canManageCategories, async (req, res) => {
   }
 });
 
-router.post('/categories', canManageCategories, async (req, res) => {
+router.post('/categories', (req, res, next) => {
+  if (['SCM Buyer', 'SCM Manager'].includes(req.user?.role)) return next();
+  return canManageCategories(req, res, next);
+}, async (req, res) => {
   try {
     const data = await createCategory(req.body);
     res.json({ data, message: 'Category created successfully' });
