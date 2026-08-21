@@ -1,18 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
-import { finished } from 'stream/promises';
 import puppeteer from 'puppeteer-core';
 import {
   buildPoDocumentHtml,
+  buildPoPdfChromeTemplates,
+  PO_PDF_LAYOUT,
 } from '../templates/poDocumentTemplate.js';
 import { buildSignatureRenderOptions } from './signatureService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
-
-const require = createRequire(import.meta.url);
-const PDFDocument = require('pdfkit');
 
 export function buildPoHtml(po, options = {}) {
   return buildPoDocumentHtml(po, options);
@@ -181,37 +178,12 @@ async function inlinePoBranding(po = {}) {
   return next;
 }
 
-const A4_PT = { width: 595.28, height: 841.89 };
-
-function addSheetImageToPdf(doc, imageBuffer) {
-  const img = doc.openImage(imageBuffer);
-  const scale = A4_PT.width / img.width;
-  const scaledHeight = img.height * scale;
-
-  if (scaledHeight <= A4_PT.height + 0.5) {
-    doc.addPage({ size: 'A4', margin: 0 });
-    doc.image(img, 0, 0, { width: A4_PT.width, height: scaledHeight });
-    return;
-  }
-
-  const srcPageHeight = A4_PT.height / scale;
-  let srcY = 0;
-  while (srcY < img.height - 0.5) {
-    doc.addPage({ size: 'A4', margin: 0 });
-    doc.save();
-    doc.rect(0, 0, A4_PT.width, A4_PT.height).clip();
-    doc.image(img, 0, -srcY * scale, { width: A4_PT.width });
-    doc.restore();
-    srcY += srcPageHeight;
-  }
-}
-
 /**
- * Convert PO HTML → PDF using the same on-screen preview pages
- * (Open in new tab). Each .page-sheet is captured as an A4 page so
- * alignment, spacing, and footer match the preview.
+ * Convert PO HTML → PDF.
+ * Header/footer paint in page margins on EVERY page (including overflow
+ * of line items, terms, and annexure). Body content flows with print CSS.
  */
-export async function htmlToPdf(html, filePath, _chromeTemplates = null) {
+export async function htmlToPdf(html, filePath, chromeTemplates = null) {
   const executablePath = resolveBrowserExecutable();
   if (!executablePath) {
     throw new Error(
@@ -229,22 +201,7 @@ export async function htmlToPdf(html, filePath, _chromeTemplates = null) {
     } catch {
       await page.setContent(html, { waitUntil: 'load', timeout: 90000 });
     }
-    await page.emulateMediaType('screen');
-    await page.addStyleTag({
-      content: `
-        body.po-document-preview {
-          background: #fff !important;
-          padding: 0 !important;
-          margin: 0 !important;
-        }
-        body.po-document-preview .page-sheet {
-          margin: 0 auto !important;
-          box-shadow: none !important;
-          width: 210mm !important;
-          max-width: none !important;
-        }
-      `,
-    });
+    await page.emulateMediaType('print');
     await page.evaluate(async () => {
       if (document.fonts?.ready) {
         try {
@@ -265,24 +222,23 @@ export async function htmlToPdf(html, filePath, _chromeTemplates = null) {
       );
     });
 
-    const sheets = await page.$$('.page-sheet');
-    const images = [];
-    if (sheets.length) {
-      for (const sheet of sheets) {
-        images.push(await sheet.screenshot({ type: 'png', captureBeyondViewport: true }));
-      }
-    } else {
-      images.push(await page.screenshot({ type: 'png', fullPage: true }));
-    }
+    const chrome = chromeTemplates || buildPoPdfChromeTemplates();
 
-    const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
-    const out = fs.createWriteStream(filePath);
-    doc.pipe(out);
-    for (const image of images) {
-      addSheetImageToPdf(doc, image);
-    }
-    doc.end();
-    await finished(out);
+    await page.pdf({
+      path: filePath,
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: false,
+      margin: {
+        top: PO_PDF_LAYOUT.top,
+        right: PO_PDF_LAYOUT.side,
+        bottom: PO_PDF_LAYOUT.bottom,
+        left: PO_PDF_LAYOUT.side,
+      },
+      displayHeaderFooter: true,
+      headerTemplate: chrome.headerTemplate,
+      footerTemplate: chrome.footerTemplate,
+    });
   } finally {
     await browser.close();
   }
@@ -297,11 +253,12 @@ export async function generatePoPdf(po, options = {}) {
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
 
   const branded = await inlinePoBranding(po);
-  const html = buildPoHtml(branded, { ...options, forPdf: false });
+  const html = buildPoHtml(branded, { ...options, forPdf: true });
+  const chrome = buildPoPdfChromeTemplates(branded);
   fs.writeFileSync(htmlPath, html, 'utf8');
 
   try {
-    await htmlToPdf(html, filePath);
+    await htmlToPdf(html, filePath, chrome);
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
     console.warn('HTML-to-PDF failed, HTML document saved:', err.message);

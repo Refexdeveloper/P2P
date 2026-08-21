@@ -319,11 +319,11 @@ export function buildPoPdfChromeTemplates(po = {}) {
   const footerInner = letterheadFooterInner(po);
 
   const headerTemplate =
-    `<div style="${root}padding:2mm ${side} 0 ${side};">${headerInner}</div>`;
+    `<div style="${root}height:18mm;overflow:hidden;padding:1.5mm ${side} 0 ${side};">${headerInner}</div>`;
 
   const footerTemplate =
-    `<div style="${root}padding:0 ${side} 2mm ${side};text-align:center;width:100%;">` +
-    `<div style="width:100%;font-size:12px;line-height:1.35;text-align:center;">${footerInner}</div>` +
+    `<div style="${root}height:52mm;max-height:52mm;overflow:hidden;padding:0 ${side} 1mm ${side};text-align:center;">` +
+    `<div style="width:100%;font-size:10px;line-height:1.25;text-align:center;">${footerInner}</div>` +
     `</div>`;
 
   return { headerTemplate, footerTemplate };

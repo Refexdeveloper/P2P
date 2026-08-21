@@ -10,9 +10,9 @@
  */
 export const PO_PDF_LAYOUT = {
   /** Space for repeating header logo on every PDF page */
-  top: '22mm',
-  /** Space for full letterhead footer (company + CIN + offices) */
-  bottom: '58mm',
+  top: '20mm',
+  /** Space for letterhead footer — must be taller than chrome footer max-height */
+  bottom: '56mm',
   side: '10mm',
   marginTopPx: 15,
   marginBottomPx: 38,
@@ -278,6 +278,43 @@ export const PO_STYLES = `
       display: none !important;
     }
 
+    /* Full cell borders so a split table still has left/right/top/bottom */
+    body.po-document-pdf .table-frame {
+      border: none;
+    }
+    body.po-document-pdf .table-frame table.price tr > *:first-child,
+    body.po-document-pdf .table-frame table.terms tr > *:first-child {
+      border-left: 1px solid #000 !important;
+    }
+    body.po-document-pdf .table-frame table.price tr > *:last-child,
+    body.po-document-pdf .table-frame table.terms tr > *:last-child {
+      border-right: 1px solid #000 !important;
+    }
+    body.po-document-pdf .table-frame table.price thead tr:first-child > *,
+    body.po-document-pdf .table-frame table.terms thead tr:first-child > * {
+      border-top: 1px solid #000 !important;
+    }
+    body.po-document-pdf .table-frame table.price tbody tr:last-child > *,
+    body.po-document-pdf .table-frame table.terms tbody tr:last-child > *,
+    body.po-document-pdf .table-frame table.price tfoot td,
+    body.po-document-pdf .table-frame table.terms tfoot td {
+      border-bottom: 1px solid #000 !important;
+      border-left: 1px solid #000 !important;
+      border-right: 1px solid #000 !important;
+    }
+    body.po-document-pdf table.price tfoot,
+    body.po-document-pdf table.terms tfoot {
+      display: table-footer-group !important;
+    }
+    body.po-document-pdf table.price tfoot td,
+    body.po-document-pdf table.terms tfoot td {
+      height: 0;
+      padding: 0 !important;
+      font-size: 0;
+      line-height: 0;
+      border-top: 1px solid #000 !important;
+    }
+
     /* Match on-screen PO Document Preview: each sheet is a full A4 page */
     body.po-document-preview .page-sheet {
       background: #fff;
@@ -512,11 +549,19 @@ export const PO_STYLES = `
   table.terms thead, table.price thead { display: table-header-group; }
   table.terms tbody, table.price tbody { display: table-row-group; }
   table.terms tr { page-break-inside: avoid; break-inside: avoid; }
-  table.price tr { page-break-inside: auto; break-inside: auto; }
-  table.price tbody.price-totals,
-  table.price tbody.price-totals tr {
+  table.price tbody.price-items tr {
     page-break-inside: avoid;
     break-inside: avoid;
+  }
+  table.price tbody.price-totals,
+  table.price tbody.price-totals tr,
+  table.price tr.amount-words-row {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  table.price tr.total {
+    page-break-after: avoid;
+    break-after: avoid;
   }
 
   /* One 1px frame on left, right, and bottom — same as top. Cell outer edges sit on the frame. */
