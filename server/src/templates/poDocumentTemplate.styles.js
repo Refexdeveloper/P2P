@@ -10,9 +10,9 @@
  */
 export const PO_PDF_LAYOUT = {
   /** Space for repeating header logo on every PDF page */
-  top: '24mm',
-  /** Space for full letterhead footer HTML + page number */
-  bottom: '48mm',
+  top: '22mm',
+  /** Space for full letterhead footer (company + CIN + offices) */
+  bottom: '58mm',
   side: '10mm',
   marginTopPx: 15,
   marginBottomPx: 38,
@@ -252,20 +252,30 @@ export const PO_STYLES = `
       print-color-adjust: exact;
     }
 
-    /* PDF-only path: letterhead is the repeating doc-shell thead/tfoot */
+    /* PDF: chrome templates own header/footer. Tables must not stretch to fill the page. */
     body.po-document-pdf .page-sheet {
       margin: 0;
       padding: 0;
       width: 100%;
+      min-height: 0 !important;
+      height: auto !important;
     }
-    body.po-document-pdf table.doc-shell > thead {
-      display: table-header-group !important;
+    body.po-document-pdf .table-frame,
+    body.po-document-pdf table.price,
+    body.po-document-pdf table.terms {
+      height: auto !important;
+      min-height: 0 !important;
     }
-    body.po-document-pdf table.doc-shell > tfoot {
-      display: table-footer-group !important;
+    body.po-document-pdf table.price th,
+    body.po-document-pdf table.price td,
+    body.po-document-pdf table.terms th,
+    body.po-document-pdf table.terms td {
+      height: auto !important;
+      vertical-align: top;
     }
+    body.po-document-pdf .pdf-run-header,
     body.po-document-pdf .pdf-run-footer {
-      margin: 0;
+      display: none !important;
     }
 
     /* Match on-screen PO Document Preview: each sheet is a full A4 page */
@@ -490,6 +500,7 @@ export const PO_STYLES = `
   }
 
   table.price th, table.terms th { background: #f2f2f2; text-align: center; font-weight: bold; }
+  table.price td, table.terms td { vertical-align: top; height: auto; }
   table.terms th.head-col, table.terms td.head-col { width: 18%; text-align: left; font-weight: bold; }
   table.terms td { text-align: left; }
   table.terms td.sno-col, table.terms th.sno-col { width: 6%; text-align: center; }
@@ -530,13 +541,10 @@ export const PO_STYLES = `
     border-bottom: none;
   }
 
-  /* Repeats at the bottom of every printed page when a table splits */
+  /* Closing row only at the end of the table — do not repeat as a page footer
+     (repeating tfoot stretches empty column lines down the page). */
   table.price tfoot,
   table.terms tfoot {
-    display: table-footer-group !important;
-  }
-  body.po-document-pdf table.price > tfoot.tbl-end,
-  body.po-document-pdf table.terms > tfoot.tbl-end {
     display: table-row-group !important;
   }
   table.price tfoot td,

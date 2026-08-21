@@ -250,25 +250,26 @@ function buildRunningHeader(po = {}) {
   </div>`;
 }
 
-/** Footer logo band — repeated via doc-shell <tfoot> on every PDF page */
-function buildRunningFooter(po = {}) {
+function letterheadFooterInner(po = {}) {
   const footerLogo = resolveBrandingValue(po, 'footerLogo', 'footer_logo');
   const entity = resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited';
-  let inner = '';
   if (footerLogo) {
     if (looksLikeHtml(footerLogo)) {
-      inner = `<div class="run-footer-html">${sanitizeChromeHtml(footerLogo)}</div>`;
-    } else if (looksLikeImageSrc(footerLogo)) {
-      inner = `<img class="run-footer-img" src="${safeImgSrc(footerLogo)}" alt="Footer Logo" />`;
-    } else {
-      inner = `<div class="run-footer-text">${escapeHtml(footerLogo)}</div>`;
+      return `<div class="run-footer-html">${sanitizeChromeHtml(footerLogo)}</div>`;
     }
-  } else {
-    inner = `<div class="run-footer-text">${escapeHtml(entity)}</div>`;
+    if (looksLikeImageSrc(footerLogo)) {
+      return `<img class="run-footer-img" src="${safeImgSrc(footerLogo)}" alt="Footer Logo" />`;
+    }
+    return `<div class="run-footer-text">${escapeHtml(footerLogo)}</div>`;
   }
+  return `<div class="run-footer-text">${escapeHtml(entity)}</div>`;
+}
+
+/** Footer logo band — used in HTML preview page-sheets */
+function buildRunningFooter(po = {}) {
   return `
   <div class="pdf-run-footer">
-    <div class="pdf-run-footer-inner">${inner}</div>
+    <div class="pdf-run-footer-inner">${letterheadFooterInner(po)}</div>
   </div>`;
 }
 
@@ -315,33 +316,15 @@ export function buildPoPdfChromeTemplates(po = {}) {
       `<span style="color:#8dc63f;">e</span><span style="color:#f7941d;">x</span></div>`;
   }
 
-  const footerLogo = resolveBrandingValue(po, 'footerLogo', 'footer_logo');
-  const entity = resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited';
-  let footerBrand = '';
-  if (footerLogo) {
-    if (looksLikeImageSrc(footerLogo) && !looksLikeHtml(footerLogo)) {
-      footerBrand =
-        `<img src="${safeImgSrc(footerLogo)}" style="max-height:90px;max-width:100%;height:auto;width:auto;object-fit:contain;display:block;margin:0 auto;" alt="Footer" />`;
-    } else if (looksLikeHtml(footerLogo)) {
-      footerBrand = sanitizeChromeHtml(footerLogo);
-    } else {
-      footerBrand =
-        `<div style="font-size:13px;font-weight:700;text-align:center;">${escapeHtml(footerLogo)}</div>`;
-    }
-  } else {
-    footerBrand =
-      `<div style="font-size:13px;font-weight:700;text-align:center;">${escapeHtml(entity)}</div>`;
-  }
+  const footerInner = letterheadFooterInner(po);
 
   const headerTemplate =
     `<div style="${root}padding:2mm ${side} 0 ${side};">${headerInner}</div>`;
 
   const footerTemplate =
-    `<div style="${root}padding:0 ${side} 1.5mm ${side};text-align:center;">` +
-    `<div style="width:100%;font-size:13px;line-height:1.45;text-align:center;">${footerBrand}</div>` +
-    `<div style="text-align:center;font-size:11px;font-weight:600;margin-top:4px;color:#333;">` +
-    `Page <span class="pageNumber"></span> of <span class="totalPages"></span>` +
-    `</div></div>`;
+    `<div style="${root}padding:0 ${side} 2mm ${side};text-align:center;width:100%;">` +
+    `<div style="width:100%;font-size:12px;line-height:1.35;text-align:center;">${footerInner}</div>` +
+    `</div>`;
 
   return { headerTemplate, footerTemplate };
 }
@@ -350,15 +333,11 @@ function wrapSheet(inner, extraClass, po, forPdf) {
   const cls = ['page', 'page-sheet', extraClass].filter(Boolean).join(' ');
   if (forPdf) {
     return `
-  <tr class="doc-shell-row">
-    <td class="doc-shell-body">
-      <div class="${cls}">
-        <div class="page-body">
+  <div class="${cls}">
+    <div class="page-body">
 ${inner}
-        </div>
-      </div>
-    </td>
-  </tr>`;
+    </div>
+  </div>`;
   }
   return `
   <div class="${cls}">
@@ -368,22 +347,6 @@ ${inner}
     </div>
     ${buildRunningFooter(po)}
   </div>`;
-}
-
-/** Repeats letterhead on every printed PDF page (Chrome table header/footer groups). */
-function wrapDocShell(rowsHtml, po) {
-  return `
-  <table class="doc-shell">
-    <thead>
-      <tr><td>${buildRunningHeader(po)}</td></tr>
-    </thead>
-    <tfoot>
-      <tr><td>${buildRunningFooter(po)}</td></tr>
-    </tfoot>
-    <tbody>
-${rowsHtml}
-    </tbody>
-  </table>`;
 }
 
 function pageFooter(po, pageLabel) {
@@ -815,8 +778,6 @@ ${annexureIiPagesHtml(po, docLabel, forPdf)}
 ${specialNotesHtml(po, { ...options, forPdf })}
 ${acknowledgmentHtml(po, forPdf)}`;
 
-  const bodyInner = forPdf ? wrapDocShell(content, po) : content;
-
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -825,7 +786,7 @@ ${acknowledgmentHtml(po, forPdf)}`;
 <style>${PO_STYLES}</style>
 </head>
 <body class="${bodyClass}">
-${bodyInner}
+${content}
 </body>
 </html>`;
 }

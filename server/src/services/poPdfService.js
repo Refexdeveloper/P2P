@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
 import {
   buildPoDocumentHtml,
+  buildPoPdfChromeTemplates,
+  PO_PDF_LAYOUT,
 } from '../templates/poDocumentTemplate.js';
 import { buildSignatureRenderOptions } from './signatureService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
@@ -178,10 +180,10 @@ async function inlinePoBranding(po = {}) {
 
 /**
  * Convert PO / Work Order HTML → PDF.
- * Letterhead repeats via HTML table thead/tfoot (same markup as preview).
- * Do not use Puppeteer chrome templates — they clip the branded footer.
+ * Header/footer sit in Puppeteer page margins so they pin to the top/bottom
+ * of every page without stretching table rows.
  */
-export async function htmlToPdf(html, filePath, _chromeTemplates = null) {
+export async function htmlToPdf(html, filePath, chromeTemplates = null) {
   const executablePath = resolveBrowserExecutable();
   if (!executablePath) {
     throw new Error(
@@ -213,13 +215,22 @@ export async function htmlToPdf(html, filePath, _chromeTemplates = null) {
       );
     });
 
+    const chrome = chromeTemplates || buildPoPdfChromeTemplates();
+
     await page.pdf({
       path: filePath,
       format: 'A4',
       printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: '0', right: '0', bottom: '0', left: '0' },
-      displayHeaderFooter: false,
+      preferCSSPageSize: false,
+      margin: {
+        top: PO_PDF_LAYOUT.top,
+        right: PO_PDF_LAYOUT.side,
+        bottom: PO_PDF_LAYOUT.bottom,
+        left: PO_PDF_LAYOUT.side,
+      },
+      displayHeaderFooter: true,
+      headerTemplate: chrome.headerTemplate,
+      footerTemplate: chrome.footerTemplate,
     });
   } finally {
     await browser.close();
@@ -236,10 +247,11 @@ export async function generatePoPdf(po, options = {}) {
 
   const branded = await inlinePoBranding(po);
   const html = buildPoHtml(branded, { ...options, forPdf: true });
+  const chrome = buildPoPdfChromeTemplates(branded);
   fs.writeFileSync(htmlPath, html, 'utf8');
 
   try {
-    await htmlToPdf(html, filePath);
+    await htmlToPdf(html, filePath, chrome);
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
     console.warn('HTML-to-PDF failed, HTML document saved:', err.message);
