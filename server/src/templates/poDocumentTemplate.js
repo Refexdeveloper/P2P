@@ -60,19 +60,25 @@ export function fmtMoney(amount, currency = 'INR') {
   const code = ['EUR', 'USD', 'INR'].includes(String(currency || '').toUpperCase())
     ? String(currency).toUpperCase()
     : 'INR';
+  let formatted;
   try {
-    return new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', {
+    formatted = new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', {
       style: 'currency',
       currency: code,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(Number(amount || 0));
   } catch {
-    return Number(amount || 0).toLocaleString('en-IN', {
+    formatted = Number(amount || 0).toLocaleString('en-IN', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
   }
+  return String(formatted).replace(/\s/g, '\u00A0');
+}
+
+function amountCellHtml(amount, currency, extraClass = '') {
+  return `<td class="right amount-cell ${extraClass}">${fmtMoney(amount, currency)}</td>`;
 }
 
 export function fmtDateDisplay(value) {
@@ -360,12 +366,12 @@ function tableCloseFoot(colSpan) {
 function priceColgroupHtml() {
   return `<colgroup>
     <col class="col-sl" style="width:5%">
-    <col class="col-description" style="width:50%">
-    <col class="col-uom" style="width:7%">
+    <col class="col-description" style="width:43%">
+    <col class="col-uom" style="width:6%">
     <col class="col-qty" style="width:6%">
-    <col class="col-rate" style="width:12%">
-    <col class="col-tax" style="width:8%">
-    <col class="col-total" style="width:12%">
+    <col class="col-unit-rate" style="width:16%">
+    <col class="col-tax" style="width:7%">
+    <col class="col-total" style="width:17%">
   </colgroup>`;
 }
 
@@ -376,9 +382,9 @@ function lineItemRowHtml(item, index, po) {
       <td class="description col-description"><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}</div></td>
       <td class="center col-uom">${escapeHtml(item.unit || item.uom || 'Nos')}</td>
       <td class="center col-qty">${escapeHtml(item.quantity)}</td>
-      <td class="right col-rate">${fmtMoney(item.unitPrice, po.currency)}</td>
+      ${amountCellHtml(item.unitPrice, po.currency, 'col-rate col-unit-rate unit-rate-cell')}
       <td class="center col-tax">${escapeHtml(item.taxPercentage ?? item.tax_percentage ?? 0)}%</td>
-      <td class="right col-total">${fmtMoney(item.total, po.currency)}</td>
+      ${amountCellHtml(item.total, po.currency, 'col-total total-amount-cell')}
     </tr>`;
 }
 
@@ -395,7 +401,7 @@ function priceScheduleTheadHtml(continued = false) {
       <th class="col-description">Description Of Work</th>
       <th class="col-uom">UOM</th>
       <th class="col-qty">Qty</th>
-      <th class="col-rate">Unit Rate</th>
+      <th class="col-rate col-unit-rate">Unit Rate</th>
       <th class="col-tax">Tax %</th>
       <th class="col-total">TOTAL Amt</th>
     </tr>
@@ -404,9 +410,9 @@ function priceScheduleTheadHtml(continued = false) {
 
 function priceTotalsBodyHtml(po) {
   return `
-    <tr class="total"><td colspan="6">SubTotal</td><td class="right">${fmtMoney(po.subtotal, po.currency)}</td></tr>
-    <tr class="total"><td colspan="6">Add: Tax (per line)</td><td class="right">${fmtMoney(po.taxAmount, po.currency)}</td></tr>
-    <tr class="total"><td colspan="6">GrandTotal</td><td class="right">${fmtMoney(po.grandTotal, po.currency)}</td></tr>
+    <tr class="total"><td colspan="6">SubTotal</td>${amountCellHtml(po.subtotal, po.currency, 'col-total total-amount-cell')}</tr>
+    <tr class="total"><td colspan="6">Add: Tax (per line)</td>${amountCellHtml(po.taxAmount, po.currency, 'col-total total-amount-cell')}</tr>
+    <tr class="total"><td colspan="6">GrandTotal</td>${amountCellHtml(po.grandTotal, po.currency, 'col-total total-amount-cell')}</tr>
     <tr class="amount-words-row">
       <td colspan="7">
         <div class="amount-words-inner">
@@ -504,16 +510,32 @@ function termsSectionTitle(po) {
     : 'Terms and Conditions — Purchase Order';
 }
 
+function termsColgroupHtml() {
+  return `<colgroup>
+    <col class="col-head" style="width:24%">
+    <col class="col-terms" style="width:76%">
+  </colgroup>`;
+}
+
+function annexureColgroupHtml() {
+  return `<colgroup>
+    <col class="col-sno" style="width:8mm">
+    <col class="col-head" style="width:22%">
+    <col class="col-terms" style="width:auto">
+  </colgroup>`;
+}
+
 function termsTheadHtml(po, continued = false) {
   const title = continued ? `${termsSectionTitle(po)} — Continued` : termsSectionTitle(po);
   return `
+          ${termsColgroupHtml()}
           <thead>
             <tr>
               <th class="section-title" colspan="2">${escapeHtml(title)}</th>
             </tr>
             <tr class="col-heads">
               <th class="head-col">HEADERS</th>
-              <th>TERMS AND CONDITIONS</th>
+              <th class="col-terms">TERMS AND CONDITIONS</th>
             </tr>
           </thead>`;
 }
@@ -529,6 +551,7 @@ function termRowHtml(term, po, index) {
 function annexureTheadHtml(docLabel, continued = false) {
   const title = `ANNEXURE-I — ${escapeHtml(docLabel).toUpperCase()} COMMERCIAL TERMS AND CONDITIONS${continued ? ' — Continued' : ''}`;
   return `
+            ${annexureColgroupHtml()}
             <thead>
             <tr>
               <th class="section-title" colspan="3">${title}</th>
@@ -536,7 +559,7 @@ function annexureTheadHtml(docLabel, continued = false) {
             <tr class="col-heads">
               <th class="sno-col">S.NO.</th>
               <th class="head-col">HEADERS</th>
-              <th>TERMS AND CONDITIONS</th>
+              <th class="col-terms">TERMS AND CONDITIONS</th>
             </tr>
           </thead>`;
 }

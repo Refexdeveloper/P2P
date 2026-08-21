@@ -160,6 +160,20 @@ export const PO_STYLES = `
     word-break: normal;
     vertical-align: top;
   }
+  body.po-document-pdf-pages table.price td.amount-cell,
+  body.po-document-pdf-pages table.price td.unit-rate-cell,
+  body.po-document-pdf-pages table.price td.total-amount-cell,
+  body.po-document-pdf-pages table.price td.col-rate,
+  body.po-document-pdf-pages table.price td.col-unit-rate,
+  body.po-document-pdf-pages table.price td.col-total {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    word-wrap: normal !important;
+    text-align: right;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
 
   /* ===== Document shell — logo bands repeat on every printed page ===== */
   table.doc-shell {
@@ -651,11 +665,71 @@ export const PO_STYLES = `
 
   table.price th, table.terms th { background: #f2f2f2; text-align: center; font-weight: bold; }
   table.price td, table.terms td { vertical-align: top; height: auto; }
-  table.terms th.head-col, table.terms td.head-col { width: 18%; text-align: left; font-weight: bold; }
+  table.terms {
+    table-layout: fixed;
+  }
+  table.terms th.head-col,
+  table.terms td.head-col {
+    width: 22%;
+    text-align: left;
+    font-weight: bold;
+    vertical-align: top;
+  }
   table.terms td { text-align: left; }
-  table.terms td.sno-col, table.terms th.sno-col { width: 6%; text-align: center; }
+  table.terms col.col-sno,
+  table.terms td.sno-col,
+  table.terms th.sno-col {
+    width: 8mm;
+    max-width: 10mm;
+    text-align: center;
+    vertical-align: top;
+    white-space: nowrap;
+    padding-left: 2px;
+    padding-right: 2px;
+    font-weight: 700;
+  }
+  table.terms col.col-terms,
+  table.terms th.col-terms,
+  table.terms td.col-terms {
+    width: auto;
+  }
+  table.price {
+    table-layout: fixed;
+  }
+  table.price col.col-sl,
+  table.price th.col-sl,
+  table.price td.col-sl {
+    width: 5%;
+    text-align: center;
+    vertical-align: top;
+    white-space: nowrap;
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+  table.price col.col-description { width: 43%; }
+  table.price col.col-uom { width: 6%; }
+  table.price col.col-qty { width: 6%; }
+  table.price col.col-unit-rate,
+  table.price col.col-rate { width: 16%; }
+  table.price col.col-tax { width: 7%; }
+  table.price col.col-total { width: 17%; }
   table.price td.center, table.price th { text-align: center; }
   table.price td.right { text-align: right; }
+  table.price td.amount-cell,
+  table.price td.unit-rate-cell,
+  table.price td.total-amount-cell,
+  table.price td.col-rate,
+  table.price td.col-unit-rate,
+  table.price td.col-total {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    word-wrap: normal !important;
+    text-align: right;
+    vertical-align: top;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
   table.price tr.total td { font-weight: bold; }
   table.price .spec-block p { margin: 6px 0; }
 
