@@ -1,5 +1,6 @@
 import PriorityBadge from '../../../components/base/PriorityBadge';
 import StatusBadge from '../../../components/base/StatusBadge';
+import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatDate';
 
 interface LineItem {
   description: string;
@@ -64,28 +65,9 @@ export default function TaskDetailDrawer({
   const lineItems = Array.isArray(task.lineItems) ? task.lineItems : [];
   const approvalHistory = Array.isArray(task.approvalHistory) ? task.approvalHistory : [];
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return '—';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr || '—';
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
-  const formatDateTime = (dateStr: string) => {
-    if (!dateStr) return '—';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr || '—';
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatDateTime = (dateStr: string) => formatDisplayDateTime(dateStr);
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">

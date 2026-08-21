@@ -8,6 +8,7 @@ import ApprovalModal from './components/ApprovalModal';
 import TaskDetailDrawer from './components/TaskDetailDrawer';
 import { taskApi, prApi, poApi } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDisplayDate } from '../../utils/formatDate';
 
 interface TaskItem {
   id: string;
@@ -486,15 +487,7 @@ export default function TasksPage() {
     return { pending, approved, rejected, overdue, totalValue };
   }, [processedTasks]);
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString('en-IN', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
   const formatInr = (amount: number) =>
     `₹${Number(amount || 0).toLocaleString('en-IN')}`;

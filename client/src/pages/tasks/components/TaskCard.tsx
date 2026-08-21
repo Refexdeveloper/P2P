@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import StatusBadge from '../../../components/base/StatusBadge';
 import PriorityBadge from '../../../components/base/PriorityBadge';
+import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatDate';
 
 interface Task {
   id: string;
@@ -69,14 +70,12 @@ export default function TaskCard({ task, onAction, isExpanded, onToggle }: TaskC
     return `${Math.ceil(remaining / 24)}d left`;
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
+  const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
   const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const formatted = formatDisplayDateTime(dateStr);
+    const parts = formatted.split(',').map((p) => p.trim());
+    return parts.length > 1 ? parts[parts.length - 1] : formatted;
   };
 
   const typeStyle = getTypeIcon(task.type);

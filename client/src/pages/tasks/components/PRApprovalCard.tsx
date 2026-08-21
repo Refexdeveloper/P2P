@@ -1,6 +1,7 @@
 
 import React from 'react';
 import PriorityBadge from '../../../components/base/PriorityBadge';
+import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatDate';
 
 interface LineItem {
   description: string;
@@ -61,26 +62,9 @@ export default function PRApprovalCard({
   onApprove,
   onReject,
 }: PRApprovalCardProps) {
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
-  const formatDateTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatDateTime = (dateStr: string) => formatDisplayDateTime(dateStr);
 
   const getSlaColor = () => {
     if (task.isOverdue) return 'text-red-600 bg-red-50 border-red-200';

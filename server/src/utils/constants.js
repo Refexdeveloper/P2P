@@ -146,11 +146,13 @@ export function formatDate(date) {
 
 export function formatDateTime(date) {
   if (!date) return '';
-  return new Date(date).toLocaleString('en-IN', {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
     day: '2-digit',
+    month: 'short',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
