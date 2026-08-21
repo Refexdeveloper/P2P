@@ -227,7 +227,7 @@ export const PO_STYLES = `
     .annexure-ii,
     .special-notes,
     .ack-box,
-    .amount-words,
+    .amount-words-inner,
     table.price,
     table.terms {
       width: 100% !important;
@@ -255,7 +255,7 @@ export const PO_STYLES = `
 
   .table-frame {
     width: 100%;
-    border: none;
+    border: 1px solid #000;
     margin: 6px 0 0;
     page-break-inside: auto;
     break-inside: auto;
@@ -417,25 +417,44 @@ export const PO_STYLES = `
   table.terms tr { page-break-inside: avoid; break-inside: avoid; }
   table.price tr { page-break-inside: auto; break-inside: auto; }
 
-  .amount-words {
-    width: 100%;
-    border: 1px solid #000;
+  /* One 1px frame on left, right, and bottom — same as top. Cell outer edges sit on the frame. */
+  .table-frame table.price {
+    border: none;
+  }
+  .table-frame table.price tr > *:first-child {
+    border-left: none;
+  }
+  .table-frame table.price tr > *:last-child {
+    border-right: none;
+  }
+  .table-frame table.price thead tr:first-child > * {
     border-top: none;
-    padding: 8px 10px;
+  }
+  .table-frame table.price tbody tr:last-child > * {
+    border-bottom: none;
+  }
+
+  .amount-words-inner {
     display: flex;
     justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
     font-size: 12.5px;
-    page-break-inside: avoid;
-    break-inside: avoid;
   }
-  .amount-words .label { font-weight: bold; white-space: nowrap; margin-right: 10px; }
-  .amount-words .value {
+  .amount-words-inner .label { font-weight: bold; white-space: nowrap; }
+  .amount-words-inner .value {
     font-weight: bold;
     text-align: right;
     flex: 1;
     min-width: 0;
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+  table.price tr.amount-words-row td {
+    font-weight: bold;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   h2.annexure-title { text-align: center; margin: 0 0 2px 0; font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }

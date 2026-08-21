@@ -405,12 +405,16 @@ function lineItemsHtml(po) {
     <tr class="total"><td colspan="6">SubTotal</td><td class="right">${fmtMoney(po.subtotal, po.currency)}</td></tr>
     <tr class="total"><td colspan="6">Add: Tax (per line)</td><td class="right">${fmtMoney(po.taxAmount, po.currency)}</td></tr>
     <tr class="total"><td colspan="6">GrandTotal</td><td class="right">${fmtMoney(po.grandTotal, po.currency)}</td></tr>
+    <tr class="amount-words-row">
+      <td colspan="7">
+        <div class="amount-words-inner">
+          <span class="label">Amount In Words:</span>
+          <span class="value">${escapeHtml(numberToIndianWords(po.grandTotal))}</span>
+        </div>
+      </td>
+    </tr>
     </tbody>
   </table>
-  </div>
-  <div class="amount-words">
-    <span class="label">Amount In Words:</span>
-    <span class="value">${escapeHtml(numberToIndianWords(po.grandTotal))}</span>
   </div>`;
 }
 
@@ -644,8 +648,6 @@ function specialNotesHtml(po, options = {}) {
       ${td.reasonForCancellation ? `<p><span class="lbl">Reason For Cancellation:</span> ${escapeHtml(td.reasonForCancellation).replace(/\n/g, '<br>')}</p>` : ''}
       ${po.specialInstructions ? `<p><span class="lbl">Note:</span> ${escapeHtml(po.specialInstructions).replace(/\n/g, '<br>')}</p>` : ''}
       <p><span class="lbl">PR Reference:</span> ${escapeHtml(po.prNumber)}</p>
-      <p><span class="lbl">Department:</span> ${escapeHtml(po.department || '—')}</p>
-      <p><span class="lbl">Requester:</span> ${escapeHtml(po.requester || '—')}</p>
       <p><span class="lbl">Incoterms:</span> ${escapeHtml(po.incoterms || '—')}</p>
       <p><span class="lbl">Expected Delivery:</span> ${escapeHtml(po.expectedDeliveryDate || '—')}</p>
       ${signature ? `
@@ -766,11 +768,6 @@ export function buildPoDocumentHtml(po, options = {}) {
       <p><strong>Ref.No/Date.</strong> PR: ${escapeHtml(po.prNumber)}, Date: ${poDate}</p>
       <p>&nbsp;</p>
       <p><strong>Subject:</strong> ${escapeHtml(subjectFallback)}</p>
-      <p>&nbsp;</p>
-      <p><strong>${escapeHtml(docLabel)} Type:</strong> ${escapeHtml(poTypeLabel)}</p>
-      ${po.entity ? `<p><strong>Entity:</strong> ${escapeHtml(po.entity)}</p>` : ''}
-      <p><strong>Department:</strong> ${escapeHtml(po.department || '—')}</p>
-      <p><strong>Requester:</strong> ${escapeHtml(po.requester || '—')}</p>
     </div>
     ${lineItemsHtml(po)}`,
     '',

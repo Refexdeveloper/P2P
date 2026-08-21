@@ -462,11 +462,13 @@ export interface VendorComparisonData {
     latest: Record<string, unknown>;
     latestSubmissionId: number | null;
     quotationFileName?: string;
+    hasQuotationFile?: boolean;
     rounds: Array<{
       round: number;
       values: Record<string, unknown>;
       submittedAt: string;
       quotationFileName: string;
+      hasQuotationFile?: boolean;
       submissionId: number;
     }>;
   }>;

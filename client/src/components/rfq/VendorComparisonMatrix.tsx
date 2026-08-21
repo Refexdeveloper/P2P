@@ -1,5 +1,5 @@
-import { Fragment } from 'react';
-import type { VendorComparisonData } from '../../services/api';
+import { Fragment, useCallback, useState } from 'react';
+import { rfqApi, type VendorComparisonData } from '../../services/api';
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', {
@@ -62,6 +62,7 @@ type RevColumn = {
   values: Record<string, unknown>;
   submissionId?: number;
   quotationFileName?: string;
+  hasQuotationFile?: boolean;
 };
 
 interface Props {
@@ -143,6 +144,42 @@ const stUom = `hidden md:table-cell md:sticky md:left-[312px] md:z-30 md:w-14 md
 const stLabelMobile = `md:hidden sticky left-10 z-30 w-[128px] min-w-[128px] border-r border-[#E5EAF0] bg-inherit ${stickyEdge}`;
 const stLabelDesktop = `hidden md:table-cell sticky md:left-14 z-30 border-r border-[#E5EAF0] bg-inherit ${stickyEdge}`;
 
+async function fetchQuoteBlob(submissionId: number) {
+  const token = localStorage.getItem('p2p_token');
+  const res = await fetch(rfqApi.quotationFileUrl(submissionId), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let message = 'Could not load quotation file';
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      /* keep */
+    }
+    throw new Error(message);
+  }
+  return res.blob();
+}
+
+function resolveQuoteFile(
+  col: RevColumn | undefined,
+  vendor: VendorComparisonData['vendors'][number]
+) {
+  const submissionId =
+    Number(col?.submissionId || (col?.isLatest ? vendor.latestSubmissionId : 0)) || 0;
+  const fileName = String(
+    col?.quotationFileName || (col?.isLatest ? vendor.quotationFileName : '') || ''
+  ).trim();
+  const hasFile = Boolean(
+    submissionId &&
+      (fileName ||
+        col?.hasQuotationFile ||
+        (col?.isLatest && (vendor.hasQuotationFile || vendor.quotationFileName)))
+  );
+  return { submissionId, fileName: fileName || 'quotation.pdf', hasFile };
+}
+
 export default function VendorComparisonMatrix({
   data,
   selectedVendorId,
@@ -154,6 +191,38 @@ export default function VendorComparisonMatrix({
   const activeVendorId = selectedVendorId ?? recommendedVendorId;
   const recommendationJustification = String(data.recommendationJustification || '').trim();
   const lineItems = pr.lineItems || [];
+  const [fileBusy, setFileBusy] = useState<string | null>(null);
+  const [fileError, setFileError] = useState('');
+
+  const openQuoteFile = useCallback(
+    async (submissionId: number, vendorName: string, fileName: string, mode: 'view' | 'download') => {
+      setFileError('');
+      setFileBusy(`${submissionId}-${mode}`);
+      try {
+        if (mode === 'view' && onPreviewFile) {
+          onPreviewFile(submissionId, vendorName, fileName);
+          return;
+        }
+        const blob = await fetchQuoteBlob(submissionId);
+        const url = URL.createObjectURL(blob);
+        if (mode === 'download') {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName || 'quotation.pdf';
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 15000);
+        } else {
+          window.open(url, '_blank', 'noopener,noreferrer');
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        }
+      } catch (err) {
+        setFileError(err instanceof Error ? err.message : `Could not ${mode} quotation file`);
+      } finally {
+        setFileBusy(null);
+      }
+    },
+    [onPreviewFile]
+  );
 
   const totalRounds = Math.max(
     Number(data.totalRounds) || 0,
@@ -175,6 +244,7 @@ export default function VendorComparisonMatrix({
         values: vendor.latest || {},
         submissionId: vendor.latestSubmissionId,
         quotationFileName: vendor.quotationFileName || '',
+        hasQuotationFile: Boolean(vendor.hasQuotationFile || vendor.quotationFileName),
         submittedAt: '',
       });
     }
@@ -197,7 +267,12 @@ export default function VendorComparisonMatrix({
         isLatest: roundNum === latestRound,
         values: (r.values || {}) as Record<string, unknown>,
         submissionId: r.submissionId,
-        quotationFileName: r.quotationFileName,
+        quotationFileName: r.quotationFileName || (roundNum === latestRound ? vendor.quotationFileName : '') || '',
+        hasQuotationFile: Boolean(
+          r.hasQuotationFile ||
+            r.quotationFileName ||
+            (roundNum === latestRound && (vendor.hasQuotationFile || vendor.quotationFileName))
+        ),
       });
     }
   });
@@ -312,6 +387,48 @@ export default function VendorComparisonMatrix({
     window.print();
   };
 
+  const renderFileActions = (
+    col: RevColumn | undefined,
+    vendor: VendorComparisonData['vendors'][number],
+    size: 'sm' | 'md' = 'sm'
+  ) => {
+    const file = resolveQuoteFile(col, vendor);
+    if (!file.hasFile) {
+      return <span className="text-slate-300">—</span>;
+    }
+    const btn =
+      size === 'md'
+        ? 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer'
+        : 'inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-semibold cursor-pointer';
+    return (
+      <div className="flex flex-col items-center gap-1 min-w-0">
+        <p className="text-[11px] text-slate-600 truncate max-w-[160px]" title={file.fileName}>
+          {file.fileName}
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-1 print:hidden">
+          <button
+            type="button"
+            disabled={fileBusy === `${file.submissionId}-view`}
+            onClick={() => void openQuoteFile(file.submissionId, vendor.name, file.fileName, 'view')}
+            className={`${btn} border-teal-200 text-teal-700 hover:bg-teal-50 disabled:opacity-50`}
+          >
+            <i className="ri-eye-line"></i>
+            View
+          </button>
+          <button
+            type="button"
+            disabled={fileBusy === `${file.submissionId}-download`}
+            onClick={() => void openQuoteFile(file.submissionId, vendor.name, file.fileName, 'download')}
+            className={`${btn} border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50`}
+          >
+            <i className="ri-download-line"></i>
+            Download
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={`min-w-0 w-full max-w-full overflow-hidden ${compact ? 'space-y-4' : 'space-y-5'} print:space-y-4`}>
       {/* Recommendation (existing) */}
@@ -383,6 +500,40 @@ export default function VendorComparisonMatrix({
                 <span className="text-[#334155]">{siteDate.replace(/\./g, '/')}</span>
               </p>
             </div>
+          </div>
+        </section>
+      )}
+
+      {fileError && (
+        <div className="px-4 py-2 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 print:hidden">
+          {fileError}
+        </div>
+      )}
+
+      {vendorGroups.length > 0 && (
+        <section className={`${cardClass} print:hidden`}>
+          <div className="px-4 sm:px-5 py-3 border-b border-[#E5EAF0] bg-slate-50 flex items-center gap-2">
+            <i className="ri-file-pdf-2-line text-teal-600"></i>
+            <div>
+              <h2 className="text-sm font-bold text-[#12284A]">Final quotation files</h2>
+              <p className="text-xs text-slate-500">Latest quote from each vendor — view or download</p>
+            </div>
+          </div>
+          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {vendorGroups.map(({ vendor, cols }) => {
+              const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
+              return (
+                <div key={`final-file-${vendor.id}`} className="rounded-xl border border-[#E5EAF0] p-3 bg-white">
+                  <p className="text-xs font-bold text-slate-800 truncate mb-2" title={vendor.name}>
+                    {vendor.name}
+                    {vendor.isRecommended ? (
+                      <span className="ml-1 text-[10px] font-semibold text-emerald-700">Recommended</span>
+                    ) : null}
+                  </p>
+                  {renderFileActions(latestCol, vendor, 'md')}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -1030,25 +1181,8 @@ export default function VendorComparisonMatrix({
                     })}
                     <div className="px-3 py-2.5 flex items-center justify-between gap-3">
                       <span className="text-xs font-semibold text-slate-600">Quotation File</span>
-                      {latestCol?.quotationFileName && latestCol.submissionId && onPreviewFile ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                            onPreviewFile(
-                              latestCol.submissionId!,
-                              vendor.name,
-                              latestCol.quotationFileName!
-                            )
-                          }
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5EAF0] text-xs font-semibold text-[#1769E0]"
-                      >
-                        <i className="ri-eye-line"></i>
-                        Preview
-                      </button>
-                    ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
-      </div>
+                      {renderFileActions(latestCol, vendor, 'sm')}
+                    </div>
                   </div>
                 </article>
               );
@@ -1138,24 +1272,7 @@ export default function VendorComparisonMatrix({
                         key={`file-${vendor.id}`}
                         className="px-4 py-3.5 border-b border-l border-[#E5EAF0] text-center"
                       >
-                        {latestCol?.quotationFileName && latestCol.submissionId && onPreviewFile ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onPreviewFile(
-                                latestCol.submissionId!,
-                                vendor.name,
-                                latestCol.quotationFileName!
-                              )
-                            }
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5EAF0] text-xs font-semibold text-[#1769E0] hover:bg-[#EFF6FF] cursor-pointer print:hidden"
-                          >
-                            <i className="ri-eye-line"></i>
-                            Preview
-                          </button>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
+                        {renderFileActions(latestCol, vendor, 'sm')}
                       </td>
                     );
                   })}

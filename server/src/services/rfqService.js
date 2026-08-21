@@ -279,6 +279,14 @@ function mapSubmissionRow(s) {
     deliveryTerms: s.delivery_terms || '',
     quotationFileName: s.quotation_file_name || '',
     quotationFilePath: s.quotation_file_path || '',
+    hasQuotationFile: Boolean(
+      s.quotation_file_name ||
+        s.quotation_file_path ||
+        (s.quotation_file_data &&
+          (Buffer.isBuffer(s.quotation_file_data)
+            ? s.quotation_file_data.length > 0
+            : Boolean(s.quotation_file_data.length)))
+    ),
     quoteLineItems,
     customFields,
     requesterFields,
@@ -1566,6 +1574,7 @@ export async function getVendorComparisonMatrix(user, prId) {
         values: submissionToFieldValues(s),
         submittedAt: s.submittedAt,
         quotationFileName: s.quotationFileName,
+        hasQuotationFile: Boolean(s.hasQuotationFile || s.quotationFileName),
         submissionId: s.id,
         sendBackReason: inv.sendBackReason,
         status: s.status,
@@ -1581,6 +1590,7 @@ export async function getVendorComparisonMatrix(user, prId) {
       latest: submissionToFieldValues(activeSubmission),
       latestSubmissionId: activeSubmission?.id || null,
       quotationFileName: activeSubmission?.quotationFileName || '',
+      hasQuotationFile: Boolean(activeSubmission?.hasQuotationFile || activeSubmission?.quotationFileName),
       // Always pass full round history for comparison sheet columns (Round 1 + Round 2…)
       // Compact/manager views still use latest for matrix "best" cells via vendor.latest
       rounds: allRounds,
