@@ -67,9 +67,8 @@ export const PO_STYLES = `
     position: relative;
     box-sizing: border-box;
     background: #fff;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     page-break-after: always;
     break-after: page;
   }
@@ -78,19 +77,19 @@ export const PO_STYLES = `
     break-after: auto;
   }
   .pdf-header {
-    flex: 0 0 auto;
+    grid-row: 1;
     padding: 6mm 8mm 2mm;
   }
   .pdf-content {
-    flex: 1 1 auto;
+    grid-row: 2;
     min-height: 0;
     padding: 3mm 8mm 4mm;
-    overflow: hidden;
+    overflow: visible;
   }
   .pdf-footer {
-    flex: 0 0 auto;
+    grid-row: 3;
     padding: 2mm 8mm 5mm;
-    margin-top: auto;
+    background: #fff;
   }
   .pdf-page-no {
     text-align: center;
@@ -113,9 +112,53 @@ export const PO_STYLES = `
     }
   }
   .line-item,
+  .po-line-item,
+  .po-line-item td,
   .terms-row {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  body.po-document-pdf-pages table.price,
+  body.po-document-pdf-pages table.terms,
+  table.po-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    border-spacing: 0;
+    border: 1px solid #000;
+  }
+  body.po-document-pdf-pages table.price th,
+  body.po-document-pdf-pages table.price td,
+  body.po-document-pdf-pages table.terms th,
+  body.po-document-pdf-pages table.terms td,
+  table.po-table th,
+  table.po-table td {
+    border: 1px solid #000;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    white-space: normal;
+  }
+  body.po-document-pdf-pages .table-frame {
+    border: none;
+  }
+  body.po-document-pdf-pages .table-frame table.price tr > *:first-child,
+  body.po-document-pdf-pages .table-frame table.terms tr > *:first-child,
+  body.po-document-pdf-pages .table-frame table.price tr > *:last-child,
+  body.po-document-pdf-pages .table-frame table.terms tr > *:last-child,
+  body.po-document-pdf-pages .table-frame table.price thead tr:first-child > *,
+  body.po-document-pdf-pages .table-frame table.terms thead tr:first-child > *,
+  body.po-document-pdf-pages .table-frame table.price tbody tr:last-child > *,
+  body.po-document-pdf-pages .table-frame table.terms tbody tr:last-child > * {
+    border: 1px solid #000 !important;
+  }
+  td.description,
+  td.col-description {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    vertical-align: top;
   }
 
   /* ===== Document shell — logo bands repeat on every printed page ===== */

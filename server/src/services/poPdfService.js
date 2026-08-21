@@ -193,7 +193,7 @@ ${bodyInner}
 }
 
 function priceTableHtml(thead, rowsHtml) {
-  return `<div class="table-frame"><table class="price">${thead}<tbody>${rowsHtml}</tbody></table></div>`;
+  return `<div class="table-frame"><table class="price po-table">${thead}<tbody>${rowsHtml}</tbody></table></div>`;
 }
 
 function termsTableHtml(thead, rowsHtml) {
@@ -214,47 +214,42 @@ function pdfPageHtml(parts, contentHtml, pageNo, totalPages) {
 }
 
 function buildMeasureHtml(parts) {
-  const itemTables = parts.itemRows
-    .map(
-      (row, i) =>
-        `<table class="price" style="width:100%"><tbody data-block="item-${i}">${row}</tbody></table>`
-    )
-    .join('');
-  const termTables = parts.termRows
-    .map(
-      (row, i) =>
-        `<table class="terms terms-compact" style="width:100%"><tbody data-block="term-${i}">${row}</tbody></table>`
-    )
-    .join('');
-  const annexTables = parts.annexureRows
-    .map(
-      (row, i) =>
-        `<table class="terms annexure-table" style="width:100%"><tbody data-block="annexure-${i}">${row}</tbody></table>`
-    )
-    .join('');
+  const termRows = parts.termRows.join('');
+  const annexRows = parts.annexureRows.join('');
   const annexIi = parts.annexureIiBlocks
     .map((html, i) => `<div data-block="annexure-ii-${i}">${html}</div>`)
     .join('');
 
   return wrapPoHtmlDocument(
     `
-    <div class="pdf-header" data-block="header">${parts.headerHtml}</div>
-    <div class="pdf-footer" data-block="footer">${parts.footerHtml}<div class="pdf-page-no">Page 1 of 1</div></div>
-    <div class="pdf-content">
-      <div data-block="details">${parts.detailsHtml}</div>
-      <table class="price" style="width:100%">${parts.priceThead}<tbody></tbody></table>
-      <div data-block="price-thead"></div>
-      ${itemTables}
-      <table class="price" style="width:100%"><tbody data-block="totals">${parts.totalsRows}</tbody></table>
-      ${parts.termsThead ? `<table class="terms terms-compact" style="width:100%">${parts.termsThead}</table>` : ''}
-      <div data-block="terms-thead"></div>
-      ${termTables}
-      ${parts.annexureThead ? `<table class="terms annexure-table" style="width:100%">${parts.annexureThead}</table>` : ''}
-      <div data-block="annexure-thead"></div>
-      ${annexTables}
-      ${annexIi}
-      <div data-block="notes">${parts.notesHtml}</div>
-      <div data-block="ack">${parts.ackHtml}</div>
+    <div class="pdf-page" style="height:auto;max-height:none;overflow:visible">
+      <header class="pdf-header" data-block="header">${parts.headerHtml}</header>
+      <main class="pdf-content" style="overflow:visible">
+        <div data-block="details">${parts.detailsHtml}</div>
+        <div class="table-frame">
+          <table class="price po-table" id="measure-price">
+            ${parts.priceThead}
+            <tbody>
+              ${parts.itemRows.join('')}
+              ${parts.totalsRows}
+            </tbody>
+          </table>
+        </div>
+        ${
+          parts.termRows.length
+            ? `<div class="table-frame"><table class="terms terms-compact po-table" id="measure-terms">${parts.termsThead}<tbody>${termRows}</tbody></table></div>`
+            : ''
+        }
+        ${
+          parts.annexureRows.length
+            ? `<div class="table-frame"><table class="terms annexure-table po-table" id="measure-annexure">${parts.annexureThead}<tbody>${annexRows}</tbody></table></div>`
+            : ''
+        }
+        ${annexIi}
+        <div data-block="notes">${parts.notesHtml}</div>
+        <div data-block="ack">${parts.ackHtml}</div>
+      </main>
+      <footer class="pdf-footer" data-block="footer">${parts.footerHtml}<div class="pdf-page-no">Page 1 of 1</div></footer>
     </div>`,
     'PO measure',
     'po-document po-document-pdf-pages'
@@ -267,11 +262,13 @@ function heightOf(map, id, fallback = 48) {
 }
 
 function packPoPages(parts, heights) {
-  const pageH = (297 * 96) / 25.4;
-  const contentH = Math.max(
-    200,
-    pageH - heights.header - heights.footer - (7 * 96) / 25.4
-  );
+  const mm = (n) => (n * 96) / 25.4;
+  const pageH = mm(297);
+  const headerH = Math.max(heights.header || 0, mm(16));
+  const footerH = Math.max(heights.footer || 0, mm(40));
+  const contentPad = mm(3) + mm(4);
+  const safety = mm(8);
+  const contentH = Math.max(180, pageH - headerH - footerH - contentPad - safety);
 
   const pages = [];
   let current = [];
@@ -283,15 +280,17 @@ function packPoPages(parts, heights) {
     used = 0;
   };
 
+  const canFit = (extra) => used + extra <= contentH;
+
   const addHtml = (html, h, forceNew = false) => {
     if (forceNew) flush();
-    const need = Math.min(Math.max(h, 8), contentH);
-    if (used > 0 && used + need > contentH) flush();
+    const need = Math.max(h, 8);
+    if (used > 0 && !canFit(need)) flush();
     current.push(html);
     used += need;
   };
 
-  addHtml(parts.detailsHtml, heights.details, false);
+  addHtml(parts.detailsHtml, heights.details || 0, false);
 
   const theadH = heights.priceThead || 52;
   const totalsH = heights.totals || 72;
@@ -309,32 +308,30 @@ function packPoPages(parts, heights) {
     priceStarted = true;
   };
 
-  const startPricePage = () => {
-    flushPrice();
-    flush();
-    continued = priceStarted;
+  const placePriceRow = (rowHtml, rowH) => {
+    const needThead = bucket.length === 0 ? theadH : 0;
+    if (!canFit(needThead + rowH) && (used > 0 || bucket.length > 0)) {
+      flushPrice();
+      flush();
+      continued = priceStarted;
+    }
+    if (bucket.length === 0) used += theadH;
+    bucket.push(rowHtml);
+    used += rowH;
   };
 
   parts.itemRows.forEach((_, i) => {
-    const rowH = heightOf(heights, `item-${i}`, 64);
-    const overhead = bucket.length === 0 ? theadH : 0;
-    if (used + overhead + rowH > contentH && (used > 0 || bucket.length > 0)) {
-      startPricePage();
-    } else if (bucket.length === 0) {
-      used += theadH;
-    }
-    bucket.push(parts.itemRows[i]);
-    used += rowH;
+    placePriceRow(parts.itemRows[i], heightOf(heights, `item-${i}`, 64));
   });
 
   if (bucket.length || !priceStarted) {
-    if (used + (bucket.length ? 0 : theadH) + totalsH > contentH && (used > 0 || bucket.length > 0)) {
+    const needThead = bucket.length === 0 ? theadH : 0;
+    if (!canFit(needThead + totalsH) && (used > 0 || bucket.length > 0)) {
       flushPrice();
       flush();
       continued = true;
-      bucket = [];
-      used = theadH;
     }
+    if (bucket.length === 0) used += theadH;
     bucket.push(parts.totalsRows);
     used += totalsH;
     flushPrice();
@@ -356,7 +353,7 @@ function packPoPages(parts, heights) {
     };
     parts.termRows.forEach((_, i) => {
       const rowH = heightOf(heights, `term-${i}`, 40);
-      if (used + rowH > contentH && tBucket.length) {
+      if (!canFit(rowH) && tBucket.length) {
         flushTerms();
         flush();
         used = tHeadH;
@@ -386,7 +383,7 @@ function packPoPages(parts, heights) {
     };
     parts.annexureRows.forEach((_, i) => {
       const rowH = heightOf(heights, `annexure-${i}`, 40);
-      if (used + rowH > contentH && aBucket.length) {
+      if (!canFit(rowH) && aBucket.length) {
         flushAnn();
         flush();
         used = aHeadH;
@@ -446,15 +443,25 @@ async function paginatePoHtml(browser, po, options) {
       header: h('[data-block="header"]'),
       footer: h('[data-block="footer"]'),
       details: h('[data-block="details"]'),
-      priceThead: document.querySelector('table.price thead')?.getBoundingClientRect().height || 52,
-      totals: h('[data-block="totals"]'),
-      termsThead: document.querySelector('table.terms thead')?.getBoundingClientRect().height || 48,
-      annexureThead:
-        document.querySelector('table.annexure-table thead')?.getBoundingClientRect().height || 48,
+      priceThead: document.querySelector('#measure-price thead')?.getBoundingClientRect().height || 52,
+      totals: 0,
+      termsThead: document.querySelector('#measure-terms thead')?.getBoundingClientRect().height || 48,
+      annexureThead: document.querySelector('#measure-annexure thead')?.getBoundingClientRect().height || 48,
       notes: h('[data-block="notes"]'),
       ack: h('[data-block="ack"]'),
     };
-    document.querySelectorAll('[data-block]').forEach((el) => {
+    document.querySelectorAll('#measure-price tbody tr[data-block]').forEach((el) => {
+      map[el.getAttribute('data-block')] = el.getBoundingClientRect().height;
+    });
+    const totalRows = document.querySelectorAll('#measure-price tbody tr.total, #measure-price tbody tr.amount-words-row');
+    map.totals = Array.from(totalRows).reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
+    document.querySelectorAll('#measure-terms tbody tr').forEach((el, i) => {
+      map[`term-${i}`] = el.getBoundingClientRect().height;
+    });
+    document.querySelectorAll('#measure-annexure tbody tr').forEach((el, i) => {
+      map[`annexure-${i}`] = el.getBoundingClientRect().height;
+    });
+    document.querySelectorAll('[data-block^="annexure-ii-"]').forEach((el) => {
       map[el.getAttribute('data-block')] = el.getBoundingClientRect().height;
     });
     return map;

@@ -357,34 +357,47 @@ function tableCloseFoot(colSpan) {
   return `<tfoot class="tbl-end"><tr><td colspan="${colSpan}"></td></tr></tfoot>`;
 }
 
+function priceColgroupHtml() {
+  return `<colgroup>
+    <col class="col-sl" style="width:5%">
+    <col class="col-description" style="width:50%">
+    <col class="col-uom" style="width:7%">
+    <col class="col-qty" style="width:6%">
+    <col class="col-rate" style="width:12%">
+    <col class="col-tax" style="width:8%">
+    <col class="col-total" style="width:12%">
+  </colgroup>`;
+}
+
 function lineItemRowHtml(item, index, po) {
   return `
-    <tr class="line-item" data-block="item-${index}">
-      <td class="center">${index + 1}</td>
-      <td><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}</div></td>
-      <td class="center">${escapeHtml(item.unit || item.uom || 'Nos')}</td>
-      <td class="center">${escapeHtml(item.quantity)}</td>
-      <td class="right">${fmtMoney(item.unitPrice, po.currency)}</td>
-      <td class="center">${escapeHtml(item.taxPercentage ?? item.tax_percentage ?? 0)}%</td>
-      <td class="right">${fmtMoney(item.total, po.currency)}</td>
+    <tr class="line-item po-line-item" data-block="item-${index}">
+      <td class="center col-sl">${index + 1}</td>
+      <td class="description col-description"><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}</div></td>
+      <td class="center col-uom">${escapeHtml(item.unit || item.uom || 'Nos')}</td>
+      <td class="center col-qty">${escapeHtml(item.quantity)}</td>
+      <td class="right col-rate">${fmtMoney(item.unitPrice, po.currency)}</td>
+      <td class="center col-tax">${escapeHtml(item.taxPercentage ?? item.tax_percentage ?? 0)}%</td>
+      <td class="right col-total">${fmtMoney(item.total, po.currency)}</td>
     </tr>`;
 }
 
 function priceScheduleTheadHtml(continued = false) {
   const title = continued ? 'PRICE SCHEDULE — Continued' : 'PRICE SCHEDULE';
   return `
+    ${priceColgroupHtml()}
     <thead>
     <tr>
       <th class="section-title" colspan="7">${title}</th>
     </tr>
     <tr class="col-heads">
-      <th style="width:5%">SI.No</th>
-      <th>Description Of Work</th>
-      <th style="width:7%">UOM</th>
-      <th style="width:6%">Qty</th>
-      <th style="width:12%">Unit Rate</th>
-      <th style="width:8%">Tax %</th>
-      <th style="width:12%">TOTAL Amt</th>
+      <th class="col-sl">SI.No</th>
+      <th class="col-description">Description Of Work</th>
+      <th class="col-uom">UOM</th>
+      <th class="col-qty">Qty</th>
+      <th class="col-rate">Unit Rate</th>
+      <th class="col-tax">Tax %</th>
+      <th class="col-total">TOTAL Amt</th>
     </tr>
     </thead>`;
 }
