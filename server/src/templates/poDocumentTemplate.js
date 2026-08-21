@@ -645,8 +645,7 @@ function specialNotesInnerHtml(po, options = {}) {
   const td = po.poTermsDetails || {};
   const paymentText = td.paymentTermsText || po.paymentTerms || '—';
   const siteAddress = td.siteAddress || po.deliveryAddress || '';
-  return wrapSheet(
-    `
+  return `
     <div class="special-notes">
       <p><strong>SPECIAL NOTES (if any):</strong></p>
       ${siteAddress ? `<p><span class="lbl">Site Address:</span> ${escapeHtml(siteAddress).replace(/\n/g, '<br>')}</p>` : ''}
