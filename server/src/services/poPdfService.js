@@ -177,9 +177,9 @@ async function inlinePoBranding(po = {}) {
 }
 
 /**
- * Convert PO / Work Order HTML → PDF using the same layout as PO Document Preview.
- * Letterhead header/footer live inside each .page-sheet (not Puppeteer chrome),
- * so Download PDF matches the on-screen preview.
+ * Convert PO / Work Order HTML → PDF.
+ * Letterhead repeats via HTML table thead/tfoot (same markup as preview).
+ * Do not use Puppeteer chrome templates — they clip the branded footer.
  */
 export async function htmlToPdf(html, filePath, _chromeTemplates = null) {
   const executablePath = resolveBrowserExecutable();
@@ -235,7 +235,7 @@ export async function generatePoPdf(po, options = {}) {
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
 
   const branded = await inlinePoBranding(po);
-  const html = buildPoHtml(branded, { ...options, forPdf: false });
+  const html = buildPoHtml(branded, { ...options, forPdf: true });
   fs.writeFileSync(htmlPath, html, 'utf8');
 
   try {

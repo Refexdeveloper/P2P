@@ -350,11 +350,15 @@ function wrapSheet(inner, extraClass, po, forPdf) {
   const cls = ['page', 'page-sheet', extraClass].filter(Boolean).join(' ');
   if (forPdf) {
     return `
-  <div class="${cls}">
-    <div class="page-body">
+  <tr class="doc-shell-row">
+    <td class="doc-shell-body">
+      <div class="${cls}">
+        <div class="page-body">
 ${inner}
-    </div>
-  </div>`;
+        </div>
+      </div>
+    </td>
+  </tr>`;
   }
   return `
   <div class="${cls}">
@@ -364,6 +368,22 @@ ${inner}
     </div>
     ${buildRunningFooter(po)}
   </div>`;
+}
+
+/** Repeats letterhead on every printed PDF page (Chrome table header/footer groups). */
+function wrapDocShell(rowsHtml, po) {
+  return `
+  <table class="doc-shell">
+    <thead>
+      <tr><td>${buildRunningHeader(po)}</td></tr>
+    </thead>
+    <tfoot>
+      <tr><td>${buildRunningFooter(po)}</td></tr>
+    </tfoot>
+    <tbody>
+${rowsHtml}
+    </tbody>
+  </table>`;
 }
 
 function pageFooter(po, pageLabel) {
@@ -404,8 +424,10 @@ function lineItemsHtml(po) {
       <th style="width:12%">TOTAL Amt</th>
     </tr>
     </thead>
-    <tbody>
+    <tbody class="price-items">
     ${rows}
+    </tbody>
+    <tbody class="price-totals">
     <tr class="total"><td colspan="6">SubTotal</td><td class="right">${fmtMoney(po.subtotal, po.currency)}</td></tr>
     <tr class="total"><td colspan="6">Add: Tax (per line)</td><td class="right">${fmtMoney(po.taxAmount, po.currency)}</td></tr>
     <tr class="total"><td colspan="6">GrandTotal</td><td class="right">${fmtMoney(po.grandTotal, po.currency)}</td></tr>
@@ -793,6 +815,8 @@ ${annexureIiPagesHtml(po, docLabel, forPdf)}
 ${specialNotesHtml(po, { ...options, forPdf })}
 ${acknowledgmentHtml(po, forPdf)}`;
 
+  const bodyInner = forPdf ? wrapDocShell(content, po) : content;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -801,7 +825,7 @@ ${acknowledgmentHtml(po, forPdf)}`;
 <style>${PO_STYLES}</style>
 </head>
 <body class="${bodyClass}">
-${content}
+${bodyInner}
 </body>
 </html>`;
 }

@@ -71,6 +71,32 @@ export const PO_STYLES = `
     vertical-align: top;
   }
 
+  /* PDF: reserve header/footer space on every printed page */
+  body.po-document-pdf table.doc-shell {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  body.po-document-pdf table.doc-shell > thead > tr > td {
+    padding: 8mm 10mm 5mm 10mm !important;
+    vertical-align: bottom;
+  }
+  body.po-document-pdf table.doc-shell > tfoot > tr > td {
+    padding: 4mm 10mm 8mm 10mm !important;
+    vertical-align: top;
+  }
+  body.po-document-pdf table.doc-shell > tbody > tr > td.doc-shell-body {
+    padding: 0 10mm !important;
+  }
+  body.po-document-pdf table.doc-shell > tbody > tr.doc-shell-row {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+  body.po-document-pdf .pdf-run-header,
+  body.po-document-pdf .pdf-run-footer {
+    margin: 0;
+    padding: 0;
+  }
+
   .pdf-run-header {
     display: block;
     width: 100%;
@@ -226,11 +252,20 @@ export const PO_STYLES = `
       print-color-adjust: exact;
     }
 
-    /* PDF-only path (no in-page letterhead): content uses printer margins */
+    /* PDF-only path: letterhead is the repeating doc-shell thead/tfoot */
     body.po-document-pdf .page-sheet {
       margin: 0;
       padding: 0;
       width: 100%;
+    }
+    body.po-document-pdf table.doc-shell > thead {
+      display: table-header-group !important;
+    }
+    body.po-document-pdf table.doc-shell > tfoot {
+      display: table-footer-group !important;
+    }
+    body.po-document-pdf .pdf-run-footer {
+      margin: 0;
     }
 
     /* Match on-screen PO Document Preview: each sheet is a full A4 page */
@@ -467,6 +502,11 @@ export const PO_STYLES = `
   table.terms tbody, table.price tbody { display: table-row-group; }
   table.terms tr { page-break-inside: avoid; break-inside: avoid; }
   table.price tr { page-break-inside: auto; break-inside: auto; }
+  table.price tbody.price-totals,
+  table.price tbody.price-totals tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
 
   /* One 1px frame on left, right, and bottom — same as top. Cell outer edges sit on the frame. */
   .table-frame table.price,
@@ -494,6 +534,10 @@ export const PO_STYLES = `
   table.price tfoot,
   table.terms tfoot {
     display: table-footer-group !important;
+  }
+  body.po-document-pdf table.price > tfoot.tbl-end,
+  body.po-document-pdf table.terms > tfoot.tbl-end {
+    display: table-row-group !important;
   }
   table.price tfoot td,
   table.terms tfoot td {
