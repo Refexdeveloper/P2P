@@ -29,7 +29,7 @@ export const PO_PDF_LAYOUT = {
 };
 
 export const PO_STYLES = `
-  @page { size: A4; }
+  @page { size: A4; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
 
@@ -200,11 +200,19 @@ export const PO_STYLES = `
   }
 
   @media print {
+    html, body {
+      background: #fff !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
     body.po-document {
       max-width: none;
       width: 100%;
       margin: 0;
       padding: 0 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     table.doc-shell > thead { display: table-header-group !important; }
@@ -218,7 +226,41 @@ export const PO_STYLES = `
       print-color-adjust: exact;
     }
 
-    .page-sheet { margin: 0; padding: 0; width: 100%; }
+    /* PDF-only path (no in-page letterhead): content uses printer margins */
+    body.po-document-pdf .page-sheet {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+    }
+
+    /* Match on-screen PO Document Preview: each sheet is a full A4 page */
+    body.po-document-preview .page-sheet {
+      background: #fff;
+      width: 210mm;
+      max-width: 100%;
+      min-height: 297mm;
+      margin: 0;
+      padding: 10mm 12mm 12mm !important;
+      box-shadow: none;
+      display: flex;
+      flex-direction: column;
+      page-break-after: always;
+      break-after: page;
+    }
+    body.po-document-preview .page-sheet:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    body.po-document-preview .page-sheet .page-body { flex: 1 1 auto; }
+    body.po-document-preview .page-sheet .pdf-run-footer { margin-top: auto; }
+    body.po-document-preview .page-terms,
+    body.po-document-preview .page-annexure,
+    body.po-document-preview .page-annexure-ii,
+    body.po-document-preview .page-notes,
+    body.po-document-preview .page-ack {
+      page-break-before: auto !important;
+      break-before: auto !important;
+    }
 
     .page-body,
     .info-box,
@@ -232,6 +274,15 @@ export const PO_STYLES = `
     table.terms {
       width: 100% !important;
       max-width: 100% !important;
+    }
+
+    .info-box,
+    .table-frame,
+    .annexure-ii,
+    .special-notes,
+    .ack-box {
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
     }
   }
 
@@ -256,7 +307,6 @@ export const PO_STYLES = `
   .table-frame {
     width: 100%;
     border: 1px solid #000;
-    border-bottom: none;
     margin: 6px 0 0;
     page-break-inside: auto;
     break-inside: auto;
@@ -492,8 +542,8 @@ export const PO_STYLES = `
     width: 100%;
     border: 1px solid #000;
     padding: 12px 16px;
-    page-break-inside: auto;
-    break-inside: auto;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
   .special-notes p, .ack-box p { margin: 6px 0; }
   .special-notes .lbl { font-weight: bold; }

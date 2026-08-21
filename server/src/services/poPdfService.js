@@ -5,8 +5,6 @@ import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
 import {
   buildPoDocumentHtml,
-  buildPoPdfChromeTemplates,
-  PO_PDF_LAYOUT,
 } from '../templates/poDocumentTemplate.js';
 import { buildSignatureRenderOptions } from './signatureService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
@@ -179,11 +177,11 @@ async function inlinePoBranding(po = {}) {
 }
 
 /**
- * Convert PO / Work Order HTML → PDF.
- * Header/footer logos: HTML doc-shell thead/tfoot (reliable for letterhead HTML).
- * Page numbers: Puppeteer footer chrome only.
+ * Convert PO / Work Order HTML → PDF using the same layout as PO Document Preview.
+ * Letterhead header/footer live inside each .page-sheet (not Puppeteer chrome),
+ * so Download PDF matches the on-screen preview.
  */
-export async function htmlToPdf(html, filePath, chromeTemplates = null) {
+export async function htmlToPdf(html, filePath, _chromeTemplates = null) {
   const executablePath = resolveBrowserExecutable();
   if (!executablePath) {
     throw new Error(
@@ -195,6 +193,7 @@ export async function htmlToPdf(html, filePath, chromeTemplates = null) {
 
   try {
     const page = await browser.newPage();
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
     try {
       await page.setContent(html, { waitUntil: 'networkidle0', timeout: 90000 });
     } catch {
@@ -214,22 +213,13 @@ export async function htmlToPdf(html, filePath, chromeTemplates = null) {
       );
     });
 
-    const chrome = chromeTemplates || buildPoPdfChromeTemplates();
-
     await page.pdf({
       path: filePath,
       format: 'A4',
       printBackground: true,
-      preferCSSPageSize: false,
-      margin: {
-        top: PO_PDF_LAYOUT.top,
-        right: PO_PDF_LAYOUT.side,
-        bottom: PO_PDF_LAYOUT.bottom,
-        left: PO_PDF_LAYOUT.side,
-      },
-      displayHeaderFooter: true,
-      headerTemplate: chrome.headerTemplate,
-      footerTemplate: chrome.footerTemplate,
+      preferCSSPageSize: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      displayHeaderFooter: false,
     });
   } finally {
     await browser.close();
@@ -245,12 +235,11 @@ export async function generatePoPdf(po, options = {}) {
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
 
   const branded = await inlinePoBranding(po);
-  const html = buildPoHtml(branded, { ...options, forPdf: true });
-  const chrome = buildPoPdfChromeTemplates(branded);
+  const html = buildPoHtml(branded, { ...options, forPdf: false });
   fs.writeFileSync(htmlPath, html, 'utf8');
 
   try {
-    await htmlToPdf(html, filePath, chrome);
+    await htmlToPdf(html, filePath);
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
     console.warn('HTML-to-PDF failed, HTML document saved:', err.message);
