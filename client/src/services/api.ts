@@ -222,6 +222,10 @@ export const prApi = {
   listPending: () => request<{ data: unknown[] }>('/api/purchase-requests?pending=true'),
   listScmBucket: () => request<{ data: unknown[] }>('/api/purchase-requests?bucket=scm'),
   get: (id: number) => request<{ data: unknown }>(`/api/purchase-requests/${id}`),
+  listApprovalUsers: () =>
+    request<{
+      data: Array<{ id: number; name: string; email: string; role: string; department: string }>;
+    }>('/api/purchase-requests/approval-users'),
   previewL1Manager: (department?: string) =>
     request<{
       data: {
@@ -522,6 +526,7 @@ export interface VendorComparisonData {
     status: string;
     statusUI: string;
     vendorSelection?: 'own' | 'scm';
+    prFlow?: 'standard' | 'functional';
     justification: string;
     approvalHistory: Array<{ stage: string; user: string; role: string; date: string; status: string; remarks: string }>;
     lineItems?: Array<{

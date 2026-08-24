@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import StatusBadge from '../../../../components/base/StatusBadge';
 import PriorityBadge from '../../../../components/base/PriorityBadge';
 import { prApi } from '../../../../services/api';
 import { useAuth } from '../../../../contexts/AuthContext';
+import PrVendorQuotationsPanel from '../../../../components/feature/PrVendorQuotationsPanel';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -59,6 +60,13 @@ export interface PRDetail {
   entityCostCenter?: string;
   priority: string;
   justification: string;
+  billingLocation?: string;
+  billingGstNo?: string;
+  billingAddress?: string;
+  deliveryPoc?: string;
+  placeOfDelivery?: string;
+  expectedDeliveryTimeline?: string;
+  paymentTerms?: string;
   requiredDate: string;
   totalAmount: number;
   status: string;
@@ -77,7 +85,13 @@ interface PRDetailDrawerProps {
 
 export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerProps) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'details' | 'items' | 'history'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'items' | 'quotes' | 'history'>('details');
+  const [hasQuotes, setHasQuotes] = useState(false);
+
+  useEffect(() => {
+    setActiveTab('details');
+    setHasQuotes(false);
+  }, [pr?.id]);
 
   if (!pr && !loading) return null;
 
@@ -140,18 +154,26 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
               </div>
             )}
 
-            <div className="px-6 pt-4 flex gap-2 border-b border-gray-100">
-              {(['details', 'items', 'history'] as const).map((tab) => (
+            <div className="px-6 pt-4 flex gap-2 border-b border-gray-100 overflow-x-auto">
+              {(['details', 'items', 'quotes', 'history'] as const)
+                .filter((tab) => tab !== 'quotes' || hasQuotes)
+                .map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize ${
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === tab
                       ? 'border-gray-900 text-gray-900'
                       : 'border-transparent text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  {tab === 'items' ? `Line Items (${pr.lineItems.length})` : tab === 'history' ? 'Approval History' : 'Details'}
+                  {tab === 'items'
+                    ? `Line Items (${pr.lineItems.length})`
+                    : tab === 'history'
+                      ? 'Approval History'
+                      : tab === 'quotes'
+                        ? 'Vendor Quotations'
+                        : 'Details'}
                 </button>
               ))}
             </div>
@@ -185,8 +207,37 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                       <p className="text-sm font-medium text-gray-900">{pr.requiredDate || '—'}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-0.5">Expected Delivery Timeline</p>
+                      <p className="text-sm font-medium text-gray-900">{pr.expectedDeliveryTimeline || '—'}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-0.5">Payment Terms</p>
+                      <p className="text-sm font-medium text-gray-900">{pr.paymentTerms || '—'}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Total Amount</p>
                       <p className="text-sm font-bold text-gray-900">₹{pr.totalAmount.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                      <p className="text-xs text-gray-500 mb-0.5">Billing Region / GST</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {pr.billingLocation || '—'}
+                        {pr.billingGstNo ? (
+                          <span className="block text-xs font-mono text-gray-600 mt-0.5">{pr.billingGstNo}</span>
+                        ) : null}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                      <p className="text-xs text-gray-500 mb-0.5">Billing Address</p>
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">{pr.billingAddress || '—'}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-0.5">POC for Delivery</p>
+                      <p className="text-sm font-medium text-gray-900">{pr.deliveryPoc || '—'}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-0.5">Place of Delivery</p>
+                      <p className="text-sm font-medium text-gray-900">{pr.placeOfDelivery || '—'}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3 col-span-2">
                       <p className="text-xs text-gray-500 mb-0.5">Submitted Date</p>
@@ -215,8 +266,27 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                       </div>
                     </div>
                   )}
+                  {hasQuotes && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('quotes')}
+                      className="w-full flex items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-left hover:bg-teal-100/70"
+                    >
+                      <span>
+                        <span className="block text-sm font-semibold text-teal-900">View vendor quotations</span>
+                        <span className="block text-xs text-teal-700 mt-0.5">Prices, rounds, and quotation files on this PR</span>
+                      </span>
+                      <i className="ri-arrow-right-s-line text-teal-700 text-lg" />
+                    </button>
+                  )}
                 </>
               )}
+
+              {pr.id ? (
+                <div className={activeTab === 'quotes' ? '' : 'hidden'}>
+                  <PrVendorQuotationsPanel prId={pr.id} onPresenceChange={setHasQuotes} />
+                </div>
+              ) : null}
 
               {activeTab === 'items' && (
                 <div className="border border-gray-200 rounded-lg overflow-hidden">

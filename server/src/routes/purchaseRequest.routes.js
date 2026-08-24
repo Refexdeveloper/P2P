@@ -13,6 +13,7 @@ import {
   adminSendBackPurchaseRequest,
   resubmitPurchaseRequest,
   previewL1Manager,
+  listApprovalUsers,
   toRequesterDashboardFormat,
   toManagerDashboardFormat,
   toCfoDashboardFormat,
@@ -90,6 +91,15 @@ router.get('/stats/requester', requireRoles('Requester'), async (req, res) => {
 router.get('/l1-manager', requireRoles('Requester'), async (req, res) => {
   try {
     const data = await previewL1Manager(req.user, req.query.department);
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/approval-users', requireRoles('Requester', 'Super Admin', 'SCM Manager', 'HOD Approver', 'PR Manager', 'CFO'), async (req, res) => {
+  try {
+    const data = await listApprovalUsers(req.user);
     res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });

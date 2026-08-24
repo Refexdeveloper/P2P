@@ -5,6 +5,10 @@ import {
   type DepartmentRecord,
   type EntityRecord,
 } from '../../../services/api';
+import {
+  PR_PAYMENT_TERM_OPTIONS,
+  PR_DELIVERY_TIMELINE_OPTIONS,
+} from '../../../constants/prRequisition';
 
 type LineDraft = {
   key: string;
@@ -26,6 +30,14 @@ type PrForm = {
   requiredDate: string;
   vendorSelection: 'own' | 'scm';
   justification: string;
+  billingLocationId: number | '';
+  billingLocation: string;
+  billingGstNo: string;
+  billingAddress: string;
+  deliveryPoc: string;
+  placeOfDelivery: string;
+  expectedDeliveryTimeline: string;
+  paymentTerms: string;
   lineItems: LineDraft[];
 };
 
@@ -121,6 +133,14 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
         requiredDate: toInputDate(String(pr.requiredDate || '')),
         vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
         justification: String(pr.justification || ''),
+        billingLocationId: pr.billingLocationId != null && pr.billingLocationId !== '' ? Number(pr.billingLocationId) : '',
+        billingLocation: String(pr.billingLocation || ''),
+        billingGstNo: String(pr.billingGstNo || ''),
+        billingAddress: String(pr.billingAddress || ''),
+        deliveryPoc: String(pr.deliveryPoc || ''),
+        placeOfDelivery: String(pr.placeOfDelivery || ''),
+        expectedDeliveryTimeline: String(pr.expectedDeliveryTimeline || ''),
+        paymentTerms: String(pr.paymentTerms || ''),
         lineItems: lines.length ? lines : [newLine()],
       });
       setDepartments(deptRes.data || []);
@@ -188,6 +208,14 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
         requiredDate: form.requiredDate || null,
         vendorSelection: form.vendorSelection,
         justification: form.justification,
+        billingLocationId: form.billingLocationId || null,
+        billingLocation: form.billingLocation.trim() || null,
+        billingGstNo: form.billingGstNo.trim() || null,
+        billingAddress: form.billingAddress.trim() || null,
+        deliveryPoc: form.deliveryPoc.trim() || null,
+        placeOfDelivery: form.placeOfDelivery.trim() || null,
+        expectedDeliveryTimeline: form.expectedDeliveryTimeline.trim() || null,
+        paymentTerms: form.paymentTerms.trim() || null,
         lineItems: form.lineItems.map((li) => ({
           category: li.category,
           description: li.description.trim(),
@@ -224,6 +252,11 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
 
   const requestTypes =
     form.purchaseType === 'work_order' ? (['Capex', 'Opex', 'Service'] as const) : (['Capex', 'Opex'] as const);
+
+  const billingLocations =
+    form.entityId === ''
+      ? []
+      : entities.find((e) => e.id === form.entityId)?.locations?.filter((loc) => loc.location) || [];
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm mb-5 overflow-hidden">
@@ -385,9 +418,21 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
               <select
                 disabled={!editing}
                 value={form.entityId === '' ? '' : String(form.entityId)}
-                onChange={(e) =>
-                  setField('entityId', e.target.value === '' ? '' : Number(e.target.value))
-                }
+                onChange={(e) => {
+                  const id = e.target.value === '' ? '' : Number(e.target.value);
+                  setForm((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          entityId: id,
+                          billingLocationId: '',
+                          billingLocation: '',
+                          billingGstNo: '',
+                          billingAddress: '',
+                        }
+                      : prev
+                  );
+                }}
                 className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
               >
                 <option value="">— Select —</option>
@@ -398,6 +443,130 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="block text-sm">
+              <span className="text-xs font-semibold text-gray-600">Billing region / GST</span>
+              {billingLocations.length > 0 ? (
+                <select
+                  disabled={!editing}
+                  value={form.billingLocationId === '' ? '' : String(form.billingLocationId)}
+                  onChange={(e) => {
+                    const id = e.target.value === '' ? '' : Number(e.target.value);
+                    const loc = billingLocations.find((row) => Number(row.id) === Number(id));
+                    setForm((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            billingLocationId: id,
+                            billingLocation: loc?.location || '',
+                            billingGstNo: (loc?.gstNo || '').toUpperCase(),
+                            billingAddress:
+                              !prev.billingAddress.trim() || prev.billingAddress.trim() === prev.billingLocation
+                                ? loc?.location || ''
+                                : prev.billingAddress,
+                          }
+                        : prev
+                    );
+                  }}
+                  className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
+                >
+                  <option value="">— Select region —</option>
+                  {billingLocations.map((loc) => (
+                    <option key={loc.id || loc.location} value={loc.id}>
+                      {loc.location}{loc.gstNo ? ` — ${loc.gstNo}` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  disabled={!editing}
+                  value={form.billingLocation}
+                  onChange={(e) => setField('billingLocation', e.target.value)}
+                  className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
+                  placeholder="Billing location"
+                />
+              )}
+            </label>
+
+            <label className="block text-sm">
+              <span className="text-xs font-semibold text-gray-600">Billing GSTIN</span>
+              <input
+                disabled={!editing}
+                value={form.billingGstNo}
+                onChange={(e) => setField('billingGstNo', e.target.value.toUpperCase().replace(/\s/g, ''))}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono disabled:bg-gray-50"
+                placeholder="Auto-filled from region — you can edit"
+                maxLength={15}
+              />
+            </label>
+
+            <label className="block text-sm md:col-span-2">
+              <span className="text-xs font-semibold text-gray-600">Billing address</span>
+              <textarea
+                disabled={!editing}
+                value={form.billingAddress}
+                onChange={(e) => setField('billingAddress', e.target.value)}
+                rows={3}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50 resize-none"
+                placeholder="Billing / invoicing address"
+              />
+            </label>
+
+            <label className="block text-sm">
+              <span className="text-xs font-semibold text-gray-600">POC for delivery</span>
+              <input
+                disabled={!editing}
+                value={form.deliveryPoc}
+                onChange={(e) => setField('deliveryPoc', e.target.value)}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
+                placeholder="Site contact name / phone"
+              />
+            </label>
+
+            <label className="block text-sm md:col-span-2">
+              <span className="text-xs font-semibold text-gray-600">Place of delivery</span>
+              <input
+                disabled={!editing}
+                value={form.placeOfDelivery}
+                onChange={(e) => setField('placeOfDelivery', e.target.value)}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
+                placeholder="Delivery address (can differ from billing)"
+              />
+            </label>
+
+            <label className="block text-sm">
+              <span className="text-xs font-semibold text-gray-600">Expected delivery timeline</span>
+              <input
+                list="pr-editor-delivery-timeline"
+                disabled={!editing}
+                value={form.expectedDeliveryTimeline}
+                onChange={(e) => setField('expectedDeliveryTimeline', e.target.value)}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
+                placeholder="e.g. Within 30 days"
+              />
+              <datalist id="pr-editor-delivery-timeline">
+                {PR_DELIVERY_TIMELINE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
+            </label>
+
+            <label className="block text-sm">
+              <span className="text-xs font-semibold text-gray-600">Payment terms</span>
+              <input
+                list="pr-editor-payment-terms"
+                disabled={!editing}
+                value={form.paymentTerms}
+                onChange={(e) => setField('paymentTerms', e.target.value)}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
+                placeholder="e.g. Net 30 Days"
+              />
+              <datalist id="pr-editor-payment-terms">
+                {PR_PAYMENT_TERM_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
             </label>
 
             <label className="block text-sm">

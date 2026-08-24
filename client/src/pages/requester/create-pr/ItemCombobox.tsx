@@ -57,7 +57,6 @@ export default function ItemCombobox({
           unit: 'Nos',
         });
         onCreated(res.data);
-        onSelect(res.data);
       }}
     />
   );

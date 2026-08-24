@@ -1,6 +1,8 @@
 import PriorityBadge from '../../../components/base/PriorityBadge';
 import StatusBadge from '../../../components/base/StatusBadge';
 import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatDate';
+import PrVendorQuotationsPanel from '../../../components/feature/PrVendorQuotationsPanel';
+import { useState } from 'react';
 
 interface LineItem {
   description: string;
@@ -21,6 +23,7 @@ interface ApprovalStep {
 
 interface PRTask {
   id: string;
+  prId?: number;
   prNumber: string;
   title: string;
   requester: string;
@@ -64,6 +67,7 @@ export default function TaskDetailDrawer({
   const isPending = task.status === 'pending_approval';
   const lineItems = Array.isArray(task.lineItems) ? task.lineItems : [];
   const approvalHistory = Array.isArray(task.approvalHistory) ? task.approvalHistory : [];
+  const [hasQuotes, setHasQuotes] = useState(false);
 
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
@@ -170,6 +174,12 @@ export default function TaskDetailDrawer({
                 {task.justification || 'No justification provided.'}
               </p>
             </div>
+
+            {task.prId ? (
+              <div className={hasQuotes ? '' : 'hidden'}>
+                <PrVendorQuotationsPanel prId={task.prId} onPresenceChange={setHasQuotes} />
+              </div>
+            ) : null}
 
             {/* Line Items */}
             <div>

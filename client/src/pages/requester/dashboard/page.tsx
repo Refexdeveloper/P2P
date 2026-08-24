@@ -58,6 +58,7 @@ interface RequesterTask {
   dueDate: string;
   label: string;
   actionPath: string;
+  cta?: string;
 }
 
 const PAGE_SIZE = 10;
@@ -266,7 +267,7 @@ export default function RequesterDashboard() {
           <div className="p-5 border-b border-gray-200 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-gray-900">My Tasks</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Action items after L1 Manager approval</p>
+              <p className="text-xs text-gray-500 mt-0.5">Action items assigned to you</p>
             </div>
             <span className="px-2.5 py-1 bg-teal-50 text-teal-700 text-xs font-semibold rounded-full">
               {requesterTasks.length} pending
@@ -294,7 +295,7 @@ export default function RequesterDashboard() {
                   className="px-5 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-2 whitespace-nowrap self-start sm:self-center"
                 >
                   <i className="ri-arrow-right-line"></i>
-                  Start RFQ Entry
+                  {task.cta || (task.taskType === 'PR_APPROVAL' ? 'Review & Approve' : 'Start RFQ Entry')}
                 </Link>
               </div>
             ))}

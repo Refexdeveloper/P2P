@@ -336,6 +336,130 @@ async function getOrCreateRfqConfig(prId) {
   };
 }
 
+/**
+ * Create PR Functional Own: persist vendors + quotation rounds/files, then mark requester RFQ submitted.
+ */
+export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options = {}) {
+  const markSubmitted = options.markSubmitted !== false;
+  const maxRounds = Math.min(4, Math.max(1, Number(options.maxRounds) || 4));
+  const vendors = Array.isArray(rfqVendors) ? rfqVendors : [];
+  if (!vendors.length) {
+    throw new Error('Add at least one vendor with a round-1 quotation and file');
+  }
+
+  const pr = await getPurchaseRequestById(prId);
+  if (!pr) throw new Error('PR not found');
+  if (pr.requesterId !== user.id && user.role !== 'Super Admin' && user.role !== 'SCM Manager') {
+    throw new Error('Unauthorized');
+  }
+
+  await getOrCreateRfqConfig(prId);
+  await pool.query(
+    `UPDATE rfq_configs SET max_rounds = ?, updated_at = NOW() WHERE pr_id = ?`,
+    [maxRounds, prId]
+  );
+
+  const [existing] = await pool.query(
+    `SELECT id FROM rfq_invitations WHERE pr_id = ?`,
+    [prId]
+  );
+  if (existing.length) {
+    const ids = existing.map((r) => r.id);
+    const ph = ids.map(() => '?').join(',');
+    await pool.query(`DELETE FROM vendor_quotation_submissions WHERE rfq_invitation_id IN (${ph})`, ids);
+    await pool.query(`DELETE FROM rfq_invitations WHERE pr_id = ?`, [prId]);
+  }
+
+  for (const vendor of vendors) {
+    let name = String(vendor.name || vendor.vendorName || '').trim();
+    let email = String(vendor.email || vendor.vendorEmail || '').trim().toLowerCase();
+    const vendorId = Number(vendor.vendorId || vendor.id) || null;
+    if (vendorId) {
+      const [vRows] = await pool.query(
+        `SELECT name, email FROM vendors WHERE id = ? LIMIT 1`,
+        [vendorId]
+      );
+      if (vRows[0]) {
+        name = name || vRows[0].name;
+        email = email || String(vRows[0].email || '').toLowerCase();
+      }
+    }
+    if (!name || !email) {
+      throw new Error('Each Functional Own vendor needs a name and email');
+    }
+
+    const quotes = (Array.isArray(vendor.quotes) ? vendor.quotes : [])
+      .map((q) => ({
+        round: Math.max(1, Number(q.round) || 1),
+        quotedPrice: Number(q.quotedPrice),
+        leadTime: Number(q.leadTime) || 0,
+        paymentTerms: String(q.paymentTerms || 'Net 30').trim() || 'Net 30',
+        quotationFileName: q.quotationFileName,
+        quotationFileData: q.quotationFileData,
+      }))
+      .filter((q) => q.round <= maxRounds)
+      .sort((a, b) => a.round - b.round);
+
+    const round1 = quotes.find((q) => q.round === 1);
+    if (!round1 || !(round1.quotedPrice > 0)) {
+      throw new Error(`Enter a round-1 quoted price for ${name}`);
+    }
+    if (!round1.quotationFileName || !round1.quotationFileData) {
+      throw new Error(`Attach a round-1 quotation file for ${name}`);
+    }
+
+    const token = generateToken();
+    const latestRound = quotes[quotes.length - 1]?.round || 1;
+    const [invResult] = await pool.query(
+      `INSERT INTO rfq_invitations (pr_id, vendor_name, vendor_email, access_token, round, status, created_by, invite_mode)
+       VALUES (?, ?, ?, ?, ?, 'submitted', ?, 'manual')`,
+      [prId, name, email, token, latestRound, user.id]
+    );
+    const invitationId = invResult.insertId;
+
+    for (const quote of quotes) {
+      if (!(quote.quotedPrice > 0) || !quote.quotationFileName || !quote.quotationFileData) {
+        continue;
+      }
+      const fileInfo = saveQuotationFile(
+        invitationId,
+        quote.round,
+        quote.quotationFileName,
+        quote.quotationFileData
+      );
+      if (!fileInfo.filePath) {
+        throw new Error(`Failed to save quotation file for ${name} round ${quote.round}`);
+      }
+      await pool.query(
+        `INSERT INTO vendor_quotation_submissions
+         (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes,
+          warranty, delivery_terms, quotation_file_name, quotation_file_path, quotation_file_data, custom_fields, requester_fields, status)
+         VALUES (?, ?, ?, ?, ?, 1, ?, '', '', ?, ?, ?, ?, ?, 'submitted')`,
+        [
+          invitationId,
+          quote.round,
+          quote.quotedPrice,
+          quote.leadTime,
+          quote.paymentTerms,
+          `Entered on Create PR by ${user.name || user.email}`,
+          fileInfo.fileName,
+          fileInfo.filePath,
+          fileInfo.buffer,
+          JSON.stringify({}),
+          JSON.stringify({ enteredBy: user.name, entryMode: 'create-pr' }),
+        ]
+      );
+    }
+  }
+
+  if (markSubmitted) {
+    await pool.query(
+      `UPDATE rfq_configs SET requester_submitted_at = NOW(), updated_at = NOW() WHERE pr_id = ?`,
+      [prId]
+    );
+  }
+}
+
 function extractCoreVendorValues(body, fieldDefinitions, customFields = {}) {
   const defs = fieldDefinitions.filter((f) => f.filledBy !== 'requester');
   const enabledIds = new Set(defs.map((f) => f.id));
@@ -626,13 +750,27 @@ export async function removeRfqInvitation(user, invitationId) {
   };
 }
 
+async function userCanViewPrQuotes(user, pr) {
+  if (!user || !pr) return false;
+  const privileged = ['Super Admin', 'SCM Buyer', 'SCM Manager', 'HOD Approver', 'PR Manager', 'CFO'];
+  if (privileged.includes(user.role)) return true;
+  if (Number(pr.requesterId) === Number(user.id)) return true;
+  const chain = Array.isArray(pr.approvalUserIds) ? pr.approvalUserIds : [];
+  if (chain.some((id) => Number(id) === Number(user.id))) return true;
+  if (pr.approvalUserId && Number(pr.approvalUserId) === Number(user.id)) return true;
+  const [tasks] = await pool.query(
+    `SELECT id FROM workflow_tasks
+     WHERE pr_id = ? AND assigned_user_id = ? AND status IN ('pending', 'in_progress')
+     LIMIT 1`,
+    [pr.id, user.id]
+  );
+  return Boolean(tasks.length);
+}
+
 export async function getRfqByPrId(user, prId) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
-  if (!['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
-    throw new Error('Unauthorized');
-  }
-  if (user.role === 'Requester' && pr.requesterId !== user.id) {
+  if (!(await userCanViewPrQuotes(user, pr))) {
     throw new Error('Unauthorized');
   }
   const config = await getOrCreateRfqConfig(prId);
@@ -1051,7 +1189,11 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
       throw new Error('Requester must submit RFQ before SCM finalization');
     }
     if (pr.status !== PR_STATUS.APPROVED) {
-      throw new Error('PR must complete HOD / L2 / CFO vendor approvals before SCM final RFQ');
+      throw new Error(
+        pr.prFlow === 'functional'
+          ? 'Selected user must approve this PR before SCM final RFQ'
+          : 'PR must complete HOD / L2 / CFO vendor approvals before SCM final RFQ'
+      );
     }
   }
   if (!isOwnVendor && isScmBuyer && pr.status !== PR_STATUS.APPROVED) {
@@ -1302,29 +1444,55 @@ async function buildRfqSummary(prId) {
   };
 }
 
-/** Collect quotation PDF attachments (up to 3 rounds per vendor) for RFQ approval emails */
-export async function collectQuotationAttachments(prId) {
-  const summary = await buildRfqSummary(prId);
-  if (!summary?.vendors?.length) return [];
+function nodemailerAttachment(filename, row) {
+  const diskPath = row.quotation_file_path && path.join(UPLOAD_DIR, row.quotation_file_path);
+  if (diskPath && fs.existsSync(diskPath)) {
+    return { filename, path: diskPath };
+  }
+  if (row.quotation_file_data && row.quotation_file_data.length) {
+    const content = Buffer.isBuffer(row.quotation_file_data)
+      ? row.quotation_file_data
+      : Buffer.from(row.quotation_file_data);
+    return { filename, content };
+  }
+  return null;
+}
 
+async function loadQuotationMailAttachments(prId) {
+  const [rows] = await pool.query(
+    `SELECT vqs.round, vqs.quotation_file_name, vqs.quotation_file_path, vqs.quotation_file_data,
+            ri.vendor_name
+     FROM vendor_quotation_submissions vqs
+     JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id
+     WHERE ri.pr_id = ?
+       AND vqs.quotation_file_name IS NOT NULL AND vqs.quotation_file_name <> ''
+     ORDER BY ri.id ASC, vqs.round ASC`,
+    [prId]
+  );
   const attachments = [];
-  for (const vendor of summary.vendors) {
-    for (const round of vendor.rounds || []) {
-      if (!round.quotationFilePath) continue;
-      const fullPath = path.join(UPLOAD_DIR, round.quotationFilePath);
-      if (!fs.existsSync(fullPath)) continue;
-      const safeVendor = String(vendor.name || 'vendor').replace(/[^a-zA-Z0-9._-]/g, '_');
-      const safeFile = String(round.quotationFileName || 'quotation.pdf').replace(
-        /[^a-zA-Z0-9._-]/g,
-        '_'
-      );
-      attachments.push({
-        filename: `${safeVendor}_R${round.round}_${safeFile}`,
-        path: fullPath,
-      });
-    }
+  for (const row of rows) {
+    const safeVendor = String(row.vendor_name || 'vendor').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safeFile = String(row.quotation_file_name || 'quotation.pdf').replace(
+      /[^a-zA-Z0-9._-]/g,
+      '_'
+    );
+    const attachment = nodemailerAttachment(`${safeVendor}_R${row.round}_${safeFile}`, row);
+    if (attachment) attachments.push(attachment);
   }
   return attachments;
+}
+
+/** Collect quotation files (disk or DB) for RFQ approval emails */
+export async function collectQuotationAttachments(prId) {
+  return loadQuotationMailAttachments(prId);
+}
+
+export async function getRfqEmailPack(prId) {
+  const rfqSummary = await buildRfqSummary(prId);
+  return {
+    rfqSummary,
+    attachments: await loadQuotationMailAttachments(prId),
+  };
 }
 
 /** Own path after requester RFQ: HOD vendor final */
@@ -1657,6 +1825,7 @@ export async function getVendorComparisonMatrix(user, prId) {
       status: pr.status,
       statusUI: pr.statusUI,
       vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
+      prFlow: pr.prFlow === 'functional' ? 'functional' : 'standard',
       justification: pr.justification,
       approvalHistory: pr.approvalHistory,
       lineItems: (pr.lineItems || []).map((li) => ({
@@ -1972,7 +2141,8 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       newStatus = PR_STATUS.REJECTED;
       newStage = null;
     } else if (action === 'return' || action === 'rework') {
-      const defaultReturnTo = pr.vendor_selection === 'own' ? 'REQUESTER_RFQ' : 'SCM_RFQ';
+      const defaultReturnTo =
+        pr.pr_flow === 'functional' ? 'HOD_PRE' : pr.vendor_selection === 'own' ? 'REQUESTER_RFQ' : 'SCM_RFQ';
       const returnTo = options.returnTo || defaultReturnTo;
       const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarks, user);
       await conn.query(
@@ -2341,7 +2511,7 @@ export async function attachQuotationFileToSubmission(user, submissionId, body) 
 export async function getSubmissionFile(user, submissionId) {
   const [rows] = await pool.query(
     `SELECT vqs.id, vqs.quotation_file_name, vqs.quotation_file_path, vqs.quotation_file_data,
-            ri.pr_id, pr.requester_id
+            ri.pr_id, pr.requester_id, pr.approval_user_id, pr.approval_user_ids
      FROM vendor_quotation_submissions vqs
      JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id
      JOIN purchase_requests pr ON pr.id = ri.pr_id
@@ -2351,11 +2521,24 @@ export async function getSubmissionFile(user, submissionId) {
   if (!rows.length) throw new Error('Quotation file not found');
 
   const row = rows[0];
-  const postRfqRoles = ['HOD Approver', 'PR Manager', 'SCM Manager', 'CFO', 'SCM Buyer', 'Super Admin'];
-  if (user.role === 'Requester' && row.requester_id !== user.id) {
-    throw new Error('Unauthorized');
+  let chain = [];
+  try {
+    const raw = row.approval_user_ids;
+    if (Array.isArray(raw)) chain = raw.map(Number).filter((id) => id > 0);
+    else if (typeof raw === 'string' && raw.trim()) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) chain = parsed.map(Number).filter((id) => id > 0);
+    }
+  } catch {
+    chain = [];
   }
-  if (!['Requester', 'SCM Buyer', 'Super Admin', ...postRfqRoles].includes(user.role)) {
+  const pr = {
+    id: row.pr_id,
+    requesterId: row.requester_id,
+    approvalUserId: row.approval_user_id,
+    approvalUserIds: chain.length ? chain : row.approval_user_id ? [row.approval_user_id] : [],
+  };
+  if (!(await userCanViewPrQuotes(user, pr))) {
     throw new Error('Unauthorized');
   }
 

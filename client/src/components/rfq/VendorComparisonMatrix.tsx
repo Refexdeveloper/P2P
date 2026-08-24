@@ -57,6 +57,7 @@ type QuoteLine = {
   quantity?: number;
   quotedUnitPrice?: number;
   quotedTotal?: number;
+  gstPercent?: number;
 };
 
 type RevColumn = {
@@ -96,6 +97,29 @@ function formatDisplayDate(raw?: string | null) {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
   return `${dd}.${mm}.${yyyy}`;
+}
+
+function money(n: number) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function exclusiveFromInclusive(inclusive: number, gstRate = GST_RATE) {
+  const gross = Number(inclusive) || 0;
+  if (gross <= 0 || gstRate <= 0) return { amount: money(gross), gst: 0 };
+  const amount = money(gross / (1 + gstRate));
+  return { amount, gst: money(gross - amount) };
+}
+
+function lineExGst(ql: QuoteLine, prQty: number) {
+  const rate = Number(ql.quotedUnitPrice) || 0;
+  const qty = Number(ql.quantity) || prQty || 0;
+  const amount = money(rate * qty);
+  const gstPercent =
+    ql.gstPercent != null && String(ql.gstPercent) !== ''
+      ? Math.max(0, Number(ql.gstPercent) || 0)
+      : GST_RATE * 100;
+  const gst = money(amount * (gstPercent / 100));
+  return { rate, amount, qty, gst, gstPercent };
 }
 
 function findQuoteLine(values: Record<string, unknown>, lineId: string, description: string): QuoteLine | null {
@@ -322,31 +346,35 @@ export default function VendorComparisonMatrix({
 
   const getLineRateAmount = (col: RevColumn, lineId: string, description: string, prQty: number) => {
     const ql = findQuoteLine(col.values, lineId, description);
-    if (ql) {
-      const rate = Number(ql.quotedUnitPrice) || 0;
-      const qty = Number(ql.quantity) || prQty || 0;
-      const amount = Number(ql.quotedTotal) || rate * qty;
-      return { rate, amount, qty };
-    }
+    if (ql) return lineExGst(ql, prQty);
     if (lineItems.length === 1) {
-      const amount = Number(col.values.quotedPrice) || 0;
+      const inclusive = Number(col.values.quotedPrice) || 0;
       const qty = prQty || 1;
-      return { rate: qty ? amount / qty : amount, amount, qty };
+      const { amount, gst } = exclusiveFromInclusive(inclusive);
+      return { rate: qty ? money(amount / qty) : amount, amount, qty, gst, gstPercent: GST_RATE * 100 };
     }
-    return { rate: 0, amount: 0, qty: prQty };
+    return { rate: 0, amount: 0, qty: prQty, gst: 0, gstPercent: GST_RATE * 100 };
   };
 
   const colTotals = revColumns.map((col) => {
     let material = 0;
+    let gst = 0;
+    const gstPercents: number[] = [];
     if (lineItems.length) {
-      material = lineItems.reduce((sum, li) => {
-        const { amount } = getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
-        return sum + amount;
-      }, 0);
+      for (const li of lineItems) {
+        const row = getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
+        material += row.amount;
+        gst += row.gst;
+        if (row.amount > 0) gstPercents.push(row.gstPercent);
+      }
     } else {
-      material = Number(col.values.quotedPrice) || 0;
+      const stripped = exclusiveFromInclusive(Number(col.values.quotedPrice) || 0);
+      material = stripped.amount;
+      gst = stripped.gst;
+      if (material > 0) gstPercents.push(GST_RATE * 100);
     }
-    const gst = material * GST_RATE;
+    material = money(material);
+    gst = money(gst);
     const hdg = hdgParam
       ? cellExtra(col.values, paramKeys(hdgParam))
       : ({ kind: 'empty', value: '' } as const);
@@ -355,9 +383,15 @@ export default function VendorComparisonMatrix({
       : ({ kind: 'empty', value: '' } as const);
     const hdgNum = hdg.kind === 'number' ? Number(hdg.value) : 0;
     const freightNum = freight.kind === 'number' ? Number(freight.value) : 0;
-    const landed = material + gst + hdgNum + freightNum;
-    return { material, gst, hdg, freight, landed };
+    const landed = money(material + gst + hdgNum + freightNum);
+    return { material, gst, hdg, freight, landed, gstPercents };
   });
+
+  const gstRowLabel = (() => {
+    const uniq = [...new Set(colTotals.flatMap((t) => t.gstPercents))];
+    if (uniq.length === 1) return `Add: GST ${uniq[0]}%`;
+    return 'Add: GST';
+  })();
 
   const bestLanded = colTotals
     .map((t) => t.landed)
@@ -678,10 +712,10 @@ export default function VendorComparisonMatrix({
                       {displayLines.map((li, lineIdx) => {
                         const { rate, amount } =
                           String(li.id) === 'total'
-                            ? {
-                                rate: Number(col.values.quotedPrice) || 0,
-                                amount: Number(col.values.quotedPrice) || 0,
-                              }
+                            ? (() => {
+                                const stripped = exclusiveFromInclusive(Number(col.values.quotedPrice) || 0);
+                                return { rate: stripped.amount, amount: stripped.amount };
+                              })()
                             : getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
                         return (
                           <div key={`m-${col.key}-${li.id}`} className="px-3 py-3">
@@ -746,7 +780,7 @@ export default function VendorComparisonMatrix({
 
                       <div className="px-3 py-2.5 flex items-center justify-between gap-3 bg-slate-50">
                         <span className="text-xs font-bold text-slate-700">
-                          Add: GST {(GST_RATE * 100).toFixed(0)}%
+                          {gstRowLabel}
                         </span>
                         <span className="text-sm font-bold tabular-nums text-slate-800">
                           {t.material > 0 ? `₹${formatNum(t.gst)}` : '—'}
@@ -948,10 +982,10 @@ export default function VendorComparisonMatrix({
                       {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                         const { rate, amount } =
                           String(li.id) === 'total'
-                            ? {
-                                rate: Number(col.values.quotedPrice) || 0,
-                                amount: Number(col.values.quotedPrice) || 0,
-                              }
+                            ? (() => {
+                                const stripped = exclusiveFromInclusive(Number(col.values.quotedPrice) || 0);
+                                return { rate: stripped.amount, amount: stripped.amount };
+                              })()
                             : getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
                         return (
                           <Fragment key={`${col.key}-${li.id}`}>
@@ -1018,13 +1052,13 @@ export default function VendorComparisonMatrix({
                     <td
                       className={`${stLabelMobile} px-2 py-3 border-b border-[#E5EAF0] bg-slate-50 font-bold text-slate-800 text-xs`}
                     >
-                      Add: GST {(GST_RATE * 100).toFixed(0)}%
+                      {gstRowLabel}
                     </td>
                     <td
                       colSpan={3}
                       className={`${stLabelDesktop} px-3 py-3 border-b border-[#E5EAF0] bg-slate-50 font-bold text-slate-800`}
                     >
-                      Add: GST {(GST_RATE * 100).toFixed(0)}%
+                      {gstRowLabel}
                     </td>
                     {columnMeta.map(({ t, isBest, isRecRev }, i) => (
                       <Fragment key={`gst-${i}`}>

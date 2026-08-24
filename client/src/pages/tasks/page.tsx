@@ -109,11 +109,17 @@ export default function TasksPage() {
     if (loading || deepLinkHandled.current) return;
     const prId = searchParams.get('prId');
     const action = searchParams.get('action');
-    if (!prId || !action) return;
-    if (!['approve', 'reject', 'return'].includes(action)) return;
-
+    if (!prId) return;
     const task = tasks.find((t) => t.prId === Number(prId));
     if (!task || task.status !== 'pending_approval') return;
+
+    if (!action) {
+      deepLinkHandled.current = true;
+      setSelectedTask(task.id);
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    if (!['approve', 'reject', 'return'].includes(action)) return;
 
     if (task.isPostRfq) {
       deepLinkHandled.current = true;
@@ -265,6 +271,7 @@ export default function TasksPage() {
       slaHours: 48,
       slaRemaining: task.slaRemaining,
       isOverdue: task.isOverdue,
+      prId: task.prId,
     });
 
     try {
@@ -314,6 +321,7 @@ export default function TasksPage() {
         slaHours: 48,
         slaRemaining: task.slaRemaining,
         isOverdue: task.isOverdue,
+        prId: task.prId,
       });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to load PR details', 'error');

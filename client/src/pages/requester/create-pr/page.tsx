@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { prApi, masterApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, PrAttachmentRecord } from '../../../services/api';
+import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, PrAttachmentRecord, VendorRecord, rfqApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
-import ItemCombobox from './ItemCombobox';
 import DepartmentCombobox from './DepartmentCombobox';
-import CategoryCombobox from './CategoryCombobox';
 import SearchCreateField from './SearchCreateField';
+import LineItemEditorForm, { LineItem, createEmptyLineItem } from './LineItemEditorForm';
+import FunctionalOwnRfqSection, {
+  FunctionalRfqVendorRow,
+} from './FunctionalOwnRfqSection';
+import UserSearchSelect from './UserSearchSelect';
 import {
   CURRENCY_OPTIONS,
   DEFAULT_CURRENCY,
@@ -15,6 +18,10 @@ import {
   formatMoney,
   normalizeCurrency,
 } from '../../../constants/currency';
+import {
+  PR_PAYMENT_TERM_OPTIONS,
+  PR_DELIVERY_TIMELINE_OPTIONS,
+} from '../../../constants/prRequisition';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -24,19 +31,6 @@ const ADMIN_EDIT_ROLES = [
   'PR Manager',
   'CFO',
 ];
-
-interface LineItem {
-  id: string;
-  itemId?: number | null;
-  itemName?: string;
-  description: string;
-  quantity: number;
-  estimatedCost: number;
-  category: string;
-  unit?: string;
-  hsnCode?: string;
-  gstPercentage?: number;
-}
 
 interface AttachedFile {
   id: string;
@@ -80,14 +74,31 @@ export default function CreatePRPage() {
   const [requestType, setRequestType] = useState<'Capex' | 'Opex' | 'Service'>('Opex');
   const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order'>('purchase_order');
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
+  const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
+  const [approvalUserIds, setApprovalUserIds] = useState<number[]>([]);
+  const [vendorMaster, setVendorMaster] = useState<VendorRecord[]>([]);
+  const [rfqMaxRounds, setRfqMaxRounds] = useState(1);
+  const [rfqVendors, setRfqVendors] = useState<FunctionalRfqVendorRow[]>([]);
+  const [existingRfqHasQuotes, setExistingRfqHasQuotes] = useState(false);
+  const [approvalUsers, setApprovalUsers] = useState<
+    Array<{ id: number; name: string; email: string; role: string; department: string }>
+  >([]);
   const [priority, setPriority] = useState('Medium');
   const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
   const [businessJustification, setBusinessJustification] = useState('');
   const [requiredDate, setRequiredDate] = useState('');
+  const [billingLocationId, setBillingLocationId] = useState<number | ''>('');
+  const [billingLocation, setBillingLocation] = useState('');
+  const [billingGstNo, setBillingGstNo] = useState('');
+  const [billingAddress, setBillingAddress] = useState('');
+  const [deliveryPoc, setDeliveryPoc] = useState('');
+  const [placeOfDelivery, setPlaceOfDelivery] = useState('');
+  const [expectedDeliveryTimeline, setExpectedDeliveryTimeline] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState('');
   const moneySymbol = currencySymbol(currency);
-  const [lineItems, setLineItems] = useState<LineItem[]>([
-    { id: '1', itemId: null, itemName: '', description: '', quantity: 1, estimatedCost: 0, category: '', unit: 'Nos', hsnCode: '', gstPercentage: 18 },
-  ]);
+  const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [lineEditor, setLineEditor] = useState<{ mode: 'add' | 'edit'; item: LineItem } | null>(null);
+  const [deleteLineItemId, setDeleteLineItemId] = useState<string | null>(null);
   const [masterItems, setMasterItems] = useState<ItemRecord[]>([]);
   const [masterCategories, setMasterCategories] = useState<CategoryRecord[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -133,10 +144,22 @@ export default function CreatePRPage() {
           requestType: 'Capex' | 'Opex' | 'Service';
           purchaseType?: 'purchase_order' | 'work_order' | string;
           vendorSelection?: 'own' | 'scm';
+          prFlow?: 'standard' | 'functional';
+          approvalUserId?: number | null;
+          approvalUserIds?: number[];
+          approvalUserName?: string;
           priority: string;
           currency?: string;
           justification: string;
           requiredDate: string;
+          billingLocationId?: number | null;
+          billingLocation?: string;
+          billingGstNo?: string;
+          billingAddress?: string;
+          deliveryPoc?: string;
+          placeOfDelivery?: string;
+          expectedDeliveryTimeline?: string;
+          paymentTerms?: string;
           status: string;
           lineItems: { id?: number; description: string; quantity: number; unitCost: number; category: string; unit?: string }[];
           approvalHistory?: { stage: string; user: string; role: string; date: string; status: string; remarks: string }[];
@@ -158,10 +181,26 @@ export default function CreatePRPage() {
             : pr.requestType
         );
         setVendorSelection(pr.vendorSelection === 'own' ? 'own' : 'scm');
+        setPrFlow(pr.prFlow === 'functional' ? 'functional' : 'standard');
+        setApprovalUserIds(
+          Array.isArray(pr.approvalUserIds) && pr.approvalUserIds.length
+            ? pr.approvalUserIds.map((id) => Number(id)).filter((id) => id > 0)
+            : pr.approvalUserId
+              ? [Number(pr.approvalUserId)]
+              : []
+        );
         setPriority(pr.priority);
         setCurrency(normalizeCurrency(pr.currency));
         setBusinessJustification(pr.justification || '');
         setRequiredDate(pr.requiredDate || '');
+        setBillingLocationId(pr.billingLocationId ? Number(pr.billingLocationId) : '');
+        setBillingLocation(pr.billingLocation || '');
+        setBillingGstNo(pr.billingGstNo || '');
+        setBillingAddress(pr.billingAddress || '');
+        setDeliveryPoc(pr.deliveryPoc || '');
+        setPlaceOfDelivery(pr.placeOfDelivery || '');
+        setExpectedDeliveryTimeline(pr.expectedDeliveryTimeline || '');
+        setPaymentTerms(pr.paymentTerms || '');
         setPrStatus(pr.status);
 
         const latestReturn = [...(pr.approvalHistory || [])]
@@ -198,7 +237,7 @@ export default function CreatePRPage() {
                 hsnCode: '',
                 gstPercentage: 18,
               }))
-            : [{ id: '1', itemId: null, itemName: '', description: '', quantity: 1, estimatedCost: 0, category: '', unit: 'Nos', hsnCode: '', gstPercentage: 18 }]
+            : []
         );
         setAttachedFiles(
           (pr.attachments || []).map((att) => ({
@@ -215,6 +254,51 @@ export default function CreatePRPage() {
       }
     })();
   }, [editPrId]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await prApi.listApprovalUsers();
+        setApprovalUsers(res.data || []);
+      } catch {
+        setApprovalUsers([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await vendorApi.list();
+        setVendorMaster(res.data || []);
+      } catch {
+        setVendorMaster([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!editPrId || prFlow !== 'functional' || vendorSelection !== 'own') {
+      setExistingRfqHasQuotes(false);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await rfqApi.getByPr(editPrId);
+        const invitations = (res.data as {
+          invitations?: Array<{
+            submissions?: Array<{ quotedPrice?: number; quotationFileName?: string }>;
+          }>;
+        })?.invitations || [];
+        const hasQuotes = invitations.some((inv) =>
+          (inv.submissions || []).some((q) => Number(q.quotedPrice) > 0 && Boolean(q.quotationFileName))
+        );
+        setExistingRfqHasQuotes(hasQuotes);
+      } catch {
+        setExistingRfqHasQuotes(false);
+      }
+    })();
+  }, [editPrId, prFlow, vendorSelection]);
 
   useEffect(() => {
     (async () => {
@@ -262,6 +346,30 @@ export default function CreatePRPage() {
     [entities, entityId]
   );
 
+  const billingLocations = useMemo(
+    () => selectedEntity?.locations?.filter((loc) => loc.location) || [],
+    [selectedEntity]
+  );
+
+  useEffect(() => {
+    if (!billingLocations.length) return;
+    if (billingLocationId) {
+      const match = billingLocations.find((loc) => Number(loc.id) === Number(billingLocationId));
+      if (match) {
+        setBillingLocation(match.location);
+        return;
+      }
+    }
+    if (billingLocation.trim()) {
+      const match = billingLocations.find(
+        (loc) => loc.location.trim().toLowerCase() === billingLocation.trim().toLowerCase()
+      );
+      if (match) {
+        setBillingLocationId(match.id ? Number(match.id) : '');
+      }
+    }
+  }, [billingLocations, billingLocationId, billingLocation]);
+
   const formatEntityLabel = (ent: EntityRecord) => {
     const base = ent.code ? `${ent.code} — ${ent.name}` : ent.name;
     return ent.costCenter ? `${base} (${ent.costCenter})` : base;
@@ -272,60 +380,38 @@ export default function CreatePRPage() {
   const getTotalAmount = () =>
     lineItems.reduce((sum, item) => sum + item.quantity * item.estimatedCost, 0);
 
-  const addLineItem = () => {
-    const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setLineItems((prev) => [
-      ...prev,
-      {
-        id: newId,
-        itemId: null,
-        itemName: '',
-        description: '',
-        quantity: 1,
-        estimatedCost: 0,
-        category: '',
-        unit: 'Nos',
-        hsnCode: '',
-        gstPercentage: 18,
-      },
-    ]);
+  const openAddLineItem = () => {
+    setDeleteLineItemId(null);
+    setLineEditor({ mode: 'add', item: createEmptyLineItem() });
   };
 
-  const removeLineItem = (id: string) => {
-    if (lineItems.length > 1) setLineItems(lineItems.filter(item => item.id !== id));
+  const openEditLineItem = (item: LineItem) => {
+    setDeleteLineItemId(null);
+    setLineEditor({ mode: 'edit', item: { ...item } });
   };
 
-  const updateLineItem = (id: string, field: keyof LineItem, value: string | number | null) => {
-    setLineItems(lineItems.map(item => (item.id === id ? { ...item, [field]: value } : item)));
+  const closeLineEditor = () => setLineEditor(null);
+
+  const saveLineItem = (item: LineItem) => {
+    setLineItems((prev) => {
+      if (lineEditor?.mode === 'edit') {
+        return prev.map((row) => (row.id === item.id ? item : row));
+      }
+      return [...prev, item];
+    });
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.lineItems;
+      return next;
+    });
+    setLineEditor(null);
   };
 
-  const applyMasterItem = (lineId: string, master: ItemRecord | null) => {
-    if (!master) {
-      setLineItems((prev) =>
-        prev.map((row) =>
-          row.id === lineId
-            ? { ...row, itemId: null, itemName: '', description: '', unit: 'Nos', hsnCode: '', gstPercentage: 18 }
-            : row
-        )
-      );
-      return;
-    }
-    setLineItems((prev) =>
-      prev.map((row) =>
-        row.id === lineId
-          ? {
-              ...row,
-              itemId: master.id,
-              itemName: master.name,
-              description: master.description || master.name,
-              category: master.categoryName || row.category,
-              unit: master.unit || 'Nos',
-              hsnCode: master.hsnCode || '',
-              gstPercentage: Number(master.gstPercentage ?? 18),
-            }
-          : row
-      )
-    );
+  const confirmRemoveLineItem = () => {
+    if (!deleteLineItemId) return;
+    setLineItems((prev) => prev.filter((item) => item.id !== deleteLineItemId));
+    if (lineEditor?.item.id === deleteLineItemId) setLineEditor(null);
+    setDeleteLineItemId(null);
   };
 
   const rememberMasterItem = (created: ItemRecord) => {
@@ -394,6 +480,32 @@ export default function CreatePRPage() {
     if (!department) newErrors.department = 'Department is required';
     if (!businessJustification.trim()) newErrors.businessJustification = 'Business justification is required';
     if (!requiredDate) newErrors.requiredDate = 'Required date is required';
+    if (billingLocations.length > 0 && !billingLocationId) {
+      newErrors.billingLocationId = 'Select billing region / GST for this entity';
+    }
+    if (!billingAddress.trim()) newErrors.billingAddress = 'Billing address is required';
+    if (!deliveryPoc.trim()) newErrors.deliveryPoc = 'POC for delivery is required';
+    if (!placeOfDelivery.trim()) newErrors.placeOfDelivery = 'Place of delivery is required';
+    if (!expectedDeliveryTimeline.trim()) newErrors.expectedDeliveryTimeline = 'Expected delivery timeline is required';
+    if (!paymentTerms.trim()) newErrors.paymentTerms = 'Payment terms are required';
+    if (prFlow === 'functional' && approvalUserIds.length === 0) {
+      newErrors.approvalUserId = 'Select at least one user for Functional Flow approval';
+    }
+    if (prFlow === 'functional' && approvalUserIds.length > 5) {
+      newErrors.approvalUserId = 'Select up to 5 users for Functional Flow approval';
+    }
+    if (prFlow === 'functional' && vendorSelection === 'own') {
+      const hasRound1 = rfqVendors.some((row) => {
+        const round1 = row.quotes.find((q) => q.round === 1);
+        return Boolean(row.vendorId) && Number(round1?.quotedPrice) > 0 && Boolean(round1?.file);
+      });
+      if (!hasRound1 && !existingRfqHasQuotes) {
+        newErrors.rfqVendors = 'Add at least one vendor with a round-1 quoted price and quotation file';
+      }
+    }
+    if (lineItems.length === 0) {
+      newErrors.lineItems = 'Add at least one line item';
+    }
     lineItems.forEach((item, index) => {
       if (!item.itemId && !item.description.trim()) {
         newErrors[`item_${index}_description`] = 'Search an item or type a new name and save it';
@@ -407,6 +519,11 @@ export default function CreatePRPage() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const selectedApprovalUsers = approvalUserIds
+    .map((id) => approvalUsers.find((u) => u.id === id))
+    .filter((u): u is { id: number; name: string; email: string; role: string; department: string } => Boolean(u));
+  const selectedApprovalUser = selectedApprovalUsers[0] || null;
+
   const handleSaveDraft = async () => {
     setSubmitAction('draft');
     await savePR(false);
@@ -414,8 +531,22 @@ export default function CreatePRPage() {
 
   const handleSubmitPR = async () => {
     if (!validateForm()) return;
-      setSubmitAction('submit');
-      setShowConfirmModal(true);
+    setSubmitAction('submit');
+    setShowConfirmModal(true);
+    if (prFlow === 'functional') {
+      setNextStepLabel(
+        selectedApprovalUsers.length > 1
+          ? `User Approval 1 of ${selectedApprovalUsers.length}`
+          : 'User Approval'
+      );
+      setL1Manager(
+        selectedApprovalUser
+          ? { name: selectedApprovalUser.name, email: selectedApprovalUser.email }
+          : null
+      );
+      setIsLoadingL1(false);
+      return;
+    }
     setIsLoadingL1(true);
     try {
       const res = await prApi.previewL1Manager(department || undefined);
@@ -429,6 +560,34 @@ export default function CreatePRPage() {
     }
   };
 
+  const buildRfqVendorsPayload = async () => {
+    const packed = [];
+    for (const row of rfqVendors) {
+      const master = vendorMaster.find((v) => String(v.id) === String(row.vendorId));
+      const quotes = [];
+      for (const quote of row.quotes) {
+        if (!(Number(quote.quotedPrice) > 0) || !quote.file) continue;
+        const filePayload = await fileToAttachmentPayload(quote.file);
+        quotes.push({
+          round: quote.round,
+          quotedPrice: Number(quote.quotedPrice),
+          leadTime: Number(quote.leadTime) || 0,
+          paymentTerms: quote.paymentTerms || undefined,
+          quotationFileName: filePayload.fileName,
+          quotationFileData: filePayload.data,
+        });
+      }
+      if (!quotes.length) continue;
+      packed.push({
+        vendorId: row.vendorId ? Number(row.vendorId) : undefined,
+        name: master?.name || row.name,
+        email: master?.email || row.email,
+        quotes,
+      });
+    }
+    return packed;
+  };
+
   const buildPayload = () => ({
     title: prTitle.trim() || lineItems[0]?.description || `${requestType} Request`,
     requestType,
@@ -437,9 +596,20 @@ export default function CreatePRPage() {
     entityId: entityId ? Number(entityId) : undefined,
     priority,
     currency,
+    prFlow,
+    approvalUserId: prFlow === 'functional' && approvalUserIds[0] ? Number(approvalUserIds[0]) : undefined,
+    approvalUserIds: prFlow === 'functional' ? approvalUserIds : undefined,
     vendorSelection,
     justification: businessJustification,
     requiredDate: requiredDate || undefined,
+    billingLocationId: billingLocationId || undefined,
+    billingLocation: billingLocation.trim() || undefined,
+    billingGstNo: billingGstNo.trim() || undefined,
+    billingAddress: billingAddress.trim() || undefined,
+    deliveryPoc: deliveryPoc.trim() || undefined,
+    placeOfDelivery: placeOfDelivery.trim() || undefined,
+    expectedDeliveryTimeline: expectedDeliveryTimeline.trim() || undefined,
+    paymentTerms: paymentTerms.trim() || undefined,
     lineItems: lineItems.map((item) => ({
       category: item.category,
       description: item.description,
@@ -461,7 +631,14 @@ export default function CreatePRPage() {
     setSubmitError('');
     setIsSubmitting(true);
     try {
-      const payload = buildPayload();
+      const payload: Record<string, unknown> = buildPayload();
+      if (prFlow === 'functional' && vendorSelection === 'own') {
+        const packed = await buildRfqVendorsPayload();
+        if (packed.length) {
+          payload.rfqVendors = packed;
+          payload.maxRounds = rfqMaxRounds;
+        }
+      }
       if (isEditMode && editPrId) {
         if (isAdminEditFlow) {
           await prApi.adminUpdate(editPrId, payload);
@@ -656,7 +833,9 @@ export default function CreatePRPage() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">
-            {lineItems.filter(i => i.description && i.estimatedCost > 0).length}/{lineItems.length} items filled
+            {lineItems.length === 0
+              ? 'No items yet'
+              : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
           </span>
           <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
             <div
@@ -769,15 +948,31 @@ export default function CreatePRPage() {
                 addNoun="entity"
                 onSelect={(opt) => {
                   setEntityId(Number(opt.id));
-                  if (errors.entityId) {
+                  const ent = entities.find((e) => e.id === Number(opt.id));
+                  const locs = ent?.locations?.filter((loc) => loc.location) || [];
+                  const stillValid = locs.some((loc) => Number(loc.id) === Number(billingLocationId));
+                  if (!stillValid) {
+                    setBillingLocationId('');
+                    setBillingLocation('');
+                    setBillingGstNo('');
+                    setBillingAddress('');
+                  }
+                  if (errors.entityId || errors.billingLocationId) {
                     setErrors((prev) => {
                       const next = { ...prev };
                       delete next.entityId;
+                      delete next.billingLocationId;
                       return next;
                     });
                   }
                 }}
-                onClear={() => setEntityId('')}
+                onClear={() => {
+                  setEntityId('');
+                  setBillingLocationId('');
+                  setBillingLocation('');
+                  setBillingGstNo('');
+                  setBillingAddress('');
+                }}
               />
               {errors.entityId && (
                 <p className="text-xs text-red-500 mt-1">{errors.entityId}</p>
@@ -939,7 +1134,29 @@ export default function CreatePRPage() {
               </div>
             </div>
 
-            {/* Vendor Selection */}
+            {/* Request Flow */}
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Flow <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={prFlow}
+                onChange={(e) => {
+                  const next = e.target.value === 'functional' ? 'functional' : 'standard';
+                  setPrFlow(next);
+                }}
+                className="w-full max-w-md px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
+              >
+                <option value="standard">Standard</option>
+                <option value="functional">Functional</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                {prFlow === 'standard'
+                  ? 'Standard: current L1 / L2 / CFO / RFQ path (Own vendor or SCM vendor).'
+                  : 'Functional: shortened path — quotes on Create PR for Own vendor, selected user approval, then SCM RFQ / Final RFQ.'}
+              </p>
+            </div>
+
             <div className="md:col-span-2">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Vendor Selection <span className="text-red-500">*</span>
@@ -953,11 +1170,39 @@ export default function CreatePRPage() {
                 <option value="own">Own vendor</option>
               </select>
               <p className="text-xs text-gray-500 mt-1.5">
-                {vendorSelection === 'own'
-                  ? 'Flow: L1 → your RFQ entry → L1 vendor final → L2 → (optional CFO) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
-                  : 'Flow: L1 → L2 → CFO → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off.'}
+                {prFlow === 'standard'
+                  ? vendorSelection === 'own'
+                    ? 'L1 → your RFQ entry → L1 vendor final → L2 → (optional CFO) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
+                    : 'L1 → L2 → CFO → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off.'
+                  : vendorSelection === 'own'
+                    ? 'Enter vendor quotes on this page, pick approvers in order, then SCM Final RFQ → Buyer Final Verify → Create PO → SCM Manager approval.'
+                    : 'No inline RFQ. Pick approvers in order; then SCM RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval.'}
               </p>
             </div>
+
+            {prFlow === 'functional' && (
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Select User Approval <span className="text-red-500">*</span>
+                </label>
+                <UserSearchSelect
+                  users={approvalUsers}
+                  value={approvalUserIds}
+                  onChange={setApprovalUserIds}
+                  placeholder="Search by name, email, role, or department"
+                  error={Boolean(errors.approvalUserId)}
+                />
+                {errors.approvalUserId && (
+                  <p className="text-xs text-red-500 mt-1">{errors.approvalUserId}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Select 1–5 people in approval order. Person 1 approves first, then person 2, then the rest in that order.
+                  After all selected users approve:{' '}
+                  {vendorSelection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry'} → Buyer Final Verify → Create PO → SCM Manager approval.
+                </p>
+              </div>
+            )}
+
           </div>
         </div>
 
@@ -974,187 +1219,139 @@ export default function CreatePRPage() {
               </div>
             </div>
             <button
-              onClick={addLineItem}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap"
+              type="button"
+              onClick={openAddLineItem}
+              disabled={Boolean(lineEditor)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <i className="ri-add-line"></i>
-              Add Item
+              Add Line Item
             </button>
           </div>
 
           <div className="p-6 space-y-4">
-            {lineItems.map((item, index) => (
-              <div key={`line-row-${item.id}-${index}`} className="relative border border-gray-200 rounded-xl overflow-hidden hover:border-slate-300 transition-colors">
-                {/* Item header */}
-                <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 flex items-center justify-center bg-slate-800 text-white text-xs font-bold rounded-full">{index + 1}</span>
-                    <span className="text-xs font-semibold text-slate-600">
-                      {item.itemName || item.description || `Item ${index + 1}`}
-                    </span>
-                    {item.quantity > 0 && item.estimatedCost > 0 && (
-                      <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                        {formatMoney(item.quantity * item.estimatedCost, currency, { maximumFractionDigits: 0 })}
-                      </span>
+            {errors.lineItems && (
+              <p className="text-xs text-red-500 flex items-center gap-1">
+                <i className="ri-error-warning-line"></i>
+                {errors.lineItems}
+              </p>
+            )}
+
+            {lineEditor && (
+              <LineItemEditorForm
+                key={`${lineEditor.mode}-${lineEditor.item.id}`}
+                mode={lineEditor.mode}
+                initial={lineEditor.item}
+                masterItems={masterItems}
+                masterCategories={masterCategories}
+                requestType={requestType}
+                currency={currency}
+                moneySymbol={moneySymbol}
+                onSave={saveLineItem}
+                onCancel={closeLineEditor}
+                onMasterItemCreated={rememberMasterItem}
+                onCategoryCreated={rememberCategory}
+              />
+            )}
+
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead className="bg-slate-50 border-b border-gray-200">
+                    <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      <th className="px-3 py-2.5 w-10">#</th>
+                      <th className="px-3 py-2.5">Item Name</th>
+                      <th className="px-3 py-2.5">Category</th>
+                      <th className="px-3 py-2.5 text-right">Qty</th>
+                      <th className="px-3 py-2.5 text-right">Unit Price</th>
+                      <th className="px-3 py-2.5">HSN</th>
+                      <th className="px-3 py-2.5 text-right">GST %</th>
+                      <th className="px-3 py-2.5 text-right">Amount</th>
+                      <th className="px-3 py-2.5 text-right w-24">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lineItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-10 text-center">
+                          <p className="text-sm font-medium text-gray-600">No line items yet</p>
+                          <p className="text-xs text-gray-400 mt-1">Click Add Line Item to enter the first item</p>
+                          {!lineEditor && (
+                            <button
+                              type="button"
+                              onClick={openAddLineItem}
+                              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer"
+                            >
+                              <i className="ri-add-line"></i>
+                              Add Line Item
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ) : (
+                      lineItems.map((item, index) => {
+                        const isEditing = lineEditor?.mode === 'edit' && lineEditor.item.id === item.id;
+                        return (
+                          <tr
+                            key={`line-row-${item.id}-${index}`}
+                            className={`border-b border-gray-100 last:border-b-0 ${isEditing ? 'bg-slate-50' : 'hover:bg-gray-50'}`}
+                          >
+                            <td className="px-3 py-3 text-xs font-semibold text-gray-500">{index + 1}</td>
+                            <td className="px-3 py-3">
+                              <p className="font-medium text-gray-800">{item.itemName || item.description || `Item ${index + 1}`}</p>
+                              {item.description && item.description !== item.itemName && (
+                                <p className="text-xs text-gray-400 mt-0.5 line-clamp-1" title={item.description}>
+                                  {item.description}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-gray-700">{item.category || '—'}</td>
+                            <td className="px-3 py-3 text-right text-gray-700">
+                              {item.quantity} <span className="text-xs text-gray-400">{item.unit || 'Nos'}</span>
+                            </td>
+                            <td className="px-3 py-3 text-right text-gray-700">
+                              {formatMoney(item.estimatedCost, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-3 py-3 text-gray-600">{item.hsnCode || '—'}</td>
+                            <td className="px-3 py-3 text-right text-gray-700">
+                              {item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
+                            </td>
+                            <td className="px-3 py-3 text-right font-semibold text-emerald-700">
+                              {formatMoney(item.quantity * item.estimatedCost, currency, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td className="px-3 py-3">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditLineItem(item)}
+                                  className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                                  title="Edit"
+                                  aria-label={`Edit ${item.itemName || item.description || 'line item'}`}
+                                >
+                                  <i className="ri-pencil-line text-sm"></i>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteLineItemId(item.id)}
+                                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Delete"
+                                  aria-label={`Delete ${item.itemName || item.description || 'line item'}`}
+                                >
+                                  <i className="ri-delete-bin-line text-sm"></i>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
-                  </div>
-                  {lineItems.length > 1 && (
-                    <button
-                      onClick={() => removeLineItem(item.id)}
-                      className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <i className="ri-delete-bin-line text-sm"></i>
-                    </button>
-                  )}
-                </div>
-
-                <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* Item Name from Item Master */}
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                      Item Name <span className="text-red-500">*</span>
-                    </label>
-                    <ItemCombobox
-                      key={`item-name-${item.id}`}
-                      instanceKey={item.id}
-                      items={masterItems}
-                      selectedId={item.itemId}
-                      selectedName={item.itemName || item.description}
-                      hasError={Boolean(errors[`item_${index}_description`])}
-                      categoryId={masterCategories.find((c) => c.name === item.category)?.id || null}
-                      onSelect={(master) => applyMasterItem(item.id, master)}
-                      onClear={() => applyMasterItem(item.id, null)}
-                      onCreated={(created) => {
-                        rememberMasterItem(created);
-                        applyMasterItem(item.id, created);
-                      }}
-                    />
-                    {errors[`item_${index}_description`] && (
-                      <p className="text-xs text-red-500 mt-1">{errors[`item_${index}_description`]}</p>
-                    )}
-                  </div>
-
-                  {/* Category from Category Master */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Category <span className="text-red-500">*</span></label>
-                    <CategoryCombobox
-                      categories={masterCategories}
-                      selectedName={item.category}
-                      hasError={Boolean(errors[`item_${index}_category`])}
-                      requestType={requestType}
-                      onSelect={(cat) => updateLineItem(item.id, 'category', cat.name)}
-                      onClear={() => updateLineItem(item.id, 'category', '')}
-                      onCreated={(created) => {
-                        rememberCategory(created);
-                        updateLineItem(item.id, 'category', created.name);
-                      }}
-                    />
-                    {errors[`item_${index}_category`] && <p className="text-xs text-red-500 mt-1">{errors[`item_${index}_category`]}</p>}
-                  </div>
-
-                  {/* Quantity */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Quantity <span className="text-red-500">*</span></label>
-                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                      <button
-                        onClick={() => updateLineItem(item.id, 'quantity', Math.max(1, item.quantity - 1))}
-                        className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors cursor-pointer"
-                      >
-                        <i className="ri-subtract-line text-sm"></i>
-                      </button>
-                      <input
-                        type="number"
-                        value={item.quantity}
-                        onChange={e => updateLineItem(item.id, 'quantity', parseInt(e.target.value) || 1)}
-                        min="1"
-                        className="flex-1 px-2 py-2 text-center text-sm focus:outline-none border-x border-gray-200"
-                      />
-                      <button
-                        onClick={() => updateLineItem(item.id, 'quantity', item.quantity + 1)}
-                        className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors cursor-pointer"
-                      >
-                        <i className="ri-add-line text-sm"></i>
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-gray-400 mt-1">Unit: {item.unit || 'Nos'}</p>
-                  </div>
-
-                  {/* Unit Price (estimated) — keep field; currency symbol updates with Currency above */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                      Unit Price ({moneySymbol}) <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-semibold pointer-events-none">
-                        {moneySymbol}
-                      </span>
-                      <input
-                        type="number"
-                        value={item.estimatedCost || ''}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          const parsed = raw === '' || raw === '.' ? 0 : parseFloat(raw);
-                          updateLineItem(item.id, 'estimatedCost', Number.isFinite(parsed) ? Math.max(0, parsed) : 0);
-                        }}
-                        min="0"
-                        step="0.01"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        className={`w-full pl-8 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${errors[`item_${index}_cost`] ? 'border-red-400' : 'border-gray-200'}`}
-                        title="Unit Price"
-                        aria-label="Unit Price"
-                      />
-                    </div>
-                    {errors[`item_${index}_cost`] && <p className="text-xs text-red-500 mt-1">{errors[`item_${index}_cost`]}</p>}
-                  </div>
-
-                  {/* HSN */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">HSN Code</label>
-                    <input
-                      type="text"
-                      value={item.hsnCode || ''}
-                      readOnly
-                      placeholder="From Item Master"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700"
-                    />
-                  </div>
-
-                  {/* GST */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">GST %</label>
-                    <input
-                      type="text"
-                      value={item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700"
-                    />
-                  </div>
-
-                  {/* Estimated Total */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Estimated Total</label>
-                    <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                      <span className="text-sm font-bold text-emerald-700">
-                        {formatMoney(item.quantity * item.estimatedCost, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Description (auto from item master, editable) */}
-                  <div className="md:col-span-2 lg:col-span-4">
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Item Description <span className="text-red-500">*</span></label>
-                    <textarea
-                      value={item.description}
-                      onChange={e => updateLineItem(item.id, 'description', e.target.value)}
-                      rows={2}
-                      placeholder="Select an item to auto-fill description, or enter manually..."
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none ${errors[`item_${index}_description`] ? 'border-red-400' : 'border-gray-200'}`}
-                    />
-                  </div>
-                </div>
+                  </tbody>
+                </table>
               </div>
-            ))}
+            </div>
           </div>
 
           {/* Total Summary Bar */}
@@ -1167,12 +1364,12 @@ export default function CreatePRPage() {
                 </div>
                 <div className="w-px h-8 bg-emerald-200"></div>
                 <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">Total Qty</p>
+                  <p className="text-xs text-gray-500 mb-0.5">Total Quantity</p>
                   <p className="text-lg font-bold text-gray-800">{lineItems.reduce((s, i) => s + i.quantity, 0)}</p>
                 </div>
                 <div className="w-px h-8 bg-emerald-200"></div>
                 <div className="text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">Avg Unit Price</p>
+                    <p className="text-xs text-gray-500 mb-0.5">Average Unit Price</p>
                   <p className="text-lg font-bold text-gray-800">
                     {formatMoney(lineItems.length > 0 ? lineItems.reduce((s, i) => s + i.estimatedCost, 0) / lineItems.length : 0, currency, { maximumFractionDigits: 0 })}
                   </p>
@@ -1193,7 +1390,274 @@ export default function CreatePRPage() {
           </div>
         </div>
 
-        {/* ── Section 3: Business Justification ── */}
+        {prFlow === 'functional' && vendorSelection === 'own' && (
+          <FunctionalOwnRfqSection
+            vendors={vendorMaster}
+            rows={rfqVendors}
+            maxRounds={rfqMaxRounds}
+            error={errors.rfqVendors}
+            prNumber={prNumber}
+            existingQuoteNote={
+              existingRfqHasQuotes
+                ? 'Quotes already saved on this PR. Re-upload only if you need to replace them.'
+                : undefined
+            }
+            onMaxRoundsChange={setRfqMaxRounds}
+            onChange={setRfqVendors}
+            onVendorsRefresh={(vendor) => {
+              if (vendor) {
+                setVendorMaster((prev) =>
+                  prev.some((v) => v.id === vendor.id) ? prev : [vendor, ...prev]
+                );
+              }
+            }}
+          />
+        )}
+
+        {/* ── Section 3: Billing & Delivery ── */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+            <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
+              <i className="ri-map-pin-line text-white text-sm"></i>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Billing Address &amp; Delivery</h2>
+              <p className="text-xs text-gray-500">
+                Billing GSTIN is filled from the entity region and can be edited.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Billing Region / GST <span className="text-red-500">*</span>
+              </label>
+              {billingLocations.length > 0 ? (
+                <select
+                  value={billingLocationId}
+                  onChange={(e) => {
+                    const id = e.target.value ? Number(e.target.value) : '';
+                    setBillingLocationId(id);
+                    const loc = billingLocations.find((row) => Number(row.id) === Number(id));
+                    const previousLocation = billingLocation;
+                    setBillingLocationId(id);
+                    setBillingLocation(loc?.location || '');
+                    setBillingGstNo((loc?.gstNo || '').toUpperCase());
+                    setBillingAddress((prev) => {
+                      const trimmed = prev.trim();
+                      if (!trimmed || trimmed === previousLocation) return loc?.location || '';
+                      return prev;
+                    });
+                    if (errors.billingLocationId) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.billingLocationId;
+                        return next;
+                      });
+                    }
+                  }}
+                  disabled={!selectedEntity}
+                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
+                    errors.billingLocationId ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                  }`}
+                >
+                  <option value="">{selectedEntity ? 'Select billing region…' : 'Select entity first'}</option>
+                  {billingLocations.map((loc) => (
+                    <option key={loc.id || loc.location} value={loc.id}>
+                      {loc.location}{loc.gstNo ? ` — ${loc.gstNo}` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={billingLocation}
+                  onChange={(e) => setBillingLocation(e.target.value)}
+                  disabled={!selectedEntity}
+                  placeholder={selectedEntity ? 'No regions in entity master — enter billing location' : 'Select entity first'}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50"
+                />
+              )}
+              {errors.billingLocationId && (
+                <p className="text-xs text-red-500 mt-1">{errors.billingLocationId}</p>
+              )}
+              <p className="text-[11px] text-gray-400 mt-1">
+                GSTIN is filled from the selected region. You can edit it after it appears.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Billing GSTIN
+              </label>
+              <div className="relative">
+                <i className="ri-shield-check-line absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none"></i>
+                <input
+                  type="text"
+                  value={billingGstNo}
+                  onChange={(e) => setBillingGstNo(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                  disabled={!selectedEntity}
+                  placeholder={
+                    selectedEntity
+                      ? billingLocationId || billingLocation
+                        ? 'Edit GSTIN if needed'
+                        : 'Select billing region to auto-fill, then edit'
+                      : 'Select entity first'
+                  }
+                  maxLength={15}
+                  autoComplete="off"
+                  className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50"
+                />
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Auto-filled from the region. Change it if this PR needs a different GSTIN.
+              </p>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Billing Address <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={billingAddress}
+                onChange={(e) => {
+                  setBillingAddress(e.target.value);
+                  if (errors.billingAddress) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.billingAddress;
+                      return next;
+                    });
+                  }
+                }}
+                rows={3}
+                placeholder="Enter billing / invoicing address"
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white resize-none ${
+                  errors.billingAddress ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                }`}
+              />
+              {errors.billingAddress && <p className="text-xs text-red-500 mt-1">{errors.billingAddress}</p>}
+              <p className="text-[11px] text-gray-400 mt-1">
+                Filled from the selected region. Edit the full billing address if needed.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                POC for Delivery <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={deliveryPoc}
+                onChange={(e) => {
+                  setDeliveryPoc(e.target.value);
+                  if (errors.deliveryPoc) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.deliveryPoc;
+                      return next;
+                    });
+                  }
+                }}
+                placeholder="Name / phone of site contact"
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
+                  errors.deliveryPoc ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                }`}
+              />
+              {errors.deliveryPoc && <p className="text-xs text-red-500 mt-1">{errors.deliveryPoc}</p>}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Place of Delivery <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={placeOfDelivery}
+                onChange={(e) => {
+                  setPlaceOfDelivery(e.target.value);
+                  if (errors.placeOfDelivery) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.placeOfDelivery;
+                      return next;
+                    });
+                  }
+                }}
+                placeholder="Site / warehouse address (can differ from billing)"
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
+                  errors.placeOfDelivery ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                }`}
+              />
+              {errors.placeOfDelivery && <p className="text-xs text-red-500 mt-1">{errors.placeOfDelivery}</p>}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Expected Delivery Timeline <span className="text-red-500">*</span>
+              </label>
+              <input
+                list="pr-delivery-timeline"
+                value={expectedDeliveryTimeline}
+                onChange={(e) => {
+                  setExpectedDeliveryTimeline(e.target.value);
+                  if (errors.expectedDeliveryTimeline) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.expectedDeliveryTimeline;
+                      return next;
+                    });
+                  }
+                }}
+                placeholder="e.g. Within 30 days"
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
+                  errors.expectedDeliveryTimeline ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                }`}
+              />
+              <datalist id="pr-delivery-timeline">
+                {PR_DELIVERY_TIMELINE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
+              {errors.expectedDeliveryTimeline && (
+                <p className="text-xs text-red-500 mt-1">{errors.expectedDeliveryTimeline}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Payment Terms <span className="text-red-500">*</span>
+              </label>
+              <input
+                list="pr-payment-terms"
+                value={paymentTerms}
+                onChange={(e) => {
+                  setPaymentTerms(e.target.value);
+                  if (errors.paymentTerms) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.paymentTerms;
+                      return next;
+                    });
+                  }
+                }}
+                placeholder="e.g. Net 30 Days"
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
+                  errors.paymentTerms ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                }`}
+              />
+              <datalist id="pr-payment-terms">
+                {PR_PAYMENT_TERM_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
+              {errors.paymentTerms && <p className="text-xs text-red-500 mt-1">{errors.paymentTerms}</p>}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section 4: Business Justification ── */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
             <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
@@ -1222,7 +1686,7 @@ export default function CreatePRPage() {
           </div>
         </div>
 
-        {/* ── Section 4: Attachments ── */}
+        {/* ── Section 5: Attachments ── */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
             <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
@@ -1336,6 +1800,48 @@ export default function CreatePRPage() {
         </div>
       </div>
 
+      {/* ── Delete Line Item Confirm ── */}
+      {deleteLineItemId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 flex items-center justify-center bg-red-50 rounded-xl">
+                <i className="ri-delete-bin-line text-2xl text-red-600"></i>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Delete Line Item</h3>
+                <p className="text-xs text-gray-500">This cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-5">
+              Remove{' '}
+              <span className="font-semibold text-gray-800">
+                {lineItems.find((item) => item.id === deleteLineItemId)?.itemName
+                  || lineItems.find((item) => item.id === deleteLineItemId)?.description
+                  || 'this line item'}
+              </span>{' '}
+              from the requisition?
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteLineItemId(null)}
+                className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 text-sm font-medium cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemoveLineItem}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Confirm Modal ── */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1355,18 +1861,37 @@ export default function CreatePRPage() {
               <p className="text-sm text-amber-800">
                 <i className="ri-information-line mr-1"></i>
                 {isResubmitFlow
-                  ? 'Your updated PR will be sent to L1 Manager for approval again.'
-                  : <>Once submitted, this PR will be sent for L1 Manager approval and <strong>cannot be edited</strong>.</>}
+                  ? prFlow === 'functional'
+                    ? selectedApprovalUsers.length > 1
+                      ? 'Your updated PR will go back to person 1, then each selected user in order.'
+                      : 'Your updated PR will be sent to the selected user for approval again.'
+                    : 'Your updated PR will be sent to L1 Manager for approval again.'
+                  : prFlow === 'functional'
+                    ? selectedApprovalUsers.length > 1
+                      ? <>Once submitted, person 1 approves first, then person 2, then the rest in order. After all selected users approve: SCM Final RFQ / RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval. This PR <strong>cannot be edited</strong>.</>
+                      : <>Once submitted, this PR will be sent for User Approval, then SCM Final RFQ / RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval, and <strong>cannot be edited</strong>.</>
+                    : <>Once submitted, this PR will be sent for L1 Manager approval and <strong>cannot be edited</strong>.</>}
               </p>
               <div className="flex justify-between text-sm gap-3 pt-2 border-t border-amber-200">
                 <span className="text-amber-700/80 shrink-0">Next Step</span>
                 <span className="font-semibold text-amber-900 text-right">{nextStepLabel || 'L1 Manager Approval'}</span>
               </div>
               <div className="flex justify-between text-sm gap-3">
-                <span className="text-amber-700/80 shrink-0">L1 Manager</span>
+                <span className="text-amber-700/80 shrink-0">{prFlow === 'functional' ? (selectedApprovalUsers.length > 1 ? 'Approvers' : 'Approver') : 'L1 Manager'}</span>
                 <span className="font-semibold text-amber-900 text-right">
                   {isLoadingL1 ? (
                     <span className="font-normal text-amber-700">Looking up…</span>
+                  ) : prFlow === 'functional' && selectedApprovalUsers.length > 0 ? (
+                    <span className="block space-y-1">
+                      {selectedApprovalUsers.map((u, i) => (
+                        <span key={u.id} className="block">
+                          {i + 1}. {u.name}
+                          {u.email ? (
+                            <span className="block text-xs font-normal text-amber-700/80">{u.email}</span>
+                          ) : null}
+                        </span>
+                      ))}
+                    </span>
                   ) : l1Manager?.name || l1Manager?.email ? (
                     <>
                       {l1Manager.name || '—'}
@@ -1379,6 +1904,11 @@ export default function CreatePRPage() {
                   )}
                 </span>
               </div>
+              {prFlow === 'functional' && (
+                <p className="text-[11px] text-amber-800/80 pt-1 border-t border-amber-200">
+                  Then: {vendorSelection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry'} → Buyer Final Verify → Create PO → SCM Manager approval.
+                </p>
+              )}
             </div>
             {isResubmitFlow && (
               <div className="mb-5">
@@ -1432,7 +1962,7 @@ export default function CreatePRPage() {
                   ? `${createdPrNumber || prNumber} details have been updated.`
                   : submitAction === 'draft'
                   ? `${createdPrNumber || prNumber} saved. You can continue editing later.`
-                    : `${createdPrNumber || prNumber} has been ${isResubmitFlow ? 'resubmitted' : 'submitted'} and is pending L1 Manager approval.`}
+                    : `${createdPrNumber || prNumber} has been ${isResubmitFlow ? 'resubmitted' : 'submitted'} and is pending ${prFlow === 'functional' ? (selectedApprovalUsers.length > 1 ? `User Approval 1 of ${selectedApprovalUsers.length}` : 'User Approval') : 'L1 Manager approval'}.`}
               </p>
             </div>
             {submitAction === 'submit' && (
@@ -1450,9 +1980,17 @@ export default function CreatePRPage() {
                   <span className="font-medium text-amber-600 text-right">{nextStepLabel || 'L1 Manager Approval'}</span>
                 </div>
                 <div className="flex justify-between text-sm gap-3 pt-1 border-t border-gray-200">
-                  <span className="text-gray-500 shrink-0">L1 Manager</span>
+                  <span className="text-gray-500 shrink-0">{prFlow === 'functional' ? (selectedApprovalUsers.length > 1 ? 'Approvers' : 'Approver') : 'L1 Manager'}</span>
                   <span className="font-semibold text-gray-900 text-right">
-                    {l1Manager?.name || l1Manager?.email ? (
+                    {prFlow === 'functional' && selectedApprovalUsers.length > 0 ? (
+                      <span className="block space-y-1">
+                        {selectedApprovalUsers.map((u, i) => (
+                          <span key={u.id} className="block">
+                            {i + 1}. {u.name}
+                          </span>
+                        ))}
+                      </span>
+                    ) : l1Manager?.name || l1Manager?.email ? (
                       <>
                         {l1Manager.name || '—'}
                         {l1Manager.email ? (
@@ -1464,6 +2002,11 @@ export default function CreatePRPage() {
                     )}
                   </span>
                 </div>
+                {prFlow === 'functional' && (
+                  <p className="text-[11px] text-gray-500 pt-1">
+                    After all selected users approve: {vendorSelection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry'} → Buyer Final Verify → Create PO → SCM Manager approval.
+                  </p>
+                )}
               </div>
             )}
             <button

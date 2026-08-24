@@ -266,13 +266,123 @@ function buildVendorComparisonBlock(rfqSummary) {
         </tr>`;
 }
 
-function buildNegotiationRoundsBlock(rfqSummary) {
+function vendorLatestPrice(vendor) {
+  const rounds = [...(vendor.rounds || [])].sort((a, b) => Number(a.round) - Number(b.round));
+  const last = rounds[rounds.length - 1];
+  return Number(last?.quotedPrice || last?.values?.quotedPrice || 0);
+}
+
+function bestQuotedFromSummary(rfqSummary) {
+  const vendors = rfqSummary?.vendors || [];
+  const recommended = vendors.find((v) => v.isRecommended);
+  if (recommended) {
+    const price = vendorLatestPrice(recommended) || Number(rfqSummary?.quotedPrice || 0);
+    if (price > 0) return { vendor: recommended.name, price, recommended: true };
+  }
+  let best = null;
+  for (const vendor of vendors) {
+    const price = vendorLatestPrice(vendor);
+    if (!(price > 0)) continue;
+    if (!best || price < best.price) best = { vendor: vendor.name, price, recommended: false };
+  }
+  if (!best && Number(rfqSummary?.quotedPrice || 0) > 0) {
+    return {
+      vendor: rfqSummary.recommendedVendor || '',
+      price: Number(rfqSummary.quotedPrice),
+      recommended: Boolean(rfqSummary.recommendedVendor),
+    };
+  }
+  return best;
+}
+
+function buildQuotedAmountBlock(pr, rfqSummary) {
+  const best = bestQuotedFromSummary(rfqSummary);
+  if (!best) return '';
+  return `
+        <tr>
+          <td style="padding:0 32px 16px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="50%" style="padding:6px;">
+                  <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
+                    <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">PR Estimated Amount</div>
+                    <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${formatCurrency(pr.totalAmount)}</div>
+                  </td></tr></table>
+                </td>
+                <td width="50%" style="padding:6px;">
+                  <table width="100%" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;"><tr><td style="padding:12px 14px;">
+                    <div style="font-size:10px;color:#0f766e;text-transform:uppercase;font-weight:700;">${best.recommended ? 'Recommended Quote' : 'Best Quoted Amount'}</div>
+                    <div style="font-size:18px;font-weight:800;color:#0f766e;margin-top:4px;">${formatCurrency(best.price)}</div>
+                    <div style="font-size:12px;color:#115e59;margin-top:4px;">${escapeHtml(best.vendor || 'Vendor')}</div>
+                  </td></tr></table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
+}
+
+function buildQuotationFilesBlock(rfqSummary) {
+  const files = [];
+  for (const vendor of rfqSummary?.vendors || []) {
+    for (const round of vendor.rounds || []) {
+      if (!round.quotationFileName) continue;
+      files.push({
+        vendor: vendor.name,
+        round: round.round,
+        name: round.quotationFileName,
+      });
+    }
+  }
+  if (!files.length) return '';
+  const rows = files
+    .map(
+      (f) => `
+        <tr>
+          <td style="padding:8px 10px;font-size:12px;color:#0f172a;border-bottom:1px solid #f1f5f9;">${escapeHtml(f.vendor)}</td>
+          <td style="padding:8px 10px;font-size:12px;color:#0f766e;font-weight:700;text-align:center;border-bottom:1px solid #f1f5f9;">Q${escapeHtml(String(f.round))}</td>
+          <td style="padding:8px 10px;font-size:12px;color:#334155;border-bottom:1px solid #f1f5f9;">${escapeHtml(f.name)}</td>
+        </tr>`
+    )
+    .join('');
+  return `
+        <tr>
+          <td style="padding:0 32px 16px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #c7d2fe;border-radius:12px;overflow:hidden;">
+              <tr>
+                <td style="padding:14px 16px;background:#eef2ff;border-bottom:1px solid #c7d2fe;">
+                  <div style="font-size:15px;font-weight:800;color:#312e81;">Quotation Files</div>
+                  <div style="font-size:12px;color:#4338ca;margin-top:2px;">PDFs / images for each round are attached to this email</div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <thead>
+                      <tr style="background:#f8fafc;">
+                        <th style="padding:8px 10px;font-size:10px;color:#64748b;text-align:left;text-transform:uppercase;">Vendor</th>
+                        <th style="padding:8px 10px;font-size:10px;color:#64748b;text-align:center;text-transform:uppercase;">Round</th>
+                        <th style="padding:8px 10px;font-size:10px;color:#64748b;text-align:left;text-transform:uppercase;">File</th>
+                      </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
+}
+
+function buildNegotiationRoundsBlock(pr, rfqSummary) {
   if (!rfqSummary?.vendors?.length) return '';
 
   return `
+        ${buildQuotedAmountBlock(pr, rfqSummary)}
         ${buildRecommendationJustificationBlock(rfqSummary)}
         ${buildPriceNegotiationTrendBlock(rfqSummary)}
-        ${buildVendorComparisonBlock(rfqSummary)}`;
+        ${buildVendorComparisonBlock(rfqSummary)}
+        ${buildQuotationFilesBlock(rfqSummary)}`;
 }
 
 export function buildPrApprovalPendingEmail({
@@ -286,17 +396,20 @@ export function buildPrApprovalPendingEmail({
   rfqEntry = false,
   createPo = false,
   appBaseUrl = null,
+  roleDisplayName: roleDisplayNameOverride = null,
 }) {
   const isRequesterStep = assignedRole === 'Requester';
   const isScmRfqEntry = rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq);
   const stageLower = String(stageLabel || '').toLowerCase();
+  const isUserApproval = stageLower.includes('user approval');
+  const hasRfqVendors = Boolean(rfqSummary?.vendors?.length);
   const isCreatePoStep =
     createPo ||
     stageLower.includes('po create') ||
     stageLower.includes('create po') ||
     (postRfq && assignedRole === 'SCM Buyer' && !isScmRfqEntry);
   const isRfqEntryStep = (isRequesterStep || isScmRfqEntry) && !isCreatePoStep;
-  const roleDisplayName = formatRoleDisplayName(assignedRole);
+  const roleDisplayName = roleDisplayNameOverride || formatRoleDisplayName(assignedRole);
   const stageText =
     stageLabel ||
     (isCreatePoStep
@@ -310,9 +423,11 @@ export function buildPrApprovalPendingEmail({
     ? `Action Required: Create PO for ${pr.prNumber} — ${pr.title}`
     : isRfqEntryStep
       ? `Action Required: RFQ Entry for ${pr.prNumber} — ${pr.title}`
-      : postRfq
-        ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
-        : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
+      : isUserApproval && hasRfqVendors
+        ? `Action Required: Approve PR ${pr.prNumber} — quotations & amount`
+        : postRfq
+          ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
+          : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
   const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const path = getPortalPath(assignedRole, postRfq && !isCreatePoStep);
   const portalUrl = isCreatePoStep
@@ -410,11 +525,10 @@ export function buildPrApprovalPendingEmail({
     )
     .join('');
 
-  const rfqBlock =
-    rfqSummary?.vendors?.length && (postRfq || isScmRfqEntry || rfqSummary.recommendedVendor)
-      ? buildNegotiationRoundsBlock(rfqSummary)
-      : rfqSummary
-        ? `
+  const rfqBlock = hasRfqVendors
+    ? buildNegotiationRoundsBlock(pr, rfqSummary)
+    : rfqSummary
+      ? `
         <tr>
           <td style="padding:0 32px 16px 32px;">
             <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">RFQ Summary</div>
@@ -430,19 +544,25 @@ export function buildPrApprovalPendingEmail({
             </td></tr></table>
           </td>
         </tr>`
-        : '';
+      : '';
 
   const entityLabel = formatEntity(pr);
   const headerEyebrow = isRfqEntryStep
     ? 'RFQ Entry Required'
-    : postRfq
-      ? 'RFQ Approval Required'
-      : 'Approval Required';
+    : isUserApproval
+      ? 'User Approval Required'
+      : postRfq
+        ? 'RFQ Approval Required'
+        : 'Approval Required';
   const headerTitle = isRfqEntryStep
     ? escapeHtml(stageText)
-    : postRfq
-      ? `${escapeHtml(stageText)} — Vendor Comparison`
-      : 'Purchase Request Pending Your Action';
+    : isUserApproval && hasRfqVendors
+      ? 'Review quotations and approve this PR'
+      : postRfq
+        ? `${escapeHtml(stageText)} — Vendor Comparison`
+        : isUserApproval
+          ? 'Purchase Request Pending Your Action'
+          : 'Purchase Request Pending Your Action';
 
   const html = `
 <!DOCTYPE html>
@@ -497,7 +617,10 @@ export function buildPrApprovalPendingEmail({
                   </td></tr></table>
                 </td>
               </tr>
-              <tr>
+              ${
+                hasRfqVendors
+                  ? ''
+                  : `<tr>
                 <td width="50%" style="padding:6px;">
                   <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
                     <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">Total Amount</div>
@@ -505,7 +628,8 @@ export function buildPrApprovalPendingEmail({
                   </td></tr></table>
                 </td>
                 <td width="50%" style="padding:6px;"></td>
-              </tr>
+              </tr>`
+              }
             </table>
           </td>
         </tr>
@@ -552,13 +676,15 @@ export function buildPrApprovalPendingEmail({
 </body>
 </html>`;
 
+  const bestQuote = bestQuotedFromSummary(rfqSummary);
   const text = [
     `Action Required: PR ${pr.prNumber} — ${pr.title}`,
     `Entity: ${entityLabel}`,
     `Role: ${roleDisplayName}`,
     `Stage: ${stageText}`,
     `Requester: ${requester?.name || pr.requester}`,
-    `Amount: ${formatCurrency(pr.totalAmount)}`,
+    `PR Amount: ${formatCurrency(pr.totalAmount)}`,
+    bestQuote ? `Quoted Amount: ${formatCurrency(bestQuote.price)} (${bestQuote.vendor})` : '',
     rfqSummary?.recommendedVendor
       ? `Recommended: ${rfqSummary.recommendedVendor} (${formatCurrency(rfqSummary.quotedPrice || 0)})`
       : '',
@@ -566,6 +692,7 @@ export function buildPrApprovalPendingEmail({
       ? `Justification: ${rfqSummary.recommendationJustification}`
       : '',
     rfqSummary?.totalRounds ? `Total Rounds: ${rfqSummary.totalRounds}` : '',
+    hasRfqVendors ? 'Quotation files for each round are attached.' : '',
     '',
     isCreatePoStep
       ? `Open Create PO: ${portalUrl}`

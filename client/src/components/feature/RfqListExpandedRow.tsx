@@ -24,6 +24,13 @@ interface PRDetail {
   requestType: string;
   priority: string;
   requiredDate: string;
+  expectedDeliveryTimeline?: string;
+  paymentTerms?: string;
+  billingLocation?: string;
+  billingGstNo?: string;
+  billingAddress?: string;
+  deliveryPoc?: string;
+  placeOfDelivery?: string;
   submittedDate: string;
   totalAmount: number;
   justification: string;
@@ -91,6 +98,13 @@ export default function RfqListExpandedRow({
           requestType: String(d.requestType || ''),
           priority: String(d.priority || d.priorityLower || ''),
           requiredDate: String(d.requiredDate || ''),
+          expectedDeliveryTimeline: String(d.expectedDeliveryTimeline || ''),
+          paymentTerms: String(d.paymentTerms || ''),
+          billingLocation: String(d.billingLocation || ''),
+          billingGstNo: String(d.billingGstNo || ''),
+          billingAddress: String(d.billingAddress || ''),
+          deliveryPoc: String(d.deliveryPoc || ''),
+          placeOfDelivery: String(d.placeOfDelivery || ''),
           submittedDate: String(d.submittedDate || ''),
           totalAmount: Number(d.totalAmount || 0),
           justification: String(d.justification || ''),
@@ -187,6 +201,13 @@ export default function RfqListExpandedRow({
                     ['Request Type', pr.requestType],
                     ['Priority', pr.priority],
                     ['Required Date', pr.requiredDate || '—'],
+                    ['Expected Timeline', pr.expectedDeliveryTimeline || '—'],
+                    ['Payment Terms', pr.paymentTerms || '—'],
+                    ['Billing Region', pr.billingLocation || '—'],
+                    ['Billing GSTIN', pr.billingGstNo || '—'],
+                    ['Billing Address', pr.billingAddress || '—'],
+                    ['POC for Delivery', pr.deliveryPoc || '—'],
+                    ['Place of Delivery', pr.placeOfDelivery || '—'],
                     ['Submitted', pr.submittedDate || '—'],
                     ['Total Amount', formatCurrency(pr.totalAmount)],
                     [

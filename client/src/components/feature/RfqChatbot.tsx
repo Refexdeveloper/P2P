@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { rfqApi, VendorRecord, RfqFieldDefinition } from '../../services/api';
 import { formatMoney } from '../../constants/currency';
+import { registerRfqChatOpener, RFQ_CHAT_OPEN_EVENT, type RfqChatOpenDetail } from './rfqChatOpen';
 
 type ChatStep = 'vendor' | 'vendor_missing' | 'vendor_email' | 'file' | 'price' | 'review' | 'done';
 type Role = 'bot' | 'user';
@@ -25,7 +27,7 @@ export interface RfqChatLineItem {
 }
 
 interface RfqChatbotProps {
-  prId: number;
+  prId?: number;
   prNumber?: string;
   isFinalized?: boolean;
   vendors: VendorRecord[];
@@ -34,6 +36,13 @@ interface RfqChatbotProps {
   fieldDefinitions?: RfqFieldDefinition[];
   onRefresh: () => Promise<void> | void;
   onToast?: (message: string) => void;
+  onLocalSave?: (payload: {
+    vendor: { id?: string; name: string; email: string };
+    file: File;
+    quotedPrice: number;
+  }) => Promise<void> | void;
+  fabClassName?: string;
+  hideFab?: boolean;
 }
 
 function uid() {
@@ -90,6 +99,9 @@ export default function RfqChatbot({
   fieldDefinitions = [],
   onRefresh,
   onToast,
+  onLocalSave,
+  fabClassName,
+  hideFab,
 }: RfqChatbotProps) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<ChatStep>('vendor');
@@ -110,13 +122,9 @@ export default function RfqChatbot({
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const openBot = () => {
-      if (!isFinalized) setOpen(true);
-    };
-    window.addEventListener('p2p-open-rfq-chat', openBot);
-    return () => window.removeEventListener('p2p-open-rfq-chat', openBot);
-  }, [isFinalized]);
+  const applyVendorRef = useRef<(next: VendorRecord | { name: string; email: string }, announce?: boolean) => void>(
+    () => undefined
+  );
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -165,6 +173,26 @@ export default function RfqChatbot({
     if (announce) push('user', next.name);
     ask('file', `Selected ${next.name}. Upload the quotation PDF or image (max 5MB).`);
   };
+  applyVendorRef.current = applyVendor;
+
+  const openBot = useCallback(
+    (detail?: RfqChatOpenDetail) => {
+      if (isFinalized) return;
+      setOpen(true);
+      if (detail?.vendor) applyVendorRef.current(detail.vendor, true);
+    },
+    [isFinalized]
+  );
+
+  useEffect(() => {
+    registerRfqChatOpener(openBot);
+    const onEvent = (e: Event) => openBot((e as CustomEvent<RfqChatOpenDetail>).detail);
+    window.addEventListener(RFQ_CHAT_OPEN_EVENT, onEvent);
+    return () => {
+      registerRfqChatOpener(null);
+      window.removeEventListener(RFQ_CHAT_OPEN_EVENT, onEvent);
+    };
+  }, [openBot]);
 
   const handleFiles = (list: File[]) => {
     const picked = list.find((f) => /\.(pdf|png|jpe?g)$/i.test(f.name) && f.size <= 5 * 1024 * 1024);
@@ -184,6 +212,23 @@ export default function RfqChatbot({
     setBusy(true);
     setError('');
     try {
+      if (onLocalSave) {
+        await onLocalSave({
+          vendor: {
+            id: 'id' in vendor ? String(vendor.id) : undefined,
+            name: vendor.name,
+            email: vendor.email || '',
+          },
+          file,
+          quotedPrice,
+        });
+        await onRefresh();
+        onToast?.(`Quotation uploaded for ${vendor.name}`);
+        setStep('done');
+        push('bot', `Saved ${vendor.name} quotation ${formatMoney(quotedPrice)} with file ${file.name}.`);
+        return;
+      }
+      if (!prId) throw new Error('Purchase request is not ready for RFQ upload');
       let invitationId = invited?.invitationId;
       if (!invitationId) {
         const inviteRes = await rfqApi.invite(
@@ -314,13 +359,16 @@ export default function RfqChatbot({
   const chips =
     step === 'vendor_missing' ? ['Yes, create it', 'No, search again'] : step === 'price' ? [] : [];
 
-  return (
+  const ui = (
     <>
-      {!open && (
+      {!open && !hideFab && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-teal-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-teal-700 cursor-pointer"
+          onClick={() => openBot()}
+          className={
+            fabClassName ||
+            'fixed bottom-5 right-5 z-[70] flex items-center gap-2 rounded-full bg-teal-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-teal-700 cursor-pointer'
+          }
         >
           <i className="ri-upload-cloud-2-line text-lg" />
           RFQ upload with AI
@@ -328,7 +376,7 @@ export default function RfqChatbot({
       )}
 
       {open && (
-        <div className="fixed bottom-4 right-4 z-50 flex h-[min(680px,calc(100dvh-2rem))] w-[min(420px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-teal-200 bg-white shadow-2xl">
+        <div className="fixed bottom-4 right-4 z-[80] flex h-[min(680px,calc(100dvh-2rem))] w-[min(420px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-teal-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between bg-teal-700 px-4 py-3 text-white">
             <div>
               <p className="text-sm font-semibold">RFQ Assistant</p>
@@ -528,8 +576,7 @@ export default function RfqChatbot({
       )}
     </>
   );
-}
 
-export function openRfqChat() {
-  window.dispatchEvent(new Event('p2p-open-rfq-chat'));
+  if (typeof document === 'undefined') return null;
+  return createPortal(ui, document.body);
 }

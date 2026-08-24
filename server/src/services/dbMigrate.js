@@ -209,6 +209,24 @@ const MIGRATIONS = [
   `ALTER TABLE rfq_configs ADD COLUMN require_cfo_approval TINYINT(1) NULL`,
   // SCM vendor L1: Yes → L2 → CFO (if CFO exists); No → L2 → SCM RFQ (skip CFO)
   `ALTER TABLE purchase_requests ADD COLUMN require_cfo_approval TINYINT(1) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN billing_location_id INT NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN billing_location VARCHAR(255) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN billing_gst_no VARCHAR(50) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN billing_address TEXT NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN delivery_poc VARCHAR(255) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN place_of_delivery TEXT NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN expected_delivery_timeline VARCHAR(255) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN payment_terms VARCHAR(255) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN pr_flow ENUM('standard', 'functional') NOT NULL DEFAULT 'standard'`,
+  `ALTER TABLE purchase_requests ADD COLUMN approval_user_id INT NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN approval_user_ids JSON NULL`,
+  `UPDATE purchase_requests SET pr_flow = 'functional' WHERE approval_user_id IS NOT NULL`,
+  `UPDATE purchase_requests SET pr_flow = 'standard' WHERE approval_user_id IS NULL`,
+  `UPDATE purchase_requests
+     SET approval_user_ids = JSON_ARRAY(approval_user_id)
+     WHERE approval_user_id IS NOT NULL
+       AND (approval_user_ids IS NULL OR JSON_LENGTH(approval_user_ids) = 0)`,
+  `ALTER TABLE purchase_requests MODIFY COLUMN pr_flow ENUM('standard', 'functional') NOT NULL DEFAULT 'standard'`,
   `ALTER TABLE rfq_configs ADD COLUMN recommendation_justification TEXT NULL`,
   `ALTER TABLE rfq_configs ADD COLUMN send_back_remarks TEXT NULL`,
   // WhatsApp notify — optional mobile with country code preferred (e.g. 9198xxxxxxxx)

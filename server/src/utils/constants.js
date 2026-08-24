@@ -116,7 +116,18 @@ export function mapStatusToFrontend(status) {
   return map[status] || status.toLowerCase();
 }
 
-export function mapStatusToManagerUI(status) {
+export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelection = 'scm') {
+  if (prFlow === 'functional') {
+    const functionalMap = {
+      [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending User Approval',
+      [PR_STATUS.APPROVED]:
+        vendorSelection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry',
+      [PR_STATUS.REJECTED]: 'Rejected',
+      [PR_STATUS.RETURNED]: 'Returned for Rework',
+      [PR_STATUS.DRAFT]: 'Draft',
+    };
+    if (functionalMap[status]) return functionalMap[status];
+  }
   const map = {
     [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending L1 Manager Approval',
     [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: 'Pending L2 Manager Approval',

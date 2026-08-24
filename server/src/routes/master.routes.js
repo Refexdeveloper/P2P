@@ -173,7 +173,7 @@ router.post('/items/chat-create', requireRoles('Requester', 'Super Admin', 'SCM 
     if (!name) throw new Error('Item name is required');
     const data = await createItem({
       name,
-      description: req.body?.description || `Created from Create PR by ${req.user.email}`,
+      description: req.body?.description || name,
       categoryId: req.body?.categoryId || null,
       unit: req.body?.unit || 'Nos',
       hsnCode: req.body?.hsnCode,

@@ -89,6 +89,19 @@ async function init() {
 
   const migrations = [
     `ALTER TABLE purchase_requests ADD COLUMN entity_id INT NULL`,
+    `ALTER TABLE purchase_requests ADD COLUMN billing_location_id INT NULL`,
+    `ALTER TABLE purchase_requests ADD COLUMN billing_location VARCHAR(255) NULL`,
+    `ALTER TABLE purchase_requests ADD COLUMN billing_gst_no VARCHAR(50) NULL`,
+    `ALTER TABLE purchase_requests ADD COLUMN billing_address TEXT NULL`,
+    `ALTER TABLE purchase_requests ADD COLUMN approval_user_ids JSON NULL`,
+    `UPDATE purchase_requests
+       SET approval_user_ids = JSON_ARRAY(approval_user_id)
+       WHERE approval_user_id IS NOT NULL
+         AND (approval_user_ids IS NULL OR JSON_LENGTH(approval_user_ids) = 0)`,
+    `ALTER TABLE purchase_requests ADD COLUMN delivery_poc VARCHAR(255) NULL`,
+    `ALTER TABLE purchase_requests ADD COLUMN place_of_delivery TEXT NULL`,
+    `ALTER TABLE purchase_requests ADD COLUMN expected_delivery_timeline VARCHAR(255) NULL`,
+    `ALTER TABLE purchase_requests ADD COLUMN payment_terms VARCHAR(255) NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN entity_id INT NULL`,
     `ALTER TABLE purchase_requests MODIFY COLUMN pr_number VARCHAR(40) NOT NULL`,
     `ALTER TABLE purchase_orders MODIFY COLUMN po_number VARCHAR(40) NOT NULL`,

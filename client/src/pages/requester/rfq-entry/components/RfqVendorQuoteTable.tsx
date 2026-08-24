@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
@@ -38,6 +38,7 @@ interface Props {
   onSendBack?: (row: RfqQuoteTableRow) => void;
   removingId?: number | null;
   resendingId?: number | null;
+  preferredTab?: number | null;
 }
 
 function roundPrice(row: RfqQuoteTableRow, roundNum: number) {
@@ -66,6 +67,7 @@ export default function RfqVendorQuoteTable({
   onSendBack,
   removingId,
   resendingId,
+  preferredTab,
 }: Props) {
   const roundCount = Math.min(4, Math.max(1, Number(maxRounds) || 4));
   const latestUsedRound = Math.max(
@@ -75,6 +77,11 @@ export default function RfqVendorQuoteTable({
     )
   );
   const [activeTab, setActiveTab] = useState<RoundTab>(Math.min(latestUsedRound, roundCount));
+
+  useEffect(() => {
+    const tab = Number(preferredTab);
+    if (tab >= 1 && tab <= roundCount) setActiveTab(tab);
+  }, [preferredTab, roundCount]);
 
   const visibleRounds = useMemo(() => {
     if (activeTab === 'all') return Array.from({ length: roundCount }, (_, i) => i + 1);

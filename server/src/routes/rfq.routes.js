@@ -44,7 +44,7 @@ router.post('/quote/:token', async (req, res) => {
   }
 });
 
-router.get('/submissions/:id/file', authenticate, requireRoles('Requester', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'SCM Manager', 'CFO', 'Super Admin'), async (req, res) => {
+router.get('/submissions/:id/file', authenticate, async (req, res) => {
   try {
     const { fullPath, fileName, buffer } = await getSubmissionFile(req.user, Number(req.params.id));
     if (buffer) {
@@ -133,7 +133,7 @@ router.post('/pr/:prId/post-approve', async (req, res) => {
   }
 });
 
-router.get('/pr/:prId', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/pr/:prId', async (req, res) => {
   try {
     const data = await getRfqByPrId(req.user, Number(req.params.prId));
     res.json({

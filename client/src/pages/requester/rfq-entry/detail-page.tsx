@@ -12,7 +12,8 @@ import {
   vendorApi,
   VendorRecord,
 } from '../../../services/api';
-import RfqChatbot, { openRfqChat } from '../../../components/feature/RfqChatbot';
+import RfqChatbot from '../../../components/feature/RfqChatbot';
+import { openRfqChat } from '../../../components/feature/rfqChatOpen';
 import RfqVendorQuoteTable from './components/RfqVendorQuoteTable';
 import VendorSearchSelect from './components/VendorSearchSelect';
 import RfqExtraQuestionsPanel from './components/RfqExtraQuestionsPanel';

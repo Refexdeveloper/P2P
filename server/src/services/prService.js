@@ -25,6 +25,92 @@ import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } f
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 import { listPrAttachments, savePrAttachments } from './prAttachmentService.js';
 
+function clipText(value, max) {
+  return String(value || '').trim().slice(0, max);
+}
+
+function parseRequisitionExtras(body = {}, fallback = {}) {
+  const pick = (keys, max = 255) => {
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(body, key) && body[key] !== undefined) {
+        return max > 255 ? String(body[key] || '').trim() : clipText(body[key], max);
+      }
+    }
+    return fallback[keys[0]] || '';
+  };
+  return {
+    deliveryPoc: pick(['deliveryPoc', 'pocForDelivery']),
+    placeOfDelivery: pick(['placeOfDelivery'], 4000),
+    billingAddress: pick(['billingAddress'], 4000),
+    expectedDeliveryTimeline: pick(['expectedDeliveryTimeline']),
+    paymentTerms: pick(['paymentTerms']),
+  };
+}
+
+async function resolvePrBilling(entityId, body = {}, fallback = {}) {
+  const hasBilling =
+    Object.prototype.hasOwnProperty.call(body, 'billingLocationId') ||
+    Object.prototype.hasOwnProperty.call(body, 'billingLocation') ||
+    Object.prototype.hasOwnProperty.call(body, 'billingGstNo');
+
+  if (!hasBilling) {
+    return {
+      billingLocationId: fallback.billingLocationId ?? fallback.billing_location_id ?? null,
+      billingLocation: fallback.billingLocation ?? fallback.billing_location ?? '',
+      billingGstNo: fallback.billingGstNo ?? fallback.billing_gst_no ?? '',
+    };
+  }
+
+  const requestedId =
+    body.billingLocationId != null && body.billingLocationId !== ''
+      ? Number(body.billingLocationId)
+      : null;
+  const requestedName = String(body.billingLocation || '').trim();
+  const requestedGst = String(body.billingGstNo || '').trim().toUpperCase();
+
+  if (!entityId) {
+    return {
+      billingLocationId: requestedId || null,
+      billingLocation: requestedName,
+      billingGstNo: requestedGst,
+    };
+  }
+
+  const [locations] = await pool.query(
+    `SELECT id, location, gst_no FROM entity_locations WHERE entity_id = ? ORDER BY sort_order ASC, id ASC`,
+    [entityId]
+  );
+
+  if (!locations.length) {
+    return {
+      billingLocationId: requestedId || null,
+      billingLocation: requestedName,
+      billingGstNo: requestedGst,
+    };
+  }
+
+  const loc =
+    (requestedId && locations.find((row) => Number(row.id) === requestedId)) ||
+    (requestedName &&
+      locations.find(
+        (row) => String(row.location || '').trim().toLowerCase() === requestedName.toLowerCase()
+      )) ||
+    null;
+
+  if (!loc) {
+    if (requestedId || requestedName || requestedGst) {
+      throw new Error('Billing GST must be selected from the entity region list');
+    }
+    return { billingLocationId: null, billingLocation: '', billingGstNo: '' };
+  }
+
+  return {
+    billingLocationId: loc.id,
+    billingLocation: loc.location,
+    billingGstNo: requestedGst || String(loc.gst_no || '').trim().toUpperCase(),
+  };
+}
+
 function normalizeCurrency(value) {
   const code = String(value || '')
     .trim()
@@ -38,7 +124,20 @@ async function getLineItems(prId) {
   return rows;
 }
 
-function formatPrApprovalStage(stage) {
+function formatPrApprovalStage(stage, prFlow = 'standard') {
+  if (prFlow === 'functional') {
+    const functionalLabels = {
+      SUBMITTED: 'PR Submitted',
+      HOD_REVIEW: 'User Approval',
+      RFQ_SCM_BUYER_SELECTION: 'SCM Final RFQ',
+      BUSINESS_REVIEW: 'SCM Manager Approval',
+      SCM_PO_CREATE: 'PO Create',
+      PO_BUYER_VERIFIED: 'SCM Buyer Final Verify',
+      PO_CREATED: 'PO Create',
+      PO_SIGNED: 'SCM Manager Sign',
+    };
+    if (functionalLabels[stage]) return functionalLabels[stage];
+  }
   const labels = {
     SUBMITTED: 'PR Submitted',
     HOD_REVIEW: 'L1 Manager Approval',
@@ -68,7 +167,7 @@ function formatPrApprovalStage(stage) {
   );
 }
 
-async function getApprovalHistory(prId) {
+async function getApprovalHistory(prId, prFlow = 'functional') {
   const [rows] = await pool.query(
     `SELECT pa.*, u.name AS approver_name, u.role AS approver_role
      FROM pr_approvals pa
@@ -78,9 +177,9 @@ async function getApprovalHistory(prId) {
     [prId]
   );
   const history = rows.map((r) => ({
-    stage: formatPrApprovalStage(r.stage),
+    stage: formatPrApprovalStage(r.stage, prFlow),
     user: r.approver_name || 'System',
-    role: r.approver_role || formatPrApprovalStage(r.stage),
+    role: r.approver_role || formatPrApprovalStage(r.stage, prFlow),
     date: formatDateTime(r.created_at),
     status: r.action === 'submitted' ? 'Completed' : r.action.charAt(0).toUpperCase() + r.action.slice(1),
     remarks: r.remarks || '',
@@ -239,7 +338,7 @@ async function getTimelineAssignees(prId, requesterId, prStatus = null) {
 async function enrichPR(row) {
   const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows, attachments] = await Promise.all([
     getLineItems(row.id),
-    getApprovalHistory(row.id),
+    getApprovalHistory(row.id, row.pr_flow),
     getTimelineAssignees(row.id, row.requester_id, row.status),
     pool
       .query(
@@ -293,8 +392,20 @@ async function enrichPR(row) {
     totalAmount: Number(row.total_amount),
     status: row.status,
     statusFrontend: mapStatusToFrontend(row.status),
-    statusUI: mapStatusToManagerUI(row.status),
+    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection),
     vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+    prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
+    approvalUserId: row.approval_user_id || null,
+    approvalUserIds: functionalApprovalChainFromPr(row),
+    approvalUserName: row.approval_user_name || '',
+    billingLocationId: row.billing_location_id || null,
+    billingLocation: row.billing_location || '',
+    billingGstNo: row.billing_gst_no || '',
+    billingAddress: row.billing_address || '',
+    deliveryPoc: row.delivery_poc || '',
+    placeOfDelivery: row.place_of_delivery || '',
+    expectedDeliveryTimeline: row.expected_delivery_timeline || '',
+    paymentTerms: row.payment_terms || '',
     recommendedVendor: vendorRows[0]?.vendor_name || '',
     currentStage: row.current_stage,
     currentApprover: assignees.currentApprover,
@@ -391,6 +502,210 @@ async function createHodApprovalTask(conn, prId, requesterEmail, departmentId) {
   return { hodUserId, hodEmail, hodName };
 }
 
+const MAX_FUNCTIONAL_APPROVERS = 5;
+
+function parsePrFlow(value, fallback = 'standard') {
+  const raw = String(value || '').toLowerCase().trim();
+  if (raw === 'standard') return 'standard';
+  if (raw === 'functional') return 'functional';
+  return fallback === 'functional' ? 'functional' : 'standard';
+}
+
+function parseApprovalUserIdList(value) {
+  if (value == null || value === '') return [];
+  let raw = value;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(raw)) {
+    raw = raw.toString('utf8');
+  }
+  let list = [];
+  if (Array.isArray(raw)) {
+    list = raw;
+  } else if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      list = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      const n = Number(trimmed);
+      if (n > 0) list = [n];
+    }
+  }
+  const seen = new Set();
+  const ids = [];
+  for (const item of list) {
+    const id = Number(item);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+function functionalApprovalChainFromPr(pr = {}) {
+  const chain = parseApprovalUserIdList(pr.approval_user_ids);
+  if (chain.length) return chain;
+  const current = Number(pr.approval_user_id);
+  return current ? [current] : [];
+}
+
+function resolveFlowAndVendor(body, pr = {}) {
+  const prFlow = parsePrFlow(body.prFlow ?? body.pr_flow, pr.pr_flow || 'standard');
+  const vendorMode =
+    body.vendorSelection === 'own' || body.vendorSelection === 'scm'
+      ? body.vendorSelection
+      : pr.vendor_selection === 'own'
+        ? 'own'
+        : 'scm';
+  if (prFlow !== 'functional') {
+    return { prFlow, vendorMode, approvalUserId: null, approvalUserIds: [] };
+  }
+
+  const bodyHasChain = body.approvalUserIds !== undefined || body.approval_user_ids !== undefined;
+  const bodyHasSingle = body.approvalUserId !== undefined || body.approval_user_id !== undefined;
+  let approvalUserIds = [];
+  if (bodyHasChain) {
+    approvalUserIds = parseApprovalUserIdList(body.approvalUserIds ?? body.approval_user_ids);
+  } else if (bodyHasSingle) {
+    const id = Number(body.approvalUserId ?? body.approval_user_id) || null;
+    approvalUserIds = id ? [id] : [];
+  } else {
+    approvalUserIds = functionalApprovalChainFromPr(pr);
+  }
+  if (approvalUserIds.length > MAX_FUNCTIONAL_APPROVERS) {
+    approvalUserIds = approvalUserIds.slice(0, MAX_FUNCTIONAL_APPROVERS);
+  }
+  return {
+    prFlow,
+    vendorMode,
+    approvalUserId: approvalUserIds[0] || null,
+    approvalUserIds,
+  };
+}
+
+async function resolveSelectedApprovalUser(approvalUserId, requesterId) {
+  const id = Number(approvalUserId);
+  if (!id) throw new Error('Select a user for Functional Flow approval');
+  if (requesterId && id === Number(requesterId)) {
+    throw new Error('Select another user — you cannot approve your own Functional Flow PR');
+  }
+  const [rows] = await pool.query(
+    `SELECT id, name, email, role FROM users
+     WHERE id = ? AND is_active = 1 AND role <> 'Super Admin'`,
+    [id]
+  );
+  if (!rows.length) throw new Error('Selected approval user is invalid or inactive');
+  return rows[0];
+}
+
+async function resolveSelectedApprovalUsers(ids, requesterId) {
+  const unique = parseApprovalUserIdList(ids);
+  if (!unique.length) throw new Error('Select at least one user for Functional Flow approval');
+  if (unique.length > MAX_FUNCTIONAL_APPROVERS) {
+    throw new Error('Select up to 5 users for Functional Flow approval');
+  }
+  const resolved = [];
+  for (const id of unique) {
+    resolved.push(await resolveSelectedApprovalUser(id, requesterId));
+  }
+  return resolved;
+}
+
+function nextIdInApprovalChain(pr, actingUserId) {
+  const chain = functionalApprovalChainFromPr(pr);
+  if (chain.length <= 1) return null;
+  const current = Number(pr.approval_user_id) || Number(actingUserId);
+  let idx = chain.indexOf(current);
+  if (idx < 0) idx = chain.indexOf(Number(actingUserId));
+  if (idx < 0) return null;
+  return chain[idx + 1] || null;
+}
+
+function approvalStepIndex(pr, actingUserId) {
+  const chain = functionalApprovalChainFromPr(pr);
+  if (!chain.length) return { step: 1, total: 1 };
+  const current = Number(pr.approval_user_id) || Number(actingUserId);
+  let idx = chain.indexOf(current);
+  if (idx < 0) idx = chain.indexOf(Number(actingUserId));
+  return { step: (idx >= 0 ? idx : 0) + 1, total: chain.length };
+}
+
+async function createSelectedUserApprovalTask(conn, prId, approvalUserId) {
+  const approver = await resolveSelectedApprovalUser(approvalUserId);
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 1);
+  await conn.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+     VALUES (?, 'PR_APPROVAL', 'HOD Approver', ?, 'pending', ?)`,
+    [prId, approver.id, dueDate.toISOString().split('T')[0]]
+  );
+  return { hodUserId: approver.id, hodEmail: approver.email, hodName: approver.name };
+}
+
+async function persistFunctionalOwnRfq(user, prId, body, { markSubmitted }) {
+  const vendors = body.rfqVendors || body.rfq_vendors;
+  if (!Array.isArray(vendors) || !vendors.length) {
+    if (!markSubmitted) return;
+    const [existing] = await pool.query(
+      `SELECT vqs.id
+       FROM rfq_invitations ri
+       JOIN vendor_quotation_submissions vqs ON vqs.rfq_invitation_id = ri.id
+       WHERE ri.pr_id = ? AND vqs.round = 1 AND vqs.quoted_price > 0
+         AND vqs.quotation_file_name IS NOT NULL AND vqs.quotation_file_name <> ''
+       LIMIT 1`,
+      [prId]
+    );
+    if (!existing.length) {
+      throw new Error('Add at least one vendor with a round-1 quotation and file');
+    }
+    await pool.query(
+      `UPDATE rfq_configs
+       SET requester_submitted_at = COALESCE(requester_submitted_at, NOW()), updated_at = NOW()
+       WHERE pr_id = ?`,
+      [prId]
+    );
+    return;
+  }
+  const { seedFunctionalOwnRfq } = await import('./rfqService.js');
+  await seedFunctionalOwnRfq(user, prId, vendors, {
+    markSubmitted,
+    maxRounds: body.maxRounds ?? body.max_rounds ?? 4,
+  });
+}
+
+async function loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId) {
+  if (prFlow !== 'functional' || vendorMode !== 'own' || !prId) {
+    return { rfqSummary: null, attachments: [] };
+  }
+  try {
+    const { getRfqEmailPack } = await import('./rfqService.js');
+    return await getRfqEmailPack(prId);
+  } catch (err) {
+    console.warn('Functional RFQ email pack failed:', err.message);
+    return { rfqSummary: null, attachments: [] };
+  }
+}
+
+export async function listApprovalUsers(user) {
+  const [rows] = await pool.query(
+    `SELECT u.id, u.name, u.email, u.role, d.name AS department
+     FROM users u
+     LEFT JOIN departments d ON d.id = u.department_id
+     WHERE u.is_active = 1
+       AND u.role <> 'Super Admin'
+       AND u.id <> ?
+     ORDER BY u.name ASC, u.email ASC`,
+    [user.id]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    role: r.role,
+    department: r.department || '',
+  }));
+}
+
 async function resolveL2Assignment(requesterEmail, departmentId) {
   let l2Manager = null;
   const email = (requesterEmail || '').toLowerCase().trim();
@@ -446,13 +761,19 @@ export async function createPurchaseRequest(user, body) {
     justification,
     requiredDate,
     vendorSelection = 'scm',
+    prFlow: prFlowRaw,
+    approvalUserId,
+    approvalUserIds,
     entityId,
     currency = 'INR',
     lineItems = [],
     attachments = [],
     submit = false,
   } = body;
+  const extras = parseRequisitionExtras(body);
+  const billing = await resolvePrBilling(entityId ? Number(entityId) : null, body);
 
+  const prFlow = parsePrFlow(prFlowRaw, 'standard');
   const vendorMode = vendorSelection === 'own' ? 'own' : 'scm';
   const normalizedPurchaseType = normalizePurchaseType(purchaseType);
   const normalizedCurrency = normalizeCurrency(currency);
@@ -462,6 +783,24 @@ export async function createPurchaseRequest(user, body) {
   }
   if (!entityId) {
     throw new Error('Entity is required');
+  }
+
+  let selectedApprovers = [];
+  const requestedApproverIds = parseApprovalUserIdList(approvalUserIds).length
+    ? parseApprovalUserIdList(approvalUserIds)
+    : approvalUserId
+      ? [Number(approvalUserId)]
+      : [];
+  if (prFlow === 'functional' && (submit || requestedApproverIds.length)) {
+    selectedApprovers = await resolveSelectedApprovalUsers(requestedApproverIds, user.id);
+  }
+  const selectedApprover = selectedApprovers[0] || null;
+  const selectedApproverIds = selectedApprovers.map((u) => u.id);
+  if (prFlow === 'functional' && submit && vendorMode === 'own') {
+    const rfqVendors = body.rfqVendors || body.rfq_vendors;
+    if (!Array.isArray(rfqVendors) || !rfqVendors.length) {
+      throw new Error('Add at least one vendor with a round-1 quotation and file');
+    }
   }
 
   const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ?', [department]);
@@ -489,8 +828,9 @@ export async function createPurchaseRequest(user, body) {
 
     const [result] = await conn.query(
       `INSERT INTO purchase_requests
-       (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, current_stage, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, pr_flow, approval_user_id, approval_user_ids, current_stage, submitted_at,
+        billing_location_id, billing_location, billing_gst_no, billing_address, delivery_poc, place_of_delivery, expected_delivery_timeline, payment_terms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         prNumber,
         prTitle,
@@ -506,8 +846,19 @@ export async function createPurchaseRequest(user, body) {
         totalAmount,
         status,
         vendorMode,
+        prFlow,
+        selectedApprover?.id || null,
+        selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
         currentStage,
         submit ? new Date() : null,
+        billing.billingLocationId,
+        billing.billingLocation || null,
+        billing.billingGstNo || null,
+        extras.billingAddress || null,
+        extras.deliveryPoc || null,
+        extras.placeOfDelivery || null,
+        extras.expectedDeliveryTimeline || null,
+        extras.paymentTerms || null,
       ]
     );
 
@@ -530,8 +881,10 @@ export async function createPurchaseRequest(user, body) {
     let hodAssignment = null;
 
     if (submit) {
-      const vendorLabel =
-        vendorMode === 'own' ? 'Own Vendor' : 'SCM Vendor Selection';
+      const pathLabel =
+        prFlow === 'functional'
+          ? `Functional Flow · User Approval (${selectedApprovers.length}): ${selectedApprovers.map((u) => u.name || u.email).join(' → ')} · then SCM Final RFQ / RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval · Vendor path: ${vendorMode === 'own' ? 'Own Vendor (quotes on Create PR)' : 'SCM Vendor Selection'}`
+          : `Vendor path: ${vendorMode === 'own' ? 'Own Vendor' : 'SCM Vendor Selection'}`;
       await conn.query(
         `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
          VALUES (?, ?, ?, ?, ?)`,
@@ -540,23 +893,36 @@ export async function createPurchaseRequest(user, body) {
           STAGE.SUBMITTED,
           user.id,
           'submitted',
-          `PR submitted for approval · Vendor path: ${vendorLabel}`,
+          `PR submitted for approval · ${pathLabel}`,
         ]
       );
 
-      hodAssignment = await createHodApprovalTask(conn, prId, user.email, deptRows[0].id);
-
-      if (hodAssignment.hodEmail) {
-        await conn.query(
-          `UPDATE users SET supervisor_email = ?, supervisor_name = ? WHERE id = ?`,
-          [hodAssignment.hodEmail, hodAssignment.hodName, user.id]
-        );
+      if (prFlow === 'functional') {
+        hodAssignment = await createSelectedUserApprovalTask(conn, prId, selectedApprover.id);
+      } else {
+        hodAssignment = await createHodApprovalTask(conn, prId, user.email, deptRows[0].id);
+        if (hodAssignment.hodEmail) {
+          await conn.query(
+            `UPDATE users SET supervisor_email = ?, supervisor_name = ? WHERE id = ?`,
+            [hodAssignment.hodEmail, hodAssignment.hodName, user.id]
+          );
+        }
       }
     }
 
     await conn.commit();
+    if (prFlow === 'functional' && vendorMode === 'own') {
+      await persistFunctionalOwnRfq(user, prId, body, { markSubmitted: Boolean(submit) });
+    }
     const pr = await getPurchaseRequestById(prId);
     if (submit) {
+        const nextStep =
+        prFlow === 'functional'
+          ? selectedApprovers.length > 1
+            ? `User Approval 1 of ${selectedApprovers.length}`
+            : 'User Approval'
+          : 'L1 Manager Approval';
+      const mailPack = await loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId);
       queuePrRaisedNotification(pr, { name: user.name, email: user.email });
       queuePrApprovalPendingNotification(
         pr,
@@ -566,12 +932,15 @@ export async function createPurchaseRequest(user, body) {
         {
           approverEmails: hodAssignment?.hodEmail ? [hodAssignment.hodEmail] : undefined,
           approverName: hodAssignment?.hodName || undefined,
-          stageLabel: 'L1 Manager Approval',
+          stageLabel: nextStep,
+          roleDisplayName: prFlow === 'functional' ? 'Selected Approver' : undefined,
+          rfqSummary: mailPack.rfqSummary,
+          attachments: mailPack.attachments,
         }
       );
       return {
         ...pr,
-        nextStep: 'L1 Manager Approval',
+        nextStep,
         l1Manager: {
           name: hodAssignment?.hodName || null,
           email: hodAssignment?.hodEmail || null,
@@ -590,10 +959,12 @@ export async function createPurchaseRequest(user, body) {
 export async function getPurchaseRequestById(id) {
   const [rows] = await pool.query(
     `SELECT pr.*, d.name AS department_name, u.name AS requester_name,
+            au.name AS approval_user_name, au.email AS approval_user_email,
             e.name AS entity_name, e.code AS entity_code, e.cost_center AS entity_cost_center
      FROM purchase_requests pr
      JOIN departments d ON d.id = pr.department_id
      JOIN users u ON u.id = pr.requester_id
+     LEFT JOIN users au ON au.id = pr.approval_user_id
      LEFT JOIN entity_masters e ON e.id = pr.entity_id
      WHERE pr.id = ?`,
     [id]
@@ -718,7 +1089,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
   const [rows] = await pool.query(
     `SELECT pr.id, pr.pr_number, pr.title, pr.request_type, pr.priority, pr.status,
             pr.total_amount, pr.justification, pr.required_date, pr.vendor_selection,
-            pr.current_stage, pr.submitted_at, pr.created_at, pr.entity_id,
+            pr.pr_flow, pr.current_stage, pr.submitted_at, pr.created_at, pr.entity_id,
             d.name AS department_name, u.name AS requester_name,
             e.name AS entity_name, e.code AS entity_code, e.cost_center AS entity_cost_center,
             (SELECT COUNT(*) FROM pr_line_items pli WHERE pli.pr_id = pr.id) AS item_count
@@ -741,7 +1112,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
       totalAmount: Number(row.total_amount || 0),
       status: row.status,
       statusFrontend: mapStatusToFrontend(row.status),
-      statusUI: mapStatusToManagerUI(row.status),
+      statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection),
       priorityLower: mapPriorityToFrontend(row.priority),
       submittedDate: formatDate(row.submitted_at || row.created_at),
       createdAt: formatDate(row.created_at),
@@ -751,6 +1122,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
       approvalHistory: [],
       requester: row.requester_name,
       vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+      prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
       currentStage: row.current_stage,
       items: Number(row.item_count || 0),
       requestType: row.request_type,
@@ -935,8 +1307,9 @@ function mapScmBucketSummary(row) {
     totalAmount: Number(row.total_amount),
     status: row.status,
     statusFrontend: mapStatusToFrontend(row.status),
-    statusUI: mapStatusToManagerUI(row.status),
+    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection),
     vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+    prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
     recommendedVendor: row.recommended_vendor_name || '',
     currentStage: row.current_stage,
     submittedDate: formatDate(row.submitted_at || row.created_at),
@@ -1056,20 +1429,52 @@ async function assertHodCanActOnPr(user, prId) {
   // Unassigned HOD role-queue — same visibility as My Tasks (listTasks)
 }
 
-export async function processApproval(user, prId, action, remarks, options = {}) {
-  const roleConfig = ROLE_STAGE_MAP[user.role];
-  if (!roleConfig) throw new Error('Role cannot approve PRs');
+async function assertAssignedUserCanActOnPr(user, prId) {
+  const userEmail = String(user.email || '').toLowerCase().trim();
+  const [taskRows] = await pool.query(
+    `SELECT wt.assigned_user_id, u.email AS assigned_email
+     FROM workflow_tasks wt
+     LEFT JOIN users u ON u.id = wt.assigned_user_id
+     WHERE wt.pr_id = ?
+       AND wt.status = 'pending'
+       AND wt.task_type = 'PR_APPROVAL'
+       AND wt.assigned_user_id IS NOT NULL
+     ORDER BY wt.id DESC
+     LIMIT 1`,
+    [prId]
+  );
+  if (!taskRows.length) {
+    throw new Error('This PR is not assigned to you for approval');
+  }
+  if (taskRows[0].assigned_user_id === user.id) return;
+  const assignedEmail = String(taskRows[0].assigned_email || '').toLowerCase().trim();
+  if (assignedEmail && userEmail && assignedEmail === userEmail) return;
+  throw new Error('This PR is assigned to another person for approval');
+}
 
+export async function processApproval(user, prId, action, remarks, options = {}) {
   const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
   if (!prRows.length) throw new Error('PR not found');
 
   const pr = prRows[0];
-  if (pr.status !== roleConfig.status) {
-    throw new Error(`PR is not pending your approval (current: ${pr.status})`);
-  }
+  const isFunctional = pr.pr_flow === 'functional';
+  const isFunctionalUserStep = isFunctional && pr.status === PR_STATUS.PENDING_HOD_APPROVAL;
 
-  if (user.role === 'HOD Approver') {
-    await assertHodCanActOnPr(user, prId);
+  let roleConfig = ROLE_STAGE_MAP[user.role];
+  let actingAsHod = user.role === 'HOD Approver';
+
+  if (isFunctionalUserStep) {
+    await assertAssignedUserCanActOnPr(user, prId);
+    roleConfig = ROLE_STAGE_MAP['HOD Approver'];
+    actingAsHod = true;
+  } else {
+    if (!roleConfig) throw new Error('Role cannot approve PRs');
+    if (pr.status !== roleConfig.status) {
+      throw new Error(`PR is not pending your approval (current: ${pr.status})`);
+    }
+    if (user.role === 'HOD Approver') {
+      await assertHodCanActOnPr(user, prId);
+    }
   }
 
   if (!remarks?.trim()) throw new Error('Remarks are required');
@@ -1086,10 +1491,31 @@ export async function processApproval(user, prId, action, remarks, options = {})
 
     let requireCfoApproval = pr.require_cfo_approval;
     let skipToScmRfq = false;
+    let nextFunctionalApprover = null;
 
     if (action === 'approve') {
-      if (user.role === 'HOD Approver') {
-        if (pr.vendor_selection === 'own') {
+      if (actingAsHod) {
+        if (isFunctional) {
+          const nextApproverId = nextIdInApprovalChain(pr, user.id);
+          if (nextApproverId) {
+            nextFunctionalApprover = await resolveSelectedApprovalUser(nextApproverId);
+            newStatus = PR_STATUS.PENDING_HOD_APPROVAL;
+            newStage = STAGE.HOD_REVIEW;
+            nextRole = null;
+            skipToScmRfq = false;
+            const { step, total } = approvalStepIndex(pr, user.id);
+            remarks = `${remarks.trim()} [User Approval ${step} of ${total} — next: ${nextFunctionalApprover.name || nextFunctionalApprover.email}]`;
+          } else {
+            newStatus = PR_STATUS.APPROVED;
+            newStage = null;
+            nextRole = null;
+            skipToScmRfq = true;
+            const { step, total } = approvalStepIndex(pr, user.id);
+            if (total > 1) {
+              remarks = `${remarks.trim()} [User Approval ${step} of ${total} — chain complete]`;
+            }
+          }
+        } else if (pr.vendor_selection === 'own') {
           // Own: HOD → Requester RFQ Entry
           newStatus = PR_STATUS.APPROVED;
           newStage = null;
@@ -1162,18 +1588,27 @@ export async function processApproval(user, prId, action, remarks, options = {})
 
     await conn.query(
       `UPDATE purchase_requests
-       SET status = ?, current_stage = ?, require_cfo_approval = ?, updated_at = NOW()
+       SET status = ?, current_stage = ?, require_cfo_approval = ?, approval_user_id = ?, updated_at = NOW()
        WHERE id = ?`,
-      [newStatus, newStage, requireCfoApproval, prId]
+      [
+        newStatus,
+        newStage,
+        requireCfoApproval,
+        nextFunctionalApprover?.id || pr.approval_user_id || null,
+        prId,
+      ]
     );
 
     await conn.query(
       `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-       WHERE pr_id = ? AND assigned_role = ? AND status = 'pending'`,
-      [prId, user.role]
+       WHERE pr_id = ? AND status = 'pending' AND task_type = 'PR_APPROVAL'
+         AND (assigned_user_id = ? OR assigned_role = ?)`,
+      [prId, user.id, actingAsHod ? 'HOD Approver' : user.role]
     );
 
-    if (nextRole === 'PR Manager' && action === 'approve') {
+    if (nextFunctionalApprover && action === 'approve') {
+      nextAssignee = await createSelectedUserApprovalTask(conn, prId, nextFunctionalApprover.id);
+    } else if (nextRole === 'PR Manager' && action === 'approve') {
       const [reqRows] = await conn.query(
         `SELECT u.email FROM users u WHERE u.id = ?`,
         [pr.requester_id]
@@ -1203,9 +1638,22 @@ export async function processApproval(user, prId, action, remarks, options = {})
       }
     }
 
-    // Own vendor: Requester RFQ Entry immediately after HOD approval
+    if (isFunctional && actingAsHod && action === 'approve' && skipToScmRfq) {
+      await conn.query(
+        `UPDATE rfq_configs SET requester_submitted_at = COALESCE(requester_submitted_at, NOW()), updated_at = NOW()
+         WHERE pr_id = ?`,
+        [prId]
+      );
+    }
+
+    // Own vendor: Requester RFQ Entry immediately after HOD approval (Standard only)
     let rfqEntryRequester = null;
-    if (user.role === 'HOD Approver' && action === 'approve' && pr.vendor_selection === 'own') {
+    if (
+      !isFunctional &&
+      actingAsHod &&
+      action === 'approve' &&
+      pr.vendor_selection === 'own'
+    ) {
       const rfqDue = new Date();
       rfqDue.setDate(rfqDue.getDate() + 5);
       await conn.query(
@@ -1234,7 +1682,26 @@ export async function processApproval(user, prId, action, remarks, options = {})
 
     await conn.commit();
     const updatedPr = await getPurchaseRequestById(prId);
-    if (nextRole && action === 'approve') {
+    if (nextFunctionalApprover && action === 'approve') {
+      const { step, total } = approvalStepIndex(
+        { ...pr, approval_user_id: nextFunctionalApprover.id },
+        nextFunctionalApprover.id
+      );
+      queuePrApprovalPendingNotification(
+        updatedPr,
+        'HOD Approver',
+        { name: updatedPr.requester, email: '' },
+        updatedPr.departmentId,
+        {
+          approverEmails: nextAssignee?.hodEmail || nextAssignee?.email
+            ? [nextAssignee.hodEmail || nextAssignee.email]
+            : undefined,
+          approverName: nextAssignee?.hodName || nextAssignee?.name || undefined,
+          stageLabel: total > 1 ? `User Approval ${step} of ${total}` : 'User Approval',
+          roleDisplayName: 'Selected Approver',
+        }
+      );
+    } else if (nextRole && action === 'approve') {
       queuePrApprovalPendingNotification(
         updatedPr,
         nextRole,
@@ -1260,7 +1727,11 @@ export async function processApproval(user, prId, action, remarks, options = {})
         }
       );
     } else if ((user.role === 'CFO' || skipToScmRfq) && action === 'approve') {
-      // SCM path: CFO done, or L2 skipped CFO → SCM Buyer RFQ Entry mail
+      const mailPack = await loadFunctionalOwnRfqMailPack(
+        isFunctional ? 'functional' : 'standard',
+        pr.vendor_selection,
+        prId
+      );
       queuePrApprovalPendingNotification(
         updatedPr,
         'SCM Buyer',
@@ -1268,9 +1739,12 @@ export async function processApproval(user, prId, action, remarks, options = {})
         updatedPr.departmentId,
         {
           rfqEntry: true,
-          stageLabel: 'SCM RFQ Entry',
+          stageLabel:
+            isFunctional && pr.vendor_selection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry',
           approverEmails: scmRfqBuyerEmails.length ? scmRfqBuyerEmails : undefined,
           approverName: 'SCM Buyer',
+          rfqSummary: mailPack.rfqSummary,
+          attachments: mailPack.attachments,
         }
       );
     } else if (action === 'reject' || action === 'return' || action === 'rework') {
@@ -1321,7 +1795,13 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     lineItems = [],
     attachments = [],
   } = body;
-
+  const extras = parseRequisitionExtras(body, {
+    deliveryPoc: pr.delivery_poc,
+    placeOfDelivery: pr.place_of_delivery,
+    billingAddress: pr.billing_address,
+    expectedDeliveryTimeline: pr.expected_delivery_timeline,
+    paymentTerms: pr.payment_terms,
+  });
   if (!lineItems.length) throw new Error('At least one line item is required');
 
   const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ?', [department]);
@@ -1337,22 +1817,29 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     0
   );
   const prTitle = title || lineItems[0]?.description || `${requestType || pr.request_type} Request`;
-  const vendorMode =
-    vendorSelection === 'own' || vendorSelection === 'scm'
-      ? vendorSelection
-      : pr.vendor_selection === 'own'
-        ? 'own'
-        : 'scm';
+  const { prFlow, vendorMode, approvalUserId, approvalUserIds } = resolveFlowAndVendor(body, pr);
+  if (prFlow === 'functional' && approvalUserIds.length) {
+    await resolveSelectedApprovalUsers(approvalUserIds, pr.requester_id);
+  }
+  const currentPendingId = Number(pr.approval_user_id) || null;
+  const nextCurrentApproverId =
+    prFlow === 'functional' && currentPendingId && approvalUserIds.includes(currentPendingId)
+      ? currentPendingId
+      : approvalUserId;
   const normalizedPurchaseType = purchaseType
     ? normalizePurchaseType(purchaseType)
     : normalizePurchaseType(pr.purchase_type);
   const normalizedCurrency = normalizeCurrency(currency ?? pr.currency);
+  const billing = await resolvePrBilling(nextEntityId, body, pr);
 
   const run = async (db) => {
     await db.query(
       `UPDATE purchase_requests
        SET title = ?, request_type = ?, purchase_type = ?, department_id = ?, entity_id = ?, priority = ?, justification = ?,
-           required_date = ?, currency = ?, total_amount = ?, vendor_selection = ?, updated_at = NOW()
+           required_date = ?, currency = ?, total_amount = ?, vendor_selection = ?, pr_flow = ?, approval_user_id = ?, approval_user_ids = ?,
+           billing_location_id = ?, billing_location = ?, billing_gst_no = ?, billing_address = ?,
+           delivery_poc = ?, place_of_delivery = ?, expected_delivery_timeline = ?, payment_terms = ?,
+           updated_at = NOW()
        WHERE id = ?`,
       [
         prTitle,
@@ -1366,9 +1853,29 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
         normalizedCurrency,
         totalAmount,
         vendorMode,
+        prFlow,
+        nextCurrentApproverId,
+        approvalUserIds.length ? JSON.stringify(approvalUserIds) : null,
+        billing.billingLocationId,
+        billing.billingLocation || null,
+        billing.billingGstNo || null,
+        extras.billingAddress || null,
+        extras.deliveryPoc || null,
+        extras.placeOfDelivery || null,
+        extras.expectedDeliveryTimeline || null,
+        extras.paymentTerms || null,
         prId,
       ]
     );
+
+    if (prFlow === 'functional' && nextCurrentApproverId && pr.status === PR_STATUS.PENDING_HOD_APPROVAL) {
+      await db.query(
+        `UPDATE workflow_tasks
+         SET assigned_user_id = ?
+         WHERE pr_id = ? AND task_type = 'PR_APPROVAL' AND status = 'pending'`,
+        [nextCurrentApproverId, prId]
+      );
+    }
 
     await db.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
 
@@ -1401,6 +1908,12 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     } finally {
       ownConn.release();
     }
+  }
+
+  if (prFlow === 'functional' && vendorMode === 'own' && (body.rfqVendors || body.rfq_vendors)) {
+    await persistFunctionalOwnRfq(user, prId, body, {
+      markSubmitted: pr.status !== PR_STATUS.DRAFT,
+    });
   }
 
   return getPurchaseRequestById(prId);
@@ -1440,7 +1953,13 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     currency,
     lineItems = [],
   } = body;
-
+  const extras = parseRequisitionExtras(body, {
+    deliveryPoc: pr.delivery_poc,
+    placeOfDelivery: pr.place_of_delivery,
+    billingAddress: pr.billing_address,
+    expectedDeliveryTimeline: pr.expected_delivery_timeline,
+    paymentTerms: pr.payment_terms,
+  });
   if (!Array.isArray(lineItems) || !lineItems.length) {
     throw new Error('At least one line item is required');
   }
@@ -1464,16 +1983,20 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     0
   );
   const prTitle = title || lineItems[0]?.description || `${requestType || pr.request_type} Request`;
-  const vendorMode =
-    vendorSelection === 'own' || vendorSelection === 'scm'
-      ? vendorSelection
-      : pr.vendor_selection === 'own'
-        ? 'own'
-        : 'scm';
+  const { prFlow, vendorMode, approvalUserId, approvalUserIds } = resolveFlowAndVendor(body, pr);
+  if (prFlow === 'functional' && approvalUserIds.length) {
+    await resolveSelectedApprovalUsers(approvalUserIds, pr.requester_id);
+  }
+  const currentPendingId = Number(pr.approval_user_id) || null;
+  const nextCurrentApproverId =
+    prFlow === 'functional' && currentPendingId && approvalUserIds.includes(currentPendingId)
+      ? currentPendingId
+      : approvalUserId;
   const normalizedPurchaseType = purchaseType
     ? normalizePurchaseType(purchaseType)
     : normalizePurchaseType(pr.purchase_type);
   const normalizedCurrency = normalizeCurrency(currency ?? pr.currency);
+  const billing = await resolvePrBilling(nextEntityId, body, pr);
 
   const conn = await pool.getConnection();
   try {
@@ -1483,7 +2006,10 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
       `UPDATE purchase_requests
        SET title = ?, request_type = ?, purchase_type = ?, department_id = ?, entity_id = ?,
            priority = ?, justification = ?, required_date = ?, currency = ?, total_amount = ?,
-           vendor_selection = ?, updated_at = NOW()
+           vendor_selection = ?, pr_flow = ?, approval_user_id = ?, approval_user_ids = ?,
+           billing_location_id = ?, billing_location = ?, billing_gst_no = ?, billing_address = ?,
+           delivery_poc = ?, place_of_delivery = ?, expected_delivery_timeline = ?, payment_terms = ?,
+           updated_at = NOW()
        WHERE id = ?`,
       [
         prTitle,
@@ -1497,6 +2023,17 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
         normalizedCurrency,
         totalAmount,
         vendorMode,
+        prFlow,
+        nextCurrentApproverId,
+        approvalUserIds.length ? JSON.stringify(approvalUserIds) : null,
+        billing.billingLocationId,
+        billing.billingLocation || null,
+        billing.billingGstNo || null,
+        extras.billingAddress || null,
+        extras.deliveryPoc || null,
+        extras.placeOfDelivery || null,
+        extras.expectedDeliveryTimeline || null,
+        extras.paymentTerms || null,
         prId,
       ]
     );
@@ -1645,32 +2182,68 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
       [prId]
     );
 
-    const hodAssignment = await createHodApprovalTask(conn, prId, user.email, pr.department_id);
+    const [freshRows] = await conn.query(
+      `SELECT pr_flow, approval_user_id, approval_user_ids, department_id, vendor_selection FROM purchase_requests WHERE id = ?`,
+      [prId]
+    );
+    const current = freshRows[0] || pr;
+    const isFunctional = current.pr_flow === 'functional';
+    const chain = functionalApprovalChainFromPr(current);
+    const firstApproverId = chain[0] || current.approval_user_id;
+    if (isFunctional && firstApproverId && Number(firstApproverId) !== Number(current.approval_user_id)) {
+      await conn.query(`UPDATE purchase_requests SET approval_user_id = ? WHERE id = ?`, [
+        firstApproverId,
+        prId,
+      ]);
+    }
 
-    if (hodAssignment.hodEmail) {
-      await conn.query(
-        `UPDATE users SET supervisor_email = ?, supervisor_name = ? WHERE id = ?`,
-        [hodAssignment.hodEmail, hodAssignment.hodName, user.id]
-      );
+    let hodAssignment;
+    if (isFunctional) {
+      hodAssignment = await createSelectedUserApprovalTask(conn, prId, firstApproverId);
+    } else {
+      hodAssignment = await createHodApprovalTask(conn, prId, user.email, current.department_id);
+      if (hodAssignment.hodEmail) {
+        await conn.query(
+          `UPDATE users SET supervisor_email = ?, supervisor_name = ? WHERE id = ?`,
+          [hodAssignment.hodEmail, hodAssignment.hodName, user.id]
+        );
+      }
     }
 
     await conn.commit();
+    if (isFunctional && current.vendor_selection === 'own') {
+      await persistFunctionalOwnRfq(user, prId, body, { markSubmitted: true });
+    }
     const updatedPr = await getPurchaseRequestById(prId);
+    const chainLen = functionalApprovalChainFromPr(current).length;
+    const nextStep = isFunctional
+      ? chainLen > 1
+        ? `User Approval 1 of ${chainLen}`
+        : 'User Approval'
+      : 'L1 Manager Approval';
+    const mailPack = await loadFunctionalOwnRfqMailPack(
+      isFunctional ? 'functional' : 'standard',
+      current.vendor_selection,
+      prId
+    );
     queuePrRaisedNotification(updatedPr, { name: user.name, email: user.email }, { isResubmit: true });
     queuePrApprovalPendingNotification(
       updatedPr,
       'HOD Approver',
       { name: user.name, email: user.email },
-      pr.department_id,
+      current.department_id,
       {
         approverEmails: hodAssignment.hodEmail ? [hodAssignment.hodEmail] : undefined,
         approverName: hodAssignment.hodName || undefined,
-        stageLabel: 'L1 Manager Approval',
+        stageLabel: nextStep,
+        roleDisplayName: isFunctional ? 'Selected Approver' : undefined,
+        rfqSummary: mailPack.rfqSummary,
+        attachments: mailPack.attachments,
       }
     );
     return {
       ...updatedPr,
-      nextStep: 'L1 Manager Approval',
+      nextStep,
       l1Manager: {
         name: hodAssignment?.hodName || null,
         email: hodAssignment?.hodEmail || null,
@@ -1692,26 +2265,41 @@ export async function listRequesterTasks(userId) {
      FROM workflow_tasks wt
      JOIN purchase_requests pr ON pr.id = wt.pr_id
      JOIN departments d ON d.id = pr.department_id
-     WHERE wt.assigned_role = 'Requester' AND wt.status = 'pending' AND pr.requester_id = ?
+     WHERE wt.status = 'pending'
+       AND (
+         (wt.assigned_role = 'Requester' AND pr.requester_id = ?
+           AND NOT (wt.task_type = 'RFQ_ENTRY' AND pr.pr_flow = 'functional'))
+         OR (wt.task_type = 'PR_APPROVAL' AND wt.assigned_user_id = ?)
+       )
      ORDER BY wt.created_at DESC`,
-    [userId]
+    [userId, userId]
   );
 
-  return rows.map((r) => ({
-    id: String(r.id),
-    taskId: r.id,
-    prId: r.pr_id,
-    taskType: r.task_type,
-    prNumber: r.pr_number,
-    title: r.title,
-    department: r.department_name,
-    totalAmount: Number(r.total_amount),
-    requestType: r.request_type,
-    prStatus: r.pr_status,
-    dueDate: formatDate(r.due_date),
-    label: r.task_type === 'RFQ_ENTRY' ? 'RFQ Entry' : r.task_type.replace(/_/g, ' '),
-    actionPath: `/requester/rfq-entry/${r.pr_id}?taskId=${r.id}`,
-  }));
+  return rows.map((r) => {
+    const isUserApproval = r.task_type === 'PR_APPROVAL';
+    return {
+      id: String(r.id),
+      taskId: r.id,
+      prId: r.pr_id,
+      taskType: r.task_type,
+      prNumber: r.pr_number,
+      title: r.title,
+      department: r.department_name,
+      totalAmount: Number(r.total_amount),
+      requestType: r.request_type,
+      prStatus: r.pr_status,
+      dueDate: formatDate(r.due_date),
+      label: isUserApproval
+        ? 'User Approval'
+        : r.task_type === 'RFQ_ENTRY'
+          ? 'RFQ Entry'
+          : r.task_type.replace(/_/g, ' '),
+      actionPath: isUserApproval
+        ? `/tasks?prId=${r.pr_id}`
+        : `/requester/rfq-entry/${r.pr_id}?taskId=${r.id}`,
+      cta: isUserApproval ? 'Review & Approve' : 'Start RFQ Entry',
+    };
+  });
 }
 
 export async function completeRequesterTask(user, taskId) {
@@ -1812,9 +2400,11 @@ function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, display
     isPostRfq,
     actionPath: isPostRfq ? `/rfq-approval/${pr.id}` : undefined,
     vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
+    prFlow: pr.prFlow === 'functional' ? 'functional' : 'standard',
     askBusinessApproval: Boolean(
       pending &&
         !isPostRfq &&
+        pr.prFlow !== 'functional' &&
         pr.vendorSelection !== 'own' &&
         pr.status === PR_STATUS.PENDING_HOD_APPROVAL
     ),
@@ -1827,7 +2417,9 @@ async function listMyApprovalDecisions(user) {
     ROLE_STAGE_MAP[user.role]?.stage,
     POST_RFQ_ROLE_MAP[user.role]?.stage,
   ].filter(Boolean);
-  if (!stages.length) return [];
+  if (!stages.length) {
+    stages.push(STAGE.HOD_REVIEW);
+  }
 
   const placeholders = stages.map(() => '?').join(',');
   const [rows] = await pool.query(
@@ -2159,6 +2751,7 @@ export function toRequesterDashboardFormat(pr) {
     approvalHistory: pr.approvalHistory,
     requester: pr.requester,
     vendorSelection: pr.vendorSelection,
+    prFlow: pr.prFlow,
     currentStage: pr.currentStage,
     currentApprover: pr.currentApprover || null,
     l1Manager: pr.l1Manager || null,

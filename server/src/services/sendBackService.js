@@ -54,14 +54,14 @@ async function resolveRoleUser(role, conn = null) {
 
 export async function getSendBackTargetsForPr(prId, { admin = false } = {}) {
   const [rows] = await pool.query(
-    `SELECT status, vendor_selection FROM purchase_requests WHERE id = ?`,
+    `SELECT status, vendor_selection, pr_flow FROM purchase_requests WHERE id = ?`,
     [prId]
   );
   if (!rows[0]) throw new Error('PR not found');
   if (admin) {
-    return listAdminSendBackTargets(rows[0].status, rows[0].vendor_selection);
+    return listAdminSendBackTargets(rows[0].status, rows[0].vendor_selection, rows[0].pr_flow);
   }
-  return listSendBackTargets(rows[0].status, rows[0].vendor_selection);
+  return listSendBackTargets(rows[0].status, rows[0].vendor_selection, rows[0].pr_flow);
 }
 
 /**
@@ -78,8 +78,8 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
   const admin = Boolean(options.admin);
   const allowed = (
     admin
-      ? listAdminSendBackTargets(pr.status, pr.vendor_selection)
-      : listSendBackTargets(pr.status, pr.vendor_selection)
+      ? listAdminSendBackTargets(pr.status, pr.vendor_selection, pr.pr_flow)
+      : listSendBackTargets(pr.status, pr.vendor_selection, pr.pr_flow)
   ).map((t) => t.key);
   if (!allowed.includes(target.key)) {
     throw new Error(`Cannot send back to ${target.label} from the current stage`);
@@ -137,7 +137,35 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
         name: requester?.name || null,
       };
     } else if (target.assignedRole === 'HOD Approver') {
-      assignee = await resolveHodUser(requester?.email || '', pr.department_id);
+      if (pr.pr_flow === 'functional') {
+        let chain = [];
+        try {
+          const raw = pr.approval_user_ids;
+          if (Array.isArray(raw)) chain = raw.map(Number).filter((id) => id > 0);
+          else if (typeof raw === 'string' && raw.trim()) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) chain = parsed.map(Number).filter((id) => id > 0);
+          }
+        } catch {
+          chain = [];
+        }
+        const firstId = chain[0] || pr.approval_user_id;
+        if (firstId) {
+          const [stdRows] = await db.query(
+            `SELECT id, email, name FROM users WHERE id = ? AND is_active = 1 LIMIT 1`,
+            [firstId]
+          );
+          assignee = stdRows[0]
+            ? { userId: stdRows[0].id, email: stdRows[0].email, name: stdRows[0].name }
+            : { userId: firstId, email: null, name: null };
+          await db.query(`UPDATE purchase_requests SET approval_user_id = ? WHERE id = ?`, [
+            assignee.userId,
+            pr.id,
+          ]);
+        }
+      } else {
+        assignee = await resolveHodUser(requester?.email || '', pr.department_id);
+      }
     } else if (target.assignedRole === 'PR Manager') {
       assignee = await resolveL2User(requester?.email || '', pr.department_id);
     } else {

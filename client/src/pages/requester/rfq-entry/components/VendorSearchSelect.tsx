@@ -8,6 +8,7 @@ interface Props {
   takenIds?: Set<string>;
   onChange: (vendorId: string) => void;
   placeholder?: string;
+  emptyHint?: string;
 }
 
 function vendorHaystack(v: VendorRecord) {
@@ -27,6 +28,7 @@ export default function VendorSearchSelect({
   takenIds,
   onChange,
   placeholder = 'Type vendor name, code, or email',
+  emptyHint,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -140,7 +142,13 @@ export default function VendorSearchSelect({
           {matches.length === 0 ? (
             <div className="px-4 py-4 text-sm text-gray-600">
               <p className="font-medium text-gray-800">No vendor matches “{query.trim()}”</p>
-              <p className="text-xs text-gray-500 mt-1">Try another spelling, or tap <strong>New vendor</strong> to add them.</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {emptyHint || (
+                  <>
+                    Try another spelling, or tap <strong>New vendor</strong> to add them.
+                  </>
+                )}
+              </p>
             </div>
           ) : (
             matches.map((v) => {

@@ -487,6 +487,7 @@ export default function PrChatbot() {
         priority,
         currency: 'INR',
         vendorSelection: 'scm',
+        prFlow: 'standard',
         justification: justification.trim(),
         requiredDate,
         submit,

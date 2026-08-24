@@ -294,6 +294,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.create_pr',
     'nav.rfq_entry',
     'nav.track_pr',
+    'nav.tasks',
     ...REQUESTER_MASTER_NAV_CODES,
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],

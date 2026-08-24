@@ -8,13 +8,16 @@ import {
   poLetterheadApi,
   letterheadMasterApi,
   masterApi,
+  vendorApi,
   triggerBlobDownload,
   PoType,
   PoLetterheadClause,
   LetterheadMasterRecord,
   LetterheadLocationRecord,
   PoSiteLookupRecord,
+  VendorRecord,
 } from '../../../services/api';
+import VendorSearchSelect from '../../requester/rfq-entry/components/VendorSearchSelect';
 import {
   consumePoCsvImport,
   type PoCsvImportPayload,
@@ -830,6 +833,8 @@ export default function CreatePOPage() {
   const [entityOptions, setEntityOptions] = useState<Array<{ id: number; name: string; code: string }>>([]);
   const [manualVendorName, setManualVendorName] = useState('');
   const [manualVendorEmail, setManualVendorEmail] = useState('');
+  const [manualVendorId, setManualVendorId] = useState('');
+  const [masterVendors, setMasterVendors] = useState<VendorRecord[]>([]);
   const csvAppliedRef = useRef(false);
   const brandingAutoApplied = useRef(false);
   const skipNextLetterheadLoad = useRef(false);
@@ -1007,6 +1012,38 @@ export default function CreatePOPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await vendorApi.list();
+        if (!cancelled) setMasterVendors(res.data || []);
+      } catch {
+        if (!cancelled) setMasterVendors([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isManualMode || manualVendorId || !masterVendors.length) return;
+    const name = (manualVendorName || importedVendorName).trim().toLowerCase();
+    if (!name) return;
+    const hit = masterVendors.find((v) => v.name.trim().toLowerCase() === name);
+    if (!hit) return;
+    setManualVendorId(String(hit.id));
+    setManualVendorName(hit.name);
+    const email = (hit.email || '').trim() || manualVendorEmail.trim() || importedVendorEmail.trim();
+    if (email) {
+      setManualVendorEmail(email);
+      setVendorMeta((prev) => ({ ...prev, name: hit.name, email }));
+    } else {
+      setVendorMeta((prev) => ({ ...prev, name: hit.name }));
+    }
+  }, [isManualMode, masterVendors, manualVendorName, importedVendorName, manualVendorId, manualVendorEmail, importedVendorEmail]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1321,6 +1358,7 @@ export default function CreatePOPage() {
         ]);
         setManualVendorName('');
         setManualVendorEmail('');
+        setManualVendorId('');
         setManualEntityId('');
         setDocumentType('purchase_order');
         setLoadError('');
@@ -1350,6 +1388,9 @@ export default function CreatePOPage() {
         currency?: string;
         purchaseType?: 'purchase_order' | 'work_order';
         purchaseTypeLabel?: string;
+        placeOfDelivery?: string;
+        deliveryPoc?: string;
+        paymentTerms?: string;
         lineItems: Array<{ id: number; description: string; quantity: number; unitCost: number; category?: string; unit?: string; uom?: string }>;
       };
       const vendor = res.data.vendor as { name: string; email: string; paymentTerms: string; deliveryTerms: string };
@@ -1384,12 +1425,17 @@ export default function CreatePOPage() {
           prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order'
         )
       );
-      setPaymentTerms(vendor.paymentTerms || 'Net 30 Days');
+      setPaymentTerms(vendor.paymentTerms || prData.paymentTerms || 'Net 30 Days');
       setIncoterms(normalizeIncoterm(vendor.deliveryTerms));
+      if (prData.placeOfDelivery) {
+        setDeliveryAddress(prData.placeOfDelivery);
+      }
       setPoTermsDetails((prev) => ({
         ...prev,
         subject: prev.subject?.trim() ? prev.subject : String(prData.title || '').trim(),
-        paymentTermsText: prev.paymentTermsText || vendor.paymentTerms || 'Net 30 Days',
+        paymentTermsText: prev.paymentTermsText || vendor.paymentTerms || prData.paymentTerms || 'Net 30 Days',
+        siteAddress: prev.siteAddress || prData.placeOfDelivery || '',
+        siteContactPerson: prev.siteContactPerson || prData.deliveryPoc || '',
       }));
       setVendorMeta({
         name: vendor.name,
@@ -2248,68 +2294,84 @@ export default function CreatePOPage() {
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50/60">
         {/* ── Top Header Bar ── */}
-        <div className="bg-white border-b border-gray-200 px-3 sm:px-6 lg:px-8 py-3 sm:py-4 sticky top-0 z-20">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
-              <button
-                onClick={() => navigate(isEditMode ? editReturnPath : '/scm/create-po')}
-                className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer text-gray-500 shrink-0"
-              >
-                <i className="ri-arrow-left-line text-lg"></i>
-              </button>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <h1 className="text-base sm:text-lg font-bold text-gray-900">
-                    {isEditMode ? `Edit ${docLabel}` : `Create ${docLabel}`}
-                  </h1>
-                  <span className="px-2.5 py-0.5 border rounded-full text-xs font-semibold tracking-wide bg-slate-50 text-slate-700 border-slate-200">
-                    {docLabel === 'Work Order' ? 'WO' : 'PO'}
-                  </span>
-                  <span className={`px-2.5 py-0.5 border rounded-full text-xs font-semibold tracking-wide ${
-                    isBuyerVerifyEdit
-                      ? 'bg-blue-50 text-blue-700 border-blue-200'
-                      : isEditMode
-                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                        : 'bg-teal-50 text-teal-700 border-teal-200'
-                  }`}>
-                    {isBuyerVerifyEdit ? 'BUYER FINAL VERIFY' : isEditMode ? 'PENDING REVIEW' : 'DRAFT'}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
-                  <span className="text-xs text-gray-500">
-                    {docNoLabel}: <span className="font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
-                  </span>
-                  <span className="text-gray-300 text-xs hidden sm:inline">•</span>
-                  <span className="text-xs text-gray-500">
-                    PR Ref:{' '}
-                    <span className="font-semibold text-gray-700">
-                      {isManualMode ? 'None (Manual)' : pr.prNumber}
-                    </span>
-                  </span>
-                  <span className="text-gray-300 text-xs hidden md:inline">•</span>
-                  <span className="text-xs text-gray-500 truncate max-w-full md:max-w-[240px]">
-                    Vendor:{' '}
-                    <span className="font-semibold text-gray-700">
-                      {isManualMode ? manualVendorName || '—' : pr.recommendedVendor}
-                    </span>
-                  </span>
-                </div>
-              </div>
+        <div className="sticky top-0 z-20 px-3 sm:px-4 pt-2 pb-1 bg-gray-50/90 backdrop-blur-sm">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-2.5 py-1.5">
+          <div className="flex items-center gap-2 min-h-9 overflow-x-auto">
+            <button
+              onClick={() => navigate(isEditMode ? editReturnPath : '/scm/create-po')}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer text-gray-500 shrink-0"
+              aria-label="Back"
+            >
+              <i className="ri-arrow-left-line"></i>
+            </button>
+
+            <h1 className="text-sm font-bold text-gray-900 whitespace-nowrap shrink-0">
+              {isEditMode ? `Edit ${docLabel}` : `Create ${docLabel}`}
+            </h1>
+            <span className="px-1.5 py-0.5 border rounded text-[10px] font-semibold tracking-wide bg-slate-50 text-slate-700 border-slate-200 shrink-0">
+              {docLabel === 'Work Order' ? 'WO' : 'PO'}
+            </span>
+            <span className={`px-1.5 py-0.5 border rounded text-[10px] font-semibold tracking-wide whitespace-nowrap shrink-0 ${
+              isBuyerVerifyEdit
+                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                : isEditMode
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-teal-50 text-teal-700 border-teal-200'
+            }`}>
+              {isBuyerVerifyEdit ? 'BUYER FINAL VERIFY' : isEditMode ? 'PENDING REVIEW' : 'DRAFT'}
+            </span>
+
+            <span className="text-[11px] text-gray-500 truncate min-w-0 hidden md:inline">
+              {docNoLabel}: <span className="font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
+              <span className="text-gray-300 mx-1">·</span>
+              PR: <span className="font-semibold text-gray-700">{isManualMode ? 'None' : pr.prNumber}</span>
+              <span className="text-gray-300 mx-1">·</span>
+              Vendor:{' '}
+              <span className="font-semibold text-gray-700">
+                {isManualMode ? manualVendorName || '—' : pr.recommendedVendor}
+              </span>
+            </span>
+
+            <div className="flex items-center gap-0.5 shrink-0 mx-1 border-x border-gray-200 px-1">
+              {[
+                { key: 'details', label: 'Details', step: 1 },
+                {
+                  key: 'terms',
+                  label: isWorkOrder ? 'WO Terms' : 'Terms',
+                  step: 2,
+                },
+                { key: 'preview', label: 'Preview', step: 3 },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key as typeof activeTab)}
+                  className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === tab.key
+                      ? 'bg-teal-50 text-teal-700'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className={`w-4 h-4 flex items-center justify-center rounded-full text-[10px] font-bold ${
+                    activeTab === tab.key ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-500'
+                  }`}>{tab.step}</span>
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+            <div className="flex items-center gap-1.5 ml-auto shrink-0">
               {draftSaved && (
-                <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium animate-pulse">
-                  <i className="ri-checkbox-circle-fill"></i> Draft saved
+                <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium whitespace-nowrap">
+                  <i className="ri-checkbox-circle-fill"></i> Saved
                 </span>
               )}
               {canSaveDraft && (
                 <button
                   onClick={handleSaveDraft}
                   disabled={submitting}
-                  className="px-3 sm:px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                  className="px-2.5 py-1.5 border border-gray-300 text-gray-600 rounded-md hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-xs font-medium flex items-center gap-1 disabled:opacity-50"
                 >
-                  <i className="ri-save-line"></i> {submitting ? 'Saving...' : 'Save Draft'}
+                  <i className="ri-save-line"></i> {submitting ? 'Saving...' : 'Draft'}
                 </button>
               )}
               {isEditMode && pdfPreviewUrl && (
@@ -2317,9 +2379,9 @@ export default function CreatePOPage() {
                   href={pdfPreviewUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium flex items-center gap-2"
+                  className="px-2.5 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-xs font-medium flex items-center gap-1 whitespace-nowrap"
                 >
-                  <i className="ri-file-pdf-line"></i> View PDF
+                  <i className="ri-file-pdf-line"></i> PDF
                 </a>
               )}
               {isEditMode && (
@@ -2327,49 +2389,25 @@ export default function CreatePOPage() {
                   type="text"
                   value={changeSummary}
                   onChange={(e) => setChangeSummary(e.target.value)}
-                  placeholder="Change summary (optional)"
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-64 max-w-full"
+                  placeholder="Summary"
+                  className="px-2 py-1.5 border border-gray-300 rounded-md text-xs w-28 xl:w-36"
                 />
               )}
               <button
                 onClick={handleSendForApproval}
                 disabled={submitting}
-                className="px-4 sm:px-5 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-semibold flex items-center gap-2 shadow-sm disabled:opacity-60"
+                className="px-3 py-1.5 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-xs font-semibold flex items-center gap-1 shadow-sm disabled:opacity-60"
               >
                 <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
-                {submitting ? 'Saving...' : isEditMode ? 'Save Changes' : skipApproval ? 'Create PO Only' : 'Send for Approval'}
+                {submitting ? 'Saving...' : isEditMode ? 'Save' : skipApproval ? 'Create PO' : 'Send'}
               </button>
             </div>
           </div>
-
-          {/* Progress Steps */}
-          <div className="flex items-center gap-0 mt-3 sm:mt-4 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
-            {[
-              { key: 'details', label: 'PO Details', icon: 'ri-file-list-3-line', step: 1 },
-              {
-                key: 'terms',
-                label: isWorkOrder ? 'WO Terms & Conditions' : 'Terms & Conditions',
-                icon: 'ri-file-text-line',
-                step: 2,
-              },
-              { key: 'preview', label: 'Preview & Submit', icon: 'ri-eye-line', step: 3 },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as typeof activeTab)}
-                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 text-xs sm:text-sm font-medium transition-all cursor-pointer whitespace-nowrap border-b-2 shrink-0 ${
-                  activeTab === tab.key
-                    ? 'border-teal-600 text-teal-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <span className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-bold ${
-                  activeTab === tab.key ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-500'
-                }`}>{tab.step}</span>
-                <i className={`${tab.icon} text-base`}></i>
-                <span className="hidden sm:inline">{tab.label}</span>
-              </button>
-            ))}
+          <div className="md:hidden text-[11px] text-gray-500 truncate mt-1 pl-10">
+            {docNoLabel}: <span className="font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
+            <span className="text-gray-300 mx-1">·</span>
+            PR: <span className="font-semibold text-gray-700">{isManualMode ? 'None' : pr.prNumber}</span>
+          </div>
           </div>
         </div>
 
@@ -2513,16 +2551,34 @@ export default function CreatePOPage() {
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                           Vendor Name <span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="text"
-                          value={manualVendorName}
-                          onChange={(e) => {
-                            setManualVendorName(e.target.value);
-                            setVendorMeta((prev) => ({ ...prev, name: e.target.value }));
+                        <VendorSearchSelect
+                          vendors={masterVendors}
+                          value={manualVendorId}
+                          onChange={(id) => {
+                            setManualVendorId(id);
+                            if (!id) {
+                              setManualVendorName('');
+                              setManualVendorEmail('');
+                              setVendorMeta((prev) => ({ ...prev, name: '', email: '' }));
+                              return;
+                            }
+                            const v = masterVendors.find((x) => String(x.id) === String(id));
+                            if (!v) return;
+                            setManualVendorName(v.name);
+                            setManualVendorEmail((v.email || '').trim());
+                            setVendorMeta((prev) => ({
+                              ...prev,
+                              name: v.name,
+                              email: (v.email || '').trim(),
+                            }));
                           }}
-                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          placeholder="Vendor / supplier name"
+                          placeholder="Search vendor master"
+                          emptyHint="Try another spelling, or add the vendor in Vendor Master first."
                         />
+                        <p className="text-xs text-gray-500 mt-1.5">Select from vendor master — email fills automatically</p>
+                        {masterVendors.length === 0 && (
+                          <p className="text-xs text-amber-600 mt-1">Vendor master is empty or failed to load. Add a vendor there, then refresh this page.</p>
+                        )}
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">
@@ -2535,9 +2591,10 @@ export default function CreatePOPage() {
                             setManualVendorEmail(e.target.value);
                             setVendorMeta((prev) => ({ ...prev, email: e.target.value }));
                           }}
-                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                           placeholder="vendor@example.com"
                         />
+                        <p className="text-xs text-gray-500 mt-1.5">From vendor master (you can edit if needed)</p>
                       </div>
                     </div>
                     <div>

@@ -585,6 +585,7 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
     rfqEntry: options.rfqEntry || false,
     createPo: options.createPo || false,
     appBaseUrl: getAppBaseUrl(),
+    roleDisplayName: options.roleDisplayName || null,
   });
 
   console.log(
@@ -602,6 +603,8 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
       stageLabel: options.stageLabel || null,
       postRfq: Boolean(options.postRfq),
       rfqEntry: Boolean(options.rfqEntry),
+      roleDisplayName: options.roleDisplayName || null,
+      includeRfqDetail: Boolean(options.rfqSummary?.vendors?.length),
     },
   });
 }
@@ -1159,6 +1162,16 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
         to = [...new Set([...to, ...(await getScmBuyerNotifyEmails())])];
       }
     }
+    let rfqSummary = null;
+    if (meta.includeRfqDetail && pr.id) {
+      try {
+        const { getRfqEmailPack } = await import('./rfqService.js');
+        const pack = await getRfqEmailPack(pr.id);
+        rfqSummary = pack.rfqSummary;
+      } catch (err) {
+        console.warn('RFQ pack for resend failed:', err.message);
+      }
+    }
     const built = buildPrApprovalPendingEmail({
       pr,
       requester,
@@ -1169,6 +1182,8 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       rfqEntry: Boolean(meta.rfqEntry),
       createPo: Boolean(meta.createPo),
       appBaseUrl: getAppBaseUrl(),
+      roleDisplayName: meta.roleDisplayName || null,
+      rfqSummary,
     });
     subject = built.subject;
     html = built.html;

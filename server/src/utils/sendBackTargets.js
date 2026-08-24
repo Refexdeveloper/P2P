@@ -109,6 +109,21 @@ export const SEND_BACK_TARGET_DEFS = {
   },
 };
 
+const FUNCTIONAL_PREVIOUS_BY_STATUS = {
+  [PR_STATUS.PENDING_HOD_APPROVAL]: ['REQUESTER'],
+  [PR_STATUS.APPROVED]: ['REQUESTER', 'HOD_PRE', 'SCM_RFQ'],
+  [PR_STATUS.PENDING_BUSINESS_APPROVAL]: ['SCM_RFQ', 'HOD_PRE', 'REQUESTER'],
+  [PR_STATUS.PENDING_SCM_PO]: ['SCM_MANAGER', 'SCM_RFQ', 'HOD_PRE', 'REQUESTER'],
+};
+
+const ADMIN_FUNCTIONAL_KEYS = ['REQUESTER', 'HOD_PRE', 'SCM_RFQ', 'SCM_MANAGER'];
+
+function withFunctionalLabels(def) {
+  if (!def) return def;
+  if (def.key === 'HOD_PRE') return { ...def, label: 'User Approval' };
+  return def;
+}
+
 /** Previous steps available from each current status */
 const PREVIOUS_BY_STATUS = {
   [PR_STATUS.PENDING_HOD_APPROVAL]: ['REQUESTER'],
@@ -153,7 +168,15 @@ const SCM_ONLY_KEYS = new Set(['SCM_RFQ', 'SCM_MANAGER', 'L2_PRE', 'CFO_PRE']);
  * List send-back targets for a PR at its current status.
  * Filters own vs SCM where useful (e.g. hide SCM_RFQ on own path).
  */
-export function listSendBackTargets(status, vendorSelection = 'scm') {
+export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 'standard') {
+  if (prFlow === 'functional') {
+    const keys = FUNCTIONAL_PREVIOUS_BY_STATUS[status] || ['REQUESTER'];
+    return keys
+      .map((key) => withFunctionalLabels(SEND_BACK_TARGET_DEFS[key]))
+      .filter(Boolean)
+      .map((def) => ({ key: def.key, label: def.label }));
+  }
+
   const isOwn = vendorSelection === 'own';
   const keys = PREVIOUS_BY_STATUS[status] || ['REQUESTER'];
 
@@ -173,7 +196,13 @@ export function listSendBackTargets(status, vendorSelection = 'scm') {
  * Admin: every prior stage for this vendor path (not limited to immediate predecessors).
  * Excludes targets that would leave the PR at the same status.
  */
-export function listAdminSendBackTargets(status, vendorSelection = 'scm') {
+export function listAdminSendBackTargets(status, vendorSelection = 'scm', prFlow = 'standard') {
+  if (prFlow === 'functional') {
+    return ADMIN_FUNCTIONAL_KEYS
+      .map((key) => withFunctionalLabels(SEND_BACK_TARGET_DEFS[key]))
+      .filter((def) => def && def.status !== status)
+      .map((def) => ({ key: def.key, label: def.label }));
+  }
   const isOwn = vendorSelection === 'own';
   const keys = isOwn ? ADMIN_OWN_KEYS : ADMIN_SCM_KEYS;
   return keys

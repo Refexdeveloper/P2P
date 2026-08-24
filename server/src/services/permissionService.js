@@ -50,6 +50,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.create_pr',
     'nav.rfq_entry',
     'nav.track_pr',
+    'nav.tasks',
     'nav.item_master',
     'nav.vendor_master',
     'nav.category_master',
@@ -184,7 +185,8 @@ export async function getUserPermissionCodes(userId, role) {
             'nav.requester_dashboard',
             'nav.create_pr',
             'nav.rfq_entry',
-            'nav.track_pr'
+            'nav.track_pr',
+            'nav.tasks'
           );
         }
         if (role === 'SCM Buyer' || role === 'SCM Manager') {
