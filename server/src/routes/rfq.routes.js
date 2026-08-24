@@ -22,6 +22,7 @@ import {
   listScmRfqEntryPrs,
   processPostRfqApproval,
 } from '../services/rfqService.js';
+import { extractQuotationFromUpload } from '../services/quotationOcrService.js';
 
 const router = Router();
 
@@ -69,6 +70,26 @@ router.get('/submissions/:id/file', authenticate, requireRoles('Requester', 'SCM
 });
 
 router.use(authenticate);
+
+router.post(
+  '/quotation-extract',
+  requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'),
+  async (req, res) => {
+    try {
+      const data = await extractQuotationFromUpload(req.body || {});
+      res.json({
+        data,
+        message: data.quotedPrice
+          ? 'Quotation details read from the file'
+          : data.scanned
+            ? 'This PDF looks scanned. We will try OCR on the pages.'
+            : 'File read, but no prices were found. Enter them manually.',
+      });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
 
 const POST_RFQ_ROLES = ['HOD Approver', 'PR Manager', 'SCM Manager', 'CFO', 'SCM Buyer'];
 

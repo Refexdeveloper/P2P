@@ -44,9 +44,9 @@ export default function RequesterRfqTaskListPage() {
   return (
     <DashboardLayout>
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">RFQ Entry Tasks</h1>
+        <h1 className="text-xl font-bold text-gray-900">Vendor quotes to collect</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Select a PR to invite vendors and collect quotations — expand a row for full PR details
+          Open a purchase request, add vendors, get their prices, then pick one.
         </p>
       </div>
 

@@ -18,6 +18,7 @@ import {
   toCfoDashboardFormat,
 } from '../services/prService.js';
 import { getSendBackTargetsForPr } from '../services/sendBackService.js';
+import { addPrAttachment, getPrAttachmentFile, deletePrAttachment } from '../services/prAttachmentService.js';
 import pool from '../config/db.js';
 
 const router = Router();
@@ -113,6 +114,46 @@ router.get('/stats/manager', requireRoles('PR Manager'), async (req, res) => {
   }
 });
 
+router.get('/:id/attachments/:attachmentId/file', async (req, res) => {
+  try {
+    const file = await getPrAttachmentFile(Number(req.params.id), Number(req.params.attachmentId));
+    const safeName = String(file.fileName || 'attachment').replace(/"/g, '');
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.send(file.buffer);
+  } catch (err) {
+    res.status(404).json({ message: err.message });
+  }
+});
+
+router.post('/:id/attachments', requireRoles('Requester', 'Super Admin'), async (req, res) => {
+  try {
+    const pr = await getPurchaseRequestById(req.params.id);
+    if (!pr) return res.status(404).json({ message: 'PR not found' });
+    if (req.user.role === 'Requester' && pr.requesterId !== req.user.id) {
+      return res.status(403).json({ message: 'Not allowed to upload files to this PR' });
+    }
+    const saved = await addPrAttachment(Number(req.params.id), req.user.id, req.body || {});
+    res.status(201).json({ data: saved });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.delete('/:id/attachments/:attachmentId', requireRoles('Requester', 'Super Admin'), async (req, res) => {
+  try {
+    const pr = await getPurchaseRequestById(req.params.id);
+    if (!pr) return res.status(404).json({ message: 'PR not found' });
+    if (req.user.role === 'Requester' && pr.requesterId !== req.user.id) {
+      return res.status(403).json({ message: 'Not allowed to delete files from this PR' });
+    }
+    await deletePrAttachment(Number(req.params.id), Number(req.params.attachmentId));
+    res.json({ message: 'Attachment deleted' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const pr = await getPurchaseRequestById(req.params.id);
@@ -182,8 +223,11 @@ router.post(
 
 router.post('/:id/approve', requireRoles('HOD Approver', 'PR Manager', 'CFO', 'Super Admin'), async (req, res) => {
   try {
-    const { action = 'approve', remarks, returnTo } = req.body;
-    const pr = await processApproval(req.user, req.params.id, action, remarks, { returnTo });
+    const { action = 'approve', remarks, returnTo, goToBusinessApproval } = req.body;
+    const pr = await processApproval(req.user, req.params.id, action, remarks, {
+      returnTo,
+      goToBusinessApproval,
+    });
     res.json({ data: pr, message: `PR ${action}d successfully` });
   } catch (err) {
     res.status(400).json({ message: err.message });

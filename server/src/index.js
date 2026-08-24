@@ -33,9 +33,9 @@ app.use(
     credentials: true,
   })
 );
-// Quotation PDFs are sent as base64 (~1.37x file size); allow up to ~5MB files
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+// PR attachments / quotation PDFs are sent as base64 (~1.37x file size); allow up to ~10MB files
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

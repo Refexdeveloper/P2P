@@ -15,9 +15,34 @@ interface RequesterPR {
   entityCode?: string;
   amount: number;
   status: string;
+  statusRaw?: string;
   date: string;
   items: number;
   requestType: string;
+}
+
+const ADMIN_EDIT_ROLES = [
+  'Super Admin',
+  'SCM Manager',
+  'SCM Buyer',
+  'HOD Approver',
+  'PR Manager',
+  'CFO',
+];
+
+const REQUESTER_EDITABLE_STATUSES = new Set([
+  'DRAFT',
+  'RETURNED',
+  'PENDING_HOD_APPROVAL',
+  'PENDING_PR_MANAGER_APPROVAL',
+  'PENDING_CFO_APPROVAL',
+]);
+
+function canEditRequesterPr(request: RequesterPR, isAdminEditor: boolean) {
+  if (isAdminEditor) return true;
+  const raw = String(request.statusRaw || '').toUpperCase();
+  const front = String(request.status || '').toLowerCase();
+  return REQUESTER_EDITABLE_STATUSES.has(raw) || front === 'draft' || front === 'returned';
 }
 
 interface RequesterTask {
@@ -40,6 +65,7 @@ const PAGE_SIZE = 10;
 export default function RequesterDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
   const [filter, setFilter] = useState<'all' | 'draft' | 'pending_approval' | 'approved' | 'returned' | 'rejected'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -221,6 +247,14 @@ export default function RequesterDashboard() {
           <i className="ri-add-line text-lg"></i>
           <span>Create New PR</span>
         </Link>
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event('p2p-open-pr-chat'))}
+          className="px-5 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer"
+        >
+          <i className="ri-robot-2-line text-lg"></i>
+          <span>Create PR with AI</span>
+        </button>
         <Link to="/requester/track-pr" className="px-5 py-2.5 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer">
           <i className="ri-search-eye-line text-lg"></i>
           <span>Track My PRs &amp; SLA</span>
@@ -342,13 +376,15 @@ export default function RequesterDashboard() {
                       >
                         <i className="ri-eye-line"></i>
                       </button>
-                      {request.status === 'returned' && (
+                      {(canEditRequesterPr(request, isAdminEditor) ||
+                        String(request.status || '').toLowerCase() === 'draft') && (
                         <button
-                          onClick={() => openDrawer(request.prId)}
-                          className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors cursor-pointer"
-                          title="Resubmit"
+                          onClick={() => navigate(`/requester/edit-pr/${request.prId}`)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"
+                          title={request.status === 'returned' ? 'Edit & Resubmit' : 'Edit PR'}
                         >
-                          <i className="ri-refresh-line"></i>
+                          <i className={request.status === 'returned' ? 'ri-refresh-line' : 'ri-edit-line'}></i>
+                          Edit
                         </button>
                       )}
                     </div>
@@ -367,11 +403,11 @@ export default function RequesterDashboard() {
         )}
 
         {meta.total > 0 && (
-          <div className="px-5 py-4 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="px-5 py-4 border-t border-gray-200 flex flex-col gap-3 sm:flex-row sm:items-center">
             <p className="text-xs text-gray-500">
               Showing {(page - 1) * meta.pageSize + 1}–{Math.min(page * meta.pageSize, meta.total)} of {meta.total}
             </p>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
                 disabled={page <= 1 || listLoading}

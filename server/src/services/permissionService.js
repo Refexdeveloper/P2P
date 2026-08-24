@@ -62,11 +62,10 @@ export const ROLE_DEFAULT_PERMISSIONS = {
   'SCM Buyer': [
     'nav.purchase_requests',
     'nav.rfq_approval',
-    'nav.tasks',
     'nav.create_po',
-    'nav.scm_rfq_entry',
+    'nav.buyer_final_verify',
+    'nav.vendor_po_acceptance',
     'nav.track_po',
-    'nav.po_excel_import',
     'nav.item_master',
     'nav.vendor_master',
     'nav.category_master',
@@ -74,12 +73,12 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.department_master',
     'nav.po_letterhead_master',
     'nav.letterhead_master',
+    'nav.scm_rfq_entry',
+    'nav.po_excel_import',
     'nav.vendor_quotation',
     'nav.vendor_comparison',
     'nav.technical_clearance',
     'nav.po_approval',
-    'nav.buyer_final_verify',
-    'nav.vendor_po_acceptance',
     'nav.vendor_invoice',
     'nav.grn',
   ],
@@ -87,6 +86,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.scm_manager_dashboard',
     'nav.po_approval',
     'nav.rfq_approval',
+    'nav.track_po',
     'nav.payment_authorization',
     'nav.tasks',
     'nav.item_master',
@@ -194,16 +194,24 @@ export async function getUserPermissionCodes(userId, role) {
           healCodes.push(
             'nav.purchase_requests',
             'nav.rfq_approval',
-            'nav.tasks',
             'nav.create_po',
-            'nav.scm_rfq_entry',
             'nav.buyer_final_verify',
+            'nav.vendor_po_acceptance',
             'nav.track_po',
+            'nav.scm_rfq_entry',
             'nav.po_excel_import'
           );
+          if (stored.includes('nav.tasks')) {
+            const idx = stored.indexOf('nav.tasks');
+            if (idx >= 0) stored.splice(idx, 1);
+            await pool.query(
+              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.tasks'`,
+              [userId]
+            );
+          }
         }
         if (role === 'SCM Manager') {
-          healCodes.push('nav.scm_manager_dashboard', 'nav.po_approval', 'nav.rfq_approval');
+          healCodes.push('nav.scm_manager_dashboard', 'nav.po_approval', 'nav.rfq_approval', 'nav.track_po');
         }
         for (const code of healCodes) {
           if (!stored.includes(code) && validCodes.has(code)) {

@@ -26,6 +26,7 @@ import { authenticate, requireRoles } from '../middleware/auth.js';
   getVendorAcceptanceByToken,
   submitVendorAcceptanceByToken,
   resolveVendorAcceptanceFile,
+  resolveCancellationAttachment,
 } from '../services/poService.js';
 import {
   listLetterheads,
@@ -386,12 +387,22 @@ router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), as
     const status = typeof req.query.status === 'string' ? req.query.status : 'all';
     const purchaseType =
       typeof req.query.purchaseType === 'string' ? req.query.purchaseType : 'all';
+    const entityId = req.query.entityId != null ? Number(req.query.entityId) : undefined;
+    const department = typeof req.query.department === 'string' ? req.query.department : '';
+    const category = typeof req.query.category === 'string' ? req.query.category : '';
+    const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom : '';
+    const dateTo = typeof req.query.dateTo === 'string' ? req.query.dateTo : '';
     const result = await listTrackPurchaseOrders(req.user, {
       page: Number.isFinite(page) ? page : 1,
       limit: Number.isFinite(limit) ? limit : 10,
       search,
       status,
       purchaseType,
+      entityId: Number.isFinite(entityId) ? entityId : undefined,
+      department,
+      category,
+      dateFrom,
+      dateTo,
     });
     res.json(result);
   } catch (err) {
@@ -626,6 +637,17 @@ router.get('/:id/vendor-acceptance/file', requireRoles('SCM Buyer', 'SCM Manager
     if (!po) return res.status(404).json({ message: 'PO not found' });
     const fullPath = resolveVendorAcceptanceFile(po);
     res.download(fullPath, po.vendorAcceptanceFileName || 'vendor-acceptance.pdf');
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/:id/cancellation/:index/file', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+  try {
+    const po = await getPurchaseOrderById(Number(req.params.id));
+    if (!po) return res.status(404).json({ message: 'PO not found' });
+    const { fullPath, fileName } = resolveCancellationAttachment(po, req.params.index);
+    res.download(fullPath, fileName);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

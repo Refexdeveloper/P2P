@@ -57,43 +57,43 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
 
   const menuItems = useMemo<MenuNode[]>(() => {
     const nav = ensureNavigation(user?.role, user?.navigation);
-    const masters: MenuLeaf[] = [];
-    const others: MenuLeaf[] = [];
+    const masters: MenuLeaf[] = nav.filter(isMastersNavItem).map((item) => ({
+      kind: 'link',
+      icon: item.icon,
+      label: item.label,
+      path: item.path,
+      badge: badgeForPath(item.path),
+    }));
 
+    const group: MenuGroup | null = masters.length
+      ? {
+          kind: 'group',
+          key: 'masters',
+          label: 'Masters',
+          icon: 'ri-database-2-line',
+          children: masters,
+        }
+      : null;
+
+    const nodes: MenuNode[] = [];
+    let mastersInserted = false;
     for (const item of nav) {
-      const leaf: MenuLeaf = {
+      if (isMastersNavItem(item)) {
+        if (group && !mastersInserted) {
+          nodes.push(group);
+          mastersInserted = true;
+        }
+        continue;
+      }
+      nodes.push({
         kind: 'link',
         icon: item.icon,
         label: item.label,
         path: item.path,
         badge: badgeForPath(item.path),
-      };
-      if (isMastersNavItem(item)) {
-        masters.push(leaf);
-      } else {
-        others.push(leaf);
-      }
+      });
     }
-
-    const nodes: MenuNode[] = [...others];
-    if (masters.length) {
-      const group: MenuGroup = {
-        kind: 'group',
-        key: 'masters',
-        label: 'Masters',
-        icon: 'ri-database-2-line',
-        children: masters,
-      };
-      const createPoIdx = nodes.findIndex((n) => n.kind === 'link' && n.path === '/scm/create-po');
-      const scmIdx = nodes.findIndex((n) => n.kind === 'link' && n.path.startsWith('/scm/'));
-      if (createPoIdx >= 0) {
-        nodes.splice(createPoIdx + 1, 0, group);
-      } else if (scmIdx >= 0) {
-        nodes.splice(scmIdx + 1, 0, group);
-      } else {
-        nodes.push(group);
-      }
-    }
+    if (group && !mastersInserted) nodes.push(group);
     return nodes;
   }, [user?.role, user?.navigation]);
 

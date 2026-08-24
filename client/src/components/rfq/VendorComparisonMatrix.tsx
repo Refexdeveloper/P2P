@@ -32,15 +32,24 @@ function paramKeys(p: { id: string; label: string }) {
   return [p.id, p.label, p.id.toLowerCase(), p.label.replace(/\s+/g, '')];
 }
 
-/** Neutral default table styling — no vendor color coding */
-const NEUTRAL = {
-  bar: 'bg-slate-700',
-  soft: 'bg-slate-50',
-  text: 'text-slate-800',
-  revBg: 'bg-slate-100',
-  revText: 'text-slate-700',
-  pill: 'bg-slate-50 text-slate-700 border-slate-200',
-};
+const VENDOR_THEMES = [
+  { bar: 'bg-teal-600 text-white border-teal-700', soft: 'bg-teal-50/70', head: 'bg-teal-100 text-teal-950 border-teal-200', text: 'text-teal-950' },
+  { bar: 'bg-violet-600 text-white border-violet-700', soft: 'bg-violet-50/70', head: 'bg-violet-100 text-violet-950 border-violet-200', text: 'text-violet-950' },
+  { bar: 'bg-sky-600 text-white border-sky-700', soft: 'bg-sky-50/70', head: 'bg-sky-100 text-sky-950 border-sky-200', text: 'text-sky-950' },
+  { bar: 'bg-rose-500 text-white border-rose-600', soft: 'bg-rose-50/70', head: 'bg-rose-100 text-rose-950 border-rose-200', text: 'text-rose-950' },
+  { bar: 'bg-indigo-600 text-white border-indigo-700', soft: 'bg-indigo-50/70', head: 'bg-indigo-100 text-indigo-950 border-indigo-200', text: 'text-indigo-950' },
+  { bar: 'bg-orange-500 text-white border-orange-600', soft: 'bg-orange-50/70', head: 'bg-orange-100 text-orange-950 border-orange-200', text: 'text-orange-950' },
+];
+
+function vendorTheme(index: number) {
+  return VENDOR_THEMES[Math.abs(index) % VENDOR_THEMES.length];
+}
+
+function columnFill(isBest: boolean, isRec: boolean, themeSoft: string, extra = '') {
+  if (isBest) return `bg-amber-50 border-amber-200 ${extra}`;
+  if (isRec) return `bg-emerald-50/80 border-emerald-100 ${extra}`;
+  return `${themeSoft} border-[#E5EAF0] ${extra}`;
+}
 
 type QuoteLine = {
   lineItemId?: string | number;
@@ -74,7 +83,7 @@ interface Props {
 }
 
 function revisionLabel(round: number) {
-  return `Revision ${String(Math.max(0, round - 1)).padStart(2, '0')}`;
+  return `Quote ${Math.max(1, round)}`;
 }
 
 function formatDisplayDate(raw?: string | null) {
@@ -281,7 +290,7 @@ export default function VendorComparisonMatrix({
     .map((v, vendorIndex) => ({
       vendor: v,
       vendorIndex,
-      theme: NEUTRAL,
+      theme: vendorTheme(vendorIndex),
       cols: revColumns.filter((c) => c.vendorId === v.id),
     }))
     .filter((g) => g.cols.length > 0);
@@ -355,6 +364,15 @@ export default function VendorComparisonMatrix({
     .filter((n) => n > 0)
     .reduce((min, n) => (min === null || n < min ? n : min), null as number | null);
 
+  const columnMeta = revColumns.map((col, i) => {
+    const t = colTotals[i];
+    const isBest = bestLanded != null && t.landed > 0 && t.landed === bestLanded;
+    const isRecRev = Boolean(col.isRecommended && col.isLatest);
+    const theme = vendorTheme(col.vendorIndex);
+    return { col, t, isBest, isRecRev, theme };
+  });
+  const bestMeta = columnMeta.find((c) => c.isBest) || null;
+
   const displayLines =
     lineItems.length > 0
       ? lineItems
@@ -370,7 +388,6 @@ export default function VendorComparisonMatrix({
           },
         ];
 
-  const latestRevNo = String(Math.max(0, totalRounds - 1)).padStart(2, '0');
   const latestQuoteDate = vendors
     .flatMap((v) => v.rounds || [])
     .map((r) => r.submittedAt)
@@ -461,8 +478,8 @@ export default function VendorComparisonMatrix({
 
             <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
               <div className="min-w-[88px] flex-1 sm:flex-none rounded-xl bg-[#EEF2FF] border border-[#E0E7FF] px-3 sm:px-4 py-3">
-                <p className="text-[11px] font-medium text-[#64748B]">Rev. No</p>
-                <p className="text-xl sm:text-2xl font-bold text-[#12284A] mt-0.5 leading-none">{latestRevNo}</p>
+                <p className="text-[11px] font-medium text-[#64748B]">Latest quote</p>
+                <p className="text-xl sm:text-2xl font-bold text-[#12284A] mt-0.5 leading-none">{revisionLabel(Math.max(1, totalRounds))}</p>
               </div>
               <div className="min-w-[100px] flex-1 sm:flex-none rounded-xl bg-[#E6F7F5] border border-[#C7EFE8] px-3 sm:px-4 py-3">
                 <p className="text-[11px] font-medium text-[#64748B]">Date</p>
@@ -539,24 +556,53 @@ export default function VendorComparisonMatrix({
       )}
 
       {/* ── COMMERCIAL COMPARISON ── */}
-      <section className={cardClass} aria-label="Commercial comparison">
+      <section className={cardClass} aria-label="Price comparison">
         <div className="px-4 sm:px-5 py-4 border-b border-[#E5EAF0]">
-          <p className="text-sm font-semibold text-[#64748B]">Quotation of:</p>
-          <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Commercial Comparison</h2>
+          <p className="text-sm font-semibold text-[#64748B]">Compare vendors</p>
+          <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Price comparison</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Each vendor has its own color. Gold column = lowest total. Green = vendor you chose.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-400 text-amber-950 text-[11px] font-black uppercase">
+              <i className="ri-star-fill" /> Best price
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-bold">
+              <i className="ri-checkbox-circle-fill" /> Recommended
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">
+              Each vendor = one color
+            </span>
+          </div>
+          {bestMeta && (
+            <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 text-[11px] font-black uppercase">
+                <i className="ri-star-fill" /> Best price
+              </span>
+              <p className="text-sm text-amber-950">
+                <span className="font-bold">{bestMeta.col.vendorName}</span>
+                <span className="text-amber-800"> · {bestMeta.col.revisionLabel} · </span>
+                <span className="font-bold tabular-nums">₹{formatNum(bestMeta.t.landed)}</span>
+              </p>
+            </div>
+          )}
           {dynamicRfqLabels.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {dynamicRfqLabels.map((p) => (
-                <span
-                  key={`lbl-${p.id}`}
-                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                    isMakeLikeParam(p)
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                      : 'bg-slate-50 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  {p.label}
-                </span>
-              ))}
+            <div className="mt-3">
+              <p className="text-[11px] font-semibold text-slate-500 mb-1.5">Also in this table</p>
+              <div className="flex flex-wrap gap-1.5">
+                {dynamicRfqLabels.map((p) => (
+                  <span
+                    key={`lbl-${p.id}`}
+                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                      isMakeLikeParam(p)
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-slate-50 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    {p.label}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -572,20 +618,25 @@ export default function VendorComparisonMatrix({
           <>
             {/* Mobile: card layout (no table) */}
             <div className="md:hidden p-3 space-y-3">
-              {revColumns.map((col, colIdx) => {
-                const t = colTotals[colIdx];
-                const isRecRev = Boolean(col.isRecommended && col.isLatest);
-                const isBest = bestLanded != null && t.landed > 0 && t.landed === bestLanded;
+              {columnMeta.map(({ col, t, isBest, isRecRev, theme }) => {
                 return (
                   <article
                     key={`m-card-${col.key}`}
                     className={`rounded-xl border overflow-hidden ${
-                      isRecRev ? 'border-emerald-300 bg-emerald-50/40' : 'border-[#E5EAF0] bg-white'
+                      isBest
+                        ? 'border-amber-400 ring-2 ring-amber-200'
+                        : isRecRev
+                          ? 'border-emerald-300 bg-emerald-50/40'
+                          : 'border-[#E5EAF0] bg-white'
                     }`}
                   >
                     <div
                       className={`px-3 py-2.5 flex flex-wrap items-start justify-between gap-2 ${
-                        isRecRev ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-800'
+                        isBest
+                          ? 'bg-amber-400 text-amber-950'
+                          : isRecRev
+                            ? 'bg-emerald-600 text-white'
+                            : theme.bar
                       }`}
                     >
                       <div className="min-w-0">
@@ -596,21 +647,15 @@ export default function VendorComparisonMatrix({
                       </div>
                       <div className="flex flex-wrap gap-1 justify-end">
                         {isRecRev && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-bold">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-emerald-800 text-[10px] font-bold">
                             <i className="ri-checkbox-circle-fill text-[10px]"></i>
                             Recommended
                           </span>
                         )}
                         {isBest && (
-                          <span
-                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              isRecRev
-                                ? 'bg-white text-emerald-800'
-                                : 'bg-slate-200 text-slate-700 border border-slate-300'
-                            }`}
-                          >
+                          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 text-[10px] font-black uppercase">
                             <i className="ri-star-fill text-[10px]"></i>
-                            Best
+                            Best price
                           </span>
                         )}
                       </div>
@@ -654,7 +699,7 @@ export default function VendorComparisonMatrix({
                             </p>
                             <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                               <div className="rounded-lg bg-slate-50 px-2.5 py-2">
-                                <p className="text-[10px] font-semibold uppercase text-slate-500">Rate</p>
+                                <p className="text-[10px] font-semibold uppercase text-slate-500">Unit price</p>
                                 <p className="font-semibold tabular-nums text-[#334155]">
                                   {rate > 0 ? `₹${formatNum(rate)}` : '—'}
                                 </p>
@@ -730,13 +775,13 @@ export default function VendorComparisonMatrix({
 
                       <div
                         className={`px-3 py-3 flex items-center justify-between gap-3 ${
-                          isRecRev ? 'bg-emerald-100/70' : 'bg-[#F8FAFC]'
+                          isBest ? 'bg-amber-100' : isRecRev ? 'bg-emerald-100/70' : 'bg-[#F8FAFC]'
                         }`}
                       >
-                        <span className="text-sm font-bold text-[#12284A]">Landed Cost</span>
+                        <span className="text-sm font-bold text-[#12284A]">Total cost</span>
                         <span
                           className={`text-base font-bold tabular-nums ${
-                            isRecRev ? 'text-emerald-800' : 'text-[#12284A]'
+                            isBest ? 'text-amber-950' : isRecRev ? 'text-emerald-800' : 'text-[#12284A]'
                           }`}
                         >
                           {t.landed > 0 ? `₹${formatNum(t.landed)}` : '—'}
@@ -752,7 +797,7 @@ export default function VendorComparisonMatrix({
             <div className="hidden md:block w-full min-w-0 max-w-full">
             <p className="px-4 py-2 text-xs text-slate-500 flex items-center gap-1.5 print:hidden border-b border-[#E5EAF0] bg-slate-50">
               <i className="ri-arrow-left-right-line"></i>
-              Scroll sideways to see every vendor and revision
+              Scroll sideways to see every vendor. Gold = lowest total.
             </p>
             <div className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch]">
               <table className="border-separate border-spacing-0 text-sm w-max min-w-full">
@@ -779,22 +824,29 @@ export default function VendorComparisonMatrix({
                     >
                       UOM
                     </th>
-                    {revColumns.map((col) => {
-                      const isRecRev = col.isRecommended && col.isLatest;
+                    {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                       return (
                         <th
                           key={`${col.key}-rev`}
                           colSpan={2}
                           className={`px-2 py-2.5 border-b border-l text-center text-xs font-bold whitespace-nowrap ${
-                            isRecRev
-                              ? 'bg-emerald-600 text-white border-emerald-700'
-                              : 'bg-slate-100 text-slate-700 border-[#E5EAF0]'
+                            isBest
+                              ? 'bg-amber-400 text-amber-950 border-amber-500'
+                              : isRecRev
+                                ? 'bg-emerald-600 text-white border-emerald-700'
+                                : theme.bar
                           }`}
                         >
                           <span className="inline-flex flex-col items-center gap-1">
                             <span>{col.revisionLabel}</span>
+                            {isBest && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-950 text-amber-300 text-[10px] font-black uppercase tracking-wide">
+                                <i className="ri-star-fill text-[10px]"></i>
+                                Best price
+                              </span>
+                            )}
                             {isRecRev && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-bold uppercase tracking-wide">
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-emerald-800 text-[10px] font-bold uppercase tracking-wide">
                                 <i className="ri-checkbox-circle-fill text-[10px]"></i>
                                 Recommended
                               </span>
@@ -810,16 +862,17 @@ export default function VendorComparisonMatrix({
                     <th className={`${stDesc} z-40 bg-slate-100 border-b border-[#E5EAF0]`} />
                     <th className={`${stQty} bg-slate-100 border-b border-[#E5EAF0]`} />
                     <th className={`${stUom} bg-slate-100 border-b border-r border-[#E5EAF0]`} />
-                    {revColumns.map((col) => {
-                      const isRecRev = col.isRecommended && col.isLatest;
+                    {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                       return (
                         <th
                           key={`${col.key}-vendor`}
                           colSpan={2}
                           className={`px-2 py-3 border-b border-l text-center text-xs sm:text-sm font-bold ${
-                            isRecRev
-                              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                              : 'bg-slate-200 text-slate-800 border-[#E5EAF0]'
+                            isBest
+                              ? 'bg-amber-100 text-amber-950 border-amber-300'
+                              : isRecRev
+                                ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                                : theme.head
                           }`}
                         >
                           {onSelectVendor ? (
@@ -850,16 +903,16 @@ export default function VendorComparisonMatrix({
                     <th className={`${stDesc} z-40 bg-white border-b border-[#E5EAF0]`} />
                     <th className={`${stQty} bg-white border-b border-[#E5EAF0]`} />
                     <th className={`${stUom} bg-white border-b border-r border-[#E5EAF0]`} />
-                    {revColumns.map((col) => (
+                    {columnMeta.map(({ col, isBest, isRecRev, theme }) => (
                       <Fragment key={`${col.key}-ra`}>
-                        <th className="px-2 py-2 border-b border-l border-[#E5EAF0] bg-white text-center text-[11px] font-bold text-[#12284A] uppercase min-w-[88px] sm:min-w-[100px]">
-                          Rate
+                        <th className={`px-2 py-2 border-b border-l text-center text-[11px] font-bold uppercase min-w-[88px] sm:min-w-[100px] ${columnFill(isBest, isRecRev, theme.soft)} ${isBest ? 'text-amber-950' : 'text-[#12284A]'}`}>
+                          Unit price
                         </th>
-                        <th className="px-2 py-2 border-b border-[#E5EAF0] bg-white text-center text-[11px] font-bold text-[#12284A] uppercase min-w-[96px] sm:min-w-[110px]">
+                        <th className={`px-2 py-2 border-b text-center text-[11px] font-bold uppercase min-w-[96px] sm:min-w-[110px] ${columnFill(isBest, isRecRev, theme.soft)} ${isBest ? 'text-amber-950' : 'text-[#12284A]'}`}>
                           Amount
                         </th>
                       </Fragment>
-                ))}
+                    ))}
               </tr>
             </thead>
 
@@ -892,7 +945,7 @@ export default function VendorComparisonMatrix({
                       >
                         {li.uom || 'Nos'}
                       </td>
-                      {revColumns.map((col) => {
+                      {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                         const { rate, amount } =
                           String(li.id) === 'total'
                             ? {
@@ -902,10 +955,10 @@ export default function VendorComparisonMatrix({
                             : getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
                         return (
                           <Fragment key={`${col.key}-${li.id}`}>
-                            <td className="px-2 sm:px-3 py-3.5 border-b border-l border-[#E5EAF0] text-right tabular-nums text-[#334155] text-xs sm:text-sm whitespace-nowrap">
+                            <td className={`px-2 sm:px-3 py-3.5 border-b border-l text-right tabular-nums text-[#334155] text-xs sm:text-sm whitespace-nowrap ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {rate > 0 ? `₹${formatNum(rate)}` : '—'}
                             </td>
-                            <td className="px-2 sm:px-3 py-3.5 border-b border-[#E5EAF0] text-right font-semibold tabular-nums text-[#12284A] text-xs sm:text-sm whitespace-nowrap">
+                            <td className={`px-2 sm:px-3 py-3.5 border-b text-right font-semibold tabular-nums text-[#12284A] text-xs sm:text-sm whitespace-nowrap ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {amount > 0 ? `₹${formatNum(amount)}` : '—'}
                             </td>
                           </Fragment>
@@ -929,7 +982,7 @@ export default function VendorComparisonMatrix({
                       >
                         {param.label}
                       </td>
-                      {revColumns.map((col) => {
+                      {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                         const raw =
                           col.values[param.id] ??
                           col.values[param.label] ??
@@ -945,12 +998,12 @@ export default function VendorComparisonMatrix({
                                 ? 'Yes'
                                 : 'No'
                               : String(raw);
-                return (
+                        return (
                           <Fragment key={`${col.key}-info-${param.id}`}>
-                            <td className="px-2 sm:px-3 py-3 border-b border-l border-[#E5EAF0] text-right text-slate-300 tabular-nums">
+                            <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               —
                             </td>
-                            <td className="px-2 sm:px-3 py-3 border-b border-[#E5EAF0] text-right font-semibold text-[#12284A] text-xs sm:text-sm">
+                            <td className={`px-2 sm:px-3 py-3 border-b text-right font-semibold text-[#12284A] text-xs sm:text-sm ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {display}
                             </td>
                           </Fragment>
@@ -973,12 +1026,12 @@ export default function VendorComparisonMatrix({
                     >
                       Add: GST {(GST_RATE * 100).toFixed(0)}%
                     </td>
-                    {colTotals.map((t, i) => (
+                    {columnMeta.map(({ t, isBest, isRecRev }, i) => (
                       <Fragment key={`gst-${i}`}>
-                        <td className="px-2 sm:px-3 py-3 border-b border-l border-[#E5EAF0] bg-slate-50 text-right text-slate-300 tabular-nums">
+                        <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${columnFill(isBest, isRecRev, 'bg-slate-50')}`}>
                           —
                         </td>
-                        <td className="px-2 sm:px-3 py-3 border-b border-[#E5EAF0] bg-slate-50 text-right font-bold tabular-nums text-slate-800 text-xs sm:text-sm whitespace-nowrap">
+                        <td className={`px-2 sm:px-3 py-3 border-b text-right font-bold tabular-nums text-slate-800 text-xs sm:text-sm whitespace-nowrap ${columnFill(isBest, isRecRev, 'bg-slate-50')}`}>
                           {t.material > 0 ? `₹${formatNum(t.gst)}` : '—'}
                         </td>
                       </Fragment>
@@ -1000,16 +1053,16 @@ export default function VendorComparisonMatrix({
                       >
                         {param.label}
                       </td>
-                      {revColumns.map((col) => {
+                      {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                         const extra = cellExtra(col.values, paramKeys(param));
                         const d = statusValueDisplay(extra);
                         const isFreight = isFreightParam(param);
                         return (
                           <Fragment key={`${col.key}-cost-${param.id}`}>
-                            <td className="px-2 sm:px-3 py-3 border-b border-l border-[#E5EAF0] text-right text-slate-300 tabular-nums">
+                            <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               —
                             </td>
-                            <td className="px-2 sm:px-3 py-3 border-b border-[#E5EAF0] text-right align-middle">
+                            <td className={`px-2 sm:px-3 py-3 border-b text-right align-middle ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {d.mode === 'number' ? (
                                 isFreight ? (
                                   <span className="inline-flex flex-col items-end gap-0.5">
@@ -1043,59 +1096,56 @@ export default function VendorComparisonMatrix({
                   <tr>
                     <td className={`${stSr} z-10 px-1 py-4 border-b border-[#E5EAF0] bg-[#F8FAFC]`} />
                     <td className={`${stLabelMobile} px-2 py-4 border-b border-[#E5EAF0] bg-[#F8FAFC]`}>
-                      <span className="font-bold text-[#12284A] text-sm">Landed Cost</span>
+                      <span className="font-bold text-[#12284A] text-sm">Total cost</span>
+                      <span className="block text-[10px] font-medium text-slate-500">incl. GST</span>
                     </td>
                     <td colSpan={3} className={`${stLabelDesktop} px-3 py-4 border-b border-[#E5EAF0] bg-[#F8FAFC]`}>
-                      <span className="font-bold text-[#12284A] text-base">Landed Cost</span>
+                      <span className="font-bold text-[#12284A] text-base">Total cost</span>
+                      <span className="ml-2 text-xs font-medium text-slate-500">including GST</span>
                     </td>
-                    {colTotals.map((t, i) => {
-                      const col = revColumns[i];
-                      const isBest = bestLanded != null && t.landed > 0 && t.landed === bestLanded;
-                      const isRecRev = Boolean(col?.isRecommended && col?.isLatest);
+                    {columnMeta.map(({ t, isBest, isRecRev }, i) => {
                       return (
                         <Fragment key={`landed-${i}`}>
                           <td
                             className={`px-2 sm:px-3 py-4 border-b border-l text-right text-slate-300 tabular-nums ${
-                              isRecRev ? 'bg-emerald-50/80 border-emerald-100' : 'bg-[#F8FAFC] border-[#E5EAF0]'
+                              isBest
+                                ? 'bg-amber-100 border-amber-300'
+                                : isRecRev
+                                  ? 'bg-emerald-50/80 border-emerald-100'
+                                  : 'bg-[#F8FAFC] border-[#E5EAF0]'
                             }`}
                           >
                             —
                           </td>
                           <td
                             className={`px-2 sm:px-3 py-4 border-b text-right align-middle ${
-                              isRecRev ? 'bg-emerald-50/80 border-emerald-100' : 'bg-[#F8FAFC] border-[#E5EAF0]'
+                              isBest
+                                ? 'bg-amber-100 border-amber-300'
+                                : isRecRev
+                                  ? 'bg-emerald-50/80 border-emerald-100'
+                                  : 'bg-[#F8FAFC] border-[#E5EAF0]'
                             }`}
                           >
                             <div className="flex flex-col items-end gap-1">
                               <span
                                 className={`text-sm sm:text-base font-bold tabular-nums whitespace-nowrap leading-none ${
-                                  isRecRev ? 'text-emerald-800' : 'text-[#12284A]'
+                                  isBest ? 'text-amber-950' : isRecRev ? 'text-emerald-800' : 'text-[#12284A]'
                                 }`}
                               >
                                 {t.landed > 0 ? `₹${formatNum(t.landed)}` : '—'}
                               </span>
                               {(isRecRev || isBest) && (
                                 <div className="flex flex-wrap items-center justify-end gap-1">
+                                  {isBest && (
+                                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-amber-400 border border-amber-500 text-[10px] font-black uppercase text-amber-950 whitespace-nowrap">
+                                      <i className="ri-star-fill text-[10px]"></i>
+                                      Best price
+                                    </span>
+                                  )}
                                   {isRecRev && (
                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-600 border border-emerald-700 text-[10px] font-bold text-white whitespace-nowrap">
                                       <i className="ri-checkbox-circle-fill text-[10px]"></i>
                                       Recommended
-                                    </span>
-                                  )}
-                                  {isBest && (
-                                    <span
-                                      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${
-                                        isRecRev
-                                          ? 'bg-white border border-emerald-300 text-emerald-800'
-                                          : 'bg-slate-200 border border-slate-300 text-slate-700'
-                                      }`}
-                                    >
-                                      <i
-                                        className={`ri-star-fill text-[10px] ${
-                                          isRecRev ? 'text-emerald-600' : 'text-slate-500'
-                                        }`}
-                                      ></i>
-                                      Best
                                     </span>
                                   )}
                                 </div>
@@ -1116,17 +1166,19 @@ export default function VendorComparisonMatrix({
 
       {/* ── TECHNICAL SPECIFICATION ── */}
       {vendorGroups.length > 0 && (
-        <section className={cardClass} aria-label="Technical specification">
+        <section className={cardClass} aria-label="Other terms comparison">
           <div className="px-4 sm:px-5 py-4 border-b border-[#E5EAF0]">
-            <p className="text-sm font-semibold text-[#64748B]">Quotation of:</p>
-            <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Technical Specification</h2>
-                  </div>
+            <p className="text-sm font-semibold text-[#64748B]">Compare vendors</p>
+            <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Other terms</h2>
+            <p className="text-xs text-slate-500 mt-1">Warranty, delivery, payment, and any extra questions you added.</p>
+          </div>
 
           {/* Mobile cards */}
           <div className="md:hidden p-3 space-y-3">
-            {vendorGroups.map(({ vendor, cols }) => {
+            {vendorGroups.map(({ vendor, cols, theme, vendorIndex }) => {
               const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
               const isRec = Boolean(vendor.isRecommended);
+              const tone = theme || vendorTheme(vendorIndex);
               return (
                 <article
                   key={`tech-m-${vendor.id}`}
@@ -1136,7 +1188,7 @@ export default function VendorComparisonMatrix({
                 >
                   <div
                     className={`px-3 py-2.5 flex items-start justify-between gap-2 ${
-                      isRec ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-800'
+                      isRec ? 'bg-emerald-600 text-white' : tone.bar
                     }`}
                   >
                     <p className="text-sm font-bold break-words leading-snug">{vendor.name}</p>
@@ -1202,12 +1254,14 @@ export default function VendorComparisonMatrix({
                   <th
                     className={`sticky left-0 z-20 w-[132px] min-w-[132px] md:w-[220px] md:min-w-[220px] px-2.5 md:px-4 py-3.5 border-b border-r border-[#E5EAF0] bg-slate-100 text-slate-700 text-left text-[10px] md:text-[12px] font-bold uppercase ${stickyEdge}`}
                   >
-                    Technical Specification
+                    Other terms
                   </th>
-                  {vendorGroups.map(({ vendor }) => (
+                  {vendorGroups.map(({ vendor, theme, vendorIndex }) => (
                     <th
                       key={`tech-h-${vendor.id}`}
-                      className="px-3 md:px-4 py-3.5 border-b border-l border-[#E5EAF0] text-center text-slate-800 text-xs md:text-sm font-bold min-w-[140px] md:min-w-[160px] bg-slate-200"
+                      className={`px-3 md:px-4 py-3.5 border-b border-l text-center text-xs md:text-sm font-bold min-w-[140px] md:min-w-[160px] ${
+                        vendor.isRecommended ? 'bg-emerald-600 text-white border-emerald-700' : theme.bar
+                      }`}
                     >
                       <span className="truncate inline-block max-w-[140px] md:max-w-[180px]" title={vendor.name}>
                         {vendor.name}
@@ -1224,7 +1278,7 @@ export default function VendorComparisonMatrix({
                     >
                       {param.label}
                     </td>
-                    {vendorGroups.map(({ vendor, cols }) => {
+                    {vendorGroups.map(({ vendor, cols, theme }) => {
                       const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
                       const raw =
                         latestCol?.values?.[param.id] ??
@@ -1246,7 +1300,9 @@ export default function VendorComparisonMatrix({
                       return (
                         <td
                           key={`${vendor.id}-${param.id}`}
-                          className="px-4 py-3.5 border-b border-l border-[#E5EAF0] text-center text-[#334155] whitespace-pre-wrap"
+                          className={`px-4 py-3.5 border-b border-l text-center text-[#334155] whitespace-pre-wrap ${
+                            vendor.isRecommended ? 'bg-emerald-50/70 border-emerald-100' : `${theme.soft} border-[#E5EAF0]`
+                          }`}
                         >
                           {isMakeLikeParam(param) ? (
                             <span className="font-bold text-slate-800">{display}</span>
@@ -1265,12 +1321,14 @@ export default function VendorComparisonMatrix({
                   >
                     Quotation File
                   </td>
-                  {vendorGroups.map(({ vendor, cols }) => {
+                  {vendorGroups.map(({ vendor, cols, theme }) => {
                     const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
                     return (
                       <td
                         key={`file-${vendor.id}`}
-                        className="px-4 py-3.5 border-b border-l border-[#E5EAF0] text-center"
+                        className={`px-4 py-3.5 border-b border-l text-center ${
+                          vendor.isRecommended ? 'bg-emerald-50/70 border-emerald-100' : `${theme.soft} border-[#E5EAF0]`
+                        }`}
                       >
                         {renderFileActions(latestCol, vendor, 'sm')}
                       </td>
@@ -1291,8 +1349,8 @@ export default function VendorComparisonMatrix({
             <i className="ri-information-line"></i>
           </span>
           <p className="text-sm text-[#334155] leading-relaxed">
-            <span className="font-bold text-[#12284A]">Note:</span> The comparative statement is based on
-            the technical &amp; commercial offers received from different vendors.
+            <span className="font-bold text-[#12284A]">How to read this:</span> Gold column is the lowest
+            total. Green is the vendor you recommended. Each vendor keeps the same color across both tables.
           </p>
         </div>
       )}

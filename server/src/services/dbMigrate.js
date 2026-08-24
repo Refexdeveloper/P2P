@@ -207,6 +207,8 @@ const MIGRATIONS = [
   `ALTER TABLE document_number_sequences MODIFY COLUMN doc_type ENUM('PR', 'PO', 'WO') NOT NULL`,
   // Own-vendor HOD final: Yes → L2 → CFO; No → L2 → SCM Final (skip CFO)
   `ALTER TABLE rfq_configs ADD COLUMN require_cfo_approval TINYINT(1) NULL`,
+  // SCM vendor L1: Yes → L2 → CFO (if CFO exists); No → L2 → SCM RFQ (skip CFO)
+  `ALTER TABLE purchase_requests ADD COLUMN require_cfo_approval TINYINT(1) NULL`,
   `ALTER TABLE rfq_configs ADD COLUMN recommendation_justification TEXT NULL`,
   `ALTER TABLE rfq_configs ADD COLUMN send_back_remarks TEXT NULL`,
   // WhatsApp notify — optional mobile with country code preferred (e.g. 9198xxxxxxxx)
@@ -360,6 +362,19 @@ const MIGRATIONS = [
   `ALTER TABLE vendors ADD COLUMN msme_type ENUM('Micro', 'Small', 'Medium') NULL`,
   `ALTER TABLE vendors ADD COLUMN documents_complete ENUM('yes', 'no') NOT NULL DEFAULT 'no'`,
   `ALTER TABLE vendors MODIFY COLUMN msme VARCHAR(150) NULL`,
+  `CREATE TABLE IF NOT EXISTS pr_attachments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    pr_id INT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_size INT NOT NULL DEFAULT 0,
+    mime_type VARCHAR(120) NULL,
+    file_data LONGBLOB NULL,
+    uploaded_by INT NULL,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
+    INDEX idx_pr_attachments_pr (pr_id)
+  )`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

@@ -3,14 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import PoSampleCsvTable from '../../../components/feature/PoSampleCsvTable';
 import TrackPoExpandedRow from './components/TrackPoExpandedRow';
-import { poApi, prApi } from '../../../services/api';
+import { masterApi, poApi, prApi, CategoryRecord, DepartmentRecord, EntityRecord } from '../../../services/api';
 import {
-  downloadPoImportSampleCsv,
   parseAllPoImportCsv,
   storePoCsvImport,
 } from '../../../utils/poCsvImport';
 
-type StatusFilter = 'all' | 'ready' | 'pending' | 'approved' | 'rejected' | 'sent';
 type PurchaseTypeFilter = 'all' | 'purchase_order' | 'work_order';
 
 type TrackRow = {
@@ -28,6 +26,8 @@ type TrackRow = {
   statusLabel: string;
   purchaseType?: string;
   purchaseTypeLabel?: string;
+  entityId?: number | null;
+  entityName?: string;
   requiredDate: string;
   createdAt: string;
   kind: 'ready' | 'po';
@@ -40,20 +40,100 @@ type TrackPagination = {
   totalPages: number;
 };
 
-type TrackStats = {
-  total: number;
-  ready: number;
-  pending: number;
-  approved: number;
-  rejected: number;
-};
-
 type ReadyOption = { prId: number; prNumber: string; title: string };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+
+function entityLabel(ent: EntityRecord) {
+  return ent.code ? `${ent.code} — ${ent.name}` : ent.name;
+}
+
+function EntitySearchSelect({
+  entities,
+  value,
+  onChange,
+}: {
+  entities: EntityRecord[];
+  value: number | '';
+  onChange: (id: number | '') => void;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const selected = entities.find((e) => e.id === value) || null;
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const filtered = query.trim()
+    ? entities.filter((ent) => entityLabel(ent).toLowerCase().includes(query.trim().toLowerCase()))
+    : entities;
+
+  return (
+    <div ref={boxRef} className="relative min-w-[280px] max-w-[420px] flex-1">
+      <i className="ri-building-2-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+      <input
+        type="text"
+        value={open ? query : selected ? entityLabel(selected) : ''}
+        onFocus={() => {
+          setOpen(true);
+          setQuery('');
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        placeholder="Search PO entity (code or name)..."
+        className="w-full pl-9 pr-8 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+      />
+      <i className="ri-arrow-down-s-line absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full max-h-64 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+          <button
+            type="button"
+            onClick={() => {
+              onChange('');
+              setQuery('');
+              setOpen(false);
+            }}
+            className={`w-full text-left px-3 py-2 text-sm hover:bg-teal-50 ${!value ? 'font-semibold text-teal-700 bg-teal-50' : 'text-gray-700'}`}
+          >
+            All Entities
+          </button>
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-gray-500">No entity found</p>
+          ) : (
+            filtered.map((ent) => (
+              <button
+                key={ent.id}
+                type="button"
+                onClick={() => {
+                  onChange(ent.id);
+                  setQuery('');
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-teal-50 ${
+                  value === ent.id ? 'font-semibold text-teal-700 bg-teal-50' : 'text-gray-800'
+                }`}
+                title={entityLabel(ent)}
+              >
+                {entityLabel(ent)}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function statusColor(status: string) {
   switch (status) {
@@ -84,8 +164,15 @@ export default function TrackPoPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [purchaseTypeFilter, setPurchaseTypeFilter] = useState<PurchaseTypeFilter>('all');
+  const [entityId, setEntityId] = useState<number | ''>('');
+  const [department, setDepartment] = useState('');
+  const [category, setCategory] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [entities, setEntities] = useState<EntityRecord[]>([]);
+  const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
+  const [categories, setCategories] = useState<CategoryRecord[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [pagination, setPagination] = useState<TrackPagination>({
@@ -93,13 +180,6 @@ export default function TrackPoPage() {
     limit: 10,
     total: 0,
     totalPages: 1,
-  });
-  const [stats, setStats] = useState<TrackStats>({
-    total: 0,
-    ready: 0,
-    pending: 0,
-    approved: 0,
-    rejected: 0,
   });
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -124,15 +204,18 @@ export default function TrackPoPage() {
         page,
         limit: pageSize,
         search: debouncedSearch || undefined,
-        status: statusFilter,
         purchaseType: purchaseTypeFilter,
+        entityId: entityId || undefined,
+        department: department || undefined,
+        category: category || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
       });
       setRows(res.data as TrackRow[]);
       if (res.pagination) {
         setPagination(res.pagination);
         if (res.pagination.page !== page) setPage(res.pagination.page);
       }
-      if (res.stats) setStats(res.stats);
       setError('');
     } catch (err) {
       setRows([]);
@@ -141,11 +224,109 @@ export default function TrackPoPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, statusFilter, purchaseTypeFilter]);
+  }, [page, pageSize, debouncedSearch, purchaseTypeFilter, entityId, department, category, dateFrom, dateTo]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [entRes, deptRes, catRes] = await Promise.all([
+          masterApi.listEntities({ status: 'active' }),
+          masterApi.listDepartments({ status: 'active' }),
+          masterApi.listCategories({ status: 'active' }),
+        ]);
+        setEntities(entRes.data || []);
+        setDepartments(deptRes.data || []);
+        setCategories(catRes.data || []);
+      } catch {
+        setEntities([]);
+        setDepartments([]);
+        setCategories([]);
+      }
+    })();
+  }, []);
+
+  const resetFilters = () => {
+    setSearch('');
+    setPurchaseTypeFilter('all');
+    setEntityId('');
+    setDepartment('');
+    setCategory('');
+    setDateFrom('');
+    setDateTo('');
+    setPage(1);
+    setExpandedKey(null);
+  };
+
+  const exportRows = (list: TrackRow[]) => {
+    const header = [
+      'PR Number',
+      'PO Number',
+      'Type',
+      'Title',
+      'Vendor',
+      'Entity',
+      'Department',
+      'Requester',
+      'Amount',
+      'Status',
+      'Required Date',
+      'Created',
+    ];
+    const lines = list.map((r) =>
+      [
+        r.prNumber,
+        r.poNumber || '',
+        r.purchaseTypeLabel || r.purchaseType || '',
+        r.title,
+        r.vendorName,
+        r.entityName || '',
+        r.department,
+        r.requester,
+        r.amount,
+        r.statusLabel,
+        r.requiredDate,
+        r.createdAt,
+      ]
+        .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+        .join(',')
+    );
+    const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `track-po-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const handleExportAll = async () => {
+    try {
+      const all: TrackRow[] = [];
+      let pageNum = 1;
+      let totalPages = 1;
+      const filters = {
+        search: debouncedSearch || undefined,
+        purchaseType: purchaseTypeFilter,
+        entityId: entityId || undefined,
+        department: department || undefined,
+        category: category || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      };
+      do {
+        const res = await poApi.listTrack({ ...filters, page: pageNum, limit: 100 });
+        all.push(...((res.data || []) as TrackRow[]));
+        totalPages = res.pagination?.totalPages || 1;
+        pageNum += 1;
+      } while (pageNum <= totalPages && pageNum <= 50);
+      exportRows(all);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed');
+    }
+  };
 
   const loadReadyOptions = async () => {
     try {
@@ -228,33 +409,17 @@ export default function TrackPoPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Track PO</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Track purchase orders and import full PO data from CSV (line items, address, terms, annexure, and more)
+            All purchase orders and work orders. Filter by entity, department, category, type, and date. Expand a row for details, documents, and approval history.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
-            onClick={() => navigate('/scm/create-po')}
-            className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 flex items-center gap-2"
+            onClick={() => handleExportAll()}
+            className="px-4 py-2.5 border border-slate-300 text-slate-800 rounded-lg text-sm font-semibold hover:bg-slate-50 flex items-center gap-2"
           >
-            <i className="ri-shopping-cart-2-line"></i>
-            Create PO
-          </button>
-          <button
-            type="button"
-            onClick={() => openImportModal()}
-            className="px-4 py-2.5 border border-violet-300 text-violet-700 rounded-lg text-sm font-semibold hover:bg-violet-50 flex items-center gap-2"
-          >
-            <i className="ri-upload-2-line"></i>
-            Import CSV
-          </button>
-          <button
-            type="button"
-            onClick={downloadPoImportSampleCsv}
-            className="px-4 py-2.5 border border-emerald-300 text-emerald-800 bg-emerald-50 rounded-lg text-sm font-semibold hover:bg-emerald-100 flex items-center gap-2"
-          >
-            <i className="ri-file-excel-2-line"></i>
-            Sample CSV
+            <i className="ri-download-2-line"></i>
+            Export
           </button>
         </div>
       </div>
@@ -268,35 +433,92 @@ export default function TrackPoPage() {
         </div>
       )}
 
-      <div className="mb-5">
-        <PoSampleCsvTable title="PO Import — Sample CSV table" />
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
-        {[
-          { label: 'Total', value: stats.total, color: 'text-gray-900' },
-          { label: 'Ready for PO', value: stats.ready, color: 'text-emerald-600' },
-          { label: 'Pending', value: stats.pending, color: 'text-amber-600' },
-          { label: 'Approved / Sent', value: stats.approved, color: 'text-blue-600' },
-          { label: 'Rejected', value: stats.rejected, color: 'text-red-600' },
-        ].map((s) => (
-          <div key={s.label} className="bg-white rounded-lg border border-gray-200 px-4 py-3">
-            <p className="text-xs text-gray-500 mb-1">{s.label}</p>
-            <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 px-4 py-3 mb-5 flex flex-wrap items-center gap-3">
+      <div className="bg-white rounded-lg border border-gray-200 px-4 py-3 mb-5 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[220px] relative">
           <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search PR, PO/WO, vendor, title..."
+            placeholder="Search PR, PO/WO, vendor, title, entity..."
             className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
           />
+        </div>
+        <EntitySearchSelect
+          entities={entities}
+          value={entityId}
+          onChange={(id) => {
+            setEntityId(id);
+            setPage(1);
+            setExpandedKey(null);
+          }}
+        />
+        <select
+          value={department}
+          onChange={(e) => {
+            setDepartment(e.target.value);
+            setPage(1);
+            setExpandedKey(null);
+          }}
+          className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white min-w-[150px]"
+        >
+          <option value="">All Departments</option>
+          {departments.map((d) => (
+            <option key={d.id} value={d.name}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={category}
+          onChange={(e) => {
+            setCategory(e.target.value);
+            setPage(1);
+            setExpandedKey(null);
+          }}
+          className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white min-w-[150px]"
+        >
+          <option value="">All Categories</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          From
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => {
+              setDateFrom(e.target.value);
+              setPage(1);
+              setExpandedKey(null);
+            }}
+            className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          To
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => {
+              setDateTo(e.target.value);
+              setPage(1);
+              setExpandedKey(null);
+            }}
+            className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={resetFilters}
+          className="px-3 py-2.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
+        >
+          Clear filters
+        </button>
         </div>
         <div className="flex gap-2 flex-wrap">
           {(
@@ -324,32 +546,6 @@ export default function TrackPoPage() {
             </button>
           ))}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {(
-            [
-              ['all', `All (${stats.total})`],
-              ['ready', `Ready (${stats.ready})`],
-              ['pending', `Pending (${stats.pending})`],
-              ['approved', `Approved (${stats.approved})`],
-              ['rejected', `Rejected (${stats.rejected})`],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => {
-                setStatusFilter(key);
-                setPage(1);
-                setExpandedKey(null);
-              }}
-              className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${
-                statusFilter === key ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -357,24 +553,25 @@ export default function TrackPoPage() {
           {loading ? (
             <p className="p-8 text-sm text-gray-500">Loading purchase orders...</p>
           ) : (
-            <table className="w-full min-w-[1100px] table-fixed">
+            <table className="w-full min-w-[1280px] table-fixed">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-2 py-3 w-11"></th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[160px]">PR Number</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[160px]">PO / WO Number</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[100px]">Type</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PR Number</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PO / WO Number</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[90px]">Type</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Title / Vendor</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Entity</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Department</th>
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px]">Status</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[150px]">Actions</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Status</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[140px]">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-5 py-12 text-center text-sm text-gray-500">
+                    <td colSpan={10} className="px-5 py-12 text-center text-sm text-gray-500">
                       No purchase orders found
                     </td>
                   </tr>
@@ -396,7 +593,7 @@ export default function TrackPoPage() {
                           <td className="px-3 py-3 text-sm font-semibold text-teal-700 truncate" title={row.prNumber}>
                             {row.prNumber || '—'}
                           </td>
-                          <td className="px-3 py-3 text-sm text-gray-700 truncate" title={row.poNumber || undefined}>
+                          <td className="px-3 py-3 text-sm font-bold text-gray-900 truncate" title={row.poNumber || undefined}>
                             {row.poNumber || '—'}
                           </td>
                           <td className="px-3 py-3">
@@ -418,6 +615,9 @@ export default function TrackPoPage() {
                             <p className="text-xs text-gray-500 truncate" title={row.vendorName || undefined}>
                               {row.vendorName || 'Vendor pending'}
                             </p>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-gray-600 truncate" title={row.entityName || undefined}>
+                            {row.entityName || '—'}
                           </td>
                           <td className="px-3 py-3 text-sm text-gray-600 truncate" title={row.department}>
                             {row.department}
@@ -462,7 +662,7 @@ export default function TrackPoPage() {
                             </div>
                           </td>
                         </tr>
-                        {open && <TrackPoExpandedRow row={row} colSpan={9} />}
+                        {open && <TrackPoExpandedRow row={row} colSpan={10} />}
                       </Fragment>
                     );
                   })

@@ -55,6 +55,7 @@ interface TrackPR {
   department: string;
   amount: number;
   status: string;
+  statusRaw: string;
   statusUI: string;
   submittedDate: string;
   priority: string;
@@ -574,6 +575,7 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     department: String(pr.department || ''),
     amount: Number(pr.totalAmount ?? pr.amount ?? 0),
     status: mapTrackStatus(rawStatus, statusFrontend),
+    statusRaw: rawStatus,
     statusUI: String(pr.statusUI || statusFrontend),
     submittedDate,
     priority: String(pr.priorityLower || pr.priority || 'medium').toLowerCase(),
@@ -1096,7 +1098,10 @@ export default function TrackPRPage() {
                                 </button>
                                 {(isAdminEditor ||
                                   pr.status === 'draft' ||
-                                  pr.status === 'returned') && (
+                                  pr.status === 'returned' ||
+                                  ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(
+                                    String(pr.statusRaw || '').toUpperCase()
+                                  )) && (
                                   <button
                                     onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
                                     className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap"

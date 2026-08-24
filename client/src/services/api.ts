@@ -1,5 +1,8 @@
 const LIVE_API = 'https://p2p-backend-645830234926.asia-south1.run.app';
-const API_URL = (import.meta.env.VITE_API_URL || LIVE_API).replace(/\/$/, '');
+const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : LIVE_API)).replace(
+  /\/$/,
+  ''
+);
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -177,6 +180,25 @@ export type RequesterPrListMeta = {
   totalPages: number;
 };
 
+export type PrAttachmentRecord = {
+  id: number;
+  prId?: number;
+  fileName: string;
+  size: number;
+  mimeType?: string;
+  uploadedAt?: string;
+};
+
+export async function fileToAttachmentPayload(file: File) {
+  const data = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+  return { fileName: file.name, data, mimeType: file.type };
+}
+
 export const prApi = {
   list: (params?: RequesterPrListParams) => {
     const qs = new URLSearchParams();
@@ -226,11 +248,18 @@ export const prApi = {
     id: number,
     action: 'approve' | 'reject' | 'return' | 'rework',
     remarks: string,
-    options?: { returnTo?: string }
+    options?: { returnTo?: string; goToBusinessApproval?: boolean }
   ) =>
     request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/approve`, {
       method: 'POST',
-      body: JSON.stringify({ action, remarks, ...(options?.returnTo ? { returnTo: options.returnTo } : {}) }),
+      body: JSON.stringify({
+        action,
+        remarks,
+        ...(options?.returnTo ? { returnTo: options.returnTo } : {}),
+        ...(typeof options?.goToBusinessApproval === 'boolean'
+          ? { goToBusinessApproval: options.goToBusinessApproval }
+          : {}),
+      }),
     }),
   resubmit: (id: number, body: Record<string, unknown>) =>
     request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/resubmit`, {
@@ -248,6 +277,34 @@ export const prApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  uploadAttachment: (prId: number, body: { fileName: string; data: string; mimeType?: string }) =>
+    request<{ data: PrAttachmentRecord }>(`/api/purchase-requests/${prId}/attachments`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deleteAttachment: (prId: number, attachmentId: number) =>
+    request<{ message: string }>(`/api/purchase-requests/${prId}/attachments/${attachmentId}`, {
+      method: 'DELETE',
+    }),
+  downloadAttachment: async (prId: number, attachmentId: number, fileName: string) => {
+    const token = getToken();
+    const res = await fetch(`${API_URL}/api/purchase-requests/${prId}/attachments/${attachmentId}/file`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ApiError(res.status, errorMessageFromResponse(text, 'Could not download file'));
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'attachment';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
   requesterStats: () => request<{ data: Record<string, number> }>('/api/purchase-requests/stats/requester'),
   managerStats: () =>
     request<{ data: { stats: Record<string, number>; departmentBudget: unknown[] } }>(
@@ -349,6 +406,33 @@ export const rfqApi = {
         body: JSON.stringify(body),
       }
     ),
+  extractQuotation: (body: {
+    fileName: string;
+    fileData: string;
+    pages?: Array<{ fileName: string; fileData: string }>;
+  }) =>
+    request<{
+      data: {
+        quotedPrice: number;
+        lineItems: Array<{
+          description: string;
+          quantity: number;
+          quotedUnitPrice: number;
+          quotedTotal: number;
+          extra?: boolean;
+        }>;
+        leadTime?: number;
+        paymentTerms?: string;
+        scanned?: boolean;
+        foundText?: boolean;
+        method?: string;
+        textPreview?: string;
+      };
+      message: string;
+    }>('/api/rfq/quotation-extract', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   /** Edit quoted amounts / line items (+ optional file) on an existing submission */
   updateSubmission: (submissionId: number, body: Record<string, unknown>) =>
     request<{
@@ -564,6 +648,11 @@ export const poApi = {
     search?: string;
     status?: string;
     purchaseType?: string;
+    entityId?: number | string;
+    department?: string;
+    category?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }) => {
     const query = new URLSearchParams();
     if (params?.page != null) query.set('page', String(params.page));
@@ -573,6 +662,11 @@ export const poApi = {
     if (params?.purchaseType && params.purchaseType !== 'all') {
       query.set('purchaseType', params.purchaseType);
     }
+    if (params?.entityId) query.set('entityId', String(params.entityId));
+    if (params?.department) query.set('department', params.department);
+    if (params?.category) query.set('category', params.category);
+    if (params?.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) query.set('dateTo', params.dateTo);
     const qs = query.toString();
     return request<{
       data: Array<{
@@ -591,6 +685,8 @@ export const poApi = {
         statusRaw?: string;
         purchaseType?: string;
         purchaseTypeLabel?: string;
+        entityId?: number | null;
+        entityName?: string;
         requiredDate: string;
         createdAt: string;
         kind: 'ready' | 'po';
@@ -649,6 +745,8 @@ export const poApi = {
     `${PO_API_URL}/api/po/vendor-accept/${encodeURIComponent(token)}/pdf`,
   getVendorAcceptanceFileUrl: (poId: number) =>
     `${PO_API_URL}/api/po/${poId}/vendor-acceptance/file`,
+  getCancellationFileUrl: (poId: number, index: number) =>
+    `${PO_API_URL}/api/po/${poId}/cancellation/${index}/file`,
   finalVerify: (poId: number, remarks?: string) =>
     request<{ data: unknown; message: string }>(`/api/po/${poId}/final-verify`, {
       method: 'POST',
@@ -1147,6 +1245,11 @@ export const masterApi = {
     const qs = q.toString();
     return request<{ data: CategoryRecord[] }>(`/api/masters/categories${qs ? `?${qs}` : ''}`);
   },
+  chatCreateCategory: (body: { name: string; requestType?: string }) =>
+    request<{ data: CategoryRecord; message: string }>('/api/masters/categories/chat-create', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   createCategory: (body: Record<string, unknown>) =>
     request<{ data: CategoryRecord; message: string }>('/api/masters/categories', {
       method: 'POST',
@@ -1174,6 +1277,11 @@ export const masterApi = {
       meta?: { page: number; pageSize: number; total: number; totalPages: number };
     }>(`/api/masters/entities${qs ? `?${qs}` : ''}`);
   },
+  chatCreateEntity: (body: { name: string; costCenter?: string; code?: string }) =>
+    request<{ data: EntityRecord; message: string }>('/api/masters/entities/chat-create', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   createEntity: (body: Record<string, unknown>) =>
     request<{ data: EntityRecord; message: string }>('/api/masters/entities', {
       method: 'POST',
@@ -1203,6 +1311,11 @@ export const masterApi = {
     const qs = q.toString();
     return request<{ data: DepartmentRecord[] }>(`/api/masters/departments${qs ? `?${qs}` : ''}`);
   },
+  chatCreateDepartment: (body: { name: string; code?: string }) =>
+    request<{ data: DepartmentRecord; message: string }>('/api/masters/departments/chat-create', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   createDepartment: (body: Record<string, unknown>) =>
     request<{ data: DepartmentRecord; message: string }>('/api/masters/departments', {
       method: 'POST',
@@ -1258,6 +1371,11 @@ export const masterApi = {
       meta?: { page: number; pageSize: number; total: number; totalPages: number };
     }>(`/api/masters/items${qs ? `?${qs}` : ''}`);
   },
+  chatCreateItem: (body: { name: string; categoryId?: number | null; unit?: string }) =>
+    request<{ data: ItemRecord; message: string }>('/api/masters/items/chat-create', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   createItem: (body: Record<string, unknown>) =>
     request<{ data: ItemRecord; message: string }>('/api/masters/items', {
       method: 'POST',

@@ -5,8 +5,6 @@ import RichTextEditor from '../../../components/base/RichTextEditor';
 import AddableSelect from '../../../components/base/AddableSelect';
 import {
   poApi,
-  prApi,
-  rfqApi,
   poLetterheadApi,
   letterheadMasterApi,
   masterApi,
@@ -21,6 +19,7 @@ import {
   consumePoCsvImport,
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
+import PurchaseRequestsPanel from '../purchase-requests/components/PurchaseRequestsPanel';
 import { numberToIndianWords } from '../../../utils/amountInWords';
 import {
   AnnexureIiRow,
@@ -713,8 +712,8 @@ export default function CreatePOPage() {
       ? '/scm/buyer-final-verify'
       : fromParam === 'tasks'
         ? '/tasks'
-        : fromParam === 'purchase-requests'
-          ? '/scm/purchase-requests'
+        : fromParam === 'purchase-requests' || fromParam === 'create-po' || fromParam === 'csv'
+          ? '/scm/create-po'
           : '/scm/po-approval';
   const isBuyerVerifyEdit = searchParams.get('from') === 'buyer-verify';
 
@@ -819,8 +818,6 @@ export default function CreatePOPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const [pdfDownloading, setPdfDownloading] = useState(false);
-  const [pickerItems, setPickerItems] = useState<Array<{ prId: number; prNumber: string; title: string; department: string; requester: string; totalAmount: number; recommendedVendor: string }>>([]);
-  const [pickerLoading, setPickerLoading] = useState(false);
   const [changeSummary, setChangeSummary] = useState('');
   const [letterheadLocked, setLetterheadLocked] = useState(false);
   const [skipApproval, setSkipApproval] = useState(
@@ -1419,44 +1416,6 @@ export default function CreatePOPage() {
   }, [loadContext]);
 
   useEffect(() => {
-    if (numericPrId || isEditMode || isManualMode) return;
-    setPickerLoading(true);
-    Promise.all([prApi.listScmBucket(), rfqApi.listPostApprovalPending()])
-      .then(([prRes, rfqRes]) => {
-        const prRows = (prRes.data as Array<Record<string, unknown>>).map((p) => ({
-          prId: Number(p.id),
-          prNumber: String(p.prNumber),
-          title: String(p.title),
-          department: String(p.department),
-          requester: String(p.requester),
-          totalAmount: Number(p.totalAmount),
-          recommendedVendor: String(p.recommendedVendor || ''),
-        }));
-        const rfqRows = (rfqRes.data as Array<{ prId: number; prNumber: string; title: string; department: string; requester: string; totalAmount: number; recommendedVendor: string }>).map((p) => ({
-          prId: p.prId,
-          prNumber: p.prNumber,
-          title: p.title,
-          department: p.department,
-          requester: p.requester,
-          totalAmount: p.totalAmount,
-          recommendedVendor: p.recommendedVendor || '',
-        }));
-        const merged = new Map<number, (typeof prRows)[0]>();
-        [...prRows, ...rfqRows].forEach((row) => {
-          const prev = merged.get(row.prId);
-          merged.set(row.prId, {
-            ...prev,
-            ...row,
-            recommendedVendor: row.recommendedVendor || prev?.recommendedVendor || '',
-          });
-        });
-        setPickerItems([...merged.values()]);
-      })
-      .catch(() => setPickerItems([]))
-      .finally(() => setPickerLoading(false));
-  }, [numericPrId, isEditMode, isManualMode]);
-
-  useEffect(() => {
     return () => {
       if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
     };
@@ -1862,7 +1821,7 @@ export default function CreatePOPage() {
       setDraftSaved(true);
       setTimeout(() => setDraftSaved(false), 3000);
       if (!editPoId && savedId) {
-        navigate(`/scm/create-po?poId=${savedId}&from=purchase-requests`, { replace: true });
+        navigate(`/scm/create-po?poId=${savedId}&from=create-po`, { replace: true });
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Could not save draft');
@@ -2197,100 +2156,24 @@ export default function CreatePOPage() {
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
   const docNoLabel = isWorkOrder ? 'WO No' : 'PO No';
 
-  if (loading) {
+  if (!numericPrId && !isEditMode && !isManualMode) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-96 text-gray-500">Loading PR details...</div>
+        <div className="mb-5">
+          <h1 className="text-2xl font-bold text-gray-900">Create PO</h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Create a purchase order or work order from a ready PR, or start a manual PO
+          </p>
+        </div>
+        <PurchaseRequestsPanel />
       </DashboardLayout>
     );
   }
 
-  if (!numericPrId && !isEditMode && !isManualMode) {
+  if (loading) {
     return (
       <DashboardLayout>
-        <div className="p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Create Purchase Order / Work Order</h1>
-              <p className="text-sm text-gray-600">Select a purchase request, or create a PO manually without PR</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/scm/create-po?manual=1')}
-              className="px-4 py-2.5 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900 flex items-center gap-2"
-            >
-              <i className="ri-file-add-line"></i>
-              Create PO Manually (No PR)
-            </button>
-          </div>
-          {pickerLoading ? (
-            <p className="text-sm text-gray-500">Loading PRs...</p>
-          ) : pickerItems.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
-              <i className="ri-inbox-line text-4xl text-gray-300"></i>
-              <p className="text-gray-600 mt-3">No PRs ready for PO creation</p>
-              <p className="text-xs text-gray-500 mt-1">Complete RFQ CFO approval first, or create a PO without PR</p>
-              <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
-                <button onClick={() => navigate('/rfq-approval')} className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm">
-                  Go to RFQ PO Approval
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/scm/create-po?manual=1')}
-                  className="px-4 py-2 border border-slate-300 text-slate-800 rounded-lg text-sm font-semibold"
-                >
-                  Create PO Manually
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    {['PR Number', 'Title', 'Department', 'Requester', 'Vendor', 'Amount', 'Action'].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pickerItems.map((item) => (
-                    <tr key={item.prId} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-bold text-teal-600">{item.prNumber}</td>
-                      <td className="px-4 py-3 text-sm">{item.title}</td>
-                      <td className="px-4 py-3 text-sm">{item.department}</td>
-                      <td className="px-4 py-3 text-sm">{item.requester}</td>
-                      <td className="px-4 py-3 text-sm">{item.recommendedVendor || '—'}</td>
-                      <td className="px-4 py-3 text-sm font-semibold">{fmt(item.totalAmount)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/scm/create-po?prId=${item.prId}`)}
-                            className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-semibold"
-                          >
-                            Create PO
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const ref = window.prompt('Enter reference PO number to import (e.g. PO-2026-0001)');
-                              if (!ref?.trim()) return;
-                              navigate(`/scm/create-po?prId=${item.prId}&refPo=${encodeURIComponent(ref.trim())}`);
-                            }}
-                            className="px-3 py-1.5 border border-violet-300 text-violet-700 rounded-lg text-xs font-semibold hover:bg-violet-50"
-                          >
-                            Import
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <div className="flex items-center justify-center h-96 text-gray-500">Loading PR details...</div>
       </DashboardLayout>
     );
   }
@@ -2305,8 +2188,8 @@ export default function CreatePOPage() {
               <p className="text-sm text-gray-500">Refex PO document — sent for SCM Manager approval</p>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => navigate('/scm/purchase-requests')} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">
-                Back to PRs
+              <button onClick={() => navigate('/scm/create-po')} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                Back to Create PO
               </button>
               <button
                 type="button"
@@ -2347,10 +2230,10 @@ export default function CreatePOPage() {
             </h2>
             <p className="text-gray-500 text-sm mb-6">{loadError || "The PR you're trying to create a PO for doesn't exist."}</p>
             <button
-              onClick={() => navigate(isEditMode ? editReturnPath : '/scm/purchase-requests')}
+              onClick={() => navigate(isEditMode ? editReturnPath : '/scm/create-po')}
               className="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium"
             >
-              {isBuyerVerifyEdit ? 'Back to Final Verify' : isEditMode ? 'Back' : 'Back to Purchase Requests'}
+              {isBuyerVerifyEdit ? 'Back to Final Verify' : isEditMode ? 'Back' : 'Back to Create PO'}
             </button>
           </div>
         </div>
@@ -2369,7 +2252,7 @@ export default function CreatePOPage() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
               <button
-                onClick={() => navigate(isEditMode ? editReturnPath : '/scm/purchase-requests')}
+                onClick={() => navigate(isEditMode ? editReturnPath : '/scm/create-po')}
                 className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer text-gray-500 shrink-0"
               >
                 <i className="ri-arrow-left-line text-lg"></i>
@@ -3940,7 +3823,7 @@ export default function CreatePOPage() {
                   View {docLabel} PDF
                 </button>
                 <button
-                  onClick={() => { setShowSuccessModal(false); navigate('/scm/purchase-requests'); }}
+                  onClick={() => { setShowSuccessModal(false); navigate('/scm/create-po'); }}
                   className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm font-medium whitespace-nowrap"
                 >
                   Back to PRs

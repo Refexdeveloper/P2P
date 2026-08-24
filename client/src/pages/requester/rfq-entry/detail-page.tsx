@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
-import PrDetailsEditor from '../../rfq-approval/components/PrDetailsEditor';
 import SendBackModal from '../../scm/rfq-entry/components/SendBackModal';
 import CreateVendorForm from '../../scm/vendor-master/components/CreateVendorForm';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -13,6 +12,10 @@ import {
   vendorApi,
   VendorRecord,
 } from '../../../services/api';
+import RfqChatbot, { openRfqChat } from '../../../components/feature/RfqChatbot';
+import RfqVendorQuoteTable from './components/RfqVendorQuoteTable';
+import VendorSearchSelect from './components/VendorSearchSelect';
+import RfqExtraQuestionsPanel from './components/RfqExtraQuestionsPanel';
 
 const REQUESTER_SCORE_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
 
@@ -121,11 +124,6 @@ export default function RfqEntryDetailPage() {
   const [config, setConfig] = useState<RfqConfig | null>(null);
   const [tableRows, setTableRows] = useState<TableRow[]>([]);
   const [draftRows, setDraftRows] = useState<DraftRow[]>([newDraftRow()]);
-  const [newFieldLabel, setNewFieldLabel] = useState('');
-  const [newFieldFilledBy, setNewFieldFilledBy] = useState<'vendor' | 'requester'>('vendor');
-  const [newFieldType, setNewFieldType] = useState<'text' | 'number' | 'boolean'>('text');
-  const [newFieldShowIn, setNewFieldShowIn] = useState<'commercial' | 'technical'>('technical');
-  const [pendingPreset, setPendingPreset] = useState<RfqFieldDefinition | null>(null);
   const [recommendedId, setRecommendedId] = useState<number | null>(null);
   const [recommendationJustification, setRecommendationJustification] = useState('');
   const [recommendModal, setRecommendModal] = useState<{
@@ -150,8 +148,17 @@ export default function RfqEntryDetailPage() {
   const [removingId, setRemovingId] = useState<number | null>(null);
   /** Invitation IDs currently in admin/edit mode for an existing submitted quote */
   const [editingQuoteIds, setEditingQuoteIds] = useState<Set<number>>(new Set());
+  const [editingRoundById, setEditingRoundById] = useState<Record<number, number>>({});
   const [vendorCatalog, setVendorCatalog] = useState<VendorRecord[]>([]);
   const [addVendorRowKey, setAddVendorRowKey] = useState<string | null>(null);
+  const [fieldsOpen, setFieldsOpen] = useState(true);
+  const [quotePopupId, setQuotePopupId] = useState<number | null>(null);
+  const [quoteAsk, setQuoteAsk] = useState<{
+    row: TableRow;
+    existingRound: number;
+    targetRound: number;
+    source: 'edit' | 'requote';
+  } | null>(null);
 
   const loadVendors = useCallback(async () => {
     try {
@@ -190,57 +197,81 @@ export default function RfqEntryDetailPage() {
 
   type ManualQuoteLine = {
     lineItemId: string;
-    quotedUnitPrice?: number;
+    description?: string;
+    category?: string;
+    estimatedUnitCost?: number;
+    quotedUnitPrice?: number | string;
+    gstPercent?: number;
     quantity?: number;
     quotedTotal?: number;
+    extra?: boolean;
   };
 
-  const getManualLineDraft = (invitationId: number, lineItemId: string): ManualQuoteLine | undefined => {
-    const lines = (manualDrafts[invitationId]?.quoteLineItems as ManualQuoteLine[]) || [];
-    return lines.find((l) => String(l.lineItemId) === String(lineItemId));
+  const GST_RATES = [0, 5, 12, 18, 28];
+
+  const lineQuotedTotal = (l: Pick<ManualQuoteLine, 'quantity' | 'quotedUnitPrice' | 'gstPercent' | 'quotedTotal'>) => {
+    const qty = Number(l.quantity) || 0;
+    const unit = Number(l.quotedUnitPrice) || 0;
+    const gst = Number(l.gstPercent) || 0;
+    return Math.round(qty * unit * (1 + gst / 100) * 100) / 100;
   };
 
-  const getManualLineUnitPrice = (invitationId: number, lineItemId: string): number | '' => {
-    const found = getManualLineDraft(invitationId, lineItemId);
-    if (!found || found.quotedUnitPrice === undefined || found.quotedUnitPrice === null) return '';
-    return Number(found.quotedUnitPrice) || 0;
+  const parseAmountInput = (raw: string): number | string | '' => {
+    const text = String(raw).replace(/[,₹\s]/g, '');
+    if (text === '') return '';
+    if (/^\d*\.?\d{0,2}$/.test(text)) return text;
+    const n = Number(text);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : '';
   };
 
-  const getManualLineQty = (invitationId: number, lineItemId: string, fallbackQty: number): number | '' => {
-    const found = getManualLineDraft(invitationId, lineItemId);
-    if (!found || found.quantity === undefined || found.quantity === null) return fallbackQty || '';
-    return Number(found.quantity) || 0;
-  };
-
-  const setManualLineField = (
-    invitationId: number,
-    lineItemId: string,
-    field: 'quotedUnitPrice' | 'quantity',
-    value: number | ''
-  ) => {
-    const nextLines = prLineItems.map((li) => {
+  const seedQuoteLines = (savedLines: ManualQuoteLine[] = []): ManualQuoteLine[] => {
+    const saved = Array.isArray(savedLines) ? savedLines : [];
+    const prIds = new Set(prLineItems.map((li) => String(li.id)));
+    const fromPr = prLineItems.map((li) => {
       const id = String(li.id);
-      const existing = getManualLineDraft(invitationId, id);
-      const price =
-        field === 'quotedUnitPrice' && id === String(lineItemId)
-          ? value === ''
-            ? 0
-            : Number(value) || 0
-          : Number(existing?.quotedUnitPrice) || 0;
-      const qty =
-        field === 'quantity' && id === String(lineItemId)
-          ? value === ''
-            ? 0
-            : Math.max(0, Number(value) || 0)
-          : Number(existing?.quantity ?? li.quantity) || 0;
+      const hit = saved.find((l) => String(l.lineItemId) === id);
       return {
         lineItemId: id,
-        description: li.description,
-        quantity: qty,
-        quotedUnitPrice: price,
-        quotedTotal: price * qty,
+        description: hit?.description || li.description,
+        category: hit?.category || li.category || '',
+        estimatedUnitCost: Number(hit?.estimatedUnitCost ?? li.unitCost) || 0,
+        quantity: Number(hit?.quantity ?? li.quantity) || 0,
+        quotedUnitPrice: Number(hit?.quotedUnitPrice) || 0,
+        gstPercent: hit?.gstPercent != null ? Number(hit.gstPercent) : 18,
+        quotedTotal: 0,
+        extra: false,
       };
     });
+    const extras = saved
+      .filter((l) => l.extra || !prIds.has(String(l.lineItemId)))
+      .map((l) => ({
+        lineItemId: String(l.lineItemId || `extra-${Date.now()}`),
+        description: l.description || '',
+        category: l.category || '',
+        estimatedUnitCost: Number(l.estimatedUnitCost) || 0,
+        quantity: Number(l.quantity) || 1,
+        quotedUnitPrice: Number(l.quotedUnitPrice) || 0,
+        gstPercent: l.gstPercent != null ? Number(l.gstPercent) : 18,
+        quotedTotal: 0,
+        extra: true,
+      }));
+    return [...fromPr, ...extras].map((l) => ({
+      ...l,
+      quotedTotal: lineQuotedTotal(l),
+    }));
+  };
+
+  const getWorkingLines = (invitationId: number, savedLines: ManualQuoteLine[] = []): ManualQuoteLine[] => {
+    const draft = (manualDrafts[invitationId]?.quoteLineItems as ManualQuoteLine[]) || [];
+    if (draft.length) return draft;
+    return seedQuoteLines(savedLines);
+  };
+
+  const persistWorkingLines = (invitationId: number, lines: ManualQuoteLine[]) => {
+    const nextLines = lines.map((l) => ({
+      ...l,
+      quotedTotal: lineQuotedTotal(l),
+    }));
     const total = nextLines.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
     setManualDrafts((prev) => ({
       ...prev,
@@ -252,13 +283,84 @@ export default function RfqEntryDetailPage() {
     }));
   };
 
+  const getManualLineDraft = (invitationId: number, lineItemId: string): ManualQuoteLine | undefined => {
+    const lines = (manualDrafts[invitationId]?.quoteLineItems as ManualQuoteLine[]) || [];
+    return lines.find((l) => String(l.lineItemId) === String(lineItemId));
+  };
+
+  const getManualLineUnitPrice = (invitationId: number, lineItemId: string): number | string | '' => {
+    const found = getManualLineDraft(invitationId, lineItemId);
+    if (found?.quotedUnitPrice === undefined || found.quotedUnitPrice === null || found.quotedUnitPrice === '') {
+      return '';
+    }
+    return found.quotedUnitPrice;
+  };
+
+  const getManualLineQty = (invitationId: number, lineItemId: string, fallbackQty: number): number | '' => {
+    const found = getManualLineDraft(invitationId, lineItemId);
+    if (!found || found.quantity === undefined || found.quantity === null) return fallbackQty || '';
+    return Number(found.quantity) || 0;
+  };
+
+  const getManualLineGst = (invitationId: number, lineItemId: string, fallback = 18): number => {
+    const found = getManualLineDraft(invitationId, lineItemId);
+    if (found?.gstPercent === undefined || found.gstPercent === null) return fallback;
+    return Number(found.gstPercent) || 0;
+  };
+
+  const setManualLineField = (
+    invitationId: number,
+    lineItemId: string,
+    field: 'quotedUnitPrice' | 'quantity' | 'gstPercent' | 'description',
+    value: number | string | ''
+  ) => {
+    const current = getWorkingLines(invitationId);
+    const next = current.map((l) => {
+      if (String(l.lineItemId) !== String(lineItemId)) return l;
+      if (field === 'description') return { ...l, description: String(value) };
+      if (field === 'quotedUnitPrice') {
+        if (value === '') return { ...l, quotedUnitPrice: '' };
+        if (typeof value === 'string' && /^\d*\.?\d{0,2}$/.test(value)) {
+          return { ...l, quotedUnitPrice: value };
+        }
+        return { ...l, quotedUnitPrice: Math.max(0, Number(value) || 0) };
+      }
+      const n = value === '' ? 0 : Math.max(0, Number(value) || 0);
+      return { ...l, [field]: n };
+    });
+    persistWorkingLines(invitationId, next);
+  };
+
+  const addExtraQuoteLine = (invitationId: number) => {
+    const current = getWorkingLines(invitationId);
+    persistWorkingLines(invitationId, [
+      ...current,
+      {
+        lineItemId: `extra-${Date.now()}`,
+        description: '',
+        category: '',
+        estimatedUnitCost: 0,
+        quantity: 1,
+        quotedUnitPrice: 0,
+        gstPercent: 18,
+        quotedTotal: 0,
+        extra: true,
+      },
+    ]);
+  };
+
+  const removeExtraQuoteLine = (invitationId: number, lineItemId: string) => {
+    persistWorkingLines(
+      invitationId,
+      getWorkingLines(invitationId).filter((l) => String(l.lineItemId) !== String(lineItemId))
+    );
+  };
+
   const getManualQuoteTotal = (invitationId: number) => {
-    const lines = (manualDrafts[invitationId]?.quoteLineItems as Array<{ quotedTotal?: number; quotedUnitPrice?: number; quantity?: number }>) || [];
+    const lines =
+      (manualDrafts[invitationId]?.quoteLineItems as ManualQuoteLine[]) || [];
     if (!lines.length) return Number(manualDrafts[invitationId]?.quotedPrice) || 0;
-    return lines.reduce((sum, l) => {
-      if (l.quotedTotal != null) return sum + (Number(l.quotedTotal) || 0);
-      return sum + (Number(l.quotedUnitPrice) || 0) * (Number(l.quantity) || 0);
-    }, 0);
+    return lines.reduce((sum, l) => sum + lineQuotedTotal(l), 0);
   };
 
   const fields = (config?.fieldDefinitions || []).map(normalizeFieldDef);
@@ -270,6 +372,8 @@ export default function RfqEntryDetailPage() {
     ? Boolean(config?.finalizedAt)
     : Boolean(config?.finalizedAt || config?.requesterSubmittedAt);
   const hasInvitations = tableRows.length > 0;
+  const quotedCount = tableRows.filter((r) => r.hasActiveQuote).length;
+  const guideStep = !hasInvitations ? 1 : quotedCount === 0 ? 2 : recommendedId ? 3 : 2;
   const invitedVendorNames = new Set(tableRows.map((r) => r.vendorName.toLowerCase()));
   const recommendedRow = tableRows.find(
     (r) => Number(r.invitationId) === Number(recommendedId)
@@ -367,28 +471,11 @@ export default function RfqEntryDetailPage() {
       return;
     }
     await saveConfig({ fieldDefinitions: [...fields, normalizeFieldDef(field)] });
-    showToast(`${field.label} added — vendors will see it`);
-  };
-
-  const addField = async () => {
-    if (!newFieldLabel.trim()) return;
-    const id = newFieldLabel.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40);
-    await addFieldDef({
-      id: id || `field_${Date.now()}`,
-      label: newFieldLabel.trim(),
-      type: newFieldType,
-      filledBy: newFieldFilledBy,
-      showIn: newFieldShowIn,
-    });
-    setNewFieldLabel('');
-  };
-
-  const setFieldShowIn = async (fieldId: string, showIn: 'commercial' | 'technical') => {
-    const f = fields.find((x) => x.id === fieldId);
-    if (!f || f.id === 'quotedPrice') return;
-    await saveConfig({
-      fieldDefinitions: fields.map((x) => (x.id === fieldId ? { ...x, showIn } : x)),
-    });
+    showToast(
+      field.filledBy === 'requester'
+        ? `${field.label} added. You can fill this after the quote.`
+        : `${field.label} added. Vendors will answer this on the quote.`
+    );
   };
 
   const removeField = async (fieldId: string) => {
@@ -408,17 +495,6 @@ export default function RfqEntryDetailPage() {
     { id: 'compliance', label: 'Compliance', type: 'boolean', filledBy: 'vendor', showIn: 'technical' },
     { id: 'vendorNotes', label: 'Notes / Comments', type: 'text', filledBy: 'vendor', showIn: 'technical' },
   ];
-
-  const addPresetField = async (preset: RfqFieldDefinition) => {
-    setPendingPreset(preset);
-  };
-
-  const confirmPresetPlacement = async (showIn: 'commercial' | 'technical') => {
-    if (!pendingPreset) return;
-    const preset = pendingPreset;
-    setPendingPreset(null);
-    await addFieldDef({ ...preset, showIn });
-  };
 
   const inviteSelectedVendors = async (sendEmail: boolean) => {
     if (!prId) return;
@@ -523,32 +599,11 @@ export default function RfqEntryDetailPage() {
     }
   };
 
-  const startEditExistingQuote = (row: TableRow) => {
-    const quote = getDisplayQuote(row);
+  const startEditExistingQuote = (row: TableRow, quoteOverride?: ReturnType<typeof getDisplayQuote>) => {
+    const quote = quoteOverride || getDisplayQuote(row);
     const vals = quoteFieldValues(quote, row);
-    const savedLines = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as Array<{
-      lineItemId?: string | number;
-      quotedUnitPrice?: number;
-      quantity?: number;
-      quotedTotal?: number;
-      description?: string;
-    }>;
-    const quoteLineItems =
-      prLineItems.length > 0
-        ? prLineItems.map((li) => {
-            const id = String(li.id);
-            const saved = savedLines.find((l) => String(l.lineItemId) === id);
-            const unit = Number(saved?.quotedUnitPrice) || 0;
-            const qty = Number(saved?.quantity ?? li.quantity) || 0;
-            return {
-              lineItemId: id,
-              description: li.description,
-              quantity: qty,
-              quotedUnitPrice: unit,
-              quotedTotal: unit * qty,
-            };
-          })
-        : [];
+    const savedLines = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
+    const quoteLineItems = seedQuoteLines(savedLines);
     const quotedPrice =
       quoteLineItems.length > 0
         ? quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0)
@@ -572,6 +627,9 @@ export default function RfqEntryDetailPage() {
       },
     }));
     setEditingQuoteIds((prev) => new Set(prev).add(row.invitationId));
+    if (quote?.round) {
+      setEditingRoundById((prev) => ({ ...prev, [row.invitationId]: Number(quote.round) }));
+    }
   };
 
   const cancelEditExistingQuote = (invitationId: number) => {
@@ -590,53 +648,71 @@ export default function RfqEntryDetailPage() {
       delete next[invitationId];
       return next;
     });
+    setEditingRoundById((prev) => {
+      const next = { ...prev };
+      delete next[invitationId];
+      return next;
+    });
+  };
+
+  const validateRequiredQuote = (row: TableRow) => {
+    const quote = getDisplayQuote(row, editingRoundById[row.invitationId]);
+    const draft = manualDrafts[row.invitationId] || {};
+    const file = manualFiles[row.invitationId];
+    const hasFile = Boolean(file) || Boolean(quote?.quotationFileName);
+    if (!hasFile) {
+      setError('Quotation file is required. Upload a PDF or photo first.');
+      return null;
+    }
+    if (file && file.size > 5 * 1024 * 1024) {
+      setError('Quotation file must be under 5MB');
+      return null;
+    }
+    const quoteLineItems = getWorkingLines(row.invitationId).map((l) => {
+      const quotedUnitPrice = Number(l.quotedUnitPrice) || 0;
+      const quantity = Number(l.quantity) || 0;
+      const gstPercent = l.gstPercent != null ? Number(l.gstPercent) : 18;
+      return {
+        ...l,
+        quotedUnitPrice,
+        quantity,
+        gstPercent,
+        quotedTotal: lineQuotedTotal({ quotedUnitPrice, quantity, gstPercent }),
+      };
+    });
+    if (!quoteLineItems.length) {
+      setError('Line items are required. Add at least one item with a quoted price.');
+      return null;
+    }
+    if (quoteLineItems.some((l) => !String(l.description || '').trim())) {
+      setError('Enter a name for every line item');
+      return null;
+    }
+    if (quoteLineItems.some((l) => !l.quantity || l.quantity <= 0)) {
+      setError('Enter quantity for every line item');
+      return null;
+    }
+    if (quoteLineItems.some((l) => !l.quotedUnitPrice || l.quotedUnitPrice <= 0)) {
+      setError('Enter quoted unit price for every line item');
+      return null;
+    }
+    const quotedPrice = quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
+    if (!quotedPrice || quotedPrice <= 0) {
+      setError('Quotation price is required and must be greater than 0');
+      return null;
+    }
+    return { quote, draft, file, quoteLineItems, quotedPrice };
   };
 
   const handleSaveExistingQuote = async (row: TableRow) => {
-    const submissionId = getDisplayQuote(row)?.submissionId || row.submissionId;
+    const checked = validateRequiredQuote(row);
+    if (!checked) return;
+    const { quote, draft, file, quoteLineItems, quotedPrice } = checked;
+    const preferred = editingRoundById[row.invitationId];
+    const editingQuote = preferred ? quoteForRound(row, preferred) : quote;
+    const submissionId = editingQuote?.submissionId || quote?.submissionId || row.submissionId;
     if (!submissionId) {
       setError('No submission to update');
-      return;
-    }
-    const draft = manualDrafts[row.invitationId] || {};
-    const quoteLineItems =
-      prLineItems.length > 0
-        ? prLineItems.map((li) => {
-            const unit = Number(getManualLineUnitPrice(row.invitationId, String(li.id))) || 0;
-            const qty =
-              Number(getManualLineQty(row.invitationId, String(li.id), Number(li.quantity) || 0)) || 0;
-            return {
-              lineItemId: String(li.id),
-              description: li.description,
-              quantity: qty,
-              quotedUnitPrice: unit,
-              quotedTotal: unit * qty,
-            };
-          })
-        : [];
-    const quotedPrice =
-      quoteLineItems.length > 0
-        ? quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0)
-        : Number(draft.quotedPrice);
-    if (quoteLineItems.length > 0 && quoteLineItems.some((l) => !l.quantity || l.quantity <= 0)) {
-      setError('Enter quantity for every line item');
-      return;
-    }
-    if (
-      quoteLineItems.length > 0 &&
-      quoteLineItems.some((l) => !l.quotedUnitPrice || l.quotedUnitPrice <= 0)
-    ) {
-      setError('Enter quoted unit price for every line item');
-      return;
-    }
-    if (!quotedPrice || quotedPrice <= 0) {
-      setError('Quoted amount must be greater than 0');
-      return;
-    }
-
-    const file = manualFiles[row.invitationId];
-    if (file && file.size > 5 * 1024 * 1024) {
-      setError('Quotation file must be under 5MB');
       return;
     }
 
@@ -670,6 +746,7 @@ export default function RfqEntryDetailPage() {
       const res = await rfqApi.updateSubmission(submissionId, body);
       showToast(res.message || 'Quotation updated');
       cancelEditExistingQuote(row.invitationId);
+      setQuotePopupId(null);
       if (res.data?.tableRows) {
         setTableRows(res.data.tableRows as TableRow[]);
       }
@@ -685,44 +762,11 @@ export default function RfqEntryDetailPage() {
   };
 
   const handleSaveManualEntry = async (row: TableRow) => {
-    const draft = manualDrafts[row.invitationId] || {};
-    const quoteLineItems =
-      prLineItems.length > 0
-        ? prLineItems.map((li) => {
-            const unit = Number(getManualLineUnitPrice(row.invitationId, String(li.id))) || 0;
-            const qty = Number(getManualLineQty(row.invitationId, String(li.id), Number(li.quantity) || 0)) || 0;
-            return {
-              lineItemId: String(li.id),
-              description: li.description,
-              quantity: qty,
-              quotedUnitPrice: unit,
-              quotedTotal: unit * qty,
-            };
-          })
-        : [];
-    const quotedPrice =
-      quoteLineItems.length > 0
-        ? quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0)
-        : Number(draft.quotedPrice);
-    if (quoteLineItems.length > 0 && quoteLineItems.some((l) => !l.quantity || l.quantity <= 0)) {
-      setError('Enter quantity for every line item');
-      return;
-    }
-    if (quoteLineItems.length > 0 && quoteLineItems.some((l) => !l.quotedUnitPrice || l.quotedUnitPrice <= 0)) {
-      setError('Enter quoted unit price for every line item');
-      return;
-    }
-    if (!quotedPrice || quotedPrice <= 0) {
-      setError('Enter quoted amount for line items before saving manual entry');
-      return;
-    }
-    const file = manualFiles[row.invitationId];
+    const checked = validateRequiredQuote(row);
+    if (!checked) return;
+    const { draft, file, quoteLineItems, quotedPrice } = checked;
     if (!file) {
-      setError('Upload quotation file (PDF/image) before saving manual entry');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Quotation file must be under 5MB');
+      setError('Quotation file is required. Upload a PDF or photo first.');
       return;
     }
 
@@ -759,6 +803,7 @@ export default function RfqEntryDetailPage() {
       });
 
       showToast(res.message || 'Manual quotation saved');
+      setQuotePopupId(null);
       setManualDrafts((prev) => {
         const next = { ...prev };
         delete next[row.invitationId];
@@ -777,6 +822,12 @@ export default function RfqEntryDetailPage() {
     }
   };
 
+  const isWideQuoteField = (field: RfqFieldDefinition) =>
+    /note|comment|remark|description/i.test(`${field.id} ${field.label}`);
+
+  const quoteFieldControlClass =
+    'w-full h-11 min-h-[44px] box-border px-3 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+
   const renderFieldInput = (
     field: RfqFieldDefinition,
     value: unknown,
@@ -785,13 +836,13 @@ export default function RfqEntryDetailPage() {
   ) => {
     if (field.type === 'boolean') {
       return (
-        <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+        <label className="inline-flex items-center gap-2.5 h-11 min-h-[44px] px-3 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 cursor-pointer select-none w-full">
           <input
             type="checkbox"
             checked={Boolean(value)}
             disabled={disabled}
             onChange={(e) => onChange(e.target.checked)}
-            className="w-4 h-4 accent-teal-600"
+            className="w-4 h-4 accent-teal-600 shrink-0"
           />
           {Boolean(value) ? 'Yes' : 'No'}
         </label>
@@ -803,12 +854,24 @@ export default function RfqEntryDetailPage() {
           value={String(value || 'Net 30')}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full h-10 max-h-10 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50"
+          className={quoteFieldControlClass}
         >
           {['Net 30', 'Net 45', 'Net 60', 'Advance 50%', 'On Delivery', 'Deviated'].map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
           ))}
         </select>
+      );
+    }
+    if (isWideQuoteField(field)) {
+      return (
+        <textarea
+          rows={3}
+          value={value === undefined || value === null ? '' : String(value)}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full min-h-[88px] box-border px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-50"
+          placeholder={field.label}
+        />
       );
     }
     const isMoney = field.id === 'quotedPrice';
@@ -828,7 +891,7 @@ export default function RfqEntryDetailPage() {
             onChange(e.target.value);
           }
         }}
-        className="w-full h-10 max-h-10 px-3 py-2 border border-gray-300 rounded-lg text-sm leading-normal focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        className={quoteFieldControlClass}
         placeholder={field.label}
       />
     );
@@ -941,13 +1004,16 @@ export default function RfqEntryDetailPage() {
   const updateDraftVendor = (key: string, vendorId: string) => {
     const vendor = vendorCatalog.find((v) => String(v.id) === vendorId);
     setError('');
-    setDraftRows((rows) =>
-      rows.map((r) =>
+    setDraftRows((rows) => {
+      const next = rows.map((r) =>
         r.key === key
           ? { ...r, vendorId, vendorName: vendor?.name || '', vendorEmail: vendor?.email || '' }
           : r
-      )
-    );
+      );
+      const filled = next.filter((r) => r.vendorId);
+      const empty = next.find((r) => !r.vendorId) || newDraftRow();
+      return [...filled, empty];
+    });
   };
 
   const handleVendorCreated = async (vendor?: VendorRecord) => {
@@ -955,8 +1021,8 @@ export default function RfqEntryDetailPage() {
     setAddVendorRowKey(null);
     await loadVendors();
     if (vendor && rowKey) {
-      setDraftRows((rows) =>
-        rows.map((r) =>
+      setDraftRows((rows) => {
+        const next = rows.map((r) =>
           r.key === rowKey
             ? {
                 ...r,
@@ -965,16 +1031,40 @@ export default function RfqEntryDetailPage() {
                 vendorEmail: vendor.email || '',
               }
             : r
-        )
-      );
+        );
+        const filled = next.filter((r) => r.vendorId);
+        const empty = next.find((r) => !r.vendorId) || newDraftRow();
+        return [...filled, empty];
+      });
       showToast(`Vendor ${vendor.name} added`);
     } else {
       showToast('Vendor added to master list');
     }
   };
 
-  const getDisplayQuote = (row: TableRow) => {
+  const quoteForRound = (row: TableRow, roundNum: number) => {
     const quotes = Array.isArray(row.quotes) ? row.quotes : [];
+    return (
+      quotes.find((q) => Number(q.round) === Number(roundNum) && Number(q.quotedPrice) > 0) ||
+      quotes.find((q) => Number(q.round) === Number(roundNum)) ||
+      null
+    );
+  };
+
+  const latestExistingRound = (row: TableRow) => {
+    const quotes = Array.isArray(row.quotes) ? row.quotes : [];
+    return quotes.reduce((max, q) => {
+      if (Number(q.quotedPrice) > 0) return Math.max(max, Number(q.round) || 0);
+      return max;
+    }, row.hasActiveQuote ? Number(row.round) || 1 : 0);
+  };
+
+  const getDisplayQuote = (row: TableRow, preferredRound?: number) => {
+    const quotes = Array.isArray(row.quotes) ? row.quotes : [];
+    if (preferredRound) {
+      const hit = quoteForRound(row, preferredRound);
+      if (hit) return hit;
+    }
     if (mode === 'preview') {
       const forRound =
         quotes.find((q) => q.round === previewRound && Number(q.quotedPrice) > 0) ||
@@ -1009,6 +1099,53 @@ export default function RfqEntryDetailPage() {
       fromQuote.quotedPrice = row.fieldValues.quotedPrice;
     }
     return fromQuote;
+  };
+
+  const openQuotePopup = (row: TableRow, targetRound?: number) => {
+    setError('');
+    const existingRound = latestExistingRound(row);
+    const wanted = targetRound && targetRound > 0 ? targetRound : existingRound || row.round || 1;
+    const existingForWanted = quoteForRound(row, wanted);
+
+    if (existingForWanted) {
+      startEditExistingQuote(row, existingForWanted);
+      setQuotePopupId(row.invitationId);
+      return;
+    }
+
+    if (row.hasActiveQuote || existingRound > 0) {
+      setQuoteAsk({
+        row,
+        existingRound: existingRound || 1,
+        targetRound: wanted,
+        source: 'edit',
+      });
+      return;
+    }
+
+    const quote = getDisplayQuote(row);
+    const vals = quoteFieldValues(quote, row);
+    const saved = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
+    persistWorkingLines(row.invitationId, seedQuoteLines(saved));
+    setQuotePopupId(row.invitationId);
+  };
+
+  const askBeforeRequote = (row: TableRow) => {
+    if (row.hasActiveQuote || latestExistingRound(row) > 0) {
+      setQuoteAsk({
+        row,
+        existingRound: latestExistingRound(row) || row.round || 1,
+        targetRound: (latestExistingRound(row) || row.round || 1) + 1,
+        source: 'requote',
+      });
+      return;
+    }
+    setSendBackTarget(row);
+  };
+
+  const closeQuotePopup = () => {
+    if (quotePopupId != null) cancelEditExistingQuote(quotePopupId);
+    setQuotePopupId(null);
   };
 
   const openRecommendModal = (invitationId: number, vendorName: string) => {
@@ -1048,27 +1185,32 @@ export default function RfqEntryDetailPage() {
       )}
 
       <div className="w-full max-w-full">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
         <div className="flex items-start gap-3">
-          <Link to={listPath} className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-50">
+          <Link to={listPath} className="w-10 h-10 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-gray-50">
             <i className="ri-arrow-left-line text-lg"></i>
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">RFQ / Quotation Entry</h1>
-            <p className="text-sm text-gray-500">
-              PR: <span className="font-semibold text-teal-700">{pr?.prNumber || '—'}</span>
-              {isScm && config?.requesterSubmittedAt && !config?.finalizedAt && (
-                <span className="ml-2 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-semibold">
-                  SCM Final
-                </span>
-              )}
+            <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Purchase request {pr?.prNumber || '—'}</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mt-0.5">Collect vendor quotes</h1>
+            <p className="text-sm text-gray-500 mt-1 max-w-xl">
+              {pr?.title || 'Add vendors, get their prices, then pick one to send for approval.'}
             </p>
+            {isScm && config?.requesterSubmittedAt && !config?.finalizedAt && (
+              <span className="inline-flex mt-2 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-semibold">
+                SCM final check
+              </span>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <div className="flex rounded-lg border border-gray-300 overflow-hidden">
-            <button type="button" onClick={() => setMode('entry')} className={`px-4 py-2 text-sm font-medium ${mode === 'entry' ? 'bg-teal-600 text-white' : 'bg-white'}`}>Entry</button>
-            <button type="button" onClick={() => setMode('preview')} className={`px-4 py-2 text-sm font-medium border-l border-gray-300 ${mode === 'preview' ? 'bg-teal-600 text-white' : 'bg-white'}`}>Preview</button>
+          <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
+            <button type="button" onClick={() => setMode('entry')} className={`px-4 py-2.5 text-sm font-medium ${mode === 'entry' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+              Work on quotes
+            </button>
+            <button type="button" onClick={() => setMode('preview')} className={`px-4 py-2.5 text-sm font-medium border-l border-gray-200 ${mode === 'preview' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+              Compare prices
+            </button>
           </div>
           {!isFinalized && hasInvitations && (
             <button
@@ -1077,20 +1219,75 @@ export default function RfqEntryDetailPage() {
               disabled={submitting || !recommendedId || !canSubmitRfq}
               title={
                 !recommendedId
-                  ? 'Recommend a vendor first'
+                  ? 'First choose a recommended vendor'
                   : !recommendedRow?.hasActiveQuote
-                    ? 'Recommended vendor needs a submitted quotation'
+                    ? 'That vendor still needs a quote'
                     : !recommendationJustification.trim()
-                      ? 'Add recommendation justification'
+                      ? 'Write why you picked this vendor'
                       : undefined
               }
-              className="px-5 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+              className="px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
             >
-              {submitting ? 'Submitting...' : isScm ? 'Finalize RFQ' : 'Submit RFQ'}
+              {submitting ? 'Submitting...' : isScm ? 'Finish RFQ' : 'Send for approval'}
             </button>
           )}
         </div>
       </div>
+
+      {!isFinalized && mode === 'entry' && !loading && (
+        <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            {
+              n: 1,
+              title: 'Add vendors',
+              hint: 'Choose who should quote',
+              done: hasInvitations,
+            },
+            {
+              n: 2,
+              title: 'Get quotes',
+              hint: 'Email them, type a quote, or upload with AI',
+              done: quotedCount > 0,
+            },
+            {
+              n: 3,
+              title: 'Pick one vendor',
+              hint: 'Recommend the winner and send for approval',
+              done: Boolean(recommendedId && canSubmitRfq),
+            },
+          ].map((s) => {
+            const active = guideStep === s.n;
+            return (
+              <div
+                key={s.n}
+                className={`rounded-2xl border px-4 py-3 ${
+                  s.done
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : active
+                      ? 'border-teal-300 bg-teal-50 shadow-sm'
+                      : 'border-gray-200 bg-white'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center ${
+                      s.done
+                        ? 'bg-emerald-600 text-white'
+                        : active
+                          ? 'bg-teal-600 text-white'
+                          : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {s.done ? <i className="ri-check-line" /> : s.n}
+                  </span>
+                  <p className="text-sm font-semibold text-gray-900">{s.title}</p>
+                </div>
+                <p className="text-xs text-gray-500 mt-1.5 pl-9">{s.hint}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
       {!isFinalized && config?.sendBackRemarks && (
@@ -1116,226 +1313,105 @@ export default function RfqEntryDetailPage() {
         <div className="p-12 text-center text-gray-500">Loading...</div>
       ) : (
         <div className="space-y-4 pb-4">
-          {prId && mode === 'entry' ? (
-            <PrDetailsEditor
-              prId={Number(prId)}
-              canEdit={Boolean(
-                user?.role &&
-                  [
-                    'Requester',
-                    'Super Admin',
-                    'SCM Manager',
-                    'SCM Buyer',
-                    'HOD Approver',
-                    'PR Manager',
-                    'CFO',
-                  ].includes(user.role)
-              )}
-              onToast={showToast}
-              onSaved={() => {
-                void loadRfq({ soft: true });
-              }}
-            />
-          ) : null}
-
           {!isFinalized && mode === 'entry' && (
-            <div className="bg-white border border-gray-200 rounded-lg p-5">
-              <h2 className="text-sm font-bold text-gray-900 mb-1">Quotation Fields (dynamic)</h2>
-              <p className="text-xs text-gray-500 mb-3">
-                Vendors always see <strong>Quoted Price</strong> + <strong>Quotation File</strong>. When you add a field,
-                choose whether it appears on the <strong>Comparison Sheet</strong> or <strong>Technical Specification</strong>.
-              </p>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {fields.map((f) => {
-                  const showIn = f.showIn === 'commercial' ? 'commercial' : 'technical';
-                  return (
-                    <span
-                      key={f.id}
-                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${
-                        f.filledBy === 'vendor' ? 'bg-teal-50 text-teal-800' : 'bg-violet-50 text-violet-800'
-                      }`}
-                    >
-                      <span>{f.label}</span>
-                      {f.id !== 'quotedPrice' ? (
-                        <select
-                          value={showIn}
-                          onChange={(e) =>
-                            void setFieldShowIn(f.id, e.target.value as 'commercial' | 'technical')
-                          }
-                          className="bg-white/80 border border-black/10 rounded px-1 py-0.5 text-[10px] font-semibold text-gray-700 cursor-pointer max-w-[120px]"
-                          title="Where this field appears"
-                        >
-                          <option value="commercial">Comparison Sheet</option>
-                          <option value="technical">Technical Spec</option>
-                        </select>
-                      ) : (
-                        <span className="text-[10px] opacity-70">(price)</span>
-                      )}
-                      {!f.core && (
-                        <button type="button" onClick={() => removeField(f.id)} className="text-red-500 hover:text-red-700">
-                          ×
-                        </button>
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {vendorFieldPresets
-                  .filter((p) => !fields.some((f) => f.id === p.id))
-                  .map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => void addPresetField(p)}
-                      className="px-2.5 py-1 rounded-full text-xs font-medium border border-teal-200 text-teal-700 bg-teal-50/50 hover:bg-teal-100 cursor-pointer"
-                    >
-                      + {p.label}
-                    </button>
-                  ))}
-              </div>
-              <div className="flex flex-wrap gap-2 items-end">
-                <input
-                  value={newFieldLabel}
-                  onChange={(e) => setNewFieldLabel(e.target.value)}
-                  placeholder="New field label"
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
-                <select
-                  value={newFieldShowIn}
-                  onChange={(e) => setNewFieldShowIn(e.target.value as 'commercial' | 'technical')}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium"
-                  title="Where this field appears on the comparative statement"
-                >
-                  <option value="commercial">Comparison Sheet</option>
-                  <option value="technical">Technical Specification</option>
-                </select>
-                <select
-                  value={newFieldFilledBy}
-                  onChange={(e) => setNewFieldFilledBy(e.target.value as 'vendor' | 'requester')}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                >
-                  <option value="vendor">Vendor fills</option>
-                  <option value="requester">You fill after quote</option>
-                </select>
-                <select
-                  value={newFieldType}
-                  onChange={(e) => setNewFieldType(e.target.value as 'text' | 'number' | 'boolean')}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                >
-                  <option value="text">Text</option>
-                  <option value="number">Number</option>
-                  <option value="boolean">Yes/No</option>
-                </select>
-                <button type="button" onClick={() => void addField()} className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg">
-                  Add Field
-                </button>
+            <div className="bg-white border border-gray-200 rounded-2xl p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 1</p>
+                <h2 className="text-base font-bold text-gray-900 mt-0.5">Add vendors</h2>
+                <p className="text-sm text-gray-500 mt-1">Search a vendor, then choose email, type the quote, or upload with AI.</p>
               </div>
 
-              {pendingPreset && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                  <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
-                    <h3 className="text-base font-bold text-gray-900">Where should this field appear?</h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Choose where <strong>{pendingPreset.label}</strong> shows on the comparative statement.
-                    </p>
-                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {draftRows.filter((r) => r.vendorId).length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {draftRows.filter((r) => r.vendorId).map((row) => (
+                    <div
+                      key={row.key}
+                      className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-teal-200 bg-teal-50/60"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-white border border-teal-100 flex items-center justify-center text-teal-700 shrink-0">
+                        <i className="ri-store-2-line" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{row.vendorName}</p>
+                        <p className="text-xs text-gray-500 truncate">{row.vendorEmail || 'No email on file'}</p>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => void confirmPresetPlacement('commercial')}
-                        className="px-4 py-3 rounded-lg border-2 border-teal-600 bg-teal-50 text-teal-900 text-sm font-semibold hover:bg-teal-100"
+                        onClick={() =>
+                          setDraftRows((rows) => {
+                            const next = rows.filter((x) => x.key !== row.key);
+                            return next.some((x) => !x.vendorId) ? next : [...next, newDraftRow()];
+                          })
+                        }
+                        className="text-sm text-gray-500 hover:text-red-600 px-2"
                       >
-                        Comparison Sheet
-                        <span className="block text-[11px] font-medium text-teal-700 mt-0.5">Commercial comparison</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void confirmPresetPlacement('technical')}
-                        className="px-4 py-3 rounded-lg border-2 border-violet-600 bg-violet-50 text-violet-900 text-sm font-semibold hover:bg-violet-100"
-                      >
-                        Technical Specification
-                        <span className="block text-[11px] font-medium text-violet-700 mt-0.5">Tech / terms matrix</span>
+                        Remove
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setPendingPreset(null)}
-                      className="mt-3 w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-900"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                  ))}
                 </div>
               )}
-            </div>
-          )}
 
-          {!isFinalized && mode === 'entry' && (
-            <div className="bg-white border border-gray-200 rounded-lg p-5">
-              <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-sm font-bold text-gray-900">Add / Invite Vendors</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Select vendors below to add. Remove an invited vendor from their card anytime before finalize.
-                  </p>
+              {draftRows.filter((r) => !r.vendorId).slice(0, 1).map((row) => (
+                <div key={row.key} className="space-y-2 mb-4">
+                  <label className="text-xs font-semibold text-gray-600">Search vendor</label>
+                  <VendorSearchSelect
+                    vendors={vendorCatalog}
+                    value={row.vendorId}
+                    takenNames={invitedVendorNames}
+                    takenIds={new Set(draftRows.filter((r) => r.vendorId).map((r) => r.vendorId))}
+                    onChange={(vendorId) => updateDraftVendor(row.key, vendorId)}
+                    placeholder="Type name, vendor code, or email"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAddVendorRowKey(row.key)}
+                    className="text-sm text-teal-700 font-semibold inline-flex items-center gap-1.5"
+                  >
+                    <i className="ri-user-add-line" />
+                    Vendor not in the list? Create new
+                  </button>
                 </div>
+              ))}
+
+              <p className="text-sm font-semibold text-gray-800 mb-2">How do you want to get the quote?</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <button
                   type="button"
-                  onClick={() => setDraftRows((r) => [...r, newDraftRow()])}
-                  className="text-sm text-teal-700 font-semibold inline-flex items-center gap-1"
+                  onClick={handleSendMail}
+                  disabled={sendingMail || addingManual}
+                  className="text-left rounded-2xl border border-amber-200 bg-amber-50/70 p-4 hover:border-amber-300 disabled:opacity-50"
                 >
-                  <i className="ri-add-line"></i> Add Row
+                  <span className="w-9 h-9 rounded-lg bg-amber-500 text-white inline-flex items-center justify-center mb-2">
+                    <i className="ri-mail-send-line" />
+                  </span>
+                  <p className="text-sm font-bold text-gray-900">{sendingMail ? 'Sending…' : 'Email the vendor'}</p>
+                  <p className="text-xs text-gray-600 mt-1">They open the link and type their price themselves.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddManualEntry}
+                  disabled={sendingMail || addingManual}
+                  className="text-left rounded-2xl border border-teal-200 bg-teal-50/70 p-4 hover:border-teal-300 disabled:opacity-50"
+                >
+                  <span className="w-9 h-9 rounded-lg bg-teal-600 text-white inline-flex items-center justify-center mb-2">
+                    <i className="ri-edit-line" />
+                  </span>
+                  <p className="text-sm font-bold text-gray-900">{addingManual ? 'Adding…' : 'I will type the quote'}</p>
+                  <p className="text-xs text-gray-600 mt-1">You already have the price. Fill it here and attach the file.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={openRfqChat}
+                  className="text-left rounded-2xl border border-slate-200 bg-slate-50 p-4 hover:border-slate-300"
+                >
+                  <span className="w-9 h-9 rounded-lg bg-slate-900 text-white inline-flex items-center justify-center mb-2">
+                    <i className="ri-robot-2-line" />
+                  </span>
+                  <p className="text-sm font-bold text-gray-900">Upload with AI</p>
+                  <p className="text-xs text-gray-600 mt-1">Chat asks the vendor name, then you upload the quotation file.</p>
                 </button>
               </div>
-              <div className="space-y-2 mb-3 max-h-[320px] overflow-y-auto pr-1">
-                {draftRows.map((row, i) => (
-                  <div key={row.key} className="flex gap-2 items-center shrink-0">
-                    <span className="text-xs text-gray-400 w-6 shrink-0">{i + 1}</span>
-                    <select
-                      value={row.vendorId}
-                      onChange={(e) => updateDraftVendor(row.key, e.target.value)}
-                      className="flex-1 min-w-0 h-10 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    >
-                      <option value="">— Select vendor —</option>
-                      {vendorCatalog.map((v) => {
-                        const alreadyInvited = invitedVendorNames.has(v.name.toLowerCase());
-                        return (
-                          <option key={v.id} value={String(v.id)} disabled={alreadyInvited}>
-                            {v.name}
-                            {v.vendorCode ? ` (${v.vendorCode})` : ''}
-                            {alreadyInvited ? ' (already invited)' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setAddVendorRowKey(row.key)}
-                      className="px-3 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 whitespace-nowrap flex items-center gap-1.5"
-                    >
-                      <i className="ri-user-add-line"></i>
-                      Add Vendor
-                    </button>
-                    {draftRows.length > 1 && (
-                      <button type="button" onClick={() => setDraftRows((r) => r.filter((x) => x.key !== row.key))} className="text-red-500 px-2">×</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <button type="button" onClick={handleSendMail} disabled={sendingMail || addingManual} className="px-5 py-2.5 bg-amber-500 text-white text-sm font-semibold rounded-lg hover:bg-amber-600 disabled:opacity-50 flex items-center gap-2">
-                  <i className="ri-mail-send-line"></i>
-                  {sendingMail ? 'Sending...' : 'Send Mail to Vendors'}
-                </button>
-                <button type="button" onClick={handleAddManualEntry} disabled={sendingMail || addingManual} className="px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2">
-                  <i className="ri-edit-line"></i>
-                  {addingManual ? 'Adding...' : 'Add Manual Entry'}
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                <strong>Send Mail</strong> — vendor receives email and fills quotation fields (table locked until vendor submits).{' '}
-                <strong>Add Manual Entry</strong> — adds row to table with no email; you fill all fields and upload file.
-              </p>
             </div>
           )}
 
@@ -1343,9 +1419,9 @@ export default function RfqEntryDetailPage() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-bold text-gray-900">Price Negotiation &amp; RFQ Comparison</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    All revisions in negotiation trend, then line-item Rate / Amount comparison sheet
+                  <h2 className="text-base font-bold text-gray-900">Compare vendor prices</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    See each vendor’s price side by side, then go back to pick a winner.
                   </p>
                 </div>
                 {comparison && (
@@ -1382,19 +1458,36 @@ export default function RfqEntryDetailPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <h2 className="text-sm font-bold text-gray-900">Vendor Quotations</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Fill manual rows, review email quotes, then recommend one vendor
+                  <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 2 &amp; 3</p>
+                  <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Switch <strong>Q1–Q4</strong> tabs, tap <strong>Edit</strong> to fill that round, then <strong>Choose</strong> a vendor.
                   </p>
                 </div>
-                <div className="text-xs text-gray-500">
-                  {tableRows.filter((r) => r.hasActiveQuote).length} of {tableRows.length} quoted
+                <div className="px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-semibold text-gray-600">
+                  {quotedCount} of {tableRows.length} quotes received
                 </div>
               </div>
 
-              <div className="space-y-4">
-                {tableRows.map((row, i) => {
-                  const quote = getDisplayQuote(row);
+              <RfqVendorQuoteTable
+                rows={tableRows}
+                recommendedId={recommendedId}
+                quotedCount={quotedCount}
+                isFinalized={isFinalized}
+                maxRounds={config?.maxRounds}
+                removingId={removingId}
+                resendingId={resendingId}
+                onEdit={(row, targetRound) => openQuotePopup(row as TableRow, targetRound)}
+                onChoose={(row) =>
+                  row.hasActiveQuote && openRecommendModal(row.invitationId, row.vendorName)
+                }
+                onRemove={(row) => handleRemoveVendor(row as TableRow)}
+                onResend={(row) => handleResendMail(row as TableRow)}
+                onSendBack={(row) => askBeforeRequote(row as TableRow)}
+              />
+
+              {tableRows.filter((row) => row.invitationId === quotePopupId).map((row, i) => {
+                  const quote = getDisplayQuote(row, editingRoundById[row.invitationId]);
                   const vals = quoteFieldValues(quote, row);
                   const submissionId = quote?.submissionId || row.submissionId;
                   const isManualRow = row.inviteMode === 'manual';
@@ -1409,30 +1502,18 @@ export default function RfqEntryDetailPage() {
                   const isRecommended =
                     Number(recommendedId) === Number(row.invitationId) || Boolean(row.isRecommended);
                   const statusLabel = awaitingManualEntry
-                    ? 'Manual entry'
+                    ? 'Your turn — type quote'
                     : awaitingVendorEmail
                       ? row.status === 'sent_back'
-                        ? 'Awaiting re-quote'
-                        : 'Awaiting vendor email'
+                        ? 'Waiting for new quote'
+                        : 'Waiting for vendor email'
                       : row.hasActiveQuote
                         ? 'Quote received'
                         : row.status;
 
                   return (
-                    <div
-                      key={row.id}
-                      className={`bg-white border rounded-xl shadow-sm w-full block ${
-                        isEditingExisting
-                          ? 'border-teal-500 ring-2 ring-teal-200'
-                          : isRecommended
-                            ? 'border-teal-400 ring-1 ring-teal-200'
-                            : awaitingManualEntry
-                              ? 'border-teal-200'
-                              : awaitingVendorEmail
-                                ? 'border-amber-200'
-                                : 'border-gray-200'
-                      }`}
-                    >
+                    <div key={row.id} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+                      <div className="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
                       <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 bg-gray-50/80">
                         <div className="flex items-start gap-3 min-w-0">
                           <span className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-sm font-bold text-gray-600 shrink-0">
@@ -1440,7 +1521,7 @@ export default function RfqEntryDetailPage() {
                           </span>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-base font-bold text-gray-900 truncate">{row.vendorName}</h3>
+                              <h3 className="text-base font-bold text-gray-900 truncate">Edit quote — {row.vendorName}</h3>
                               <span className="px-2 py-0.5 rounded-md bg-white border border-gray-200 text-[11px] font-semibold text-gray-600">
                                 Round {mode === 'preview' ? previewRound : row.round}
                               </span>
@@ -1460,198 +1541,214 @@ export default function RfqEntryDetailPage() {
                               {isRecommended && (
                                 <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold flex items-center gap-1">
                                   <i className="ri-star-fill text-amber-500"></i>
-                                  Recommended
+                                  Selected
                                 </span>
                               )}
                             </div>
                             <p className="text-xs text-gray-500 mt-1">
-                              {isManualRow ? 'You enter quote details' : 'Vendor submits via email'}
+                              First upload the quotation file, then fill line items and quoted price. Those three are required.
                             </p>
-                            {isRecommended && recommendationJustification.trim() && (
-                              <p className="text-xs text-teal-800 mt-1.5 bg-teal-50 border border-teal-100 rounded-md px-2 py-1.5 whitespace-pre-wrap">
-                                <span className="font-semibold">Justification:</span>{' '}
-                                {recommendationJustification}
-                              </p>
-                            )}
                           </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                          {!isFinalized && mode === 'entry' && (
-                            <button
-                              type="button"
-                              disabled={!row.hasActiveQuote}
-                              onClick={() =>
-                                row.hasActiveQuote &&
-                                openRecommendModal(row.invitationId, row.vendorName)
-                              }
-                              className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium cursor-pointer disabled:cursor-not-allowed ${
-                                isRecommended
-                                  ? 'bg-teal-600 text-white border-teal-600'
-                                  : row.hasActiveQuote
-                                    ? 'bg-white text-gray-700 border-gray-300 hover:border-teal-400'
-                                    : 'bg-gray-50 text-gray-400 border-gray-200'
-                              }`}
-                              title={
-                                !row.hasActiveQuote
-                                  ? 'Enter or receive vendor quote first'
-                                  : isRecommended
-                                    ? 'Edit recommendation justification'
-                                    : 'Recommend vendor with justification'
-                              }
-                            >
-                              <i className={`ri-star-${isRecommended ? 'fill' : 'line'}`}></i>
-                              {isRecommended ? 'Recommended' : 'Recommend'}
-                            </button>
-                          )}
-
-                          {mode === 'entry' && !isFinalized && awaitingManualEntry && (
+                          {awaitingManualEntry && (
                             <button
                               type="button"
                               onClick={() => handleSaveManualEntry(row)}
                               disabled={savingManualId === row.invitationId}
                               className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
                             >
-                              {savingManualId === row.invitationId ? 'Saving...' : 'Save Entry + File'}
+                              {savingManualId === row.invitationId ? 'Saving...' : 'Save quote + file'}
                             </button>
                           )}
-                          {mode === 'entry' &&
-                            canEditExistingQuote &&
-                            row.hasActiveQuote &&
-                            !isEditingExisting &&
-                            (isScm || !isFinalized) && (
-                              <button
-                                type="button"
-                                onClick={() => startEditExistingQuote(row)}
-                                className="px-4 py-2 border border-teal-300 text-teal-800 text-sm font-medium rounded-lg hover:bg-teal-50 inline-flex items-center gap-1.5"
-                              >
-                                <i className="ri-edit-line"></i>
-                                Edit Quote
-                              </button>
-                            )}
-                          {mode === 'entry' && isEditingExisting && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => cancelEditExistingQuote(row.invitationId)}
-                                disabled={savingManualId === row.invitationId}
-                                className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleSaveExistingQuote(row)}
-                                disabled={savingManualId === row.invitationId}
-                                className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50 inline-flex items-center gap-1.5"
-                              >
-                                <i className="ri-save-line"></i>
-                                {savingManualId === row.invitationId
-                                  ? 'Saving…'
-                                  : 'Save Amount + File'}
-                              </button>
-                            </>
-                          )}
-                          {mode === 'entry' && !isFinalized && awaitingVendorEmail && (
+                          {(isEditingExisting || (row.hasActiveQuote && canEditExistingQuote)) && !awaitingManualEntry && (
                             <button
                               type="button"
-                              onClick={() => handleResendMail(row)}
-                              disabled={resendingId === row.invitationId}
-                              className="px-4 py-2 bg-amber-500 text-white text-sm font-semibold rounded-lg hover:bg-amber-600 disabled:opacity-50"
+                              onClick={() => void handleSaveExistingQuote(row)}
+                              disabled={savingManualId === row.invitationId}
+                              className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
                             >
-                              {resendingId === row.invitationId ? 'Sending...' : 'Resend Mail'}
+                              {savingManualId === row.invitationId ? 'Saving…' : 'Save changes'}
                             </button>
                           )}
-                          {mode === 'entry' && !isFinalized && row.canSendBack && (
-                            <button
-                              type="button"
-                              onClick={() => setSendBackTarget(row)}
-                              className="px-4 py-2 border border-amber-300 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-50"
-                            >
-                              Send Back
-                            </button>
-                          )}
-                          {mode === 'entry' && !isFinalized && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveVendor(row)}
-                              disabled={removingId === row.invitationId}
-                              className="px-4 py-2 border border-red-200 text-red-700 text-sm font-medium rounded-lg hover:bg-red-50 disabled:opacity-50 inline-flex items-center gap-1.5"
-                              title="Remove this vendor from RFQ"
-                            >
-                              <i className="ri-delete-bin-line"></i>
-                              {removingId === row.invitationId ? 'Removing…' : 'Remove'}
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={closeQuotePopup}
+                            className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+                          >
+                            Close
+                          </button>
                         </div>
                       </div>
 
-                      <div className="p-4 sm:p-5 space-y-4">
+                      <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-6">
                         {awaitingVendorEmail ? (
                           <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/40 px-4 py-6 text-center">
                             <i className="ri-mail-send-line text-2xl text-amber-500"></i>
-                            <p className="text-sm font-medium text-amber-800 mt-2">Waiting for vendor quotation by email</p>
-                            <p className="text-xs text-amber-700 mt-1">Fields unlock after the vendor submits. You can resend the invite if needed.</p>
+                            <p className="text-sm font-medium text-amber-800 mt-2">Waiting for this vendor to send their quote</p>
+                            <p className="text-xs text-amber-700 mt-1">You can resend the email if they did not get it.</p>
                           </div>
                         ) : (
                           <>
-                            {prLineItems.length > 0 && (
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
+                                Quotation file <span className="text-red-500">*</span>
+                              </p>
+                              {quote?.quotationFileName && quote?.submissionId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openFilePreview(quote.submissionId!, quote.quotationFileName)}
+                                  className="mb-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-teal-700 hover:bg-teal-50"
+                                >
+                                  <i className="ri-file-look-line" />
+                                  {quote.quotationFileName}
+                                  <span className="text-xs text-gray-500">Preview</span>
+                                </button>
+                              ) : null}
+                              {quoteFieldsEditable ? (
+                                <label
+                                  className={`flex flex-wrap items-center gap-3 px-4 py-3.5 border-2 border-dashed rounded-xl cursor-pointer ${
+                                    manualFiles[row.invitationId] || quote?.quotationFileName
+                                      ? 'border-teal-300 bg-teal-50/40 hover:bg-teal-50'
+                                      : 'border-red-200 bg-red-50/40 hover:bg-red-50/70'
+                                  }`}
+                                >
+                                  <i className={`text-xl shrink-0 ${manualFiles[row.invitationId] || quote?.quotationFileName ? 'ri-upload-2-line text-teal-700' : 'ri-upload-cloud-2-line text-red-500'}`} />
+                                  <div className="min-w-0 flex-1">
+                                    <p className={`text-sm font-semibold truncate ${manualFiles[row.invitationId] || quote?.quotationFileName ? 'text-teal-800' : 'text-red-700'}`}>
+                                      {manualFiles[row.invitationId]?.name ||
+                                        (quote?.quotationFileName
+                                          ? 'Replace quotation file'
+                                          : 'Upload quotation file (required)')}
+                                    </p>
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                      PDF, Word, or photo · max 5MB · then type line items and price
+                                    </p>
+                                  </div>
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                                    className="text-xs max-w-full"
+                                    onChange={(e) => {
+                                      const nextFile = e.target.files?.[0] || null;
+                                      setManualFiles((prev) => ({ ...prev, [row.invitationId]: nextFile }));
+                                    }}
+                                  />
+                                </label>
+                              ) : !quote?.quotationFileName ? (
+                                <p className="text-sm text-red-600">No quotation file uploaded.</p>
+                              ) : null}
+                            </div>
+
+                            {(() => {
+                              const savedLines = (Array.isArray(vals.quoteLineItems)
+                                ? vals.quoteLineItems
+                                : []) as ManualQuoteLine[];
+                              const displayLines = quoteFieldsEditable
+                                ? getWorkingLines(row.invitationId, savedLines)
+                                : seedQuoteLines(savedLines);
+                              const inputClass =
+                                'w-full min-w-[4.5rem] h-10 box-border px-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+                              return (
                               <div>
-                                <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
-                                  Line item quotes
-                                </p>
-                                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                                <div className="flex items-center justify-between gap-3 mb-3">
+                                  <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                                    Line items <span className="text-red-500">*</span>
+                                  </p>
+                                  {quoteFieldsEditable && (
+                                    <button
+                                      type="button"
+                                      onClick={() => addExtraQuoteLine(row.invitationId)}
+                                      className="text-sm font-semibold text-teal-700 inline-flex items-center gap-1"
+                                    >
+                                      <i className="ri-add-line" />
+                                      Add another line item
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="border border-gray-200 rounded-2xl overflow-hidden">
                                   <table className="w-full text-sm">
-                                    <thead className="bg-gray-50">
+                                    <thead className="bg-teal-50/70">
                                       <tr>
-                                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
                                           Item
                                         </th>
-                                        <th className="px-3 py-2 text-center text-xs font-semibold text-teal-700 uppercase">
+                                        <th className="px-4 py-3 text-center text-xs font-semibold text-teal-700 uppercase w-24">
                                           Qty
                                         </th>
-                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">
-                                          Est. unit
+                                        <th className="px-4 py-3 text-right text-xs font-semibold text-teal-700 uppercase w-36">
+                                          Quoted unit (₹)
                                         </th>
-                                        <th className="px-3 py-2 text-center text-xs font-semibold text-teal-700 uppercase">
-                                          Quoted unit
+                                        <th className="px-4 py-3 text-center text-xs font-semibold text-teal-700 uppercase w-24">
+                                          GST %
                                         </th>
-                                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">
+                                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-32">
                                           Line total
                                         </th>
+                                        {quoteFieldsEditable && (
+                                          <th className="px-3 py-3 w-12" />
+                                        )}
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {prLineItems.map((li) => {
-                                        const lineId = String(li.id);
-                                        const savedLines = (Array.isArray(vals.quoteLineItems)
-                                          ? vals.quoteLineItems
-                                          : []) as Array<{
-                                          lineItemId?: string | number;
-                                          quotedUnitPrice?: number;
-                                          quotedTotal?: number;
-                                          quantity?: number;
-                                        }>;
-                                        const saved = savedLines.find(
-                                          (l) => String(l.lineItemId) === lineId
-                                        );
+                                      {displayLines.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={quoteFieldsEditable ? 6 : 5} className="px-4 py-6 text-center text-sm text-gray-500">
+                                            No line items yet. Tap Add another line item.
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                      displayLines.map((li) => {
+                                        const lineId = String(li.lineItemId);
+                                        const prItem = prLineItems.find((p) => String(p.id) === lineId);
                                         const editable = quoteFieldsEditable;
                                         const unitPrice = editable
                                           ? getManualLineUnitPrice(row.invitationId, lineId)
-                                          : Number(saved?.quotedUnitPrice) || 0;
+                                          : Number(li.quotedUnitPrice) || 0;
                                         const qty = editable
                                           ? getManualLineQty(row.invitationId, lineId, Number(li.quantity) || 0)
-                                          : Number(saved?.quantity ?? li.quantity) || 0;
-                                        const lineTotal = (Number(unitPrice) || 0) * (Number(qty) || 0);
+                                          : Number(li.quantity) || 0;
+                                        const gst = editable
+                                          ? getManualLineGst(row.invitationId, lineId, Number(li.gstPercent) || 18)
+                                          : Number(li.gstPercent) || 0;
+                                        const lineTotal = lineQuotedTotal({
+                                          quantity: Number(qty) || 0,
+                                          quotedUnitPrice: Number(unitPrice) || 0,
+                                          gstPercent: gst,
+                                        });
                                         return (
                                           <tr key={lineId} className="border-t border-gray-100">
-                                            <td className="px-3 py-2">
-                                              <p className="font-medium text-gray-900">{li.description}</p>
-                                              {li.category ? (
-                                                <p className="text-xs text-gray-400">{li.category}</p>
-                                              ) : null}
+                                            <td className="px-4 py-3">
+                                              {editable && li.extra ? (
+                                                <input
+                                                  type="text"
+                                                  value={li.description || ''}
+                                                  onChange={(e) =>
+                                                    setManualLineField(
+                                                      row.invitationId,
+                                                      lineId,
+                                                      'description',
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className={inputClass}
+                                                  placeholder="Item name"
+                                                />
+                                              ) : (
+                                                <>
+                                                  <p className="font-medium text-gray-900">{li.description || prItem?.description}</p>
+                                                  {(li.category || prItem?.category) ? (
+                                                    <p className="text-xs text-gray-400">{li.category || prItem?.category}</p>
+                                                  ) : li.extra ? (
+                                                    <p className="text-xs text-teal-600">Added on this quote</p>
+                                                  ) : (
+                                                    <p className="text-xs text-gray-400">From PR</p>
+                                                  )}
+                                                </>
+                                              )}
                                             </td>
-                                            <td className="px-3 py-2">
+                                            <td className="px-4 py-3">
                                               {editable ? (
                                                 <input
                                                   type="number"
@@ -1668,76 +1765,129 @@ export default function RfqEntryDetailPage() {
                                                         : Math.max(0, Number(e.target.value) || 0)
                                                     )
                                                   }
-                                                  className="w-20 mx-auto block border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                  className={`${inputClass} text-center`}
                                                   placeholder="1"
                                                 />
                                               ) : (
                                                 <div className="text-center font-semibold text-gray-900">{qty || '—'}</div>
                                               )}
                                             </td>
-                                            <td className="px-3 py-2 text-right text-xs text-gray-400">
-                                              {formatCurrency(Number(li.unitCost) || 0)}
-                                            </td>
-                                            <td className="px-3 py-2">
+                                            <td className="px-4 py-3">
                                               {editable ? (
-                                                <input
-                                                  type="number"
-                                                  min={0}
-                                                  value={unitPrice === '' ? '' : String(unitPrice)}
-                                                  onChange={(e) =>
-                                                    setManualLineField(
-                                                      row.invitationId,
-                                                      lineId,
-                                                      'quotedUnitPrice',
-                                                      e.target.value === ''
-                                                        ? ''
-                                                        : Math.max(0, Number(e.target.value) || 0)
-                                                    )
-                                                  }
-                                                  className="w-28 mx-auto block border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500"
-                                                  placeholder="0"
-                                                />
+                                                <div className="flex items-center h-10 border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-teal-500">
+                                                  <span className="pl-2 pr-1 text-sm text-gray-500 shrink-0">₹</span>
+                                                  <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={unitPrice === '' ? '' : String(unitPrice)}
+                                                    onChange={(e) =>
+                                                      setManualLineField(
+                                                        row.invitationId,
+                                                        lineId,
+                                                        'quotedUnitPrice',
+                                                        parseAmountInput(e.target.value)
+                                                      )
+                                                    }
+                                                    className="w-full h-full min-w-0 px-1 text-sm text-right outline-none"
+                                                    placeholder="0.00"
+                                                  />
+                                                </div>
                                               ) : (
-                                                <div className="text-center font-medium text-gray-900">
+                                                <div className="text-right font-medium text-gray-900">
                                                   {unitPrice ? formatCurrency(Number(unitPrice)) : '—'}
                                                 </div>
                                               )}
                                             </td>
-                                            <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                            <td className="px-4 py-3">
+                                              {editable ? (
+                                                <select
+                                                  value={String(gst)}
+                                                  onChange={(e) =>
+                                                    setManualLineField(
+                                                      row.invitationId,
+                                                      lineId,
+                                                      'gstPercent',
+                                                      Number(e.target.value) || 0
+                                                    )
+                                                  }
+                                                  className="w-full h-10 px-2 border border-gray-300 rounded-lg text-sm bg-white text-center focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                >
+                                                  {GST_RATES.map((rate) => (
+                                                    <option key={rate} value={rate}>
+                                                      {rate}%
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              ) : (
+                                                <div className="text-center text-sm text-gray-900">{gst}%</div>
+                                              )}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-semibold text-gray-900">
                                               {lineTotal > 0 ? formatCurrency(lineTotal) : '—'}
                                             </td>
+                                            {editable && (
+                                              <td className="px-3 py-3 text-center">
+                                                {li.extra ? (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => removeExtraQuoteLine(row.invitationId, lineId)}
+                                                    className="text-red-500 hover:text-red-700"
+                                                    title="Remove line"
+                                                  >
+                                                    <i className="ri-delete-bin-line" />
+                                                  </button>
+                                                ) : null}
+                                              </td>
+                                            )}
                                           </tr>
                                         );
-                                      })}
+                                      })
+                                      )}
                                     </tbody>
                                     <tfoot>
                                       <tr className="border-t border-teal-200 bg-teal-50">
                                         <td
                                           colSpan={4}
-                                          className="px-3 py-2.5 text-right text-xs font-bold text-teal-900 uppercase"
+                                          className="px-4 py-3 text-right text-xs font-bold text-teal-900 uppercase"
                                         >
                                           Total quoted amount
                                         </td>
-                                        <td className="px-3 py-2.5 text-right text-sm font-bold text-teal-800">
+                                        <td className="px-4 py-3 text-right text-sm font-bold text-teal-800">
                                           {formatCurrency(
                                             quoteFieldsEditable
                                               ? getManualQuoteTotal(row.invitationId)
                                               : Number(vals.quotedPrice) || 0
                                           )}
                                         </td>
+                                        {quoteFieldsEditable && <td />}
                                       </tr>
                                     </tfoot>
                                   </table>
                                 </div>
+                                <p className="text-xs text-gray-400 mt-2">
+                                  Enter quoted unit amount and GST. Line total = qty × quoted unit + GST. Extra items apply to this quote only.
+                                </p>
                               </div>
-                            )}
+                              );
+                            })()}
 
                             <div>
-                              <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Vendor fields</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-                                {(prLineItems.length > 0 ? vendorFieldsWithoutPrice : vendorFields).map((f) => (
-                                  <div key={f.id} className="space-y-1.5 min-w-0 h-auto">
-                                    <label className="block text-xs font-semibold text-gray-600">{f.label}</label>
+                              <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Other quote details</p>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                                {(prLineItems.length > 0 ||
+                                ((manualDrafts[row.invitationId]?.quoteLineItems as ManualQuoteLine[]) || []).length > 0
+                                  ? vendorFieldsWithoutPrice
+                                  : vendorFields
+                                ).map((f) => (
+                                  <div
+                                    key={f.id}
+                                    className={`flex flex-col gap-2 min-w-0 rounded-xl border border-gray-200 bg-gray-50/70 p-3.5 ${
+                                      isWideQuoteField(f) ? 'md:col-span-2' : ''
+                                    }`}
+                                  >
+                                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-none">
+                                      {f.label}
+                                    </label>
                                     {quoteFieldsEditable ? (
                                       renderFieldInput(
                                         f,
@@ -1745,18 +1895,17 @@ export default function RfqEntryDetailPage() {
                                         (val) => setManualValue(row.invitationId, f.id, val)
                                       )
                                     ) : (
-                                      <div className="h-10 px-3 rounded-lg bg-gray-50 border border-gray-100 text-sm text-gray-900 flex items-center truncate">
+                                      <div className="min-h-[44px] px-3 rounded-xl bg-white border border-gray-200 text-sm text-gray-900 flex items-center">
                                         {formatFieldValue(f, vals[f.id])}
                                       </div>
                                     )}
                                   </div>
                                 ))}
-                                {prLineItems.length > 0 && (
-                                  <div className="space-y-1.5 min-w-0 h-auto">
-                                    <label className="block text-xs font-semibold text-gray-600">
-                                      Quoted Price (₹)
+                                <div className="flex flex-col gap-2 min-w-0 rounded-xl border border-teal-200 bg-teal-50/70 p-3.5">
+                                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-teal-700 leading-none">
+                                      Quoted Price (₹) <span className="text-red-500">*</span>
                                     </label>
-                                    <div className="h-10 px-3 rounded-lg bg-teal-50 border border-teal-100 text-sm font-bold text-teal-800 flex items-center truncate">
+                                    <div className="min-h-[44px] px-3 rounded-xl bg-white border border-teal-100 text-sm font-bold text-teal-800 flex items-center">
                                       {formatCurrency(
                                         quoteFieldsEditable
                                           ? getManualQuoteTotal(row.invitationId)
@@ -1764,7 +1913,6 @@ export default function RfqEntryDetailPage() {
                                       )}
                                     </div>
                                   </div>
-                                )}
                               </div>
                             </div>
 
@@ -1772,10 +1920,17 @@ export default function RfqEntryDetailPage() {
                               requesterFields.length > 0 && (
                               <div>
                                 <p className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-3">Your scoring fields</p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                                   {requesterFields.map((f) => (
-                                    <div key={f.id} className="space-y-1.5 min-w-0 h-auto">
-                                      <label className="block text-xs font-semibold text-violet-700">{f.label}</label>
+                                    <div
+                                      key={f.id}
+                                      className={`flex flex-col gap-2 min-w-0 rounded-xl border border-violet-200 bg-violet-50/50 p-3.5 ${
+                                        isWideQuoteField(f) ? 'md:col-span-2' : ''
+                                      }`}
+                                    >
+                                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-violet-700 leading-none">
+                                        {f.label}
+                                      </label>
                                       {mode === 'entry' && (!isFinalized || isEditingExisting) ? (
                                         quoteFieldsEditable ? (
                                           renderFieldInput(
@@ -1784,7 +1939,7 @@ export default function RfqEntryDetailPage() {
                                             (val) => setManualValue(row.invitationId, f.id, val)
                                           )
                                         ) : f.type === 'boolean' ? (
-                                          <label className="inline-flex items-center gap-2 h-10 text-sm text-gray-700 cursor-pointer">
+                                          <label className="inline-flex items-center gap-2.5 h-11 min-h-[44px] px-3 rounded-xl border border-violet-200 bg-white text-sm text-gray-700 cursor-pointer w-full">
                                             <input
                                               type="checkbox"
                                               checked={Boolean(vals[f.id])}
@@ -1793,6 +1948,14 @@ export default function RfqEntryDetailPage() {
                                             />
                                             {Boolean(vals[f.id]) ? 'Yes' : 'No'}
                                           </label>
+                                        ) : isWideQuoteField(f) ? (
+                                          <textarea
+                                            rows={3}
+                                            value={String(vals[f.id] ?? '')}
+                                            onChange={(e) => handleReviewFieldChange(submissionId, f.id, e.target.value)}
+                                            className="w-full min-h-[88px] box-border px-3 py-2.5 border border-violet-200 rounded-xl text-sm bg-white resize-y focus:outline-none focus:ring-2 focus:ring-violet-400"
+                                            placeholder={f.label}
+                                          />
                                         ) : (
                                           <input
                                             type={f.type === 'number' ? 'number' : 'text'}
@@ -1807,12 +1970,12 @@ export default function RfqEntryDetailPage() {
                                                   : e.target.value
                                               )
                                             }
-                                            className="w-full h-10 max-h-10 px-3 py-2 border border-violet-200 rounded-lg text-sm leading-normal focus:outline-none focus:ring-2 focus:ring-violet-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            className="w-full h-11 min-h-[44px] box-border px-3 border border-violet-200 rounded-xl text-sm leading-normal focus:outline-none focus:ring-2 focus:ring-violet-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                             placeholder={f.label}
                                           />
                                         )
                                       ) : (
-                                        <div className="h-10 px-3 rounded-lg bg-violet-50/50 border border-violet-100 text-sm text-gray-900 flex items-center truncate">
+                                        <div className="min-h-[44px] px-3 rounded-xl bg-white border border-violet-100 text-sm text-gray-900 flex items-center">
                                           {formatFieldValue(f, vals[f.id])}
                                         </div>
                                       )}
@@ -1821,129 +1984,25 @@ export default function RfqEntryDetailPage() {
                                 </div>
                               </div>
                             )}
-
-                            <div className="pt-3 border-t border-gray-100">
-                              <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Quotation file</p>
-                              {mode === 'entry' && !isFinalized && awaitingManualEntry ? (
-                                <label className="flex flex-wrap items-center gap-3 px-4 py-3 border border-dashed border-teal-300 rounded-lg bg-teal-50/40 cursor-pointer hover:bg-teal-50">
-                                  <i className="ri-upload-2-line text-xl text-teal-700 shrink-0"></i>
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium text-teal-800 truncate">
-                                      {manualFiles[row.invitationId]?.name || 'Upload quotation file (required)'}
-                                    </p>
-                                    <p className="text-xs text-teal-700">PDF, Word, or image · max 5MB</p>
-                                  </div>
-                                  <input
-                                    type="file"
-                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
-                                    className="text-xs max-w-full"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0] || null;
-                                      setManualFiles((prev) => ({ ...prev, [row.invitationId]: file }));
-                                    }}
-                                  />
-                                </label>
-                              ) : quote?.submissionId ? (
-                                <div className="space-y-2">
-                                  {quote.quotationFileName ? (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        openFilePreview(quote.submissionId!, quote.quotationFileName)
-                                      }
-                                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm font-medium text-teal-700 hover:bg-teal-50"
-                                    >
-                                      <i className="ri-file-look-line"></i>
-                                      {quote.quotationFileName}
-                                      <span className="text-xs text-gray-500">Preview</span>
-                                    </button>
-                                  ) : (
-                                    <p className="text-sm text-amber-700">No quotation file on this submission yet.</p>
-                                  )}
-                                  {/* Admin / SCM can replace existing quotation file anytime; requester while RFQ open or Edit Quote */}
-                                  {(canEditExistingQuote || (!isFinalized && mode === 'entry') || isEditingExisting) && (
-                                    <label className="flex flex-col gap-2 px-4 py-3 border border-dashed border-amber-300 rounded-lg bg-amber-50/50 cursor-pointer hover:bg-amber-50">
-                                      <div className="flex items-center gap-3 flex-wrap">
-                                        <i className="ri-upload-cloud-2-line text-xl text-amber-600"></i>
-                                        <div className="min-w-0 flex-1">
-                                          <p className="text-sm font-medium text-amber-900">
-                                            {manualFiles[row.invitationId]?.name ||
-                                              (quote.quotationFileName
-                                                ? 'Update existing quotation file'
-                                                : 'Attach quotation file')}
-                                          </p>
-                                          <p className="text-xs text-amber-800">
-                                            {quote.quotationFileName
-                                              ? 'Replace the current file (stored in database after upload)'
-                                              : 'Upload quotation PDF / image (max 5MB)'}
-                                          </p>
-                                        </div>
-                                        <input
-                                          type="file"
-                                          accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
-                                          className="text-xs"
-                                          onChange={(e) => {
-                                            const file = e.target.files?.[0] || null;
-                                            setManualFiles((prev) => ({ ...prev, [row.invitationId]: file }));
-                                          }}
-                                        />
-                                      </div>
-                                      <button
-                                        type="button"
-                                        disabled={
-                                          !manualFiles[row.invitationId] || savingManualId === row.invitationId
-                                        }
-                                        onClick={async (e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          const file = manualFiles[row.invitationId];
-                                          if (!file || !quote.submissionId) return;
-                                          setSavingManualId(row.invitationId);
-                                          setError('');
-                                          try {
-                                            const quotationFileData = await readFileAsBase64(file);
-                                            const res = await rfqApi.attachQuotationFile(quote.submissionId, {
-                                              quotationFileName: file.name,
-                                              quotationFileData,
-                                            });
-                                            showToast(res.message || 'Quotation file updated');
-                                            setManualFiles((prev) => {
-                                              const next = { ...prev };
-                                              delete next[row.invitationId];
-                                              return next;
-                                            });
-                                            await loadRfq();
-                                          } catch (err) {
-                                            setError(
-                                              err instanceof Error ? err.message : 'Failed to update file'
-                                            );
-                                          } finally {
-                                            setSavingManualId(null);
-                                          }
-                                        }}
-                                        className="self-start px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 text-white disabled:opacity-50"
-                                      >
-                                        {savingManualId === row.invitationId
-                                          ? 'Uploading…'
-                                          : quote.quotationFileName
-                                            ? 'Update file'
-                                            : 'Attach file'}
-                                      </button>
-                                    </label>
-                                  )}
-                                </div>
-                              ) : (
-                                <p className="text-sm text-gray-400">No file uploaded</p>
-                              )}
-                            </div>
                           </>
                         )}
+                      </div>
                       </div>
                     </div>
                   );
                 })}
-              </div>
             </div>
+          )}
+
+          {!isFinalized && mode === 'entry' && (
+            <RfqExtraQuestionsPanel
+              open={fieldsOpen}
+              onToggle={() => setFieldsOpen((v) => !v)}
+              fields={fields}
+              presets={vendorFieldPresets}
+              onAdd={(field) => void addFieldDef(field)}
+              onRemove={(fieldId) => void removeField(fieldId)}
+            />
           )}
         </div>
       )}
@@ -1954,7 +2013,7 @@ export default function RfqEntryDetailPage() {
           <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-gray-900">Recommend Vendor</h3>
+                <h3 className="text-base font-bold text-gray-900">Choose this vendor</h3>
                 <p className="text-xs text-gray-500 mt-0.5">{recommendModal.vendorName}</p>
               </div>
               <button
@@ -1967,17 +2026,17 @@ export default function RfqEntryDetailPage() {
             </div>
             <div className="p-5 space-y-3">
               <label className="block text-sm font-semibold text-gray-700">
-                Justification <span className="text-red-500">*</span>
+                Why this vendor? <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={recommendDraft}
                 onChange={(e) => setRecommendDraft(e.target.value)}
                 rows={4}
-                placeholder="Why is this vendor recommended? (price, quality, lead time, compliance…)"
+                placeholder="Example: Lowest price and delivery in 10 days"
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
               />
               <p className="text-xs text-gray-500">
-                Required before Submit / Finalize RFQ. Approvers will see this justification.
+                Required before you send this RFQ for approval. Managers will see this reason.
               </p>
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
@@ -1993,7 +2052,62 @@ export default function RfqEntryDetailPage() {
                 onClick={() => void confirmRecommend()}
                 className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
               >
-                Save Recommendation
+                Save choice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {quoteAsk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-bold text-gray-900">Quote already exists</h3>
+              <p className="text-sm text-gray-600 mt-1">{quoteAsk.row.vendorName}</p>
+            </div>
+            <div className="p-5 space-y-3 text-sm text-gray-700">
+              <p>
+                Q{quoteAsk.existingRound} is already saved. Do not create a new round unless you need a
+                re-quote.
+              </p>
+              <p className="text-xs text-gray-500">
+                {quoteAsk.source === 'requote'
+                  ? `Re-quote will start Q${quoteAsk.targetRound}. To change the current price, edit Q${quoteAsk.existingRound}.`
+                  : `Q${quoteAsk.targetRound} is empty. Edit the existing Q${quoteAsk.existingRound} quote, or start a new re-quote round.`}
+              </p>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setQuoteAsk(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { row, existingRound } = quoteAsk;
+                  const quote = quoteForRound(row, existingRound);
+                  setQuoteAsk(null);
+                  startEditExistingQuote(row, quote);
+                  setQuotePopupId(row.invitationId);
+                }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800"
+              >
+                Edit existing Q{quoteAsk.existingRound}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const row = quoteAsk.row;
+                  setQuoteAsk(null);
+                  setSendBackTarget(row);
+                }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+              >
+                Create new round
               </button>
             </div>
           </div>
@@ -2015,6 +2129,20 @@ export default function RfqEntryDetailPage() {
           </div>
         </div>
       )}
+
+      {!isFinalized && prId ? (
+        <RfqChatbot
+          prId={Number(prId)}
+          prNumber={pr?.prNumber}
+          isFinalized={isFinalized}
+          vendors={vendorCatalog}
+          tableRows={tableRows}
+          lineItems={prLineItems}
+          fieldDefinitions={fields}
+          onRefresh={() => loadRfq({ soft: true })}
+          onToast={showToast}
+        />
+      ) : null}
 
       {filePreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">

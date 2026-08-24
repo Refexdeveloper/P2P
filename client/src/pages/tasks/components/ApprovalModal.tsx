@@ -8,7 +8,8 @@ interface ApprovalModalProps {
   prTitle: string;
   amount: number;
   prId?: number;
-  onConfirm: (remarks: string, returnTo?: string) => void;
+  askBusinessApproval?: boolean;
+  onConfirm: (remarks: string, returnTo?: string, goToBusinessApproval?: boolean) => void;
   onClose: () => void;
 }
 
@@ -19,6 +20,7 @@ export default function ApprovalModal({
   prTitle,
   amount,
   prId,
+  askBusinessApproval = false,
   onConfirm,
   onClose,
 }: ApprovalModalProps) {
@@ -26,6 +28,7 @@ export default function ApprovalModal({
   const [returnTo, setReturnTo] = useState('');
   const [targets, setTargets] = useState<{ key: string; label: string }[]>([]);
   const [targetsLoading, setTargetsLoading] = useState(false);
+  const [goToBusinessApproval, setGoToBusinessApproval] = useState<boolean | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -33,6 +36,7 @@ export default function ApprovalModal({
       setRemarks('');
       setReturnTo('');
       setTargets([]);
+      setGoToBusinessApproval(null);
       setError('');
       return;
     }
@@ -121,7 +125,15 @@ export default function ApprovalModal({
       setError('Select a previous stage to send back to');
       return;
     }
-    onConfirm(remarks.trim(), type === 'return' ? selectedReturnTo : undefined);
+    if (type === 'approve' && askBusinessApproval && goToBusinessApproval === null) {
+      setError('Select Yes or No for Business / CFO Approval');
+      return;
+    }
+    onConfirm(
+      remarks.trim(),
+      type === 'return' ? selectedReturnTo : undefined,
+      type === 'approve' && askBusinessApproval ? Boolean(goToBusinessApproval) : undefined
+    );
     setRemarks('');
     setReturnTo('');
     setError('');
@@ -159,6 +171,47 @@ export default function ApprovalModal({
             </div>
             <p className="text-sm font-medium text-gray-800">{prTitle}</p>
           </div>
+
+          {type === 'approve' && askBusinessApproval && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm font-semibold text-amber-900 mb-1">Go to Business Approval?</p>
+              <p className="text-xs text-amber-800 mb-3 leading-relaxed">
+                <strong>Yes</strong> → L2 Manager → CFO (if a CFO user is available)
+                <br />
+                <strong>No</strong> → L2 Manager → SCM RFQ (skip CFO)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGoToBusinessApproval(true);
+                    setError('');
+                  }}
+                  className={`flex-1 px-3 py-2.5 text-sm font-semibold rounded-lg border cursor-pointer text-center ${
+                    goToBusinessApproval === true
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  Yes — L2 → CFO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGoToBusinessApproval(false);
+                    setError('');
+                  }}
+                  className={`flex-1 px-3 py-2.5 text-sm font-semibold rounded-lg border cursor-pointer text-center ${
+                    goToBusinessApproval === false
+                      ? 'bg-teal-600 text-white border-teal-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  No — L2 → SCM RFQ
+                </button>
+              </div>
+            </div>
+          )}
 
           {type === 'return' && Boolean(prId) && (
             <div className="mb-4">

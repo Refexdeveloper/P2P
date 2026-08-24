@@ -1,8 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { prApi, masterApi, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord } from '../../../services/api';
+import { prApi, masterApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, PrAttachmentRecord } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
+import ItemCombobox from './ItemCombobox';
+import DepartmentCombobox from './DepartmentCombobox';
+import CategoryCombobox from './CategoryCombobox';
+import SearchCreateField from './SearchCreateField';
 import {
   CURRENCY_OPTIONS,
   DEFAULT_CURRENCY,
@@ -38,6 +42,8 @@ interface AttachedFile {
   id: string;
   name: string;
   size: number;
+  file?: File;
+  existingId?: number;
 }
 
 interface ReturnFeedback {
@@ -70,9 +76,6 @@ export default function CreatePRPage() {
   const [department, setDepartment] = useState('');
   const [entityId, setEntityId] = useState<number | ''>('');
   const [entities, setEntities] = useState<EntityRecord[]>([]);
-  const [entitySearch, setEntitySearch] = useState('');
-  const [entityOpen, setEntityOpen] = useState(false);
-  const entityBoxRef = useRef<HTMLDivElement>(null);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [requestType, setRequestType] = useState<'Capex' | 'Opex' | 'Service'>('Opex');
   const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order'>('purchase_order');
@@ -107,6 +110,11 @@ export default function CreatePRPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isReturned = prStatus === 'RETURNED';
+  const isPendingEditFlow =
+    isEditMode &&
+    !isAdminEditFlow &&
+    !isReturned &&
+    ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(prStatus);
   const isResubmitFlow = isEditMode && isReturned && !isAdminEditFlow;
   const backTo = isAdminEditFlow || isEditMode ? '/requester/track-pr' : '/requester/dashboard';
 
@@ -132,6 +140,7 @@ export default function CreatePRPage() {
           status: string;
           lineItems: { id?: number; description: string; quantity: number; unitCost: number; category: string; unit?: string }[];
           approvalHistory?: { stage: string; user: string; role: string; date: string; status: string; remarks: string }[];
+          attachments?: PrAttachmentRecord[];
         };
         setPrNumber(pr.prNumber);
         setPrTitle(pr.title || '');
@@ -191,6 +200,14 @@ export default function CreatePRPage() {
               }))
             : [{ id: '1', itemId: null, itemName: '', description: '', quantity: 1, estimatedCost: 0, category: '', unit: 'Nos', hsnCode: '', gstPercentage: 18 }]
         );
+        setAttachedFiles(
+          (pr.attachments || []).map((att) => ({
+            id: `existing-${att.id}`,
+            name: att.fileName,
+            size: att.size,
+            existingId: att.id,
+          }))
+        );
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : 'Failed to load PR');
       } finally {
@@ -241,46 +258,15 @@ export default function CreatePRPage() {
     })();
   }, [requestType]);
 
-  const categoryOptions = useMemo(() => {
-    return masterCategories.map((c) => c.name);
-  }, [masterCategories]);
-
   const selectedEntity = useMemo(
     () => (entityId === '' ? null : entities.find((e) => e.id === entityId) || null),
     [entities, entityId]
   );
 
-  const filteredEntities = useMemo(() => {
-    const q = entitySearch.trim().toLowerCase();
-    if (!q) return entities;
-    return entities.filter((ent) => {
-      const hay = `${ent.code || ''} ${ent.name || ''} ${ent.costCenter || ''}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [entities, entitySearch]);
-
   const formatEntityLabel = (ent: EntityRecord) => {
     const base = ent.code ? `${ent.code} — ${ent.name}` : ent.name;
     return ent.costCenter ? `${base} (${ent.costCenter})` : base;
   };
-
-  useEffect(() => {
-    if (!entityOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (!entityBoxRef.current?.contains(e.target as Node)) {
-        setEntityOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [entityOpen]);
-
-  // Keep search box in sync when entity is set from edit load
-  useEffect(() => {
-    if (selectedEntity) {
-      setEntitySearch(formatEntityLabel(selectedEntity));
-    }
-  }, [selectedEntity]);
 
   const priorityOptions = ['Low', 'Medium', 'High', 'Critical'];
 
@@ -314,8 +300,8 @@ export default function CreatePRPage() {
     setLineItems(lineItems.map(item => (item.id === id ? { ...item, [field]: value } : item)));
   };
 
-  const selectMasterItem = (lineId: string, itemIdValue: string) => {
-    if (!itemIdValue) {
+  const applyMasterItem = (lineId: string, master: ItemRecord | null) => {
+    if (!master) {
       setLineItems((prev) =>
         prev.map((row) =>
           row.id === lineId
@@ -325,8 +311,6 @@ export default function CreatePRPage() {
       );
       return;
     }
-    const master = masterItems.find((m) => String(m.id) === itemIdValue);
-    if (!master) return;
     setLineItems((prev) =>
       prev.map((row) =>
         row.id === lineId
@@ -345,6 +329,27 @@ export default function CreatePRPage() {
     );
   };
 
+  const rememberMasterItem = (created: ItemRecord) => {
+    setMasterItems((prev) => {
+      if (prev.some((item) => item.id === created.id)) return prev;
+      return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+    });
+  };
+
+  const rememberDepartment = (created: DepartmentRecord) => {
+    setDepartments((prev) => {
+      if (prev.some((item) => item.id === created.id)) return prev;
+      return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+    });
+  };
+
+  const rememberCategory = (created: CategoryRecord) => {
+    setMasterCategories((prev) => {
+      if (prev.some((item) => item.id === created.id)) return prev;
+      return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+    });
+  };
+
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = () => setIsDragging(false);
   const handleDrop = (e: React.DragEvent) => {
@@ -355,10 +360,28 @@ export default function CreatePRPage() {
     if (e.target.files) addFiles(Array.from(e.target.files));
   };
   const addFiles = (files: File[]) => {
-    const newFiles: AttachedFile[] = files.map(f => ({ id: Math.random().toString(36).substr(2, 9), name: f.name, size: f.size }));
-    setAttachedFiles(prev => [...prev, ...newFiles]);
+    const allowed = /\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png)$/i;
+    const accepted = files.filter((f) => allowed.test(f.name) && f.size <= 10 * 1024 * 1024);
+    const newFiles: AttachedFile[] = accepted.map((f) => ({
+      id: Math.random().toString(36).substr(2, 9),
+      name: f.name,
+      size: f.size,
+      file: f,
+    }));
+    setAttachedFiles((prev) => [...prev, ...newFiles]);
   };
-  const removeFile = (id: string) => setAttachedFiles(prev => prev.filter(f => f.id !== id));
+  const removeFile = async (id: string) => {
+    const target = attachedFiles.find((f) => f.id === id);
+    if (target?.existingId && editPrId) {
+      try {
+        await prApi.deleteAttachment(editPrId, target.existingId);
+      } catch (err) {
+        setSubmitError(err instanceof Error ? err.message : 'Failed to remove file');
+        return;
+      }
+    }
+    setAttachedFiles((prev) => prev.filter((f) => f.id !== id));
+  };
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -374,7 +397,7 @@ export default function CreatePRPage() {
     if (!requiredDate) newErrors.requiredDate = 'Required date is required';
     lineItems.forEach((item, index) => {
       if (!item.itemId && !item.description.trim()) {
-        newErrors[`item_${index}_description`] = 'Select an item from Item Master';
+        newErrors[`item_${index}_description`] = 'Search an item or type a new name and save it';
       } else if (!item.description.trim()) {
         newErrors[`item_${index}_description`] = 'Item description is required';
       }
@@ -427,6 +450,14 @@ export default function CreatePRPage() {
     })),
   });
 
+  const uploadNewAttachments = async (prId: number) => {
+    const pending = attachedFiles.filter((item) => item.file);
+    for (const item of pending) {
+      const filePayload = await fileToAttachmentPayload(item.file as File);
+      await prApi.uploadAttachment(prId, filePayload);
+    }
+  };
+
   const savePR = async (submit: boolean) => {
     setSubmitError('');
     setIsSubmitting(true);
@@ -435,6 +466,7 @@ export default function CreatePRPage() {
       if (isEditMode && editPrId) {
         if (isAdminEditFlow) {
           await prApi.adminUpdate(editPrId, payload);
+          await uploadNewAttachments(editPrId);
           setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
@@ -449,11 +481,13 @@ export default function CreatePRPage() {
             nextStep?: string;
             l1Manager?: { name: string | null; email: string | null };
           };
+          await uploadNewAttachments(editPrId);
           setCreatedPrNumber(data.prNumber || prNumber);
           setNextStepLabel(data.nextStep || 'L1 Manager Approval');
           setL1Manager(data.l1Manager || null);
         } else {
           await prApi.update(editPrId, payload);
+          await uploadNewAttachments(editPrId);
         setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
@@ -464,10 +498,12 @@ export default function CreatePRPage() {
       }
       const res = await prApi.create({ ...payload, submit });
       const data = res.data as {
+        id?: number;
         prNumber: string;
         nextStep?: string;
         l1Manager?: { name: string | null; email: string | null };
       };
+      if (data.id) await uploadNewAttachments(data.id);
       setCreatedPrNumber(data.prNumber);
       if (submit) {
         setNextStepLabel(data.nextStep || 'L1 Manager Approval');
@@ -556,6 +592,8 @@ export default function CreatePRPage() {
                 ? 'Update any PR field or line item, then save changes'
                 : isReturned
                 ? 'Update the fields based on feedback, then resubmit for approval'
+                : isPendingEditFlow
+                ? 'Update the request. It stays in the current approval step.'
                 : isEditMode
                 ? 'Update your draft or submit when ready'
                 : 'Fill in the details to raise a new procurement request'}
@@ -715,83 +753,33 @@ export default function CreatePRPage() {
             </div>
 
             {/* Entity */}
-            <div ref={entityBoxRef} className="relative">
+            <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Entity <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
-                <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none" />
-                <input
-                  type="text"
-                  value={entitySearch}
-                  placeholder="Search entity by code, name, cost center…"
-                  onFocus={() => setEntityOpen(true)}
-                  onChange={(e) => {
-                    setEntitySearch(e.target.value);
-                    setEntityId('');
-                    setEntityOpen(true);
-                    if (errors.entityId) {
-                      setErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.entityId;
-                        return next;
-                      });
-                    }
-                  }}
-                  className={`w-full pl-9 pr-9 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
-                    errors.entityId ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                  }`}
-                />
-                {(entitySearch || entityId) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEntitySearch('');
-                      setEntityId('');
-                      setEntityOpen(true);
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 cursor-pointer"
-                    title="Clear"
-                  >
-                    <i className="ri-close-line text-base" />
-                  </button>
-                )}
-              </div>
-              {entityOpen && (
-                <div className="absolute z-30 mt-1 w-full max-h-56 overflow-auto bg-white border border-gray-200 rounded-xl shadow-lg">
-                  {filteredEntities.length === 0 ? (
-                    <p className="px-3 py-2.5 text-sm text-gray-500">No entities match “{entitySearch}”</p>
-                  ) : (
-                    filteredEntities.map((ent) => {
-                      const label = formatEntityLabel(ent);
-                      const active = entityId === ent.id;
-                      return (
-                        <button
-                          key={ent.id}
-                          type="button"
-                          onClick={() => {
-                            setEntityId(ent.id);
-                            setEntitySearch(label);
-                            setEntityOpen(false);
-                            if (errors.entityId) {
-                              setErrors((prev) => {
-                                const next = { ...prev };
-                                delete next.entityId;
-                                return next;
-                              });
-                            }
-                          }}
-                          className={`w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 cursor-pointer ${
-                            active ? 'bg-slate-100 font-semibold text-slate-900' : 'text-gray-800'
-                          }`}
-                        >
-                          <span className="block truncate">{label}</span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
+              <SearchCreateField
+                options={entities.map((ent) => ({
+                  id: ent.id,
+                  label: formatEntityLabel(ent),
+                  subLabel: ent.costCenter || undefined,
+                }))}
+                displayValue={selectedEntity ? formatEntityLabel(selectedEntity) : ''}
+                selectedId={entityId || null}
+                placeholder="Search entity by code, name, cost center…"
+                hasError={Boolean(errors.entityId)}
+                addNoun="entity"
+                onSelect={(opt) => {
+                  setEntityId(Number(opt.id));
+                  if (errors.entityId) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.entityId;
+                      return next;
+                    });
+                  }
+                }}
+                onClear={() => setEntityId('')}
+              />
               {errors.entityId && (
                 <p className="text-xs text-red-500 mt-1">{errors.entityId}</p>
               )}
@@ -839,19 +827,26 @@ export default function CreatePRPage() {
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Department <span className="text-red-500">*</span>
               </label>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer ${errors.department ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
-              >
-                <option value="">Select Department</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.name}>
-                    {d.name}
-                    {d.code ? ` (${d.code})` : ''}
-                  </option>
-                ))}
-              </select>
+              <DepartmentCombobox
+                departments={departments}
+                selectedName={department}
+                hasError={Boolean(errors.department)}
+                onSelect={(dept) => {
+                  setDepartment(dept.name);
+                  if (errors.department) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.department;
+                      return next;
+                    });
+                  }
+                }}
+                onClear={() => setDepartment('')}
+                onCreated={(created) => {
+                  rememberDepartment(created);
+                  setDepartment(created.name);
+                }}
+              />
               {errors.department && (
                 <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
                   <i className="ri-error-warning-line"></i>
@@ -1020,23 +1015,19 @@ export default function CreatePRPage() {
                     <label className="block text-xs font-medium text-gray-500 mb-1.5">
                       Item Name <span className="text-red-500">*</span>
                     </label>
-                    <select
-                      value={item.itemId ? String(item.itemId) : ''}
-                      onChange={(e) => selectMasterItem(item.id, e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer ${
-                        errors[`item_${index}_description`] ? 'border-red-400' : 'border-gray-200'
-                      }`}
-                    >
-                      <option value="">Select Item</option>
-                      {masterItems.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}{m.itemCode ? ` (${m.itemCode})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {masterItems.length === 0 && (
-                      <p className="text-xs text-amber-600 mt-1">No items in Item Master. Add items under Masters → Item Master.</p>
-                    )}
+                    <ItemCombobox
+                      items={masterItems}
+                      selectedId={item.itemId}
+                      selectedName={item.itemName}
+                      hasError={Boolean(errors[`item_${index}_description`])}
+                      categoryId={masterCategories.find((c) => c.name === item.category)?.id || null}
+                      onSelect={(master) => applyMasterItem(item.id, master)}
+                      onClear={() => applyMasterItem(item.id, null)}
+                      onCreated={(created) => {
+                        rememberMasterItem(created);
+                        applyMasterItem(item.id, created);
+                      }}
+                    />
                     {errors[`item_${index}_description`] && (
                       <p className="text-xs text-red-500 mt-1">{errors[`item_${index}_description`]}</p>
                     )}
@@ -1045,19 +1036,18 @@ export default function CreatePRPage() {
                   {/* Category from Category Master */}
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1.5">Category <span className="text-red-500">*</span></label>
-                    <select
-                      value={item.category}
-                      onChange={e => updateLineItem(item.id, 'category', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer ${errors[`item_${index}_category`] ? 'border-red-400' : 'border-gray-200'}`}
-                    >
-                      <option value="">Select Category</option>
-                      {categoryOptions.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                      {item.category && !categoryOptions.includes(item.category) && (
-                        <option value={item.category}>{item.category}</option>
-                      )}
-                    </select>
+                    <CategoryCombobox
+                      categories={masterCategories}
+                      selectedName={item.category}
+                      hasError={Boolean(errors[`item_${index}_category`])}
+                      requestType={requestType}
+                      onSelect={(cat) => updateLineItem(item.id, 'category', cat.name)}
+                      onClear={() => updateLineItem(item.id, 'category', '')}
+                      onCreated={(created) => {
+                        rememberCategory(created);
+                        updateLineItem(item.id, 'category', created.name);
+                      }}
+                    />
                     {errors[`item_${index}_category`] && <p className="text-xs text-red-500 mt-1">{errors[`item_${index}_category`]}</p>}
                   </div>
 
@@ -1255,7 +1245,7 @@ export default function CreatePRPage() {
               </div>
               <p className="text-sm font-medium text-gray-700 mb-1">Drop files here or click to browse</p>
               <p className="text-xs text-gray-400">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — Max 10MB each</p>
-              <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
+              <input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" onChange={handleFileSelect} className="hidden" />
             </div>
 
             {attachedFiles.length > 0 && (
@@ -1266,7 +1256,20 @@ export default function CreatePRPage() {
                       <i className="ri-file-text-line text-slate-600 text-sm"></i>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                      {file.existingId && editPrId ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            prApi.downloadAttachment(editPrId, file.existingId as number, file.name);
+                          }}
+                          className="text-sm font-medium text-teal-700 hover:underline truncate text-left cursor-pointer"
+                        >
+                          {file.name}
+                        </button>
+                      ) : (
+                        <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                      )}
                       <p className="text-xs text-gray-400">{formatFileSize(file.size)}</p>
                     </div>
                     <button onClick={e => { e.stopPropagation(); removeFile(file.id); }} className="text-red-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0">
@@ -1295,7 +1298,7 @@ export default function CreatePRPage() {
             >
               Cancel
             </Link>
-            {isAdminEditFlow ? (
+            {isAdminEditFlow || isPendingEditFlow ? (
               <button
                 onClick={() => {
                   if (!validateForm()) return;

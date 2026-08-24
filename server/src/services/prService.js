@@ -23,6 +23,7 @@ import {
 import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './documentNumberService.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
+import { listPrAttachments, savePrAttachments } from './prAttachmentService.js';
 
 function normalizeCurrency(value) {
   const code = String(value || '')
@@ -236,7 +237,7 @@ async function getTimelineAssignees(prId, requesterId, prStatus = null) {
 }
 
 async function enrichPR(row) {
-  const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows] = await Promise.all([
+  const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows, attachments] = await Promise.all([
     getLineItems(row.id),
     getApprovalHistory(row.id),
     getTimelineAssignees(row.id, row.requester_id, row.status),
@@ -266,6 +267,7 @@ async function enrichPR(row) {
         [row.id]
       )
       .then(([rows]) => rows),
+    listPrAttachments(row.id),
   ]);
   const po = poRows[0] || null;
   return {
@@ -316,6 +318,7 @@ async function enrichPR(row) {
       total: Number(li.total),
     })),
     approvalHistory,
+    attachments,
     items: lineItems.length,
   };
 }
@@ -446,6 +449,7 @@ export async function createPurchaseRequest(user, body) {
     entityId,
     currency = 'INR',
     lineItems = [],
+    attachments = [],
     submit = false,
   } = body;
 
@@ -517,6 +521,10 @@ export async function createPurchaseRequest(user, body) {
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [prId, item.category || '', item.description, qty, String(item.unit || item.uom || 'Nos').trim().slice(0, 50) || 'Nos', cost, qty * cost]
       );
+    }
+
+    if (attachments.length) {
+      await savePrAttachments(prId, user.id, attachments, conn);
     }
 
     let hodAssignment = null;
@@ -1076,6 +1084,9 @@ export async function processApproval(user, prId, action, remarks, options = {})
 
     let nextAssignee = null;
 
+    let requireCfoApproval = pr.require_cfo_approval;
+    let skipToScmRfq = false;
+
     if (action === 'approve') {
       if (user.role === 'HOD Approver') {
         if (pr.vendor_selection === 'own') {
@@ -1084,15 +1095,43 @@ export async function processApproval(user, prId, action, remarks, options = {})
           newStage = null;
           nextRole = null;
         } else {
-          // SCM: HOD → L2 Manager → CFO
+          // SCM: L1 chooses Business/CFO. Always go to L2 first.
+          let goToBusiness = null;
+          if (typeof options.goToBusinessApproval === 'boolean') {
+            goToBusiness = options.goToBusinessApproval;
+          } else if (options.goToBusinessApproval === 'yes' || options.goToBusinessApproval === 'true') {
+            goToBusiness = true;
+          } else if (options.goToBusinessApproval === 'no' || options.goToBusinessApproval === 'false') {
+            goToBusiness = false;
+          }
+          if (goToBusiness === null) {
+            throw new Error('Select Yes or No for Business / CFO Approval');
+          }
+          requireCfoApproval = goToBusiness ? 1 : 0;
+          remarks = `${remarks.trim()} [${
+            goToBusiness ? 'Go to Business: Yes — L2 → CFO if available' : 'Go to Business: No — L2 → SCM RFQ (skip CFO)'
+          }]`;
           newStatus = PR_STATUS.PENDING_PR_MANAGER_APPROVAL;
           newStage = STAGE.PR_MANAGER_REVIEW;
           nextRole = 'PR Manager';
         }
       } else if (user.role === 'PR Manager') {
-        newStatus = PR_STATUS.PENDING_CFO_APPROVAL;
-        newStage = STAGE.CFO_REVIEW;
-        nextRole = 'CFO';
+        const wantCfo = pr.require_cfo_approval == null || Number(pr.require_cfo_approval) === 1;
+        const [cfoRows] = await conn.query(
+          `SELECT id, email, name FROM users WHERE role = 'CFO' AND is_active = 1 ORDER BY id ASC LIMIT 1`
+        );
+        const cfoUser = wantCfo ? cfoRows[0] || null : null;
+        if (cfoUser) {
+          newStatus = PR_STATUS.PENDING_CFO_APPROVAL;
+          newStage = STAGE.CFO_REVIEW;
+          nextRole = 'CFO';
+        } else {
+          // No → skip CFO. Yes but no CFO user → also skip to SCM RFQ.
+          newStatus = PR_STATUS.APPROVED;
+          newStage = null;
+          nextRole = null;
+          skipToScmRfq = pr.vendor_selection !== 'own';
+        }
       } else if (user.role === 'CFO') {
         // SCM path only (pre-RFQ): after CFO → SCM RFQ queue
         newStatus = PR_STATUS.APPROVED;
@@ -1122,8 +1161,10 @@ export async function processApproval(user, prId, action, remarks, options = {})
     );
 
     await conn.query(
-      `UPDATE purchase_requests SET status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
-      [newStatus, newStage, prId]
+      `UPDATE purchase_requests
+       SET status = ?, current_stage = ?, require_cfo_approval = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [newStatus, newStage, requireCfoApproval, prId]
     );
 
     await conn.query(
@@ -1178,9 +1219,9 @@ export async function processApproval(user, prId, action, remarks, options = {})
       rfqEntryRequester = reqRows[0] || null;
     }
 
-    // SCM vendor: after CFO pre-RFQ → SCM Buyer RFQ Entry (/scm/rfq-entry)
+    // SCM vendor: after CFO pre-RFQ, or L2 skip-CFO → SCM Buyer RFQ Entry
     let scmRfqBuyerEmails = [];
-    if (user.role === 'CFO' && action === 'approve') {
+    if ((user.role === 'CFO' || skipToScmRfq) && action === 'approve') {
       const rfqDue = new Date();
       rfqDue.setDate(rfqDue.getDate() + 5);
       scmRfqBuyerEmails = await getScmBuyerNotifyEmails(conn);
@@ -1218,8 +1259,8 @@ export async function processApproval(user, prId, action, remarks, options = {})
           stageLabel: 'RFQ Entry Required',
         }
       );
-    } else if (user.role === 'CFO' && action === 'approve') {
-      // SCM path: CFO done → SCM Buyer RFQ Entry mail (Gopi + Satish)
+    } else if ((user.role === 'CFO' || skipToScmRfq) && action === 'approve') {
+      // SCM path: CFO done, or L2 skipped CFO → SCM Buyer RFQ Entry mail
       queuePrApprovalPendingNotification(
         updatedPr,
         'SCM Buyer',
@@ -1255,8 +1296,15 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
   if (!prRows.length) throw new Error('PR not found');
 
   const pr = prRows[0];
-  if (pr.status !== PR_STATUS.RETURNED && pr.status !== PR_STATUS.DRAFT) {
-    throw new Error('Only returned or draft PRs can be edited');
+  const requesterEditable = new Set([
+    PR_STATUS.DRAFT,
+    PR_STATUS.RETURNED,
+    PR_STATUS.PENDING_HOD_APPROVAL,
+    PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
+    PR_STATUS.PENDING_CFO_APPROVAL,
+  ]);
+  if (!requesterEditable.has(pr.status)) {
+    throw new Error('This PR can no longer be edited. Ask an approver to send it back if changes are needed.');
   }
 
   const {
@@ -1271,6 +1319,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     vendorSelection,
     currency,
     lineItems = [],
+    attachments = [],
   } = body;
 
   if (!lineItems.length) throw new Error('At least one line item is required');
@@ -1331,6 +1380,10 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [prId, item.category || '', item.description, qty, String(item.unit || item.uom || 'Nos').trim().slice(0, 50) || 'Nos', cost, qty * cost]
       );
+    }
+
+    if (attachments.length) {
+      await savePrAttachments(prId, user.id, attachments, db);
     }
   };
 
@@ -1758,6 +1811,13 @@ function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, display
     justification: pr.justification,
     isPostRfq,
     actionPath: isPostRfq ? `/rfq-approval/${pr.id}` : undefined,
+    vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
+    askBusinessApproval: Boolean(
+      pending &&
+        !isPostRfq &&
+        pr.vendorSelection !== 'own' &&
+        pr.status === PR_STATUS.PENDING_HOD_APPROVAL
+    ),
   };
 }
 

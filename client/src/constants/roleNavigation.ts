@@ -302,11 +302,10 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   'SCM Buyer': [
     'nav.purchase_requests',
     'nav.rfq_approval',
-    'nav.tasks',
     'nav.create_po',
-    'nav.scm_rfq_entry',
+    'nav.buyer_final_verify',
+    'nav.vendor_po_acceptance',
     'nav.track_po',
-    'nav.po_excel_import',
     'nav.item_master',
     'nav.vendor_master',
     'nav.category_master',
@@ -314,12 +313,12 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.department_master',
     'nav.po_letterhead_master',
     'nav.letterhead_master',
+    'nav.scm_rfq_entry',
+    'nav.po_excel_import',
     'nav.vendor_quotation',
     'nav.vendor_comparison',
     'nav.technical_clearance',
     'nav.po_approval',
-    'nav.buyer_final_verify',
-    'nav.vendor_po_acceptance',
     'nav.vendor_invoice',
     'nav.grn',
   ],
@@ -327,6 +326,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.scm_manager_dashboard',
     'nav.po_approval',
     'nav.rfq_approval',
+    'nav.track_po',
     'nav.payment_authorization',
     'nav.tasks',
     'nav.item_master',
@@ -434,10 +434,18 @@ export function ensureNavigation(role: string | undefined | null, navigation?: N
     });
   }
 
-  // SCM Buyer: Dashboard → RFQ Approval → My Tasks → Create PO → …
+  // SCM Buyer: Dashboard → RFQ Approval → Create PO → Buyer Final Verify → Vendor Acceptance → Track PO → Masters
   if (role === 'SCM Buyer') {
+    merged = merged.filter((n) => n.code !== 'nav.tasks');
     const codes = new Set(merged.map((n) => n.code));
-    for (const code of ['nav.purchase_requests', 'nav.rfq_approval', 'nav.tasks', 'nav.create_po', 'nav.scm_rfq_entry']) {
+    for (const code of [
+      'nav.purchase_requests',
+      'nav.rfq_approval',
+      'nav.create_po',
+      'nav.buyer_final_verify',
+      'nav.vendor_po_acceptance',
+      'nav.track_po',
+    ]) {
       if (!codes.has(code) && NAV_BY_CODE[code]) {
         merged = [...merged, NAV_BY_CODE[code]];
         codes.add(code);

@@ -211,19 +211,25 @@ function normalizeQuoteLineItems(rawLines, prLineItems = []) {
     if (Number.isNaN(unitPrice) || unitPrice < 0) {
       throw new Error('Quoted unit price must be a non-negative number');
     }
+    const gstPercent = Math.max(0, Number(raw.gstPercent ?? raw.gst ?? 0) || 0);
+    const computed = unitPrice * qty * (1 + gstPercent / 100);
     const lineTotal =
       Number(raw.quotedTotal ?? raw.lineTotal) > 0
         ? Number(raw.quotedTotal ?? raw.lineTotal)
-        : unitPrice * qty;
+        : computed;
     lines.push({
       lineItemId: prLine?.id ?? (id || null),
-      description: prLine?.description || raw.description || '',
+      description: String(prLine?.description || raw.description || '').trim(),
       category: prLine?.category || raw.category || '',
       quantity: qty,
       orderedQuantity: Number(prLine?.quantity) || qty,
-      estimatedUnitCost: Number(prLine?.unitCost ?? prLine?.unitPrice ?? 0) || 0,
+      estimatedUnitCost: Number(
+        raw.estimatedUnitCost ?? raw.unitCost ?? prLine?.unitCost ?? prLine?.unitPrice ?? 0
+      ) || 0,
       quotedUnitPrice: unitPrice,
-      quotedTotal: lineTotal,
+      gstPercent,
+      quotedTotal: Math.round(lineTotal * 100) / 100,
+      extra: Boolean(raw.extra) || !prLine,
     });
   }
 

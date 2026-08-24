@@ -84,6 +84,22 @@ router.post('/categories/import', canManageCategories, async (req, res) => {
   }
 });
 
+router.post('/categories/chat-create', requireRoles('Requester', 'Super Admin', 'SCM Buyer', 'SCM Manager'), async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) throw new Error('Category name is required');
+    const data = await createCategory({
+      name,
+      requestType: req.body?.requestType || 'All',
+      description: req.body?.description || `Created from Create PR by ${req.user.email}`,
+      status: 'active',
+    });
+    res.status(201).json({ data, message: 'Category created successfully' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.post('/categories', (req, res, next) => {
   if (['SCM Buyer', 'SCM Manager'].includes(req.user?.role)) return next();
   return canManageCategories(req, res, next);
@@ -146,6 +162,25 @@ router.post('/items/import', canManageItems, async (req, res) => {
       data: result,
       message: `Import done: ${result.created} created, ${result.updated} updated, ${result.failed} failed`,
     });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/items/chat-create', requireRoles('Requester', 'Super Admin', 'SCM Buyer', 'SCM Manager'), async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) throw new Error('Item name is required');
+    const data = await createItem({
+      name,
+      description: req.body?.description || `Created from Create PR by ${req.user.email}`,
+      categoryId: req.body?.categoryId || null,
+      unit: req.body?.unit || 'Nos',
+      hsnCode: req.body?.hsnCode,
+      gstPercentage: req.body?.gstPercentage ?? 18,
+      status: 'active',
+    });
+    res.status(201).json({ data, message: 'Item created successfully' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -214,6 +249,27 @@ router.post('/entities/import', canManageEntities, async (req, res) => {
   }
 });
 
+router.post('/entities/chat-create', requireRoles('Requester', 'Super Admin', 'SCM Buyer', 'SCM Manager'), async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) throw new Error('Entity name is required');
+    const costCenter =
+      String(req.body?.costCenter || '').trim() ||
+      name.replace(/[^A-Za-z0-9]/g, '').slice(0, 12).toUpperCase() ||
+      'GEN';
+    const data = await createEntity({
+      name,
+      code: req.body?.code,
+      costCenter,
+      description: req.body?.description || `Created from PR chatbot by ${req.user.email}`,
+      status: 'active',
+    });
+    res.status(201).json({ data, message: 'Entity created successfully' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.post('/entities', canManageEntities, async (req, res) => {
   try {
     const data = await createEntity(req.body);
@@ -239,6 +295,22 @@ router.get('/departments', requireRoles(...READ_ROLES), async (req, res) => {
       status: req.query.status,
     });
     res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/departments/chat-create', requireRoles('Requester', 'Super Admin', 'SCM Buyer', 'SCM Manager'), async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) throw new Error('Department name is required');
+    const data = await createDepartment({
+      name,
+      code: req.body?.code || name.replace(/[^A-Za-z0-9]/g, '').slice(0, 12).toUpperCase(),
+      description: req.body?.description || `Created from PR chatbot by ${req.user.email}`,
+      status: 'active',
+    });
+    res.status(201).json({ data, message: 'Department created successfully' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

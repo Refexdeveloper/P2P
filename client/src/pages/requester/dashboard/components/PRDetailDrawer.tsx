@@ -2,6 +2,32 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import StatusBadge from '../../../../components/base/StatusBadge';
 import PriorityBadge from '../../../../components/base/PriorityBadge';
+import { prApi } from '../../../../services/api';
+import { useAuth } from '../../../../contexts/AuthContext';
+
+const ADMIN_EDIT_ROLES = [
+  'Super Admin',
+  'SCM Manager',
+  'SCM Buyer',
+  'HOD Approver',
+  'PR Manager',
+  'CFO',
+];
+
+const REQUESTER_EDITABLE_STATUSES = new Set([
+  'DRAFT',
+  'RETURNED',
+  'PENDING_HOD_APPROVAL',
+  'PENDING_PR_MANAGER_APPROVAL',
+  'PENDING_CFO_APPROVAL',
+]);
+
+function canRequesterEditPr(pr: { status?: string; statusFrontend?: string } | null) {
+  if (!pr) return false;
+  const raw = String(pr.status || '').toUpperCase();
+  const front = String(pr.statusFrontend || pr.status || '').toLowerCase();
+  return REQUESTER_EDITABLE_STATUSES.has(raw) || front === 'draft' || front === 'returned';
+}
 
 interface LineItem {
   id?: number;
@@ -40,6 +66,7 @@ export interface PRDetail {
   submittedDate: string;
   lineItems: LineItem[];
   approvalHistory: ApprovalHistoryItem[];
+  attachments?: { id: number; fileName: string; size: number }[];
 }
 
 interface PRDetailDrawerProps {
@@ -49,15 +76,18 @@ interface PRDetailDrawerProps {
 }
 
 export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerProps) {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'history'>('details');
 
   if (!pr && !loading) return null;
 
-  const canResubmit = pr?.status === 'RETURNED' || pr?.statusFrontend === 'returned' || pr?.statusFrontend === 'draft';
+  const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
+  const canEdit = Boolean(pr && (isAdminEditor || canRequesterEditPr(pr)));
   const isReturned = pr?.status === 'RETURNED' || pr?.statusFrontend === 'returned';
+  const isDraft = pr?.status === 'DRAFT' || pr?.statusFrontend === 'draft';
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
+    <div className="fixed inset-0 z-[60] flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div className="relative w-full max-w-xl bg-white shadow-2xl overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
@@ -75,12 +105,24 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
               )}
               {loading && <p className="text-sm text-gray-500">Loading PR details...</p>}
             </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-            >
-              <i className="ri-close-line text-lg text-gray-500"></i>
-            </button>
+            <div className="flex items-center gap-2">
+              {canEdit && pr && (
+                <Link
+                  to={`/requester/edit-pr/${pr.id}`}
+                  onClick={onClose}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors"
+                >
+                  <i className="ri-edit-line"></i>
+                  {isReturned ? 'Edit & Resubmit' : 'Edit PR'}
+                </Link>
+              )}
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <i className="ri-close-line text-lg text-gray-500"></i>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -155,6 +197,24 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Business Justification</h4>
                     <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3">{pr.justification || '—'}</p>
                   </div>
+                  {pr.attachments && pr.attachments.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Attachments</h4>
+                      <div className="space-y-2">
+                        {pr.attachments.map((file) => (
+                          <button
+                            key={file.id}
+                            type="button"
+                            onClick={() => prApi.downloadAttachment(pr.id, file.id, file.fileName)}
+                            className="w-full flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left hover:bg-white cursor-pointer"
+                          >
+                            <i className="ri-attachment-2 text-slate-500" />
+                            <span className="text-sm text-slate-800 truncate">{file.fileName}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -245,7 +305,7 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
               )}
             </div>
 
-            {canResubmit && (
+            {canEdit && (
               <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
                 <Link
                   to={`/requester/edit-pr/${pr.id}`}
@@ -254,8 +314,8 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                     isReturned ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-900 hover:bg-gray-800'
                   }`}
                 >
-                  <i className={`${isReturned ? 'ri-edit-line' : 'ri-send-plane-fill'} mr-1.5`}></i>
-                  {isReturned ? 'Edit & Resubmit' : 'Edit & Submit'}
+                  <i className={`${isReturned ? 'ri-edit-line' : isDraft ? 'ri-send-plane-fill' : 'ri-edit-line'} mr-1.5`}></i>
+                  {isReturned ? 'Edit & Resubmit' : isDraft ? 'Edit & Submit' : 'Edit PR'}
                 </Link>
               </div>
             )}

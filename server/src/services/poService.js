@@ -1793,7 +1793,18 @@ function mapTrackPoStatus(statusRaw) {
  */
 export async function listTrackPurchaseOrders(
   user,
-  { page = 1, limit = 10, search = '', status = 'all', purchaseType = 'all' } = {}
+  {
+    page = 1,
+    limit = 10,
+    search = '',
+    status = 'all',
+    purchaseType = 'all',
+    entityId,
+    department,
+    category,
+    dateFrom,
+    dateTo,
+  } = {}
 ) {
   const pageSize = Math.min(100, Math.max(1, Number(limit) || 10));
   const pageNum = Math.max(1, Number(page) || 1);
@@ -1806,10 +1817,14 @@ export async function listTrackPurchaseOrders(
       : typeFilter === 'purchase_order' || typeFilter === 'po'
         ? 'purchase_order'
         : null;
+  const entityFilter = Number(entityId) || 0;
+  const deptFilter = String(department || '').trim();
+  const categoryFilter = String(category || '').trim();
+  const fromDate = String(dateFrom || '').trim();
+  const toDate = String(dateTo || '').trim();
 
-  const buyerPoFilter = user.role === 'SCM Buyer' ? ' AND po.created_by = ?' : '';
   const readyParams = [PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED];
-  const poParams = user.role === 'SCM Buyer' ? [user.id] : [];
+  const poParams = [];
 
   const includeReady =
     statusFilter === 'all' || statusFilter === 'ready';
@@ -1823,6 +1838,19 @@ export async function listTrackPurchaseOrders(
     : '';
   const poTypeFilter = typeSqlValue
     ? ` AND COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') = ?`
+    : '';
+  const readyEntityFilter = entityFilter ? ` AND pr.entity_id = ?` : '';
+  const poEntityFilter = entityFilter ? ` AND COALESCE(po.entity_id, pr.entity_id) = ?` : '';
+  const readyDeptFilter = deptFilter ? ` AND d.name = ?` : '';
+  const poDeptFilter = deptFilter ? ` AND d.name = ?` : '';
+  const readyCatFilter = categoryFilter
+    ? ` AND EXISTS (SELECT 1 FROM pr_line_items pli WHERE pli.pr_id = pr.id AND pli.category = ?)`
+    : '';
+  const poCatFilter = categoryFilter
+    ? ` AND (
+          EXISTS (SELECT 1 FROM po_line_items pli WHERE pli.po_id = po.id AND pli.category = ?)
+          OR EXISTS (SELECT 1 FROM pr_line_items pli2 WHERE pli2.pr_id = po.pr_id AND pli2.category = ?)
+        )`
     : '';
 
   const readySql = `
@@ -1846,11 +1874,14 @@ export async function listTrackPurchaseOrders(
       pr.total_amount AS amount,
       'ready' COLLATE utf8mb4_unicode_ci AS status_raw,
       CAST(COALESCE(pr.purchase_type, 'purchase_order') AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS purchase_type,
+      pr.entity_id AS entity_id,
+      COALESCE(e.name, '') COLLATE utf8mb4_unicode_ci AS entity_name,
       pr.required_date AS required_date,
       COALESCE(pr.submitted_at, pr.created_at) AS sort_at
     FROM purchase_requests pr
     JOIN departments d ON d.id = pr.department_id
     JOIN users u ON u.id = pr.requester_id
+    LEFT JOIN entity_masters e ON e.id = pr.entity_id
     WHERE (
       pr.status = ?
       OR (
@@ -1868,6 +1899,9 @@ export async function listTrackPurchaseOrders(
     )
     AND NOT EXISTS (SELECT 1 FROM purchase_orders po3 WHERE po3.pr_id = pr.id)
     ${readyTypeFilter}
+    ${readyEntityFilter}
+    ${readyDeptFilter}
+    ${readyCatFilter}
   `;
 
   const poSql = `
@@ -1885,15 +1919,20 @@ export async function listTrackPurchaseOrders(
       po.grand_total AS amount,
       CAST(po.status AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS status_raw,
       CAST(COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS purchase_type,
+      COALESCE(po.entity_id, pr.entity_id) AS entity_id,
+      COALESCE(po.entity, e.name, '') COLLATE utf8mb4_unicode_ci AS entity_name,
       po.expected_delivery_date AS required_date,
       po.created_at AS sort_at
     FROM purchase_orders po
     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
     LEFT JOIN departments d ON d.id = pr.department_id
     LEFT JOIN users u ON u.id = pr.requester_id
+    LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)
     WHERE 1=1
-    ${buyerPoFilter}
     ${poTypeFilter}
+    ${poEntityFilter}
+    ${poDeptFilter}
+    ${poCatFilter}
   `;
 
   const unionParts = [];
@@ -1902,11 +1941,17 @@ export async function listTrackPurchaseOrders(
     unionParts.push(`(${readySql})`);
     baseParams.push(...readyParams);
     if (typeSqlValue) baseParams.push(typeSqlValue);
+    if (entityFilter) baseParams.push(entityFilter);
+    if (deptFilter) baseParams.push(deptFilter);
+    if (categoryFilter) baseParams.push(categoryFilter);
   }
   if (includePo) {
     unionParts.push(`(${poSql})`);
     baseParams.push(...poParams);
     if (typeSqlValue) baseParams.push(typeSqlValue);
+    if (entityFilter) baseParams.push(entityFilter);
+    if (deptFilter) baseParams.push(deptFilter);
+    if (categoryFilter) baseParams.push(categoryFilter, categoryFilter);
   }
 
   if (!unionParts.length) {
@@ -1946,9 +1991,19 @@ export async function listTrackPurchaseOrders(
       OR LOWER(COALESCE(t.vendor_name,'')) LIKE ?
       OR LOWER(COALESCE(t.department,'')) LIKE ?
       OR LOWER(COALESCE(t.requester,'')) LIKE ?
+      OR LOWER(COALESCE(t.entity_name,'')) LIKE ?
     )`;
     const like = `%${q}%`;
-    filterParams.push(like, like, like, like, like, like);
+    filterParams.push(like, like, like, like, like, like, like);
+  }
+
+  if (fromDate) {
+    whereExtra += ` AND DATE(t.sort_at) >= ?`;
+    filterParams.push(fromDate);
+  }
+  if (toDate) {
+    whereExtra += ` AND DATE(t.sort_at) <= ?`;
+    filterParams.push(toDate);
   }
 
   const listParams = [...baseParams, ...filterParams];
@@ -1994,6 +2049,8 @@ export async function listTrackPurchaseOrders(
       statusRaw: r.status_raw,
       purchaseType: r.purchase_type || 'purchase_order',
       purchaseTypeLabel: purchaseTypeLabel(r.purchase_type),
+      entityId: r.entity_id != null ? Number(r.entity_id) : null,
+      entityName: r.entity_name || '',
       requiredDate: formatDate(r.required_date),
       createdAt: formatDate(r.sort_at),
       kind: r.kind,
@@ -2047,10 +2104,6 @@ async function getTrackListStats(user) {
     WHERE 1=1
   `;
   const poParams = [];
-  if (user.role === 'SCM Buyer') {
-    poSql += ' AND created_by = ?';
-    poParams.push(user.id);
-  }
 
   const [[readyRows], [poRows]] = await Promise.all([
     pool.query(readySql, [PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED]),
@@ -3077,4 +3130,17 @@ export function resolveVendorAcceptanceFile(poRowOrPath) {
   const fullPath = path.join(PO_UPLOAD_DIR, path.basename(filePath));
   if (!fs.existsSync(fullPath)) throw new Error('Acceptance file missing on server');
   return fullPath;
+}
+
+export function resolveCancellationAttachment(po, index) {
+  const files = Array.isArray(po?.cancellationAttachments) ? po.cancellationAttachments : [];
+  const file = files[Number(index)];
+  const stored = String(file?.filePath || '').trim();
+  if (!stored) throw new Error('Cancellation attachment not found');
+  const fullPath = path.join(PO_UPLOAD_DIR, path.basename(stored));
+  if (!fs.existsSync(fullPath)) throw new Error('Cancellation file missing on server');
+  return {
+    fullPath,
+    fileName: String(file.fileName || path.basename(fullPath)),
+  };
 }

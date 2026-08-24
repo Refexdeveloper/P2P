@@ -37,6 +37,8 @@ interface TaskItem {
   poId?: number;
   isPoSign?: boolean;
   isPoRevise?: boolean;
+  vendorSelection?: 'own' | 'scm';
+  askBusinessApproval?: boolean;
 }
 
 export default function TasksPage() {
@@ -86,6 +88,8 @@ export default function TasksPage() {
           poId: t.poId ? Number(t.poId) : undefined,
           isPoSign: Boolean(t.isPoSign),
           isPoRevise: Boolean(t.isPoRevise),
+          vendorSelection: t.vendorSelection === 'own' ? 'own' : 'scm',
+          askBusinessApproval: Boolean(t.askBusinessApproval),
         };
       });
       setTasks(mapped);
@@ -349,7 +353,7 @@ export default function TasksPage() {
     });
   };
 
-  const handleConfirm = async (remarks: string, returnTo?: string) => {
+  const handleConfirm = async (remarks: string, returnTo?: string, goToBusinessApproval?: boolean) => {
     const { taskId, type, prNumber } = modalState;
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
@@ -364,12 +368,10 @@ export default function TasksPage() {
           return;
         }
       } else {
-        await prApi.approve(
-          task.prId,
-          action,
-          remarks,
-          type === 'return' && returnTo ? { returnTo } : undefined
-        );
+        await prApi.approve(task.prId, action, remarks, {
+          ...(type === 'return' && returnTo ? { returnTo } : {}),
+          ...(typeof goToBusinessApproval === 'boolean' ? { goToBusinessApproval } : {}),
+        });
       }
       setActionUpdates((prev) => ({
         ...prev,
@@ -1009,6 +1011,9 @@ export default function TasksPage() {
             ? undefined
             : tasks.find((t) => t.id === modalState.taskId)?.prId
         }
+        askBusinessApproval={Boolean(
+          tasks.find((t) => t.id === modalState.taskId)?.askBusinessApproval
+        )}
         onConfirm={handleConfirm}
         onClose={() =>
           setModalState((prev) => ({ ...prev, isOpen: false }))

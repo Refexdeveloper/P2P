@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import { rfqApi, PostRfqPendingItem } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -9,10 +9,10 @@ const formatCurrency = (amount: number) =>
 
 export default function RfqApprovalListPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState<PostRfqPendingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved'>('all');
   const isBuyer = user?.role === 'SCM Buyer';
 
   const load = useCallback(async () => {
@@ -31,13 +31,11 @@ export default function RfqApprovalListPage() {
     load();
   }, [load]);
 
-  const pendingCount = items.filter((i) => i.approvalState === 'pending').length;
-  const approvedCount = items.filter((i) => i.approvalState === 'approved').length;
-  const visible = items.filter((i) => {
-    if (!isBuyer || filter === 'all') return true;
-    if (filter === 'pending') return i.approvalState === 'pending';
-    return i.approvalState === 'approved';
-  });
+  const pendingItems = items.filter((i) => i.approvalState === 'pending');
+  const approvedItems = items.filter((i) => i.approvalState === 'approved');
+  const pendingCount = pendingItems.length;
+  const approvedCount = approvedItems.length;
+  const visible = isBuyer ? pendingItems : items;
 
   return (
     <DashboardLayout>
@@ -45,31 +43,41 @@ export default function RfqApprovalListPage() {
         <h1 className="text-2xl font-bold text-gray-900">RFQ Post-Approval Queue</h1>
         <p className="text-sm text-gray-600 mt-1">
           {isBuyer
-            ? 'Pending SCM Manager approval and approved RFQs ready to create PO'
+            ? 'Pending SCM Manager RFQ approvals only. Approved RFQs are on Create PO.'
             : `Review vendor comparison, negotiation rounds, and approve as ${user?.role}`}
         </p>
       </div>
 
       {isBuyer && (
-        <div className="flex gap-2 mb-5 flex-wrap">
-          {(
-            [
-              ['all', `All (${items.length})`],
-              ['pending', `Pending (${pendingCount})`],
-              ['approved', `Approved (${approvedCount})`],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setFilter(key)}
-              className={`px-3.5 py-2 rounded-lg text-xs font-semibold ${
-                filter === key ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+          <div className="text-left bg-white rounded-xl border border-amber-300 ring-1 ring-amber-200 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Pending RFQ Approval</p>
+                <p className="text-3xl font-bold text-gray-900">{pendingCount}</p>
+                <p className="text-xs mt-1 text-amber-700">Waiting for SCM Manager</p>
+              </div>
+              <div className="w-11 h-11 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
+                <i className="ri-time-line text-xl text-amber-700"></i>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/scm/create-po')}
+            className="text-left bg-white rounded-xl border border-emerald-100 p-5 hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Approved RFQ</p>
+                <p className="text-3xl font-bold text-gray-900">{approvedCount}</p>
+                <p className="text-xs mt-1 text-emerald-700">Ready to Create PO</p>
+              </div>
+              <div className="w-11 h-11 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
+                <i className="ri-checkbox-circle-line text-xl text-emerald-700"></i>
+              </div>
+            </div>
+          </button>
         </div>
       )}
 
@@ -83,7 +91,7 @@ export default function RfqApprovalListPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <i className="ri-checkbox-circle-line text-4xl text-gray-300"></i>
           <p className="text-gray-600 mt-3">
-            {filter === 'approved' ? 'No approved RFQs' : filter === 'pending' ? 'No pending RFQ approvals' : 'No RFQ approvals'}
+            {isBuyer ? 'No pending RFQ approvals' : 'No RFQ approvals'}
           </p>
         </div>
       ) : (
