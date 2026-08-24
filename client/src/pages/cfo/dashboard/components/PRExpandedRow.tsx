@@ -208,8 +208,11 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
                       {item.category}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                    {item.quantity} {item.unit}
+                  <td className="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">
+                    {Number(item.quantity) || 0}
+                    {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
+                      <span className="text-xs text-gray-400 font-normal ml-1">{item.unit}</span>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 text-right">
                     ₹{item.estimatedPrice.toLocaleString()}

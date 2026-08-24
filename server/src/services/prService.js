@@ -124,6 +124,18 @@ async function getLineItems(prId) {
   return rows;
 }
 
+function normalizeLineUnit(value) {
+  const s = String(value || '').trim();
+  if (!s || /^\d+(\.\d+)?$/.test(s)) return 'Nos';
+  return s.slice(0, 50) || 'Nos';
+}
+
+function lineQuantity(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return n;
+}
+
 function formatPrApprovalStage(stage, prFlow = 'standard') {
   if (prFlow === 'functional') {
     const functionalLabels = {
@@ -422,8 +434,8 @@ async function enrichPR(row) {
       category: li.category,
       description: li.description,
       item: li.description,
-      quantity: li.quantity,
-      unit: li.unit || li.uom || 'Nos',
+      quantity: lineQuantity(li.quantity),
+      unit: normalizeLineUnit(li.unit || li.uom),
       unitCost: Number(li.unit_cost),
       unitPrice: Number(li.unit_cost),
       total: Number(li.total),
@@ -870,7 +882,7 @@ export async function createPurchaseRequest(user, body) {
       await conn.query(
         `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [prId, item.category || '', item.description, qty, String(item.unit || item.uom || 'Nos').trim().slice(0, 50) || 'Nos', cost, qty * cost]
+        [prId, item.category || '', item.description, qty, normalizeLineUnit(item.unit || item.uom), cost, qty * cost]
       );
     }
 
@@ -1885,7 +1897,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
       await db.query(
         `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [prId, item.category || '', item.description, qty, String(item.unit || item.uom || 'Nos').trim().slice(0, 50) || 'Nos', cost, qty * cost]
+        [prId, item.category || '', item.description, qty, normalizeLineUnit(item.unit || item.uom), cost, qty * cost]
       );
     }
 
@@ -2045,7 +2057,7 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
       await conn.query(
         `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [prId, item.category || '', item.description, qty, String(item.unit || item.uom || 'Nos').trim().slice(0, 50) || 'Nos', cost, qty * cost]
+        [prId, item.category || '', item.description, qty, normalizeLineUnit(item.unit || item.uom), cost, qty * cost]
       );
     }
 

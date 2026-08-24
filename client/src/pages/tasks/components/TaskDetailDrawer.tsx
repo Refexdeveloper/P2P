@@ -209,8 +209,11 @@ export default function TaskDetailDrawer({
                         <tr key={idx} className="border-t border-gray-100">
                           <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                           <td className="px-3 py-2 font-medium text-gray-900">{item.description}</td>
-                          <td className="px-3 py-2 text-center text-gray-700">
-                            {item.qty} {item.unit}
+                          <td className="px-3 py-2 text-center text-gray-700 tabular-nums">
+                            {Number(item.qty) || 0}
+                            {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
+                              <span className="text-xs text-gray-400 font-normal ml-1">{item.unit}</span>
+                            ) : null}
                           </td>
                           <td className="px-3 py-2 text-right text-gray-700">
                             ₹{Number(item.unitCost || 0).toLocaleString('en-IN')}

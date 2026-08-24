@@ -277,13 +277,17 @@ export default function TasksPage() {
     try {
       const res = await prApi.get(task.prId);
       const pr = res.data as Record<string, unknown>;
-      const lineItems = ((pr.lineItems as Array<Record<string, unknown>>) || []).map((li) => ({
-        description: String(li.description || li.item || ''),
-        qty: Number(li.quantity || li.qty || 0),
-        unit: String(li.unit || 'Unit'),
-        unitCost: Number(li.unitCost || li.unitPrice || 0),
-        total: Number(li.total || 0),
-      }));
+      const lineItems = ((pr.lineItems as Array<Record<string, unknown>>) || []).map((li) => {
+        const qty = Number(li.quantity ?? li.qty);
+        const unitRaw = String(li.unit || '').trim();
+        return {
+          description: String(li.description || li.item || ''),
+          qty: Number.isFinite(qty) && qty > 0 ? qty : 0,
+          unit: !unitRaw || /^\d+(\.\d+)?$/.test(unitRaw) ? 'Nos' : unitRaw,
+          unitCost: Number(li.unitCost || li.unitPrice || 0),
+          total: Number(li.total || 0),
+        };
+      });
       const approvalHistory = ((pr.approvalHistory as Array<Record<string, unknown>>) || []).map((h) => ({
         step: String(h.stage || h.step || 'Step'),
         approver: String(h.user || h.approver || 'System'),
