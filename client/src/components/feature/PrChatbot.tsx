@@ -7,15 +7,18 @@ import {
   CategoryRecord,
   DepartmentRecord,
   EntityRecord,
+  ItemRecord,
 } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatMoney } from '../../constants/currency';
 
 type ChatStep =
   | 'need'
+  | 'item_missing'
   | 'qty_cost'
   | 'category'
   | 'more_items'
+  | 'pr_title'
   | 'entity'
   | 'entity_missing'
   | 'entity_cost_center'
@@ -44,6 +47,9 @@ interface DraftItem {
   quantity: number;
   unitCost: number;
   category: string;
+  itemId?: number | null;
+  itemName?: string;
+  unit?: string;
 }
 
 interface DraftFile {
@@ -111,6 +117,25 @@ function matchDepartments(list: DepartmentRecord[], query: string) {
     .slice(0, 12);
 }
 
+function matchItems(list: ItemRecord[], query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return list.slice(0, 8);
+  return list
+    .filter((item) =>
+      `${item.name} ${item.itemCode || ''} ${item.description || ''}`.toLowerCase().includes(q)
+    )
+    .slice(0, 12);
+}
+
+function findExactItem(list: ItemRecord[], query: string) {
+  const q = query.trim().toLowerCase();
+  return (
+    list.find((item) => item.name.toLowerCase() === q) ||
+    list.find((item) => (item.itemCode || '').toLowerCase() === q) ||
+    null
+  );
+}
+
 function findExactEntity(list: EntityRecord[], query: string) {
   const q = query.trim().toLowerCase();
   return (
@@ -139,12 +164,12 @@ export default function PrChatbot() {
     {
       id: uid(),
       role: 'bot',
-      text: 'Hi, I can create a Purchase Request for you. What do you need to buy?',
+      text: 'Hi, I can create a Purchase Request for you. Start with the first line item — you can add another after it. Type the item name or pick from Item Master.',
     },
   ]);
   const [title, setTitle] = useState('');
   const [items, setItems] = useState<DraftItem[]>([]);
-  const [pendingItem, setPendingItem] = useState<Partial<DraftItem>>({});
+  const [, setPendingItem] = useState<Partial<DraftItem>>({});
   const [entityId, setEntityId] = useState<number | ''>('');
   const [department, setDepartment] = useState('');
   const [requestType, setRequestType] = useState<'Capex' | 'Opex' | 'Service'>('Opex');
@@ -156,7 +181,10 @@ export default function PrChatbot() {
   const [entities, setEntities] = useState<EntityRecord[]>([]);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [categories, setCategories] = useState<CategoryRecord[]>([]);
+  const [masterItems, setMasterItems] = useState<ItemRecord[]>([]);
   const [pendingMasterName, setPendingMasterName] = useState('');
+  const pendingItemRef = useRef<Partial<DraftItem>>({});
+  const itemsRef = useRef<DraftItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ id: number; prNumber: string; submitted: boolean } | null>(null);
   const [error, setError] = useState('');
@@ -176,14 +204,16 @@ export default function PrChatbot() {
     if (!open || !canUse) return;
     (async () => {
       try {
-        const [entRes, deptRes, catRes] = await Promise.all([
+        const [entRes, deptRes, catRes, itemRes] = await Promise.all([
           masterApi.listEntities({ status: 'active' }),
           masterApi.listDepartments({ status: 'active' }),
           masterApi.listCategories({ status: 'active' }),
+          masterApi.listItems({ status: 'active' }),
         ]);
         setEntities(entRes.data || []);
         setDepartments(deptRes.data || []);
         setCategories(catRes.data || []);
+        setMasterItems(itemRes.data || []);
       } catch {
         /* masters optional until user picks */
       }
@@ -208,22 +238,91 @@ export default function PrChatbot() {
     [entities, entityId]
   );
 
+  const writePending = useCallback((patch: Partial<DraftItem>) => {
+    const next = { ...patch };
+    pendingItemRef.current = next;
+    setPendingItem(next);
+  }, []);
+
+  const patchPending = useCallback((patch: Partial<DraftItem>) => {
+    const next = { ...pendingItemRef.current, ...patch };
+    pendingItemRef.current = next;
+    setPendingItem(next);
+  }, []);
+
+  const clearPending = useCallback(() => {
+    pendingItemRef.current = {};
+    setPendingItem({});
+  }, []);
+
   const entityMatches = useMemo(() => matchEntities(entities, input), [entities, input]);
   const departmentMatches = useMemo(() => matchDepartments(departments, input), [departments, input]);
+  const itemMatches = useMemo(() => matchItems(masterItems, input), [masterItems, input]);
 
   const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
-
-  const finishItem = useCallback((item: DraftItem) => {
-    setItems((prev) => [...prev, item]);
-    setPendingItem({});
-    ask('more_items', `Added ${item.quantity} × ${item.description}. Add another item?`);
-  }, [ask]);
 
   const goAfterItems = useCallback(() => {
     setPendingMasterName('');
     setInput('');
+    ask('pr_title', 'What is the PR title? Type a name for this purchase request.');
+  }, [ask]);
+
+  const goAfterTitle = useCallback(() => {
+    setPendingMasterName('');
+    setInput('');
     ask('entity', 'Type your entity name. Matching companies will appear — tap one to select.');
   }, [ask]);
+
+  const finishItem = useCallback((item: DraftItem) => {
+    const snapshot: DraftItem = {
+      description: String(item.itemName || item.description || '').trim(),
+      itemName: String(item.itemName || item.description || '').trim(),
+      itemId: item.itemId ?? null,
+      quantity: Number(item.quantity),
+      unitCost: Number(item.unitCost),
+      category: String(item.category || ''),
+      unit: String(item.unit || 'Nos'),
+    };
+    itemsRef.current = [...itemsRef.current, snapshot];
+    setItems(itemsRef.current);
+    pendingItemRef.current = {};
+    setPendingItem({});
+    setInput('');
+    setPendingMasterName('');
+    const count = itemsRef.current.length;
+    ask(
+      'more_items',
+      `Line item ${count} added: ${snapshot.quantity} × ${snapshot.itemName}. Add another line item?`
+    );
+  }, [ask]);
+
+  const completePendingItem = useCallback((category: string) => {
+    const pending = pendingItemRef.current;
+    const description = String(pending.itemName || pending.description || '').trim();
+    const quantity = Number(pending.quantity || 0);
+    const unitCost = Number(pending.unitCost || 0);
+    if (!description) {
+      setError('');
+      push('bot', 'I still need the item name. What do you want to buy?');
+      ask('need', 'Type the item name or pick from Item Master.');
+      return;
+    }
+    if (!quantity || !unitCost) {
+      setError('');
+      push('bot', 'I still need quantity and unit cost, like 6 @ 7888.');
+      ask('qty_cost', `How many ${description}, and what is the estimated unit cost? Example: 5 @ 12000`);
+      return;
+    }
+    finishItem({
+      description,
+      itemName: description,
+      itemId: pending.itemId || null,
+      quantity,
+      unitCost,
+      category: String(category || pending.category || '').trim(),
+      unit: pending.unit || 'Nos',
+    });
+  }, [ask, finishItem, push]);
 
   const goToDepartment = useCallback(() => {
     setPendingMasterName('');
@@ -248,6 +347,43 @@ export default function PrChatbot() {
     setInput('');
     if (announce) push('user', dept.name);
     applyChoice('request_type', dept.name, () => setDepartment(dept.name));
+  };
+
+  const afterItemChosen = (item: ItemRecord, announce = false) => {
+    if (announce) push('user', item.name);
+    patchPending({
+      description: item.name,
+      itemName: item.name,
+      itemId: item.id,
+      category: item.categoryName || pendingItemRef.current.category || '',
+      unit: item.unit || 'Nos',
+    });
+    setPendingMasterName('');
+    setInput('');
+    ask('qty_cost', `How many ${item.name}, and what is the estimated unit cost? Example: 5 @ 12000`);
+  };
+
+  const createPendingItem = async (rawName?: string) => {
+    const name = String(rawName || pendingMasterName || '').trim();
+    if (!name) return;
+    setBusy(true);
+    setError('');
+    try {
+      const res = await masterApi.chatCreateItem({ name, unit: 'Nos' });
+      const createdItem = res.data;
+      setMasterItems((prev) => {
+        if (prev.some((item) => item.id === createdItem.id)) return prev;
+        return [...prev, createdItem].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      push('bot', `“${createdItem.name}” was not in Item Master, so I added it. Now enter quantity and unit cost.`);
+      afterItemChosen(createdItem);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create item');
+      patchPending({ description: name, itemName: name });
+      ask('qty_cost', `I could not save “${name}” to Item Master, but I will still use it as the line item. How many, and unit cost? Example: 5 @ 12000`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const createPendingEntity = async (costCenter?: string) => {
@@ -328,7 +464,12 @@ export default function PrChatbot() {
   };
 
   const createPr = async (submit: boolean) => {
-    if (!entityId || !department || !items.length) {
+    const savedItems = itemsRef.current.length ? itemsRef.current : items;
+    if (!title.trim()) {
+      setError('PR title is required.');
+      return;
+    }
+    if (!entityId || !department || !savedItems.length) {
       setError('Entity, department, and at least one item are required.');
       return;
     }
@@ -338,7 +479,7 @@ export default function PrChatbot() {
       const safeRequestType =
         purchaseType === 'purchase_order' && requestType === 'Service' ? 'Opex' : requestType;
       const res = await prApi.create({
-        title: title.trim() || items[0].description,
+        title: title.trim(),
         requestType: safeRequestType,
         purchaseType,
         department,
@@ -349,12 +490,12 @@ export default function PrChatbot() {
         justification: justification.trim(),
         requiredDate,
         submit,
-        lineItems: items.map((item) => ({
-          description: item.description,
+        lineItems: savedItems.map((item) => ({
+          description: item.itemName || item.description,
           category: item.category,
           quantity: item.quantity,
           unitCost: item.unitCost,
-          unit: 'Nos',
+          unit: item.unit || 'Nos',
         })),
       });
       const data = res.data as { id: number; prNumber: string };
@@ -382,7 +523,8 @@ export default function PrChatbot() {
     setInput('');
     setTitle('');
     setItems([]);
-    setPendingItem({});
+    itemsRef.current = [];
+    clearPending();
     setEntityId('');
     setDepartment('');
     setPendingMasterName('');
@@ -398,39 +540,54 @@ export default function PrChatbot() {
       {
         id: uid(),
         role: 'bot',
-        text: 'Let’s create another PR. What do you need to buy?',
+        text: 'Let’s create another PR. Start with the first line item — you can add another after it.',
       },
     ]);
   };
 
   const handleSend = (raw?: string) => {
     const text = (raw ?? input).trim();
-    if (!text || busy || step === 'done' || step === 'review' || step === 'files_upload') return;
+    if (!text || step === 'done' || step === 'review' || step === 'files_upload') return;
+    if (busy && step !== 'category' && step !== 'qty_cost' && step !== 'more_items' && step !== 'pr_title') return;
     setInput('');
     push('user', text);
 
     if (step === 'need') {
-      setTitle(text);
-      setPendingItem({ description: text });
-      const parsed = parseQtyCost(text);
-      if (parsed.quantity && parsed.unitCost) {
-        setPendingItem({ description: text, quantity: parsed.quantity, unitCost: parsed.unitCost });
-        ask('category', 'Which category is this item? Pick one or type the name.');
+      const exact = findExactItem(masterItems, text);
+      if (exact) {
+        afterItemChosen(exact);
         return;
       }
-      ask('qty_cost', 'How many, and what is the estimated unit cost? Example: 5 @ 12000');
+      writePending({ description: text, itemName: text });
+      setPendingMasterName(text);
+      void createPendingItem(text);
+      return;
+    }
+
+    if (step === 'item_missing') {
+      if (isYes(text)) {
+        void createPendingItem(pendingMasterName || text);
+        return;
+      }
+      setPendingMasterName('');
+      ask('need', 'Okay. Type another item name, or tap a match from the list.');
       return;
     }
 
     if (step === 'qty_cost') {
       const parsed = parseQtyCost(text);
-      const quantity = parsed.quantity ?? pendingItem.quantity;
-      const unitCost = parsed.unitCost ?? pendingItem.unitCost;
+      const quantity = parsed.quantity ?? pendingItemRef.current.quantity;
+      const unitCost = parsed.unitCost ?? pendingItemRef.current.unitCost;
       if (!quantity || !unitCost) {
         push('bot', 'Please send both quantity and unit cost, like 5 @ 12000.');
         return;
       }
-      setPendingItem((prev) => ({ ...prev, quantity, unitCost }));
+      patchPending({ quantity, unitCost });
+      const category = String(pendingItemRef.current.category || '').trim();
+      if (category) {
+        completePendingItem(category);
+        return;
+      }
       ask('category', 'Which category is this item? Pick one or type the name.');
       return;
     }
@@ -439,24 +596,24 @@ export default function PrChatbot() {
       const match =
         categories.find((c) => c.name.toLowerCase() === text.toLowerCase()) ||
         categories.find((c) => c.name.toLowerCase().includes(text.toLowerCase()));
-      const category = match?.name || text;
-      const item: DraftItem = {
-        description: String(pendingItem.description || title || text),
-        quantity: Number(pendingItem.quantity || 1),
-        unitCost: Number(pendingItem.unitCost || 0),
-        category,
-      };
-      finishItem(item);
+      completePendingItem(match?.name || text);
       return;
     }
 
     if (step === 'more_items') {
       if (isYes(text)) {
-        setPendingItem({});
-        ask('need', 'What is the next item?');
+        clearPending();
+        setInput('');
+        ask('need', `Line item ${itemsRef.current.length + 1}. What is the next item name? Type it or pick from Item Master.`);
         return;
       }
       goAfterItems();
+      return;
+    }
+
+    if (step === 'pr_title') {
+      setTitle(text);
+      goAfterTitle();
       return;
     }
 
@@ -611,8 +768,8 @@ export default function PrChatbot() {
 
   const chips = (() => {
     if (step === 'category') return categories.slice(0, 8).map((c) => c.name);
-    if (step === 'more_items') return ['Yes, add another', 'No, continue'];
-    if (step === 'entity_missing' || step === 'department_missing') return ['Yes, create it', 'No, search again'];
+    if (step === 'more_items') return ['Yes, add another line item', 'No, continue'];
+    if (step === 'item_missing' || step === 'entity_missing' || step === 'department_missing') return ['Yes, create it', 'No, search again'];
     if (step === 'entity_cost_center') return ['Skip / auto-generate'];
     if (step === 'request_type') return ['Opex', 'Capex', 'Service'];
     if (step === 'purchase_type') return ['Purchase Order', 'Work Order'];
@@ -622,6 +779,10 @@ export default function PrChatbot() {
   })();
 
   const onChip = (label: string) => {
+    if (step === 'category') {
+      handleSend(label);
+      return;
+    }
     if (step === 'more_items') {
       handleSend(label.startsWith('Yes') ? 'yes' : 'no');
       return;
@@ -630,7 +791,7 @@ export default function PrChatbot() {
       handleSend(label.startsWith('Yes') ? 'yes' : 'no');
       return;
     }
-    if (step === 'entity_missing' || step === 'department_missing') {
+    if (step === 'item_missing' || step === 'entity_missing' || step === 'department_missing') {
       handleSend(label.startsWith('Yes') ? 'yes' : 'no');
       return;
     }
@@ -688,6 +849,75 @@ export default function PrChatbot() {
                 </div>
               </div>
             ))}
+
+            {items.length > 0 && step !== 'review' && step !== 'done' && (
+              <div className="rounded-xl border border-teal-200 bg-teal-50 p-2">
+                <p className="px-1 pb-1.5 text-[11px] font-semibold text-teal-800">
+                  Line items added ({items.length})
+                </p>
+                <ul className="space-y-1">
+                  {items.map((item, i) => (
+                    <li
+                      key={`added-${i}-${item.itemName}-${item.quantity}-${item.unitCost}`}
+                      className="rounded-lg bg-white px-2 py-1.5 text-xs text-slate-800"
+                    >
+                      {i + 1}. {item.quantity} × {item.itemName || item.description}
+                      {item.category ? ` · ${item.category}` : ''} · {formatMoney(item.quantity * item.unitCost)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {step === 'need' && (
+              <div className="rounded-xl border border-gray-200 bg-white p-2">
+                <p className="px-1 pb-1.5 text-[11px] font-medium text-slate-500">
+                  {input.trim() ? `Matching items (${itemMatches.length})` : 'Suggested items — type to search Item Master'}
+                </p>
+                {itemMatches.length > 0 ? (
+                  <div className="max-h-48 space-y-1 overflow-y-auto">
+                    {itemMatches.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => afterItemChosen(item, true)}
+                        className="w-full rounded-lg px-2.5 py-2 text-left text-xs hover:bg-slate-50 cursor-pointer"
+                      >
+                        <p className="font-medium text-slate-800">{item.name}</p>
+                        <p className="text-[11px] text-gray-400">
+                          {[item.itemCode, item.categoryName].filter(Boolean).join(' · ') || 'Item Master'}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="px-1 py-2 text-xs text-amber-700">
+                    {input.trim()
+                      ? `No exact match for “${input.trim()}”. Press send to add it as a new item.`
+                      : 'Type an item name to search, or send a new name to add it.'}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {step === 'category' && (
+              <div className="rounded-xl border border-gray-200 bg-white p-2">
+                <p className="px-1 pb-1.5 text-[11px] font-medium text-slate-500">Tap a category to continue</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => handleSend(cat.name)}
+                      className="rounded-full border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {step === 'entity' && (
               <div className="rounded-xl border border-gray-200 bg-white p-2">
@@ -829,7 +1059,7 @@ export default function PrChatbot() {
               <div className="rounded-xl border border-gray-200 bg-white p-3 text-sm">
                 <p className="mb-2 font-semibold text-slate-900">PR preview</p>
                 <dl className="space-y-1 text-xs text-slate-600">
-                  <div><span className="text-gray-400">Title: </span>{title || items[0]?.description}</div>
+                  <div><span className="text-gray-400">Title: </span>{title || '—'}</div>
                   <div><span className="text-gray-400">Entity: </span>{selectedEntity ? `${selectedEntity.code || ''} ${selectedEntity.name}`.trim() : '—'}</div>
                   <div><span className="text-gray-400">Department: </span>{department || '—'}</div>
                   <div><span className="text-gray-400">Type: </span>{requestType} · {purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order'}</div>
@@ -839,8 +1069,8 @@ export default function PrChatbot() {
                 </dl>
                 <ul className="mt-2 space-y-1 text-xs">
                   {items.map((item, i) => (
-                    <li key={`${item.description}-${i}`} className="rounded-lg bg-slate-50 px-2 py-1.5">
-                      {item.quantity} × {item.description} · {item.category} · {formatMoney(item.quantity * item.unitCost)}
+                    <li key={`line-${i}-${item.itemName}-${item.quantity}-${item.unitCost}`} className="rounded-lg bg-slate-50 px-2 py-1.5">
+                      {i + 1}. {item.quantity} × {item.itemName || item.description} · {item.category} · {formatMoney(item.quantity * item.unitCost)}
                     </li>
                   ))}
                 </ul>
@@ -924,7 +1154,11 @@ export default function PrChatbot() {
               onChange={(e) => setInput(e.target.value)}
               disabled={busy || step === 'review' || step === 'done' || step === 'files_upload'}
               placeholder={
-                step === 'entity'
+                step === 'need'
+                  ? 'Type item name to search…'
+                  : step === 'pr_title'
+                    ? 'Type the PR title…'
+                  : step === 'entity'
                   ? 'Type entity name to search…'
                   : step === 'department'
                     ? 'Type department name to search…'

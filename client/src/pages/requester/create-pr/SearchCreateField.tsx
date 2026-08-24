@@ -14,6 +14,7 @@ interface Props {
   hasError?: boolean;
   addNoun?: string;
   compact?: boolean;
+  resetKey?: string;
   onSelect: (option: SearchCreateOption) => void;
   onClear: () => void;
   onCreate?: (name: string) => Promise<void>;
@@ -27,6 +28,7 @@ export default function SearchCreateField({
   hasError,
   addNoun,
   compact,
+  resetKey,
   onSelect,
   onClear,
   onCreate,
@@ -40,6 +42,13 @@ export default function SearchCreateField({
   useEffect(() => {
     if (!open) setQuery(displayValue);
   }, [displayValue, open]);
+
+  useEffect(() => {
+    if (resetKey == null) return;
+    setQuery(displayValue);
+    setOpen(false);
+    setError('');
+  }, [resetKey]);
 
   useEffect(() => {
     if (!open) return;

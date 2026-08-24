@@ -187,7 +187,7 @@ export default function CreatePRPage() {
         setLineItems(
           pr.lineItems.length > 0
             ? pr.lineItems.map((item, i) => ({
-                id: String(item.id ?? i + 1),
+                id: String(item.id != null ? `${item.id}-${i}` : `row-${i + 1}`),
                 itemId: null,
                 itemName: item.description,
                 description: item.description,
@@ -234,10 +234,9 @@ export default function CreatePRPage() {
         setLineItems((prev) =>
           prev.map((row) => {
             if (row.itemId) return row;
-            const match = items.find(
-              (m) =>
-                m.name.toLowerCase() === (row.itemName || row.description || '').toLowerCase()
-            );
+            const name = (row.itemName || row.description || '').trim().toLowerCase();
+            if (!name) return row;
+            const match = items.find((m) => m.name.toLowerCase() === name);
             if (!match) return row;
             return {
               ...row,
@@ -274,9 +273,9 @@ export default function CreatePRPage() {
     lineItems.reduce((sum, item) => sum + item.quantity * item.estimatedCost, 0);
 
   const addLineItem = () => {
-    const newId = Date.now().toString();
-    setLineItems([
-      ...lineItems,
+    const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setLineItems((prev) => [
+      ...prev,
       {
         id: newId,
         itemId: null,
@@ -985,7 +984,7 @@ export default function CreatePRPage() {
 
           <div className="p-6 space-y-4">
             {lineItems.map((item, index) => (
-              <div key={item.id} className="relative border border-gray-200 rounded-xl overflow-hidden hover:border-slate-300 transition-colors">
+              <div key={`line-row-${item.id}-${index}`} className="relative border border-gray-200 rounded-xl overflow-hidden hover:border-slate-300 transition-colors">
                 {/* Item header */}
                 <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-gray-100">
                   <div className="flex items-center gap-2">
@@ -1016,9 +1015,11 @@ export default function CreatePRPage() {
                       Item Name <span className="text-red-500">*</span>
                     </label>
                     <ItemCombobox
+                      key={`item-name-${item.id}`}
+                      instanceKey={item.id}
                       items={masterItems}
                       selectedId={item.itemId}
-                      selectedName={item.itemName}
+                      selectedName={item.itemName || item.description}
                       hasError={Boolean(errors[`item_${index}_description`])}
                       categoryId={masterCategories.find((c) => c.name === item.category)?.id || null}
                       onSelect={(master) => applyMasterItem(item.id, master)}

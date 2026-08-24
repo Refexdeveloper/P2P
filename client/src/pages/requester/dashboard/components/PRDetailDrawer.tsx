@@ -232,7 +232,7 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {pr.lineItems.map((item, i) => (
-                        <tr key={item.id ?? i}>
+                        <tr key={item.id ?? `line-${i}`}>
                           <td className="px-3 py-2 text-gray-500">{i + 1}</td>
                           <td className="px-3 py-2">
                             <p className="font-medium text-gray-900">{item.description}</p>

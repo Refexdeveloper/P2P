@@ -8,6 +8,7 @@ interface Props {
   selectedName?: string;
   hasError?: boolean;
   categoryId?: number | null;
+  instanceKey?: string;
   onSelect: (item: ItemRecord) => void;
   onClear: () => void;
   onCreated: (item: ItemRecord) => void;
@@ -19,6 +20,7 @@ export default function ItemCombobox({
   selectedName,
   hasError,
   categoryId,
+  instanceKey,
   onSelect,
   onClear,
   onCreated,
@@ -38,6 +40,7 @@ export default function ItemCombobox({
       options={options}
       displayValue={items.find((m) => m.id === selectedId)?.name || selectedName || ''}
       selectedId={selectedId}
+      resetKey={instanceKey || String(selectedId ?? selectedName ?? '')}
       placeholder="Search item by name or code…"
       hasError={hasError}
       addNoun="item"
