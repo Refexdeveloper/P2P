@@ -168,7 +168,11 @@ export default function RfqEntryDetailPage() {
   const [addingManual, setAddingManual] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [toast, setToast] = useState('');
+  const [quotePopupError, setQuotePopupError] = useState('');
+  const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [preferredTab, setPreferredTab] = useState<number | null>(null);
+  const [startingRoundId, setStartingRoundId] = useState<number | null>(null);
   const [sendBackTarget, setSendBackTarget] = useState<TableRow | null>(null);
   const [filePreview, setFilePreview] = useState<{ url: string; fileName: string } | null>(null);
   const [manualDrafts, setManualDrafts] = useState<Record<number, Record<string, unknown>>>({});
@@ -420,9 +424,16 @@ export default function RfqEntryDetailPage() {
     recommendedRow?.hasActiveQuote && recommendationJustification.trim()
   );
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 4000);
+  const showToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
+    setToast({ msg, type });
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), type === 'err' ? 7000 : 4000);
+  };
+
+  const failQuote = (msg: string) => {
+    setError(msg);
+    setQuotePopupError(msg);
+    showToast(msg, 'err');
   };
 
   const loadRfq = useCallback(async (opts?: { soft?: boolean }) => {
@@ -747,65 +758,77 @@ export default function RfqEntryDetailPage() {
     const quote = getDisplayQuote(row, editingRoundById[row.invitationId]);
     const draft = manualDrafts[row.invitationId] || {};
     const file = manualFiles[row.invitationId];
-    const hasFile = Boolean(file) || Boolean(quote?.quotationFileName);
+    const previousFile = (row.quotes || []).some((q) => Boolean(q.quotationFileName)) || Boolean(row.quotationFileName);
+    const hasFile = Boolean(file) || Boolean(quote?.quotationFileName) || previousFile;
     if (!hasFile) {
-      setError('Quotation file is required. Upload a PDF or photo first.');
+      failQuote('Quotation file is required. Upload a PDF or photo first.');
       return null;
     }
     if (file && file.size > 5 * 1024 * 1024) {
-      setError('Quotation file must be under 5MB');
+      failQuote('Quotation file must be under 5MB');
       return null;
     }
-    const quoteLineItems = getWorkingLines(row.invitationId).map((l) => {
-      const quotedUnitPrice = Number(l.quotedUnitPrice) || 0;
-      const quantity = Number(l.quantity) || 0;
-      const gstPercent = l.gstPercent != null ? Number(l.gstPercent) : 18;
-      return {
-        ...l,
-        quotedUnitPrice,
-        quantity,
-        gstPercent,
-        quotedTotal: lineQuotedTotal({ quotedUnitPrice, quantity, gstPercent }),
-      };
-    });
+    const quoteLineItems = getWorkingLines(row.invitationId)
+      .map((l) => {
+        const rawUnit = l.quotedUnitPrice;
+        const quotedUnitPrice = rawUnit === '' || rawUnit === null || rawUnit === undefined ? NaN : Number(rawUnit);
+        const quantity = Number(l.quantity) || 0;
+        const gstPercent = l.gstPercent != null ? Number(l.gstPercent) : 18;
+        return {
+          ...l,
+          quotedUnitPrice,
+          quantity,
+          gstPercent,
+          quotedTotal: Number.isFinite(quotedUnitPrice)
+            ? lineQuotedTotal({ quotedUnitPrice, quantity, gstPercent })
+            : 0,
+        };
+      })
+      .filter((l) => (l.extra ? String(l.description || '').trim() : true));
     if (!quoteLineItems.length) {
-      setError('Line items are required. Add at least one item with a quoted price.');
+      failQuote('Line items are required. Add at least one item with a quoted price.');
       return null;
     }
     if (quoteLineItems.some((l) => !String(l.description || '').trim())) {
-      setError('Enter a name for every line item');
+      failQuote('Enter a name for every line item');
       return null;
     }
     if (quoteLineItems.some((l) => !l.quantity || l.quantity <= 0)) {
-      setError('Enter quantity for every line item');
+      failQuote('Enter quantity for every line item');
       return null;
     }
-    if (quoteLineItems.some((l) => !l.quotedUnitPrice || l.quotedUnitPrice <= 0)) {
-      setError('Enter quoted unit price for every line item');
+    if (quoteLineItems.some((l) => !Number.isFinite(Number(l.quotedUnitPrice)) || Number(l.quotedUnitPrice) < 0)) {
+      failQuote('Enter quoted unit price for every line item (0 is allowed)');
       return null;
     }
     const quotedPrice = quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
-    if (!quotedPrice || quotedPrice <= 0) {
-      setError('Quotation price is required and must be greater than 0');
+    if (quotedPrice < 0) {
+      failQuote('Quotation price cannot be negative');
       return null;
     }
-    return { quote, draft, file, quoteLineItems, quotedPrice };
+    const zeroCount = quoteLineItems.filter((l) => Number(l.quotedUnitPrice) === 0).length;
+    return { quote, draft, file, quoteLineItems, quotedPrice, zeroCount };
   };
 
-  const handleSaveExistingQuote = async (row: TableRow) => {
+  const handleSaveExistingQuote = async (row: TableRow, opts?: { acceptZero?: boolean }) => {
     const checked = validateRequiredQuote(row);
     if (!checked) return;
-    const { quote, draft, file, quoteLineItems, quotedPrice } = checked;
+    const { quote, draft, file, quoteLineItems, quotedPrice, zeroCount } = checked;
+    if ((zeroCount > 0 || quotedPrice === 0) && !opts?.acceptZero) {
+      setZeroSaveAsk({ row, kind: 'existing', zeroCount: zeroCount || 1, total: quotedPrice });
+      return;
+    }
     const preferred = editingRoundById[row.invitationId];
     const editingQuote = preferred ? quoteForRound(row, preferred) : quote;
     const submissionId = editingQuote?.submissionId || quote?.submissionId || row.submissionId;
     if (!submissionId) {
-      setError('No submission to update');
+      failQuote('No submission to update. Use Save quote + file for a new round.');
       return;
     }
 
     setSavingManualId(row.invitationId);
     setError('');
+    setQuotePopupError('');
     try {
       const body: Record<string, unknown> = {
         quotedPrice,
@@ -824,7 +847,7 @@ export default function RfqEntryDetailPage() {
       if (file) {
         const quotationFileData = await readFileAsBase64(file);
         if (!quotationFileData) {
-          setError('Could not read quotation file — try again');
+          failQuote('Could not read quotation file — try again');
           return;
         }
         body.quotationFileName = file.name;
@@ -843,28 +866,39 @@ export default function RfqEntryDetailPage() {
       }
       await loadRfq();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update quotation');
+      failQuote(err instanceof Error ? err.message : 'Failed to update quotation');
     } finally {
       setSavingManualId(null);
     }
   };
 
-  const handleSaveManualEntry = async (row: TableRow) => {
+  const handleSaveManualEntry = async (row: TableRow, opts?: { acceptZero?: boolean }) => {
     const checked = validateRequiredQuote(row);
     if (!checked) return;
-    const { draft, file, quoteLineItems, quotedPrice } = checked;
-    if (!file) {
-      setError('Quotation file is required. Upload a PDF or photo first.');
+    const { draft, file, quoteLineItems, quotedPrice, zeroCount } = checked;
+    if ((zeroCount > 0 || quotedPrice === 0) && !opts?.acceptZero) {
+      setZeroSaveAsk({ row, kind: 'new', zeroCount: zeroCount || 1, total: quotedPrice });
+      return;
+    }
+    const previousFile = (row.quotes || []).some((q) => Boolean(q.quotationFileName)) || Boolean(row.quotationFileName);
+    if (!file && !previousFile) {
+      failQuote('Quotation file is required. Upload a PDF or photo first.');
       return;
     }
 
     setSavingManualId(row.invitationId);
     setError('');
+    setQuotePopupError('');
     try {
-      const quotationFileData = await readFileAsBase64(file);
-      if (!quotationFileData) {
-        setError('Could not read quotation file — try again');
-        return;
+      let quotationFileName: string | undefined;
+      let quotationFileData: string | undefined;
+      if (file) {
+        quotationFileData = await readFileAsBase64(file);
+        if (!quotationFileData) {
+          failQuote('Could not read quotation file — try again');
+          return;
+        }
+        quotationFileName = file.name;
       }
 
       const requesterFieldValues: Record<string, unknown> = {};
@@ -881,8 +915,9 @@ export default function RfqEntryDetailPage() {
         deliveryTerms: String(draft.deliveryTerms || ''),
         compliance: draft.compliance !== false,
         vendorNotes: String(draft.vendorNotes || 'Manually entered by requester'),
-        quotationFileName: file.name,
-        quotationFileData,
+        ...(quotationFileName && quotationFileData
+          ? { quotationFileName, quotationFileData }
+          : {}),
         requesterFields: requesterFieldValues,
         technicalScore: Number(draft.technicalScore) || 0,
         commercialScore: Number(draft.commercialScore) || 0,
@@ -904,7 +939,7 @@ export default function RfqEntryDetailPage() {
       });
       await loadRfq();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save manual entry');
+      failQuote(err instanceof Error ? err.message : 'Failed to save quote');
     } finally {
       setSavingManualId(null);
     }
@@ -1075,9 +1110,16 @@ export default function RfqEntryDetailPage() {
       setTableRows((res.data.tableRows || []) as TableRow[]);
       if (res.data.config) setConfig(res.data.config as RfqConfig);
       setSendBackTarget(null);
-      showToast(`Re-quote Round ${sendBackTarget.round + 1} sent`);
+      showToast(res.message || `Re-quote Round ${sendBackTarget.round + 1} started`);
+      setPreferredTab(sendBackTarget.round + 1);
+      const updated = ((res.data.tableRows || []) as TableRow[]).find(
+        (r) => r.invitationId === sendBackTarget.invitationId
+      );
+      if (updated) {
+        openNewRoundPopup(updated, sendBackTarget);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Send-back failed');
+      failQuote(err instanceof Error ? err.message : 'Send-back failed');
     }
   };
 
@@ -1100,7 +1142,7 @@ export default function RfqEntryDetailPage() {
       const blob = await res.blob();
       setFilePreview({ url: URL.createObjectURL(blob), fileName });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Preview failed');
+      failQuote(err instanceof Error ? err.message : 'Preview failed');
     }
   };
 
@@ -1157,7 +1199,8 @@ export default function RfqEntryDetailPage() {
   const latestExistingRound = (row: TableRow) => {
     const quotes = Array.isArray(row.quotes) ? row.quotes : [];
     return quotes.reduce((max, q) => {
-      if (Number(q.quotedPrice) > 0) return Math.max(max, Number(q.round) || 0);
+      const filled = q.status === 'submitted' || Number(q.quotedPrice) > 0;
+      if (filled) return Math.max(max, Number(q.round) || 0);
       return max;
     }, row.hasActiveQuote ? Number(row.round) || 1 : 0);
   };
@@ -1170,17 +1213,16 @@ export default function RfqEntryDetailPage() {
     }
     if (mode === 'preview') {
       const forRound =
+        quotes.find((q) => q.round === previewRound && q.status === 'submitted') ||
         quotes.find((q) => q.round === previewRound && Number(q.quotedPrice) > 0) ||
         quotes.find((q) => q.round === previewRound) ||
         null;
       if (forRound) return forRound;
     }
-    const active = quotes.find(
-      (q) => q.round === row.round && q.status === 'submitted' && Number(q.quotedPrice) > 0
-    );
+    const active = quotes.find((q) => q.round === row.round && q.status === 'submitted');
     if (active) return active;
     if (row.status === 'submitted') {
-      return [...quotes].reverse().find((q) => q.status === 'submitted' && Number(q.quotedPrice) > 0) || null;
+      return [...quotes].reverse().find((q) => q.status === 'submitted') || null;
     }
     // Fallback: latest quote with values so Recommend re-render never blanks the card
     if (row.hasActiveQuote && quotes.length) {
@@ -1204,8 +1246,63 @@ export default function RfqEntryDetailPage() {
     return fromQuote;
   };
 
+  const seedDraftFromPrevious = (row: TableRow, previous?: TableRow) => {
+    const source = previous || row;
+    const lastRound = latestExistingRound(source);
+    const last = (lastRound ? quoteForRound(source, lastRound) : null) || getDisplayQuote(source);
+    const vals = quoteFieldValues(last, source);
+    const saved = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
+    persistWorkingLines(row.invitationId, seedQuoteLines(saved));
+    setManualDrafts((prev) => ({
+      ...prev,
+      [row.invitationId]: {
+        ...vals,
+        ...(prev[row.invitationId] || {}),
+        quoteLineItems: seedQuoteLines(saved),
+        leadTime: vals.leadTime ?? 0,
+        paymentTerms: vals.paymentTerms ?? 'Net 30',
+        warranty: vals.warranty ?? '',
+        deliveryTerms: vals.deliveryTerms ?? '',
+      },
+    }));
+  };
+
+  const openNewRoundPopup = (row: TableRow, previous?: TableRow) => {
+    cancelEditExistingQuote(row.invitationId);
+    seedDraftFromPrevious(row, previous);
+    setQuotePopupError('');
+    setPreferredTab(Number(row.round) || 1);
+    setQuotePopupId(row.invitationId);
+  };
+
+  const beginNextQuoteRound = async (row: TableRow) => {
+    if (row.status === 'invited' || row.status === 'sent_back') {
+      openNewRoundPopup(row);
+      return;
+    }
+    if (row.status !== 'submitted') {
+      failQuote('Save the current quote before starting the next round.');
+      return;
+    }
+    setStartingRoundId(row.invitationId);
+    try {
+      const res = await rfqApi.sendBack(row.invitationId, 'Next quotation round', []);
+      const rows = (res.data.tableRows || []) as TableRow[];
+      setTableRows(rows);
+      if (res.data.config) setConfig(res.data.config as RfqConfig);
+      const updated = rows.find((r) => r.invitationId === row.invitationId) || row;
+      showToast(`Q${updated.round} is ready. Fill line items and save the quote.`);
+      openNewRoundPopup(updated, row);
+    } catch (err) {
+      failQuote(err instanceof Error ? err.message : 'Could not start the next round');
+    } finally {
+      setStartingRoundId(null);
+    }
+  };
+
   const openQuotePopup = (row: TableRow, targetRound?: number) => {
     setError('');
+    setQuotePopupError('');
     const existingRound = latestExistingRound(row);
     const wanted = targetRound && targetRound > 0 ? targetRound : existingRound || row.round || 1;
     const existingForWanted = quoteForRound(row, wanted);
@@ -1216,13 +1313,13 @@ export default function RfqEntryDetailPage() {
       return;
     }
 
-    if (row.hasActiveQuote || existingRound > 0) {
-      setQuoteAsk({
-        row,
-        existingRound: existingRound || 1,
-        targetRound: wanted,
-        source: 'edit',
-      });
+    if (row.status === 'invited' || row.status === 'sent_back') {
+      openNewRoundPopup(row);
+      return;
+    }
+
+    if (row.hasActiveQuote || existingRound > 0 || row.status === 'submitted') {
+      void beginNextQuoteRound(row);
       return;
     }
 
@@ -1234,20 +1331,12 @@ export default function RfqEntryDetailPage() {
   };
 
   const askBeforeRequote = (row: TableRow) => {
-    if (row.hasActiveQuote || latestExistingRound(row) > 0) {
-      setQuoteAsk({
-        row,
-        existingRound: latestExistingRound(row) || row.round || 1,
-        targetRound: (latestExistingRound(row) || row.round || 1) + 1,
-        source: 'requote',
-      });
-      return;
-    }
-    setSendBackTarget(row);
+    void beginNextQuoteRound(row);
   };
 
   const closeQuotePopup = () => {
     if (quotePopupId != null) cancelEditExistingQuote(quotePopupId);
+    setQuotePopupError('');
     setQuotePopupId(null);
   };
 
@@ -1282,8 +1371,12 @@ export default function RfqEntryDetailPage() {
   return (
     <DashboardLayout>
       {toast && (
-        <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-emerald-600 text-white text-sm font-medium rounded-lg shadow-lg">
-          {toast}
+        <div
+          className={`fixed top-4 right-4 z-[80] max-w-sm px-4 py-3 text-sm font-medium rounded-lg shadow-lg ${
+            toast.type === 'err' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'
+          }`}
+        >
+          {toast.msg}
         </div>
       )}
 
@@ -1577,7 +1670,7 @@ export default function RfqEntryDetailPage() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 2 &amp; 3</p>
                   <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
                   <p className="text-sm text-gray-500 mt-1">
-                    Switch <strong>Q1–Q4</strong> tabs, tap <strong>Edit</strong> to fill that round, then <strong>Choose</strong> a vendor.
+                    Tap <strong>Edit</strong> to fill the current round. Use <strong>Next round</strong> only when you need a re-quote, then <strong>Save quote + file</strong>. Finally <strong>Choose</strong> a vendor.
                   </p>
                 </div>
                 <div className="px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-semibold text-gray-600">
@@ -1590,9 +1683,9 @@ export default function RfqEntryDetailPage() {
                 recommendedId={recommendedId}
                 quotedCount={quotedCount}
                 isFinalized={isFinalized}
-                maxRounds={config?.maxRounds}
                 removingId={removingId}
                 resendingId={resendingId}
+                preferredTab={preferredTab}
                 onEdit={(row, targetRound) => openQuotePopup(row as TableRow, targetRound)}
                 onChoose={(row) =>
                   row.hasActiveQuote && openRecommendModal(row.invitationId, row.vendorName)
@@ -1600,6 +1693,7 @@ export default function RfqEntryDetailPage() {
                 onRemove={(row) => handleRemoveVendor(row as TableRow)}
                 onResend={(row) => handleResendMail(row as TableRow)}
                 onSendBack={(row) => askBeforeRequote(row as TableRow)}
+                onNextRound={(nextRound) => setPreferredTab(nextRound)}
               />
 
               {tableRows.filter((row) => row.invitationId === quotePopupId).map((row, i) => {
@@ -1608,18 +1702,23 @@ export default function RfqEntryDetailPage() {
                   const submissionId = quote?.submissionId || row.submissionId;
                   const isManualRow = row.inviteMode === 'manual';
                   const isEmailRow = row.inviteMode !== 'manual';
-                  const awaitingManualEntry = isManualRow && !row.hasActiveQuote;
+                  const awaitingManualEntry =
+                    !row.hasActiveQuote &&
+                    (row.status === 'invited' || row.status === 'sent_back' || isManualRow);
                   const isEditingExisting = editingQuoteIds.has(row.invitationId);
                   const quoteFieldsEditable =
                     mode === 'entry' &&
                     (awaitingManualEntry || (isEditingExisting && canEditExistingQuote));
                   const awaitingVendorEmail =
-                    isEmailRow && !row.hasActiveQuote && (row.status === 'invited' || row.status === 'sent_back');
+                    isEmailRow &&
+                    !row.hasActiveQuote &&
+                    (row.status === 'invited' || row.status === 'sent_back');
                   const isRecommended =
                     Number(recommendedId) === Number(row.invitationId) || Boolean(row.isRecommended);
+                  const displayRound = editingRoundById[row.invitationId] || row.round;
                   const statusLabel = awaitingManualEntry
                     ? 'Your turn — type quote'
-                    : awaitingVendorEmail
+                    : awaitingVendorEmail && !quoteFieldsEditable
                       ? row.status === 'sent_back'
                         ? 'Waiting for new quote'
                         : 'Waiting for vendor email'
@@ -1639,7 +1738,7 @@ export default function RfqEntryDetailPage() {
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="text-base font-bold text-gray-900 truncate">Edit quote — {row.vendorName}</h3>
                               <span className="px-2 py-0.5 rounded-md bg-white border border-gray-200 text-[11px] font-semibold text-gray-600">
-                                Round {mode === 'preview' ? previewRound : row.round}
+                                Round {displayRound}
                               </span>
                               <span
                                 className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${
@@ -1662,7 +1761,9 @@ export default function RfqEntryDetailPage() {
                               )}
                             </div>
                             <p className="text-xs text-gray-500 mt-1">
-                              First upload the quotation file, then fill line items and quoted price. Those three are required.
+                              {quote?.quotationFileName
+                                ? 'Update line items and quoted price. Replace the file only if needed.'
+                                : 'Upload the quotation file, then fill line items and quoted price. Those three are required.'}
                             </p>
                           </div>
                         </div>
@@ -1672,7 +1773,7 @@ export default function RfqEntryDetailPage() {
                             <button
                               type="button"
                               onClick={() => handleSaveManualEntry(row)}
-                              disabled={savingManualId === row.invitationId}
+                              disabled={savingManualId === row.invitationId || startingRoundId === row.invitationId}
                               className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
                             >
                               {savingManualId === row.invitationId ? 'Saving...' : 'Save quote + file'}
@@ -1699,17 +1800,23 @@ export default function RfqEntryDetailPage() {
                       </div>
 
                       <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-6">
-                        {awaitingVendorEmail ? (
-                          <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/40 px-4 py-6 text-center">
-                            <i className="ri-mail-send-line text-2xl text-amber-500"></i>
-                            <p className="text-sm font-medium text-amber-800 mt-2">Waiting for this vendor to send their quote</p>
-                            <p className="text-xs text-amber-700 mt-1">You can resend the email if they did not get it.</p>
+                        {quotePopupError && (
+                          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                            {quotePopupError}
                           </div>
-                        ) : (
-                          <>
+                        )}
+                        {awaitingVendorEmail && (
+                          <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/40 px-4 py-3">
+                            <p className="text-sm font-medium text-amber-800">
+                              Vendor email was sent. You can still type this round here and save it.
+                            </p>
+                          </div>
+                        )}
+                        <>
                             <div>
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
-                                Quotation file <span className="text-red-500">*</span>
+                                Quotation file{' '}
+                                {quote?.quotationFileName || row.quotationFileName ? null : <span className="text-red-500">*</span>}
                               </p>
                               {quote?.quotationFileName && quote?.submissionId ? (
                                 <button
@@ -2101,7 +2208,6 @@ export default function RfqEntryDetailPage() {
                               </div>
                             )}
                           </>
-                        )}
                       </div>
                       </div>
                     </div>
@@ -2175,6 +2281,47 @@ export default function RfqEntryDetailPage() {
         </div>
       )}
 
+      {zeroSaveAsk && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-bold text-gray-900">Save quote with ₹0?</h3>
+              <p className="text-sm text-gray-600 mt-1">{zeroSaveAsk.row.vendorName}</p>
+            </div>
+            <div className="p-5 text-sm text-gray-700 space-y-2">
+              <p>
+                {zeroSaveAsk.zeroCount > 1
+                  ? `${zeroSaveAsk.zeroCount} line items have quoted unit ₹0.`
+                  : 'A line item has quoted unit ₹0.'}
+                {zeroSaveAsk.total <= 0 ? ' Total quoted amount is ₹0.' : ''}
+              </p>
+              <p className="text-xs text-gray-500">Save this quote anyway?</p>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setZeroSaveAsk(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { row, kind } = zeroSaveAsk;
+                  setZeroSaveAsk(null);
+                  if (kind === 'existing') void handleSaveExistingQuote(row, { acceptZero: true });
+                  else void handleSaveManualEntry(row, { acceptZero: true });
+                }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+              >
+                Save anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {quoteAsk && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
           <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
@@ -2219,7 +2366,7 @@ export default function RfqEntryDetailPage() {
                 onClick={() => {
                   const row = quoteAsk.row;
                   setQuoteAsk(null);
-                  setSendBackTarget(row);
+                  void beginNextQuoteRound(row);
                 }}
                 className="px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
               >

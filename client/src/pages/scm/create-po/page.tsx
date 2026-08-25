@@ -213,6 +213,28 @@ function normalizeIncoterm(value?: string | null): string {
   return match?.code || 'DDP';
 }
 
+function todayYmd() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function toInputDate(value?: unknown): string {
+  const s = String(value || '').trim();
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatPoDateLabel(ymd: string) {
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return ymd || '—';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 /** Gap between doc-type words (spaces, nbsp, or inline tags like </strong>) */
 const DOC_WORD_GAP = '((?:\\s|&nbsp;|&#160;|<[^>]*>)*)';
 
@@ -769,6 +791,7 @@ export default function CreatePOPage() {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
+  const [poDate, setPoDate] = useState(todayYmd);
   const [paymentTerms, setPaymentTerms] = useState('Net 30 Days');
   const [incoterms, setIncoterms] = useState('DDP');
   const [specialInstructions, setSpecialInstructions] = useState('');
@@ -1171,6 +1194,7 @@ export default function CreatePOPage() {
       }
       setDeliveryAddress(String(po.deliveryAddress || ''));
       setExpectedDeliveryDate(String(po.expectedDeliveryDate || ''));
+      setPoDate(toInputDate(po.poDate || po.createdAt) || todayYmd());
       setPaymentTerms(String(po.paymentTerms || 'Net 30 Days'));
       setIncoterms(normalizeIncoterm(po.incoterms));
       setSpecialInstructions(String(po.specialInstructions || ''));
@@ -1595,6 +1619,7 @@ export default function CreatePOPage() {
     })),
     deliveryAddress: poTermsDetails.siteAddress || deliveryAddress,
     expectedDeliveryDate,
+    poDate,
     paymentTerms,
     incoterms,
     specialInstructions,
@@ -1632,6 +1657,7 @@ export default function CreatePOPage() {
     lineItems,
     deliveryAddress,
     expectedDeliveryDate,
+    poDate,
     paymentTerms,
     incoterms,
     specialInstructions,
@@ -1819,6 +1845,7 @@ export default function CreatePOPage() {
         })),
         deliveryAddress: poTermsDetails.siteAddress || deliveryAddress,
         expectedDeliveryDate: expectedDeliveryDate || undefined,
+        poDate,
         paymentTerms,
         incoterms,
         specialInstructions,
@@ -2091,6 +2118,11 @@ export default function CreatePOPage() {
       setActiveTab('terms');
       return;
     }
+    if (!poDate) {
+      alert(`Please select ${documentType === 'work_order' ? 'WO' : 'PO'} date`);
+      setActiveTab('details');
+      return;
+    }
     if (!(poTermsDetails.siteAddress || deliveryAddress).trim()) {
       alert('Please select site / delivery address');
       setActiveTab('terms');
@@ -2115,6 +2147,7 @@ export default function CreatePOPage() {
         })),
         deliveryAddress: poTermsDetails.siteAddress || deliveryAddress,
         expectedDeliveryDate,
+        poDate,
         paymentTerms,
         incoterms,
         specialInstructions,
@@ -2324,6 +2357,8 @@ export default function CreatePOPage() {
             <span className="text-[11px] text-gray-500 truncate min-w-0 hidden md:inline">
               {docNoLabel}: <span className="font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
               <span className="text-gray-300 mx-1">·</span>
+              Date: <span className="font-semibold text-gray-700">{formatPoDateLabel(poDate)}</span>
+              <span className="text-gray-300 mx-1">·</span>
               PR: <span className="font-semibold text-gray-700">{isManualMode ? 'None' : pr.prNumber}</span>
               <span className="text-gray-300 mx-1">·</span>
               Vendor:{' '}
@@ -2405,6 +2440,8 @@ export default function CreatePOPage() {
           </div>
           <div className="md:hidden text-[11px] text-gray-500 truncate mt-1 pl-10">
             {docNoLabel}: <span className="font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
+            <span className="text-gray-300 mx-1">·</span>
+            Date: <span className="font-semibold text-gray-700">{formatPoDateLabel(poDate)}</span>
             <span className="text-gray-300 mx-1">·</span>
             PR: <span className="font-semibold text-gray-700">{isManualMode ? 'None' : pr.prNumber}</span>
           </div>
@@ -2524,18 +2561,33 @@ export default function CreatePOPage() {
 
                 {/* Subject — prints on document PDF */}
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                    {docLabel} Subject <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={poTermsDetails.subject || ''}
-                    onChange={(e) => updatePoTermsField('subject', e.target.value)}
-                    placeholder="e.g. Supply of laptops for IT department"
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
-                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                        {docLabel} Subject <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={poTermsDetails.subject || ''}
+                        onChange={(e) => updatePoTermsField('subject', e.target.value)}
+                        placeholder="e.g. Supply of laptops for IT department"
+                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                        {docNoLabel === 'WO No' ? 'WO Date' : 'PO Date'} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={poDate}
+                        onChange={(e) => setPoDate(e.target.value)}
+                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                      />
+                    </div>
+                  </div>
                   <p className="text-xs text-gray-500 mt-1.5">
-                    Shown as Subject on the {docLabel} document
+                    Shown as Subject and Date on the {docLabel} document
                     {isManualMode ? '.' : '. Defaults from PR title when empty.'} Document type (PO / WO) is set on the Terms &amp; Conditions tab.
                   </p>
                 </div>
@@ -3639,6 +3691,17 @@ export default function CreatePOPage() {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                        {docNoLabel === 'WO No' ? 'WO Date' : 'PO Date'} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={poDate}
+                        onChange={(e) => setPoDate(e.target.value)}
+                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                         Expected Delivery Date <span className="text-red-500">*</span>
                       </label>
                       <input
@@ -3859,6 +3922,7 @@ export default function CreatePOPage() {
               <div className="bg-gray-50 rounded-xl p-4 mb-5 space-y-2.5">
                 {[
                   { label: 'PO Number', value: poNumber, highlight: true },
+                  { label: 'PO Date', value: formatPoDateLabel(poDate) },
                   { label: 'Vendor', value: pr.recommendedVendor },
                   { label: 'Grand Total', value: fmt(grandTotal) },
                   { label: 'Payment Terms', value: paymentTerms },

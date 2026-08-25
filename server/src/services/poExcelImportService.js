@@ -4,6 +4,11 @@
  */
 import pool from '../config/db.js';
 
+function todayYmd() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export const PO_EXCEL_IMPORT_HEADERS = [
   'poNumber',
   'prNumber',
@@ -433,10 +438,10 @@ export async function importPoExcelRows(user, rawRows, { status } = {}) {
       const [result] = await conn.query(
         `INSERT INTO purchase_orders
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
-          delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
+          delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
           po_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo,
           terms_clauses, annexure_clauses, gst_percentage, subtotal, tax_amount, grand_total, status)
-         VALUES (?, NULL, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, '', '', NULL, NULL, ?, ?, ?, ?, ?)`,
+         VALUES (?, NULL, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, '', '', NULL, NULL, ?, ?, ?, ?, ?)`,
         [
           group.poNumber,
           group.prId,
@@ -445,6 +450,7 @@ export async function importPoExcelRows(user, rawRows, { status } = {}) {
           user.id,
           group.deliveryAddress || null,
           group.expectedDeliveryDate,
+          todayYmd(),
           group.paymentTerms,
           group.incoterms,
           group.specialInstructions || null,

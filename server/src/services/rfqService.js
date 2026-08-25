@@ -214,9 +214,11 @@ function normalizeQuoteLineItems(rawLines, prLineItems = []) {
     const gstPercent = Math.max(0, Number(raw.gstPercent ?? raw.gst ?? 0) || 0);
     const computed = unitPrice * qty * (1 + gstPercent / 100);
     const lineTotal =
-      Number(raw.quotedTotal ?? raw.lineTotal) > 0
-        ? Number(raw.quotedTotal ?? raw.lineTotal)
-        : computed;
+      unitPrice === 0
+        ? 0
+        : Number(raw.quotedTotal ?? raw.lineTotal) > 0
+          ? Number(raw.quotedTotal ?? raw.lineTotal)
+          : computed;
     lines.push({
       lineItemId: prLine?.id ?? (id || null),
       description: String(prLine?.description || raw.description || '').trim(),
@@ -252,11 +254,11 @@ function applyQuoteLineItemsToSubmissionBody(body, pr) {
   if (lines.some((l) => !l.quantity || l.quantity <= 0)) {
     throw new Error('Each line item must have quantity greater than 0');
   }
-  if (lines.some((l) => !l.quotedUnitPrice || l.quotedUnitPrice <= 0)) {
-    throw new Error('Each line item must have a quoted unit price greater than 0');
+  if (lines.some((l) => Number(l.quotedUnitPrice) < 0 || Number.isNaN(Number(l.quotedUnitPrice)))) {
+    throw new Error('Each line item must have a quoted unit price of 0 or more');
   }
-  if (!total || total <= 0) {
-    throw new Error('Total quoted amount must be greater than 0');
+  if (Number(total) < 0) {
+    throw new Error('Total quoted amount cannot be negative');
   }
 
   body.quotedPrice = total;
@@ -341,7 +343,7 @@ async function getOrCreateRfqConfig(prId) {
  */
 export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options = {}) {
   const markSubmitted = options.markSubmitted !== false;
-  const maxRounds = Math.min(4, Math.max(1, Number(options.maxRounds) || 4));
+  const maxRounds = Math.min(20, Math.max(1, Number(options.maxRounds) || 1));
   const vendors = Array.isArray(rfqVendors) ? rfqVendors : [];
   if (!vendors.length) {
     throw new Error('Add at least one vendor with a round-1 quotation and file');
@@ -514,14 +516,12 @@ function findActiveSubmission(inv) {
   if (!inv?.submissions?.length) return null;
 
   const currentRound = inv.submissions.find(
-    (s) => s.round === inv.round && s.status === 'submitted' && Number(s.quotedPrice) > 0
+    (s) => s.round === inv.round && s.status === 'submitted'
   );
   if (currentRound) return currentRound;
 
   if (inv.status === 'submitted') {
-    return (
-      [...inv.submissions].reverse().find((s) => s.status === 'submitted' && Number(s.quotedPrice) > 0) || null
-    );
+    return [...inv.submissions].reverse().find((s) => s.status === 'submitted') || null;
   }
 
   return null;
@@ -850,7 +850,9 @@ export async function submitVendorQuotation(token, body = {}) {
     quotationFileName,
     quotationFileData,
   } = body;
-  if (!quotedPrice || Number(quotedPrice) <= 0) throw new Error('Quoted price is required');
+  if (quotedPrice == null || Number.isNaN(Number(quotedPrice)) || Number(quotedPrice) < 0) {
+    throw new Error('Quoted price is required');
+  }
 
   const config = await getOrCreateRfqConfig(inv.pr_id);
   const { core, customFields } = extractCoreVendorValues(body, config.fieldDefinitions);
@@ -927,30 +929,44 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
   if (inv.status !== 'invited' && inv.status !== 'sent_back') {
     throw new Error('Quotation already submitted. Use Send Back if vendor must revise.');
   }
-  if (inv.invite_mode === 'email') {
-    throw new Error('This vendor was invited by email. Wait for vendor submission or use Resend Mail.');
-  }
 
   const pr = await getPurchaseRequestById(inv.pr_id);
   applyQuoteLineItemsToSubmissionBody(body, pr);
 
   const config = await getOrCreateRfqConfig(inv.pr_id);
   const { core, customFields } = extractCoreVendorValues(body, config.fieldDefinitions);
-  if (!core.quotedPrice || Number(core.quotedPrice) <= 0) {
+  if (core.quotedPrice == null || Number.isNaN(Number(core.quotedPrice)) || Number(core.quotedPrice) < 0) {
     throw new Error('Quoted price is required');
   }
 
-  if (!body.quotationFileName || !body.quotationFileData) {
-    throw new Error('Quotation file is required before saving manual entry');
-  }
-  const fileInfo = saveQuotationFile(
-    inv.id,
-    inv.round,
-    body.quotationFileName,
-    body.quotationFileData
-  );
-  if (!fileInfo.filePath) {
-    throw new Error('Failed to save quotation file — try a smaller PDF/image under 5MB');
+  let fileInfo = { fileName: '', filePath: null, buffer: null };
+  if (body.quotationFileName && body.quotationFileData) {
+    fileInfo = saveQuotationFile(
+      inv.id,
+      inv.round,
+      body.quotationFileName,
+      body.quotationFileData
+    );
+    if (!fileInfo.filePath && !fileInfo.buffer) {
+      throw new Error('Failed to save quotation file — try a smaller PDF/image under 5MB');
+    }
+  } else {
+    const [prevFiles] = await pool.query(
+      `SELECT quotation_file_name, quotation_file_path, quotation_file_data
+       FROM vendor_quotation_submissions
+       WHERE rfq_invitation_id = ? AND quotation_file_name IS NOT NULL AND quotation_file_name <> ''
+       ORDER BY round DESC, id DESC
+       LIMIT 1`,
+      [inv.id]
+    );
+    if (!prevFiles.length) {
+      throw new Error('Quotation file is required. Upload a PDF or photo first.');
+    }
+    fileInfo = {
+      fileName: prevFiles[0].quotation_file_name,
+      filePath: prevFiles[0].quotation_file_path,
+      buffer: prevFiles[0].quotation_file_data,
+    };
   }
 
   const requesterFieldDefs = config.fieldDefinitions.filter((f) => f.filledBy === 'requester');
@@ -1065,11 +1081,14 @@ export async function sendBackVendorQuote(user, invitationId, reason, fields = [
   }
 
   const config = await getOrCreateRfqConfig(inv.pr_id);
-  if (config.maxRounds != null && inv.round >= config.maxRounds) {
-    throw new Error(`Maximum ${config.maxRounds} quotation rounds reached`);
+  const newRound = inv.round + 1;
+  if (config.maxRounds != null && newRound > config.maxRounds) {
+    await pool.query(`UPDATE rfq_configs SET max_rounds = ?, updated_at = NOW() WHERE pr_id = ?`, [
+      newRound,
+      inv.pr_id,
+    ]);
   }
 
-  const newRound = inv.round + 1;
   const reasonText = [reason, ...(fields || [])].filter(Boolean).join('\n');
 
   await pool.query(
@@ -1086,8 +1105,10 @@ export async function sendBackVendorQuote(user, invitationId, reason, fields = [
   );
 
   const pr = await getPurchaseRequestById(inv.pr_id);
-  const submitUrl = appUrl(`/vendor/submit-quote/${inv.access_token}`);
-  queueRfqSendBackEmail(pr, inv.vendor_name, inv.vendor_email, submitUrl, newRound, reasonText, fields);
+  if (inv.invite_mode !== 'manual') {
+    const submitUrl = appUrl(`/vendor/submit-quote/${inv.access_token}`);
+    queueRfqSendBackEmail(pr, inv.vendor_name, inv.vendor_email, submitUrl, newRound, reasonText, fields);
+  }
 
   return getInvitationsWithSubmissions(inv.pr_id);
 }
@@ -1231,9 +1252,7 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
   }
 
   const quotePrice = Number(latestQuote.quotedPrice) || 0;
-  const quotePriceLabel = quotePrice
-    ? `₹${quotePrice.toLocaleString('en-IN')}`
-    : '—';
+  const quotePriceLabel = `₹${quotePrice.toLocaleString('en-IN')}`;
   const justificationNote = ` Justification: ${justification}`;
 
   // Own vendor + Requester → HOD vendor final → L2 → CFO
@@ -1376,7 +1395,7 @@ async function buildRfqSummary(prId) {
 
   const recommended = invitations.find((i) => i.id === config.recommendedInvitationId);
   const latest = findActiveSubmission(recommended) ||
-    recommended?.submissions?.find((s) => s.status === 'submitted' && Number(s.quotedPrice) > 0);
+    recommended?.submissions?.find((s) => s.status === 'submitted');
 
   const vendors = invitations.map((inv) => {
     // Include sent_back rounds — they are prior negotiation history (status flips on Send Back)
@@ -2304,7 +2323,7 @@ export function mapInvitationsToTableRows(invitations, config = null) {
       isRecommended: recommendedId === inv.id,
       sendBackReason: inv.sendBackReason,
       sendBackFields: inv.sendBackFields || [],
-      canSendBack: inv.status === 'submitted' && (maxRounds == null || inv.round < maxRounds),
+      canSendBack: inv.status === 'submitted',
       showHistory: inv.submissions.filter((s) => s.quotedPrice > 0).length > 1,
       quotes: inv.submissions.map((s) => ({
         submissionId: s.id,
@@ -2353,11 +2372,10 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
   if (user.role === 'Requester' && row.requester_id !== user.id) {
     throw new Error('Unauthorized');
   }
-  // Requester may only edit while RFQ not finalized; admins anytime
   if (user.role === 'Requester') {
     const config = await getOrCreateRfqConfig(row.pr_id);
-    if (config.finalizedAt || config.requesterSubmittedAt) {
-      throw new Error('RFQ already submitted — contact SCM to update quotation amounts');
+    if (config.finalizedAt) {
+      throw new Error('RFQ already finalized — quotation amounts cannot be changed');
     }
   }
 
@@ -2368,13 +2386,14 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
   const existingCustom = parseJsonObject(row.custom_fields);
   const { core, customFields } = extractCoreVendorValues(body, config.fieldDefinitions, existingCustom);
 
-  if (!core.quotedPrice || Number(core.quotedPrice) <= 0) {
+  if (core.quotedPrice == null || Number.isNaN(Number(core.quotedPrice)) || Number(core.quotedPrice) < 0) {
     throw new Error('Quoted price is required');
   }
 
   let fileName = row.quotation_file_name;
   let filePath = row.quotation_file_path;
-  let fileBuffer = row.quotation_file_data;
+  let fileBuffer = null;
+  let replaceFile = false;
   if (body.quotationFileName && body.quotationFileData) {
     const fileInfo = saveQuotationFile(
       row.invitation_id,
@@ -2388,6 +2407,7 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
     fileName = fileInfo.fileName;
     filePath = fileInfo.filePath;
     fileBuffer = fileInfo.buffer;
+    replaceFile = true;
   }
 
   const existingRequester = parseJsonObject(row.requester_fields);
@@ -2415,29 +2435,51 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
       ? `${row.vendor_notes}`
       : noteSuffix;
 
-  await pool.query(
-    `UPDATE vendor_quotation_submissions
-     SET quoted_price = ?, lead_time_days = ?, payment_terms = ?, compliance = ?,
-         vendor_notes = ?, warranty = ?, delivery_terms = ?,
-         quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?,
-         custom_fields = ?, requester_fields = ?
-     WHERE id = ?`,
-    [
-      Number(core.quotedPrice),
-      Number(core.leadTime) || 0,
-      core.paymentTerms || row.payment_terms || 'Net 30',
-      core.compliance !== false ? 1 : 0,
-      vendorNotes,
-      core.warranty ?? row.warranty ?? '',
-      core.deliveryTerms ?? row.delivery_terms ?? '',
-      fileName,
-      filePath,
-      fileBuffer,
-      JSON.stringify(customFields),
-      JSON.stringify(requesterFields),
-      submissionId,
-    ]
-  );
+  if (replaceFile) {
+    await pool.query(
+      `UPDATE vendor_quotation_submissions
+       SET quoted_price = ?, lead_time_days = ?, payment_terms = ?, compliance = ?,
+           vendor_notes = ?, warranty = ?, delivery_terms = ?,
+           quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?,
+           custom_fields = ?, requester_fields = ?
+       WHERE id = ?`,
+      [
+        Number(core.quotedPrice),
+        Number(core.leadTime) || 0,
+        core.paymentTerms || row.payment_terms || 'Net 30',
+        core.compliance !== false ? 1 : 0,
+        vendorNotes,
+        core.warranty ?? row.warranty ?? '',
+        core.deliveryTerms ?? row.delivery_terms ?? '',
+        fileName,
+        filePath,
+        fileBuffer,
+        JSON.stringify(customFields),
+        JSON.stringify(requesterFields),
+        submissionId,
+      ]
+    );
+  } else {
+    await pool.query(
+      `UPDATE vendor_quotation_submissions
+       SET quoted_price = ?, lead_time_days = ?, payment_terms = ?, compliance = ?,
+           vendor_notes = ?, warranty = ?, delivery_terms = ?,
+           custom_fields = ?, requester_fields = ?
+       WHERE id = ?`,
+      [
+        Number(core.quotedPrice),
+        Number(core.leadTime) || 0,
+        core.paymentTerms || row.payment_terms || 'Net 30',
+        core.compliance !== false ? 1 : 0,
+        vendorNotes,
+        core.warranty ?? row.warranty ?? '',
+        core.deliveryTerms ?? row.delivery_terms ?? '',
+        JSON.stringify(customFields),
+        JSON.stringify(requesterFields),
+        submissionId,
+      ]
+    );
+  }
 
   const full = await getRfqByPrId(user, row.pr_id);
   const rfq = await getInvitationsWithSubmissions(row.pr_id);

@@ -84,7 +84,7 @@ function mapAcceptedPoToPendingGrn(po: ApiPo): GRNData {
     vendor: po.vendorName || '',
     department: po.department || '',
     requester: po.requester || '',
-    poDate: po.createdAt || '',
+    poDate: po.poDate || po.createdAt || '',
     expectedDeliveryDate: po.expectedDeliveryDate || '',
     receivedDate: null,
     deliveryAddress: po.deliveryAddress || '',

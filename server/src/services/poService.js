@@ -6,6 +6,7 @@ import { getPurchaseRequestById } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath } from './poPdfService.js';
 import { sendPoVendorNotification, queuePoWorkflowNotification } from './emailService.js';
 import { formatDate, formatDateTime, PR_STATUS } from '../utils/constants.js';
+import { getL1ManagerForEmail } from './refexOneService.js';
 import { getLetterheadByType, alignPoTypeWithPurchaseType } from './poLetterheadService.js';
 import {
   getActiveLetterheadBranding,
@@ -26,6 +27,18 @@ import {
 } from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
+
+function todayYmd() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function resolvePoDate(value, fallback) {
+  const s = String(value || fallback || '').trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return todayYmd();
+}
 
 async function resolveEntityIdFromPoBody(body = {}, existing = null) {
   const direct = Number(body.entityId || existing?.entity_id || 0);
@@ -120,6 +133,90 @@ async function resolvePoNotifyParties(po) {
       emails.add(signer[0].email);
       names.push(signer[0].name);
     }
+  }
+
+  return {
+    emails: [...emails],
+    name: names[0] || po.requester || 'User',
+  };
+}
+
+function addInternalNotifyEmail(emails, names, email, name, exclude) {
+  const e = String(email || '').trim();
+  if (!e || !e.includes('@')) return;
+  const lower = e.toLowerCase();
+  if (exclude.has(lower)) return;
+  if (lower.endsWith('@imported.local')) return;
+  if (emails.has(e) || [...emails].some((x) => x.toLowerCase() === lower)) return;
+  emails.add(e);
+  if (name) names.push(name);
+}
+
+/** Requester + L1 + this PR's approvers only — never the vendor. */
+async function collectRequesterAndApproverEmails(po, { excludeEmails = [] } = {}) {
+  const emails = new Set();
+  const names = [];
+  const exclude = new Set(
+    [...excludeEmails, po.vendorEmail || po.vendor_email]
+      .map((e) => String(e || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  const prId = po.prId || po.pr_id;
+  if (prId) {
+    const pr = await getPurchaseRequestById(prId);
+    if (pr?.requesterId) {
+      const [reqRows] = await pool.query(
+        `SELECT email, name, supervisor_email, supervisor_name
+         FROM users WHERE id = ? AND is_active = 1`,
+        [pr.requesterId]
+      );
+      const requester = reqRows[0];
+      if (requester) {
+        addInternalNotifyEmail(emails, names, requester.email, requester.name, exclude);
+        addInternalNotifyEmail(
+          emails,
+          names,
+          requester.supervisor_email,
+          requester.supervisor_name,
+          exclude
+        );
+        try {
+          const l1 = await getL1ManagerForEmail(requester.email);
+          if (l1?.email) addInternalNotifyEmail(emails, names, l1.email, l1.name, exclude);
+        } catch {
+          /* L1 lookup optional */
+        }
+      }
+
+      const chainIds = [...new Set(
+        [...(pr.approvalUserIds || []), pr.approvalUserId].map((id) => Number(id)).filter(Boolean)
+      )];
+      if (chainIds.length) {
+        const [chainUsers] = await pool.query(
+          `SELECT email, name FROM users WHERE id IN (${chainIds.map(() => '?').join(',')}) AND is_active = 1`,
+          chainIds
+        );
+        chainUsers.forEach((u) => addInternalNotifyEmail(emails, names, u.email, u.name, exclude));
+      }
+
+      const [acted] = await pool.query(
+        `SELECT DISTINCT u.email, u.name
+         FROM pr_approvals pa
+         JOIN users u ON u.id = pa.approver_id
+         WHERE pa.pr_id = ? AND pa.approver_id IS NOT NULL AND u.is_active = 1`,
+        [prId]
+      );
+      acted.forEach((u) => addInternalNotifyEmail(emails, names, u.email, u.name, exclude));
+    }
+  }
+
+  if (po.signerId || po.signer_id) {
+    const [signer] = await pool.query(
+      `SELECT email, name FROM users WHERE id = ? AND is_active = 1`,
+      [po.signerId || po.signer_id]
+    );
+    if (signer[0]) addInternalNotifyEmail(emails, names, signer[0].email, signer[0].name, exclude);
   }
 
   return {
@@ -367,6 +464,7 @@ async function enrichPO(row) {
     vendorPhone: vendor.phone || '',
     deliveryAddress: row.delivery_address,
     expectedDeliveryDate: formatDate(row.expected_delivery_date),
+    poDate: formatDate(row.po_date) || formatDate(row.created_at),
     paymentTerms: row.payment_terms,
     incoterms: row.incoterms,
     specialInstructions: row.special_instructions || '',
@@ -701,6 +799,7 @@ async function resolvePoDraftContent(prId, body) {
     poNumber,
     poTermsDetails: bodyPoTermsDetails,
   } = body || {};
+  const poDate = resolvePoDate(body?.poDate || body?.po_date);
 
   const resolvedPoTermsDetails = normalizePoTermsDetails(bodyPoTermsDetails);
   // Prefer free-text payment terms from Terms tab when provided
@@ -793,6 +892,7 @@ async function resolvePoDraftContent(prId, body) {
     vendorPhone: vendorMaster.phone || '',
     deliveryAddress,
     expectedDeliveryDate,
+    poDate,
     paymentTerms: resolvedPaymentTerms,
     incoterms,
     specialInstructions,
@@ -856,6 +956,7 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     department = '',
     requester = '',
   } = body;
+  const poDate = resolvePoDate(body?.poDate || body?.po_date);
 
   const resolvedPoTermsDetails = normalizePoTermsDetails(bodyPoTermsDetails);
   const resolvedPaymentTerms =
@@ -948,6 +1049,7 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     vendorPhone: vendorMaster.phone || '',
     deliveryAddress,
     expectedDeliveryDate,
+    poDate,
     paymentTerms: resolvedPaymentTerms,
     incoterms,
     specialInstructions,
@@ -999,6 +1101,7 @@ export async function buildPoPreviewForPo(user, poId, body) {
       poNumber: rows[0].po_number,
       vendorName: body.vendorName || rows[0].vendor_name,
       vendorEmail: body.vendorEmail || rows[0].vendor_email,
+      poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
       terms: body.terms ?? body.termsClauses,
       annexure: body.annexure ?? body.annexureClauses,
       annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
@@ -1008,6 +1111,7 @@ export async function buildPoPreviewForPo(user, poId, body) {
   return resolvePoDraftContent(rows[0].pr_id, {
     ...body,
     poNumber: rows[0].po_number,
+    poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
     terms: body.terms ?? body.termsClauses,
     annexure: body.annexure ?? body.annexureClauses,
     annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
@@ -1057,6 +1161,7 @@ export async function createPurchaseOrder(user, prId, body) {
     lineItems,
     deliveryAddress,
     expectedDeliveryDate,
+    poDate,
     paymentTerms,
     incoterms,
     specialInstructions,
@@ -1110,10 +1215,10 @@ export async function createPurchaseOrder(user, prId, body) {
     const [result] = await conn.query(
       `INSERT INTO purchase_orders
        (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
-        delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
+        delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
         po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
         annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         poNumber,
         referencePoNumber,
@@ -1124,6 +1229,7 @@ export async function createPurchaseOrder(user, prId, body) {
         user.id,
         deliveryAddress,
         expectedDeliveryDate,
+        poDate,
         paymentTerms,
         incoterms,
         specialInstructions,
@@ -1237,6 +1343,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
     lineItems,
     deliveryAddress,
     expectedDeliveryDate,
+    poDate,
     paymentTerms,
     incoterms,
     specialInstructions,
@@ -1292,10 +1399,10 @@ export async function createManualPurchaseOrder(user, body = {}) {
     const [result] = await conn.query(
       `INSERT INTO purchase_orders
        (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
-        delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
+        delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
         po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
         annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
-       VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         poNumber,
         referencePoNumber,
@@ -1304,6 +1411,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
         user.id,
         deliveryAddress,
         expectedDeliveryDate,
+        poDate,
         paymentTerms,
         incoterms,
         specialInstructions,
@@ -1430,6 +1538,9 @@ function normalizeDraftSaveBody(body = {}) {
   if (!payload.expectedDeliveryDate) {
     payload.expectedDeliveryDate = new Date().toISOString().slice(0, 10);
   }
+  if (!payload.poDate && !payload.po_date) {
+    payload.poDate = todayYmd();
+  }
   return payload;
 }
 
@@ -1459,6 +1570,7 @@ async function resolveDraftSaveContent({ prId, existing, body }) {
       poNumber: existing?.po_number || payload.poNumber,
       vendorName: vendor.vendor_name,
       vendorEmail: vendor.vendor_email,
+      poDate: payload.poDate || payload.po_date || formatDate(existing?.po_date) || formatDate(existing?.created_at),
     });
     return { ...draft, vendorName: vendor.vendor_name, vendorEmail: vendor.vendor_email, rfqInvitationId: vendor.id || null };
   }
@@ -1472,6 +1584,7 @@ async function resolveDraftSaveContent({ prId, existing, body }) {
       poNumber: existing?.po_number || payload.poNumber,
       vendorName: payload.vendorName || existing?.vendor_name,
       vendorEmail: payload.vendorEmail || existing?.vendor_email,
+      poDate: payload.poDate || payload.po_date || formatDate(existing?.po_date) || formatDate(existing?.created_at),
     },
     { forPreview: needsPreviewVendor }
   );
@@ -1547,6 +1660,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     lineItems,
     deliveryAddress,
     expectedDeliveryDate,
+    poDate,
     paymentTerms,
     incoterms,
     specialInstructions,
@@ -1590,7 +1704,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
         `UPDATE purchase_orders SET
           reference_po_number = ?,
           vendor_name = ?, vendor_email = ?,
-          delivery_address = ?, expected_delivery_date = ?, payment_terms = ?, incoterms = ?,
+          delivery_address = ?, expected_delivery_date = ?, po_date = ?, payment_terms = ?, incoterms = ?,
           special_instructions = ?, po_type = ?, purchase_type = ?, letterhead_header = ?, letterhead_id = ?, entity_id = ?, entity = ?,
           header_logo = ?, footer_logo = ?, terms_clauses = ?, annexure_clauses = ?, annexure_ii_html = ?,
           po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
@@ -1602,6 +1716,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
           vendorEmail,
           deliveryAddress,
           expectedDeliveryDate,
+          poDate,
           paymentTerms,
           incoterms,
           specialInstructions,
@@ -1636,10 +1751,10 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       const [result] = await conn.query(
         `INSERT INTO purchase_orders
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
-          delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
+          delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
           po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
           annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
         [
           poNumber,
           referencePoNumber,
@@ -1650,6 +1765,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
           user.id,
           deliveryAddress,
           expectedDeliveryDate,
+          poDate,
           paymentTerms,
           incoterms,
           specialInstructions,
@@ -1679,10 +1795,10 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       const [result] = await conn.query(
         `INSERT INTO purchase_orders
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
-          delivery_address, expected_delivery_date, payment_terms, incoterms, special_instructions,
+          delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
           po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
           annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
-         VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+         VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
         [
           poNumber,
           referencePoNumber,
@@ -1691,6 +1807,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
           user.id,
           deliveryAddress,
           expectedDeliveryDate,
+          poDate,
           paymentTerms,
           incoterms,
           specialInstructions,
@@ -2153,33 +2270,6 @@ export function resolvePoPdfPath(po) {
   return resolvePoDocumentPath(po);
 }
 
-async function collectParticipantEmails(prId) {
-  const pr = await getPurchaseRequestById(prId);
-  const emails = new Set();
-
-  const [requester] = await pool.query(`SELECT email FROM users WHERE id = ?`, [pr.requesterId]);
-  if (requester[0]?.email) emails.add(requester[0].email);
-
-  const [hod] = await pool.query(
-    `SELECT email FROM users WHERE role = 'HOD Approver' AND department_id = ? AND is_active = 1`,
-    [pr.departmentId]
-  );
-  hod.forEach((r) => emails.add(r.email));
-
-  for (const role of ['PR Manager', 'CFO', 'SCM Buyer', 'SCM Manager']) {
-    const [rows] = await pool.query(`SELECT email FROM users WHERE role = ? AND is_active = 1`, [role]);
-    rows.forEach((r) => emails.add(r.email));
-  }
-
-  const notify = (process.env.PR_NOTIFY_EMAIL || 'sathishkumar.r@refex.co.in')
-    .split(',')
-    .map((e) => e.trim())
-    .filter(Boolean);
-  notify.forEach((e) => emails.add(e));
-
-  return [...emails];
-}
-
 export async function signPurchaseOrder(user, poId, {
   remarks,
   signatureName,
@@ -2326,7 +2416,7 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   }
 
   const verifyRemarks =
-    remarks?.trim() || 'Final verified by SCM Buyer — ready for vendor acceptance';
+    remarks?.trim() || 'Final verified by SCM Buyer';
   const token = rows[0].vendor_acceptance_token || newVendorAcceptanceToken();
 
   await pool.query(
@@ -2355,8 +2445,35 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     );
   }
 
-  // Email / manual acceptance is done next on Vendor PO Acceptance page
-  return getPurchaseOrderById(poId);
+  const updated = await getPurchaseOrderById(poId);
+  let parties = { emails: [], name: updated.requester || 'User' };
+  try {
+    parties = await collectRequesterAndApproverEmails(updated, {
+      excludeEmails: [user.email, updated.vendorEmail],
+    });
+  } catch (err) {
+    console.warn('Final-verify notify lookup failed:', err.message);
+  }
+  if (parties.emails.length) {
+    queuePoWorkflowNotification(updated, {
+      action: 'verified',
+      stageLabel: 'PO Final Verified',
+      recipientEmails: parties.emails,
+      recipientName: parties.name,
+      actorName: user.name,
+      actorRole: user.role,
+      remarks: verifyRemarks,
+      portalUrl: poPortalUrl('/scm/track-po'),
+      ctaLabel: 'Track PO',
+      bccOps: false,
+      notifyWhatsApp: false,
+    });
+  } else {
+    console.warn(`No requester/approver emails for final-verify ${updated.poNumber}`);
+  }
+
+  // Vendor mail is a separate step on Vendor PO Acceptance — never sent here
+  return updated;
 }
 
 export async function rejectBuyerFinalVerify(user, poId, remarks) {
@@ -2678,6 +2795,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     ? await resolvePoDraftContent(existing.pr_id, {
         ...body,
         poNumber: existing.po_number,
+        poDate: body.poDate || body.po_date || formatDate(existing.po_date) || formatDate(existing.created_at),
         currency: body.currency ?? existing.currency,
         terms: body.terms ?? body.termsClauses,
         annexure: body.annexure ?? body.annexureClauses,
@@ -2687,6 +2805,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     : await resolveManualPoDraftContent({
         ...body,
         poNumber: existing.po_number,
+        poDate: body.poDate || body.po_date || formatDate(existing.po_date) || formatDate(existing.created_at),
         vendorName: body.vendorName || existing.vendor_name,
         vendorEmail: body.vendorEmail || existing.vendor_email,
         currency: body.currency ?? existing.currency,
@@ -2700,6 +2819,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     lineItems,
     deliveryAddress,
     expectedDeliveryDate,
+    poDate,
     paymentTerms,
     incoterms,
     specialInstructions,
@@ -2744,7 +2864,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     await conn.query(
       `UPDATE purchase_orders SET
         reference_po_number = ?,
-        delivery_address = ?, expected_delivery_date = ?, payment_terms = ?, incoterms = ?,
+        delivery_address = ?, expected_delivery_date = ?, po_date = ?, payment_terms = ?, incoterms = ?,
         special_instructions = ?, po_type = ?, letterhead_header = ?, letterhead_id = ?, entity = ?,
         header_logo = ?, footer_logo = ?, terms_clauses = ?,
         annexure_clauses = ?, annexure_ii_html = ?, po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
@@ -2754,6 +2874,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         referencePoNumber,
         deliveryAddress,
         expectedDeliveryDate,
+        poDate,
         paymentTerms,
         incoterms,
         specialInstructions,
@@ -2931,7 +3052,6 @@ export async function sendVendorAcceptanceMail(user, poId) {
   );
 
   const updatedPo = await getPurchaseOrderById(poId);
-  const ccEmails = await collectParticipantEmails(updatedPo.prId);
   const pdfFile = updatedPo.signedPdfPath || updatedPo.pdfPath;
   const pdfPath = pdfFile ? path.join(PO_UPLOAD_DIR, pdfFile) : null;
   const base = (process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:3000').replace(
@@ -2943,7 +3063,7 @@ export async function sendVendorAcceptanceMail(user, poId) {
   await sendPoVendorNotification(updatedPo, {
     signerName: updatedPo.signatureName || 'SCM Manager',
     signerComments: updatedPo.signerComments || '',
-    ccEmails,
+    ccEmails: [],
     pdfPath,
     portalUrl: acceptUrl,
   });

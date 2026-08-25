@@ -879,7 +879,7 @@ export function queueRfqSubmittedNotifyRequester(pr, vendorName, requesterEmail,
 
 /**
  * PO workflow mail — assign / sendback / reject (manager approval + buyer final verify).
- * @param {'assign'|'sendback'|'reject'} action
+ * @param {'assign'|'sendback'|'reject'|'verified'} action
  */
 export async function sendPoWorkflowNotification(po, {
   action,
@@ -893,7 +893,11 @@ export async function sendPoWorkflowNotification(po, {
   ctaLabel,
   bccOps = true,
 }) {
-  const emails = [...new Set((recipientEmails || []).map((e) => String(e || '').trim()).filter(Boolean))];
+  const vendorLower = String(po?.vendorEmail || po?.vendor_email || '').trim().toLowerCase();
+  let emails = [...new Set((recipientEmails || []).map((e) => String(e || '').trim()).filter(Boolean))];
+  if (action === 'verified' && vendorLower) {
+    emails = emails.filter((e) => e.toLowerCase() !== vendorLower);
+  }
   if (!emails.length) {
     console.warn(`No recipients for PO workflow email (${action}) ${po?.poNumber || po?.id}`);
     await createEmailLog({

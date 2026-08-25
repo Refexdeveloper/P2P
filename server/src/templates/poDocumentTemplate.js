@@ -83,8 +83,11 @@ function amountCellHtml(amount, currency, extraClass = '') {
 
 export function fmtDateDisplay(value) {
   if (!value) return '';
+  const s = String(value).trim();
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
+  if (Number.isNaN(d.getTime())) return s;
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();
@@ -191,7 +194,7 @@ function resolveDocChromeMeta(po = {}) {
     docTitle: isWorkOrder ? 'WORK ORDER' : 'PURCHASE ORDER',
     docLabel: isWorkOrder ? 'Work Order' : 'Purchase Order',
     poNumber: escapeHtml(po.poNumber || '—'),
-    poDate: escapeHtml(fmtDateDisplay(po.createdAt || new Date()) || '—'),
+    poDate: escapeHtml(fmtDateDisplay(po.poDate || po.createdAt || new Date()) || '—'),
     entity: escapeHtml(
       resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited'
     ),
@@ -703,7 +706,6 @@ function specialNotesInnerHtml(po, options = {}) {
         return escapeHtml(lines.join('\n')).replace(/\n/g, '<br>');
       })()}</div>` : ''}
       ${td.mailingAddress ? `<p><span class="lbl">Original invoice to be sent at:</span></p><p><strong>Refex Group of Companies,</strong></p><p>${escapeHtml(td.mailingAddress).replace(/\n/g, '<br>')}</p>` : ''}
-      ${td.subject ? `<p><span class="lbl">Subject:</span> ${escapeHtml(td.subject).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.reasonForCancellation ? `<p><span class="lbl">Reason For Cancellation:</span> ${escapeHtml(td.reasonForCancellation).replace(/\n/g, '<br>')}</p>` : ''}
       ${po.specialInstructions ? `<p><span class="lbl">Note:</span> ${escapeHtml(po.specialInstructions).replace(/\n/g, '<br>')}</p>` : ''}
       ${signature ? `
@@ -783,7 +785,7 @@ function poIntroHtml(po) {
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
   const docTitle = isWorkOrder ? 'WORK ORDER' : 'PURCHASE ORDER';
-  const poDate = fmtDateDisplay(po.createdAt || new Date());
+  const poDate = fmtDateDisplay(po.poDate || po.createdAt || new Date());
   const vendorAddress = po.vendorAddress || 'Address not available';
   const vendorGst = po.vendorGst || '—';
   const vendorPan = po.vendorPan || '—';

@@ -55,6 +55,7 @@ export default function VendorSubmitQuotePage() {
   const [quoteLines, setQuoteLines] = useState<QuoteLineDraft[]>([]);
   const [quotationFile, setQuotationFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [zeroConfirm, setZeroConfirm] = useState(false);
 
   const quoteTotal = useMemo(
     () =>
@@ -135,23 +136,30 @@ export default function VendorSubmitQuotePage() {
     );
   };
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent, acceptZero = false) => {
     e.preventDefault();
     if (!token) return;
     if (quoteLines.some((l) => !l.quantity || Number(l.quantity) <= 0)) {
       setError('Enter quantity for every line item');
       return;
     }
-    if (quoteLines.some((l) => !l.quotedUnitPrice || Number(l.quotedUnitPrice) <= 0)) {
-      setError('Enter quoted unit price for every line item');
-      return;
-    }
-    if (!quoteTotal || quoteTotal <= 0) {
-      setError('Total quoted amount must be greater than 0');
+    if (
+      quoteLines.some((l) => {
+        if (l.quotedUnitPrice === '' || l.quotedUnitPrice === null || l.quotedUnitPrice === undefined) return true;
+        const n = Number(l.quotedUnitPrice);
+        return Number.isNaN(n) || n < 0;
+      })
+    ) {
+      setError('Enter quoted unit price for every line item (0 is allowed)');
       return;
     }
     if (!quotationFile) {
       setError('Please upload your quotation document (PDF or image)');
+      return;
+    }
+    const zeroCount = quoteLines.filter((l) => Number(l.quotedUnitPrice) === 0).length;
+    if ((zeroCount > 0 || quoteTotal === 0) && !acceptZero) {
+      setZeroConfirm(true);
       return;
     }
     setSubmitting(true);
@@ -478,6 +486,37 @@ export default function VendorSubmitQuotePage() {
           </form>
         )}
       </div>
+      {zeroConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-bold text-gray-900">Submit quote with ₹0?</h3>
+            </div>
+            <div className="p-5 text-sm text-gray-700">
+              <p>One or more line items have quoted unit ₹0. Submit this quotation anyway?</p>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setZeroConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  setZeroConfirm(false);
+                  void handleSubmit(e as unknown as FormEvent, true);
+                }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+              >
+                Submit anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

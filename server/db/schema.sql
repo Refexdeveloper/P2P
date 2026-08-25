@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   created_by INT NOT NULL,
   delivery_address TEXT,
   expected_delivery_date DATE NULL,
+  po_date DATE NULL,
   payment_terms TEXT DEFAULT NULL,
   incoterms VARCHAR(255) DEFAULT 'DDP',
   special_instructions TEXT,

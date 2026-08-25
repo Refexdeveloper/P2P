@@ -217,7 +217,7 @@ function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, i
                   {[
                     { label: 'PO Number', value: po.poNumber, icon: 'ri-file-text-line', color: 'text-teal-600' },
                     { label: 'PR Reference', value: po.prId, icon: 'ri-links-line', color: 'text-teal-600' },
-                    { label: 'Created Date', value: po.createdDate, icon: 'ri-calendar-line', color: 'text-gray-700' },
+                    { label: 'PO Date', value: po.createdDate, icon: 'ri-calendar-line', color: 'text-gray-700' },
                     { label: 'Expected Delivery', value: po.expectedDeliveryDate, icon: 'ri-truck-line', color: 'text-gray-700' },
                   ].map((item) => (
                     <div key={item.label} className="bg-gray-50 rounded-lg p-3">
@@ -484,7 +484,7 @@ export default function POApprovalPage() {
     taxAmount: Number(raw.taxAmount) || 0,
     status: String(raw.status) as POData['status'],
     priority: (String(raw.priority || 'medium').toLowerCase() as POData['priority']),
-    createdDate: String(raw.createdAt || ''),
+    createdDate: String(raw.poDate || raw.createdAt || ''),
     expectedDeliveryDate: String(raw.expectedDeliveryDate || ''),
     paymentTerms: String(raw.paymentTerms || ''),
     incoterms: String(raw.incoterms || ''),

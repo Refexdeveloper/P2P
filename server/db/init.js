@@ -185,6 +185,7 @@ async function init() {
     `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_file_path VARCHAR(500) NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN vendor_delivery_confirmed_date DATE NULL`,
     `ALTER TABLE purchase_orders ADD COLUMN vendor_accepted_at TIMESTAMP NULL`,
+    `ALTER TABLE purchase_orders ADD COLUMN po_date DATE NULL`,
     `ALTER TABLE purchase_requests ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
     `ALTER TABLE purchase_orders ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
     `CREATE TABLE IF NOT EXISTS letterhead_branding (

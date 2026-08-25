@@ -733,7 +733,7 @@ async function persistFunctionalOwnRfq(user, prId, body, { markSubmitted }) {
   const { seedFunctionalOwnRfq } = await import('./rfqService.js');
   await seedFunctionalOwnRfq(user, prId, vendors, {
     markSubmitted,
-    maxRounds: body.maxRounds ?? body.max_rounds ?? 4,
+    maxRounds: body.maxRounds ?? body.max_rounds ?? 1,
   });
 }
 

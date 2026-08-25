@@ -193,6 +193,7 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_orders ADD COLUMN cancellation_attachments_json JSON NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN cancelled_by INT NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN cancelled_at TIMESTAMP NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN po_date DATE NULL`,
   `CREATE TABLE IF NOT EXISTS po_site_lookups (
     id INT AUTO_INCREMENT PRIMARY KEY,
     lookup_type ENUM('site_address', 'site_contact', 'project_manager') NOT NULL,

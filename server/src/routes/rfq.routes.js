@@ -276,7 +276,7 @@ router.post('/invitations/:id/send-back', requireRoles('Requester', 'SCM Buyer')
         tableRows: mapInvitationsToTableRows(rfq, full.config),
         config: full.config,
       },
-      message: 'Send-back email sent to vendor',
+      message: 'Next quotation round started',
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

@@ -19,11 +19,17 @@ const ACTION_META = {
     headerBg: 'linear-gradient(135deg,#b91c1c,#dc2626)',
     accent: '#b91c1c',
   },
+  verified: {
+    subjectPrefix: 'PO final verified',
+    badge: 'Final verified',
+    headerBg: 'linear-gradient(135deg,#047857,#10b981)',
+    accent: '#047857',
+  },
 };
 
 /**
  * PO workflow email (manager approval / buyer final verify).
- * @param {'assign'|'sendback'|'reject'} action
+ * @param {'assign'|'sendback'|'reject'|'verified'} action
  */
 export function buildPoWorkflowEmail({
   po,
@@ -65,6 +71,8 @@ export function buildPoWorkflowEmail({
               ? ` a purchase order needs your attention at <strong style="color:#fff;">${escapeHtml(stage)}</strong>.`
               : action === 'sendback'
                 ? ` a purchase order was sent back by <strong style="color:#fff;">${escapeHtml(actorName || roleDisplay || 'Approver')}</strong>.`
+                : action === 'verified'
+                  ? ` the purchase order was final-verified by <strong style="color:#fff;">${escapeHtml(actorName || 'SCM Buyer')}</strong>. This notice is for requester and approvers only.`
                 : ` a purchase order was rejected by <strong style="color:#fff;">${escapeHtml(actorName || roleDisplay || 'Approver')}</strong>.`
           }
         </div>
@@ -101,7 +109,7 @@ export function buildPoWorkflowEmail({
           portalUrl
             ? `<p style="text-align:center;margin:24px 0 8px 0;">
           <a href="${portalUrl}" target="_blank" style="display:inline-block;padding:13px 26px;background:${meta.accent};color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">
-            ${escapeHtml(ctaLabel || (action === 'assign' ? 'Open task' : action === 'sendback' ? 'Review &amp; re-sign' : 'View status'))}
+            ${escapeHtml(ctaLabel || (action === 'assign' ? 'Open task' : action === 'sendback' ? 'Review &amp; re-sign' : action === 'verified' ? 'Track PO' : 'View status'))}
           </a>
         </p>`
             : ''

@@ -122,7 +122,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
                     <p className="text-sm font-semibold text-teal-600">{po.prId}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">Created Date</p>
+                    <p className="text-sm text-gray-600 mb-1">PO Date</p>
                     <p className="text-sm font-medium text-gray-900">{po.createdDate}</p>
                   </div>
                   <div>

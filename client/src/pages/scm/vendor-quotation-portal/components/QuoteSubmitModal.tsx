@@ -19,11 +19,11 @@ const formatCurrency = (amount: number) =>
 export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
   const [paymentTerms, setPaymentTerms] = useState('Net 30');
   const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState<string[]>([]);
+  const [zeroConfirm, setZeroConfirm] = useState(false);
   const [lines, setLines] = useState<QuotedLine[]>(
     rfq.lineItems.map(li => ({
       ...li,
-      quotedUnitPrice: li.quotedUnitPrice || li.estimatedUnitPrice,
+      quotedUnitPrice: li.quotedUnitPrice != null ? li.quotedUnitPrice : li.estimatedUnitPrice,
       leadTimeDays: li.leadTimeDays || 14,
       remarks: li.remarks || '',
     }))
@@ -37,11 +37,21 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
   const gst = totalQuoted * 0.18;
   const grandTotal = totalQuoted + gst;
 
-  const handleSubmit = () => {
+  const handleSubmit = (acceptZero = false) => {
     const errs: string[] = [];
-    if (lines.some(l => !l.quotedUnitPrice || l.quotedUnitPrice <= 0)) errs.push('All line items must have a quoted unit price.');
+    if (lines.some((l) => l.quotedUnitPrice == null || Number(l.quotedUnitPrice) < 0 || Number.isNaN(Number(l.quotedUnitPrice)))) {
+      errs.push('All line items must have a quoted unit price (0 is allowed).');
+    }
     if (!paymentTerms.trim()) errs.push('Payment terms are required.');
-    if (errs.length) { setErrors(errs); return; }
+    if (errs.length) {
+      setErrors(errs);
+      return;
+    }
+    const zeroCount = lines.filter((l) => Number(l.quotedUnitPrice) === 0).length;
+    if (zeroCount > 0 && !acceptZero) {
+      setZeroConfirm(true);
+      return;
+    }
     setErrors([]);
     onSubmit(rfq.id, lines, paymentTerms, notes);
   };
@@ -135,8 +145,8 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
                         <input
                           type="number"
                           min="0"
-                          value={line.quotedUnitPrice || ''}
-                          onChange={e => updateLine(line.id, 'quotedUnitPrice', parseFloat(e.target.value) || 0)}
+                          value={Number.isFinite(line.quotedUnitPrice) ? line.quotedUnitPrice : ''}
+                          onChange={e => updateLine(line.id, 'quotedUnitPrice', e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                           className="w-32 mx-auto block border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                           placeholder="0"
                         />
@@ -152,7 +162,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
                         />
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                        {line.quotedUnitPrice > 0 ? formatCurrency(line.quotedUnitPrice * line.quantity) : '—'}
+                        {formatCurrency((Number(line.quotedUnitPrice) || 0) * line.quantity)}
                       </td>
                     </tr>
                   ))}
@@ -248,7 +258,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
               Cancel
             </button>
             <button
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium text-sm flex items-center gap-2 whitespace-nowrap cursor-pointer"
             >
               <i className="ri-send-plane-fill"></i>
@@ -257,6 +267,37 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
           </div>
         </div>
       </div>
+      {zeroConfirm && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-bold text-gray-900">Submit quote with ₹0?</h3>
+            </div>
+            <div className="p-5 text-sm text-gray-700">
+              One or more line items have quoted unit ₹0. Submit anyway?
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setZeroConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setZeroConfirm(false);
+                  handleSubmit(true);
+                }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+              >
+                Submit anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
