@@ -7,6 +7,7 @@ import {
   ROLE_DEFAULT_PERMISSIONS,
   ASSIGNABLE_ROLES,
   getUserPermissionCodes,
+  resolvePermissionCodesFromStored,
   setUserPermissions,
   isSuperAdmin,
 } from './permissionService.js';
@@ -52,7 +53,11 @@ function clearUploadDir(dirPath) {
   return removed;
 }
 
-async function mapUserRow(u) {
+async function mapUserRow(u, permissionCodes) {
+  const permissions =
+    permissionCodes !== undefined
+      ? resolvePermissionCodesFromStored(u.role, permissionCodes)
+      : await getUserPermissionCodes(u.id, u.role);
   return {
     id: u.id,
     name: u.name,
@@ -60,7 +65,7 @@ async function mapUserRow(u) {
     role: u.role,
     isActive: Boolean(u.is_active),
     departmentName: u.department_name || '',
-    permissions: await getUserPermissionCodes(u.id, u.role),
+    permissions,
     isSuperAdmin: isSuperAdmin(u.role),
     refexoneUserId: u.refexone_user_id || null,
     source: u.refexone_user_id ? 'refexone' : 'local',
@@ -75,7 +80,26 @@ export async function listUsersForAdmin() {
      ORDER BY u.name`
   );
 
-  return Promise.all(rows.map(mapUserRow));
+  // One permissions query for all users — avoids Promise.all(N) pool exhaustion
+  // ("Queue limit reached") on large RefexOne syncs.
+  const permByUser = new Map();
+  if (rows.length) {
+    const ids = rows.map((r) => r.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const [permRows] = await pool.query(
+      `SELECT user_id, permission_code FROM user_permissions WHERE user_id IN (${placeholders})`,
+      ids
+    );
+    for (const row of permRows) {
+      const uid = Number(row.user_id);
+      if (!permByUser.has(uid)) permByUser.set(uid, []);
+      permByUser.get(uid).push(row.permission_code);
+    }
+  }
+
+  return Promise.all(
+    rows.map((u) => mapUserRow(u, permByUser.get(Number(u.id)) || []))
+  );
 }
 
 export async function syncUsersFromRefexOne() {

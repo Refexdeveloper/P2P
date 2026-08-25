@@ -1698,11 +1698,29 @@ async function getPendingPostRfqTask(prId) {
 
 async function resolvePostRfqRoleConfigForUser(user, prId, prStatus) {
   const pendingTask = await getPendingPostRfqTask(prId);
+
+  // Assigned person (any JWT role) may act as the task's workflow role
   if (pendingTask?.assigned_user_id === user.id) {
     const cfg = getPostRfqRoleConfig(pendingTask.assigned_role);
     if (cfg && cfg.status === prStatus) {
       return { roleConfig: cfg, workflowRole: pendingTask.assigned_role, pendingTask };
     }
+  }
+
+  // Super Admin / admin override: act as the role required for the current PR status
+  if (user.role === 'Super Admin') {
+    if (pendingTask?.assigned_role) {
+      const fromTask = getPostRfqRoleConfig(pendingTask.assigned_role);
+      if (fromTask && fromTask.status === prStatus) {
+        return { roleConfig: fromTask, workflowRole: pendingTask.assigned_role, pendingTask };
+      }
+    }
+    for (const [role, cfg] of Object.entries(POST_RFQ_ROLE_MAP)) {
+      if (cfg.status === prStatus) {
+        return { roleConfig: cfg, workflowRole: role, pendingTask };
+      }
+    }
+    throw new Error('PR is not in a post-RFQ approval stage');
   }
 
   const roleConfig = getPostRfqRoleConfig(user.role);
@@ -1909,12 +1927,15 @@ export async function getVendorComparisonMatrix(user, prId) {
     askBusinessApproval: Boolean(
       pr.vendorSelection === 'own' &&
         pr.status === PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL &&
-        (user.role === 'HOD Approver' ||
+        (user.role === 'Super Admin' ||
+          user.role === 'HOD Approver' ||
           pendingTask?.assigned_role === 'HOD Approver' ||
           assignedRoleConfig?.status === PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL)
     ),
     canApprove: Boolean(
-      assignedRoleConfig
+      user.role === 'Super Admin'
+        ? postRfqStatuses.includes(pr.status)
+        : assignedRoleConfig
         ? pr.status === assignedRoleConfig.status
         : userRoleConfig &&
             (pr.status === userRoleConfig.status ||
@@ -2293,7 +2314,13 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
     await conn.commit();
 
     const updatedPr = await getPurchaseRequestById(prId);
-    const requester = { name: updatedPr.requester, email: '' };
+    const [reqRows] = await pool.query(`SELECT name, email FROM users WHERE id = ?`, [
+      updatedPr.requesterId || pr.requester_id,
+    ]);
+    const requester = {
+      name: reqRows[0]?.name || updatedPr.requester,
+      email: reqRows[0]?.email || '',
+    };
 
     if (nextRole && action === 'approve') {
       const nextCfg = POST_RFQ_ROLE_MAP[nextRole];

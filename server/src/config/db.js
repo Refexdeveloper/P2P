@@ -17,8 +17,11 @@ function buildPoolConfig() {
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'p2p_system',
     waitForConnections: true,
-    connectionLimit: Number(process.env.DB_POOL_SIZE) || 15,
-    queueLimit: 50,
+    // Admin user-list + PR enrich do many parallel queries; keep headroom.
+    connectionLimit: Number(process.env.DB_POOL_SIZE) || 25,
+    // 0 = unlimited wait queue (mysql2 default). Finite limits surface as
+    // "Queue limit reached." under RefexOne / User Permissions load.
+    queueLimit: Number(process.env.DB_QUEUE_LIMIT ?? 0),
     enableKeepAlive: true,
     keepAliveInitialDelay: 10_000,
     // Return TIMESTAMP values as UTC and parse them as UTC so local IST and

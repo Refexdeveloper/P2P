@@ -211,6 +211,22 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
     return;
   }
 
+  // Requester RFQ Entry — same "Sent Back" mail family (admin Notification Logs)
+  if (target.key === 'REQUESTER_RFQ' && (assignee?.email || requester?.email)) {
+    queuePostRfqActionNotification(
+      updatedPr,
+      applyResult.actorRole || 'Approver',
+      'return',
+      applyResult.remarksLine,
+      {
+        name: assignee?.name || requester?.name || updatedPr.requester,
+        email: assignee?.email || requester?.email,
+      },
+      { editPr: false }
+    );
+    return;
+  }
+
   if (assignee?.email && target.assignedRole) {
     const isRfqEntry = target.taskType === 'RFQ_ENTRY';
     const isCreatePo =

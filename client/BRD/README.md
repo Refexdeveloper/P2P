@@ -37,6 +37,7 @@ This folder contains the complete Business Requirements Document for the Procure
 | 16 | [Data Dictionary](./16-Data-Dictionary.md) | All database tables & fields |
 | 17 | [API Reference](./17-API-Reference.md) | All REST endpoints |
 | 18 | [Integrations & Notifications](./18-Integrations-and-Notifications.md) | RefexOne, email, PDF |
+| 19 | [UAT — Create PR All Phases](./19-UAT-Create-PR-All-Phases.md) | Strong UAT cases: draft, submit, approvals, RFQ, PO |
 
 ---
 

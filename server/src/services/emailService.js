@@ -496,8 +496,26 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
     return info;
   } catch (err) {
     smtpReady = false;
-    await updateEmailLog(logId, { status: 'failed', errorMessage: err.message });
-    throw err;
+    // One reconnect + retry — transient SMTP drops often surface as Failed on return/reject mail
+    try {
+      await ensureSmtpReady();
+      const transport = getTransporter();
+      const info = await transport.sendMail({
+        from: getFromAddress(),
+        to: toList.join(', '),
+        bcc: mailOptions.bcc?.length ? mailOptions.bcc.join(', ') : undefined,
+        subject,
+        text,
+        html,
+        attachments: attachments?.length ? attachments : undefined,
+      });
+      await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
+      console.log(`Email sent (retry) to ${toList.join(', ')} — ${info.messageId}`);
+      return info;
+    } catch (err2) {
+      await updateEmailLog(logId, { status: 'failed', errorMessage: err2.message || err.message });
+      throw err2;
+    }
   }
 }
 
@@ -774,7 +792,12 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
     emailType: 'pr_post_rfq_action',
     prId: pr.id || pr.prId || null,
     prNumber: pr.prNumber || pr.pr_number || null,
-    meta: { action, approverRole, editPr: Boolean(options.editPr) },
+    meta: {
+      action,
+      approverRole,
+      editPr: Boolean(options.editPr),
+      remarks: String(remarks || ''),
+    },
   });
 }
 

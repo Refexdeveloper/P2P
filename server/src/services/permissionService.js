@@ -131,6 +131,77 @@ export async function seedNavigationPermissions() {
   }
 }
 
+/**
+ * Resolve effective nav codes from already-loaded stored rows (no DB I/O).
+ * Applies the same role heal rules in memory so admin list matches login sidebar.
+ */
+export function resolvePermissionCodesFromStored(role, storedCodes = []) {
+  if (isSuperAdmin(role)) {
+    return NAV_ITEMS.map((n) => n.code);
+  }
+
+  const defaults = ROLE_DEFAULT_PERMISSIONS[role] || ['nav.home_dashboard', 'nav.tasks'];
+  const validCodes = new Set(NAV_ITEMS.map((n) => n.code));
+  const stored = (storedCodes || []).map(String).filter((c) => validCodes.has(c));
+
+  if (!stored.length) return [...defaults];
+
+  if (role === 'PR Manager') {
+    if (!stored.includes('nav.pr_manager_dashboard') && validCodes.has('nav.pr_manager_dashboard')) {
+      stored.push('nav.pr_manager_dashboard');
+    }
+    const tasksIdx = stored.indexOf('nav.tasks');
+    if (tasksIdx >= 0) stored.splice(tasksIdx, 1);
+    if (!stored.includes('nav.rfq_approval') && validCodes.has('nav.rfq_approval')) {
+      stored.push('nav.rfq_approval');
+    }
+  }
+
+  if (role === 'Requester' || role === 'SCM Buyer' || role === 'SCM Manager') {
+    const healCodes = [
+      'nav.item_master',
+      'nav.vendor_master',
+      'nav.category_master',
+      'nav.entity_master',
+      'nav.department_master',
+    ];
+    if (role === 'Requester') {
+      healCodes.push(
+        'nav.requester_dashboard',
+        'nav.create_pr',
+        'nav.rfq_entry',
+        'nav.track_pr',
+        'nav.tasks'
+      );
+    }
+    if (role === 'SCM Buyer' || role === 'SCM Manager') {
+      healCodes.push('nav.po_letterhead_master', 'nav.letterhead_master');
+    }
+    if (role === 'SCM Buyer') {
+      healCodes.push(
+        'nav.purchase_requests',
+        'nav.rfq_approval',
+        'nav.create_po',
+        'nav.buyer_final_verify',
+        'nav.vendor_po_acceptance',
+        'nav.track_po',
+        'nav.scm_rfq_entry',
+        'nav.po_excel_import'
+      );
+      const tasksIdx = stored.indexOf('nav.tasks');
+      if (tasksIdx >= 0) stored.splice(tasksIdx, 1);
+    }
+    if (role === 'SCM Manager') {
+      healCodes.push('nav.scm_manager_dashboard', 'nav.po_approval', 'nav.rfq_approval', 'nav.track_po');
+    }
+    for (const code of healCodes) {
+      if (!stored.includes(code) && validCodes.has(code)) stored.push(code);
+    }
+  }
+
+  return stored;
+}
+
 export async function getUserPermissionCodes(userId, role) {
   if (isSuperAdmin(role)) {
     return NAV_ITEMS.map((n) => n.code);
