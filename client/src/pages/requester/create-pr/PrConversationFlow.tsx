@@ -621,6 +621,8 @@ export default function PrConversationFlow({
               >
                 Back
               </button>
+              {((step.type === 'q' && currentHeader && !currentHeader.required) ||
+                (step.type === 'line' && currentLineQ && !currentLineQ.required)) && (
               <button
                 type="button"
                 onClick={handleSkip}
@@ -628,6 +630,7 @@ export default function PrConversationFlow({
               >
                 Skip
               </button>
+              )}
               {(currentHeader?.input !== 'choice' && currentHeader?.field !== 'requestType') || currentLineQ ? (
                 <button
                   type="button"

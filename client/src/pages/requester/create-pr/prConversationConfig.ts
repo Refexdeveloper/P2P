@@ -186,8 +186,8 @@ export const LINE_ITEM_QUESTIONS: LineItemQuestionConfig[] = [
   },
   {
     field: 'estimatedCost',
-    question: 'What is the unit price? (optional)',
-    required: false,
+    question: 'What is the unit price?',
+    required: true,
     input: 'number',
   },
 ];

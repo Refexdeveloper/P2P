@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS pr_line_items (
   quantity INT NOT NULL DEFAULT 1,
   unit VARCHAR(50) NOT NULL DEFAULT 'Nos',
   unit_cost DECIMAL(15, 2) NOT NULL DEFAULT 0,
+  gst_percentage DECIMAL(6, 2) NOT NULL DEFAULT 18,
   total DECIMAL(15, 2) NOT NULL DEFAULT 0,
   FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
   INDEX idx_pr_line_pr (pr_id)

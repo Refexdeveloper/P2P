@@ -176,6 +176,7 @@ const MIGRATIONS = [
   `ALTER TABLE po_line_items ADD COLUMN item_name VARCHAR(255) NULL`,
   `ALTER TABLE po_line_items ADD COLUMN unit VARCHAR(50) NOT NULL DEFAULT 'Nos'`,
   `ALTER TABLE pr_line_items ADD COLUMN unit VARCHAR(50) NOT NULL DEFAULT 'Nos'`,
+  `ALTER TABLE pr_line_items ADD COLUMN gst_percentage DECIMAL(6, 2) NOT NULL DEFAULT 18`,
   `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_token VARCHAR(64) NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_mode ENUM('email', 'manual') NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_status ENUM('pending', 'accepted', 'rejected', 'partial') NULL`,

@@ -21,6 +21,25 @@ const SYSTEM_ITEM_DESC = /^created from create pr by /i;
 const noSpinnerClass =
   '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
 
+export function lineGstPercent(item?: { gstPercentage?: number } | null): number {
+  if (item?.gstPercentage == null) return 18;
+  const n = Number(item.gstPercentage);
+  if (!Number.isFinite(n) || n < 0) return 18;
+  return Math.min(100, n);
+}
+
+/** Qty × unit price, excluding GST. */
+export function lineExGstAmount(quantity: number, unitPrice: number): number {
+  return Math.round(Number(quantity || 0) * Number(unitPrice || 0) * 100) / 100;
+}
+
+/** Qty × unit price × (1 + GST%), rounded to paise. */
+export function lineInclusiveAmount(quantity: number, unitPrice: number, gstPct?: number): number {
+  const ex = lineExGstAmount(quantity, unitPrice);
+  const pct = lineGstPercent({ gstPercentage: gstPct });
+  return Math.round(ex * (1 + pct / 100) * 100) / 100;
+}
+
 export function createEmptyLineItem(): LineItem {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -32,7 +51,7 @@ export function createEmptyLineItem(): LineItem {
     category: '',
     unit: 'Nos',
     hsnCode: '',
-    gstPercentage: undefined,
+    gstPercentage: 18,
   };
 }
 
@@ -119,14 +138,14 @@ export default function LineItemEditorForm({
   const [draft, setDraft] = useState<LineItem>(initial);
   const [qtyInput, setQtyInput] = useState(initial.quantity > 0 ? String(initial.quantity) : '');
   const [gstInput, setGstInput] = useState(
-    initial.gstPercentage == null ? '' : String(initial.gstPercentage)
+    initial.gstPercentage == null ? '18' : String(initial.gstPercentage)
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setDraft(initial);
     setQtyInput(initial.quantity > 0 ? String(initial.quantity) : '');
-    setGstInput(initial.gstPercentage == null ? '' : String(initial.gstPercentage));
+    setGstInput(initial.gstPercentage == null ? '18' : String(initial.gstPercentage));
     setErrors({});
   }, [initial]);
 
@@ -138,7 +157,7 @@ export default function LineItemEditorForm({
     setDraft((prev) => applyMasterToDraft(prev, master, { created }));
     if (created || !master) return;
     const gst = Number(master.gstPercentage);
-    setGstInput(Number.isFinite(gst) ? String(gst) : '');
+    setGstInput(Number.isFinite(gst) ? String(gst) : '18');
   };
 
   const parsedQty = parseInt(qtyInput, 10);
@@ -156,8 +175,10 @@ export default function LineItemEditorForm({
     }
     if (!draft.category) next.category = 'Category is required';
     if (!(quantity >= 1)) next.quantity = 'Enter a quantity of 1 or more';
-    if (!(draft.estimatedCost > 0)) next.cost = 'Unit price must be greater than 0';
-    if (gstInput.trim() !== '' && (parsedGst == null || !Number.isFinite(parsedGst) || parsedGst < 0 || parsedGst > 100)) {
+    if (!(draft.estimatedCost > 0)) next.cost = 'Unit price is required and must be greater than 0';
+    if (gstInput.trim() === '' || parsedGst == null || !Number.isFinite(parsedGst)) {
+      next.gst = 'GST % is required (enter 0 if exempt)';
+    } else if (parsedGst < 0 || parsedGst > 100) {
       next.gst = 'Enter GST between 0 and 100';
     }
     setErrors(next);
@@ -172,7 +193,7 @@ export default function LineItemEditorForm({
       description: draft.description.trim(),
       quantity,
       unit: draft.unit || 'Nos',
-      gstPercentage,
+      gstPercentage: gstPercentage ?? 0,
     });
   };
 
@@ -311,6 +332,7 @@ export default function LineItemEditorForm({
               className={`w-full pl-8 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${noSpinnerClass} ${errors.cost ? 'border-red-400' : 'border-gray-200'}`}
               title="Unit Price"
               aria-label="Unit Price"
+              aria-required="true"
             />
           </div>
           {errors.cost && <p className="text-xs text-red-500 mt-1">{errors.cost}</p>}
@@ -328,7 +350,9 @@ export default function LineItemEditorForm({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">GST %</label>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">
+            GST % <span className="text-red-500">*</span>
+          </label>
           <input
             type="text"
             inputMode="decimal"
@@ -347,7 +371,8 @@ export default function LineItemEditorForm({
               }
               setGstInput(raw);
             }}
-            placeholder="Enter GST % (e.g. 18)"
+            placeholder="e.g. 18"
+            aria-required="true"
             className={`w-full px-3 py-2 border rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-400 ${errors.gst ? 'border-red-400' : 'border-gray-200'}`}
           />
           <p className="text-[11px] text-gray-400 mt-1">Type 0 for GST-exempt items</p>
@@ -355,14 +380,27 @@ export default function LineItemEditorForm({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Estimated Total</label>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">Estimated Total (incl. GST)</label>
           <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
             <span className="text-sm font-bold text-emerald-700">
-              {formatMoney((quantity || 0) * draft.estimatedCost, currency, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {formatMoney(
+                lineInclusiveAmount(quantity || 0, draft.estimatedCost, gstPercentage),
+                currency,
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }
+              )}
             </span>
+            {lineGstPercent({ gstPercentage }) > 0 && draft.estimatedCost > 0 && quantity > 0 && (
+              <p className="text-[11px] text-emerald-800/70 mt-0.5">
+                {formatMoney(lineExGstAmount(quantity || 0, draft.estimatedCost), currency, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{' '}
+                + GST {lineGstPercent({ gstPercentage })}%
+              </p>
+            )}
           </div>
         </div>
 

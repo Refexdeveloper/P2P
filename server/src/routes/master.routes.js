@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireRoles, requirePermissions } from '../middleware/auth.js';
+import { authenticate, requireRoles, requirePermissions, CREATE_PR_ROLES } from '../middleware/auth.js';
 import {
   listCategories,
   createCategory,
@@ -84,7 +84,7 @@ router.post('/categories/import', canManageCategories, async (req, res) => {
   }
 });
 
-router.post('/categories/chat-create', requireRoles('Requester', 'Super Admin', 'SCM Buyer', 'SCM Manager'), async (req, res) => {
+router.post('/categories/chat-create', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) throw new Error('Category name is required');
@@ -101,7 +101,7 @@ router.post('/categories/chat-create', requireRoles('Requester', 'Super Admin', 
 });
 
 router.post('/categories', (req, res, next) => {
-  if (['SCM Buyer', 'SCM Manager'].includes(req.user?.role)) return next();
+  if (CREATE_PR_ROLES.includes(req.user?.role)) return next();
   return canManageCategories(req, res, next);
 }, async (req, res) => {
   try {
@@ -167,7 +167,7 @@ router.post('/items/import', canManageItems, async (req, res) => {
   }
 });
 
-router.post('/items/chat-create', requireRoles('Requester', 'Super Admin', 'SCM Buyer', 'SCM Manager'), async (req, res) => {
+router.post('/items/chat-create', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) throw new Error('Item name is required');
@@ -186,7 +186,10 @@ router.post('/items/chat-create', requireRoles('Requester', 'Super Admin', 'SCM 
   }
 });
 
-router.post('/items', canManageItems, async (req, res) => {
+router.post('/items', (req, res, next) => {
+  if (CREATE_PR_ROLES.includes(req.user?.role)) return next();
+  return canManageItems(req, res, next);
+}, async (req, res) => {
   try {
     const data = await createItem(req.body);
     res.json({ data, message: `Item ${data.itemCode} created successfully` });
@@ -249,7 +252,7 @@ router.post('/entities/import', canManageEntities, async (req, res) => {
   }
 });
 
-router.post('/entities/chat-create', requireRoles('Requester', 'Super Admin', 'SCM Buyer', 'SCM Manager'), async (req, res) => {
+router.post('/entities/chat-create', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) throw new Error('Entity name is required');
@@ -300,7 +303,7 @@ router.get('/departments', requireRoles(...READ_ROLES), async (req, res) => {
   }
 });
 
-router.post('/departments/chat-create', requireRoles('Requester', 'Super Admin', 'SCM Buyer', 'SCM Manager'), async (req, res) => {
+router.post('/departments/chat-create', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) throw new Error('Department name is required');

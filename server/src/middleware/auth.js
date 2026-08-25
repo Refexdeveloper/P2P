@@ -16,6 +16,17 @@ export function authenticate(req, res, next) {
   }
 }
 
+/** Roles that can open Create PR and quick-add item / vendor / category / department. */
+export const CREATE_PR_ROLES = [
+  'Requester',
+  'Super Admin',
+  'SCM Buyer',
+  'SCM Manager',
+  'HOD Approver',
+  'PR Manager',
+  'CFO',
+];
+
 export function requireRoles(...roles) {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {

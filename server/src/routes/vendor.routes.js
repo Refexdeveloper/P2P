@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireRoles, requirePermissions } from '../middleware/auth.js';
+import { authenticate, requireRoles, requirePermissions, CREATE_PR_ROLES } from '../middleware/auth.js';
 import {
   listVendors,
   createVendor,
@@ -22,7 +22,7 @@ function sendCsv(res, filename, csv) {
   res.send(csv);
 }
 
-router.get('/', requireRoles('SCM Buyer', 'SCM Manager', 'Requester'), async (req, res) => {
+router.get('/', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const page = req.query.page != null ? Number(req.query.page) : undefined;
     const limit = req.query.limit != null ? Number(req.query.limit) : undefined;
@@ -67,7 +67,7 @@ router.post('/import', canManageVendors, async (req, res) => {
   }
 });
 
-router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager', 'Requester'), async (req, res) => {
+router.get('/:id', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const data = await getVendorById(Number(req.params.id));
     if (!data) return res.status(404).json({ message: 'Vendor not found' });
@@ -77,7 +77,7 @@ router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager', 'Requester'), async 
   }
 });
 
-router.get('/:id/documents/:docType/file', requireRoles('SCM Buyer', 'SCM Manager', 'Requester'), async (req, res) => {
+router.get('/:id/documents/:docType/file', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const { fullPath, fileName } = await getVendorDocumentFile(Number(req.params.id), req.params.docType);
     res.download(fullPath, fileName);
@@ -86,7 +86,7 @@ router.get('/:id/documents/:docType/file', requireRoles('SCM Buyer', 'SCM Manage
   }
 });
 
-router.post('/', requireRoles('SCM Buyer', 'SCM Manager', 'Requester'), async (req, res) => {
+router.post('/', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const data = await createVendor(req.user, req.body);
     res.json({ data, message: `Vendor ${data.vendorCode} created successfully` });

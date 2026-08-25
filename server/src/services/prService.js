@@ -136,6 +136,72 @@ function lineQuantity(value) {
   return n;
 }
 
+function lineGstPercent(item) {
+  const raw = item?.gstPercentage ?? item?.gst_percentage ?? item?.gstPercent;
+  if (raw === '' || raw == null) return 18;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 18;
+  return Math.min(100, n);
+}
+
+function lineInclusiveTotal(qty, cost, gstPct) {
+  const q = Number(qty) || 0;
+  const c = Number(cost) || 0;
+  const g = Number(gstPct) || 0;
+  return Math.round(q * c * (1 + g / 100) * 100) / 100;
+}
+
+function lineItemsEstimatedTotal(lineItems = []) {
+  return lineItems.reduce((sum, item) => {
+    const qty = Number(item.quantity) || 0;
+    const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
+    return sum + lineInclusiveTotal(qty, cost, lineGstPercent(item));
+  }, 0);
+}
+
+async function insertPrLineItem(db, prId, item) {
+  const qty = Number(item.quantity);
+  const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
+  const gstPct = lineGstPercent(item);
+  const total = lineInclusiveTotal(qty, cost, gstPct);
+  const unit = normalizeLineUnit(item.unit || item.uom);
+  try {
+    await db.query(
+      `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, gst_percentage, total)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [prId, item.category || '', item.description, qty, unit, cost, gstPct, total]
+    );
+  } catch (err) {
+    if (err?.code !== 'ER_BAD_FIELD_ERROR' && !String(err?.message || '').includes('gst_percentage')) {
+      throw err;
+    }
+    await db.query(
+      `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [prId, item.category || '', item.description, qty, unit, cost, total]
+    );
+  }
+}
+
+function assertPrSubmitRequirements(extras = {}, lineItems) {
+  if (!String(extras.deliveryPoc || '').trim()) {
+    throw new Error('POC for delivery is required');
+  }
+  if (!String(extras.placeOfDelivery || '').trim()) {
+    throw new Error('Place of delivery is required');
+  }
+  if (!String(extras.expectedDeliveryTimeline || '').trim()) {
+    throw new Error('Expected delivery timeline is required');
+  }
+  if (!Array.isArray(lineItems)) return;
+  for (const item of lineItems) {
+    const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
+    if (!(cost > 0)) {
+      throw new Error('Unit price is required for every line item');
+    }
+  }
+}
+
 function formatPrApprovalStage(stage, prFlow = 'standard') {
   if (prFlow === 'functional') {
     const functionalLabels = {
@@ -438,6 +504,7 @@ async function enrichPR(row) {
       unit: normalizeLineUnit(li.unit || li.uom),
       unitCost: Number(li.unit_cost),
       unitPrice: Number(li.unit_cost),
+      gstPercentage: Number.isFinite(Number(li.gst_percentage)) ? Number(li.gst_percentage) : 18,
       total: Number(li.total),
     })),
     approvalHistory,
@@ -814,6 +881,9 @@ export async function createPurchaseRequest(user, body) {
       throw new Error('Add at least one vendor with a round-1 quotation and file');
     }
   }
+  if (submit) {
+    assertPrSubmitRequirements(extras, lineItems);
+  }
 
   const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ?', [department]);
   if (!deptRows.length) throw new Error('Invalid department');
@@ -824,10 +894,7 @@ export async function createPurchaseRequest(user, body) {
   );
   if (!entityRows.length) throw new Error('Invalid or inactive entity');
 
-  const totalAmount = lineItems.reduce(
-    (sum, item) => sum + Number(item.quantity) * Number(item.unitCost ?? item.estimatedCost ?? 0),
-    0
-  );
+  const totalAmount = lineItemsEstimatedTotal(lineItems);
   const prTitle = title || lineItems[0]?.description || `${requestType} Request`;
   const status = submit ? PR_STATUS.PENDING_HOD_APPROVAL : PR_STATUS.DRAFT;
   const currentStage = submit ? STAGE.HOD_REVIEW : null;
@@ -877,13 +944,7 @@ export async function createPurchaseRequest(user, body) {
     const prId = result.insertId;
 
     for (const item of lineItems) {
-      const qty = Number(item.quantity);
-      const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
-      await conn.query(
-        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [prId, item.category || '', item.description, qty, normalizeLineUnit(item.unit || item.uom), cost, qty * cost]
-      );
+      await insertPrLineItem(conn, prId, item);
     }
 
     if (attachments.length) {
@@ -1824,10 +1885,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     nextEntityId = Number(entityId) || null;
   }
 
-  const totalAmount = lineItems.reduce(
-    (sum, item) => sum + Number(item.quantity) * Number(item.unitCost ?? item.estimatedCost ?? 0),
-    0
-  );
+  const totalAmount = lineItemsEstimatedTotal(lineItems);
   const prTitle = title || lineItems[0]?.description || `${requestType || pr.request_type} Request`;
   const { prFlow, vendorMode, approvalUserId, approvalUserIds } = resolveFlowAndVendor(body, pr);
   if (prFlow === 'functional' && approvalUserIds.length) {
@@ -1892,13 +1950,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     await db.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
 
     for (const item of lineItems) {
-      const qty = Number(item.quantity);
-      const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
-      await db.query(
-        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [prId, item.category || '', item.description, qty, normalizeLineUnit(item.unit || item.uom), cost, qty * cost]
-      );
+      await insertPrLineItem(db, prId, item);
     }
 
     if (attachments.length) {
@@ -1990,10 +2042,7 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     nextEntityId = Number(entityId) || null;
   }
 
-  const totalAmount = lineItems.reduce(
-    (sum, item) => sum + Number(item.quantity) * Number(item.unitCost ?? item.estimatedCost ?? 0),
-    0
-  );
+  const totalAmount = lineItemsEstimatedTotal(lineItems);
   const prTitle = title || lineItems[0]?.description || `${requestType || pr.request_type} Request`;
   const { prFlow, vendorMode, approvalUserId, approvalUserIds } = resolveFlowAndVendor(body, pr);
   if (prFlow === 'functional' && approvalUserIds.length) {
@@ -2052,13 +2101,7 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
 
     await conn.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
     for (const item of lineItems) {
-      const qty = Number(item.quantity);
-      const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
-      await conn.query(
-        `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [prId, item.category || '', item.description, qty, normalizeLineUnit(item.unit || item.uom), cost, qty * cost]
-      );
+      await insertPrLineItem(conn, prId, item);
     }
 
     await conn.query(
@@ -2161,6 +2204,14 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
   if (pr.status !== PR_STATUS.RETURNED && pr.status !== PR_STATUS.DRAFT) {
     throw new Error('Only returned or draft PRs can be resubmitted');
   }
+
+  const extrasForSubmit = parseRequisitionExtras(updateFields, {
+    deliveryPoc: pr.delivery_poc,
+    placeOfDelivery: pr.place_of_delivery,
+    expectedDeliveryTimeline: pr.expected_delivery_timeline,
+  });
+  const lineItemsForSubmit = Array.isArray(updateFields.lineItems) ? updateFields.lineItems : undefined;
+  assertPrSubmitRequirements(extrasForSubmit, lineItemsForSubmit);
 
   const conn = await pool.getConnection();
   try {
@@ -2829,6 +2880,7 @@ export function toCfoDashboardFormat(pr) {
       unit: li.unit || li.uom || 'Nos',
       estimatedPrice: li.unitPrice,
       totalPrice: li.total,
+      gstPercentage: li.gstPercentage,
       category: li.category,
     })),
     approvalHistory: pr.approvalHistory.map((h) => ({

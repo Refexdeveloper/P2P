@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireRoles } from '../middleware/auth.js';
+import { authenticate, requireRoles, CREATE_PR_ROLES } from '../middleware/auth.js';
 import {
   createPurchaseRequest,
   getPurchaseRequestById,
@@ -26,7 +26,7 @@ const router = Router();
 
 router.use(authenticate);
 
-router.post('/', requireRoles('Requester'), async (req, res) => {
+router.post('/', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const pr = await createPurchaseRequest(req.user, req.body);
     res.status(201).json({ data: pr });
@@ -88,7 +88,7 @@ router.get('/stats/requester', requireRoles('Requester'), async (req, res) => {
   }
 });
 
-router.get('/l1-manager', requireRoles('Requester'), async (req, res) => {
+router.get('/l1-manager', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const data = await previewL1Manager(req.user, req.query.department);
     res.json({ data });
@@ -136,7 +136,7 @@ router.get('/:id/attachments/:attachmentId/file', async (req, res) => {
   }
 });
 
-router.post('/:id/attachments', requireRoles('Requester', 'Super Admin'), async (req, res) => {
+router.post('/:id/attachments', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   try {
     const pr = await getPurchaseRequestById(req.params.id);
     if (!pr) return res.status(404).json({ message: 'PR not found' });

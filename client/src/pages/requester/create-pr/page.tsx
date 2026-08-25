@@ -5,11 +5,22 @@ import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, Categ
 import { useAuth } from '../../../contexts/AuthContext';
 import DepartmentCombobox from './DepartmentCombobox';
 import SearchCreateField from './SearchCreateField';
-import LineItemEditorForm, { LineItem, createEmptyLineItem } from './LineItemEditorForm';
+import LineItemEditorForm, {
+  LineItem,
+  createEmptyLineItem,
+  lineInclusiveAmount,
+} from './LineItemEditorForm';
 import FunctionalOwnRfqSection, {
   FunctionalRfqVendorRow,
 } from './FunctionalOwnRfqSection';
 import UserSearchSelect from './UserSearchSelect';
+import {
+  clearCreatePrDraft,
+  CreatePrDraftSnapshot,
+  hasMeaningfulCreatePrDraft,
+  readCreatePrDraft,
+  writeCreatePrDraft,
+} from './createPrDraftStorage';
 import {
   CURRENCY_OPTIONS,
   DEFAULT_CURRENCY,
@@ -48,12 +59,33 @@ interface ReturnFeedback {
   remarks: string;
 }
 
-interface ReturnFeedback {
-  stage: string;
-  user: string;
-  role: string;
-  date: string;
-  remarks: string;
+const FIELD_SCROLL_ORDER = [
+  'prTitle',
+  'entityId',
+  'department',
+  'businessJustification',
+  'requiredDate',
+  'billingLocationId',
+  'billingAddress',
+  'deliveryPoc',
+  'placeOfDelivery',
+  'expectedDeliveryTimeline',
+  'paymentTerms',
+  'approvalUserId',
+  'rfqVendors',
+  'lineItems',
+];
+
+function scrollToFirstError(errs: Record<string, string>) {
+  const first =
+    FIELD_SCROLL_ORDER.find((key) => errs[key]) ||
+    Object.keys(errs).find((key) => key.startsWith('item_')) ||
+    Object.keys(errs)[0];
+  if (!first) return;
+  const field = first.startsWith('item_') ? 'lineItems' : first;
+  requestAnimationFrame(() => {
+    document.querySelector(`[data-field="${field}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 }
 
 export default function CreatePRPage() {
@@ -119,6 +151,11 @@ export default function CreatePRPage() {
   const [returnFeedback, setReturnFeedback] = useState<ReturnFeedback | null>(null);
   const [resubmitRemarks, setResubmitRemarks] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [savedDraftId, setSavedDraftId] = useState<number | null>(null);
+  const [softSaveHint, setSoftSaveHint] = useState('');
+  const skipSoftSaveRef = useRef(false);
+  const hydrateDoneRef = useRef(false);
+  const snapshotRef = useRef<CreatePrDraftSnapshot | null>(null);
 
   const isReturned = prStatus === 'RETURNED';
   const isPendingEditFlow =
@@ -128,6 +165,60 @@ export default function CreatePRPage() {
     ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(prStatus);
   const isResubmitFlow = isEditMode && isReturned && !isAdminEditFlow;
   const backTo = isAdminEditFlow || isEditMode ? '/requester/track-pr' : '/requester/dashboard';
+  const persistPrId = editPrId || savedDraftId;
+  const restoredKeyRef = useRef('');
+
+  const applyDraftSnapshot = (draft: CreatePrDraftSnapshot) => {
+    setPrTitle(draft.prTitle || '');
+    setDepartment(draft.department || '');
+    setEntityId(draft.entityId === '' || draft.entityId == null ? '' : Number(draft.entityId));
+    setRequestType(draft.requestType || 'Opex');
+    setPurchaseType(draft.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
+    setVendorSelection(draft.vendorSelection === 'own' ? 'own' : 'scm');
+    setPrFlow(draft.prFlow === 'functional' ? 'functional' : 'standard');
+    setApprovalUserIds(Array.isArray(draft.approvalUserIds) ? draft.approvalUserIds : []);
+    setRfqMaxRounds(draft.rfqMaxRounds || 1);
+    setRfqVendors(
+      (draft.rfqVendors || []).map((row) => ({
+        key: row.key,
+        vendorId: row.vendorId,
+        name: row.name,
+        email: row.email,
+        quotes: (row.quotes || []).map((q) => ({
+          round: q.round,
+          quotedPrice: q.quotedPrice,
+          leadTime: q.leadTime,
+          paymentTerms: q.paymentTerms,
+          file: null,
+        })),
+      }))
+    );
+    setPriority(draft.priority || 'Medium');
+    setCurrency(normalizeCurrency(draft.currency));
+    setBusinessJustification(draft.businessJustification || '');
+    setRequiredDate(draft.requiredDate || '');
+    setBillingLocationId(draft.billingLocationId === '' || draft.billingLocationId == null ? '' : Number(draft.billingLocationId));
+    setBillingLocation(draft.billingLocation || '');
+    setBillingGstNo(draft.billingGstNo || '');
+    setBillingAddress(draft.billingAddress || '');
+    setDeliveryPoc(draft.deliveryPoc || '');
+    setPlaceOfDelivery(draft.placeOfDelivery || '');
+    setExpectedDeliveryTimeline(draft.expectedDeliveryTimeline || '');
+    setPaymentTerms(draft.paymentTerms || '');
+    setLineItems(
+      (draft.lineItems || []).map((item) => ({
+        ...item,
+        gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
+      }))
+    );
+    setAttachedFiles(
+      (draft.attachedFiles || [])
+        .filter((f) => f.existingId)
+        .map((f) => ({ id: f.id, name: f.name, size: f.size, existingId: f.existingId }))
+    );
+    if (draft.backendPrId && !editPrId) setSavedDraftId(draft.backendPrId);
+    if (draft.prNumber) setPrNumber(draft.prNumber);
+  };
 
   useEffect(() => {
     if (!editPrId) return;
@@ -161,7 +252,7 @@ export default function CreatePRPage() {
           expectedDeliveryTimeline?: string;
           paymentTerms?: string;
           status: string;
-          lineItems: { id?: number; description: string; quantity: number; unitCost: number; category: string; unit?: string }[];
+          lineItems: { id?: number; description: string; quantity: number; unitCost: number; category: string; unit?: string; gstPercentage?: number }[];
           approvalHistory?: { stage: string; user: string; role: string; date: string; status: string; remarks: string }[];
           attachments?: PrAttachmentRecord[];
         };
@@ -235,7 +326,7 @@ export default function CreatePRPage() {
                 category: item.category,
                 unit: item.unit || 'Nos',
                 hsnCode: '',
-                gstPercentage: 18,
+                gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
               }))
             : []
         );
@@ -254,6 +345,173 @@ export default function CreatePRPage() {
       }
     })();
   }, [editPrId]);
+
+  useEffect(() => {
+    if (isLoadingPr) return;
+    const key = `${user?.id || 'anon'}-${editPrId ?? 'new'}`;
+    if (restoredKeyRef.current === key) {
+      hydrateDoneRef.current = true;
+      return;
+    }
+    restoredKeyRef.current = key;
+    const draft = readCreatePrDraft(user?.id, editPrId);
+    if (draft && hasMeaningfulCreatePrDraft(draft)) {
+      applyDraftSnapshot(draft);
+      setSoftSaveHint('Restored your unsaved changes');
+    }
+    hydrateDoneRef.current = true;
+  }, [editPrId, isLoadingPr, user?.id]);
+
+  useEffect(() => {
+    snapshotRef.current = {
+      v: 1,
+      savedAt: Date.now(),
+      backendPrId: persistPrId,
+      prNumber: prNumber && prNumber !== 'Auto on save' ? prNumber : undefined,
+      isAdminEditFlow,
+      prTitle,
+      department,
+      entityId,
+      requestType,
+      purchaseType,
+      vendorSelection,
+      prFlow,
+      approvalUserIds,
+      rfqMaxRounds,
+      rfqVendors: rfqVendors.map((row) => ({
+        key: row.key,
+        vendorId: row.vendorId,
+        name: row.name,
+        email: row.email,
+        quotes: row.quotes.map((q) => ({
+          round: q.round,
+          quotedPrice: q.quotedPrice,
+          leadTime: q.leadTime,
+          paymentTerms: q.paymentTerms,
+        })),
+      })),
+      priority,
+      currency,
+      businessJustification,
+      requiredDate,
+      billingLocationId,
+      billingLocation,
+      billingGstNo,
+      billingAddress,
+      deliveryPoc,
+      placeOfDelivery,
+      expectedDeliveryTimeline,
+      paymentTerms,
+      lineItems,
+      attachedFiles: attachedFiles.map((f) => ({
+        id: f.id,
+        name: f.name,
+        size: f.size,
+        existingId: f.existingId,
+      })),
+    };
+  });
+
+  useEffect(() => {
+    if (!hydrateDoneRef.current || skipSoftSaveRef.current || isLoadingPr) return;
+    const timer = window.setTimeout(() => {
+      const snap = snapshotRef.current;
+      if (!snap) return;
+      writeCreatePrDraft(user?.id, editPrId, snap);
+      if (hasMeaningfulCreatePrDraft(snap)) {
+        setSoftSaveHint('Draft auto-saved');
+      }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [
+    prTitle,
+    department,
+    entityId,
+    requestType,
+    purchaseType,
+    vendorSelection,
+    prFlow,
+    approvalUserIds,
+    rfqMaxRounds,
+    rfqVendors,
+    priority,
+    currency,
+    businessJustification,
+    requiredDate,
+    billingLocationId,
+    billingLocation,
+    billingGstNo,
+    billingAddress,
+    deliveryPoc,
+    placeOfDelivery,
+    expectedDeliveryTimeline,
+    paymentTerms,
+    lineItems,
+    attachedFiles,
+    persistPrId,
+    editPrId,
+    user?.id,
+    isLoadingPr,
+  ]);
+
+  useEffect(() => {
+    const flushLocal = () => {
+      if (skipSoftSaveRef.current || !hydrateDoneRef.current) return;
+      const snap = snapshotRef.current;
+      if (!snap) return;
+      writeCreatePrDraft(user?.id, editPrId, snap);
+    };
+    const flushApi = () => {
+      flushLocal();
+      const snap = snapshotRef.current;
+      if (!snap || skipSoftSaveRef.current || !hydrateDoneRef.current) return;
+      const id = snap.backendPrId;
+      if (!id || !snap.lineItems.length) return;
+      const payload = {
+        title: snap.prTitle.trim() || snap.lineItems[0]?.description || `${snap.requestType} Request`,
+        requestType: snap.requestType,
+        purchaseType: snap.purchaseType,
+        department: snap.department,
+        entityId: snap.entityId ? Number(snap.entityId) : undefined,
+        priority: snap.priority,
+        currency: snap.currency,
+        prFlow: snap.prFlow,
+        approvalUserId: snap.prFlow === 'functional' && snap.approvalUserIds[0] ? Number(snap.approvalUserIds[0]) : undefined,
+        approvalUserIds: snap.prFlow === 'functional' ? snap.approvalUserIds : undefined,
+        vendorSelection: snap.vendorSelection,
+        justification: snap.businessJustification,
+        requiredDate: snap.requiredDate || undefined,
+        billingLocationId: snap.billingLocationId || undefined,
+        billingLocation: snap.billingLocation.trim() || undefined,
+        billingGstNo: snap.billingGstNo.trim() || undefined,
+        billingAddress: snap.billingAddress.trim() || undefined,
+        deliveryPoc: snap.deliveryPoc.trim() || undefined,
+        placeOfDelivery: snap.placeOfDelivery.trim() || undefined,
+        expectedDeliveryTimeline: snap.expectedDeliveryTimeline.trim() || undefined,
+        paymentTerms: snap.paymentTerms.trim() || undefined,
+        lineItems: snap.lineItems.map((item) => ({
+          category: item.category,
+          description: item.description,
+          quantity: item.quantity,
+          unitCost: item.estimatedCost,
+          unit: item.unit || 'Nos',
+          gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
+        })),
+      };
+      const req = snap.isAdminEditFlow ? prApi.adminUpdate(id, payload) : prApi.update(id, payload);
+      void req.catch(() => undefined);
+    };
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushApi();
+    };
+    window.addEventListener('pagehide', flushApi);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      flushApi();
+      window.removeEventListener('pagehide', flushApi);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, [editPrId, user?.id]);
 
   useEffect(() => {
     (async () => {
@@ -378,7 +636,10 @@ export default function CreatePRPage() {
   const priorityOptions = ['Low', 'Medium', 'High', 'Critical'];
 
   const getTotalAmount = () =>
-    lineItems.reduce((sum, item) => sum + item.quantity * item.estimatedCost, 0);
+    lineItems.reduce(
+      (sum, item) => sum + lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
+      0
+    );
 
   const openAddLineItem = () => {
     setDeleteLineItemId(null);
@@ -514,9 +775,19 @@ export default function CreatePRPage() {
       }
       if (!item.category) newErrors[`item_${index}_category`] = 'Category is required';
       if (item.quantity <= 0) newErrors[`item_${index}_quantity`] = 'Quantity must be > 0';
+      if (!(Number(item.estimatedCost) > 0)) {
+        newErrors[`item_${index}_cost`] = 'Unit price is required';
+        newErrors.lineItems = 'Unit price is required on every line item';
+      }
+      if (item.gstPercentage == null || !Number.isFinite(Number(item.gstPercentage))) {
+        newErrors[`item_${index}_gst`] = 'GST % is required';
+        newErrors.lineItems = newErrors.lineItems || 'GST % is required on every line item';
+      }
     });
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const ok = Object.keys(newErrors).length === 0;
+    if (!ok) scrollToFirstError(newErrors);
+    return ok;
   };
 
   const selectedApprovalUsers = approvalUserIds
@@ -616,6 +887,7 @@ export default function CreatePRPage() {
       quantity: item.quantity,
       unitCost: item.estimatedCost,
       unit: item.unit || 'Nos',
+      gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
     })),
   });
 
@@ -627,9 +899,10 @@ export default function CreatePRPage() {
     }
   };
 
-  const savePR = async (submit: boolean) => {
-    setSubmitError('');
-    setIsSubmitting(true);
+  const savePR = async (submit: boolean, options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent);
+    if (!silent) setSubmitError('');
+    if (!silent) setIsSubmitting(true);
     try {
       const payload: Record<string, unknown> = buildPayload();
       if (prFlow === 'functional' && vendorSelection === 'own') {
@@ -639,10 +912,12 @@ export default function CreatePRPage() {
           payload.maxRounds = rfqMaxRounds;
         }
       }
-      if (isEditMode && editPrId) {
+      const targetId = persistPrId;
+      if (targetId) {
         if (isAdminEditFlow) {
-          await prApi.adminUpdate(editPrId, payload);
-          await uploadNewAttachments(editPrId);
+          await prApi.adminUpdate(targetId, payload);
+          await uploadNewAttachments(targetId);
+          if (silent) return;
           setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
@@ -651,23 +926,26 @@ export default function CreatePRPage() {
           return;
         }
         if (submit) {
-          const res = await prApi.resubmit(editPrId, { ...payload, remarks: resubmitRemarks });
+          skipSoftSaveRef.current = true;
+          clearCreatePrDraft(user?.id, editPrId);
+          const res = await prApi.resubmit(targetId, { ...payload, remarks: resubmitRemarks });
           const data = res.data as {
             prNumber?: string;
             nextStep?: string;
             l1Manager?: { name: string | null; email: string | null };
           };
-          await uploadNewAttachments(editPrId);
+          await uploadNewAttachments(targetId);
           setCreatedPrNumber(data.prNumber || prNumber);
           setNextStepLabel(data.nextStep || 'L1 Manager Approval');
           setL1Manager(data.l1Manager || null);
         } else {
-          await prApi.update(editPrId, payload);
-          await uploadNewAttachments(editPrId);
-        setCreatedPrNumber(prNumber);
+          await prApi.update(targetId, payload);
+          await uploadNewAttachments(targetId);
+          setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
         }
+        if (silent) return;
         if (submit) setShowConfirmModal(false);
         setShowSuccessModal(true);
         return;
@@ -679,9 +957,15 @@ export default function CreatePRPage() {
         nextStep?: string;
         l1Manager?: { name: string | null; email: string | null };
       };
-      if (data.id) await uploadNewAttachments(data.id);
+      if (data.id) {
+        await uploadNewAttachments(data.id);
+        if (!submit) setSavedDraftId(data.id);
+      }
       setCreatedPrNumber(data.prNumber);
+      if (data.prNumber) setPrNumber(data.prNumber);
       if (submit) {
+        skipSoftSaveRef.current = true;
+        clearCreatePrDraft(user?.id, editPrId);
         setNextStepLabel(data.nextStep || 'L1 Manager Approval');
         setL1Manager(data.l1Manager || null);
         setShowConfirmModal(false);
@@ -689,11 +973,11 @@ export default function CreatePRPage() {
         setNextStepLabel('');
         setL1Manager(null);
       }
-      setShowSuccessModal(true);
+      if (!silent) setShowSuccessModal(true);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to save PR');
+      if (!silent) setSubmitError(err instanceof Error ? err.message : 'Failed to save PR');
     } finally {
-      setIsSubmitting(false);
+      if (!silent) setIsSubmitting(false);
     }
   };
 
@@ -832,6 +1116,12 @@ export default function CreatePRPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {softSaveHint && (
+            <span className="hidden sm:inline text-xs text-emerald-600 font-medium">
+              <i className="ri-checkbox-circle-line mr-1"></i>
+              {softSaveHint}
+            </span>
+          )}
           <span className="text-xs text-gray-400">
             {lineItems.length === 0
               ? 'No items yet'
@@ -905,7 +1195,7 @@ export default function CreatePRPage() {
             </div>
 
             {/* PR Title */}
-            <div className="md:col-span-2 lg:col-span-2">
+            <div className="md:col-span-2 lg:col-span-2" data-field="prTitle">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 PR Title <span className="text-red-500">*</span>
               </label>
@@ -1207,7 +1497,7 @@ export default function CreatePRPage() {
         </div>
 
         {/* ── Section 2: Line Items ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden" data-field="lineItems">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/60">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
@@ -1266,7 +1556,7 @@ export default function CreatePRPage() {
                       <th className="px-3 py-2.5 text-right">Unit Price</th>
                       <th className="px-3 py-2.5">HSN</th>
                       <th className="px-3 py-2.5 text-right">GST %</th>
-                      <th className="px-3 py-2.5 text-right">Amount</th>
+                      <th className="px-3 py-2.5 text-right">Amount (incl. GST)</th>
                       <th className="px-3 py-2.5 text-right w-24">Actions</th>
                     </tr>
                   </thead>
@@ -1317,10 +1607,14 @@ export default function CreatePRPage() {
                               {item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
                             </td>
                             <td className="px-3 py-3 text-right font-semibold text-emerald-700">
-                              {formatMoney(item.quantity * item.estimatedCost, currency, {
+                              {formatMoney(
+                                lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
+                                currency,
+                                {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
-                              })}
+                              }
+                              )}
                             </td>
                             <td className="px-3 py-3">
                               <div className="flex items-center justify-end gap-1">
@@ -1377,7 +1671,7 @@ export default function CreatePRPage() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-right">
-                  <p className="text-xs text-gray-500 mb-0.5">Estimated Total</p>
+                  <p className="text-xs text-gray-500 mb-0.5">Estimated Total (incl. GST)</p>
                   <p className="text-2xl font-extrabold text-emerald-700">
                     {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
@@ -1543,7 +1837,7 @@ export default function CreatePRPage() {
               </p>
             </div>
 
-            <div>
+            <div data-field="deliveryPoc">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 POC for Delivery <span className="text-red-500">*</span>
               </label>
@@ -1561,6 +1855,8 @@ export default function CreatePRPage() {
                   }
                 }}
                 placeholder="Name / phone of site contact"
+                required
+                aria-required="true"
                 className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
                   errors.deliveryPoc ? 'border-red-400 bg-red-50' : 'border-gray-200'
                 }`}
@@ -1568,7 +1864,7 @@ export default function CreatePRPage() {
               {errors.deliveryPoc && <p className="text-xs text-red-500 mt-1">{errors.deliveryPoc}</p>}
             </div>
 
-            <div>
+            <div data-field="placeOfDelivery">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Place of Delivery <span className="text-red-500">*</span>
               </label>
@@ -1586,6 +1882,8 @@ export default function CreatePRPage() {
                   }
                 }}
                 placeholder="Site / warehouse address (can differ from billing)"
+                required
+                aria-required="true"
                 className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
                   errors.placeOfDelivery ? 'border-red-400 bg-red-50' : 'border-gray-200'
                 }`}
@@ -1593,7 +1891,7 @@ export default function CreatePRPage() {
               {errors.placeOfDelivery && <p className="text-xs text-red-500 mt-1">{errors.placeOfDelivery}</p>}
             </div>
 
-            <div>
+            <div data-field="expectedDeliveryTimeline">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Expected Delivery Timeline <span className="text-red-500">*</span>
               </label>
@@ -1611,6 +1909,8 @@ export default function CreatePRPage() {
                   }
                 }}
                 placeholder="e.g. Within 30 days"
+                required
+                aria-required="true"
                 className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
                   errors.expectedDeliveryTimeline ? 'border-red-400 bg-red-50' : 'border-gray-200'
                 }`}
@@ -1625,7 +1925,7 @@ export default function CreatePRPage() {
               )}
             </div>
 
-            <div>
+            <div data-field="paymentTerms">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Payment Terms <span className="text-red-500">*</span>
               </label>
@@ -1754,7 +2054,7 @@ export default function CreatePRPage() {
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div className="flex items-center justify-center sm:justify-start gap-2 text-sm text-gray-500">
             <i className="ri-shield-check-line text-emerald-500"></i>
-            <span>All data is saved securely</span>
+            <span>Draft auto-saves if you leave this page</span>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <Link
