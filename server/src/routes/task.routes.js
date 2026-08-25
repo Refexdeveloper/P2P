@@ -1,12 +1,17 @@
 import { Router } from 'express';
-import { authenticate, requireRoles } from '../middleware/auth.js';
+import { authenticate, requireRolesOrPermissions } from '../middleware/auth.js';
 import { listTasks, listRequesterTasks, completeRequesterTask, processApproval } from '../services/prService.js';
 
 const router = Router();
 
 router.use(authenticate);
 
-router.get('/requester', requireRoles('Requester'), async (req, res) => {
+const canRequesterRfq = requireRolesOrPermissions(
+  ['Requester', 'Super Admin'],
+  ['nav.create_pr', 'nav.rfq_entry', 'nav.tasks', 'nav.requester_dashboard']
+);
+
+router.get('/requester', canRequesterRfq, async (req, res) => {
   try {
     const tasks = await listRequesterTasks(req.user.id);
     res.json({ data: tasks });
@@ -15,7 +20,7 @@ router.get('/requester', requireRoles('Requester'), async (req, res) => {
   }
 });
 
-router.post('/:taskId/complete-rfq', requireRoles('Requester'), async (req, res) => {
+router.post('/:taskId/complete-rfq', canRequesterRfq, async (req, res) => {
   try {
     const result = await completeRequesterTask(req.user, req.params.taskId);
     res.json({ data: result, message: 'RFQ entry task completed' });

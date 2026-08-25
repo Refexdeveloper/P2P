@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireRoles } from '../middleware/auth.js';
+import { authenticate, requireRolesOrPermissions } from '../middleware/auth.js';
 import {
   inviteVendors,
   removeRfqInvitation,
@@ -71,9 +71,18 @@ router.get('/submissions/:id/file', authenticate, async (req, res) => {
 
 router.use(authenticate);
 
+const canEditRfq = requireRolesOrPermissions(
+  ['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'],
+  ['nav.rfq_entry', 'nav.scm_rfq_entry', 'nav.create_pr']
+);
+const canScmRfq = requireRolesOrPermissions(
+  ['SCM Buyer', 'SCM Manager', 'Super Admin'],
+  ['nav.scm_rfq_entry', 'nav.purchase_requests']
+);
+
 router.post(
   '/quotation-extract',
-  requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'),
+  canEditRfq,
   async (req, res) => {
     try {
       const data = await extractQuotationFromUpload(req.body || {});
@@ -91,9 +100,7 @@ router.post(
   }
 );
 
-const POST_RFQ_ROLES = ['HOD Approver', 'PR Manager', 'SCM Manager', 'CFO', 'SCM Buyer'];
-
-router.get('/scm-entry/pending', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/scm-entry/pending', canScmRfq, async (req, res) => {
   try {
     const data = await listScmRfqEntryPrs(req.user);
     res.json({ data });
@@ -150,7 +157,7 @@ router.get('/pr/:prId', async (req, res) => {
   }
 });
 
-router.put('/pr/:prId/config', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.put('/pr/:prId/config', canEditRfq, async (req, res) => {
   try {
     const config = await saveRfqConfig(req.user, Number(req.params.prId), req.body);
     res.json({ data: { config }, message: 'RFQ configuration saved' });
@@ -159,7 +166,7 @@ router.put('/pr/:prId/config', requireRoles('Requester', 'SCM Buyer'), async (re
   }
 });
 
-router.post('/pr/:prId/finalize', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.post('/pr/:prId/finalize', canEditRfq, async (req, res) => {
   try {
     const { recommendedInvitationId, taskId, recommendationJustification } = req.body;
     const result = await finalizeRfq(req.user, Number(req.params.prId), {
@@ -173,7 +180,7 @@ router.post('/pr/:prId/finalize', requireRoles('Requester', 'SCM Buyer'), async 
   }
 });
 
-router.put('/submissions/:id/review-fields', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.put('/submissions/:id/review-fields', canEditRfq, async (req, res) => {
   try {
     const result = await updateSubmissionReviewFields(req.user, Number(req.params.id), req.body.requesterFields);
     res.json({ data: result, message: 'Review fields saved' });
@@ -182,7 +189,7 @@ router.put('/submissions/:id/review-fields', requireRoles('Requester', 'SCM Buye
   }
 });
 
-router.post('/submissions/:id/attach-file', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.post('/submissions/:id/attach-file', canEditRfq, async (req, res) => {
   try {
     const result = await attachQuotationFileToSubmission(req.user, Number(req.params.id), req.body);
     res.json({ data: result, message: result.message });
@@ -194,7 +201,7 @@ router.post('/submissions/:id/attach-file', requireRoles('Requester', 'SCM Buyer
 /** Admin / SCM / requester: edit quoted amounts (+ optional file) on an existing submission */
 router.put(
   '/submissions/:id/admin',
-  requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'),
+  canEditRfq,
   async (req, res) => {
     try {
       const result = await adminUpdateVendorQuotationSubmission(
@@ -209,7 +216,7 @@ router.put(
   }
 );
 
-router.post('/invite', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.post('/invite', canEditRfq, async (req, res) => {
   try {
     const { prId, vendors, fieldDefinitions, sendEmail = true } = req.body;
     if (!prId) return res.status(400).json({ message: 'prId is required' });
@@ -228,7 +235,7 @@ router.post('/invite', requireRoles('Requester', 'SCM Buyer'), async (req, res) 
   }
 });
 
-router.delete('/invitations/:id', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.delete('/invitations/:id', canEditRfq, async (req, res) => {
   try {
     const result = await removeRfqInvitation(req.user, Number(req.params.id));
     res.json({
@@ -245,7 +252,7 @@ router.delete('/invitations/:id', requireRoles('Requester', 'SCM Buyer'), async 
   }
 });
 
-router.post('/invitations/:id/manual-submit', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.post('/invitations/:id/manual-submit', canEditRfq, async (req, res) => {
   try {
     const result = await submitManualVendorQuotation(req.user, Number(req.params.id), req.body);
     res.json({ data: result, message: result.message });
@@ -254,7 +261,7 @@ router.post('/invitations/:id/manual-submit', requireRoles('Requester', 'SCM Buy
   }
 });
 
-router.post('/invitations/:id/resend-email', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.post('/invitations/:id/resend-email', canEditRfq, async (req, res) => {
   try {
     const result = await resendRfqInvitationEmail(req.user, Number(req.params.id));
     res.json({ data: result, message: result.message });
@@ -263,7 +270,7 @@ router.post('/invitations/:id/resend-email', requireRoles('Requester', 'SCM Buye
   }
 });
 
-router.post('/invitations/:id/send-back', requireRoles('Requester', 'SCM Buyer'), async (req, res) => {
+router.post('/invitations/:id/send-back', canEditRfq, async (req, res) => {
   try {
     const { reason, fields } = req.body;
     const rfq = await sendBackVendorQuote(req.user, Number(req.params.id), reason, fields);

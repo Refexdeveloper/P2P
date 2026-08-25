@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import {
   authenticate,
-  requireRoles,
   requirePermissions,
   requireRolesOrPermissions,
   CREATE_PR_ROLES,
@@ -221,10 +220,10 @@ router.post('/items/chat-create', canQuickCreateFromPr, async (req, res) => {
   }
 });
 
-router.post('/items', (req, res, next) => {
-  if (CREATE_PR_ROLES.includes(req.user?.role)) return next();
-  return canManageItems(req, res, next);
-}, async (req, res) => {
+router.post(
+  '/items',
+  requireRolesOrPermissions(CREATE_PR_ROLES, ['nav.create_pr', 'nav.item_master']),
+  async (req, res) => {
   try {
     const data = await createItem(req.body);
     res.json({ data, message: `Item ${data.itemCode} created successfully` });
@@ -242,7 +241,7 @@ router.put('/items/:id', canManageItems, async (req, res) => {
   }
 });
 
-router.get('/entities', requireRoles(...READ_ROLES), async (req, res) => {
+router.get('/entities', canReadMasters, async (req, res) => {
   try {
     const result = await listEntities({
       search: req.query.search,
@@ -287,7 +286,7 @@ router.post('/entities/import', canManageEntities, async (req, res) => {
   }
 });
 
-router.post('/entities/chat-create', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.post('/entities/chat-create', canQuickCreateFromPr, async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) throw new Error('Entity name is required');
@@ -326,7 +325,7 @@ router.put('/entities/:id', canManageEntities, async (req, res) => {
   }
 });
 
-router.get('/departments', requireRoles(...READ_ROLES), async (req, res) => {
+router.get('/departments', canReadMasters, async (req, res) => {
   try {
     const data = await listDepartments({
       search: req.query.search,
@@ -338,7 +337,7 @@ router.get('/departments', requireRoles(...READ_ROLES), async (req, res) => {
   }
 });
 
-router.post('/departments/chat-create', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.post('/departments/chat-create', canQuickCreateFromPr, async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) throw new Error('Department name is required');
@@ -372,7 +371,7 @@ router.put('/departments/:id', canManageDepartments, async (req, res) => {
   }
 });
 
-router.get('/po-site-lookups', requireRoles(...READ_ROLES, 'Super Admin'), async (req, res) => {
+router.get('/po-site-lookups', canReadMasters, async (req, res) => {
   try {
     const data = await listPoSiteLookups({
       type: req.query.type,
@@ -384,7 +383,7 @@ router.get('/po-site-lookups', requireRoles(...READ_ROLES, 'Super Admin'), async
   }
 });
 
-router.post('/po-site-lookups', requireRoles(...READ_ROLES, 'Super Admin'), async (req, res) => {
+router.post('/po-site-lookups', canReadMasters, async (req, res) => {
   try {
     const data = await createPoSiteLookup(req.body);
     res.json({ data, message: 'Saved successfully' });

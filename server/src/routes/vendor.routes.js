@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireRoles, requirePermissions, CREATE_PR_ROLES } from '../middleware/auth.js';
+import { authenticate, requirePermissions, requireRolesOrPermissions, CREATE_PR_ROLES } from '../middleware/auth.js';
 import {
   listVendors,
   createVendor,
@@ -15,6 +15,12 @@ const router = Router();
 router.use(authenticate);
 
 const canManageVendors = requirePermissions('nav.vendor_master');
+const canUseVendorsForPr = requireRolesOrPermissions(CREATE_PR_ROLES, [
+  'nav.create_pr',
+  'nav.vendor_master',
+  'nav.rfq_entry',
+  'nav.scm_rfq_entry',
+]);
 
 function sendCsv(res, filename, csv) {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -22,7 +28,7 @@ function sendCsv(res, filename, csv) {
   res.send(csv);
 }
 
-router.get('/', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.get('/', canUseVendorsForPr, async (req, res) => {
   try {
     const page = req.query.page != null ? Number(req.query.page) : undefined;
     const limit = req.query.limit != null ? Number(req.query.limit) : undefined;
@@ -67,7 +73,7 @@ router.post('/import', canManageVendors, async (req, res) => {
   }
 });
 
-router.get('/:id', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.get('/:id', canUseVendorsForPr, async (req, res) => {
   try {
     const data = await getVendorById(Number(req.params.id));
     if (!data) return res.status(404).json({ message: 'Vendor not found' });
@@ -77,7 +83,7 @@ router.get('/:id', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
   }
 });
 
-router.get('/:id/documents/:docType/file', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.get('/:id/documents/:docType/file', canUseVendorsForPr, async (req, res) => {
   try {
     const { fullPath, fileName } = await getVendorDocumentFile(Number(req.params.id), req.params.docType);
     res.download(fullPath, fileName);
@@ -86,7 +92,7 @@ router.get('/:id/documents/:docType/file', requireRoles(...CREATE_PR_ROLES), asy
   }
 });
 
-router.post('/', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.post('/', canUseVendorsForPr, async (req, res) => {
   try {
     const data = await createVendor(req.user, req.body);
     res.json({ data, message: `Vendor ${data.vendorCode} created successfully` });

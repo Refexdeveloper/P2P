@@ -24,6 +24,7 @@ import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 import { listPrAttachments, savePrAttachments } from './prAttachmentService.js';
+import { getUserPermissionCodes, isSuperAdmin } from './permissionService.js';
 
 function clipText(value, max) {
   return String(value || '').trim().slice(0, max);
@@ -1543,6 +1544,36 @@ async function assertAssignedUserCanActOnPr(user, prId) {
   throw new Error('This PR is assigned to another person for approval');
 }
 
+const PRE_RFQ_STATUS_ACTING_ROLE = {
+  [PR_STATUS.PENDING_HOD_APPROVAL]: 'HOD Approver',
+  [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: 'PR Manager',
+  [PR_STATUS.PENDING_CFO_APPROVAL]: 'CFO',
+};
+
+async function getPendingPrApprovalTask(prId) {
+  const [rows] = await pool.query(
+    `SELECT wt.assigned_user_id, wt.assigned_role, u.email AS assigned_email
+     FROM workflow_tasks wt
+     LEFT JOIN users u ON u.id = wt.assigned_user_id
+     WHERE wt.pr_id = ?
+       AND wt.status = 'pending'
+       AND wt.task_type = 'PR_APPROVAL'
+     ORDER BY wt.id DESC
+     LIMIT 1`,
+    [prId]
+  );
+  return rows[0] || null;
+}
+
+function userMatchesTaskAssignment(user, task) {
+  if (!task) return false;
+  if (task.assigned_user_id != null && Number(task.assigned_user_id) === Number(user.id)) return true;
+  const userEmail = String(user.email || '').toLowerCase().trim();
+  const assignedEmail = String(task.assigned_email || '').toLowerCase().trim();
+  if (task.assigned_user_id != null && assignedEmail && userEmail && assignedEmail === userEmail) return true;
+  return false;
+}
+
 export async function processApproval(user, prId, action, remarks, options = {}) {
   const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
   if (!prRows.length) throw new Error('PR not found');
@@ -1550,16 +1581,40 @@ export async function processApproval(user, prId, action, remarks, options = {})
   const pr = prRows[0];
   const isFunctional = pr.pr_flow === 'functional';
   const isFunctionalUserStep = isFunctional && pr.status === PR_STATUS.PENDING_HOD_APPROVAL;
+  const pendingTask = await getPendingPrApprovalTask(prId);
+  const assignedToMe = userMatchesTaskAssignment(user, pendingTask);
 
+  let actingRole = user.role;
   let roleConfig = ROLE_STAGE_MAP[user.role];
   let actingAsHod = user.role === 'HOD Approver';
 
-  if (isFunctionalUserStep) {
+  if (user.role === 'Super Admin' && PRE_RFQ_STATUS_ACTING_ROLE[pr.status]) {
+    actingRole = PRE_RFQ_STATUS_ACTING_ROLE[pr.status];
+    roleConfig = ROLE_STAGE_MAP[actingRole];
+    actingAsHod = actingRole === 'HOD Approver';
+  } else if (isFunctionalUserStep) {
     if (user.role !== 'Super Admin') {
       await assertAssignedUserCanActOnPr(user, prId);
     }
+    actingRole = 'HOD Approver';
     roleConfig = ROLE_STAGE_MAP['HOD Approver'];
     actingAsHod = true;
+  } else if (assignedToMe) {
+    // Assigned person may approve / reject / send back regardless of JWT role
+    // (Admin can assign menus + tasks to any user).
+    const fromTask =
+      (pendingTask.assigned_role && ROLE_STAGE_MAP[pendingTask.assigned_role]
+        ? pendingTask.assigned_role
+        : null) || PRE_RFQ_STATUS_ACTING_ROLE[pr.status];
+    if (!fromTask || !ROLE_STAGE_MAP[fromTask]) {
+      throw new Error('Role cannot approve PRs');
+    }
+    if (pr.status !== ROLE_STAGE_MAP[fromTask].status) {
+      throw new Error(`PR is not pending your approval (current: ${pr.status})`);
+    }
+    actingRole = fromTask;
+    roleConfig = ROLE_STAGE_MAP[fromTask];
+    actingAsHod = fromTask === 'HOD Approver';
   } else {
     if (!roleConfig) throw new Error('Role cannot approve PRs');
     if (pr.status !== roleConfig.status) {
@@ -1567,7 +1622,18 @@ export async function processApproval(user, prId, action, remarks, options = {})
     }
     if (user.role === 'HOD Approver') {
       await assertHodCanActOnPr(user, prId);
+    } else if (
+      pendingTask?.assigned_user_id &&
+      Number(pendingTask.assigned_user_id) !== Number(user.id)
+    ) {
+      const userEmail = String(user.email || '').toLowerCase().trim();
+      const assignedEmail = String(pendingTask.assigned_email || '').toLowerCase().trim();
+      if (!(assignedEmail && userEmail && assignedEmail === userEmail)) {
+        throw new Error('This PR is assigned to another person for approval');
+      }
     }
+    actingRole = user.role;
+    actingAsHod = user.role === 'HOD Approver';
   }
 
   if (!remarks?.trim()) throw new Error('Remarks are required');
@@ -1634,7 +1700,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           newStage = STAGE.PR_MANAGER_REVIEW;
           nextRole = 'PR Manager';
         }
-      } else if (user.role === 'PR Manager') {
+      } else if (actingRole === 'PR Manager') {
         const wantCfo = pr.require_cfo_approval == null || Number(pr.require_cfo_approval) === 1;
         const [cfoRows] = await conn.query(
           `SELECT id, email, name FROM users WHERE role = 'CFO' AND is_active = 1 ORDER BY id ASC LIMIT 1`
@@ -1651,7 +1717,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           nextRole = null;
           skipToScmRfq = pr.vendor_selection !== 'own';
         }
-      } else if (user.role === 'CFO') {
+      } else if (actingRole === 'CFO') {
         // SCM path only (pre-RFQ): after CFO → SCM RFQ queue
         newStatus = PR_STATUS.APPROVED;
         newStage = null;
@@ -1668,7 +1734,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
       );
       await conn.commit();
       const updatedPr = await getPurchaseRequestById(prId);
-      queueSendBackNotifications(updatedPr, { ...applyResult, actorRole: user.role });
+      queueSendBackNotifications(updatedPr, { ...applyResult, actorRole: actingRole });
       return updatedPr;
     } else {
       throw new Error('Invalid action');
@@ -1696,7 +1762,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
       `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
        WHERE pr_id = ? AND status = 'pending' AND task_type = 'PR_APPROVAL'
          AND (assigned_user_id = ? OR assigned_role = ?)`,
-      [prId, user.id, actingAsHod ? 'HOD Approver' : user.role]
+      [prId, user.id, actingAsHod ? 'HOD Approver' : actingRole]
     );
 
     if (nextFunctionalApprover && action === 'approve') {
@@ -1762,7 +1828,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
 
     // SCM vendor: after CFO pre-RFQ, or L2 skip-CFO → SCM Buyer RFQ Entry
     let scmRfqBuyerEmails = [];
-    if ((user.role === 'CFO' || skipToScmRfq) && action === 'approve') {
+    if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve') {
       const rfqDue = new Date();
       rfqDue.setDate(rfqDue.getDate() + 5);
       scmRfqBuyerEmails = await getScmBuyerNotifyEmails(conn);
@@ -1819,7 +1885,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           stageLabel: 'RFQ Entry Required',
         }
       );
-    } else if ((user.role === 'CFO' || skipToScmRfq) && action === 'approve') {
+    } else if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve') {
       const mailPack = await loadFunctionalOwnRfqMailPack(
         isFunctional ? 'functional' : 'standard',
         pr.vendor_selection,
@@ -1842,7 +1908,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
       );
     } else if (action === 'reject' || action === 'return' || action === 'rework') {
       // Particular requester — return / reject
-      queuePostRfqActionNotification(updatedPr, user.role, action, remarks, {
+      queuePostRfqActionNotification(updatedPr, actingRole, action, remarks, {
         name: updatedPr.requester,
       });
     }
@@ -2054,8 +2120,13 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     'PR Manager',
     'CFO',
   ];
-  if (!allowed.includes(user.role)) {
-    throw new Error('Unauthorized');
+  const allowedByRole = allowed.includes(user.role) || isSuperAdmin(user.role);
+  if (!allowedByRole) {
+    const codes = await getUserPermissionCodes(user.id, user.role);
+    const ok = ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard'].some((c) =>
+      codes.includes(c)
+    );
+    if (!ok) throw new Error('Unauthorized');
   }
 
   const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
@@ -2197,8 +2268,12 @@ const ADMIN_SEND_BACK_ROLES = [
  * Does not require the actor to hold the current approval task.
  */
 export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks) {
-  if (!ADMIN_SEND_BACK_ROLES.includes(user.role)) {
-    throw new Error('Unauthorized');
+  if (!ADMIN_SEND_BACK_ROLES.includes(user.role) && !isSuperAdmin(user.role)) {
+    const codes = await getUserPermissionCodes(user.id, user.role);
+    const ok = ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard'].some((c) =>
+      codes.includes(c)
+    );
+    if (!ok) throw new Error('Unauthorized');
   }
   const remarksText = String(remarks || '').trim();
   if (!remarksText) throw new Error('Remarks are required for send back');
