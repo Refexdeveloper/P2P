@@ -14,6 +14,7 @@ import FunctionalOwnRfqSection, {
   FunctionalRfqVendorRow,
 } from './FunctionalOwnRfqSection';
 import UserSearchSelect from './UserSearchSelect';
+import PrBillingDeliverySection from './PrBillingDeliverySection';
 import {
   clearCreatePrDraft,
   CreatePrDraftSnapshot,
@@ -29,10 +30,6 @@ import {
   formatMoney,
   normalizeCurrency,
 } from '../../../constants/currency';
-import {
-  PR_PAYMENT_TERM_OPTIONS,
-  PR_DELIVERY_TIMELINE_OPTIONS,
-} from '../../../constants/prRequisition';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -86,6 +83,16 @@ function scrollToFirstError(errs: Record<string, string>) {
   requestAnimationFrame(() => {
     document.querySelector(`[data-field="${field}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
+}
+
+function isReusableDraftStatus(status?: string) {
+  const st = String(status || '').toUpperCase();
+  return st === 'DRAFT' || st === 'RETURNED';
+}
+
+function isUnusablePersistError(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err || '');
+  return /no longer be edited|Only returned or draft|PR not found/i.test(msg);
 }
 
 export default function CreatePRPage() {
@@ -154,6 +161,8 @@ export default function CreatePRPage() {
   const [savedDraftId, setSavedDraftId] = useState<number | null>(null);
   const [softSaveHint, setSoftSaveHint] = useState('');
   const skipSoftSaveRef = useRef(false);
+  const persistReadyRef = useRef(false);
+  const savingInFlightRef = useRef(false);
   const hydrateDoneRef = useRef(false);
   const snapshotRef = useRef<CreatePrDraftSnapshot | null>(null);
 
@@ -166,6 +175,7 @@ export default function CreatePRPage() {
   const isResubmitFlow = isEditMode && isReturned && !isAdminEditFlow;
   const backTo = isAdminEditFlow || isEditMode ? '/requester/track-pr' : '/requester/dashboard';
   const persistPrId = editPrId || savedDraftId;
+  const askBillingOnCreatePr = !(prFlow === 'standard' && vendorSelection === 'own');
   const restoredKeyRef = useRef('');
 
   const applyDraftSnapshot = (draft: CreatePrDraftSnapshot) => {
@@ -216,7 +226,6 @@ export default function CreatePRPage() {
         .filter((f) => f.existingId)
         .map((f) => ({ id: f.id, name: f.name, size: f.size, existingId: f.existingId }))
     );
-    if (draft.backendPrId && !editPrId) setSavedDraftId(draft.backendPrId);
     if (draft.prNumber) setPrNumber(draft.prNumber);
   };
 
@@ -348,18 +357,47 @@ export default function CreatePRPage() {
 
   useEffect(() => {
     if (isLoadingPr) return;
+    let cancelled = false;
     const key = `${user?.id || 'anon'}-${editPrId ?? 'new'}`;
-    if (restoredKeyRef.current === key) {
-      hydrateDoneRef.current = true;
-      return;
-    }
-    restoredKeyRef.current = key;
-    const draft = readCreatePrDraft(user?.id, editPrId);
-    if (draft && hasMeaningfulCreatePrDraft(draft)) {
-      applyDraftSnapshot(draft);
-      setSoftSaveHint('Restored your unsaved changes');
-    }
-    hydrateDoneRef.current = true;
+    const run = async () => {
+      if (restoredKeyRef.current === key) {
+        persistReadyRef.current = true;
+        hydrateDoneRef.current = true;
+        return;
+      }
+      restoredKeyRef.current = key;
+      persistReadyRef.current = false;
+      const draft = readCreatePrDraft(user?.id, editPrId);
+      if (draft && hasMeaningfulCreatePrDraft(draft)) {
+        applyDraftSnapshot(draft);
+        setSoftSaveHint('Restored your unsaved changes');
+        const backendId = !editPrId && draft.backendPrId ? Number(draft.backendPrId) : null;
+        if (backendId) {
+          try {
+            const res = await prApi.get(backendId);
+            if (cancelled) return;
+            const data = res.data as { status?: string; prNumber?: string };
+            if (isReusableDraftStatus(data.status)) {
+              setSavedDraftId(backendId);
+              setPrStatus(String(data.status || '').toUpperCase());
+              if (data.prNumber) setPrNumber(data.prNumber);
+            } else {
+              setSavedDraftId(null);
+            }
+          } catch {
+            if (!cancelled) setSavedDraftId(null);
+          }
+        }
+      }
+      if (!cancelled) {
+        persistReadyRef.current = true;
+        hydrateDoneRef.current = true;
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [editPrId, isLoadingPr, user?.id]);
 
   useEffect(() => {
@@ -464,7 +502,15 @@ export default function CreatePRPage() {
     const flushApi = () => {
       flushLocal();
       const snap = snapshotRef.current;
-      if (!snap || skipSoftSaveRef.current || !hydrateDoneRef.current) return;
+      if (
+        !snap ||
+        skipSoftSaveRef.current ||
+        savingInFlightRef.current ||
+        !hydrateDoneRef.current ||
+        !persistReadyRef.current
+      ) {
+        return;
+      }
       const id = snap.backendPrId;
       if (!id || !snap.lineItems.length) return;
       const payload = {
@@ -536,13 +582,13 @@ export default function CreatePRPage() {
   }, []);
 
   useEffect(() => {
-    if (!editPrId || prFlow !== 'functional' || vendorSelection !== 'own') {
+    if (!persistPrId || prFlow !== 'functional' || vendorSelection !== 'own') {
       setExistingRfqHasQuotes(false);
       return;
     }
     (async () => {
       try {
-        const res = await rfqApi.getByPr(editPrId);
+        const res = await rfqApi.getByPr(persistPrId);
         const invitations = (res.data as {
           invitations?: Array<{
             submissions?: Array<{ quotedPrice?: number; quotationFileName?: string }>;
@@ -556,7 +602,7 @@ export default function CreatePRPage() {
         setExistingRfqHasQuotes(false);
       }
     })();
-  }, [editPrId, prFlow, vendorSelection]);
+  }, [persistPrId, prFlow, vendorSelection]);
 
   useEffect(() => {
     (async () => {
@@ -741,14 +787,12 @@ export default function CreatePRPage() {
     if (!department) newErrors.department = 'Department is required';
     if (!businessJustification.trim()) newErrors.businessJustification = 'Business justification is required';
     if (!requiredDate) newErrors.requiredDate = 'Required date is required';
-    if (billingLocations.length > 0 && !billingLocationId) {
-      newErrors.billingLocationId = 'Select billing region / GST for this entity';
+    if (askBillingOnCreatePr) {
+      if (billingLocations.length > 0 && !billingLocationId) {
+        newErrors.billingLocationId = 'Select billing region / GST for this entity';
+      }
+      if (!billingAddress.trim()) newErrors.billingAddress = 'Billing address is required';
     }
-    if (!billingAddress.trim()) newErrors.billingAddress = 'Billing address is required';
-    if (!deliveryPoc.trim()) newErrors.deliveryPoc = 'POC for delivery is required';
-    if (!placeOfDelivery.trim()) newErrors.placeOfDelivery = 'Place of delivery is required';
-    if (!expectedDeliveryTimeline.trim()) newErrors.expectedDeliveryTimeline = 'Expected delivery timeline is required';
-    if (!paymentTerms.trim()) newErrors.paymentTerms = 'Payment terms are required';
     if (prFlow === 'functional' && approvalUserIds.length === 0) {
       newErrors.approvalUserId = 'Select at least one user for Functional Flow approval';
     }
@@ -775,15 +819,18 @@ export default function CreatePRPage() {
       }
       if (!item.category) newErrors[`item_${index}_category`] = 'Category is required';
       if (item.quantity <= 0) newErrors[`item_${index}_quantity`] = 'Quantity must be > 0';
-      if (!(Number(item.estimatedCost) > 0)) {
-        newErrors[`item_${index}_cost`] = 'Unit price is required';
-        newErrors.lineItems = 'Unit price is required on every line item';
-      }
-      if (item.gstPercentage == null || !Number.isFinite(Number(item.gstPercentage))) {
-        newErrors[`item_${index}_gst`] = 'GST % is required';
-        newErrors.lineItems = newErrors.lineItems || 'GST % is required on every line item';
-      }
     });
+    setErrors(newErrors);
+    const ok = Object.keys(newErrors).length === 0;
+    if (!ok) scrollToFirstError(newErrors);
+    return ok;
+  };
+
+  const validateDraftBasics = () => {
+    const newErrors: Record<string, string> = {};
+    if (!entityId) newErrors.entityId = 'Entity is required';
+    if (!department.trim()) newErrors.department = 'Department is required';
+    if (lineItems.length === 0) newErrors.lineItems = 'Add at least one line item';
     setErrors(newErrors);
     const ok = Object.keys(newErrors).length === 0;
     if (!ok) scrollToFirstError(newErrors);
@@ -796,6 +843,7 @@ export default function CreatePRPage() {
   const selectedApprovalUser = selectedApprovalUsers[0] || null;
 
   const handleSaveDraft = async () => {
+    if (!validateDraftBasics()) return;
     setSubmitAction('draft');
     await savePR(false);
   };
@@ -903,8 +951,14 @@ export default function CreatePRPage() {
     const silent = Boolean(options?.silent);
     if (!silent) setSubmitError('');
     if (!silent) setIsSubmitting(true);
+    savingInFlightRef.current = true;
+    if (submit) skipSoftSaveRef.current = true;
     try {
-      const payload: Record<string, unknown> = buildPayload();
+      const payload: Record<string, unknown> = {
+        ...buildPayload(),
+        vendorSelection: vendorSelection === 'own' ? 'own' : 'scm',
+        prFlow: prFlow === 'functional' ? 'functional' : 'standard',
+      };
       if (prFlow === 'functional' && vendorSelection === 'own') {
         const packed = await buildRfqVendorsPayload();
         if (packed.length) {
@@ -912,11 +966,41 @@ export default function CreatePRPage() {
           payload.maxRounds = rfqMaxRounds;
         }
       }
-      const targetId = persistPrId;
-      if (targetId) {
+
+      const markSubmitSuccess = () => {
+        skipSoftSaveRef.current = true;
+        clearCreatePrDraft(user?.id, editPrId);
+      };
+
+      const finishCreate = async (res: { data: unknown }) => {
+        const data = res.data as {
+          id?: number;
+          prNumber: string;
+          nextStep?: string;
+          l1Manager?: { name: string | null; email: string | null };
+        };
+        if (data.id) {
+          await uploadNewAttachments(data.id);
+          if (!submit) setSavedDraftId(data.id);
+        }
+        setCreatedPrNumber(data.prNumber);
+        if (data.prNumber) setPrNumber(data.prNumber);
+        if (submit) {
+          markSubmitSuccess();
+          setNextStepLabel(data.nextStep || 'L1 Manager Approval');
+          setL1Manager(data.l1Manager || null);
+          setShowConfirmModal(false);
+        } else {
+          setNextStepLabel('');
+          setL1Manager(null);
+        }
+        if (!silent) setShowSuccessModal(true);
+      };
+
+      const finishExisting = async (id: number) => {
         if (isAdminEditFlow) {
-          await prApi.adminUpdate(targetId, payload);
-          await uploadNewAttachments(targetId);
+          await prApi.adminUpdate(id, payload);
+          await uploadNewAttachments(id);
           if (silent) return;
           setCreatedPrNumber(prNumber);
           setNextStepLabel('');
@@ -926,21 +1010,21 @@ export default function CreatePRPage() {
           return;
         }
         if (submit) {
-          skipSoftSaveRef.current = true;
-          clearCreatePrDraft(user?.id, editPrId);
-          const res = await prApi.resubmit(targetId, { ...payload, remarks: resubmitRemarks });
+          const res = await prApi.resubmit(id, { ...payload, remarks: resubmitRemarks });
           const data = res.data as {
             prNumber?: string;
             nextStep?: string;
             l1Manager?: { name: string | null; email: string | null };
           };
-          await uploadNewAttachments(targetId);
+          await uploadNewAttachments(id);
+          markSubmitSuccess();
           setCreatedPrNumber(data.prNumber || prNumber);
           setNextStepLabel(data.nextStep || 'L1 Manager Approval');
           setL1Manager(data.l1Manager || null);
         } else {
-          await prApi.update(targetId, payload);
-          await uploadNewAttachments(targetId);
+          await prApi.update(id, payload);
+          await uploadNewAttachments(id);
+          setSavedDraftId(id);
           setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
@@ -948,35 +1032,26 @@ export default function CreatePRPage() {
         if (silent) return;
         if (submit) setShowConfirmModal(false);
         setShowSuccessModal(true);
-        return;
-      }
-      const res = await prApi.create({ ...payload, submit });
-      const data = res.data as {
-        id?: number;
-        prNumber: string;
-        nextStep?: string;
-        l1Manager?: { name: string | null; email: string | null };
       };
-      if (data.id) {
-        await uploadNewAttachments(data.id);
-        if (!submit) setSavedDraftId(data.id);
+
+      const targetId = persistPrId;
+      if (targetId) {
+        try {
+          await finishExisting(targetId);
+          return;
+        } catch (err) {
+          if (isAdminEditFlow || !isUnusablePersistError(err)) throw err;
+          setSavedDraftId(null);
+        }
       }
-      setCreatedPrNumber(data.prNumber);
-      if (data.prNumber) setPrNumber(data.prNumber);
-      if (submit) {
-        skipSoftSaveRef.current = true;
-        clearCreatePrDraft(user?.id, editPrId);
-        setNextStepLabel(data.nextStep || 'L1 Manager Approval');
-        setL1Manager(data.l1Manager || null);
-        setShowConfirmModal(false);
-      } else {
-        setNextStepLabel('');
-        setL1Manager(null);
-      }
-      if (!silent) setShowSuccessModal(true);
+
+      const res = await prApi.create({ ...payload, submit: Boolean(submit) });
+      await finishCreate(res);
     } catch (err) {
+      if (submit) skipSoftSaveRef.current = false;
       if (!silent) setSubmitError(err instanceof Error ? err.message : 'Failed to save PR');
     } finally {
+      savingInFlightRef.current = false;
       if (!silent) setIsSubmitting(false);
     }
   };
@@ -1462,11 +1537,11 @@ export default function CreatePRPage() {
               <p className="text-xs text-gray-500 mt-1.5">
                 {prFlow === 'standard'
                   ? vendorSelection === 'own'
-                    ? 'L1 → your RFQ entry → L1 vendor final → L2 → (optional CFO) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
-                    : 'L1 → L2 → CFO → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off.'
+                    ? 'L1 → your RFQ entry (billing & delivery are asked there) → L1 vendor final → L2 → (optional CFO) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
+                    : 'L1 → L2 → CFO → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off. Billing & delivery are filled on this page.'
                   : vendorSelection === 'own'
                     ? 'Enter vendor quotes on this page, pick approvers in order, then SCM Final RFQ → Buyer Final Verify → Create PO → SCM Manager approval.'
-                    : 'No inline RFQ. Pick approvers in order; then SCM RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval.'}
+                    : 'No inline RFQ. Pick approvers in order; then SCM RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval. Billing & delivery are filled on this page.'}
               </p>
             </div>
 
@@ -1685,6 +1760,7 @@ export default function CreatePRPage() {
         </div>
 
         {prFlow === 'functional' && vendorSelection === 'own' && (
+          <div data-field="rfqVendors">
           <FunctionalOwnRfqSection
             vendors={vendorMaster}
             rows={rfqVendors}
@@ -1706,256 +1782,55 @@ export default function CreatePRPage() {
               }
             }}
           />
+          </div>
         )}
 
-        {/* ── Section 3: Billing & Delivery ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-            <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
-              <i className="ri-map-pin-line text-white text-sm"></i>
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Billing Address &amp; Delivery</h2>
-              <p className="text-xs text-gray-500">
-                Billing GSTIN is filled from the entity region and can be edited.
-              </p>
-            </div>
+        {askBillingOnCreatePr ? (
+          <PrBillingDeliverySection
+            value={{
+              billingLocationId,
+              billingLocation,
+              billingGstNo,
+              billingAddress,
+              deliveryPoc,
+              placeOfDelivery,
+              expectedDeliveryTimeline,
+              paymentTerms,
+            }}
+            selectedEntity={selectedEntity}
+            billingLocations={billingLocations}
+            errors={errors}
+            requireBillingCore
+            onChange={(patch) => {
+              if (patch.billingLocationId !== undefined) setBillingLocationId(patch.billingLocationId);
+              if (patch.billingLocation !== undefined) setBillingLocation(patch.billingLocation);
+              if (patch.billingGstNo !== undefined) setBillingGstNo(patch.billingGstNo);
+              if (patch.billingAddress !== undefined) setBillingAddress(patch.billingAddress);
+              if (patch.deliveryPoc !== undefined) setDeliveryPoc(patch.deliveryPoc);
+              if (patch.placeOfDelivery !== undefined) setPlaceOfDelivery(patch.placeOfDelivery);
+              if (patch.expectedDeliveryTimeline !== undefined) {
+                setExpectedDeliveryTimeline(patch.expectedDeliveryTimeline);
+              }
+              if (patch.paymentTerms !== undefined) setPaymentTerms(patch.paymentTerms);
+            }}
+            onClearError={(key) => {
+              if (!errors[key]) return;
+              setErrors((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+            }}
+          />
+        ) : (
+          <div className="bg-teal-50 border border-teal-200 rounded-2xl px-5 py-4">
+            <p className="text-sm font-semibold text-teal-900">Billing &amp; delivery on RFQ Entry</p>
+            <p className="text-xs text-teal-800 mt-1">
+              For Standard + Own vendor, billing region, GSTIN, address, POC, place of delivery, timeline, and
+              payment terms are asked on RFQ Entry after L1 approval — not on this page.
+            </p>
           </div>
-
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Billing Region / GST <span className="text-red-500">*</span>
-              </label>
-              {billingLocations.length > 0 ? (
-                <select
-                  value={billingLocationId}
-                  onChange={(e) => {
-                    const id = e.target.value ? Number(e.target.value) : '';
-                    setBillingLocationId(id);
-                    const loc = billingLocations.find((row) => Number(row.id) === Number(id));
-                    const previousLocation = billingLocation;
-                    setBillingLocationId(id);
-                    setBillingLocation(loc?.location || '');
-                    setBillingGstNo((loc?.gstNo || '').toUpperCase());
-                    setBillingAddress((prev) => {
-                      const trimmed = prev.trim();
-                      if (!trimmed || trimmed === previousLocation) return loc?.location || '';
-                      return prev;
-                    });
-                    if (errors.billingLocationId) {
-                      setErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.billingLocationId;
-                        return next;
-                      });
-                    }
-                  }}
-                  disabled={!selectedEntity}
-                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
-                    errors.billingLocationId ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                  }`}
-                >
-                  <option value="">{selectedEntity ? 'Select billing region…' : 'Select entity first'}</option>
-                  {billingLocations.map((loc) => (
-                    <option key={loc.id || loc.location} value={loc.id}>
-                      {loc.location}{loc.gstNo ? ` — ${loc.gstNo}` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={billingLocation}
-                  onChange={(e) => setBillingLocation(e.target.value)}
-                  disabled={!selectedEntity}
-                  placeholder={selectedEntity ? 'No regions in entity master — enter billing location' : 'Select entity first'}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50"
-                />
-              )}
-              {errors.billingLocationId && (
-                <p className="text-xs text-red-500 mt-1">{errors.billingLocationId}</p>
-              )}
-              <p className="text-[11px] text-gray-400 mt-1">
-                GSTIN is filled from the selected region. You can edit it after it appears.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Billing GSTIN
-              </label>
-              <div className="relative">
-                <i className="ri-shield-check-line absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none"></i>
-                <input
-                  type="text"
-                  value={billingGstNo}
-                  onChange={(e) => setBillingGstNo(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                  disabled={!selectedEntity}
-                  placeholder={
-                    selectedEntity
-                      ? billingLocationId || billingLocation
-                        ? 'Edit GSTIN if needed'
-                        : 'Select billing region to auto-fill, then edit'
-                      : 'Select entity first'
-                  }
-                  maxLength={15}
-                  autoComplete="off"
-                  className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50"
-                />
-              </div>
-              <p className="text-[11px] text-gray-400 mt-1">
-                Auto-filled from the region. Change it if this PR needs a different GSTIN.
-              </p>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Billing Address <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={billingAddress}
-                onChange={(e) => {
-                  setBillingAddress(e.target.value);
-                  if (errors.billingAddress) {
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.billingAddress;
-                      return next;
-                    });
-                  }
-                }}
-                rows={3}
-                placeholder="Enter billing / invoicing address"
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white resize-none ${
-                  errors.billingAddress ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                }`}
-              />
-              {errors.billingAddress && <p className="text-xs text-red-500 mt-1">{errors.billingAddress}</p>}
-              <p className="text-[11px] text-gray-400 mt-1">
-                Filled from the selected region. Edit the full billing address if needed.
-              </p>
-            </div>
-
-            <div data-field="deliveryPoc">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                POC for Delivery <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={deliveryPoc}
-                onChange={(e) => {
-                  setDeliveryPoc(e.target.value);
-                  if (errors.deliveryPoc) {
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.deliveryPoc;
-                      return next;
-                    });
-                  }
-                }}
-                placeholder="Name / phone of site contact"
-                required
-                aria-required="true"
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
-                  errors.deliveryPoc ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                }`}
-              />
-              {errors.deliveryPoc && <p className="text-xs text-red-500 mt-1">{errors.deliveryPoc}</p>}
-            </div>
-
-            <div data-field="placeOfDelivery">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Place of Delivery <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={placeOfDelivery}
-                onChange={(e) => {
-                  setPlaceOfDelivery(e.target.value);
-                  if (errors.placeOfDelivery) {
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.placeOfDelivery;
-                      return next;
-                    });
-                  }
-                }}
-                placeholder="Site / warehouse address (can differ from billing)"
-                required
-                aria-required="true"
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
-                  errors.placeOfDelivery ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                }`}
-              />
-              {errors.placeOfDelivery && <p className="text-xs text-red-500 mt-1">{errors.placeOfDelivery}</p>}
-            </div>
-
-            <div data-field="expectedDeliveryTimeline">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Expected Delivery Timeline <span className="text-red-500">*</span>
-              </label>
-              <input
-                list="pr-delivery-timeline"
-                value={expectedDeliveryTimeline}
-                onChange={(e) => {
-                  setExpectedDeliveryTimeline(e.target.value);
-                  if (errors.expectedDeliveryTimeline) {
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.expectedDeliveryTimeline;
-                      return next;
-                    });
-                  }
-                }}
-                placeholder="e.g. Within 30 days"
-                required
-                aria-required="true"
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
-                  errors.expectedDeliveryTimeline ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                }`}
-              />
-              <datalist id="pr-delivery-timeline">
-                {PR_DELIVERY_TIMELINE_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt} />
-                ))}
-              </datalist>
-              {errors.expectedDeliveryTimeline && (
-                <p className="text-xs text-red-500 mt-1">{errors.expectedDeliveryTimeline}</p>
-              )}
-            </div>
-
-            <div data-field="paymentTerms">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Payment Terms <span className="text-red-500">*</span>
-              </label>
-              <input
-                list="pr-payment-terms"
-                value={paymentTerms}
-                onChange={(e) => {
-                  setPaymentTerms(e.target.value);
-                  if (errors.paymentTerms) {
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.paymentTerms;
-                      return next;
-                    });
-                  }
-                }}
-                placeholder="e.g. Net 30 Days"
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
-                  errors.paymentTerms ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                }`}
-              />
-              <datalist id="pr-payment-terms">
-                {PR_PAYMENT_TERM_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt} />
-                ))}
-              </datalist>
-              {errors.paymentTerms && <p className="text-xs text-red-500 mt-1">{errors.paymentTerms}</p>}
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* ── Section 4: Business Justification ── */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -2080,14 +1955,16 @@ export default function CreatePRPage() {
               <>
             <button
               onClick={handleSaveDraft}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap"
+              disabled={isSubmitting}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap disabled:opacity-60"
             >
               <i className="ri-save-line"></i>
-              Save Draft
+              {isSubmitting && submitAction === 'draft' ? 'Saving…' : 'Save Draft'}
             </button>
             <button
               onClick={handleSubmitPR}
-                  className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm ${
+              disabled={isSubmitting}
+              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60 ${
                 isResubmitFlow ? 'bg-orange-600 hover:bg-orange-700' : 'bg-slate-800 hover:bg-slate-700'
               }`}
             >

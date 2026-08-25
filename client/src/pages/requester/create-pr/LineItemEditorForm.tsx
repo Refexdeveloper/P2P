@@ -175,10 +175,7 @@ export default function LineItemEditorForm({
     }
     if (!draft.category) next.category = 'Category is required';
     if (!(quantity >= 1)) next.quantity = 'Enter a quantity of 1 or more';
-    if (!(draft.estimatedCost > 0)) next.cost = 'Unit price is required and must be greater than 0';
-    if (gstInput.trim() === '' || parsedGst == null || !Number.isFinite(parsedGst)) {
-      next.gst = 'GST % is required (enter 0 if exempt)';
-    } else if (parsedGst < 0 || parsedGst > 100) {
+    if (gstInput.trim() !== '' && parsedGst != null && Number.isFinite(parsedGst) && (parsedGst < 0 || parsedGst > 100)) {
       next.gst = 'Enter GST between 0 and 100';
     }
     setErrors(next);
@@ -311,7 +308,7 @@ export default function LineItemEditorForm({
 
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">
-            Unit Price ({moneySymbol}) <span className="text-red-500">*</span>
+            Unit Price ({moneySymbol})
           </label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-semibold pointer-events-none">
@@ -332,7 +329,6 @@ export default function LineItemEditorForm({
               className={`w-full pl-8 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${noSpinnerClass} ${errors.cost ? 'border-red-400' : 'border-gray-200'}`}
               title="Unit Price"
               aria-label="Unit Price"
-              aria-required="true"
             />
           </div>
           {errors.cost && <p className="text-xs text-red-500 mt-1">{errors.cost}</p>}
@@ -350,9 +346,7 @@ export default function LineItemEditorForm({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">
-            GST % <span className="text-red-500">*</span>
-          </label>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">GST %</label>
           <input
             type="text"
             inputMode="decimal"
@@ -372,10 +366,9 @@ export default function LineItemEditorForm({
               setGstInput(raw);
             }}
             placeholder="e.g. 18"
-            aria-required="true"
             className={`w-full px-3 py-2 border rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-400 ${errors.gst ? 'border-red-400' : 'border-gray-200'}`}
           />
-          <p className="text-[11px] text-gray-400 mt-1">Type 0 for GST-exempt items</p>
+          <p className="text-[11px] text-gray-400 mt-1">Optional. Type 0 for GST-exempt items</p>
           {errors.gst && <p className="text-xs text-red-500 mt-1">{errors.gst}</p>}
         </div>
 

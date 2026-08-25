@@ -9,6 +9,7 @@ import {
   getManagerStats,
   processApproval,
   updatePurchaseRequest,
+  updatePrBillingDelivery,
   adminUpdatePurchaseRequest,
   adminSendBackPurchaseRequest,
   resubmitPurchaseRequest,
@@ -182,6 +183,19 @@ router.put('/:id', requireRoles('Requester'), async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
+
+router.put(
+  '/:id/billing',
+  requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'),
+  async (req, res) => {
+    try {
+      const pr = await updatePrBillingDelivery(req.user, req.params.id, req.body);
+      res.json({ data: pr, message: 'Billing and delivery saved' });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
 
 /** RFQ Approval / admin: edit full PR details at any status */
 router.put(

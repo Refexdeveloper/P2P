@@ -248,14 +248,6 @@ export default function RequesterDashboard() {
           <i className="ri-add-line text-lg"></i>
           <span>Create New PR</span>
         </Link>
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new Event('p2p-open-pr-chat'))}
-          className="px-5 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer"
-        >
-          <i className="ri-robot-2-line text-lg"></i>
-          <span>Create PR with AI</span>
-        </button>
         <Link to="/requester/track-pr" className="px-5 py-2.5 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer">
           <i className="ri-search-eye-line text-lg"></i>
           <span>Track My PRs &amp; SLA</span>

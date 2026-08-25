@@ -679,7 +679,6 @@ function specialNotesInnerHtml(po, options = {}) {
   const signature = options.signature;
   const entityLabel = po.entity || 'Refex Group of Companies';
   const td = po.poTermsDetails || {};
-  const paymentText = td.paymentTermsText || po.paymentTerms || '—';
   const siteAddress = td.siteAddress || po.deliveryAddress || '';
   return `
     <div class="special-notes">
@@ -687,7 +686,6 @@ function specialNotesInnerHtml(po, options = {}) {
       ${siteAddress ? `<p><span class="lbl">Site Address:</span> ${escapeHtml(siteAddress).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.siteContactPerson || td.siteContactPhone || td.siteContactEmail ? `<p><span class="lbl">Contact person at the site:</span> Name: ${escapeHtml(td.siteContactPerson || '—')}, Phone: ${escapeHtml(td.siteContactPhone || '—')}, Email: ${escapeHtml(td.siteContactEmail || '—')}</p>` : ''}
       ${td.projectManagerHo || td.projectManagerContact || td.projectManagerEmail ? `<p><span class="lbl">Project Manager at the head office:</span> ${escapeHtml(td.projectManagerHo || '—')}, Phone: ${escapeHtml(td.projectManagerContact || '—')}, Email: ${escapeHtml(td.projectManagerEmail || '—')}</p>` : ''}
-      <p><span class="lbl">Payment Terms:</span> ${escapeHtml(paymentText).replace(/\n/g, '<br>')}</p>
       ${td.invoicingAddress || td.locationName || td.buyerGstNo ? `<div><p><span class="lbl">Invoicing address:</span></p><p><strong>${escapeHtml(entityLabel)},</strong></p> ${(() => {
         const raw = String(td.invoicingAddress || '').trim();
         if (looksLikeHtml(raw)) return `<div class="inv-addr-rich">${raw}</div>`;
@@ -708,9 +706,6 @@ function specialNotesInnerHtml(po, options = {}) {
       ${td.subject ? `<p><span class="lbl">Subject:</span> ${escapeHtml(td.subject).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.reasonForCancellation ? `<p><span class="lbl">Reason For Cancellation:</span> ${escapeHtml(td.reasonForCancellation).replace(/\n/g, '<br>')}</p>` : ''}
       ${po.specialInstructions ? `<p><span class="lbl">Note:</span> ${escapeHtml(po.specialInstructions).replace(/\n/g, '<br>')}</p>` : ''}
-      <p><span class="lbl">PR Reference:</span> ${escapeHtml(po.prNumber)}</p>
-      <p><span class="lbl">Incoterms:</span> ${escapeHtml(po.incoterms || '—')}</p>
-      <p><span class="lbl">Expected Delivery:</span> ${escapeHtml(po.expectedDeliveryDate || '—')}</p>
       ${signature ? `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space">

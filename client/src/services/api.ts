@@ -274,6 +274,11 @@ export const prApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  updateBilling: (id: number, body: Record<string, unknown>) =>
+    request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/billing`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   /** RFQ Approval / admin: edit any PR field + line items */
   adminUpdate: (id: number, body: Record<string, unknown>) =>
     request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/admin`, {

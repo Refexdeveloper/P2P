@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
@@ -7,16 +7,22 @@ import CreateVendorForm from '../../scm/vendor-master/components/CreateVendorFor
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   rfqApi,
+  prApi,
+  masterApi,
   RfqFieldDefinition,
   VendorComparisonData,
   vendorApi,
   VendorRecord,
+  EntityRecord,
 } from '../../../services/api';
 import RfqChatbot from '../../../components/feature/RfqChatbot';
 import { openRfqChat } from '../../../components/feature/rfqChatOpen';
 import RfqVendorQuoteTable from './components/RfqVendorQuoteTable';
 import VendorSearchSelect from './components/VendorSearchSelect';
 import RfqExtraQuestionsPanel from './components/RfqExtraQuestionsPanel';
+import PrBillingDeliverySection, {
+  PrBillingDeliveryValue,
+} from '../create-pr/PrBillingDeliverySection';
 
 const REQUESTER_SCORE_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
 
@@ -92,6 +98,19 @@ function formatFieldValue(field: RfqFieldDefinition, value: unknown) {
   return String(value);
 }
 
+function emptyBilling(): PrBillingDeliveryValue {
+  return {
+    billingLocationId: '',
+    billingLocation: '',
+    billingGstNo: '',
+    billingAddress: '',
+    deliveryPoc: '',
+    placeOfDelivery: '',
+    expectedDeliveryTimeline: '',
+    paymentTerms: '',
+  };
+}
+
 export default function RfqEntryDetailPage() {
   const { user } = useAuth();
   const { prId } = useParams<{ prId: string }>();
@@ -113,6 +132,16 @@ export default function RfqEntryDetailPage() {
     title: string;
     department: string;
     totalAmount: number;
+    entityId?: number | null;
+    vendorSelection?: string;
+    billingLocationId?: number | null;
+    billingLocation?: string;
+    billingGstNo?: string;
+    billingAddress?: string;
+    deliveryPoc?: string;
+    placeOfDelivery?: string;
+    expectedDeliveryTimeline?: string;
+    paymentTerms?: string;
     lineItems?: Array<{
       id: number | string;
       description: string;
@@ -160,6 +189,9 @@ export default function RfqEntryDetailPage() {
     targetRound: number;
     source: 'edit' | 'requote';
   } | null>(null);
+  const [entities, setEntities] = useState<EntityRecord[]>([]);
+  const [billing, setBilling] = useState<PrBillingDeliveryValue>(emptyBilling);
+  const billingHydratedRef = useRef(false);
 
   const loadVendors = useCallback(async () => {
     try {
@@ -372,6 +404,11 @@ export default function RfqEntryDetailPage() {
   const isFinalized = isScm
     ? Boolean(config?.finalizedAt)
     : Boolean(config?.finalizedAt || config?.requesterSubmittedAt);
+  const selectedEntity = useMemo(
+    () => (pr?.entityId ? entities.find((e) => Number(e.id) === Number(pr.entityId)) || null : null),
+    [entities, pr?.entityId]
+  );
+  const billingLocations = selectedEntity?.locations?.filter((loc) => loc.location) || [];
   const hasInvitations = tableRows.length > 0;
   const quotedCount = tableRows.filter((r) => r.hasActiveQuote).length;
   const guideStep = !hasInvitations ? 1 : quotedCount === 0 ? 2 : recommendedId ? 3 : 2;
@@ -396,6 +433,31 @@ export default function RfqEntryDetailPage() {
       const res = await rfqApi.getByPr(Number(prId));
       const data = res.data;
       setPr(data.pr as typeof pr);
+      const loaded = data.pr as {
+        billingLocationId?: number | null;
+        billingLocation?: string;
+        billingGstNo?: string;
+        billingAddress?: string;
+        deliveryPoc?: string;
+        placeOfDelivery?: string;
+        expectedDeliveryTimeline?: string;
+        paymentTerms?: string;
+      };
+      setBilling((prev) =>
+        billingHydratedRef.current
+          ? prev
+          : {
+              billingLocationId: loaded.billingLocationId ? Number(loaded.billingLocationId) : '',
+              billingLocation: loaded.billingLocation || '',
+              billingGstNo: loaded.billingGstNo || '',
+              billingAddress: loaded.billingAddress || '',
+              deliveryPoc: loaded.deliveryPoc || '',
+              placeOfDelivery: loaded.placeOfDelivery || '',
+              expectedDeliveryTimeline: loaded.expectedDeliveryTimeline || '',
+              paymentTerms: loaded.paymentTerms || '',
+            }
+      );
+      if (!soft) billingHydratedRef.current = true;
       const cfg = data.config as RfqConfig;
       setConfig(cfg);
       // Don't wipe a local Recommend choice during soft/poll refresh
@@ -425,10 +487,35 @@ export default function RfqEntryDetailPage() {
   }, [loadRfq, loadVendors]);
 
   useEffect(() => {
+    billingHydratedRef.current = false;
+    setBilling(emptyBilling());
+  }, [prId]);
+
+  useEffect(() => {
+    if (isScm) return;
+    (async () => {
+      try {
+        const res = await masterApi.listEntities({ status: 'active' });
+        setEntities(res.data || []);
+      } catch {
+        setEntities([]);
+      }
+    })();
+  }, [isScm]);
+
+  useEffect(() => {
     if (!hasInvitations || isFinalized) return;
     const interval = setInterval(() => loadRfq({ soft: true }), 15000);
     return () => clearInterval(interval);
   }, [hasInvitations, isFinalized, loadRfq]);
+
+  useEffect(() => {
+    if (isScm || !prId || isFinalized || !billingHydratedRef.current) return;
+    const timer = window.setTimeout(() => {
+      void persistBilling().catch(() => undefined);
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [billing, isScm, prId, isFinalized]);
 
   useEffect(() => {
     if (mode !== 'preview' || !prId || !hasInvitations) {
@@ -916,6 +1003,20 @@ export default function RfqEntryDetailPage() {
     );
   };
 
+  const persistBilling = async () => {
+    if (!prId || isScm) return;
+    await prApi.updateBilling(Number(prId), {
+      billingLocationId: billing.billingLocationId || undefined,
+      billingLocation: billing.billingLocation.trim() || undefined,
+      billingGstNo: billing.billingGstNo.trim() || undefined,
+      billingAddress: billing.billingAddress.trim() || undefined,
+      deliveryPoc: billing.deliveryPoc.trim() || undefined,
+      placeOfDelivery: billing.placeOfDelivery.trim() || undefined,
+      expectedDeliveryTimeline: billing.expectedDeliveryTimeline.trim() || undefined,
+      paymentTerms: billing.paymentTerms.trim() || undefined,
+    });
+  };
+
   const handleSubmitRfq = async () => {
     if (!prId || !recommendedId) {
       setError('Select a recommended vendor before submitting RFQ');
@@ -945,6 +1046,7 @@ export default function RfqEntryDetailPage() {
     setSubmitting(true);
     setError('');
     try {
+      if (!isScm) await persistBilling();
       await rfqApi.saveConfig(Number(prId), {
         fieldDefinitions: fields,
         recommendedInvitationId: recommendedId,
@@ -1287,6 +1389,19 @@ export default function RfqEntryDetailPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {!isScm && pr && (
+        <div className="mb-5">
+          <PrBillingDeliverySection
+            value={billing}
+            selectedEntity={selectedEntity}
+            billingLocations={billingLocations}
+            disabled={isFinalized}
+            hint="For Standard + Own vendor, fill billing and delivery here (not on Create PR)."
+            onChange={(patch) => setBilling((prev) => ({ ...prev, ...patch }))}
+          />
         </div>
       )}
 

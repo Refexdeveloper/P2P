@@ -525,8 +525,12 @@ export default function FunctionalOwnRfqSection({
               <button
                 type="button"
                 onClick={() => {
-                  if (quoteRound === 1 && (!(Number(editingQuote.quotedPrice) > 0) || !editingQuote.file)) {
-                    setLocalError('Round 1 needs a quoted price and quotation file');
+                  if (quoteRound === 1 && !(Number(editingQuote.quotedPrice) > 0)) {
+                    setLocalError('Round 1 needs a quoted price');
+                    return;
+                  }
+                  if (quoteRound === 1 && !editingQuote.file && !existingQuoteNote) {
+                    setLocalError('Round 1 needs a quotation file');
                     return;
                   }
                   setLocalError('');

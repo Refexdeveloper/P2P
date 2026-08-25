@@ -183,23 +183,8 @@ async function insertPrLineItem(db, prId, item) {
   }
 }
 
-function assertPrSubmitRequirements(extras = {}, lineItems) {
-  if (!String(extras.deliveryPoc || '').trim()) {
-    throw new Error('POC for delivery is required');
-  }
-  if (!String(extras.placeOfDelivery || '').trim()) {
-    throw new Error('Place of delivery is required');
-  }
-  if (!String(extras.expectedDeliveryTimeline || '').trim()) {
-    throw new Error('Expected delivery timeline is required');
-  }
-  if (!Array.isArray(lineItems)) return;
-  for (const item of lineItems) {
-    const cost = Number(item.unitCost ?? item.estimatedCost ?? 0);
-    if (!(cost > 0)) {
-      throw new Error('Unit price is required for every line item');
-    }
-  }
+function assertPrSubmitRequirements(_extras = {}, _lineItems) {
+  return;
 }
 
 function formatPrApprovalStage(stage, prFlow = 'standard') {
@@ -1833,6 +1818,44 @@ export async function processApproval(user, prId, action, remarks, options = {})
   } finally {
     conn.release();
   }
+}
+
+export async function updatePrBillingDelivery(user, prId, body = {}) {
+  const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
+  if (!prRows.length) throw new Error('PR not found');
+  const pr = prRows[0];
+  const isOwner = Number(pr.requester_id) === Number(user.id);
+  const isRfqEditor = ['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role);
+  if (!isOwner && !isRfqEditor) throw new Error('Unauthorized');
+
+  const extras = parseRequisitionExtras(body, {
+    deliveryPoc: pr.delivery_poc,
+    placeOfDelivery: pr.place_of_delivery,
+    billingAddress: pr.billing_address,
+    expectedDeliveryTimeline: pr.expected_delivery_timeline,
+    paymentTerms: pr.payment_terms,
+  });
+  const billing = await resolvePrBilling(pr.entity_id, body, pr);
+
+  await pool.query(
+    `UPDATE purchase_requests
+     SET billing_location_id = ?, billing_location = ?, billing_gst_no = ?, billing_address = ?,
+         delivery_poc = ?, place_of_delivery = ?, expected_delivery_timeline = ?, payment_terms = ?,
+         updated_at = NOW()
+     WHERE id = ?`,
+    [
+      billing.billingLocationId,
+      billing.billingLocation || null,
+      billing.billingGstNo || null,
+      extras.billingAddress || null,
+      extras.deliveryPoc || null,
+      extras.placeOfDelivery || null,
+      extras.expectedDeliveryTimeline || null,
+      extras.paymentTerms || null,
+      prId,
+    ]
+  );
+  return getPurchaseRequestById(prId);
 }
 
 export async function updatePurchaseRequest(user, prId, body, conn = null) {
