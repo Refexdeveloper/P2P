@@ -10,6 +10,34 @@ import { taskApi, prApi, poApi } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate } from '../../utils/formatDate';
 
+const STAGE_LABELS: Record<string, string> = {
+  SUBMITTED: 'PR Submitted',
+  HOD_REVIEW: 'L1 Manager Review',
+  PR_MANAGER_REVIEW: 'L2 Manager Review',
+  CFO_REVIEW: 'CFO Review',
+  RFQ_MANAGER_REVIEW: 'L1 Vendor Final',
+  RFQ_L2_REVIEW: 'L2 Manager Review',
+  RFQ_CFO_REVIEW: 'CFO Review',
+  RFQ_SCM_BUYER_SELECTION: 'SCM RFQ',
+  BUSINESS_REVIEW: 'SCM Manager Review',
+  SCM_PO_CREATE: 'Create PO',
+  PO_CREATED: 'PO Created',
+};
+
+function formatApproverStage(pr: Record<string, unknown>, task: { status: string; currentApprover: string }) {
+  const ui = String(pr.statusUI || pr.statusFrontend || '').trim();
+  const stageRaw = String(pr.currentStage || '').trim();
+  const stageNice = STAGE_LABELS[stageRaw] || (stageRaw ? stageRaw.replace(/_/g, ' ') : '');
+  if (task.status === 'pending_approval') {
+    if (ui && !/^completed$/i.test(ui)) return ui;
+    if (stageNice && !/^completed$/i.test(stageNice)) return stageNice;
+    return 'Awaiting your approval';
+  }
+  if (ui) return ui;
+  if (stageNice) return stageNice;
+  return task.currentApprover && task.currentApprover !== 'Completed' ? task.currentApprover : '—';
+}
+
 interface TaskItem {
   id: string;
   prId: number;
@@ -77,7 +105,7 @@ export default function TasksPage() {
           dueDate: String(t.dueDate || ''),
           slaRemaining: Number(t.slaRemaining) || 0,
           isOverdue: Boolean(t.isOverdue),
-          currentApprover: status === 'pending_approval' ? 'You' : 'Completed',
+          currentApprover: status === 'pending_approval' ? 'Awaiting your approval' : '—',
           lineItems: Number(t.lineItems) || 0,
           requestType: String(t.requestType || 'Opex'),
           requesterAvatar: String(t.requesterAvatar || 'R'),
@@ -141,7 +169,7 @@ export default function TasksPage() {
   }, [loading, tasks, searchParams, setSearchParams, navigate]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filter, setFilter] = useState<string>('all');
+  const [filter, setFilter] = useState<string>('pending_approval');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -313,12 +341,12 @@ export default function TasksPage() {
         requestType: String(pr.requestType || task.requestType),
         category: firstCategory,
         priority: String(pr.priorityLower || pr.priority || task.priority).toLowerCase(),
-        status: task.status,
+        status: task.status === 'pending_approval' ? 'pending_approval' : task.status,
         totalAmount: Number(pr.totalAmount ?? task.totalAmount),
         currency: 'INR',
         submittedDate: String(pr.submittedDate || task.submittedDate),
         requiredDate: String(pr.requiredDate || ''),
-        currentApprover: String(pr.currentStage || task.currentApprover),
+        currentApprover: formatApproverStage(pr, task),
         justification: String(pr.justification || 'No justification provided.'),
         lineItems,
         approvalHistory,
@@ -1002,12 +1030,17 @@ export default function TasksPage() {
         <TaskDetailDrawer
           task={drawerDetail}
           loading={drawerLoading}
+          canAct={
+            (processedTasks.find((t) => t.id === selectedTask)?.status || drawerDetail.status) ===
+            'pending_approval'
+          }
           onClose={() => {
             setSelectedTask(null);
             setDrawerDetail(null);
           }}
           onApprove={(id) => openModal(id, 'approve')}
           onReject={(id) => openModal(id, 'reject')}
+          onReturn={(id) => openModal(id, 'return')}
         />
       )}
 

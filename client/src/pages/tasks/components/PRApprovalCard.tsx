@@ -53,6 +53,7 @@ interface PRApprovalCardProps {
   onToggle: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onReturn?: (id: string) => void;
 }
 
 export default function PRApprovalCard({
@@ -61,6 +62,7 @@ export default function PRApprovalCard({
   onToggle,
   onApprove,
   onReject,
+  onReturn,
 }: PRApprovalCardProps) {
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
@@ -406,6 +408,17 @@ export default function PRApprovalCard({
               >
                 <i className="ri-check-double-line"></i> Approve
               </button>
+              {onReturn && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReturn(task.id);
+                  }}
+                  className="px-5 py-2.5 bg-white text-orange-600 text-sm font-semibold rounded-lg border border-orange-300 hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2"
+                >
+                  <i className="ri-arrow-go-back-line"></i> Send Back
+                </button>
+              )}
               <button
                 onClick={(e) => {
                   e.stopPropagation();

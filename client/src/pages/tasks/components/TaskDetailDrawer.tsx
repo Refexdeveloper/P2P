@@ -52,19 +52,37 @@ interface PRTask {
 interface TaskDetailDrawerProps {
   task: PRTask;
   loading?: boolean;
+  /** When set, controls Approve / Send Back / Reject independently of PR/task status labels. */
+  canAct?: boolean;
   onClose: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onReturn: (id: string) => void;
+}
+
+const CLOSED_STATUSES = new Set(['approved', 'rejected', 'returned']);
+
+function canShowActions(status: string, canAct?: boolean) {
+  if (typeof canAct === 'boolean') return canAct;
+  const s = String(status || '').toLowerCase();
+  if (CLOSED_STATUSES.has(s)) return false;
+  if (s === 'pending_approval' || s === 'pending') return true;
+  if (s.includes('pending')) return true;
+  // Unknown labels (e.g. PENDING_HOD_APPROVAL, "Completed" stage leak) — still allow L1/L2 actions
+  return !CLOSED_STATUSES.has(s);
 }
 
 export default function TaskDetailDrawer({
   task,
   loading = false,
+  canAct,
   onClose,
   onApprove,
   onReject,
+  onReturn,
 }: TaskDetailDrawerProps) {
-  const isPending = task.status === 'pending_approval';
+  const status = String(task.status || '').toLowerCase();
+  const showActions = canShowActions(status, canAct);
   const lineItems = Array.isArray(task.lineItems) ? task.lineItems : [];
   const approvalHistory = Array.isArray(task.approvalHistory) ? task.approvalHistory : [];
   const [hasQuotes, setHasQuotes] = useState(false);
@@ -76,9 +94,9 @@ export default function TaskDetailDrawer({
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-white shadow-2xl overflow-y-auto animate-slide-in-right">
+      <div className="relative flex h-full w-full max-w-xl flex-col bg-white shadow-2xl animate-slide-in-right">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
+        <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -98,12 +116,12 @@ export default function TaskDetailDrawer({
         </div>
 
         {loading ? (
-          <div className="px-6 py-16 text-center text-gray-500">
+          <div className="flex-1 px-6 py-16 text-center text-gray-500 overflow-y-auto">
             <i className="ri-loader-4-line text-2xl animate-spin text-amber-600"></i>
             <p className="text-sm mt-3">Loading PR details…</p>
           </div>
         ) : (
-          <div className="px-6 py-5 space-y-6">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
             {/* Requester Info */}
             <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
               <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
@@ -211,9 +229,6 @@ export default function TaskDetailDrawer({
                           <td className="px-3 py-2 font-medium text-gray-900">{item.description}</td>
                           <td className="px-3 py-2 text-center text-gray-700 tabular-nums">
                             {Number(item.qty) || 0}
-                            {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
-                              <span className="text-xs text-gray-400 font-normal ml-1">{item.unit}</span>
-                            ) : null}
                           </td>
                           <td className="px-3 py-2 text-right text-gray-700">
                             ₹{Number(item.unitCost || 0).toLocaleString('en-IN')}
@@ -295,18 +310,30 @@ export default function TaskDetailDrawer({
           </div>
         )}
 
-        {/* Footer Actions */}
-        {isPending && !loading && (
-          <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center gap-3">
+        {/* Footer — pinned so L1/L2 always see Approve / Send Back / Reject */}
+        {showActions && (
+          <div className="shrink-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center gap-3">
             <button
+              type="button"
+              disabled={loading}
               onClick={() => onApprove(task.id)}
-              className="flex-1 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 shadow-sm"
+              className="flex-1 px-4 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
             >
               <i className="ri-check-double-line"></i> Approve
             </button>
             <button
+              type="button"
+              disabled={loading}
+              onClick={() => onReturn(task.id)}
+              className="flex-1 px-4 py-2.5 bg-white text-orange-600 text-sm font-semibold rounded-lg border border-orange-300 hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <i className="ri-arrow-go-back-line"></i> Send Back
+            </button>
+            <button
+              type="button"
+              disabled={loading}
               onClick={() => onReject(task.id)}
-              className="flex-1 px-5 py-2.5 bg-white text-red-600 text-sm font-semibold rounded-lg border border-red-300 hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2.5 bg-white text-red-600 text-sm font-semibold rounded-lg border border-red-300 hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <i className="ri-close-circle-line"></i> Reject
             </button>
