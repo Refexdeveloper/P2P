@@ -26,6 +26,7 @@ export type CreatePrDraftSnapshot = {
       quotedPrice: string;
       leadTime: string;
       paymentTerms: string;
+      savedFileName?: string;
     }>;
   }>;
   priority: string;
@@ -78,15 +79,31 @@ export function readCreatePrDraft(
   prId: number | null
 ): CreatePrDraftSnapshot | null {
   try {
-    const raw = sessionStorage.getItem(createPrDraftKey(userId, prId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as CreatePrDraftSnapshot;
-    if (!parsed || parsed.v !== 1 || typeof parsed.savedAt !== 'number') return null;
-    if (Date.now() - parsed.savedAt > TTL_MS) {
-      sessionStorage.removeItem(createPrDraftKey(userId, prId));
-      return null;
+    const primary = sessionStorage.getItem(createPrDraftKey(userId, prId));
+    if (primary) {
+      const parsed = JSON.parse(primary) as CreatePrDraftSnapshot;
+      if (!parsed || parsed.v !== 1 || typeof parsed.savedAt !== 'number') return null;
+      if (Date.now() - parsed.savedAt > TTL_MS) {
+        sessionStorage.removeItem(createPrDraftKey(userId, prId));
+        return null;
+      }
+      return parsed;
     }
-    return parsed;
+    // Opening /edit-pr/:id after Save Draft from /create-pr — migrate the "new" snapshot.
+    if (prId != null) {
+      const legacyRaw = sessionStorage.getItem(createPrDraftKey(userId, null));
+      if (!legacyRaw) return null;
+      const legacy = JSON.parse(legacyRaw) as CreatePrDraftSnapshot;
+      if (!legacy || legacy.v !== 1 || Number(legacy.backendPrId) !== Number(prId)) return null;
+      if (Date.now() - legacy.savedAt > TTL_MS) {
+        sessionStorage.removeItem(createPrDraftKey(userId, null));
+        return null;
+      }
+      sessionStorage.setItem(createPrDraftKey(userId, prId), JSON.stringify(legacy));
+      sessionStorage.removeItem(createPrDraftKey(userId, null));
+      return legacy;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -99,7 +116,12 @@ export function writeCreatePrDraft(
 ) {
   try {
     if (!hasMeaningfulCreatePrDraft(draft)) return;
-    sessionStorage.setItem(createPrDraftKey(userId, prId), JSON.stringify({ ...draft, savedAt: Date.now() }));
+    const id = prId ?? draft.backendPrId ?? null;
+    const payload = { ...draft, savedAt: Date.now(), backendPrId: draft.backendPrId ?? id };
+    sessionStorage.setItem(createPrDraftKey(userId, id), JSON.stringify(payload));
+    if (id != null) {
+      sessionStorage.removeItem(createPrDraftKey(userId, null));
+    }
   } catch {
     /* quota / private mode */
   }
@@ -108,6 +130,8 @@ export function writeCreatePrDraft(
 export function clearCreatePrDraft(userId: number | string | undefined, prId: number | null) {
   try {
     sessionStorage.removeItem(createPrDraftKey(userId, prId));
+    sessionStorage.removeItem(createPrDraftKey(userId, null));
+    if (prId != null) sessionStorage.removeItem(createPrDraftKey(userId, prId));
   } catch {
     /* ignore */
   }

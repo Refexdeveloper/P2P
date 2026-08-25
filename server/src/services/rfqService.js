@@ -361,12 +361,26 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
     [maxRounds, prId]
   );
 
+  // Keep previous quotation files so draft re-saves don't require re-uploading large PDFs.
+  const previousFiles = new Map();
   const [existing] = await pool.query(
-    `SELECT id FROM rfq_invitations WHERE pr_id = ?`,
+    `SELECT ri.id, ri.vendor_email, vqs.round, vqs.quotation_file_name, vqs.quotation_file_path, vqs.quotation_file_data
+     FROM rfq_invitations ri
+     LEFT JOIN vendor_quotation_submissions vqs ON vqs.rfq_invitation_id = ri.id
+     WHERE ri.pr_id = ?`,
     [prId]
   );
+  for (const row of existing) {
+    if (!row.quotation_file_name) continue;
+    const key = `${String(row.vendor_email || '').toLowerCase()}::${Number(row.round) || 1}`;
+    previousFiles.set(key, {
+      fileName: row.quotation_file_name,
+      filePath: row.quotation_file_path || null,
+      buffer: row.quotation_file_data || null,
+    });
+  }
   if (existing.length) {
-    const ids = existing.map((r) => r.id);
+    const ids = [...new Set(existing.map((r) => r.id))];
     const ph = ids.map(() => '?').join(',');
     await pool.query(`DELETE FROM vendor_quotation_submissions WHERE rfq_invitation_id IN (${ph})`, ids);
     await pool.query(`DELETE FROM rfq_invitations WHERE pr_id = ?`, [prId]);
@@ -403,11 +417,17 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       .sort((a, b) => a.round - b.round);
 
     const round1 = quotes.find((q) => q.round === 1);
-    if (!round1 || !(round1.quotedPrice > 0)) {
+    if (!round1 || !Number.isFinite(round1.quotedPrice) || round1.quotedPrice < 0) {
       throw new Error(`Enter a round-1 quoted price for ${name}`);
     }
+    const round1Prev = previousFiles.get(`${email}::1`);
     if (!round1.quotationFileName || !round1.quotationFileData) {
-      throw new Error(`Attach a round-1 quotation file for ${name}`);
+      if (!round1Prev?.fileName) {
+        throw new Error(`Attach a round-1 quotation file for ${name}`);
+      }
+      round1.quotationFileName = round1Prev.fileName;
+      round1.quotationFileData = null;
+      round1._reuse = round1Prev;
     }
 
     const token = generateToken();
@@ -420,17 +440,31 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
     const invitationId = invResult.insertId;
 
     for (const quote of quotes) {
-      if (!(quote.quotedPrice > 0) || !quote.quotationFileName || !quote.quotationFileData) {
+      if (!Number.isFinite(quote.quotedPrice) || quote.quotedPrice < 0) continue;
+      const prev = quote._reuse || previousFiles.get(`${email}::${quote.round}`);
+      let fileName = null;
+      let filePath = null;
+      let fileBuffer = null;
+      if (quote.quotationFileName && quote.quotationFileData) {
+        const fileInfo = saveQuotationFile(
+          invitationId,
+          quote.round,
+          quote.quotationFileName,
+          quote.quotationFileData
+        );
+        if (!fileInfo.filePath && !fileInfo.buffer) {
+          throw new Error(`Failed to save quotation file for ${name} round ${quote.round}`);
+        }
+        fileName = fileInfo.fileName;
+        filePath = fileInfo.filePath;
+        // Prefer disk path only — avoid locking InnoDB on multi‑MB BLOBs during PR save.
+        fileBuffer = fileInfo.filePath ? null : fileInfo.buffer;
+      } else if (prev?.fileName) {
+        fileName = prev.fileName;
+        filePath = prev.filePath;
+        fileBuffer = prev.filePath ? null : prev.buffer;
+      } else {
         continue;
-      }
-      const fileInfo = saveQuotationFile(
-        invitationId,
-        quote.round,
-        quote.quotationFileName,
-        quote.quotationFileData
-      );
-      if (!fileInfo.filePath) {
-        throw new Error(`Failed to save quotation file for ${name} round ${quote.round}`);
       }
       await pool.query(
         `INSERT INTO vendor_quotation_submissions
@@ -444,9 +478,9 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
           quote.leadTime,
           quote.paymentTerms,
           `Entered on Create PR by ${user.name || user.email}`,
-          fileInfo.fileName,
-          fileInfo.filePath,
-          fileInfo.buffer,
+          fileName,
+          filePath,
+          fileBuffer,
           JSON.stringify({}),
           JSON.stringify({ enteredBy: user.name, entryMode: 'create-pr' }),
         ]
@@ -1478,8 +1512,14 @@ function nodemailerAttachment(filename, row) {
 }
 
 async function loadQuotationMailAttachments(prId) {
+  // Prefer disk path; only pull BLOB when path is missing (keeps mail prep off the hot path lighter).
   const [rows] = await pool.query(
-    `SELECT vqs.round, vqs.quotation_file_name, vqs.quotation_file_path, vqs.quotation_file_data,
+    `SELECT vqs.round, vqs.quotation_file_name, vqs.quotation_file_path,
+            CASE
+              WHEN vqs.quotation_file_path IS NULL OR vqs.quotation_file_path = ''
+              THEN vqs.quotation_file_data
+              ELSE NULL
+            END AS quotation_file_data,
             ri.vendor_name
      FROM vendor_quotation_submissions vqs
      JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id

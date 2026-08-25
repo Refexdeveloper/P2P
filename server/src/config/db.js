@@ -17,7 +17,10 @@ function buildPoolConfig() {
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'p2p_system',
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: Number(process.env.DB_POOL_SIZE) || 15,
+    queueLimit: 50,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10_000,
     // Return TIMESTAMP values as UTC and parse them as UTC so local IST and
     // Cloud Run (UTC) both produce the same correct Instant for formatting.
     timezone: 'Z',

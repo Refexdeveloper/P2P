@@ -13,6 +13,8 @@ export type FunctionalRfqQuote = {
   leadTime: string;
   paymentTerms: string;
   file: File | null;
+  /** File name already stored on the server (no re-upload needed). */
+  savedFileName?: string;
 };
 
 export type FunctionalRfqVendorRow = {
@@ -89,7 +91,10 @@ export default function FunctionalOwnRfqSection({
   const visibleRounds = Math.min(4, Math.max(1, Number(maxRounds) || 1));
 
   const takenIds = useMemo(() => new Set(rows.map((r) => r.vendorId).filter(Boolean)), [rows]);
-  const quotedCount = rows.filter((r) => Number(r.quotes.find((q) => q.round === 1)?.quotedPrice) > 0 && r.quotes.find((q) => q.round === 1)?.file).length;
+  const quotedCount = rows.filter((r) => {
+    const q1 = r.quotes.find((q) => q.round === 1);
+    return Number(q1?.quotedPrice) >= 0 && String(q1?.quotedPrice || '').trim() !== '' && Boolean(q1?.file || q1?.savedFileName);
+  }).length;
   const guideStep = quotedCount > 0 ? 2 : rows.length > 0 ? 2 : 1;
 
   const showToast = (msg: string) => {
@@ -190,7 +195,8 @@ export default function FunctionalOwnRfqSection({
       hasActiveQuote: hasActive,
       canSendBack: hasActive && quotes.reduce((max, q) => Math.max(max, q.round), 0) < 4,
       isRecommended: recommendedKey === r.key,
-      quotationFileName: r.quotes.find((q) => q.file)?.file?.name,
+      quotationFileName: r.quotes.find((q) => q.file || q.savedFileName)?.file?.name
+        || r.quotes.find((q) => q.savedFileName)?.savedFileName,
       quotes,
     };
   });
@@ -459,13 +465,28 @@ export default function FunctionalOwnRfqSection({
                 </p>
                 <label
                   className={`flex flex-wrap items-center gap-3 px-4 py-3.5 border-2 border-dashed rounded-xl cursor-pointer ${
-                    editingQuote.file ? 'border-teal-300 bg-teal-50/40 hover:bg-teal-50' : 'border-red-200 bg-red-50/40 hover:bg-red-50/70'
+                    editingQuote.file || editingQuote.savedFileName
+                      ? 'border-teal-300 bg-teal-50/40 hover:bg-teal-50'
+                      : 'border-red-200 bg-red-50/40 hover:bg-red-50/70'
                   }`}
                 >
-                  <i className={`text-xl shrink-0 ${editingQuote.file ? 'ri-upload-2-line text-teal-700' : 'ri-upload-cloud-2-line text-red-500'}`} />
+                  <i
+                    className={`text-xl shrink-0 ${
+                      editingQuote.file || editingQuote.savedFileName
+                        ? 'ri-upload-2-line text-teal-700'
+                        : 'ri-upload-cloud-2-line text-red-500'
+                    }`}
+                  />
                   <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-semibold truncate ${editingQuote.file ? 'text-teal-800' : 'text-red-700'}`}>
-                      {editingQuote.file?.name || 'Upload quotation file (required)'}
+                    <p
+                      className={`text-sm font-semibold truncate ${
+                        editingQuote.file || editingQuote.savedFileName ? 'text-teal-800' : 'text-red-700'
+                      }`}
+                    >
+                      {editingQuote.file?.name ||
+                        (editingQuote.savedFileName
+                          ? `Saved: ${editingQuote.savedFileName}`
+                          : 'Upload quotation file (required)')}
                     </p>
                     <p className="text-xs text-gray-600 mt-0.5">PDF, Word, or photo · then type quoted price</p>
                   </div>
@@ -525,11 +546,11 @@ export default function FunctionalOwnRfqSection({
               <button
                 type="button"
                 onClick={() => {
-                  if (quoteRound === 1 && !(Number(editingQuote.quotedPrice) > 0)) {
-                    setLocalError('Round 1 needs a quoted price');
+                  if (quoteRound === 1 && !(Number.isFinite(Number(editingQuote.quotedPrice)) && Number(editingQuote.quotedPrice) >= 0 && editingQuote.quotedPrice !== '')) {
+                    setLocalError('Round 1 needs a quoted price (0 is allowed)');
                     return;
                   }
-                  if (quoteRound === 1 && !editingQuote.file && !existingQuoteNote) {
+                  if (quoteRound === 1 && !editingQuote.file && !editingQuote.savedFileName && !existingQuoteNote) {
                     setLocalError('Round 1 needs a quotation file');
                     return;
                   }

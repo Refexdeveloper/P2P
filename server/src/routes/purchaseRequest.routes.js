@@ -245,7 +245,8 @@ router.post(
   }
 );
 
-router.post('/:id/approve', requireRoles('HOD Approver', 'PR Manager', 'CFO', 'Super Admin'), async (req, res) => {
+/** Any authenticated user may call this; processApproval enforces role/assignment. */
+router.post('/:id/approve', async (req, res) => {
   try {
     const { action = 'approve', remarks, returnTo, goToBusinessApproval } = req.body;
     const pr = await processApproval(req.user, req.params.id, action, remarks, {

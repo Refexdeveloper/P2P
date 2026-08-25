@@ -200,6 +200,7 @@ export default function CreatePRPage() {
           leadTime: q.leadTime,
           paymentTerms: q.paymentTerms,
           file: null,
+          savedFileName: q.savedFileName || undefined,
         })),
       }))
     );
@@ -426,6 +427,7 @@ export default function CreatePRPage() {
           quotedPrice: q.quotedPrice,
           leadTime: q.leadTime,
           paymentTerms: q.paymentTerms,
+          savedFileName: q.savedFileName || q.file?.name || undefined,
         })),
       })),
       priority,
@@ -455,7 +457,7 @@ export default function CreatePRPage() {
     const timer = window.setTimeout(() => {
       const snap = snapshotRef.current;
       if (!snap) return;
-      writeCreatePrDraft(user?.id, editPrId, snap);
+      writeCreatePrDraft(user?.id, persistPrId ?? editPrId, snap);
       if (hasMeaningfulCreatePrDraft(snap)) {
         setSoftSaveHint('Draft auto-saved');
       }
@@ -487,6 +489,7 @@ export default function CreatePRPage() {
     lineItems,
     attachedFiles,
     persistPrId,
+    persistPrId,
     editPrId,
     user?.id,
     isLoadingPr,
@@ -497,7 +500,7 @@ export default function CreatePRPage() {
       if (skipSoftSaveRef.current || !hydrateDoneRef.current) return;
       const snap = snapshotRef.current;
       if (!snap) return;
-      writeCreatePrDraft(user?.id, editPrId, snap);
+      writeCreatePrDraft(user?.id, persistPrId ?? editPrId, snap);
     };
     const flushApi = () => {
       flushLocal();
@@ -557,7 +560,7 @@ export default function CreatePRPage() {
       window.removeEventListener('pagehide', flushApi);
       document.removeEventListener('visibilitychange', onHide);
     };
-  }, [editPrId, user?.id]);
+  }, [editPrId, persistPrId, user?.id]);
 
   useEffect(() => {
     (async () => {
@@ -802,7 +805,14 @@ export default function CreatePRPage() {
     if (prFlow === 'functional' && vendorSelection === 'own') {
       const hasRound1 = rfqVendors.some((row) => {
         const round1 = row.quotes.find((q) => q.round === 1);
-        return Boolean(row.vendorId) && Number(round1?.quotedPrice) > 0 && Boolean(round1?.file);
+        const price = Number(round1?.quotedPrice);
+        return (
+          Boolean(row.vendorId) &&
+          Number.isFinite(price) &&
+          price >= 0 &&
+          String(round1?.quotedPrice ?? '').trim() !== '' &&
+          Boolean(round1?.file || round1?.savedFileName)
+        );
       });
       if (!hasRound1 && !existingRfqHasQuotes) {
         newErrors.rfqVendors = 'Add at least one vendor with a round-1 quoted price and quotation file';
@@ -885,16 +895,25 @@ export default function CreatePRPage() {
       const master = vendorMaster.find((v) => String(v.id) === String(row.vendorId));
       const quotes = [];
       for (const quote of row.quotes) {
-        if (!(Number(quote.quotedPrice) > 0) || !quote.file) continue;
-        const filePayload = await fileToAttachmentPayload(quote.file);
-        quotes.push({
+        const price = Number(quote.quotedPrice);
+        if (!Number.isFinite(price) || price < 0) continue;
+        const hasNewFile = Boolean(quote.file);
+        const hasSavedFile = Boolean(quote.savedFileName);
+        if (!hasNewFile && !hasSavedFile) continue;
+        const entry: Record<string, unknown> = {
           round: quote.round,
-          quotedPrice: Number(quote.quotedPrice),
+          quotedPrice: price,
           leadTime: Number(quote.leadTime) || 0,
           paymentTerms: quote.paymentTerms || undefined,
-          quotationFileName: filePayload.fileName,
-          quotationFileData: filePayload.data,
-        });
+        };
+        if (quote.file) {
+          const filePayload = await fileToAttachmentPayload(quote.file);
+          entry.quotationFileName = filePayload.fileName;
+          entry.quotationFileData = filePayload.data;
+        } else if (quote.savedFileName) {
+          entry.quotationFileName = quote.savedFileName;
+        }
+        quotes.push(entry);
       }
       if (!quotes.length) continue;
       packed.push({
@@ -967,9 +986,24 @@ export default function CreatePRPage() {
         }
       }
 
+      const markQuoteFilesSaved = () => {
+        setRfqVendors((prev) =>
+          prev.map((row) => ({
+            ...row,
+            quotes: row.quotes.map((q) => ({
+              ...q,
+              savedFileName: q.file?.name || q.savedFileName,
+              file: null,
+            })),
+          }))
+        );
+        if (payload.rfqVendors) setExistingRfqHasQuotes(true);
+      };
+
       const markSubmitSuccess = () => {
         skipSoftSaveRef.current = true;
         clearCreatePrDraft(user?.id, editPrId);
+        clearCreatePrDraft(user?.id, persistPrId);
       };
 
       const finishCreate = async (res: { data: unknown }) => {
@@ -982,6 +1016,12 @@ export default function CreatePRPage() {
         if (data.id) {
           await uploadNewAttachments(data.id);
           if (!submit) setSavedDraftId(data.id);
+          markQuoteFilesSaved();
+          writeCreatePrDraft(user?.id, data.id, {
+            ...snapshotRef.current!,
+            backendPrId: data.id,
+            prNumber: data.prNumber,
+          });
         }
         setCreatedPrNumber(data.prNumber);
         if (data.prNumber) setPrNumber(data.prNumber);
@@ -1017,6 +1057,7 @@ export default function CreatePRPage() {
             l1Manager?: { name: string | null; email: string | null };
           };
           await uploadNewAttachments(id);
+          markQuoteFilesSaved();
           markSubmitSuccess();
           setCreatedPrNumber(data.prNumber || prNumber);
           setNextStepLabel(data.nextStep || 'L1 Manager Approval');
@@ -1024,10 +1065,16 @@ export default function CreatePRPage() {
         } else {
           await prApi.update(id, payload);
           await uploadNewAttachments(id);
+          markQuoteFilesSaved();
           setSavedDraftId(id);
           setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
+          writeCreatePrDraft(user?.id, id, {
+            ...snapshotRef.current!,
+            backendPrId: id,
+            prNumber,
+          });
         }
         if (silent) return;
         if (submit) setShowConfirmModal(false);

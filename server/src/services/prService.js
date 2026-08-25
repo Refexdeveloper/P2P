@@ -714,7 +714,7 @@ async function persistFunctionalOwnRfq(user, prId, body, { markSubmitted }) {
       `SELECT vqs.id
        FROM rfq_invitations ri
        JOIN vendor_quotation_submissions vqs ON vqs.rfq_invitation_id = ri.id
-       WHERE ri.pr_id = ? AND vqs.round = 1 AND vqs.quoted_price > 0
+       WHERE ri.pr_id = ? AND vqs.round = 1 AND vqs.quoted_price >= 0
          AND vqs.quotation_file_name IS NOT NULL AND vqs.quotation_file_name <> ''
        LIMIT 1`,
       [prId]
@@ -748,6 +748,46 @@ async function loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId) {
     console.warn('Functional RFQ email pack failed:', err.message);
     return { rfqSummary: null, attachments: [] };
   }
+}
+
+/** Never block HTTP save/submit on SMTP / WhatsApp / large quotation attachment reads. */
+function queuePrSubmitNotifications({
+  pr,
+  user,
+  departmentId,
+  prFlow,
+  vendorMode,
+  hodAssignment,
+  nextStep,
+  isResubmit = false,
+}) {
+  const prId = pr?.id || pr?.prId;
+  setImmediate(() => {
+    (async () => {
+      const mailPack = await loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId);
+      queuePrRaisedNotification(
+        pr,
+        { name: user.name, email: user.email },
+        isResubmit ? { isResubmit: true } : {}
+      );
+      queuePrApprovalPendingNotification(
+        pr,
+        'HOD Approver',
+        { name: user.name, email: user.email },
+        departmentId,
+        {
+          approverEmails: hodAssignment?.hodEmail ? [hodAssignment.hodEmail] : undefined,
+          approverName: hodAssignment?.hodName || undefined,
+          stageLabel: nextStep,
+          roleDisplayName: prFlow === 'functional' ? 'Selected Approver' : undefined,
+          rfqSummary: mailPack.rfqSummary,
+          attachments: mailPack.attachments,
+        }
+      );
+    })().catch((err) => {
+      console.error('PR submit notification failed (save already committed):', err.message);
+    });
+  });
 }
 
 export async function listApprovalUsers(user) {
@@ -974,28 +1014,21 @@ export async function createPurchaseRequest(user, body) {
     }
     const pr = await getPurchaseRequestById(prId);
     if (submit) {
-        const nextStep =
+      const nextStep =
         prFlow === 'functional'
           ? selectedApprovers.length > 1
             ? `User Approval 1 of ${selectedApprovers.length}`
             : 'User Approval'
           : 'L1 Manager Approval';
-      const mailPack = await loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId);
-      queuePrRaisedNotification(pr, { name: user.name, email: user.email });
-      queuePrApprovalPendingNotification(
+      queuePrSubmitNotifications({
         pr,
-        'HOD Approver',
-        { name: user.name, email: user.email },
-        deptRows[0].id,
-        {
-          approverEmails: hodAssignment?.hodEmail ? [hodAssignment.hodEmail] : undefined,
-          approverName: hodAssignment?.hodName || undefined,
-          stageLabel: nextStep,
-          roleDisplayName: prFlow === 'functional' ? 'Selected Approver' : undefined,
-          rfqSummary: mailPack.rfqSummary,
-          attachments: mailPack.attachments,
-        }
-      );
+        user,
+        departmentId: deptRows[0].id,
+        prFlow,
+        vendorMode,
+        hodAssignment,
+        nextStep,
+      });
       return {
         ...pr,
         nextStep,
@@ -1522,7 +1555,9 @@ export async function processApproval(user, prId, action, remarks, options = {})
   let actingAsHod = user.role === 'HOD Approver';
 
   if (isFunctionalUserStep) {
-    await assertAssignedUserCanActOnPr(user, prId);
+    if (user.role !== 'Super Admin') {
+      await assertAssignedUserCanActOnPr(user, prId);
+    }
     roleConfig = ROLE_STAGE_MAP['HOD Approver'];
     actingAsHod = true;
   } else {
@@ -2307,26 +2342,16 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
         ? `User Approval 1 of ${chainLen}`
         : 'User Approval'
       : 'L1 Manager Approval';
-    const mailPack = await loadFunctionalOwnRfqMailPack(
-      isFunctional ? 'functional' : 'standard',
-      current.vendor_selection,
-      prId
-    );
-    queuePrRaisedNotification(updatedPr, { name: user.name, email: user.email }, { isResubmit: true });
-    queuePrApprovalPendingNotification(
-      updatedPr,
-      'HOD Approver',
-      { name: user.name, email: user.email },
-      current.department_id,
-      {
-        approverEmails: hodAssignment.hodEmail ? [hodAssignment.hodEmail] : undefined,
-        approverName: hodAssignment.hodName || undefined,
-        stageLabel: nextStep,
-        roleDisplayName: isFunctional ? 'Selected Approver' : undefined,
-        rfqSummary: mailPack.rfqSummary,
-        attachments: mailPack.attachments,
-      }
-    );
+    queuePrSubmitNotifications({
+      pr: updatedPr,
+      user,
+      departmentId: current.department_id,
+      prFlow: isFunctional ? 'functional' : 'standard',
+      vendorMode: current.vendor_selection,
+      hodAssignment,
+      nextStep,
+      isResubmit: true,
+    });
     return {
       ...updatedPr,
       nextStep,
