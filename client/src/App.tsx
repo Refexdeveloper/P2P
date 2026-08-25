@@ -7,7 +7,14 @@ function App() {
   return (
     <I18nextProvider i18n={i18n}>
       <BrowserRouter basename={__BASE_PATH__}>
-        <AppRoutes />
+
+      <AppRoutes />
+
+
+
+
+      
+
       </BrowserRouter>
     </I18nextProvider>
   );
