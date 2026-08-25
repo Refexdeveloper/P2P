@@ -49,3 +49,23 @@ export function requirePermissions(...permissionCodes) {
     }
   };
 }
+
+/**
+ * Allow if JWT role is in `roles` OR user was granted any of `permissionCodes`
+ * (Admin → User Permissions menus). Super Admin always allowed.
+ */
+export function requireRolesOrPermissions(roles = [], permissionCodes = []) {
+  return async (req, res, next) => {
+    try {
+      if (isSuperAdmin(req.user?.role)) return next();
+      if (roles.length && roles.includes(req.user?.role)) return next();
+      if (permissionCodes.length) {
+        const codes = await getUserPermissionCodes(req.user.id, req.user.role);
+        if (permissionCodes.some((code) => codes.includes(code))) return next();
+      }
+      return res.status(403).json({ message: 'Insufficient permissions' });
+    } catch {
+      return res.status(403).json({ message: 'Insufficient permissions' });
+    }
+  };
+}

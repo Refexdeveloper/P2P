@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { authenticate, requireRoles, requirePermissions, CREATE_PR_ROLES } from '../middleware/auth.js';
+import {
+  authenticate,
+  requireRoles,
+  requirePermissions,
+  requireRolesOrPermissions,
+  CREATE_PR_ROLES,
+} from '../middleware/auth.js';
 import {
   listCategories,
   createCategory,
@@ -29,7 +35,36 @@ import {
 const router = Router();
 router.use(authenticate);
 
-const READ_ROLES = ['SCM Buyer', 'SCM Manager', 'Requester', 'PR Manager', 'CFO', 'HOD Approver'];
+const READ_ROLES = [
+  'SCM Buyer',
+  'SCM Manager',
+  'Requester',
+  'PR Manager',
+  'CFO',
+  'HOD Approver',
+  'Super Admin',
+  'Functional Team',
+];
+const MASTER_READ_PERMS = [
+  'nav.create_pr',
+  'nav.rfq_entry',
+  'nav.scm_rfq_entry',
+  'nav.item_master',
+  'nav.category_master',
+  'nav.entity_master',
+  'nav.department_master',
+  'nav.vendor_master',
+  'nav.purchase_requests',
+  'nav.create_po',
+];
+const canReadMasters = requireRolesOrPermissions(READ_ROLES, MASTER_READ_PERMS);
+const canQuickCreateFromPr = requireRolesOrPermissions(CREATE_PR_ROLES, [
+  'nav.create_pr',
+  'nav.item_master',
+  'nav.category_master',
+  'nav.entity_master',
+  'nav.department_master',
+]);
 const canManageItems = requirePermissions('nav.item_master');
 const canManageCategories = requirePermissions('nav.category_master');
 const canManageEntities = requirePermissions('nav.entity_master');
@@ -41,7 +76,7 @@ function sendCsv(res, filename, csv) {
   res.send(csv);
 }
 
-router.get('/categories', requireRoles(...READ_ROLES), async (req, res) => {
+router.get('/categories', canReadMasters, async (req, res) => {
   try {
     const data = await listCategories({
       search: req.query.search,
@@ -84,7 +119,7 @@ router.post('/categories/import', canManageCategories, async (req, res) => {
   }
 });
 
-router.post('/categories/chat-create', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.post('/categories/chat-create', canQuickCreateFromPr, async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) throw new Error('Category name is required');
@@ -100,10 +135,10 @@ router.post('/categories/chat-create', requireRoles(...CREATE_PR_ROLES), async (
   }
 });
 
-router.post('/categories', (req, res, next) => {
-  if (CREATE_PR_ROLES.includes(req.user?.role)) return next();
-  return canManageCategories(req, res, next);
-}, async (req, res) => {
+router.post(
+  '/categories',
+  requireRolesOrPermissions(CREATE_PR_ROLES, ['nav.create_pr', 'nav.category_master']),
+  async (req, res) => {
   try {
     const data = await createCategory(req.body);
     res.json({ data, message: 'Category created successfully' });
@@ -121,7 +156,7 @@ router.put('/categories/:id', canManageCategories, async (req, res) => {
   }
 });
 
-router.get('/items', requireRoles(...READ_ROLES), async (req, res) => {
+router.get('/items', canReadMasters, async (req, res) => {
   try {
     const result = await listItems({
       search: req.query.search,
@@ -167,7 +202,7 @@ router.post('/items/import', canManageItems, async (req, res) => {
   }
 });
 
-router.post('/items/chat-create', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.post('/items/chat-create', canQuickCreateFromPr, async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
     if (!name) throw new Error('Item name is required');

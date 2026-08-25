@@ -1,5 +1,9 @@
 import { Router } from 'express';
-import { authenticate, requireRoles, CREATE_PR_ROLES } from '../middleware/auth.js';
+import {
+  authenticate,
+  requireRolesOrPermissions,
+  CREATE_PR_ROLES,
+} from '../middleware/auth.js';
 import {
   createPurchaseRequest,
   getPurchaseRequestById,
@@ -25,9 +29,16 @@ import pool from '../config/db.js';
 
 const router = Router();
 
+/** Create PR menu (or classic create roles) — used when Admin assigns nav.create_pr to any role. */
+const canCreatePr = requireRolesOrPermissions(CREATE_PR_ROLES, ['nav.create_pr']);
+const canApproveAdmin = requireRolesOrPermissions(
+  ['Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO'],
+  ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard']
+);
+
 router.use(authenticate);
 
-router.post('/', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.post('/', canCreatePr, async (req, res) => {
   try {
     const pr = await createPurchaseRequest(req.user, req.body);
     res.status(201).json({ data: pr });
@@ -80,16 +91,20 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/stats/requester', requireRoles('Requester'), async (req, res) => {
-  try {
-    const stats = await getRequesterStats(req.user.id);
-    res.json({ data: stats });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+router.get(
+  '/stats/requester',
+  requireRolesOrPermissions(['Requester'], ['nav.create_pr', 'nav.requester_dashboard', 'nav.track_pr']),
+  async (req, res) => {
+    try {
+      const stats = await getRequesterStats(req.user.id);
+      res.json({ data: stats });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
   }
-});
+);
 
-router.get('/l1-manager', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.get('/l1-manager', canCreatePr, async (req, res) => {
   try {
     const data = await previewL1Manager(req.user, req.query.department);
     res.json({ data });
@@ -98,32 +113,43 @@ router.get('/l1-manager', requireRoles(...CREATE_PR_ROLES), async (req, res) => 
   }
 });
 
-router.get('/approval-users', requireRoles('Requester', 'Super Admin', 'SCM Manager', 'HOD Approver', 'PR Manager', 'CFO'), async (req, res) => {
-  try {
-    const data = await listApprovalUsers(req.user);
-    res.json({ data });
-  } catch (err) {
-    res.status(400).json({ message: err.message });
+router.get(
+  '/approval-users',
+  requireRolesOrPermissions(
+    ['Requester', 'Super Admin', 'SCM Manager', 'HOD Approver', 'PR Manager', 'CFO', ...CREATE_PR_ROLES],
+    ['nav.create_pr']
+  ),
+  async (req, res) => {
+    try {
+      const data = await listApprovalUsers(req.user);
+      res.json({ data });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
   }
-});
+);
 
-router.get('/stats/manager', requireRoles('PR Manager'), async (req, res) => {
-  try {
-    const stats = await getManagerStats();
-    const [budgetRows] = await pool.query(
-      'SELECT name AS department, budget_allocated AS allocated, budget_utilized AS utilized FROM departments'
-    );
-    const departmentBudget = budgetRows.map((d) => ({
-      department: d.department,
-      allocated: Number(d.allocated),
-      utilized: Number(d.utilized),
-      percentage: d.allocated ? Math.round((d.utilized / d.allocated) * 100) : 0,
-    }));
-    res.json({ data: { stats, departmentBudget } });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+router.get(
+  '/stats/manager',
+  requireRolesOrPermissions(['PR Manager'], ['nav.pr_manager_dashboard', 'nav.tasks']),
+  async (req, res) => {
+    try {
+      const stats = await getManagerStats();
+      const [budgetRows] = await pool.query(
+        'SELECT name AS department, budget_allocated AS allocated, budget_utilized AS utilized FROM departments'
+      );
+      const departmentBudget = budgetRows.map((d) => ({
+        department: d.department,
+        allocated: Number(d.allocated),
+        utilized: Number(d.utilized),
+        percentage: d.allocated ? Math.round((d.utilized / d.allocated) * 100) : 0,
+      }));
+      res.json({ data: { stats, departmentBudget } });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
   }
-});
+);
 
 router.get('/:id/attachments/:attachmentId/file', async (req, res) => {
   try {
@@ -137,11 +163,16 @@ router.get('/:id/attachments/:attachmentId/file', async (req, res) => {
   }
 });
 
-router.post('/:id/attachments', requireRoles(...CREATE_PR_ROLES), async (req, res) => {
+router.post('/:id/attachments', canCreatePr, async (req, res) => {
   try {
     const pr = await getPurchaseRequestById(req.params.id);
     if (!pr) return res.status(404).json({ message: 'PR not found' });
-    if (req.user.role === 'Requester' && pr.requesterId !== req.user.id) {
+    // Requesters / menu-only users may only attach to their own PRs
+    if (
+      pr.requesterId !== req.user.id &&
+      req.user.role !== 'Super Admin' &&
+      (req.user.role === 'Requester' || !CREATE_PR_ROLES.includes(req.user.role))
+    ) {
       return res.status(403).json({ message: 'Not allowed to upload files to this PR' });
     }
     const saved = await addPrAttachment(Number(req.params.id), req.user.id, req.body || {});
@@ -151,19 +182,23 @@ router.post('/:id/attachments', requireRoles(...CREATE_PR_ROLES), async (req, re
   }
 });
 
-router.delete('/:id/attachments/:attachmentId', requireRoles('Requester', 'Super Admin'), async (req, res) => {
-  try {
-    const pr = await getPurchaseRequestById(req.params.id);
-    if (!pr) return res.status(404).json({ message: 'PR not found' });
-    if (req.user.role === 'Requester' && pr.requesterId !== req.user.id) {
-      return res.status(403).json({ message: 'Not allowed to delete files from this PR' });
+router.delete(
+  '/:id/attachments/:attachmentId',
+  requireRolesOrPermissions(['Requester', 'Super Admin', ...CREATE_PR_ROLES], ['nav.create_pr']),
+  async (req, res) => {
+    try {
+      const pr = await getPurchaseRequestById(req.params.id);
+      if (!pr) return res.status(404).json({ message: 'PR not found' });
+      if (pr.requesterId !== req.user.id && req.user.role !== 'Super Admin') {
+        return res.status(403).json({ message: 'Not allowed to delete files from this PR' });
+      }
+      await deletePrAttachment(Number(req.params.id), Number(req.params.attachmentId));
+      res.json({ message: 'Attachment deleted' });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
     }
-    await deletePrAttachment(Number(req.params.id), Number(req.params.attachmentId));
-    res.json({ message: 'Attachment deleted' });
-  } catch (err) {
-    res.status(400).json({ message: err.message });
   }
-});
+);
 
 router.get('/:id', async (req, res) => {
   try {
@@ -175,7 +210,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.put('/:id', requireRoles('Requester'), async (req, res) => {
+router.put('/:id', canCreatePr, async (req, res) => {
   try {
     const pr = await updatePurchaseRequest(req.user, req.params.id, req.body);
     res.json({ data: pr, message: 'PR updated successfully' });
@@ -186,7 +221,10 @@ router.put('/:id', requireRoles('Requester'), async (req, res) => {
 
 router.put(
   '/:id/billing',
-  requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'),
+  requireRolesOrPermissions(
+    ['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin', ...CREATE_PR_ROLES],
+    ['nav.create_pr', 'nav.create_po', 'nav.purchase_requests']
+  ),
   async (req, res) => {
     try {
       const pr = await updatePrBillingDelivery(req.user, req.params.id, req.body);
@@ -198,20 +236,16 @@ router.put(
 );
 
 /** RFQ Approval / admin: edit full PR details at any status */
-router.put(
-  '/:id/admin',
-  requireRoles('Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO'),
-  async (req, res) => {
-    try {
-      const pr = await adminUpdatePurchaseRequest(req.user, Number(req.params.id), req.body);
-      res.json({ data: pr, message: 'PR details updated successfully' });
-    } catch (err) {
-      res.status(400).json({ message: err.message });
-    }
+router.put('/:id/admin', canApproveAdmin, async (req, res) => {
+  try {
+    const pr = await adminUpdatePurchaseRequest(req.user, Number(req.params.id), req.body);
+    res.json({ data: pr, message: 'PR details updated successfully' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
-);
+});
 
-router.post('/:id/resubmit', requireRoles('Requester'), async (req, res) => {
+router.post('/:id/resubmit', canCreatePr, async (req, res) => {
   try {
     const pr = await resubmitPurchaseRequest(req.user, req.params.id, req.body);
     res.json({ data: pr, message: 'PR resubmitted successfully' });
@@ -231,19 +265,15 @@ router.get('/:id/send-back-targets', async (req, res) => {
 });
 
 /** Admin (Track PR): send back to any prior step without holding the approval task */
-router.post(
-  '/:id/admin/send-back',
-  requireRoles('Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO'),
-  async (req, res) => {
-    try {
-      const { returnTo, remarks } = req.body || {};
-      const pr = await adminSendBackPurchaseRequest(req.user, Number(req.params.id), returnTo, remarks);
-      res.json({ data: pr, message: 'PR sent back successfully' });
-    } catch (err) {
-      res.status(400).json({ message: err.message });
-    }
+router.post('/:id/admin/send-back', canApproveAdmin, async (req, res) => {
+  try {
+    const { returnTo, remarks } = req.body || {};
+    const pr = await adminSendBackPurchaseRequest(req.user, Number(req.params.id), returnTo, remarks);
+    res.json({ data: pr, message: 'PR sent back successfully' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
-);
+});
 
 /** Any authenticated user may call this; processApproval enforces role/assignment. */
 router.post('/:id/approve', async (req, res) => {
