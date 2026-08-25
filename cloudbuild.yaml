@@ -1,0 +1,33 @@
+steps:
+  - name: 'gcr.io/kaniko-project/executor:latest'
+    args:
+      - --dockerfile=Dockerfile
+      - --context=.
+      - --destination=asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p-backend:$SHORT_SHA
+      - --destination=asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p-backend:latest
+      - --cache=true
+      - --cache-ttl=168h
+      - --cache-repo=asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p-backend-cache
+  - name: 'gcr.io/google-cloud-sdk/slim'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - p2p-backend
+      - --image=asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p-backend:$SHORT_SHA
+      - --region=asia-south1
+      - --service-account=p2p-app-sa@$PROJECT_ID.iam.gserviceaccount.com
+      - --cpu=2
+      - --memory=2Gi
+      - --timeout=300
+      - --max-instances=5
+      - --set-env-vars=NODE_ENV=production,SERVE_CLIENT=true,DB_NAME=p2p_system,DB_USER=p2p_app,INSTANCE_CONNECTION_NAME=$_INSTANCE_CONNECTION_NAME,CORS_ORIGIN=*,REFEXONE_LOGIN_ENABLED=false,SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,SMTP_SECURE=false
+      - --set-secrets=DB_PASSWORD=p2p-db-password:latest,JWT_SECRET=p2p-jwt-secret:latest,SMTP_USER=SMTP_USER:latest,SMTP_PASSWORD=SMTP_PASSWORD:latest
+      - --allow-unauthenticated
+      - --quiet
+substitutions:
+  _INSTANCE_CONNECTION_NAME: 'master-diorama-489103-u2:asia-south1:p2p-mysql'
+images:
+  - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p-backend:$SHORT_SHA'
+options:
+  machineType: 'E2_HIGHCPU_8'
