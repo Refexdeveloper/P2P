@@ -127,11 +127,16 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   };
 
   const renderLink = (item: MenuLeaf, nested = false) => {
-    const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+    const href =
+      item.path === '/requester/create-pr' || item.code === 'nav.create_pr'
+        ? '/requester/create-pr?new=1'
+        : item.path;
+    const isActive =
+      location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     return (
       <Link
         key={item.path}
-        to={item.path}
+        to={href}
         title={collapsed ? item.label : undefined}
         onClick={handleNavigate}
         className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} ${

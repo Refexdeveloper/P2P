@@ -188,6 +188,26 @@ function assertPrSubmitRequirements(_extras = {}, _lineItems) {
   return;
 }
 
+/** Resolve department for draft saves when the form field is still empty. */
+async function resolveDepartmentIdForSave(departmentName, userId, { requireNamed = false } = {}) {
+  const name = String(departmentName || '').trim();
+  if (name) {
+    const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ? LIMIT 1', [name]);
+    if (deptRows.length) return deptRows[0].id;
+    if (requireNamed) throw new Error('Invalid department');
+  } else if (requireNamed) {
+    throw new Error('Department is required');
+  }
+
+  const [userRows] = await pool.query('SELECT department_id FROM users WHERE id = ? LIMIT 1', [userId]);
+  if (userRows[0]?.department_id) return userRows[0].department_id;
+
+  const [any] = await pool.query('SELECT id FROM departments ORDER BY id ASC LIMIT 1');
+  if (any.length) return any[0].id;
+
+  throw new Error('No department available — add a department in master data first');
+}
+
 function formatPrApprovalStage(stage, prFlow = 'standard') {
   if (prFlow === 'functional') {
     const functionalLabels = {
@@ -735,6 +755,10 @@ async function persistFunctionalOwnRfq(user, prId, body, { markSubmitted }) {
   await seedFunctionalOwnRfq(user, prId, vendors, {
     markSubmitted,
     maxRounds: body.maxRounds ?? body.max_rounds ?? 1,
+    recommendedVendorEmail: body.rfqRecommendedVendorEmail || body.recommendedVendorEmail,
+    recommendedVendorName: body.rfqRecommendedVendorName || body.recommendedVendorName,
+    recommendationJustification:
+      body.rfqRecommendationJustification || body.recommendationJustification,
   });
 }
 
@@ -883,7 +907,7 @@ export async function createPurchaseRequest(user, body) {
   const normalizedPurchaseType = normalizePurchaseType(purchaseType);
   const normalizedCurrency = normalizeCurrency(currency);
 
-  if (!lineItems.length) {
+  if (submit && !lineItems.length) {
     throw new Error('At least one line item is required');
   }
   if (!entityId) {
@@ -911,8 +935,9 @@ export async function createPurchaseRequest(user, body) {
     assertPrSubmitRequirements(extras, lineItems);
   }
 
-  const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ?', [department]);
-  if (!deptRows.length) throw new Error('Invalid department');
+  const departmentId = await resolveDepartmentIdForSave(department, user.id, {
+    requireNamed: Boolean(submit),
+  });
 
   const [entityRows] = await pool.query(
     `SELECT id FROM entity_masters WHERE id = ? AND status = 'active'`,
@@ -941,7 +966,7 @@ export async function createPurchaseRequest(user, body) {
         prTitle,
         requestType,
         normalizedPurchaseType,
-        deptRows[0].id,
+        departmentId,
         Number(entityId),
         user.id,
         priority,
@@ -999,7 +1024,7 @@ export async function createPurchaseRequest(user, body) {
       if (prFlow === 'functional') {
         hodAssignment = await createSelectedUserApprovalTask(conn, prId, selectedApprover.id);
       } else {
-        hodAssignment = await createHodApprovalTask(conn, prId, user.email, deptRows[0].id);
+        hodAssignment = await createHodApprovalTask(conn, prId, user.email, departmentId);
         if (hodAssignment.hodEmail) {
           await conn.query(
             `UPDATE users SET supervisor_email = ?, supervisor_name = ? WHERE id = ?`,
@@ -1024,7 +1049,7 @@ export async function createPurchaseRequest(user, body) {
       queuePrSubmitNotifications({
         pr,
         user,
-        departmentId: deptRows[0].id,
+        departmentId,
         prFlow,
         vendorMode,
         hodAssignment,
@@ -1959,7 +1984,7 @@ export async function updatePrBillingDelivery(user, prId, body = {}) {
   return getPurchaseRequestById(prId);
 }
 
-export async function updatePurchaseRequest(user, prId, body, conn = null) {
+export async function updatePurchaseRequest(user, prId, body, conn = null, options = {}) {
   const [prRows] = await pool.query(
     'SELECT * FROM purchase_requests WHERE id = ? AND requester_id = ?',
     [prId, user.id]
@@ -1999,10 +2024,20 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     expectedDeliveryTimeline: pr.expected_delivery_timeline,
     paymentTerms: pr.payment_terms,
   });
-  if (!lineItems.length) throw new Error('At least one line item is required');
+  if (!lineItems.length && pr.status !== PR_STATUS.DRAFT && pr.status !== PR_STATUS.RETURNED) {
+    throw new Error('At least one line item is required');
+  }
 
-  const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ?', [department]);
-  if (!deptRows.length) throw new Error('Invalid department');
+  const isDraftLike = pr.status === PR_STATUS.DRAFT || pr.status === PR_STATUS.RETURNED;
+  let nextDepartmentId = await resolveDepartmentIdForSave(department, user.id, {
+    requireNamed: !isDraftLike,
+  }).catch((err) => {
+    if (isDraftLike && pr.department_id) return pr.department_id;
+    throw err;
+  });
+  if (isDraftLike && !String(department || '').trim() && pr.department_id) {
+    nextDepartmentId = pr.department_id;
+  }
 
   let nextEntityId = pr.entity_id;
   if (entityId !== undefined && entityId !== null && entityId !== '') {
@@ -2026,6 +2061,18 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
   const normalizedCurrency = normalizeCurrency(currency ?? pr.currency);
   const billing = await resolvePrBilling(nextEntityId, body, pr);
 
+  // Draft: never wipe existing line items with an accidental empty payload (autosave / race).
+  const shouldReplaceLineItems =
+    !isDraftLike || (Array.isArray(lineItems) && lineItems.length > 0);
+  const nextTotalAmount = shouldReplaceLineItems
+    ? totalAmount
+    : Number(pr.total_amount) || 0;
+  const nextTitle =
+    title ||
+    (shouldReplaceLineItems ? lineItems[0]?.description : null) ||
+    pr.title ||
+    `${requestType || pr.request_type} Request`;
+
   const run = async (db) => {
     await db.query(
       `UPDATE purchase_requests
@@ -2036,16 +2083,16 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
            updated_at = NOW()
        WHERE id = ?`,
       [
-        prTitle,
+        nextTitle,
         requestType || pr.request_type,
         normalizedPurchaseType,
-        deptRows[0].id,
+        nextDepartmentId,
         nextEntityId,
         priority || pr.priority,
         justification,
         requiredDate || null,
         normalizedCurrency,
-        totalAmount,
+        nextTotalAmount,
         vendorMode,
         prFlow,
         nextCurrentApproverId,
@@ -2071,10 +2118,11 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
       );
     }
 
-    await db.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
-
-    for (const item of lineItems) {
-      await insertPrLineItem(db, prId, item);
+    if (shouldReplaceLineItems) {
+      await db.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
+      for (const item of lineItems) {
+        await insertPrLineItem(db, prId, item);
+      }
     }
 
     if (attachments.length) {
@@ -2098,7 +2146,13 @@ export async function updatePurchaseRequest(user, prId, body, conn = null) {
     }
   }
 
-  if (prFlow === 'functional' && vendorMode === 'own' && (body.rfqVendors || body.rfq_vendors)) {
+  // Skip when caller (e.g. resubmit) will persist RFQ once with markSubmitted — avoids double delete/recreate + BLOB I/O.
+  if (
+    !options.skipRfqPersist &&
+    prFlow === 'functional' &&
+    vendorMode === 'own' &&
+    (body.rfqVendors || body.rfq_vendors)
+  ) {
     await persistFunctionalOwnRfq(user, prId, body, {
       markSubmitted: pr.status !== PR_STATUS.DRAFT,
     });
@@ -2164,6 +2218,8 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     ]);
     if (!deptRows.length) throw new Error('Invalid department');
     departmentId = deptRows[0].id;
+  } else if (!departmentId) {
+    throw new Error('Department is required');
   }
 
   let nextEntityId = pr.entity_id;
@@ -2351,7 +2407,7 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
     await conn.beginTransaction();
 
     if (hasUpdates) {
-      await updatePurchaseRequest(user, prId, updateFields, conn);
+      await updatePurchaseRequest(user, prId, updateFields, conn, { skipRfqPersist: true });
     }
 
     await conn.query(

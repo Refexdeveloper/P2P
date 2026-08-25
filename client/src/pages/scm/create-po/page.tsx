@@ -293,8 +293,8 @@ const PO_TYPE_OPTIONS_BY_DOC: Record<
   { id: PoType; label: string }[]
 > = {
   purchase_order: [
-    { id: 'short_po', label: 'Short PO' },
-    { id: 'long_po', label: 'Long PO' },
+  { id: 'short_po', label: 'Short PO' },
+  { id: 'long_po', label: 'Long PO' },
   ],
   work_order: [
     { id: 'short_wo', label: 'Short WO' },
@@ -700,8 +700,8 @@ function AnnexureIiTableEditor({
                 allowImages
               />
             </div>
-          </div>
-        ))}
+        </div>
+      ))}
       </div>
       <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
         <button
@@ -959,18 +959,18 @@ export default function CreatePOPage() {
 
   const applyLetterheadBranding = useCallback(
     (row: LetterheadMasterRecord | null, opts?: { keepLocation?: boolean }) => {
-      if (!row) {
-        setLetterheadId('');
-        setEntity('');
-        setHeaderLogo('');
-        setFooterLogo('');
+    if (!row) {
+      setLetterheadId('');
+      setEntity('');
+      setHeaderLogo('');
+      setFooterLogo('');
         if (!opts?.keepLocation) applyLetterheadLocation(null);
-        return;
-      }
-      setLetterheadId(row.id);
-      setEntity(row.entity || '');
-      setHeaderLogo(row.headerLogo || '');
-      setFooterLogo(row.footerLogo || '');
+      return;
+    }
+    setLetterheadId(row.id);
+    setEntity(row.entity || '');
+    setHeaderLogo(row.headerLogo || '');
+    setFooterLogo(row.footerLogo || '');
       const locs = row.locations?.length
         ? row.locations
         : row.location || row.gstNo
@@ -1891,8 +1891,8 @@ export default function CreatePOPage() {
       const savedPoNumber = String((res.data as { poNumber?: string }).poNumber || '');
       if (savedId) setCreatedPoId(savedId);
       if (savedPoNumber) setPoNumber(savedPoNumber);
-      setDraftSaved(true);
-      setTimeout(() => setDraftSaved(false), 3000);
+    setDraftSaved(true);
+    setTimeout(() => setDraftSaved(false), 3000);
       if (!editPoId && savedId) {
         navigate(`/scm/create-po?poId=${savedId}&from=create-po`, { replace: true });
       }
@@ -2208,10 +2208,10 @@ export default function CreatePOPage() {
       setPoNumber(data.poNumber);
       setCreatedPoId(data.id);
       try {
-        const blob = await poApi.fetchPdfBlob(data.id);
-        if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
-        setPdfPreviewUrl(URL.createObjectURL(blob));
-        setPageMode('pdf');
+      const blob = await poApi.fetchPdfBlob(data.id);
+      if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+      setPdfPreviewUrl(URL.createObjectURL(blob));
+      setPageMode('pdf');
       } catch (pdfErr) {
         // PO created successfully; PDF may still be regenerating
         setShowSuccessModal(true);
@@ -2330,17 +2330,17 @@ export default function CreatePOPage() {
         <div className="sticky top-0 z-20 px-3 sm:px-4 pt-2 pb-1 bg-gray-50/90 backdrop-blur-sm">
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-2.5 py-1.5">
           <div className="flex items-center gap-2 min-h-9 overflow-x-auto">
-            <button
+              <button
               onClick={() => navigate(isEditMode ? editReturnPath : '/scm/create-po')}
               className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer text-gray-500 shrink-0"
               aria-label="Back"
-            >
+              >
               <i className="ri-arrow-left-line"></i>
-            </button>
+              </button>
 
             <h1 className="text-sm font-bold text-gray-900 whitespace-nowrap shrink-0">
               {isEditMode ? `Edit ${docLabel}` : `Create ${docLabel}`}
-            </h1>
+                  </h1>
             <span className="px-1.5 py-0.5 border rounded text-[10px] font-semibold tracking-wide bg-slate-50 text-slate-700 border-slate-200 shrink-0">
               {docLabel === 'Work Order' ? 'WO' : 'PO'}
             </span>
@@ -2348,11 +2348,11 @@ export default function CreatePOPage() {
               isBuyerVerifyEdit
                 ? 'bg-blue-50 text-blue-700 border-blue-200'
                 : isEditMode
-                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                  : 'bg-teal-50 text-teal-700 border-teal-200'
-            }`}>
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-teal-50 text-teal-700 border-teal-200'
+                  }`}>
               {isBuyerVerifyEdit ? 'BUYER FINAL VERIFY' : isEditMode ? 'PENDING REVIEW' : 'DRAFT'}
-            </span>
+                  </span>
 
             <span className="text-[11px] text-gray-500 truncate min-w-0 hidden md:inline">
               {docNoLabel}: <span className="font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
@@ -2364,8 +2364,8 @@ export default function CreatePOPage() {
               Vendor:{' '}
               <span className="font-semibold text-gray-700">
                 {isManualMode ? manualVendorName || '—' : pr.recommendedVendor}
-              </span>
-            </span>
+                  </span>
+                  </span>
 
             <div className="flex items-center gap-0.5 shrink-0 mx-1 border-x border-gray-200 px-1">
               {[
@@ -2491,7 +2491,7 @@ export default function CreatePOPage() {
                   <div className="flex items-start gap-3 mb-3">
                     <div className="w-9 h-9 flex items-center justify-center bg-teal-50 rounded-lg shrink-0">
                       <i className="ri-search-eye-line text-teal-600 text-lg"></i>
-                    </div>
+                      </div>
                     <div className="min-w-0">
                       <h3 className="text-sm font-bold text-gray-900">
                         Load {docLabel} Details by Number
@@ -2499,52 +2499,52 @@ export default function CreatePOPage() {
                       <p className="text-xs text-gray-500 mt-0.5">
                         Enter an existing {docNoLabel} to auto-fill delivery, terms, letterhead, line items and POD fields
                       </p>
+                      </div>
                     </div>
-                  </div>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      type="text"
-                      value={referencePoNumber}
-                      onChange={(e) => {
-                        setReferencePoNumber(e.target.value);
-                        setReferencePoError('');
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
+                          <input
+                            type="text"
+                            value={referencePoNumber}
+                            onChange={(e) => {
+                              setReferencePoNumber(e.target.value);
+                              setReferencePoError('');
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
                           void loadPoDetailsByNumber();
-                        }
-                      }}
+                              }
+                            }}
                       placeholder="e.g. PO-RIL-2026-27-0001"
                       className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
                       disabled={referencePoLoading}
-                    />
-                    <button
-                      type="button"
+                          />
+                          <button
+                            type="button"
                       onClick={() => void loadPoDetailsByNumber()}
                       disabled={referencePoLoading || !referencePoNumber.trim()}
                       className="px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-sm font-semibold whitespace-nowrap disabled:opacity-60 flex items-center justify-center gap-2"
-                    >
-                      {referencePoLoading ? (
+                          >
+                            {referencePoLoading ? (
                         <>
                           <i className="ri-loader-4-line animate-spin"></i> Loading...
                         </>
-                      ) : (
+                            ) : (
                         <>
                           <i className="ri-download-cloud-2-line"></i> Auto Fill
                         </>
-                      )}
-                    </button>
-                  </div>
-                  {referencePoError && (
+                            )}
+                          </button>
+                        </div>
+                        {referencePoError && (
                     <p className="mt-2 text-xs text-red-600 flex items-center gap-1.5">
-                      <i className="ri-error-warning-line"></i>
-                      {referencePoError}
-                    </p>
-                  )}
-                  {referencePoLoaded && !referencePoError && (
+                            <i className="ri-error-warning-line"></i>
+                            {referencePoError}
+                          </p>
+                        )}
+                        {referencePoLoaded && !referencePoError && (
                     <p className="mt-2 text-xs text-emerald-700 flex items-center gap-1.5 flex-wrap">
-                      <i className="ri-checkbox-circle-fill"></i>
+                              <i className="ri-checkbox-circle-fill"></i>
                       Loaded <span className="font-semibold">{referencePoLoaded.poNumber}</span>
                       {referencePoLoaded.vendorName ? (
                         <span className="text-gray-500">· {referencePoLoaded.vendorName}</span>
@@ -2556,8 +2556,8 @@ export default function CreatePOPage() {
                         <span className="text-gray-500">· {fmt(referencePoLoaded.grandTotal)}</span>
                       ) : null}
                     </p>
-                  )}
-                </div>
+                        )}
+                      </div>
 
                 {/* Subject — prints on document PDF */}
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
@@ -2598,8 +2598,8 @@ export default function CreatePOPage() {
                       <h3 className="text-sm font-bold text-gray-900">Manual PO details</h3>
                       <p className="text-xs text-gray-500 mt-0.5">No PR reference — enter vendor and entity to continue</p>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                           Vendor Name <span className="text-red-500">*</span>
                         </label>
@@ -2631,12 +2631,12 @@ export default function CreatePOPage() {
                         {masterVendors.length === 0 && (
                           <p className="text-xs text-amber-600 mt-1">Vendor master is empty or failed to load. Add a vendor there, then refresh this page.</p>
                         )}
-                      </div>
-                      <div>
+                        </div>
+                          <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                           Vendor Email <span className="text-red-500">*</span>
                         </label>
-                        <input
+                            <input
                           type="email"
                           value={manualVendorEmail}
                           onChange={(e) => {
@@ -2648,12 +2648,12 @@ export default function CreatePOPage() {
                         />
                         <p className="text-xs text-gray-500 mt-1.5">From vendor master (you can edit if needed)</p>
                       </div>
-                    </div>
-                    <div>
+                          </div>
+                          <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                         Entity (for document number) <span className="text-red-500">*</span>
                       </label>
-                      <select
+                            <select
                         value={manualEntityId}
                         onChange={(e) => {
                           const id = e.target.value ? Number(e.target.value) : '';
@@ -2680,10 +2680,10 @@ export default function CreatePOPage() {
                           <option key={ent.id} value={ent.id}>
                             {ent.name}{ent.code ? ` (${ent.code})` : ''}
                           </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                 )}
 
               </div>
@@ -2729,7 +2729,7 @@ export default function CreatePOPage() {
                       </span>
                     </div>
                     <div className="pt-2 space-y-2.5">
-                      <div>
+                        <div>
                         <div className="flex justify-between text-xs mb-1">
                           <span className="text-gray-500">Technical Score</span>
                           <span className="font-semibold text-gray-700">{vendor.technicalScore}/100</span>
@@ -2779,7 +2779,7 @@ export default function CreatePOPage() {
                             {opt.symbol} {opt.code}
                           </button>
                         ))}
-                      </div>
+                        </div>
                     </div>
                     <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
                       {lineItems.length} Items
@@ -2834,8 +2834,8 @@ export default function CreatePOPage() {
                             />
                           </td>
                           <td className="px-2 py-2.5 align-top">
-                            <input
-                              type="number"
+                          <input
+                            type="number"
                               min="1"
                               value={item.quantity}
                               onChange={e => handleQtyChange(item.id, parseInt(e.target.value) || 1)}
@@ -2843,8 +2843,8 @@ export default function CreatePOPage() {
                             />
                           </td>
                           <td className="px-2 py-2.5 align-top">
-                            <input
-                              type="text"
+                          <input
+                            type="text"
                               value={item.unit || ''}
                               onChange={(e) => handleUnitChange(item.id, e.target.value)}
                               placeholder="Nos"
@@ -2869,8 +2869,8 @@ export default function CreatePOPage() {
                                 className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
                                 title="Unit Price"
                                 aria-label="Unit Price"
-                              />
-                            </div>
+                          />
+                        </div>
                           </td>
                           <td className="px-2 py-2.5 align-top">
                             <div className="relative">
@@ -2886,7 +2886,7 @@ export default function CreatePOPage() {
                                 className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
                               />
                               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">%</span>
-                            </div>
+                      </div>
                           </td>
                           <td className="px-2 py-2.5 align-top">
                             <div className="flex items-start justify-end gap-1.5 pt-1">
@@ -2896,14 +2896,14 @@ export default function CreatePOPage() {
                                   Tax {fmt(calcLineTax(item.total, item.taxPercentage))}
                                 </p>
                               </div>
-                              <button
-                                type="button"
+                        <button
+                          type="button"
                                 onClick={() => handleDeleteLineItem(item.id)}
                                 className="w-6 h-6 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer opacity-0 group-hover:opacity-100 shrink-0"
                                 title="Remove item"
-                              >
+                        >
                                 <i className="ri-delete-bin-line text-sm"></i>
-                              </button>
+                        </button>
                             </div>
                           </td>
                         </tr>
@@ -2916,13 +2916,13 @@ export default function CreatePOPage() {
                                 <i className="ri-file-list-3-line text-gray-400 text-lg"></i>
                               </div>
                               <p className="text-sm text-gray-400">No line items yet</p>
-                              <button
+                        <button
                                 onClick={handleAddLineItem}
                                 className="mt-1 flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
-                              >
+                        >
                                 <i className="ri-add-line"></i> Add First Item
-                              </button>
-                            </div>
+                        </button>
+                      </div>
                           </td>
                         </tr>
                       )}
@@ -2960,8 +2960,8 @@ export default function CreatePOPage() {
                 </div>
               </div>
 
-            </div>
-          )}
+                    </div>
+                  )}
 
           {/* ══════════════════════════════════════════
               TAB 2 — TERMS & CONDITIONS
@@ -2990,9 +2990,9 @@ export default function CreatePOPage() {
                     },
                   ]
                 ).map((opt) => (
-                  <button
+                      <button
                     key={opt.id}
-                    type="button"
+                        type="button"
                     onClick={() => {
                       const nextDoc = opt.id;
                       const nextType = alignTemplateWithDocument(poType, nextDoc);
@@ -3017,48 +3017,48 @@ export default function CreatePOPage() {
                     >
                       {opt.hint}
                     </span>
-                  </button>
+                      </button>
                 ))}
-              </div>
+                    </div>
               {pr.purchaseType && pr.purchaseType !== documentType && (
                 <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5">
                   <i className="ri-information-line"></i>
                   PR default is {pr.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order'} — document type
                   changed for this create.
                 </p>
-              )}
-            </div>
+                  )}
+                </div>
 
             {/* Format type + Letterhead */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <div>
+                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
                     <h3 className="text-sm font-bold text-gray-900">{docLabel} Type</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-500 mt-0.5">
                       Terms and annexure load from {docLabel} Type Master
-                    </p>
-                  </div>
-                  <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+                      </p>
+                    </div>
+                    <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
                     {PO_TYPE_OPTIONS_BY_DOC[documentType].map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
+                        <button
+                          key={option.id}
+                          type="button"
                         onClick={() => applyPoTypeTemplate(option.id, documentType)}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
-                          poType === option.id
-                            ? 'bg-white text-teal-700 shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
+                          className={`px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
+                            poType === option.id
+                              ? 'bg-white text-teal-700 shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                {letterheadLoading ? (
-                  <p className="text-xs text-gray-400 mt-3 flex items-center gap-1.5">
-                    <i className="ri-loader-4-line animate-spin"></i>
+                  {letterheadLoading ? (
+                    <p className="text-xs text-gray-400 mt-3 flex items-center gap-1.5">
+                      <i className="ri-loader-4-line animate-spin"></i>
                     Loading {PO_TYPE_OPTIONS_BY_DOC[documentType].find((o) => o.id === poType)?.label || 'template'} from PO Type Master...
                   </p>
                 ) : templateLoadError ? (
@@ -3076,52 +3076,52 @@ export default function CreatePOPage() {
                     {letterheadHeader ? (
                       <div
                         className="prose prose-sm max-w-none text-gray-700"
-                        dangerouslySetInnerHTML={{ __html: letterheadHeader }}
-                      />
+                      dangerouslySetInnerHTML={{ __html: letterheadHeader }}
+                    />
                     ) : (
                       <p className="text-xs text-gray-400 italic">No header text in this template</p>
                     )}
                   </div>
                 )}
-              </div>
+                </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900">Letterhead / Entity</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Letterhead / Entity</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
                     Select entity from Letterhead Master — header/footer logos and PO/WO numbering use this entity
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                    Entity <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={letterheadId === '' ? '' : String(letterheadId)}
-                    onChange={(e) => {
-                      const id = e.target.value ? Number(e.target.value) : '';
-                      if (!id) {
-                        applyLetterheadBranding(null);
-                        return;
-                      }
-                      const selected = letterheadOptions.find((o) => o.id === id) || null;
-                      applyLetterheadBranding(selected);
-                    }}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
-                  >
-                    <option value="">Select letterhead entity...</option>
-                    {letterheadOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.entity ? `${opt.name} — ${opt.entity}` : opt.name}
-                      </option>
-                    ))}
-                  </select>
-                  {!letterheadOptions.length && (
-                    <p className="text-xs text-amber-600 mt-2">
-                      No active letterheads. Add one in Masters → Letterhead Master.
                     </p>
-                  )}
-                </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                      Entity <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={letterheadId === '' ? '' : String(letterheadId)}
+                      onChange={(e) => {
+                        const id = e.target.value ? Number(e.target.value) : '';
+                        if (!id) {
+                          applyLetterheadBranding(null);
+                          return;
+                        }
+                        const selected = letterheadOptions.find((o) => o.id === id) || null;
+                        applyLetterheadBranding(selected);
+                      }}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                    >
+                      <option value="">Select letterhead entity...</option>
+                      {letterheadOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.entity ? `${opt.name} — ${opt.entity}` : opt.name}
+                        </option>
+                      ))}
+                    </select>
+                    {!letterheadOptions.length && (
+                      <p className="text-xs text-amber-600 mt-2">
+                        No active letterheads. Add one in Masters → Letterhead Master.
+                      </p>
+                    )}
+                  </div>
 
                 {letterheadLocations.length > 0 && (
                   <div>
@@ -3159,38 +3159,38 @@ export default function CreatePOPage() {
 
                 {(entity || headerLogo || footerLogo || locationGstNo) && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Entity</p>
-                      <p className="text-sm text-gray-800">{entity || '—'}</p>
-                    </div>
+                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Entity</p>
+                        <p className="text-sm text-gray-800">{entity || '—'}</p>
+                      </div>
                     <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">GSTIN</p>
                       <p className="text-sm font-mono text-gray-800">{locationGstNo || '—'}</p>
                     </div>
-                    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Header Logo</p>
-                      {headerLogo && (headerLogo.startsWith('data:image/') || /^https?:\/\//i.test(headerLogo)) ? (
-                        <img src={headerLogo} alt="Header logo" className="max-h-12 max-w-full object-contain" />
-                      ) : headerLogo && /<[a-z]/i.test(headerLogo) ? (
-                        <div className="text-xs" dangerouslySetInnerHTML={{ __html: headerLogo }} />
-                      ) : (
-                        <p className="text-sm text-gray-400">—</p>
-                      )}
+                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Header Logo</p>
+                        {headerLogo && (headerLogo.startsWith('data:image/') || /^https?:\/\//i.test(headerLogo)) ? (
+                          <img src={headerLogo} alt="Header logo" className="max-h-12 max-w-full object-contain" />
+                        ) : headerLogo && /<[a-z]/i.test(headerLogo) ? (
+                          <div className="text-xs" dangerouslySetInnerHTML={{ __html: headerLogo }} />
+                        ) : (
+                          <p className="text-sm text-gray-400">—</p>
+                        )}
+                      </div>
+                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Footer Logo</p>
+                        {footerLogo && (footerLogo.startsWith('data:image/') || /^https?:\/\//i.test(footerLogo)) ? (
+                          <img src={footerLogo} alt="Footer logo" className="max-h-12 max-w-full object-contain" />
+                        ) : footerLogo && /<[a-z]/i.test(footerLogo) ? (
+                          <div className="text-xs" dangerouslySetInnerHTML={{ __html: footerLogo }} />
+                        ) : (
+                          <p className="text-sm text-gray-400">—</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Footer Logo</p>
-                      {footerLogo && (footerLogo.startsWith('data:image/') || /^https?:\/\//i.test(footerLogo)) ? (
-                        <img src={footerLogo} alt="Footer logo" className="max-h-12 max-w-full object-contain" />
-                      ) : footerLogo && /<[a-z]/i.test(footerLogo) ? (
-                        <div className="text-xs" dangerouslySetInnerHTML={{ __html: footerLogo }} />
-                      ) : (
-                        <p className="text-sm text-gray-400">—</p>
-                      )}
-                    </div>
-                  </div>
-                )}
+                  )}
               </div>
-            </div>
+                </div>
 
             {/* Terms & Annexure — headings follow Purchase Order / Work Order */}
             <div className="w-full space-y-5">
@@ -3241,7 +3241,7 @@ export default function CreatePOPage() {
                 docLabel={docLabel}
                 editorRevision={`${documentType}-${poType}`}
               />
-            </div>
+                    </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
               <div className="lg:col-span-3 space-y-5">
@@ -3270,15 +3270,15 @@ export default function CreatePOPage() {
                         disabled={referencePoLoading}
                       />
                     </div>
-                    <button
+                      <button
                       type="button"
                       onClick={() => void loadPoDetailsByNumber()}
                       disabled={referencePoLoading || !referencePoNumber.trim()}
                       className="px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 text-sm font-semibold whitespace-nowrap disabled:opacity-60 cursor-pointer"
                     >
                       {referencePoLoading ? 'Loading...' : 'Auto Fill Fields'}
-                    </button>
-                  </div>
+                      </button>
+                    </div>
                   {referencePoError && (
                     <p className="mt-2 text-xs text-red-600">{referencePoError}</p>
                   )}
@@ -3287,7 +3287,7 @@ export default function CreatePOPage() {
                       POD fields filled from {referencePoLoaded.poNumber}
                     </p>
                   )}
-                </div>
+                  </div>
 
                 {/* PO Terms & Conditions Details — matches ERP form layout */}
                 <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
@@ -3414,7 +3414,7 @@ export default function CreatePOPage() {
                                 placeholder="Email"
                                 className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                               />
-                              <input
+                                <input
                                 type="text"
                                 value={newSiteContact.phone}
                                 onChange={(e) => setNewSiteContact((prev) => ({ ...prev, phone: e.target.value }))}
@@ -3425,7 +3425,7 @@ export default function CreatePOPage() {
                                 <p className="text-xs text-red-600">{siteLookupError}</p>
                               ) : null}
                               <div className="flex items-center justify-end gap-2">
-                                <button
+                              <button
                                   type="button"
                                   onClick={() => {
                                     setAddingSiteContact(false);
@@ -3434,7 +3434,7 @@ export default function CreatePOPage() {
                                   className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
                                 >
                                   Cancel
-                                </button>
+                              </button>
                                 <button
                                   type="button"
                                   onClick={() => void saveSiteContactLookup()}
@@ -3466,7 +3466,7 @@ export default function CreatePOPage() {
                             className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
                           />
                         </div>
-                    </div>
+                  </div>
 
                     <AddableSelect
                       label="Project Manager at HO"
@@ -3531,7 +3531,7 @@ export default function CreatePOPage() {
                             <p className="text-xs text-red-600">{siteLookupError}</p>
                           ) : null}
                           <div className="flex items-center justify-end gap-2">
-                            <button
+                      <button
                               type="button"
                               onClick={() => {
                                 setAddingProjectManager(false);
@@ -3540,7 +3540,7 @@ export default function CreatePOPage() {
                               className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
                             >
                               Cancel
-                            </button>
+                      </button>
                             <button
                               type="button"
                               onClick={() => void saveProjectManagerLookup()}
@@ -3549,20 +3549,20 @@ export default function CreatePOPage() {
                             >
                               {savingSiteLookup ? 'Saving...' : 'Add'}
                             </button>
-                          </div>
+                        </div>
                         </>
                       }
                     />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                       <div className="space-y-1.5">
                         <label className="block text-xs font-semibold text-gray-700">Project Manager&apos;s Contact</label>
-                        <input
+                              <input
                           type="text"
                           value={poTermsDetails.projectManagerContact}
                           onChange={(e) => updatePoTermsField('projectManagerContact', e.target.value)}
                           className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
                         />
-                      </div>
+                            </div>
                       <div className="space-y-1.5">
                         <label className="block text-xs font-semibold text-gray-700">Project Manager&apos;s Email</label>
                         <input
@@ -3571,8 +3571,8 @@ export default function CreatePOPage() {
                           onChange={(e) => updatePoTermsField('projectManagerEmail', e.target.value)}
                           className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
                         />
-                      </div>
-                    </div>
+                          </div>
+                        </div>
 
                     {/* Addresses */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
@@ -3601,9 +3601,9 @@ export default function CreatePOPage() {
                                     alt="Location footer"
                                     className="max-h-10 max-w-[180px] object-contain"
                                   />
-                                </div>
+                        </div>
                               )}
-                          </div>
+                      </div>
                         )}
                         <RichTextEditor
                           editorKey={`inv-addr-${letterheadId || 'none'}-${letterheadLocationKey || 'none'}`}
@@ -3612,7 +3612,7 @@ export default function CreatePOPage() {
                           placeholder="Enter invoicing address (rich text). Auto-fills from selected location + GSTIN."
                           minHeight={120}
                         />
-                      </div>
+                    </div>
                       <div className="space-y-1.5">
                         <label className="block text-xs font-semibold text-gray-700">Mailing Address</label>
                         <textarea
@@ -3621,28 +3621,28 @@ export default function CreatePOPage() {
                           rows={3}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
                         />
-                      </div>
+                  </div>
                       <div className="space-y-1.5">
                         <label className="block text-xs font-semibold text-gray-700">Reason For Cancellation</label>
-                        <textarea
+                      <textarea
                           value={poTermsDetails.reasonForCancellation}
                           onChange={(e) => updatePoTermsField('reasonForCancellation', e.target.value)}
                           rows={3}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
-                        />
-                      </div>
+                      />
+                    </div>
                       <div className="space-y-1.5 md:col-span-2">
                         <label className="block text-xs font-semibold text-gray-700">
                           {docLabel} Subject <span className="text-red-500">*</span>
-                        </label>
-                        <input
+                      </label>
+                      <input
                           type="text"
                           value={poTermsDetails.subject || ''}
                           onChange={(e) => updatePoTermsField('subject', e.target.value)}
                           placeholder={`Same as ${docLabel} Details — prints on the ${docLabel} PDF`}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        />
-                      </div>
+                      />
+                    </div>
                     </div>
                   </div>
                 </div>
@@ -3731,7 +3731,7 @@ export default function CreatePOPage() {
                   />
                   <p className="text-xs text-gray-400 mt-1.5">{specialInstructions.length}/500 characters</p>
                 </div>
-              </div>
+                </div>
 
               <div className="space-y-5">
                 <button
@@ -3741,7 +3741,7 @@ export default function CreatePOPage() {
                   <i className="ri-eye-line"></i> Preview {docLabel} Document
                 </button>
               </div>
-            </div>
+              </div>
             </div>
           )}
 

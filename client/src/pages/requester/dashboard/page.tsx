@@ -244,7 +244,7 @@ export default function RequesterDashboard() {
       </div>
 
       <div className="flex gap-3 mb-6">
-        <Link to="/requester/create-pr" className="px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer">
+        <Link to="/requester/create-pr?new=1" className="px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer">
           <i className="ri-add-line text-lg"></i>
           <span>Create New PR</span>
         </Link>

@@ -25,6 +25,10 @@ export interface RfqQuoteTableRow {
   isRecommended?: boolean;
   canSendBack?: boolean;
   quotationFileName?: string;
+  /** Server submission id for Open / View of saved quotation file */
+  quotationSubmissionId?: number;
+  /** True when a local File is still in browser memory (not yet uploaded) */
+  hasLocalQuotationFile?: boolean;
   quotes?: Array<{ round: number; quotedPrice: number; status?: string }>;
   fieldValues?: Record<string, unknown>;
 }
@@ -40,6 +44,7 @@ interface Props {
   onRemove: (row: RfqQuoteTableRow) => void;
   onResend?: (row: RfqQuoteTableRow) => void;
   onSendBack?: (row: RfqQuoteTableRow) => void;
+  onViewFile?: (row: RfqQuoteTableRow) => void;
   onNextRound?: (nextRound: number) => void;
   removingId?: number | null;
   resendingId?: number | null;
@@ -90,6 +95,7 @@ export default function RfqVendorQuoteTable({
   onRemove,
   onResend,
   onSendBack,
+  onViewFile,
   onNextRound,
   removingId,
   resendingId,
@@ -246,6 +252,9 @@ export default function RfqVendorQuoteTable({
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Progress Bar
               </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Quotation file
+              </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Action
               </th>
@@ -332,6 +341,31 @@ export default function RfqVendorQuoteTable({
                         style={{ width: `${highest > 0 && (barValue ?? 0) > 0 ? Math.min(100, ((barValue ?? 0) / highest) * 100) : 0}%` }}
                       />
                     </div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {row.quotationFileName || row.hasLocalQuotationFile || row.quotationSubmissionId ? (
+                      <div className="flex flex-col gap-1 min-w-[120px]">
+                        <p
+                          className="text-[11px] text-slate-600 truncate max-w-[140px]"
+                          title={row.quotationFileName || 'Quotation file'}
+                        >
+                          <i className="ri-file-pdf-2-line text-teal-600 mr-1" />
+                          {row.quotationFileName || 'Attached'}
+                        </p>
+                        {onViewFile && (row.hasLocalQuotationFile || row.quotationSubmissionId) ? (
+                          <button
+                            type="button"
+                            onClick={() => onViewFile(row)}
+                            className="inline-flex items-center gap-1 self-start px-2 py-1 rounded-md border border-teal-200 text-teal-700 text-[11px] font-semibold hover:bg-teal-50"
+                          >
+                            <i className="ri-eye-line" />
+                            View
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="flex flex-wrap justify-end gap-1.5">

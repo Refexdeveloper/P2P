@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, PrAttachmentRecord, VendorRecord, rfqApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -18,8 +18,13 @@ import PrBillingDeliverySection from './PrBillingDeliverySection';
 import {
   clearCreatePrDraft,
   CreatePrDraftSnapshot,
+  consumeCreatePrSoftResume,
+  draftContentScore,
   hasMeaningfulCreatePrDraft,
+  markCreatePrSoftResume,
+  peekCreatePrSoftResume,
   readCreatePrDraft,
+  startFreshCreatePr,
   writeCreatePrDraft,
 } from './createPrDraftStorage';
 import {
@@ -97,9 +102,13 @@ function isUnusablePersistError(err: unknown) {
 
 export default function CreatePRPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { prId: prIdParam } = useParams<{ prId?: string }>();
   const editPrId = prIdParam ? Number(prIdParam) : null;
   const isEditMode = !!editPrId;
+  const wantFreshStart = !editPrId && searchParams.get('new') === '1';
+  const freshHandledRef = useRef(false);
   const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
   /** Admin editing any PR (including in-flight) — save via admin API, all fields unlocked */
   const isAdminEditFlow = isEditMode && isAdminEditor;
@@ -118,6 +127,13 @@ export default function CreatePRPage() {
   const [vendorMaster, setVendorMaster] = useState<VendorRecord[]>([]);
   const [rfqMaxRounds, setRfqMaxRounds] = useState(1);
   const [rfqVendors, setRfqVendors] = useState<FunctionalRfqVendorRow[]>([]);
+  const [rfqRecommendedKey, setRfqRecommendedKey] = useState<string | null>(null);
+  const [rfqRecommendedMeta, setRfqRecommendedMeta] = useState<{
+    vendorId?: string;
+    vendorName?: string;
+    vendorEmail?: string;
+  }>({});
+  const [rfqRecommendationJustification, setRfqRecommendationJustification] = useState('');
   const [existingRfqHasQuotes, setExistingRfqHasQuotes] = useState(false);
   const [approvalUsers, setApprovalUsers] = useState<
     Array<{ id: number; name: string; email: string; role: string; department: string }>
@@ -160,11 +176,46 @@ export default function CreatePRPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savedDraftId, setSavedDraftId] = useState<number | null>(null);
   const [softSaveHint, setSoftSaveHint] = useState('');
+  const [hydrateVersion, setHydrateVersion] = useState(0);
   const skipSoftSaveRef = useRef(false);
   const persistReadyRef = useRef(false);
   const savingInFlightRef = useRef(false);
   const hydrateDoneRef = useRef(false);
   const snapshotRef = useRef<CreatePrDraftSnapshot | null>(null);
+  const pendingLineDraftRef = useRef<LineItem | null>(null);
+  const lineEditorModeRef = useRef<'add' | 'edit' | null>(null);
+  /** Synchronous draft id — avoids duplicate prApi.create while setState is pending. */
+  const savedDraftIdRef = useRef<number | null>(null);
+  const createDraftLockRef = useRef<Promise<number | null> | null>(null);
+  const suppressSoftResumeRef = useRef(false);
+  const savePRRef = useRef<(submit: boolean, options?: { silent?: boolean; forceUploadFiles?: boolean }) => Promise<void>>(async () => undefined);
+
+  const bindSavedDraftId = (id: number | null) => {
+    savedDraftIdRef.current = id && id > 0 ? id : null;
+    setSavedDraftId(savedDraftIdRef.current);
+  };
+
+  const resolvePersistPrId = (): number | null => {
+    if (editPrId && editPrId > 0) return editPrId;
+    if (savedDraftIdRef.current && savedDraftIdRef.current > 0) return savedDraftIdRef.current;
+    if (savedDraftId && savedDraftId > 0) return savedDraftId;
+    const fromSnap = Number(snapshotRef.current?.backendPrId || 0);
+    if (fromSnap > 0) {
+      savedDraftIdRef.current = fromSnap;
+      return fromSnap;
+    }
+    const stored =
+      readCreatePrDraft(user?.id, editPrId) ||
+      readCreatePrDraft(user?.id, null) ||
+      readCreatePrDraft(undefined, null) ||
+      readCreatePrDraft('anon', null);
+    const fromStore = Number(stored?.backendPrId || 0);
+    if (fromStore > 0) {
+      savedDraftIdRef.current = fromStore;
+      return fromStore;
+    }
+    return null;
+  };
 
   const isReturned = prStatus === 'RETURNED';
   const isPendingEditFlow =
@@ -178,7 +229,8 @@ export default function CreatePRPage() {
   const askBillingOnCreatePr = !(prFlow === 'standard' && vendorSelection === 'own');
   const restoredKeyRef = useRef('');
 
-  const applyDraftSnapshot = (draft: CreatePrDraftSnapshot) => {
+  const applyDraftSnapshot = (draft: CreatePrDraftSnapshot, options?: { preserveRicherLineItems?: boolean }) => {
+    const preserveRicher = options?.preserveRicherLineItems !== false;
     setPrTitle(draft.prTitle || '');
     setDepartment(draft.department || '');
     setEntityId(draft.entityId === '' || draft.entityId == null ? '' : Number(draft.entityId));
@@ -188,8 +240,15 @@ export default function CreatePRPage() {
     setPrFlow(draft.prFlow === 'functional' ? 'functional' : 'standard');
     setApprovalUserIds(Array.isArray(draft.approvalUserIds) ? draft.approvalUserIds : []);
     setRfqMaxRounds(draft.rfqMaxRounds || 1);
-    setRfqVendors(
-      (draft.rfqVendors || []).map((row) => ({
+    setRfqRecommendedKey(draft.rfqRecommendedKey || null);
+    setRfqRecommendedMeta({
+      vendorId: draft.rfqRecommendedVendorId || undefined,
+      vendorName: draft.rfqRecommendedVendorName || undefined,
+      vendorEmail: draft.rfqRecommendedVendorEmail || undefined,
+    });
+    setRfqRecommendationJustification(draft.rfqRecommendationJustification || '');
+    setRfqVendors((prev) => {
+      const next = (draft.rfqVendors || []).map((row) => ({
         key: row.key,
         vendorId: row.vendorId,
         name: row.name,
@@ -201,9 +260,11 @@ export default function CreatePRPage() {
           paymentTerms: q.paymentTerms,
           file: null,
           savedFileName: q.savedFileName || undefined,
+          savedSubmissionId: q.savedSubmissionId || undefined,
         })),
-      }))
-    );
+      }));
+      return next.length ? next : prev;
+    });
     setPriority(draft.priority || 'Medium');
     setCurrency(normalizeCurrency(draft.currency));
     setBusinessJustification(draft.businessJustification || '');
@@ -216,12 +277,15 @@ export default function CreatePRPage() {
     setPlaceOfDelivery(draft.placeOfDelivery || '');
     setExpectedDeliveryTimeline(draft.expectedDeliveryTimeline || '');
     setPaymentTerms(draft.paymentTerms || '');
-    setLineItems(
-      (draft.lineItems || []).map((item) => ({
+    setLineItems((prev) => {
+      const next = (draft.lineItems || []).map((item) => ({
         ...item,
         gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
-      }))
-    );
+      }));
+      // Never wipe line items the user just added with an older / empty draft restore.
+      if (preserveRicher && prev.length > next.length) return prev;
+      return next;
+    });
     setAttachedFiles(
       (draft.attachedFiles || [])
         .filter((f) => f.existingId)
@@ -231,12 +295,50 @@ export default function CreatePRPage() {
   };
 
   useEffect(() => {
+    if (editPrId && editPrId > 0) {
+      bindSavedDraftId(editPrId);
+    }
+  }, [editPrId]);
+
+  // Create PR (?new=1) = blank form. Leaving mid-work sets soft-resume so menu return keeps same PR#.
+  useEffect(() => {
+    if (editPrId || isLoadingPr) return;
+    if (freshHandledRef.current) return;
+    freshHandledRef.current = true;
+
+    const soft = peekCreatePrSoftResume();
+    if (soft) {
+      // Coming back from another menu — resume same PR#, ignore ?new=
+      if (wantFreshStart) setSearchParams({}, { replace: true });
+      return;
+    }
+    if (wantFreshStart) {
+      startFreshCreatePr(user?.id);
+      bindSavedDraftId(null);
+      savedDraftIdRef.current = null;
+      setSearchParams({}, { replace: true });
+      setSoftSaveHint('Starting a new purchase requisition');
+    }
+  }, [editPrId, isLoadingPr, wantFreshStart, user?.id, setSearchParams]);
+
+  // If we already have a server draft id on /create-pr, open it as edit-pr/:id (same PR number).
+  useEffect(() => {
+    if (editPrId || isLoadingPr || !hydrateDoneRef.current) return;
+    const id = resolvePersistPrId();
+    if (!id) return;
+    if (wantFreshStart && !peekCreatePrSoftResume()) return;
+    navigate(`/requester/edit-pr/${id}`, { replace: true });
+  }, [editPrId, isLoadingPr, hydrateVersion, navigate, wantFreshStart]);
+
+  useEffect(() => {
     if (!editPrId) return;
+    let cancelled = false;
     (async () => {
       setIsLoadingPr(true);
       setLoadError('');
       try {
         const res = await prApi.get(editPrId);
+        if (cancelled) return;
         const pr = res.data as {
           prNumber: string;
           title?: string;
@@ -324,22 +426,36 @@ export default function CreatePRPage() {
           setReturnFeedback(null);
         }
 
-        setLineItems(
-          pr.lineItems.length > 0
-            ? pr.lineItems.map((item, i) => ({
-                id: String(item.id != null ? `${item.id}-${i}` : `row-${i + 1}`),
-                itemId: null,
-                itemName: item.description,
-                description: item.description,
-                quantity: item.quantity,
-                estimatedCost: item.unitCost,
-                category: item.category,
-                unit: item.unit || 'Nos',
-                hsnCode: '',
-                gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
-              }))
-            : []
-        );
+        setLineItems((prev) => {
+          const fromServer =
+            pr.lineItems.length > 0
+              ? pr.lineItems.map((item, i) => ({
+                  id: String(item.id != null ? `${item.id}-${i}` : `row-${i + 1}`),
+                  itemId: null,
+                  itemName: item.description,
+                  description: item.description,
+                  quantity: item.quantity,
+                  estimatedCost: item.unitCost,
+                  category: item.category,
+                  unit: item.unit || 'Nos',
+                  hsnCode: '',
+                  gstPercentage: Number.isFinite(Number(item.gstPercentage))
+                    ? Number(item.gstPercentage)
+                    : 18,
+                }))
+              : [];
+          // Prefer local draft line items when they are richer than the server payload.
+          const local = readCreatePrDraft(user?.id, editPrId);
+          if (local?.lineItems?.length && local.lineItems.length >= fromServer.length) {
+            return local.lineItems.map((item) => ({
+              ...item,
+              gstPercentage: Number.isFinite(Number(item.gstPercentage))
+                ? Number(item.gstPercentage)
+                : 18,
+            }));
+          }
+          return fromServer.length ? fromServer : prev;
+        });
         setAttachedFiles(
           (pr.attachments || []).map((att) => ({
             id: `existing-${att.id}`,
@@ -348,58 +464,179 @@ export default function CreatePRPage() {
             existingId: att.id,
           }))
         );
+
+        // Prefer newer local auto-draft (justification / address) over stale server — line items already merged above.
+        const local = readCreatePrDraft(user?.id, editPrId);
+        if (local && hasMeaningfulCreatePrDraft(local)) {
+          const serverScore =
+            (pr.lineItems?.length || 0) * 10 +
+            (pr.justification?.trim() ? 8 : 0) +
+            (pr.billingAddress?.trim() ? 4 : 0) +
+            (pr.placeOfDelivery?.trim() ? 4 : 0);
+          if (draftContentScore(local) >= serverScore) {
+            applyDraftSnapshot(local, { preserveRicherLineItems: true });
+            setSoftSaveHint('Restored your unsaved changes');
+          }
+        }
       } catch (err) {
-        setLoadError(err instanceof Error ? err.message : 'Failed to load PR');
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Failed to load PR');
       } finally {
-        setIsLoadingPr(false);
+        if (!cancelled) setIsLoadingPr(false);
       }
     })();
-  }, [editPrId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [editPrId, user?.id]);
 
   useEffect(() => {
     if (isLoadingPr) return;
     let cancelled = false;
-    const key = `${user?.id || 'anon'}-${editPrId ?? 'new'}`;
+    const scopeKey = `${editPrId ?? 'new'}`;
     const run = async () => {
-      if (restoredKeyRef.current === key) {
+      // Do not re-apply a full draft when only auth user.id arrives later — that wiped line items.
+      if (hydrateDoneRef.current && restoredKeyRef.current === scopeKey) {
         persistReadyRef.current = true;
-        hydrateDoneRef.current = true;
         return;
       }
-      restoredKeyRef.current = key;
+      restoredKeyRef.current = scopeKey;
       persistReadyRef.current = false;
-      const draft = readCreatePrDraft(user?.id, editPrId);
+      const draft =
+        readCreatePrDraft(user?.id, editPrId) ||
+        readCreatePrDraft(undefined, editPrId) ||
+        readCreatePrDraft('anon', editPrId);
       if (draft && hasMeaningfulCreatePrDraft(draft)) {
-        applyDraftSnapshot(draft);
+        applyDraftSnapshot(draft, { preserveRicherLineItems: true });
         setSoftSaveHint('Restored your unsaved changes');
-        const backendId = !editPrId && draft.backendPrId ? Number(draft.backendPrId) : null;
+        if (user?.id) {
+          writeCreatePrDraft(user.id, editPrId ?? draft.backendPrId ?? null, draft);
+        }
+        const softResume = consumeCreatePrSoftResume();
+        const backendId = !editPrId
+          ? Number(
+              (typeof softResume === 'number' ? softResume : null) ||
+                draft.backendPrId ||
+                0
+            ) || null
+          : null;
         if (backendId) {
+          // Bind immediately so autosave cannot create a second PR while get() is in flight.
+          bindSavedDraftId(backendId);
           try {
             const res = await prApi.get(backendId);
             if (cancelled) return;
-            const data = res.data as { status?: string; prNumber?: string };
+            const data = res.data as {
+              status?: string;
+              prNumber?: string;
+              lineItems?: Array<{
+                id?: number;
+                description: string;
+                quantity: number;
+                unitCost: number;
+                category: string;
+                unit?: string;
+                gstPercentage?: number;
+              }>;
+              justification?: string;
+              billingAddress?: string;
+              placeOfDelivery?: string;
+              deliveryPoc?: string;
+              expectedDeliveryTimeline?: string;
+              paymentTerms?: string;
+              title?: string;
+            };
             if (isReusableDraftStatus(data.status)) {
-              setSavedDraftId(backendId);
+              bindSavedDraftId(backendId);
               setPrStatus(String(data.status || '').toUpperCase());
               if (data.prNumber) setPrNumber(data.prNumber);
+              const localCount = draft.lineItems?.length || 0;
+              const serverItems = Array.isArray(data.lineItems) ? data.lineItems : [];
+              if (localCount === 0 && serverItems.length > 0) {
+                setLineItems((prev) => {
+                  if (prev.length > 0) return prev;
+                  return serverItems.map((item, i) => ({
+                    id: String(item.id != null ? `${item.id}-${i}` : `row-${i + 1}`),
+                    itemId: null,
+                    itemName: item.description,
+                    description: item.description,
+                    quantity: item.quantity,
+                    estimatedCost: item.unitCost,
+                    category: item.category,
+                    unit: item.unit || 'Nos',
+                    hsnCode: '',
+                    gstPercentage: Number.isFinite(Number(item.gstPercentage))
+                      ? Number(item.gstPercentage)
+                      : 18,
+                  }));
+                });
+                if (data.justification && !draft.businessJustification?.trim()) {
+                  setBusinessJustification(data.justification);
+                }
+                if (data.billingAddress && !draft.billingAddress?.trim()) {
+                  setBillingAddress(data.billingAddress);
+                }
+                if (data.placeOfDelivery && !draft.placeOfDelivery?.trim()) {
+                  setPlaceOfDelivery(data.placeOfDelivery);
+                }
+                if (data.deliveryPoc && !draft.deliveryPoc?.trim()) {
+                  setDeliveryPoc(data.deliveryPoc);
+                }
+                if (data.expectedDeliveryTimeline && !draft.expectedDeliveryTimeline?.trim()) {
+                  setExpectedDeliveryTimeline(data.expectedDeliveryTimeline);
+                }
+                if (data.paymentTerms && !draft.paymentTerms?.trim()) {
+                  setPaymentTerms(data.paymentTerms);
+                }
+                if (data.title && !draft.prTitle?.trim()) {
+                  setPrTitle(data.title);
+                }
+              }
             } else {
-              setSavedDraftId(null);
+              bindSavedDraftId(null);
             }
           } catch {
-            if (!cancelled) setSavedDraftId(null);
+            // Keep optimistic id — update may still work; only clear if PR truly missing.
+            if (!cancelled) {
+              /* leave bindSavedDraftId(backendId) */
+            }
           }
         }
       }
       if (!cancelled) {
         persistReadyRef.current = true;
         hydrateDoneRef.current = true;
+        setHydrateVersion((v) => v + 1);
       }
     };
     void run();
     return () => {
       cancelled = true;
+      // Strict Mode remount resets React state — allow re-hydrate from localStorage.
+      // user.id is intentionally NOT a dep (that used to wipe line items mid-edit).
+      restoredKeyRef.current = '';
+      hydrateDoneRef.current = false;
+      persistReadyRef.current = false;
     };
-  }, [editPrId, isLoadingPr, user?.id]);
+  }, [editPrId, isLoadingPr]);
+
+  // When auth resolves, migrate local draft key — never re-apply a full snapshot (wipes line items).
+  useEffect(() => {
+    if (!user?.id || isLoadingPr || !hydrateDoneRef.current) return;
+    const draft =
+      readCreatePrDraft(user.id, editPrId) ||
+      readCreatePrDraft(undefined, editPrId) ||
+      readCreatePrDraft('anon', editPrId);
+    if (!draft || !hasMeaningfulCreatePrDraft(draft)) return;
+    writeCreatePrDraft(user.id, editPrId ?? draft.backendPrId ?? null, draft);
+    setLineItems((prev) => {
+      if (prev.length > 0) return prev;
+      if (!draft.lineItems?.length) return prev;
+      return draft.lineItems.map((item) => ({
+        ...item,
+        gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
+      }));
+    });
+  }, [user?.id, editPrId, isLoadingPr]);
 
   useEffect(() => {
     snapshotRef.current = {
@@ -417,6 +654,11 @@ export default function CreatePRPage() {
       prFlow,
       approvalUserIds,
       rfqMaxRounds,
+      rfqRecommendedKey,
+      rfqRecommendedVendorId: rfqRecommendedMeta.vendorId || null,
+      rfqRecommendedVendorName: rfqRecommendedMeta.vendorName || null,
+      rfqRecommendedVendorEmail: rfqRecommendedMeta.vendorEmail || null,
+      rfqRecommendationJustification,
       rfqVendors: rfqVendors.map((row) => ({
         key: row.key,
         vendorId: row.vendorId,
@@ -427,7 +669,9 @@ export default function CreatePRPage() {
           quotedPrice: q.quotedPrice,
           leadTime: q.leadTime,
           paymentTerms: q.paymentTerms,
-          savedFileName: q.savedFileName || q.file?.name || undefined,
+          // Only persist server-confirmed file names — never File.name (lost on refresh).
+          savedFileName: q.savedFileName || undefined,
+          savedSubmissionId: q.savedSubmissionId || undefined,
         })),
       })),
       priority,
@@ -453,17 +697,19 @@ export default function CreatePRPage() {
   });
 
   useEffect(() => {
-    if (!hydrateDoneRef.current || skipSoftSaveRef.current || isLoadingPr) return;
+    if (!hydrateDoneRef.current || !persistReadyRef.current || skipSoftSaveRef.current || isLoadingPr) {
+      return;
+    }
     const timer = window.setTimeout(() => {
+      if (skipSoftSaveRef.current || !hydrateDoneRef.current) return;
       const snap = snapshotRef.current;
-      if (!snap) return;
+      if (!snap || !hasMeaningfulCreatePrDraft(snap)) return;
       writeCreatePrDraft(user?.id, persistPrId ?? editPrId, snap);
-      if (hasMeaningfulCreatePrDraft(snap)) {
-        setSoftSaveHint('Draft auto-saved');
-      }
-    }, 800);
+      setSoftSaveHint('Draft auto-saved locally');
+    }, 400);
     return () => window.clearTimeout(timer);
   }, [
+    hydrateVersion,
     prTitle,
     department,
     entityId,
@@ -474,6 +720,9 @@ export default function CreatePRPage() {
     approvalUserIds,
     rfqMaxRounds,
     rfqVendors,
+    rfqRecommendedKey,
+    rfqRecommendedMeta,
+    rfqRecommendationJustification,
     priority,
     currency,
     businessJustification,
@@ -489,24 +738,63 @@ export default function CreatePRPage() {
     lineItems,
     attachedFiles,
     persistPrId,
-    persistPrId,
     editPrId,
     user?.id,
     isLoadingPr,
   ]);
 
   useEffect(() => {
-    const flushLocal = () => {
-      if (skipSoftSaveRef.current || !hydrateDoneRef.current) return;
+    const flushOnLeave = () => {
+      if (suppressSoftResumeRef.current || skipSoftSaveRef.current || !hydrateDoneRef.current) return;
       const snap = snapshotRef.current;
-      if (!snap) return;
-      writeCreatePrDraft(user?.id, persistPrId ?? editPrId, snap);
+      if (!snap || !hasMeaningfulCreatePrDraft(snap)) return;
+      const id = resolvePersistPrId();
+      writeCreatePrDraft(user?.id, id ?? editPrId, { ...snap, backendPrId: id ?? snap.backendPrId });
+      markCreatePrSoftResume(id);
+      // Upload quotation files + persist same PR# when leaving to another menu.
+      if (snap.entityId && !savingInFlightRef.current) {
+        void savePRRef.current(false, { silent: true, forceUploadFiles: true });
+      }
     };
-    const flushApi = () => {
-      flushLocal();
-      const snap = snapshotRef.current;
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushOnLeave();
+    };
+    window.addEventListener('pagehide', flushOnLeave);
+    window.addEventListener('beforeunload', flushOnLeave);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      flushOnLeave();
+      window.removeEventListener('pagehide', flushOnLeave);
+      window.removeEventListener('beforeunload', flushOnLeave);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, [editPrId, persistPrId, user?.id]);
+
+  // Debounced server draft — reuses one PR number; uploads quotation files when present.
+  useEffect(() => {
+    if (
+      !hydrateDoneRef.current ||
+      !persistReadyRef.current ||
+      skipSoftSaveRef.current ||
+      isLoadingPr ||
+      isAdminEditFlow
+    ) {
+      return;
+    }
+    if (!entityId) return;
+    if (
+      !businessJustification.trim() &&
+      !billingAddress.trim() &&
+      !placeOfDelivery.trim() &&
+      !deliveryPoc.trim() &&
+      lineItems.length === 0 &&
+      !prTitle.trim() &&
+      rfqVendors.length === 0
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
       if (
-        !snap ||
         skipSoftSaveRef.current ||
         savingInFlightRef.current ||
         !hydrateDoneRef.current ||
@@ -514,53 +802,49 @@ export default function CreatePRPage() {
       ) {
         return;
       }
-      const id = snap.backendPrId;
-      if (!id || !snap.lineItems.length) return;
-      const payload = {
-        title: snap.prTitle.trim() || snap.lineItems[0]?.description || `${snap.requestType} Request`,
-        requestType: snap.requestType,
-        purchaseType: snap.purchaseType,
-        department: snap.department,
-        entityId: snap.entityId ? Number(snap.entityId) : undefined,
-        priority: snap.priority,
-        currency: snap.currency,
-        prFlow: snap.prFlow,
-        approvalUserId: snap.prFlow === 'functional' && snap.approvalUserIds[0] ? Number(snap.approvalUserIds[0]) : undefined,
-        approvalUserIds: snap.prFlow === 'functional' ? snap.approvalUserIds : undefined,
-        vendorSelection: snap.vendorSelection,
-        justification: snap.businessJustification,
-        requiredDate: snap.requiredDate || undefined,
-        billingLocationId: snap.billingLocationId || undefined,
-        billingLocation: snap.billingLocation.trim() || undefined,
-        billingGstNo: snap.billingGstNo.trim() || undefined,
-        billingAddress: snap.billingAddress.trim() || undefined,
-        deliveryPoc: snap.deliveryPoc.trim() || undefined,
-        placeOfDelivery: snap.placeOfDelivery.trim() || undefined,
-        expectedDeliveryTimeline: snap.expectedDeliveryTimeline.trim() || undefined,
-        paymentTerms: snap.paymentTerms.trim() || undefined,
-        lineItems: snap.lineItems.map((item) => ({
-          category: item.category,
-          description: item.description,
-          quantity: item.quantity,
-          unitCost: item.estimatedCost,
-          unit: item.unit || 'Nos',
-          gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
-        })),
-      };
-      const req = snap.isAdminEditFlow ? prApi.adminUpdate(id, payload) : prApi.update(id, payload);
-      void req.catch(() => undefined);
-    };
-    const onHide = () => {
-      if (document.visibilityState === 'hidden') flushApi();
-    };
-    window.addEventListener('pagehide', flushApi);
-    document.addEventListener('visibilitychange', onHide);
-    return () => {
-      flushApi();
-      window.removeEventListener('pagehide', flushApi);
-      document.removeEventListener('visibilitychange', onHide);
-    };
-  }, [editPrId, persistPrId, user?.id]);
+      const snap = snapshotRef.current;
+      if (!snap?.entityId) return;
+      const existingId = resolvePersistPrId();
+      writeCreatePrDraft(user?.id, existingId ?? editPrId, {
+        ...snap,
+        backendPrId: existingId ?? snap.backendPrId ?? null,
+      });
+      void savePRRef.current(false, { silent: true, forceUploadFiles: true }).then(() => {
+        if (!skipSoftSaveRef.current) setSoftSaveHint('Draft auto-saved');
+      });
+    }, 2000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    hydrateVersion,
+    prTitle,
+    department,
+    entityId,
+    requestType,
+    purchaseType,
+    vendorSelection,
+    prFlow,
+    approvalUserIds,
+    priority,
+    currency,
+    businessJustification,
+    requiredDate,
+    billingLocationId,
+    billingLocation,
+    billingGstNo,
+    billingAddress,
+    deliveryPoc,
+    placeOfDelivery,
+    expectedDeliveryTimeline,
+    paymentTerms,
+    lineItems,
+    rfqVendors,
+    persistPrId,
+    editPrId,
+    user?.id,
+    isLoadingPr,
+    isAdminEditFlow,
+  ]);
 
   useEffect(() => {
     (async () => {
@@ -592,15 +876,142 @@ export default function CreatePRPage() {
     (async () => {
       try {
         const res = await rfqApi.getByPr(persistPrId);
-        const invitations = (res.data as {
+        const data = res.data as {
+          config?: {
+            recommendedInvitationId?: number | null;
+            recommendationJustification?: string;
+          };
           invitations?: Array<{
-            submissions?: Array<{ quotedPrice?: number; quotationFileName?: string }>;
+            id?: number;
+            vendorId?: number;
+            vendorName?: string;
+            vendorEmail?: string;
+            submissions?: Array<{
+              id?: number;
+              round?: number;
+              quotedPrice?: number;
+              leadTime?: number;
+              paymentTerms?: string;
+              quotationFileName?: string;
+            }>;
           }>;
-        })?.invitations || [];
+        };
+        const invitations = data?.invitations || [];
         const hasQuotes = invitations.some((inv) =>
-          (inv.submissions || []).some((q) => Number(q.quotedPrice) > 0 && Boolean(q.quotationFileName))
+          (inv.submissions || []).some((q) => Number(q.quotedPrice) >= 0 && Boolean(q.quotationFileName))
         );
         setExistingRfqHasQuotes(hasQuotes);
+
+        // Restore Choose selection from RFQ config
+        const recId = data.config?.recommendedInvitationId
+          ? Number(data.config.recommendedInvitationId)
+          : null;
+        if (recId) {
+          const recInv = invitations.find((i) => Number(i.id) === recId);
+          if (recInv) {
+            setRfqRecommendationJustification(data.config?.recommendationJustification || '');
+            setRfqRecommendedMeta({
+              vendorName: recInv.vendorName,
+              vendorEmail: recInv.vendorEmail,
+            });
+          }
+        }
+
+        // Hydrate functional RFQ rows (incl. submission ids so Open / Show works)
+        if (invitations.length) {
+          setRfqVendors((prev) => {
+            let next: FunctionalRfqVendorRow[];
+            if (prev.length > 0) {
+              // Merge savedSubmissionId / savedFileName into existing rows by vendor
+              next = prev.map((row) => {
+                const inv = invitations.find(
+                  (i) =>
+                    (i.vendorName || '').toLowerCase() === row.name.toLowerCase() ||
+                    ((i.vendorEmail || '') &&
+                      (row.email || '') &&
+                      (i.vendorEmail || '').toLowerCase() === row.email.toLowerCase())
+                );
+                if (!inv) return row;
+                const subs = inv.submissions || [];
+                return {
+                  ...row,
+                  quotes: row.quotes.map((q) => {
+                    const sub = subs.find((s) => Number(s.round) === Number(q.round));
+                    if (!sub) return q;
+                    return {
+                      ...q,
+                      quotedPrice: q.quotedPrice || (sub.quotedPrice != null ? String(sub.quotedPrice) : ''),
+                      leadTime: q.leadTime || (sub.leadTime != null ? String(sub.leadTime) : ''),
+                      paymentTerms: q.paymentTerms || sub.paymentTerms || '',
+                      // Server file wins — drop local File once it is stored
+                      file: sub.quotationFileName ? null : q.file,
+                      savedFileName: sub.quotationFileName || q.savedFileName,
+                      savedSubmissionId: sub.id ? Number(sub.id) : q.savedSubmissionId,
+                    };
+                  }),
+                };
+              });
+            } else {
+              next = invitations.map((inv, idx) => {
+                const subs = inv.submissions || [];
+                const maxR = Math.max(1, ...subs.map((s) => Number(s.round) || 1), rfqMaxRounds);
+                const quotes = Array.from({ length: Math.min(4, maxR) }, (_, i) => {
+                  const round = i + 1;
+                  const sub = subs.find((s) => Number(s.round) === round);
+                  return {
+                    round,
+                    quotedPrice: sub?.quotedPrice != null ? String(sub.quotedPrice) : '',
+                    leadTime: sub?.leadTime != null ? String(sub.leadTime) : '',
+                    paymentTerms: sub?.paymentTerms || '',
+                    file: null as File | null,
+                    savedFileName: sub?.quotationFileName || undefined,
+                    savedSubmissionId: sub?.id ? Number(sub.id) : undefined,
+                  };
+                });
+                return {
+                  key: `rfq-loaded-${inv.id || idx}`,
+                  vendorId: inv.vendorId != null ? String(inv.vendorId) : '',
+                  name: inv.vendorName || '',
+                  email: inv.vendorEmail || '',
+                  quotes,
+                };
+              });
+            }
+
+            // Re-bind Choose selection to current row keys
+            const recId = data.config?.recommendedInvitationId
+              ? Number(data.config.recommendedInvitationId)
+              : null;
+            const recInv = recId ? invitations.find((i) => Number(i.id) === recId) : null;
+            const match =
+              next.find((r) =>
+                recInv
+                  ? (recInv.vendorName || '').toLowerCase() === r.name.toLowerCase() ||
+                    ((recInv.vendorEmail || '') &&
+                      r.email &&
+                      (recInv.vendorEmail || '').toLowerCase() === r.email.toLowerCase())
+                  : false
+              ) ||
+              next.find(
+                (r) =>
+                  (rfqRecommendedMeta.vendorEmail &&
+                    r.email &&
+                    rfqRecommendedMeta.vendorEmail.toLowerCase() === r.email.toLowerCase()) ||
+                  (rfqRecommendedMeta.vendorName &&
+                    rfqRecommendedMeta.vendorName.toLowerCase() === r.name.toLowerCase()) ||
+                  (rfqRecommendedKey && r.key === rfqRecommendedKey)
+              );
+            if (match) {
+              setRfqRecommendedKey(match.key);
+              setRfqRecommendedMeta({
+                vendorId: match.vendorId,
+                vendorName: match.name,
+                vendorEmail: match.email,
+              });
+            }
+            return next;
+          });
+        }
       } catch {
         setExistingRfqHasQuotes(false);
       }
@@ -692,29 +1103,108 @@ export default function CreatePRPage() {
 
   const openAddLineItem = () => {
     setDeleteLineItemId(null);
+    lineEditorModeRef.current = 'add';
     setLineEditor({ mode: 'add', item: createEmptyLineItem() });
   };
 
   const openEditLineItem = (item: LineItem) => {
     setDeleteLineItemId(null);
+    lineEditorModeRef.current = 'edit';
     setLineEditor({ mode: 'edit', item: { ...item } });
   };
 
-  const closeLineEditor = () => setLineEditor(null);
+  const closeLineEditor = () => {
+    pendingLineDraftRef.current = null;
+    lineEditorModeRef.current = null;
+    setLineEditor(null);
+  };
 
   const saveLineItem = (item: LineItem) => {
     setLineItems((prev) => {
-      if (lineEditor?.mode === 'edit') {
-        return prev.map((row) => (row.id === item.id ? item : row));
-      }
-      return [...prev, item];
+      const next =
+        lineEditor?.mode === 'edit'
+          ? prev.map((row) => (row.id === item.id ? item : row))
+          : [...prev, item];
+      // Persist immediately so auth hydrate / autosave cannot wipe this add.
+      const snap: CreatePrDraftSnapshot = {
+        ...(snapshotRef.current || {
+          v: 1 as const,
+          savedAt: Date.now(),
+          backendPrId: persistPrId,
+          prTitle,
+          department,
+          entityId,
+          requestType,
+          purchaseType,
+          vendorSelection,
+          prFlow,
+          approvalUserIds,
+          rfqMaxRounds,
+          rfqVendors: [],
+          priority,
+          currency,
+          businessJustification,
+          requiredDate,
+          billingLocationId,
+          billingLocation,
+          billingGstNo,
+          billingAddress,
+          deliveryPoc,
+          placeOfDelivery,
+          expectedDeliveryTimeline,
+          paymentTerms,
+          attachedFiles: [],
+        }),
+        lineItems: next,
+        backendPrId: persistPrId,
+        savedAt: Date.now(),
+      };
+      snapshotRef.current = snap;
+      writeCreatePrDraft(user?.id, persistPrId ?? editPrId, snap);
+      writeCreatePrDraft(user?.id || 'anon', persistPrId ?? editPrId, snap);
+      return next;
     });
     setErrors((prev) => {
       const next = { ...prev };
       delete next.lineItems;
       return next;
     });
+    pendingLineDraftRef.current = null;
+    lineEditorModeRef.current = null;
     setLineEditor(null);
+    setSoftSaveHint('Line item saved');
+  };
+
+  /** Commit open Add/Edit form into the table before Save Draft / autosave. */
+  const commitPendingLineItem = (): LineItem[] => {
+    const pending = pendingLineDraftRef.current;
+    const mode = lineEditorModeRef.current || lineEditor?.mode;
+    if (!pending || !mode) return lineItems;
+    const hasBasics =
+      Boolean(pending.category?.trim()) &&
+      Boolean(pending.description?.trim() || pending.itemName?.trim()) &&
+      Number(pending.quantity) >= 1;
+    if (!hasBasics) return lineItems;
+    const normalized: LineItem = {
+      ...pending,
+      itemName: pending.itemName || pending.description,
+      description: (pending.description || pending.itemName || '').trim(),
+      quantity: Number(pending.quantity) || 1,
+      estimatedCost: Number(pending.estimatedCost) || 0,
+      unit: pending.unit || 'Nos',
+      gstPercentage: Number.isFinite(Number(pending.gstPercentage)) ? Number(pending.gstPercentage) : 18,
+    };
+    let next = lineItems;
+    if (mode === 'edit') {
+      next = lineItems.map((row) => (row.id === normalized.id ? normalized : row));
+    } else if (!lineItems.some((row) => row.id === normalized.id)) {
+      next = [...lineItems, normalized];
+    }
+    setLineItems(next);
+    pendingLineDraftRef.current = null;
+    lineEditorModeRef.current = null;
+    setLineEditor(null);
+    return next;
   };
 
   const confirmRemoveLineItem = () => {
@@ -811,7 +1301,7 @@ export default function CreatePRPage() {
           Number.isFinite(price) &&
           price >= 0 &&
           String(round1?.quotedPrice ?? '').trim() !== '' &&
-          Boolean(round1?.file || round1?.savedFileName)
+          Boolean(round1?.file || round1?.savedFileName || round1?.savedSubmissionId)
         );
       });
       if (!hasRound1 && !existingRfqHasQuotes) {
@@ -838,9 +1328,8 @@ export default function CreatePRPage() {
 
   const validateDraftBasics = () => {
     const newErrors: Record<string, string> = {};
+    // Draft: only Entity is required (PR number needs entity). Department + line items are enforced on Submit.
     if (!entityId) newErrors.entityId = 'Entity is required';
-    if (!department.trim()) newErrors.department = 'Department is required';
-    if (lineItems.length === 0) newErrors.lineItems = 'Add at least one line item';
     setErrors(newErrors);
     const ok = Object.keys(newErrors).length === 0;
     if (!ok) scrollToFirstError(newErrors);
@@ -889,7 +1378,8 @@ export default function CreatePRPage() {
     }
   };
 
-  const buildRfqVendorsPayload = async () => {
+  const buildRfqVendorsPayload = async (options?: { skipFileData?: boolean }) => {
+    const skipFileData = Boolean(options?.skipFileData);
     const packed = [];
     for (const row of rfqVendors) {
       const master = vendorMaster.find((v) => String(v.id) === String(row.vendorId));
@@ -898,7 +1388,7 @@ export default function CreatePRPage() {
         const price = Number(quote.quotedPrice);
         if (!Number.isFinite(price) || price < 0) continue;
         const hasNewFile = Boolean(quote.file);
-        const hasSavedFile = Boolean(quote.savedFileName);
+        const hasSavedFile = Boolean(quote.savedFileName || quote.savedSubmissionId);
         if (!hasNewFile && !hasSavedFile) continue;
         const entry: Record<string, unknown> = {
           round: quote.round,
@@ -906,7 +1396,11 @@ export default function CreatePRPage() {
           leadTime: Number(quote.leadTime) || 0,
           paymentTerms: quote.paymentTerms || undefined,
         };
-        if (quote.file) {
+        // Local File must always be uploaded — skipFileData only when already on server.
+        const alreadyOnServer = Boolean(quote.savedSubmissionId || (quote.savedFileName && !quote.file));
+        if (skipFileData && alreadyOnServer) {
+          entry.quotationFileName = quote.savedFileName;
+        } else if (quote.file) {
           const filePayload = await fileToAttachmentPayload(quote.file);
           entry.quotationFileName = filePayload.fileName;
           entry.quotationFileData = filePayload.data;
@@ -926,8 +1420,8 @@ export default function CreatePRPage() {
     return packed;
   };
 
-  const buildPayload = () => ({
-    title: prTitle.trim() || lineItems[0]?.description || `${requestType} Request`,
+  const buildPayload = (items: LineItem[] = lineItems) => ({
+    title: prTitle.trim() || items[0]?.description || `${requestType} Request`,
     requestType,
     purchaseType,
     department,
@@ -948,7 +1442,7 @@ export default function CreatePRPage() {
     placeOfDelivery: placeOfDelivery.trim() || undefined,
     expectedDeliveryTimeline: expectedDeliveryTimeline.trim() || undefined,
     paymentTerms: paymentTerms.trim() || undefined,
-    lineItems: lineItems.map((item) => ({
+    lineItems: items.map((item) => ({
       category: item.category,
       description: item.description,
       quantity: item.quantity,
@@ -966,27 +1460,98 @@ export default function CreatePRPage() {
     }
   };
 
-  const savePR = async (submit: boolean, options?: { silent?: boolean }) => {
+  const savePR = async (
+    submit: boolean,
+    options?: { silent?: boolean; forceUploadFiles?: boolean }
+  ) => {
     const silent = Boolean(options?.silent);
+    const forceUploadFiles = Boolean(options?.forceUploadFiles);
     if (!silent) setSubmitError('');
     if (!silent) setIsSubmitting(true);
     savingInFlightRef.current = true;
     if (submit) skipSoftSaveRef.current = true;
     try {
+      const itemsForSave = commitPendingLineItem();
+      const draftSnap: CreatePrDraftSnapshot = {
+        ...(snapshotRef.current || {
+          v: 1 as const,
+          savedAt: Date.now(),
+          backendPrId: persistPrId,
+          prTitle,
+          department,
+          entityId,
+          requestType,
+          purchaseType,
+          vendorSelection,
+          prFlow,
+          approvalUserIds,
+          rfqMaxRounds,
+          rfqVendors: [],
+          priority,
+          currency,
+          businessJustification,
+          requiredDate,
+          billingLocationId,
+          billingLocation,
+          billingGstNo,
+          billingAddress,
+          deliveryPoc,
+          placeOfDelivery,
+          expectedDeliveryTimeline,
+          paymentTerms,
+          lineItems: itemsForSave,
+          attachedFiles: [],
+        }),
+        lineItems: itemsForSave,
+        businessJustification,
+        billingAddress,
+        placeOfDelivery,
+        deliveryPoc,
+        expectedDeliveryTimeline,
+        paymentTerms,
+        prTitle,
+        backendPrId: persistPrId,
+        savedAt: Date.now(),
+      };
+      if (hasMeaningfulCreatePrDraft(draftSnap)) {
+        writeCreatePrDraft(user?.id, persistPrId ?? editPrId, draftSnap);
+        snapshotRef.current = draftSnap;
+      }
       const payload: Record<string, unknown> = {
-        ...buildPayload(),
+        ...buildPayload(itemsForSave),
         vendorSelection: vendorSelection === 'own' ? 'own' : 'scm',
         prFlow: prFlow === 'functional' ? 'functional' : 'standard',
       };
       if (prFlow === 'functional' && vendorSelection === 'own') {
-        const packed = await buildRfqVendorsPayload();
+        const needsQuotationUpload = rfqVendors.some((row) =>
+          row.quotes.some((q) => Boolean(q.file) && !q.savedSubmissionId)
+        );
+        // Always upload local quotation Files (also on silent / menu leave) so they survive navigation.
+        const packed = await buildRfqVendorsPayload({
+          skipFileData: silent && !forceUploadFiles && !needsQuotationUpload,
+        });
         if (packed.length) {
           payload.rfqVendors = packed;
           payload.maxRounds = rfqMaxRounds;
+          const chosen =
+            rfqVendors.find((r) => r.key === rfqRecommendedKey) ||
+            rfqVendors.find(
+              (r) =>
+                (rfqRecommendedMeta.vendorEmail &&
+                  r.email &&
+                  rfqRecommendedMeta.vendorEmail.toLowerCase() === r.email.toLowerCase()) ||
+                (rfqRecommendedMeta.vendorName &&
+                  rfqRecommendedMeta.vendorName.toLowerCase() === r.name.toLowerCase())
+            );
+          if (chosen) {
+            payload.rfqRecommendedVendorEmail = chosen.email;
+            payload.rfqRecommendedVendorName = chosen.name;
+            payload.rfqRecommendationJustification = rfqRecommendationJustification;
+          }
         }
       }
 
-      const markQuoteFilesSaved = () => {
+      const markQuoteFilesSaved = async (savedPrId?: number) => {
         setRfqVendors((prev) =>
           prev.map((row) => ({
             ...row,
@@ -998,12 +1563,76 @@ export default function CreatePRPage() {
           }))
         );
         if (payload.rfqVendors) setExistingRfqHasQuotes(true);
+        const prId = Number(savedPrId || persistPrId || editPrId);
+        if (!prId) return;
+        try {
+          const res = await rfqApi.getByPr(prId);
+          const invitations = (res.data as {
+            invitations?: Array<{
+              vendorName?: string;
+              vendorEmail?: string;
+              submissions?: Array<{ id?: number; round?: number; quotationFileName?: string }>;
+            }>;
+          })?.invitations || [];
+          if (!invitations.length) return;
+          setRfqVendors((prev) => {
+            const next = prev.map((row) => {
+              const inv = invitations.find(
+                (i) =>
+                  (i.vendorName || '').toLowerCase() === row.name.toLowerCase() ||
+                  ((i.vendorEmail || '') &&
+                    (row.email || '') &&
+                    (i.vendorEmail || '').toLowerCase() === row.email.toLowerCase())
+              );
+              if (!inv) return row;
+              return {
+                ...row,
+                quotes: row.quotes.map((q) => {
+                  const sub = (inv.submissions || []).find((s) => Number(s.round) === Number(q.round));
+                  if (!sub?.id && !sub?.quotationFileName) return q;
+                  return {
+                    ...q,
+                    file: null,
+                    savedFileName: sub.quotationFileName || q.savedFileName,
+                    savedSubmissionId: sub.id ? Number(sub.id) : q.savedSubmissionId,
+                  };
+                }),
+              };
+            });
+            const snap = snapshotRef.current;
+            if (snap) {
+              writeCreatePrDraft(user?.id, prId, {
+                ...snap,
+                backendPrId: prId,
+                rfqVendors: next.map((row) => ({
+                  key: row.key,
+                  vendorId: row.vendorId,
+                  name: row.name,
+                  email: row.email,
+                  quotes: row.quotes.map((q) => ({
+                    round: q.round,
+                    quotedPrice: q.quotedPrice,
+                    leadTime: q.leadTime,
+                    paymentTerms: q.paymentTerms,
+                    savedFileName: q.savedFileName,
+                    savedSubmissionId: q.savedSubmissionId,
+                  })),
+                })),
+              });
+            }
+            return next;
+          });
+        } catch {
+          /* ignore hydrate errors */
+        }
       };
 
       const markSubmitSuccess = () => {
         skipSoftSaveRef.current = true;
+        suppressSoftResumeRef.current = true;
         clearCreatePrDraft(user?.id, editPrId);
         clearCreatePrDraft(user?.id, persistPrId);
+        startFreshCreatePr(user?.id);
       };
 
       const finishCreate = async (res: { data: unknown }) => {
@@ -1015,8 +1644,8 @@ export default function CreatePRPage() {
         };
         if (data.id) {
           await uploadNewAttachments(data.id);
-          if (!submit) setSavedDraftId(data.id);
-          markQuoteFilesSaved();
+          if (!submit) bindSavedDraftId(data.id);
+          await markQuoteFilesSaved(data.id);
           writeCreatePrDraft(user?.id, data.id, {
             ...snapshotRef.current!,
             backendPrId: data.id,
@@ -1034,7 +1663,14 @@ export default function CreatePRPage() {
           setNextStepLabel('');
           setL1Manager(null);
         }
-        if (!silent) setShowSuccessModal(true);
+        if (silent) return;
+        if (!submit) {
+          suppressSoftResumeRef.current = true;
+          // Save Draft → leave Create PR and open dashboard / Track PR
+          window.REACT_APP_NAVIGATE(backTo);
+          return;
+        }
+        setShowSuccessModal(true);
       };
 
       const finishExisting = async (id: number) => {
@@ -1057,7 +1693,7 @@ export default function CreatePRPage() {
             l1Manager?: { name: string | null; email: string | null };
           };
           await uploadNewAttachments(id);
-          markQuoteFilesSaved();
+          await markQuoteFilesSaved(id);
           markSubmitSuccess();
           setCreatedPrNumber(data.prNumber || prNumber);
           setNextStepLabel(data.nextStep || 'L1 Manager Approval');
@@ -1065,8 +1701,8 @@ export default function CreatePRPage() {
         } else {
           await prApi.update(id, payload);
           await uploadNewAttachments(id);
-          markQuoteFilesSaved();
-          setSavedDraftId(id);
+          await markQuoteFilesSaved(id);
+          bindSavedDraftId(id);
           setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
@@ -1074,26 +1710,71 @@ export default function CreatePRPage() {
             ...snapshotRef.current!,
             backendPrId: id,
             prNumber,
+            lineItems: (snapshotRef.current?.lineItems?.length
+              ? snapshotRef.current.lineItems
+              : lineItems) as CreatePrDraftSnapshot['lineItems'],
           });
         }
         if (silent) return;
-        if (submit) setShowConfirmModal(false);
+        if (!submit) {
+          suppressSoftResumeRef.current = true;
+          window.REACT_APP_NAVIGATE(backTo);
+          return;
+        }
+        setShowConfirmModal(false);
         setShowSuccessModal(true);
       };
 
-      const targetId = persistPrId;
+      // Always resolve from ref/localStorage — never create duplicates while setState is pending.
+      let targetId = resolvePersistPrId();
+
+      // If another create is already running, wait and then UPDATE that draft.
+      if (!targetId && createDraftLockRef.current) {
+        const lockedId = await createDraftLockRef.current;
+        if (lockedId) {
+          bindSavedDraftId(lockedId);
+          targetId = lockedId;
+        }
+      }
+
       if (targetId) {
         try {
           await finishExisting(targetId);
           return;
         } catch (err) {
+          if (silent) throw err;
           if (isAdminEditFlow || !isUnusablePersistError(err)) throw err;
-          setSavedDraftId(null);
+          bindSavedDraftId(null);
+          if (snapshotRef.current) {
+            snapshotRef.current = { ...snapshotRef.current, backendPrId: null };
+          }
         }
       }
 
-      const res = await prApi.create({ ...payload, submit: Boolean(submit) });
-      await finishCreate(res);
+      targetId = resolvePersistPrId();
+      if (targetId) {
+        await finishExisting(targetId);
+        return;
+      }
+
+      // First server draft for this session (manual Save Draft, or autosave/leave with entity).
+      if (silent && !entityId) {
+        setSoftSaveHint('Draft auto-saved locally');
+        return;
+      }
+
+      const createJob = (async (): Promise<number | null> => {
+        const res = await prApi.create({ ...payload, submit: Boolean(submit) });
+        const created = res.data as { id?: number };
+        if (created.id) bindSavedDraftId(created.id);
+        await finishCreate(res);
+        return created.id ? Number(created.id) : null;
+      })();
+
+      createDraftLockRef.current = createJob.finally(() => {
+        createDraftLockRef.current = null;
+      });
+      await createJob;
     } catch (err) {
       if (submit) skipSoftSaveRef.current = false;
       if (!silent) setSubmitError(err instanceof Error ? err.message : 'Failed to save PR');
@@ -1103,7 +1784,12 @@ export default function CreatePRPage() {
     }
   };
 
+  savePRRef.current = savePR;
+
   const confirmSubmit = async () => {
+    if (snapshotRef.current && hasMeaningfulCreatePrDraft(snapshotRef.current)) {
+      writeCreatePrDraft(user?.id, persistPrId ?? editPrId, snapshotRef.current);
+    }
     await savePR(true);
   };
 
@@ -1663,6 +2349,9 @@ export default function CreatePRPage() {
                 onCancel={closeLineEditor}
                 onMasterItemCreated={rememberMasterItem}
                 onCategoryCreated={rememberCategory}
+                onLiveChange={(item) => {
+                  pendingLineDraftRef.current = item;
+                }}
               />
             )}
 
@@ -1814,6 +2503,8 @@ export default function CreatePRPage() {
             maxRounds={rfqMaxRounds}
             error={errors.rfqVendors}
             prNumber={prNumber}
+            recommendedKey={rfqRecommendedKey}
+            recommendationJustification={rfqRecommendationJustification}
             existingQuoteNote={
               existingRfqHasQuotes
                 ? 'Quotes already saved on this PR. Re-upload only if you need to replace them.'
@@ -1821,6 +2512,15 @@ export default function CreatePRPage() {
             }
             onMaxRoundsChange={setRfqMaxRounds}
             onChange={setRfqVendors}
+            onRecommendedChange={({ key, vendorId, vendorName, vendorEmail, justification }) => {
+              setRfqRecommendedKey(key);
+              setRfqRecommendedMeta({
+                vendorId,
+                vendorName,
+                vendorEmail,
+              });
+              setRfqRecommendationJustification(justification);
+            }}
             onVendorsRefresh={(vendor) => {
               if (vendor) {
                 setVendorMaster((prev) =>
@@ -1976,7 +2676,7 @@ export default function CreatePRPage() {
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div className="flex items-center justify-center sm:justify-start gap-2 text-sm text-gray-500">
             <i className="ri-shield-check-line text-emerald-500"></i>
-            <span>Draft auto-saves if you leave this page</span>
+            <span>Autosave keeps the same PR# (incl. quotation files). Create New PR starts blank.</span>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <Link

@@ -892,7 +892,7 @@ export default function TrackPRPage() {
             </p>
           </div>
           <button
-            onClick={() => navigate('/requester/create-pr')}
+            onClick={() => navigate('/requester/create-pr?new=1')}
             className="px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-2 whitespace-nowrap"
           >
             <i className="ri-add-line text-lg"></i>

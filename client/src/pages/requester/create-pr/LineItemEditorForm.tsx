@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { CategoryRecord, ItemRecord } from '../../../services/api';
 import { CurrencyCode, formatMoney } from '../../../constants/currency';
 import ItemCombobox from './ItemCombobox';
@@ -120,6 +120,8 @@ interface Props {
   onCancel: () => void;
   onMasterItemCreated: (item: ItemRecord) => void;
   onCategoryCreated: (category: CategoryRecord) => void;
+  /** Fires as the user edits so Save Draft can commit an in-progress row. */
+  onLiveChange?: (item: LineItem | null) => void;
 }
 
 export default function LineItemEditorForm({
@@ -134,6 +136,7 @@ export default function LineItemEditorForm({
   onCancel,
   onMasterItemCreated,
   onCategoryCreated,
+  onLiveChange,
 }: Props) {
   const [draft, setDraft] = useState<LineItem>(initial);
   const [qtyInput, setQtyInput] = useState(initial.quantity > 0 ? String(initial.quantity) : '');
@@ -141,6 +144,8 @@ export default function LineItemEditorForm({
     initial.gstPercentage == null ? '18' : String(initial.gstPercentage)
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const onLiveChangeRef = useRef(onLiveChange);
+  onLiveChangeRef.current = onLiveChange;
 
   useEffect(() => {
     setDraft(initial);
@@ -165,6 +170,19 @@ export default function LineItemEditorForm({
   const parsedGst = gstInput.trim() === '' ? undefined : parseFloat(gstInput);
   const gstPercentage =
     parsedGst != null && Number.isFinite(parsedGst) ? Math.min(100, Math.max(0, parsedGst)) : undefined;
+
+  useEffect(() => {
+    onLiveChangeRef.current?.({
+      ...draft,
+      itemName: draft.itemName || draft.description,
+      description: draft.description,
+      quantity: quantity >= 1 ? quantity : draft.quantity || 1,
+      unit: draft.unit || 'Nos',
+      gstPercentage: gstPercentage ?? draft.gstPercentage ?? 18,
+      estimatedCost: Number(draft.estimatedCost) || 0,
+    });
+    return () => onLiveChangeRef.current?.(null);
+  }, [draft, quantity, gstPercentage]);
 
   const validate = () => {
     const next: Record<string, string> = {};

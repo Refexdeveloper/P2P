@@ -193,6 +193,12 @@ export default function RfqEntryDetailPage() {
     targetRound: number;
     source: 'edit' | 'requote';
   } | null>(null);
+  const [zeroSaveAsk, setZeroSaveAsk] = useState<{
+    row: TableRow;
+    kind: 'existing' | 'new';
+    zeroCount: number;
+    total: number;
+  } | null>(null);
   const [entities, setEntities] = useState<EntityRecord[]>([]);
   const [billing, setBilling] = useState<PrBillingDeliveryValue>(emptyBilling);
   const billingHydratedRef = useRef(false);

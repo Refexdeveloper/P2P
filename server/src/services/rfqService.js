@@ -338,6 +338,56 @@ async function getOrCreateRfqConfig(prId) {
   };
 }
 
+async function applyFunctionalOwnRecommendation(prId, options = {}) {
+  const recommendedEmail = String(
+    options.recommendedVendorEmail || options.rfqRecommendedVendorEmail || ''
+  )
+    .trim()
+    .toLowerCase();
+  const recommendedName = String(
+    options.recommendedVendorName || options.rfqRecommendedVendorName || ''
+  ).trim();
+  const recommendationJustification = String(
+    options.recommendationJustification || options.rfqRecommendationJustification || ''
+  ).trim();
+  if (!recommendedEmail && !recommendedName) return;
+
+  const [invRows] = await pool.query(
+    `SELECT id, vendor_name, vendor_email FROM rfq_invitations WHERE pr_id = ?`,
+    [prId]
+  );
+  const hit = invRows.find(
+    (r) =>
+      (recommendedEmail && String(r.vendor_email || '').toLowerCase() === recommendedEmail) ||
+      (recommendedName &&
+        String(r.vendor_name || '').toLowerCase() === recommendedName.toLowerCase())
+  );
+  if (hit) {
+    await pool.query(
+      `UPDATE rfq_configs
+       SET recommended_invitation_id = ?, recommendation_justification = ?, updated_at = NOW()
+       WHERE pr_id = ?`,
+      [hit.id, recommendationJustification || null, prId]
+    );
+  }
+}
+
+async function resolveVendorIdentity(vendor) {
+  let name = String(vendor.name || vendor.vendorName || '').trim();
+  let email = String(vendor.email || vendor.vendorEmail || '').trim().toLowerCase();
+  const vendorId = Number(vendor.vendorId || vendor.id) || null;
+  if (vendorId) {
+    const [vRows] = await pool.query(`SELECT name, email FROM vendors WHERE id = ? LIMIT 1`, [
+      vendorId,
+    ]);
+    if (vRows[0]) {
+      name = name || vRows[0].name;
+      email = email || String(vRows[0].email || '').toLowerCase();
+    }
+  }
+  return { name, email, vendorId };
+}
+
 /**
  * Create PR Functional Own: persist vendors + quotation rounds/files, then mark requester RFQ submitted.
  */
@@ -349,57 +399,217 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
     throw new Error('Add at least one vendor with a round-1 quotation and file');
   }
 
-  const pr = await getPurchaseRequestById(prId);
-  if (!pr) throw new Error('PR not found');
-  if (pr.requesterId !== user.id && user.role !== 'Super Admin' && user.role !== 'SCM Manager') {
+  // Light auth — avoid enrichPR / line-item load on every draft save & submit.
+  const [prAuth] = await pool.query(
+    `SELECT id, requester_id AS requesterId FROM purchase_requests WHERE id = ? LIMIT 1`,
+    [prId]
+  );
+  if (!prAuth.length) throw new Error('PR not found');
+  const pr = prAuth[0];
+  if (
+    Number(pr.requesterId) !== Number(user.id) &&
+    user.role !== 'Super Admin' &&
+    user.role !== 'SCM Manager'
+  ) {
     throw new Error('Unauthorized');
   }
 
   await getOrCreateRfqConfig(prId);
-  await pool.query(
-    `UPDATE rfq_configs SET max_rounds = ?, updated_at = NOW() WHERE pr_id = ?`,
-    [maxRounds, prId]
-  );
+  await pool.query(`UPDATE rfq_configs SET max_rounds = ?, updated_at = NOW() WHERE pr_id = ?`, [
+    maxRounds,
+    prId,
+  ]);
 
-  // Keep previous quotation files so draft re-saves don't require re-uploading large PDFs.
-  const previousFiles = new Map();
+  // Metadata only — never SELECT quotation_file_data (multi‑MB) up front.
   const [existing] = await pool.query(
-    `SELECT ri.id, ri.vendor_email, vqs.round, vqs.quotation_file_name, vqs.quotation_file_path, vqs.quotation_file_data
+    `SELECT ri.id AS invitation_id, ri.vendor_email, ri.vendor_name,
+            vqs.id AS submission_id, vqs.round, vqs.quotation_file_name, vqs.quotation_file_path
      FROM rfq_invitations ri
      LEFT JOIN vendor_quotation_submissions vqs ON vqs.rfq_invitation_id = ri.id
      WHERE ri.pr_id = ?`,
     [prId]
   );
+
+  const previousFiles = new Map();
+  const submissionsByEmailRound = new Map();
+  const invitationsByEmail = new Map();
   for (const row of existing) {
-    if (!row.quotation_file_name) continue;
-    const key = `${String(row.vendor_email || '').toLowerCase()}::${Number(row.round) || 1}`;
-    previousFiles.set(key, {
-      fileName: row.quotation_file_name,
-      filePath: row.quotation_file_path || null,
-      buffer: row.quotation_file_data || null,
-    });
+    const email = String(row.vendor_email || '').toLowerCase();
+    if (email && !invitationsByEmail.has(email)) {
+      invitationsByEmail.set(email, {
+        id: row.invitation_id,
+        name: row.vendor_name,
+        email,
+      });
+    }
+    if (!row.quotation_file_name && !row.submission_id) continue;
+    const key = `${email}::${Number(row.round) || 1}`;
+    if (row.quotation_file_name) {
+      previousFiles.set(key, {
+        fileName: row.quotation_file_name,
+        filePath: row.quotation_file_path || null,
+        submissionId: row.submission_id || null,
+      });
+    }
+    if (row.submission_id) {
+      submissionsByEmailRound.set(key, row);
+    }
   }
+
+  const hasNewFileData = vendors.some((v) =>
+    (Array.isArray(v.quotes) ? v.quotes : []).some((q) => Boolean(q.quotationFileData))
+  );
+
+  // Fast path: files already on server, client only sent prices/names — UPDATE in place (no DELETE/BLOB copy).
+  if (!hasNewFileData && invitationsByEmail.size) {
+    const resolved = [];
+    let canFastUpdate = true;
+    for (const vendor of vendors) {
+      const { name, email } = await resolveVendorIdentity(vendor);
+      if (!name || !email) {
+        canFastUpdate = false;
+        break;
+      }
+      const inv = invitationsByEmail.get(email);
+      if (!inv) {
+        canFastUpdate = false;
+        break;
+      }
+      const quotes = (Array.isArray(vendor.quotes) ? vendor.quotes : [])
+        .map((q) => ({
+          round: Math.max(1, Number(q.round) || 1),
+          quotedPrice: Number(q.quotedPrice),
+          leadTime: Number(q.leadTime) || 0,
+          paymentTerms: String(q.paymentTerms || 'Net 30').trim() || 'Net 30',
+          quotationFileName: q.quotationFileName,
+        }))
+        .filter((q) => q.round <= maxRounds)
+        .sort((a, b) => a.round - b.round);
+      const round1 = quotes.find((q) => q.round === 1);
+      if (!round1 || !Number.isFinite(round1.quotedPrice) || round1.quotedPrice < 0) {
+        throw new Error(`Enter a round-1 quoted price for ${name}`);
+      }
+      const round1Prev = previousFiles.get(`${email}::1`);
+      if (!round1.quotationFileName && !round1Prev?.fileName) {
+        throw new Error(`Attach a round-1 quotation file for ${name}`);
+      }
+      for (const quote of quotes) {
+        if (!Number.isFinite(quote.quotedPrice) || quote.quotedPrice < 0) continue;
+        const key = `${email}::${quote.round}`;
+        const prev = previousFiles.get(key);
+        if (!quote.quotationFileName && !prev?.fileName) {
+          canFastUpdate = false;
+          break;
+        }
+        if (!submissionsByEmailRound.has(key) && !prev?.fileName) {
+          canFastUpdate = false;
+          break;
+        }
+      }
+      if (!canFastUpdate) break;
+      resolved.push({ name, email, inv, quotes });
+    }
+
+    if (canFastUpdate && resolved.length === vendors.length) {
+      const keepEmails = new Set(resolved.map((r) => r.email));
+      for (const [email, inv] of invitationsByEmail) {
+        if (keepEmails.has(email)) continue;
+        await pool.query(`DELETE FROM vendor_quotation_submissions WHERE rfq_invitation_id = ?`, [
+          inv.id,
+        ]);
+        await pool.query(`DELETE FROM rfq_invitations WHERE id = ?`, [inv.id]);
+      }
+
+      for (const { name, email, inv, quotes } of resolved) {
+        const latestRound = quotes[quotes.length - 1]?.round || 1;
+        await pool.query(
+          `UPDATE rfq_invitations
+           SET vendor_name = ?, round = ?, status = 'submitted', updated_at = NOW()
+           WHERE id = ?`,
+          [name, latestRound, inv.id]
+        );
+        for (const quote of quotes) {
+          if (!Number.isFinite(quote.quotedPrice) || quote.quotedPrice < 0) continue;
+          const key = `${email}::${quote.round}`;
+          const existingSub = submissionsByEmailRound.get(key);
+          const prev = previousFiles.get(key);
+          if (existingSub?.submission_id) {
+            await pool.query(
+              `UPDATE vendor_quotation_submissions
+               SET quoted_price = ?, lead_time_days = ?, payment_terms = ?,
+                   vendor_notes = ?, status = 'submitted'
+               WHERE id = ?`,
+              [
+                quote.quotedPrice,
+                quote.leadTime,
+                quote.paymentTerms,
+                `Entered on Create PR by ${user.name || user.email}`,
+                existingSub.submission_id,
+              ]
+            );
+          } else if (prev?.fileName) {
+            // Round existed as file metadata only — insert without re-reading BLOB when path present.
+            let fileBuffer = null;
+            if (!prev.filePath && prev.submissionId) {
+              const [blobRows] = await pool.query(
+                `SELECT quotation_file_data FROM vendor_quotation_submissions WHERE id = ?`,
+                [prev.submissionId]
+              );
+              fileBuffer = blobRows[0]?.quotation_file_data || null;
+            }
+            await pool.query(
+              `INSERT INTO vendor_quotation_submissions
+               (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes,
+                warranty, delivery_terms, quotation_file_name, quotation_file_path, quotation_file_data, custom_fields, requester_fields, status)
+               VALUES (?, ?, ?, ?, ?, 1, ?, '', '', ?, ?, ?, ?, ?, 'submitted')`,
+              [
+                inv.id,
+                quote.round,
+                quote.quotedPrice,
+                quote.leadTime,
+                quote.paymentTerms,
+                `Entered on Create PR by ${user.name || user.email}`,
+                prev.fileName,
+                prev.filePath,
+                prev.filePath ? null : fileBuffer,
+                JSON.stringify({}),
+                JSON.stringify({ enteredBy: user.name, entryMode: 'create-pr' }),
+              ]
+            );
+          }
+        }
+      }
+
+      if (markSubmitted) {
+        await pool.query(
+          `UPDATE rfq_configs SET requester_submitted_at = NOW(), updated_at = NOW() WHERE pr_id = ?`,
+          [prId]
+        );
+      }
+      await applyFunctionalOwnRecommendation(prId, options);
+      return;
+    }
+  }
+
+  // Full reseed: load BLOB only for rows that have no disk path (before DELETE).
+  for (const [key, meta] of previousFiles) {
+    if (meta.filePath || !meta.submissionId) continue;
+    const [blobRows] = await pool.query(
+      `SELECT quotation_file_data FROM vendor_quotation_submissions WHERE id = ?`,
+      [meta.submissionId]
+    );
+    meta.buffer = blobRows[0]?.quotation_file_data || null;
+  }
+
   if (existing.length) {
-    const ids = [...new Set(existing.map((r) => r.id))];
+    const ids = [...new Set(existing.map((r) => r.invitation_id))];
     const ph = ids.map(() => '?').join(',');
     await pool.query(`DELETE FROM vendor_quotation_submissions WHERE rfq_invitation_id IN (${ph})`, ids);
     await pool.query(`DELETE FROM rfq_invitations WHERE pr_id = ?`, [prId]);
   }
 
   for (const vendor of vendors) {
-    let name = String(vendor.name || vendor.vendorName || '').trim();
-    let email = String(vendor.email || vendor.vendorEmail || '').trim().toLowerCase();
-    const vendorId = Number(vendor.vendorId || vendor.id) || null;
-    if (vendorId) {
-      const [vRows] = await pool.query(
-        `SELECT name, email FROM vendors WHERE id = ? LIMIT 1`,
-        [vendorId]
-      );
-      if (vRows[0]) {
-        name = name || vRows[0].name;
-        email = email || String(vRows[0].email || '').toLowerCase();
-      }
-    }
+    const { name, email } = await resolveVendorIdentity(vendor);
     if (!name || !email) {
       throw new Error('Each Functional Own vendor needs a name and email');
     }
@@ -462,7 +672,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       } else if (prev?.fileName) {
         fileName = prev.fileName;
         filePath = prev.filePath;
-        fileBuffer = prev.filePath ? null : prev.buffer;
+        fileBuffer = prev.filePath ? null : prev.buffer || null;
       } else {
         continue;
       }
@@ -494,6 +704,8 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       [prId]
     );
   }
+
+  await applyFunctionalOwnRecommendation(prId, options);
 }
 
 function extractCoreVendorValues(body, fieldDefinitions, customFields = {}) {
@@ -1467,23 +1679,25 @@ async function buildRfqSummary(prId) {
   );
 
   const fieldDefs = normalizeFieldDefinitions(config.fieldDefinitions);
-  const comparisonRows = fieldDefs.map((f) => {
-    const cells = {};
-    let bestVendorId = null;
-    let bestVal = null;
-    for (const vendor of vendors) {
-      const raw = vendor.latest?.[f.id];
-      cells[vendor.id] = formatMatrixValue(f.id, raw, f.type);
-      if (typeof raw === 'number' && !Number.isNaN(raw)) {
-        const lower = isLowerBetter(f.id);
-        if (bestVal === null || (lower ? raw < bestVal : raw > bestVal)) {
-          bestVal = raw;
-          bestVendorId = vendor.id;
+  const comparisonRows = fieldDefs
+    .filter((f) => shouldIncludeComparisonField(f, vendors))
+    .map((f) => {
+      const cells = {};
+      let bestVendorId = null;
+      let bestVal = null;
+      for (const vendor of vendors) {
+        const raw = vendor.latest?.[f.id];
+        cells[vendor.id] = formatMatrixValue(f.id, raw, f.type);
+        if (typeof raw === 'number' && !Number.isNaN(raw)) {
+          const lower = isLowerBetter(f.id);
+          if (bestVal === null || (lower ? raw < bestVal : raw > bestVal)) {
+            bestVal = raw;
+            bestVendorId = vendor.id;
+          }
         }
       }
-    }
-    return { id: f.id, label: f.label, cells, bestVendorId };
-  });
+      return { id: f.id, label: f.label, cells, bestVendorId };
+    });
 
   return {
     recommendedVendor: recommended?.vendorName || '',
@@ -1785,6 +1999,38 @@ function formatMatrixValue(fieldId, value, fieldType) {
   return String(value);
 }
 
+/** Score rows only when requester actually entered a value (> 0). Default 0 must not appear in mail/UI. */
+function scoreFieldWasEntered(vendors, fieldId) {
+  if (!REQUESTER_SCORE_FIELD_IDS.has(fieldId)) return true;
+  return (vendors || []).some((v) => {
+    const raw = v?.latest?.[fieldId];
+    if (raw === undefined || raw === null || raw === '') return false;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0;
+  });
+}
+
+/** Keep comparison lean: always quoted price; scores only if entered; skip empty optional fields. */
+function shouldIncludeComparisonField(field, vendors) {
+  const id = field?.id;
+  if (!id) return false;
+  if (id === 'quotedPrice') return true;
+  if (REQUESTER_SCORE_FIELD_IDS.has(id)) {
+    return scoreFieldWasEntered(vendors, id);
+  }
+  // Optional vendor/requester fields — only if at least one vendor has a real value
+  return (vendors || []).some((v) => {
+    const raw = v?.latest?.[id];
+    if (raw === undefined || raw === null || raw === '') return false;
+    if (typeof raw === 'number') {
+      if (id === 'leadTime') return raw > 0;
+      return !Number.isNaN(raw);
+    }
+    if (typeof raw === 'boolean') return true;
+    return String(raw).trim() !== '';
+  });
+}
+
 export async function getVendorComparisonMatrix(user, prId) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
@@ -1848,13 +2094,15 @@ export async function getVendorComparisonMatrix(user, prId) {
     };
   });
 
-  const parameters = config.fieldDefinitions.map((f) => ({
-    id: f.id,
-    label: f.label,
-    type: f.type,
-    icon: paramIcon(f.id),
-    showIn: f.showIn === 'commercial' ? 'commercial' : 'technical',
-  }));
+  const parameters = config.fieldDefinitions
+    .map((f) => ({
+      id: f.id,
+      label: f.label,
+      type: f.type,
+      icon: paramIcon(f.id),
+      showIn: f.showIn === 'commercial' ? 'commercial' : 'technical',
+    }))
+    .filter((f) => shouldIncludeComparisonField(f, vendors));
 
   const matrix = {};
   for (const param of parameters) {

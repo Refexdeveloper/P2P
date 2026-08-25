@@ -5,6 +5,7 @@ import CreateVendorForm from '../../scm/vendor-master/components/CreateVendorFor
 import RfqChatbot from '../../../components/feature/RfqChatbot';
 import { openRfqChat } from '../../../components/feature/rfqChatOpen';
 import type { VendorRecord } from '../../../services/api';
+import { rfqApi } from '../../../services/api';
 import { PR_PAYMENT_TERM_OPTIONS } from '../../../constants/prRequisition';
 
 export type FunctionalRfqQuote = {
@@ -15,6 +16,8 @@ export type FunctionalRfqQuote = {
   file: File | null;
   /** File name already stored on the server (no re-upload needed). */
   savedFileName?: string;
+  /** Server submission id — used to Open/View saved quotation file. */
+  savedSubmissionId?: number;
 };
 
 export type FunctionalRfqVendorRow = {
@@ -62,6 +65,16 @@ interface Props {
   error?: string;
   existingQuoteNote?: string;
   prNumber?: string;
+  /** Persisted Choose selection (survives Save Draft / reload). */
+  recommendedKey?: string | null;
+  recommendationJustification?: string;
+  onRecommendedChange?: (payload: {
+    key: string | null;
+    vendorId?: string;
+    vendorName?: string;
+    vendorEmail?: string;
+    justification: string;
+  }) => void;
   onMaxRoundsChange: (n: number) => void;
   onChange: (rows: FunctionalRfqVendorRow[]) => void;
   onVendorsRefresh?: (vendor?: VendorRecord) => void;
@@ -74,18 +87,30 @@ export default function FunctionalOwnRfqSection({
   error,
   existingQuoteNote,
   prNumber,
+  recommendedKey: recommendedKeyProp = null,
+  recommendationJustification: recommendationJustificationProp = '',
+  onRecommendedChange,
   onMaxRoundsChange,
   onChange,
   onVendorsRefresh,
 }: Props) {
   const [searchVendorId, setSearchVendorId] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [fileViewBusy, setFileViewBusy] = useState(false);
+  const [fileViewError, setFileViewError] = useState('');
+  const [recommendModal, setRecommendModal] = useState<{
+    key: string;
+    vendorName: string;
+  } | null>(null);
+  const [recommendDraft, setRecommendDraft] = useState('');
+
+  const recommendedKey = recommendedKeyProp;
+  const recommendationJustification = recommendationJustificationProp;
   const [toast, setToast] = useState('');
   const [localError, setLocalError] = useState('');
   const [quoteKey, setQuoteKey] = useState<string | null>(null);
   const [quoteRound, setQuoteRound] = useState(1);
   const [quoteDraft, setQuoteDraft] = useState<FunctionalRfqVendorRow | null>(null);
-  const [recommendedKey, setRecommendedKey] = useState<string | null>(null);
   const [focusTab, setFocusTab] = useState(1);
 
   const visibleRounds = Math.min(4, Math.max(1, Number(maxRounds) || 1));
@@ -93,7 +118,7 @@ export default function FunctionalOwnRfqSection({
   const takenIds = useMemo(() => new Set(rows.map((r) => r.vendorId).filter(Boolean)), [rows]);
   const quotedCount = rows.filter((r) => {
     const q1 = r.quotes.find((q) => q.round === 1);
-    return Number(q1?.quotedPrice) >= 0 && String(q1?.quotedPrice || '').trim() !== '' && Boolean(q1?.file || q1?.savedFileName);
+    return Number(q1?.quotedPrice) >= 0 && String(q1?.quotedPrice || '').trim() !== '' && Boolean(q1?.file || q1?.savedFileName || q1?.savedSubmissionId);
   }).length;
   const guideStep = quotedCount > 0 ? 2 : rows.length > 0 ? 2 : 1;
 
@@ -174,6 +199,58 @@ export default function FunctionalOwnRfqSection({
     if (saved) setQuoteDraft(saved);
   };
 
+  const openQuotationPreview = async (quote: FunctionalRfqQuote) => {
+    setFileViewError('');
+    setFileViewBusy(true);
+    try {
+      if (quote.file) {
+        const url = URL.createObjectURL(quote.file);
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!win) {
+          // Popup blocked — download instead so the user can still open it
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = quote.file.name || 'quotation';
+          a.click();
+        }
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        return;
+      }
+      if (quote.savedSubmissionId) {
+        const token = localStorage.getItem('p2p_token');
+        const res = await fetch(rfqApi.quotationFileUrl(quote.savedSubmissionId), {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) {
+          let message = 'Could not open quotation file';
+          try {
+            const body = (await res.json()) as { message?: string };
+            if (body?.message) message = body.message;
+          } catch {
+            /* keep */
+          }
+          throw new Error(message);
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!win) {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = quote.savedFileName || 'quotation.pdf';
+          a.click();
+        }
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        return;
+      }
+      setFileViewError('No file to open yet — upload a quotation first');
+    } catch (err) {
+      setFileViewError(err instanceof Error ? err.message : 'Could not open quotation file');
+    } finally {
+      setFileViewBusy(false);
+    }
+  };
+
   const steps = [
     { n: 1, title: 'Add vendors', hint: 'Choose who should quote', done: rows.length > 0 },
     { n: 2, title: 'Get quotes', hint: 'Email them, type a quote, or upload with AI', done: quotedCount > 0 },
@@ -182,9 +259,12 @@ export default function FunctionalOwnRfqSection({
 
   const comparisonRows: RfqQuoteTableRow[] = rows.map((r, i) => {
     const quotes = r.quotes
-      .filter((q) => Number(q.quotedPrice) > 0)
+      .filter((q) => Number.isFinite(Number(q.quotedPrice)) && String(q.quotedPrice).trim() !== '' && Number(q.quotedPrice) >= 0)
       .map((q) => ({ round: q.round, quotedPrice: Number(q.quotedPrice), status: 'submitted' }));
     const hasActive = quotes.length > 0;
+    const fileQuote =
+      r.quotes.find((q) => q.file || q.savedFileName || q.savedSubmissionId) ||
+      r.quotes.find((q) => q.round === 1);
     return {
       id: r.key,
       invitationId: i + 1,
@@ -195,11 +275,34 @@ export default function FunctionalOwnRfqSection({
       hasActiveQuote: hasActive,
       canSendBack: hasActive && quotes.reduce((max, q) => Math.max(max, q.round), 0) < 4,
       isRecommended: recommendedKey === r.key,
-      quotationFileName: r.quotes.find((q) => q.file || q.savedFileName)?.file?.name
-        || r.quotes.find((q) => q.savedFileName)?.savedFileName,
+      quotationFileName:
+        fileQuote?.file?.name || fileQuote?.savedFileName || undefined,
+      quotationSubmissionId: fileQuote?.savedSubmissionId,
+      hasLocalQuotationFile: Boolean(fileQuote?.file),
       quotes,
     };
   });
+
+  const confirmRecommend = () => {
+    if (!recommendModal) return;
+    const text = recommendDraft.trim();
+    if (!text) {
+      setLocalError('Justification is required to choose a vendor');
+      return;
+    }
+    const row = rows.find((r) => r.key === recommendModal.key);
+    if (!row) return;
+    setLocalError('');
+    onRecommendedChange?.({
+      key: row.key,
+      vendorId: row.vendorId,
+      vendorName: row.name,
+      vendorEmail: row.email,
+      justification: text,
+    });
+    setRecommendModal(null);
+    showToast(`${row.name} marked as recommended`);
+  };
 
   const nextRequoteRound = (row: FunctionalRfqVendorRow) => {
     const filled = row.quotes.filter((q) => Number(q.quotedPrice) > 0).map((q) => q.round);
@@ -264,7 +367,10 @@ export default function FunctionalOwnRfqSection({
           <div className="space-y-2 mb-4">
             {rows.map((row) => {
               const round1 = row.quotes.find((q) => q.round === 1);
-              const hasQuote = Number(round1?.quotedPrice) > 0 && Boolean(round1?.file);
+              const hasQuote =
+                Number(round1?.quotedPrice) >= 0 &&
+                String(round1?.quotedPrice || '').trim() !== '' &&
+                Boolean(round1?.file || round1?.savedFileName || round1?.savedSubmissionId);
               return (
                 <div
                   key={row.key}
@@ -408,12 +514,29 @@ export default function FunctionalOwnRfqSection({
             onChoose={(tableRow) => {
               const row = rows.find((r) => r.key === tableRow.id);
               if (!row || !tableRow.hasActiveQuote) return;
-              setRecommendedKey(row.key);
-              showToast(`${row.name} marked as recommended`);
+              setRecommendDraft(
+                recommendedKey === row.key ? recommendationJustification : ''
+              );
+              setRecommendModal({ key: row.key, vendorName: row.name });
+              setLocalError('');
+            }}
+            onViewFile={(tableRow) => {
+              const row = rows.find((r) => r.key === tableRow.id);
+              if (!row) return;
+              const quote =
+                row.quotes.find((q) => q.file || q.savedSubmissionId || q.savedFileName) ||
+                row.quotes.find((q) => q.round === 1);
+              if (!quote) {
+                setFileViewError('No quotation file to open');
+                return;
+              }
+              void openQuotationPreview(quote);
             }}
             onRemove={(tableRow) => {
               onChange(rows.filter((r) => r.key !== tableRow.id));
-              if (recommendedKey === tableRow.id) setRecommendedKey(null);
+              if (recommendedKey === tableRow.id) {
+                onRecommendedChange?.({ key: null, justification: '' });
+              }
             }}
             onSendBack={(tableRow) => {
               const row = rows.find((r) => r.key === tableRow.id);
@@ -494,9 +617,87 @@ export default function FunctionalOwnRfqSection({
                     type="file"
                     accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
                     className="text-xs max-w-full"
-                    onChange={(e) => updateQuote(editing.key, quoteRound, { file: e.target.files?.[0] || null })}
+                    onChange={(e) => {
+                      const nextFile = e.target.files?.[0] || null;
+                      updateQuote(editing.key, quoteRound, {
+                        file: nextFile,
+                        // New local file replaces prior saved reference until Save Draft / Submit
+                        savedFileName: nextFile ? undefined : editingQuote.savedFileName,
+                        savedSubmissionId: nextFile ? undefined : editingQuote.savedSubmissionId,
+                      });
+                      setFileViewError('');
+                    }}
                   />
                 </label>
+                {(editingQuote.file || editingQuote.savedFileName || editingQuote.savedSubmissionId) && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={fileViewBusy || (!editingQuote.file && !editingQuote.savedSubmissionId)}
+                      onClick={() => void openQuotationPreview(editingQuote)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal-300 bg-white text-teal-800 text-xs font-semibold hover:bg-teal-50 disabled:opacity-50 cursor-pointer"
+                      title={
+                        editingQuote.file || editingQuote.savedSubmissionId
+                          ? 'Open quotation in a new tab'
+                          : 'Save the PR once so this file can be opened from the server'
+                      }
+                    >
+                      <i className="ri-eye-line"></i>
+                      {fileViewBusy ? 'Opening…' : 'Open / Show'}
+                    </button>
+                    {(editingQuote.file || editingQuote.savedSubmissionId) && (
+                      <button
+                        type="button"
+                        disabled={fileViewBusy}
+                        onClick={async () => {
+                          setFileViewError('');
+                          setFileViewBusy(true);
+                          try {
+                            let blob: Blob;
+                            let name = editingQuote.file?.name || editingQuote.savedFileName || 'quotation.pdf';
+                            if (editingQuote.file) {
+                              blob = editingQuote.file;
+                            } else if (editingQuote.savedSubmissionId) {
+                              const token = localStorage.getItem('p2p_token');
+                              const res = await fetch(rfqApi.quotationFileUrl(editingQuote.savedSubmissionId), {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                              });
+                              if (!res.ok) throw new Error('Could not download quotation file');
+                              blob = await res.blob();
+                            } else {
+                              return;
+                            }
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = name;
+                            a.click();
+                            window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+                          } catch (err) {
+                            setFileViewError(err instanceof Error ? err.message : 'Download failed');
+                          } finally {
+                            setFileViewBusy(false);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                      >
+                        <i className="ri-download-line"></i>
+                        Download
+                      </button>
+                    )}
+                    {!editingQuote.file && editingQuote.savedFileName && !editingQuote.savedSubmissionId && (
+                      <p className="text-[11px] text-amber-700">
+                        File name is saved on this draft. Save Draft / Submit once, then reopen Edit to Open from server.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {fileViewError ? (
+                  <p className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                    <i className="ri-error-warning-line" />
+                    {fileViewError}
+                  </p>
+                ) : null}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -561,6 +762,58 @@ export default function FunctionalOwnRfqSection({
                 className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700"
               >
                 Save quote + file
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {recommendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Choose this vendor</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{recommendModal.vendorName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRecommendModal(null)}
+                className="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <label className="block text-sm font-semibold text-gray-700">
+                Why this vendor? <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={recommendDraft}
+                onChange={(e) => setRecommendDraft(e.target.value)}
+                rows={4}
+                placeholder="Example: Lowest price and delivery in 10 days"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+              />
+              <p className="text-xs text-gray-500">
+                Saved with the draft. Managers will see this reason.
+              </p>
+              {localError && <p className="text-xs text-red-600">{localError}</p>}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRecommendModal(null)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRecommend}
+                className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700"
+              >
+                Confirm choose
               </button>
             </div>
           </div>

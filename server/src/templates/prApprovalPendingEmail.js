@@ -192,7 +192,17 @@ function buildPriceNegotiationTrendBlock(rfqSummary) {
 
 function buildVendorComparisonBlock(rfqSummary) {
   const vendors = rfqSummary?.vendors || [];
-  const rows = rfqSummary?.comparisonRows || [];
+  const SCORE_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
+  const rows = (rfqSummary?.comparisonRows || []).filter((row) => {
+    if (!SCORE_IDS.has(row.id)) return true;
+    // Defense in depth: hide score rows when every vendor is empty / 0 / —
+    return vendors.some((v) => {
+      const display = row.cells?.[v.id];
+      if (display == null || display === '' || display === '—') return false;
+      const n = Number(String(display).replace(/\/100$/, ''));
+      return Number.isFinite(n) && n > 0;
+    });
+  });
   if (!vendors.length || !rows.length) return '';
 
   const vendorHeaders = vendors

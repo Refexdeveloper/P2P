@@ -565,7 +565,7 @@ export default function VendorComparisonMatrix({
         <section className={`${cardClass} print:hidden`}>
           <div className="px-4 sm:px-5 py-3 border-b border-[#E5EAF0] bg-slate-50 flex items-center gap-2">
             <i className="ri-file-pdf-2-line text-teal-600"></i>
-            <div>
+          <div>
               <h2 className="text-sm font-bold text-[#12284A]">Final quotation files</h2>
               <p className="text-xs text-slate-500">Latest quote from each vendor — view or download</p>
             </div>
@@ -946,7 +946,7 @@ export default function VendorComparisonMatrix({
                           Amount
                         </th>
                       </Fragment>
-                    ))}
+                ))}
               </tr>
             </thead>
 
@@ -1032,7 +1032,7 @@ export default function VendorComparisonMatrix({
                                 ? 'Yes'
                                 : 'No'
                               : String(raw);
-                        return (
+                return (
                           <Fragment key={`${col.key}-info-${param.id}`}>
                             <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               —
@@ -1273,7 +1273,7 @@ export default function VendorComparisonMatrix({
                 </article>
               );
             })}
-          </div>
+                      </div>
 
           {/* Desktop table */}
           <div className="hidden md:block w-full min-w-0 max-w-full">
@@ -1365,14 +1365,14 @@ export default function VendorComparisonMatrix({
                         }`}
                       >
                         {renderFileActions(latestCol, vendor, 'sm')}
-                      </td>
+                  </td>
                     );
                   })}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          </div>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
         </section>
       )}
 
@@ -1381,7 +1381,7 @@ export default function VendorComparisonMatrix({
         <div className="rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] px-5 py-4 flex items-start gap-3">
           <span className="w-8 h-8 rounded-full bg-[#1769E0] text-white flex items-center justify-center shrink-0">
             <i className="ri-information-line"></i>
-          </span>
+                        </span>
           <p className="text-sm text-[#334155] leading-relaxed">
             <span className="font-bold text-[#12284A]">How to read this:</span> Gold column is the lowest
             total. Green is the vendor you recommended. Each vendor keeps the same color across both tables.
