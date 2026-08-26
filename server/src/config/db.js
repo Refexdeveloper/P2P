@@ -47,6 +47,9 @@ const pool = mysql.createPool(buildPoolConfig());
 
 pool.on('connection', (connection) => {
   connection.query("SET time_zone = '+00:00'");
+  connection.query('SET SESSION max_allowed_packet = 67108864', (err) => {
+    if (err) console.warn('max_allowed_packet skipped:', err.message);
+  });
 });
 
 export async function pingDatabase() {

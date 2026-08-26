@@ -1263,6 +1263,11 @@ export const vendorApi = {
     }),
   getDocumentUrl: (vendorId: number, docType: string) =>
     `${API_URL}/api/vendors/${vendorId}/documents/${docType}/file`,
+  uploadDocument: (vendorId: number, body: { docType: string; fileName: string; file: string }) =>
+    request<{ data: VendorRecord; message: string }>(`/api/vendors/${vendorId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   fetchDocumentBlob: async (vendorId: number, docType: string) => {
     const token = getToken();
     const res = await fetch(`${API_URL}/api/vendors/${vendorId}/documents/${docType}/file`, {
@@ -1270,9 +1275,18 @@ export const vendorApi = {
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new ApiError(res.status, text.slice(0, 200) || 'Could not load document');
+      throw new ApiError(res.status, errorMessageFromResponse(text, 'Could not load document'));
     }
-    return res.blob();
+    const contentType = (res.headers.get('Content-Type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+      const text = await res.text();
+      throw new ApiError(res.status, errorMessageFromResponse(text, 'Could not load document'));
+    }
+    const blob = await res.blob();
+    if (!blob.size) {
+      throw new ApiError(404, 'Document file is empty. Please re-upload it.');
+    }
+    return blob;
   },
 };
 

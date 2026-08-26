@@ -33,9 +33,9 @@ app.use(
     credentials: true,
   })
 );
-// PR attachments / quotation PDFs are sent as base64 (~1.37x file size); allow up to ~10MB files
-app.use(express.json({ limit: '20mb' }));
-app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+// Vendor docs (up to 6 PDFs) + quotation PDFs are sent as base64 (~1.37x); allow several files per request
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -193,7 +193,7 @@ if (fs.existsSync(path.join(CLIENT_OUT, 'index.html'))) {
 
 
 
-app.listen(PORT, async () => {
+async function start() {
   try {
     await runStartupMigrations();
     console.log('Database migrations checked.');
@@ -201,20 +201,26 @@ app.listen(PORT, async () => {
     console.error('Startup migration failed:', err.message);
   }
 
-  try {
-    await testSmtpConnection();
-  } catch (err) {
-    console.error('SMTP connection test failed unexpectedly:', err.message);
-  }
+  app.listen(PORT, () => {
+    try {
+      testSmtpConnection().catch((err) => {
+        console.error('SMTP connection test failed unexpectedly:', err.message);
+      });
+    } catch (err) {
+      console.error('SMTP connection test failed unexpectedly:', err.message);
+    }
 
-  try {
-    startSlaBreachScheduler();
-  } catch (err) {
-    console.error('SLA breach scheduler failed to start:', err.message);
-  }
+    try {
+      startSlaBreachScheduler();
+    } catch (err) {
+      console.error('SLA breach scheduler failed to start:', err.message);
+    }
 
-  console.log(`P2P API server running on http://localhost:${PORT}`);
-  if (fs.existsSync(path.join(CLIENT_OUT, 'index.html'))) {
-    console.log(`Open app: http://localhost:${PORT}/`);
-  }
-});
+    console.log(`P2P API server running on http://localhost:${PORT}`);
+    if (fs.existsSync(path.join(CLIENT_OUT, 'index.html'))) {
+      console.log(`Open app: http://localhost:${PORT}/`);
+    }
+  });
+}
+
+start();

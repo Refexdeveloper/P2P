@@ -17,35 +17,80 @@ interface Props {
   onEdit?: () => void;
 }
 
+function fileActionError(err: unknown, fallback: string) {
+  const raw = err instanceof Error ? err.message : fallback;
+  try {
+    const parsed = JSON.parse(raw) as { message?: string };
+    if (parsed?.message) return parsed.message;
+  } catch {
+    /* keep raw */
+  }
+  return raw;
+}
+
+function mimeFromFileName(fileName: string, fallback = 'application/octet-stream') {
+  const lower = String(fileName || '').toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+  if (lower.endsWith('.xlsx')) {
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  }
+  return fallback;
+}
+
 export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit }: Props) {
-  const [activeTab, setActiveTab] = useState<'details' | 'documents'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'documents'>(
+    vendor.documents?.length ? 'documents' : 'details'
+  );
   const [error, setError] = useState('');
 
   const docTypes = ['gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration'] as const;
   const docMap = Object.fromEntries((vendor.documents || []).map((d) => [d.docType, d]));
 
-  const handleViewFile = async (docType: string) => {
-    try {
-      const blob = await vendorApi.fetchDocumentBlob(vendor.id, docType);
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not open file');
-    }
-  };
-
   const handleDownload = async (docType: string, fileName: string) => {
     try {
+      setError('');
       const blob = await vendorApi.fetchDocumentBlob(vendor.id, docType);
-      const url = URL.createObjectURL(blob);
+      const typed = new Blob([blob], { type: mimeFromFileName(fileName, blob.type) });
+      const url = URL.createObjectURL(typed);
       const a = document.createElement('a');
       a.href = url;
       a.download = fileName;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not download file');
+      setError(fileActionError(err, 'Could not download file'));
+    }
+  };
+
+  const handleViewFile = async (docType: string) => {
+    const fileName = docMap[docType]?.fileName || 'document.pdf';
+    const lower = fileName.toLowerCase();
+    if (/\.(xls|xlsx|doc|docx)$/.test(lower)) {
+      await handleDownload(docType, fileName);
+      return;
+    }
+    try {
+      setError('');
+      const blob = await vendorApi.fetchDocumentBlob(vendor.id, docType);
+      const typed = new Blob([blob], {
+        type: mimeFromFileName(fileName, blob.type || 'application/pdf'),
+      });
+      const url = URL.createObjectURL(typed);
+      const opened = window.open(url, '_blank');
+      if (!opened) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      setError(fileActionError(err, 'Could not open file'));
     }
   };
 

@@ -105,18 +105,27 @@ export default function VendorMasterPage() {
     setSearchParams({});
   };
 
-  const handleUpdated = () => {
-    closeEdit();
-    setVendorDetails({});
-    showToast('Vendor updated successfully', 'success');
-    loadVendors();
-  };
-
-  const handleCreated = () => {
+  const handleCreated = (created?: VendorRecord) => {
     closeCreate();
+    if (created) {
+      setVendorDetails({ [created.id]: created });
+      setExpandedRow(created.id);
+    }
     showToast('Vendor created successfully', 'success');
     if (page === 1) loadVendors();
     else setPage(1);
+  };
+
+  const handleUpdated = (updated?: VendorRecord) => {
+    closeEdit();
+    if (updated) {
+      setVendorDetails({ [updated.id]: updated });
+      setExpandedRow(updated.id);
+    } else {
+      setVendorDetails({});
+    }
+    showToast('Vendor updated successfully', 'success');
+    loadVendors();
   };
 
   const toggleRow = async (vendorId: number) => {
@@ -125,17 +134,15 @@ export default function VendorMasterPage() {
       return;
     }
     setExpandedRow(vendorId);
-    if (!vendorDetails[vendorId]) {
-      setDetailsLoading(vendorId);
-      try {
-        const res = await vendorApi.get(vendorId);
-        setVendorDetails((prev) => ({ ...prev, [vendorId]: res.data }));
-      } catch {
-        showToast('Failed to load vendor details', 'error');
-        setExpandedRow(null);
-      } finally {
-        setDetailsLoading(null);
-      }
+    setDetailsLoading(vendorId);
+    try {
+      const res = await vendorApi.get(vendorId);
+      setVendorDetails((prev) => ({ ...prev, [vendorId]: res.data }));
+    } catch {
+      showToast('Failed to load vendor details', 'error');
+      setExpandedRow(null);
+    } finally {
+      setDetailsLoading(null);
     }
   };
 

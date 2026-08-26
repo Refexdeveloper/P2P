@@ -6,6 +6,7 @@ import {
   updateVendor,
   getVendorById,
   getVendorDocumentFile,
+  uploadVendorDocument,
   exportVendorsCsv,
   getVendorImportTemplateCsv,
   importVendorsFromCsv,
@@ -83,12 +84,55 @@ router.get('/:id', canUseVendorsForPr, async (req, res) => {
   }
 });
 
+function fileContentType(fileName) {
+  const lower = String(fileName || '').toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+  if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (lower.endsWith('.doc')) return 'application/msword';
+  if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  return 'application/octet-stream';
+}
+
 router.get('/:id/documents/:docType/file', canUseVendorsForPr, async (req, res) => {
   try {
-    const { fullPath, fileName } = await getVendorDocumentFile(Number(req.params.id), req.params.docType);
-    res.download(fullPath, fileName);
+    const { fullPath, fileName, buffer } = await getVendorDocumentFile(
+      Number(req.params.id),
+      req.params.docType
+    );
+    const contentType = fileContentType(fileName);
+    const safeName = String(fileName || 'document').replace(/"/g, '');
+    const disposition = `inline; filename="${safeName}"`;
+
+    if (buffer) {
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', disposition);
+      res.setHeader('Content-Length', buffer.length);
+      return res.send(buffer);
+    }
+
+    if (fullPath) {
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', disposition);
+      return res.sendFile(fullPath);
+    }
+
+    return res.status(404).json({ message: 'File not found on server' });
   } catch (err) {
     res.status(404).json({ message: err.message });
+  }
+});
+
+router.post('/:id/documents', canUseVendorsForPr, async (req, res) => {
+  try {
+    const data = await uploadVendorDocument(Number(req.params.id), req.body || {});
+    res.json({ data, message: 'Document saved' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 });
 

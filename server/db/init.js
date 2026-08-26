@@ -119,10 +119,12 @@ async function init() {
       doc_type ENUM('gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration') NOT NULL,
       file_name VARCHAR(255) NOT NULL,
       file_path VARCHAR(500) NOT NULL,
+      file_data LONGBLOB NULL,
       uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
       UNIQUE KEY uniq_vendor_doc (vendor_id, doc_type)
     )`,
+    `ALTER TABLE vendor_documents ADD COLUMN file_data LONGBLOB NULL`,
     `CREATE TABLE IF NOT EXISTS navigation_permissions (
       id INT AUTO_INCREMENT PRIMARY KEY,
       code VARCHAR(80) NOT NULL UNIQUE,

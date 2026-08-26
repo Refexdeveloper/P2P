@@ -14,6 +14,60 @@ function ensureVendorDir() {
   }
 }
 
+const DOC_TYPES = ['gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration'];
+let fileDataColumnReady = false;
+
+async function ensureFileDataColumn() {
+  if (fileDataColumnReady) return;
+  try {
+    const [cols] = await pool.query(
+      `SELECT 1 AS ok
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'vendor_documents'
+         AND column_name = 'file_data'
+       LIMIT 1`
+    );
+    if (!cols.length) {
+      await pool.query(`ALTER TABLE vendor_documents ADD COLUMN file_data LONGBLOB NULL`);
+    }
+    fileDataColumnReady = true;
+  } catch (err) {
+    if (String(err.message || '').includes('Duplicate column')) {
+      fileDataColumnReady = true;
+      return;
+    }
+    throw err;
+  }
+}
+
+function mapDocumentRow(d) {
+  return {
+    id: d.id,
+    docType: d.doc_type,
+    fileName: d.file_name,
+    uploadedAt: formatDate(d.uploaded_at),
+  };
+}
+
+async function attachDocumentsToVendors(vendors) {
+  if (!vendors.length) return vendors;
+  const ids = vendors.map((v) => v.id);
+  const ph = ids.map(() => '?').join(',');
+  const [rows] = await pool.query(
+    `SELECT id, vendor_id, doc_type, file_name, uploaded_at
+     FROM vendor_documents WHERE vendor_id IN (${ph}) ORDER BY doc_type`,
+    ids
+  );
+  const byVendor = new Map();
+  for (const d of rows) {
+    const list = byVendor.get(d.vendor_id) || [];
+    list.push(mapDocumentRow(d));
+    byVendor.set(d.vendor_id, list);
+  }
+  return vendors.map((v) => ({ ...v, documents: byVendor.get(v.id) || [] }));
+}
+
 async function generateVendorCode() {
   const year = new Date().getFullYear();
   const [rows] = await pool.query(
@@ -26,15 +80,11 @@ async function generateVendorCode() {
 
 async function getVendorDocuments(vendorId) {
   const [rows] = await pool.query(
-    `SELECT * FROM vendor_documents WHERE vendor_id = ? ORDER BY doc_type`,
+    `SELECT id, doc_type, file_name, uploaded_at
+     FROM vendor_documents WHERE vendor_id = ? ORDER BY doc_type`,
     [vendorId]
   );
-  return rows.map((d) => ({
-    id: d.id,
-    docType: d.doc_type,
-    fileName: d.file_name,
-    uploadedAt: formatDate(d.uploaded_at),
-  }));
+  return rows.map(mapDocumentRow);
 }
 
 function yesNo(value, fallback = 'no') {
@@ -76,28 +126,108 @@ function mapVendor(row, documents = []) {
   };
 }
 
+const MAX_VENDOR_DOC_BYTES = 10 * 1024 * 1024;
+
+function decodeVendorFile(base64Data) {
+  const raw = String(base64Data || '').includes(',')
+    ? String(base64Data).split(',').pop()
+    : String(base64Data || '');
+  return Buffer.from(String(raw).replace(/\s/g, ''), 'base64');
+}
+
+/**
+ * Save vendor document to disk (best-effort) and return a DB-ready buffer.
+ * Cloud Run disks are ephemeral — file_data in MySQL is the source of truth.
+ */
 function saveVendorDocument(vendorId, docType, fileName, base64Data) {
   if (!base64Data || !fileName) return null;
 
-  ensureVendorDir();
-  const safeName = `${vendorId}_${docType}_${path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-  const fullPath = path.join(VENDOR_UPLOAD_DIR, safeName);
-  const buffer = Buffer.from(base64Data, 'base64');
-  fs.writeFileSync(fullPath, buffer);
+  const originalName = path.basename(String(fileName)).trim();
+  if (!originalName) return null;
 
-  return { fileName: path.basename(fileName), filePath: safeName };
+  const safeName = `${vendorId}_${docType}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const buffer = decodeVendorFile(base64Data);
+  if (!buffer.length) {
+    throw new Error(`Vendor document ${originalName} is empty or invalid`);
+  }
+  if (buffer.length > MAX_VENDOR_DOC_BYTES) {
+    throw new Error(`Vendor document ${originalName} must be under 10MB`);
+  }
+
+  try {
+    ensureVendorDir();
+    fs.writeFileSync(path.join(VENDOR_UPLOAD_DIR, safeName), buffer);
+  } catch (err) {
+    console.warn('Vendor document disk write skipped (will keep DB copy):', err.message);
+  }
+
+  return { fileName: originalName, filePath: safeName, buffer };
 }
 
 async function upsertVendorDocument(vendorId, docType, fileName, base64Data) {
   const saved = saveVendorDocument(vendorId, docType, fileName, base64Data);
   if (!saved) return;
 
-  await pool.query(
-    `INSERT INTO vendor_documents (vendor_id, doc_type, file_name, file_path)
-     VALUES (?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE file_name = VALUES(file_name), file_path = VALUES(file_path), uploaded_at = NOW()`,
-    [vendorId, docType, saved.fileName, saved.filePath]
-  );
+  await ensureFileDataColumn();
+  const sql = `INSERT INTO vendor_documents (vendor_id, doc_type, file_name, file_path, file_data)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       file_name = VALUES(file_name),
+       file_path = VALUES(file_path),
+       file_data = VALUES(file_data),
+       uploaded_at = NOW()`;
+  const params = [vendorId, docType, saved.fileName, saved.filePath, saved.buffer];
+  try {
+    await pool.query(sql, params);
+  } catch (err) {
+    if (String(err.message || '').includes('Unknown column') && String(err.message || '').includes('file_data')) {
+      fileDataColumnReady = false;
+      await ensureFileDataColumn();
+      await pool.query(sql, params);
+      return;
+    }
+    throw err;
+  }
+}
+
+function collectFileFields(body) {
+  return [
+    { docType: 'gst', file: body.gstFile, name: body.gstFileName },
+    { docType: 'pan', file: body.panFile, name: body.panFileName },
+    { docType: 'cheque', file: body.chequeFile, name: body.chequeFileName },
+    { docType: 'msme', file: body.msmeFile, name: body.msmeFileName },
+    { docType: 'kyc', file: body.kycFile, name: body.kycFileName },
+    { docType: 'msme_declaration', file: body.msmeDeclarationFile, name: body.msmeDeclarationFileName },
+  ];
+}
+
+async function saveBodyDocuments(vendorId, body) {
+  const errors = [];
+  for (const { docType, file, name } of collectFileFields(body)) {
+    if (!file || !name) continue;
+    try {
+      await upsertVendorDocument(vendorId, docType, name, file);
+    } catch (err) {
+      errors.push(`${docType}: ${err.message || 'save failed'}`);
+    }
+  }
+  if (errors.length) {
+    throw new Error(`Vendor saved, but documents did not store: ${errors.join('; ')}`);
+  }
+}
+
+export async function uploadVendorDocument(vendorId, body = {}) {
+  const docType = String(body.docType || '').trim();
+  if (!DOC_TYPES.includes(docType)) throw new Error('Invalid document type');
+  const fileName = body.fileName || body.name;
+  const file = body.file || body.data || body.fileData || body.base64;
+  if (!file || !fileName) throw new Error('File and file name are required');
+
+  const [rows] = await pool.query(`SELECT id FROM vendors WHERE id = ?`, [vendorId]);
+  if (!rows.length) throw new Error('Vendor not found');
+
+  await upsertVendorDocument(vendorId, docType, fileName, file);
+  return getVendorById(vendorId);
 }
 
 export async function listVendors({ search, includeInactive = false, page, limit } = {}) {
@@ -145,14 +275,14 @@ export async function listVendors({ search, includeInactive = false, page, limit
       `SELECT * FROM vendors ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [...params, pageSize, offset]
     );
-    return { data: rows.map((row) => mapVendor(row)), pagination, stats };
+    return { data: await attachDocumentsToVendors(rows.map((row) => mapVendor(row))), pagination, stats };
   }
 
   const [rows] = await pool.query(
     `SELECT * FROM vendors ${where} ORDER BY created_at DESC`,
     params
   );
-  return { data: rows.map((row) => mapVendor(row)), pagination, stats };
+  return { data: await attachDocumentsToVendors(rows.map((row) => mapVendor(row))), pagination, stats };
 }
 
 export async function createVendor(user, body) {
@@ -197,22 +327,7 @@ export async function createVendor(user, body) {
   );
 
   const vendorId = result.insertId;
-
-  const fileFields = [
-    { docType: 'gst', file: body.gstFile, name: body.gstFileName },
-    { docType: 'pan', file: body.panFile, name: body.panFileName },
-    { docType: 'cheque', file: body.chequeFile, name: body.chequeFileName },
-    { docType: 'msme', file: body.msmeFile, name: body.msmeFileName },
-    { docType: 'kyc', file: body.kycFile, name: body.kycFileName },
-    { docType: 'msme_declaration', file: body.msmeDeclarationFile, name: body.msmeDeclarationFileName },
-  ];
-
-  for (const { docType, file, name } of fileFields) {
-    if (file && name) {
-      await upsertVendorDocument(vendorId, docType, name, file);
-    }
-  }
-
+  await saveBodyDocuments(vendorId, body);
   return getVendorById(vendorId);
 }
 
@@ -257,21 +372,7 @@ export async function updateVendor(vendorId, body) {
     ]
   );
 
-  const fileFields = [
-    { docType: 'gst', file: body.gstFile, name: body.gstFileName },
-    { docType: 'pan', file: body.panFile, name: body.panFileName },
-    { docType: 'cheque', file: body.chequeFile, name: body.chequeFileName },
-    { docType: 'msme', file: body.msmeFile, name: body.msmeFileName },
-    { docType: 'kyc', file: body.kycFile, name: body.kycFileName },
-    { docType: 'msme_declaration', file: body.msmeDeclarationFile, name: body.msmeDeclarationFileName },
-  ];
-
-  for (const { docType, file, name } of fileFields) {
-    if (file && name) {
-      await upsertVendorDocument(vendorId, docType, name, file);
-    }
-  }
-
+  await saveBodyDocuments(vendorId, body);
   return getVendorById(vendorId);
 }
 
@@ -283,19 +384,41 @@ export async function getVendorById(vendorId) {
 }
 
 export async function getVendorDocumentFile(vendorId, docType) {
-  const allowed = ['gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration'];
-  if (!allowed.includes(docType)) throw new Error('Invalid document type');
+  if (!DOC_TYPES.includes(docType)) throw new Error('Invalid document type');
+
+  await ensureFileDataColumn();
 
   const [rows] = await pool.query(
-    `SELECT * FROM vendor_documents WHERE vendor_id = ? AND doc_type = ?`,
+    `SELECT file_name, file_path, file_data FROM vendor_documents WHERE vendor_id = ? AND doc_type = ?`,
     [vendorId, docType]
   );
   if (!rows.length) throw new Error('Document not found');
 
-  const fullPath = path.join(VENDOR_UPLOAD_DIR, rows[0].file_path);
-  if (!fs.existsSync(fullPath)) throw new Error('File not found on server');
+  const row = rows[0];
+  const fileName = row.file_name || 'document';
 
-  return { fullPath, fileName: rows[0].file_name };
+  if (row.file_data && (Buffer.isBuffer(row.file_data) ? row.file_data.length : row.file_data.length)) {
+    const buffer = Buffer.isBuffer(row.file_data) ? row.file_data : Buffer.from(row.file_data);
+    return { fullPath: null, fileName, buffer };
+  }
+
+  const fullPath = path.join(VENDOR_UPLOAD_DIR, row.file_path || '');
+  if (row.file_path && fs.existsSync(fullPath)) {
+    const buffer = fs.readFileSync(fullPath);
+    try {
+      await pool.query(
+        `UPDATE vendor_documents SET file_data = ? WHERE vendor_id = ? AND doc_type = ?`,
+        [buffer, vendorId, docType]
+      );
+    } catch (err) {
+      console.warn('Vendor document DB backfill skipped:', err.message);
+    }
+    return { fullPath, fileName, buffer };
+  }
+
+  throw new Error(
+    'This document is missing after deployment. Open Edit Vendor and re-upload the file.'
+  );
 }
 
 const VENDOR_HEADERS = [

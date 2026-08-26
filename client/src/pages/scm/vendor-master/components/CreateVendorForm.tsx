@@ -114,10 +114,11 @@ function vendorToForm(v: VendorRecord): CreateVendorFormData {
 }
 
 export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact = false }: Props) {
-  const isEdit = Boolean(vendor);
+  const [savedVendor, setSavedVendor] = useState<VendorRecord | undefined>(vendor);
+  const isEdit = Boolean(savedVendor);
   const [form, setForm] = useState<CreateVendorFormData>(vendor ? vendorToForm(vendor) : EMPTY_FORM);
   const [files, setFiles] = useState<Partial<Record<DocType, UploadedDoc>>>({});
-  const [existingDocs] = useState<Partial<Record<DocType, string>>>(() => {
+  const [existingDocs, setExistingDocs] = useState<Partial<Record<DocType, string>>>(() => {
     if (!vendor?.documents) return {};
     return Object.fromEntries(vendor.documents.map((d) => [d.docType, d.fileName]));
   });
@@ -208,31 +209,52 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
     }
 
     setSubmitting(true);
+    setError('');
     try {
       const payload: Record<string, unknown> = { ...form };
-      const fileKeyMap: Record<DocType, { file: string; name: string }> = {
-        gst: { file: 'gstFile', name: 'gstFileName' },
-        pan: { file: 'panFile', name: 'panFileName' },
-        cheque: { file: 'chequeFile', name: 'chequeFileName' },
-        msme: { file: 'msmeFile', name: 'msmeFileName' },
-        kyc: { file: 'kycFile', name: 'kycFileName' },
-        msme_declaration: { file: 'msmeDeclarationFile', name: 'msmeDeclarationFileName' },
-      };
-      for (const type of DOC_UPLOAD_FIELDS.map((d) => d.type)) {
-        const doc = files[type];
-        if (doc) {
-          const keys = fileKeyMap[type];
-          payload[keys.file] = await readFileAsBase64(doc.file);
-          payload[keys.name] = doc.name;
+      let saved: VendorRecord;
+      if (!savedVendor) {
+        const res = await vendorApi.create(payload);
+        saved = res.data;
+      } else if (vendor) {
+        const res = await vendorApi.update(savedVendor.id, payload);
+        saved = res.data;
+      } else {
+        saved = savedVendor;
+      }
+      setSavedVendor(saved);
+
+      const remainingFiles: Partial<Record<DocType, UploadedDoc>> = { ...files };
+      const uploadErrors: string[] = [];
+      for (const { type, label } of DOC_UPLOAD_FIELDS) {
+        const doc = remainingFiles[type];
+        if (!doc) continue;
+        try {
+          const file = await readFileAsBase64(doc.file);
+          const res = await vendorApi.uploadDocument(saved.id, {
+            docType: type,
+            fileName: doc.name,
+            file,
+          });
+          saved = res.data;
+          delete remainingFiles[type];
+        } catch (err) {
+          uploadErrors.push(`${label}: ${err instanceof Error ? err.message : 'upload failed'}`);
         }
       }
-      if (isEdit && vendor) {
-        const res = await vendorApi.update(vendor.id, payload);
-        onSuccess(res.data);
-      } else {
-        const res = await vendorApi.create(payload);
-        onSuccess(res.data);
+
+      setSavedVendor(saved);
+      if (saved.documents?.length) {
+        setExistingDocs(Object.fromEntries(saved.documents.map((d) => [d.docType, d.fileName])));
       }
+      setFiles(remainingFiles);
+
+      if (uploadErrors.length) {
+        setError(`Vendor saved, but some files did not store. Please upload again: ${uploadErrors.join('; ')}`);
+        return;
+      }
+
+      onSuccess(saved);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to ${isEdit ? 'update' : 'create'} vendor`);
     } finally {
@@ -246,7 +268,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
         <div>
           <h2 className="text-lg font-bold text-gray-900">{isEdit ? 'Edit Vendor' : 'Create New Vendor'}</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {isEdit ? `Update details for ${vendor?.vendorCode}` : 'Add vendor details to the master list'}
+            {isEdit ? `Update details for ${savedVendor?.vendorCode || vendor?.vendorCode}` : 'Add vendor details to the master list'}
           </p>
         </div>
         {!compact && (
@@ -527,7 +549,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
                   <input
                     type="file"
                     className="hidden"
-                    accept=".pdf,.jpg,.jpeg,.png"
+                    accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx"
                     onChange={(e) => handleFileChange(type, e)}
                   />
                 </label>

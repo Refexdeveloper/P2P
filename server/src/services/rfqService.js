@@ -171,8 +171,8 @@ function saveQuotationFile(invitationId, round, fileName, base64Data) {
   if (!buffer.length) {
     throw new Error('Quotation file data is empty or invalid');
   }
-  if (buffer.length > 5 * 1024 * 1024) {
-    throw new Error('Quotation file must be under 5MB');
+  if (buffer.length > 10 * 1024 * 1024) {
+    throw new Error('Quotation file must be under 10MB');
   }
   try {
     ensureUploadDir();
@@ -1727,6 +1727,12 @@ async function buildRfqSummary(prId) {
 }
 
 function nodemailerAttachment(filename, row) {
+  if (row.quotation_file_data && row.quotation_file_data.length) {
+    const content = Buffer.isBuffer(row.quotation_file_data)
+      ? row.quotation_file_data
+      : Buffer.from(row.quotation_file_data);
+    if (content.length) return { filename, content };
+  }
   const stored = row.quotation_file_path ? String(row.quotation_file_path) : '';
   const diskPath = stored
     ? path.isAbsolute(stored)
@@ -1735,12 +1741,6 @@ function nodemailerAttachment(filename, row) {
     : null;
   if (diskPath && fs.existsSync(diskPath)) {
     return { filename, path: diskPath };
-  }
-  if (row.quotation_file_data && row.quotation_file_data.length) {
-    const content = Buffer.isBuffer(row.quotation_file_data)
-      ? row.quotation_file_data
-      : Buffer.from(row.quotation_file_data);
-    if (content.length) return { filename, content };
   }
   return null;
 }
@@ -2966,19 +2966,31 @@ export async function getSubmissionFile(user, submissionId) {
   }
 
   const fileName = row.quotation_file_name || 'quotation.pdf';
-  const diskPath =
-    row.quotation_file_path && path.join(UPLOAD_DIR, row.quotation_file_path);
 
-  if (diskPath && fs.existsSync(diskPath)) {
-    return { fullPath: diskPath, fileName, buffer: null };
-  }
-
-  // Deployed Cloud Run: file lives in DB (disk is ephemeral)
+  // Deployed Cloud Run: DB blob is source of truth (disk is ephemeral).
   if (row.quotation_file_data && row.quotation_file_data.length) {
     const buffer = Buffer.isBuffer(row.quotation_file_data)
       ? row.quotation_file_data
       : Buffer.from(row.quotation_file_data);
     return { fullPath: null, fileName, buffer };
+  }
+
+  const diskPath =
+    row.quotation_file_path && path.join(UPLOAD_DIR, row.quotation_file_path);
+
+  if (diskPath && fs.existsSync(diskPath)) {
+    const buffer = fs.readFileSync(diskPath);
+    if (buffer.length) {
+      try {
+        await pool.query(
+          `UPDATE vendor_quotation_submissions SET quotation_file_data = ? WHERE id = ?`,
+          [buffer, submissionId]
+        );
+      } catch (err) {
+        console.warn('Quotation DB backfill skipped:', err.message);
+      }
+    }
+    return { fullPath: diskPath, fileName, buffer };
   }
 
   if (!row.quotation_file_path && !row.quotation_file_name) {
@@ -3001,7 +3013,10 @@ export function mapInvitationsToQuotations(invitations) {
           technicalScore: Number(s.requesterFields?.technicalScore) || 0,
           commercialScore: Number(s.requesterFields?.commercialScore) || 0,
           overallScore: Number(s.requesterFields?.overallScore) || 0,
-          quotationFile: s.quotationFilePath ? `/api/rfq/submissions/${s.id}/file` : null,
+          quotationFile:
+            s.hasQuotationFile || s.quotationFileName || s.quotationFilePath
+              ? `/api/rfq/submissions/${s.id}/file`
+              : null,
           quotationFileName: s.quotationFileName || '',
           status: s.status === 'sent_back' ? 'sent-back' : 'active',
           sentBackReason: inv.sendBackReason || undefined,

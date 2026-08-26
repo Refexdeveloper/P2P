@@ -426,6 +426,7 @@ CREATE TABLE IF NOT EXISTS vendor_documents (
   doc_type ENUM('gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration') NOT NULL,
   file_name VARCHAR(255) NOT NULL,
   file_path VARCHAR(500) NOT NULL,
+  file_data LONGBLOB NULL,
   uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
   UNIQUE KEY uniq_vendor_doc (vendor_id, doc_type)
