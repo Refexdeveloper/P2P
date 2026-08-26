@@ -9,26 +9,28 @@ export const SHORT_PO_LETTERHEAD_DEFAULTS = {
     '<p style="text-align:center;"><strong>PURCHASE ORDER</strong></p>',
   terms: [
     {
+      termsHeader: 'Quote No',
+      termsDescription: '<p>$aos_quotes_quote_no_c</p>',
+    },
+    {
       termsHeader: 'Inco Terms',
-      termsDescription: '<p>As specified in this Purchase Order (Incoterms field).</p>',
+      termsDescription: '<p>$aos_quotes_inco_terms_c</p>',
     },
     {
       termsHeader: 'Delivery Schedule',
-      termsDescription:
-        '<p>Delivery shall be completed on or before the expected delivery date mentioned in this Purchase Order.</p>',
+      termsDescription: '<p>$aos_quotes_delivery_schedule_c</p>',
     },
     {
       termsHeader: 'Mode of Shipment',
-      termsDescription: '<p>As agreed and specified under the applicable Incoterms / delivery instructions in this PO.</p>',
+      termsDescription: '<p>$aos_quotes_shipment_mode_c</p>',
     },
     {
       termsHeader: 'Payment Terms',
-      termsDescription: '<p>As specified in the Payment Terms of this Purchase Order.</p>',
+      termsDescription: '<p>$aos_quotes_payment_terms_c</p>',
     },
     {
       termsHeader: 'Note',
-      termsDescription:
-        '<p>I. This is a fixed-price contract and there will be no change in unit rates till 100% of supplies are done.</p>',
+      termsDescription: '<p>$aos_quotes_notes_c</p>',
     },
     {
       termsHeader: 'Annexures',

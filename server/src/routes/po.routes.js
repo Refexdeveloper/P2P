@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { authenticate, requireRoles } from '../middleware/auth.js';
-  import {
+import { authenticate, requireRoles, requireRolesOrPermissions } from '../middleware/auth.js';
+import {
   getPoCreateContext,
   createPurchaseOrder,
   createManualPurchaseOrder,
@@ -27,6 +27,7 @@ import { authenticate, requireRoles } from '../middleware/auth.js';
   submitVendorAcceptanceByToken,
   resolveVendorAcceptanceFile,
   resolveCancellationAttachment,
+  getCfoPoInsights,
 } from '../services/poService.js';
 import {
   resolveScmManagerUser,
@@ -111,6 +112,19 @@ router.get('/vendor-accept/:token/pdf', async (req, res) => {
 });
 
 router.use(authenticate);
+
+router.get(
+  '/stats/cfo',
+  requireRolesOrPermissions(['CFO', 'Super Admin'], ['nav.cfo_dashboard', 'nav.tasks', 'nav.rfq_approval']),
+  async (_req, res) => {
+    try {
+      const data = await getCfoPoInsights();
+      res.json({ data });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  }
+);
 
 router.get('/signatures', requireRoles('SCM Manager'), async (req, res) => {
   try {

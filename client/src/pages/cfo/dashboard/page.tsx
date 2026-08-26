@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatsCards from './components/StatsCards';
@@ -7,9 +7,41 @@ import ActivityTimeline from './components/ActivityTimeline';
 import HighValueAlerts from './components/HighValueAlerts';
 import ApprovalActionModal from '../../tasks/components/ApprovalModal';
 import { prApi } from '../../../services/api';
-import { cfoStats, businessEntities, cfoRecentActivity, highValueAlerts } from '../../../mocks/cfo-data';
 
 type PriorityFilter = 'All' | 'Critical' | 'High' | 'Medium' | 'Low';
+
+type CfoEntity = {
+  id: string;
+  name: string;
+  code: string;
+  allocatedBudget: number;
+  utilizedBudget: number;
+  utilizationPercentage: number;
+  pendingPRsCount: number;
+  pendingAmount: number;
+  approvedAmount: number;
+  color: string;
+};
+
+type CfoStats = {
+  totalPendingApprovals: number;
+  highValuePRs: number;
+  approvedThisMonth: number;
+  rejectedThisMonth: number;
+  totalSpendAllEntities: number;
+};
+
+const EMPTY_STATS: CfoStats = {
+  totalPendingApprovals: 0,
+  highValuePRs: 0,
+  approvedThisMonth: 0,
+  rejectedThisMonth: 0,
+  totalSpendAllEntities: 0,
+};
+
+function formatCr(amount: number) {
+  return `₹${(Number(amount || 0) / 10000000).toFixed(2)}Cr`;
+}
 
 export default function CFODashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -19,7 +51,32 @@ export default function CFODashboardPage() {
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('All');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [cfoPRList, setCfoPRList] = useState<Array<Record<string, unknown>>>([]);
+  const [stats, setStats] = useState<CfoStats>(EMPTY_STATS);
+  const [businessEntities, setBusinessEntities] = useState<CfoEntity[]>([]);
+  const [highValueAlerts, setHighValueAlerts] = useState<
+    Array<{
+      id: string;
+      prId: string;
+      title: string;
+      entity: string;
+      amount: number;
+      priority: string;
+      daysWaiting: number;
+    }>
+  >([]);
+  const [recentActivity, setRecentActivity] = useState<
+    Array<{
+      id: string;
+      type: string;
+      prId: string;
+      entity: string;
+      amount: number;
+      user: string;
+      timestamp: string;
+    }>
+  >([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [approvalModal, setApprovalModal] = useState<{
     isOpen: boolean;
     type: 'approve' | 'reject';
@@ -30,20 +87,33 @@ export default function CFODashboardPage() {
   }>({ isOpen: false, type: 'approve', prId: 0, prNumber: '', prTitle: '', amount: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const loadPRs = useCallback(async () => {
+  const loadDashboard = useCallback(async () => {
     try {
-      const res = await prApi.listPending();
-      setCfoPRList(res.data as Array<Record<string, unknown>>);
-    } catch {
+      setLoadError(null);
+      const [pendingRes, dashRes] = await Promise.all([
+        prApi.listPending(),
+        prApi.cfoDashboard(),
+      ]);
+      setCfoPRList(pendingRes.data as Array<Record<string, unknown>>);
+      setStats(dashRes.data.stats || EMPTY_STATS);
+      setBusinessEntities(dashRes.data.entities || []);
+      setHighValueAlerts(dashRes.data.highValueAlerts || []);
+      setRecentActivity(dashRes.data.recentActivity || []);
+    } catch (err) {
       setCfoPRList([]);
+      setStats(EMPTY_STATS);
+      setBusinessEntities([]);
+      setHighValueAlerts([]);
+      setRecentActivity([]);
+      setLoadError(err instanceof Error ? err.message : 'Failed to load CFO dashboard');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadPRs();
-  }, [loadPRs]);
+    loadDashboard();
+  }, [loadDashboard]);
 
   useEffect(() => {
     if (loading || deepLinkHandled.current) return;
@@ -89,42 +159,53 @@ export default function CFODashboardPage() {
     return matchesEntity && matchesSearch && matchesPriority;
   }) as unknown as Parameters<typeof PRTable>[0]['prs'];
 
-  const selectedEntityData = selectedEntity === 'all'
-    ? null
-    : businessEntities.find(e => e.id === selectedEntity);
+  const selectedEntityData =
+    selectedEntity === 'all' ? null : businessEntities.find((e) => e.id === selectedEntity);
 
-  const entityPRs = selectedEntity === 'all'
-    ? cfoPRList
-    : cfoPRList.filter(pr => pr.entity === selectedEntity);
+  const entityPRs =
+    selectedEntity === 'all' ? cfoPRList : cfoPRList.filter((pr) => pr.entity === selectedEntity);
 
-  const dropdownLabel = selectedEntityData
-    ? selectedEntityData.name
-    : 'All Entities';
+  const dropdownLabel = selectedEntityData ? selectedEntityData.name : 'All Entities';
+
+  const totalUtilized = useMemo(
+    () => businessEntities.reduce((s, e) => s + Number(e.utilizedBudget || 0), 0),
+    [businessEntities]
+  );
+
+  const monthLabel = new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' });
 
   return (
     <DashboardLayout>
       <div className="flex h-full">
-        {/* Main Content */}
         <div className="flex-1 min-w-0 overflow-y-auto">
           <div className="p-6">
-            {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">CFO Dashboard</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Entity-wise business approvals &amp; budget oversight</p>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Entity-wise business approvals &amp; spend oversight
+                </p>
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <i className="ri-calendar-line"></i>
-                <span>January 2024</span>
+                <span>{monthLabel}</span>
               </div>
             </div>
 
-            {/* Stats Cards */}
-            <StatsCards stats={cfoStats} />
+            <StatsCards stats={stats} />
+            {loadError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {loadError}
+              </div>
+            )}
 
-            {/* Entity Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {businessEntities.map(entity => (
+              {businessEntities.length === 0 && !loading && (
+                <div className="col-span-full bg-white rounded-lg border border-gray-200 p-6 text-sm text-gray-500">
+                  No active entities found. Pending CFO PRs still appear in the table below.
+                </div>
+              )}
+              {businessEntities.map((entity) => (
                 <div
                   key={entity.id}
                   onClick={() => setSelectedEntity(entity.id === selectedEntity ? 'all' : entity.id)}
@@ -138,48 +219,53 @@ export default function CFODashboardPage() {
                         className="w-3 h-3 rounded-full"
                         style={{ backgroundColor: entity.color }}
                       ></div>
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{entity.code}</span>
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        {entity.code}
+                      </span>
                     </div>
                     {entity.pendingPRsCount > 0 && (
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: entity.color }}>
+                      <span
+                        className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                        style={{ backgroundColor: entity.color }}
+                      >
                         {entity.pendingPRsCount} pending
                       </span>
                     )}
                   </div>
                   <p className="text-sm font-semibold text-gray-800 mb-3 leading-tight">{entity.name}</p>
 
-                  {/* Budget bar */}
                   <div className="mb-3">
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>Budget Used</span>
+                      <span>Spend share</span>
                       <span className="font-semibold text-gray-700">{entity.utilizationPercentage}%</span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-1.5">
                       <div
                         className="h-1.5 rounded-full"
-                        style={{ width: `${entity.utilizationPercentage}%`, backgroundColor: entity.color }}
+                        style={{
+                          width: `${entity.utilizationPercentage}%`,
+                          backgroundColor: entity.color,
+                        }}
                       ></div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
                     <div>
-                      <p className="text-xs text-gray-400">Utilized</p>
-                      <p className="text-sm font-bold text-gray-900">₹{(entity.utilizedBudget / 10000000).toFixed(1)}Cr</p>
+                      <p className="text-xs text-gray-400">Active spend</p>
+                      <p className="text-sm font-bold text-gray-900">{formatCr(entity.utilizedBudget)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400">Allocated</p>
-                      <p className="text-sm font-bold text-gray-900">₹{(entity.allocatedBudget / 10000000).toFixed(1)}Cr</p>
+                      <p className="text-xs text-gray-400">Pending value</p>
+                      <p className="text-sm font-bold text-gray-900">{formatCr(entity.pendingAmount)}</p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Filters Row */}
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
               <div className="flex flex-wrap items-center gap-3">
-                {/* Search */}
                 <div className="flex-1 min-w-48">
                   <div className="relative">
                     <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
@@ -193,14 +279,16 @@ export default function CFODashboardPage() {
                   </div>
                 </div>
 
-                {/* Entity Dropdown */}
                 <div className="relative" ref={dropdownRef}>
                   <button
                     onClick={() => setDropdownOpen(!dropdownOpen)}
                     className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors whitespace-nowrap"
                   >
                     {selectedEntityData && (
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: selectedEntityData.color }}></div>
+                      <div
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: selectedEntityData.color }}
+                      ></div>
                     )}
                     {!selectedEntityData && <i className="ri-building-4-line text-gray-500"></i>}
                     <span>{dropdownLabel}</span>
@@ -209,9 +297,11 @@ export default function CFODashboardPage() {
 
                   {dropdownOpen && (
                     <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-xl shadow-xl z-20 overflow-hidden">
-                      {/* All Entities option */}
                       <button
-                        onClick={() => { setSelectedEntity('all'); setDropdownOpen(false); }}
+                        onClick={() => {
+                          setSelectedEntity('all');
+                          setDropdownOpen(false);
+                        }}
                         className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === 'all' ? 'bg-teal-50' : ''}`}
                       >
                         <div className="flex items-center gap-3">
@@ -220,25 +310,26 @@ export default function CFODashboardPage() {
                           </div>
                           <div className="text-left">
                             <p className="font-semibold text-gray-900">All Entities</p>
-                            <p className="text-xs text-gray-500">{cfoPRList.length} total PRs</p>
+                            <p className="text-xs text-gray-500">{cfoPRList.length} pending PRs</p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-bold text-gray-900">
-                            ₹{(businessEntities.reduce((s, e) => s + e.utilizedBudget, 0) / 10000000).toFixed(1)}Cr
-                          </p>
-                          <p className="text-xs text-gray-400">total utilized</p>
+                          <p className="text-sm font-bold text-gray-900">{formatCr(totalUtilized)}</p>
+                          <p className="text-xs text-gray-400">active spend</p>
                         </div>
                       </button>
 
                       <div className="border-t border-gray-100"></div>
 
-                      {businessEntities.map(entity => {
-                        const entityPRCount = cfoPRList.filter(p => p.entity === entity.id).length;
+                      {businessEntities.map((entity) => {
+                        const entityPRCount = cfoPRList.filter((p) => p.entity === entity.id).length;
                         return (
                           <button
                             key={entity.id}
-                            onClick={() => { setSelectedEntity(entity.id); setDropdownOpen(false); }}
+                            onClick={() => {
+                              setSelectedEntity(entity.id);
+                              setDropdownOpen(false);
+                            }}
                             className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === entity.id ? 'bg-teal-50' : ''}`}
                           >
                             <div className="flex items-center gap-3">
@@ -246,18 +337,20 @@ export default function CFODashboardPage() {
                                 className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold"
                                 style={{ backgroundColor: entity.color }}
                               >
-                                {entity.code.slice(-1)}
+                                {(entity.code || '?').slice(0, 2)}
                               </div>
                               <div className="text-left">
                                 <p className="font-semibold text-gray-900">{entity.name}</p>
-                                <p className="text-xs text-gray-500">{entityPRCount} PRs · {entity.pendingPRsCount} pending</p>
+                                <p className="text-xs text-gray-500">
+                                  {entityPRCount} PRs · {entity.pendingPRsCount} pending
+                                </p>
                               </div>
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-bold text-gray-900">
-                                ₹{(entity.utilizedBudget / 10000000).toFixed(1)}Cr
+                                {formatCr(entity.utilizedBudget)}
                               </p>
-                              <p className="text-xs text-gray-400">{entity.utilizationPercentage}% used</p>
+                              <p className="text-xs text-gray-400">{entity.utilizationPercentage}% share</p>
                             </div>
                           </button>
                         );
@@ -266,9 +359,8 @@ export default function CFODashboardPage() {
                   )}
                 </div>
 
-                {/* Priority Filter */}
                 <div className="flex gap-1.5">
-                  {(['All', 'Critical', 'High', 'Medium', 'Low'] as PriorityFilter[]).map(priority => (
+                  {(['All', 'Critical', 'High', 'Medium', 'Low'] as PriorityFilter[]).map((priority) => (
                     <button
                       key={priority}
                       onClick={() => setPriorityFilter(priority)}
@@ -283,7 +375,6 @@ export default function CFODashboardPage() {
                   ))}
                 </div>
 
-                {/* Results count */}
                 <span className="text-xs text-gray-500 ml-auto whitespace-nowrap">
                   {filteredPRs.length} of {entityPRs.length} PRs
                   {selectedEntityData && (
@@ -295,17 +386,15 @@ export default function CFODashboardPage() {
               </div>
             </div>
 
-            {/* PR Table */}
             {loading && <p className="text-sm text-gray-500 mb-4">Loading PRs...</p>}
-            <PRTable prs={filteredPRs} entities={businessEntities} onRefresh={loadPRs} />
+            <PRTable prs={filteredPRs} entities={businessEntities} onRefresh={loadDashboard} />
           </div>
         </div>
 
-        {/* Right Sidebar */}
         <div className="w-80 border-l border-gray-200 bg-gray-50 overflow-y-auto flex-shrink-0">
           <div className="p-5">
             <HighValueAlerts alerts={highValueAlerts} />
-            <ActivityTimeline activities={cfoRecentActivity} />
+            <ActivityTimeline activities={recentActivity} />
           </div>
         </div>
       </div>
@@ -320,7 +409,7 @@ export default function CFODashboardPage() {
         onConfirm={async (remarks) => {
           await prApi.approve(approvalModal.prId, approvalModal.type, remarks);
           setApprovalModal((prev) => ({ ...prev, isOpen: false }));
-          await loadPRs();
+          await loadDashboard();
         }}
       />
     </DashboardLayout>

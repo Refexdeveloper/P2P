@@ -11,6 +11,7 @@ export const NAV_ITEMS = [
   { code: 'nav.rfq_approval', label: 'RFQ Approval', path: '/rfq-approval', icon: 'ri-bar-chart-box-line', group: 'Approvals', sort: 30 },
   { code: 'nav.tasks', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'General', sort: 40 },
   { code: 'nav.cfo_dashboard', label: 'Dashboard', path: '/cfo/dashboard', icon: 'ri-dashboard-line', group: 'CFO', sort: 50 },
+  { code: 'nav.cfo_insights', label: 'Financial Insights', path: '/dashboard', icon: 'ri-line-chart-line', group: 'CFO', sort: 51 },
   { code: 'nav.home_dashboard', label: 'Dashboard', path: '/', icon: 'ri-dashboard-line', group: 'General', sort: 5 },
   { code: 'nav.purchase_requests', label: 'Dashboard', path: '/scm/purchase-requests', icon: 'ri-dashboard-line', group: 'SCM', sort: 60 },
   { code: 'nav.scm_rfq_entry', label: 'RFQ Entry', path: '/scm/rfq-entry', icon: 'ri-file-list-line', group: 'SCM', sort: 61 },
@@ -59,7 +60,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.department_master',
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
-  CFO: ['nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks'],
+  CFO: ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.rfq_approval', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
@@ -244,6 +245,17 @@ export async function getUserPermissionCodes(userId, role) {
             `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
             [userId, 'nav.rfq_approval']
           );
+        }
+      }
+      if (role === 'CFO') {
+        for (const code of ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.rfq_approval', 'nav.tasks']) {
+          if (!stored.includes(code) && validCodes.has(code)) {
+            stored.push(code);
+            await pool.query(
+              `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
+              [userId, code]
+            );
+          }
         }
       }
       // Heal: Requester + SCM roles always get Masters menu permissions

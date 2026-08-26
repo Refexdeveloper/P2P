@@ -1548,6 +1548,264 @@ export async function getManagerStats() {
   };
 }
 
+const CFO_PENDING_STATUSES = [
+  PR_STATUS.PENDING_CFO_APPROVAL,
+  PR_STATUS.PENDING_RFQ_CFO_APPROVAL,
+];
+const CFO_HIGH_VALUE_THRESHOLD = 5_000_000; // ₹50L — matches CFO dashboard label
+const ENTITY_CARD_COLORS = ['#14B8A6', '#8B5CF6', '#F59E0B', '#3B82F6', '#EC4899', '#10B981', '#6366F1', '#F97316'];
+
+function relativeTimeLabel(dateValue) {
+  if (!dateValue) return '';
+  const then = new Date(dateValue).getTime();
+  if (Number.isNaN(then)) return '';
+  const diffMs = Date.now() - then;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return formatDate(dateValue);
+}
+
+/**
+ * Live CFO dashboard aggregates: KPI cards, entity rollups, high-value alerts, recent activity.
+ */
+export async function getCfoDashboard() {
+  const pendingPlaceholders = CFO_PENDING_STATUSES.map(() => '?').join(',');
+
+  const [[pendingAgg]] = await pool.query(
+    `SELECT
+       COUNT(*) AS pending_count,
+       COALESCE(SUM(CASE WHEN pr.total_amount >= ? THEN 1 ELSE 0 END), 0) AS high_value_count,
+       COALESCE(SUM(pr.total_amount), 0) AS pending_amount
+     FROM purchase_requests pr
+     WHERE pr.status IN (${pendingPlaceholders})`,
+    [CFO_HIGH_VALUE_THRESHOLD, ...CFO_PENDING_STATUSES]
+  );
+
+  const [[monthActions]] = await pool.query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN pa.action = 'approve' THEN 1 ELSE 0 END), 0) AS approved_cnt,
+       COALESCE(SUM(CASE WHEN pa.action = 'reject' THEN 1 ELSE 0 END), 0) AS rejected_cnt,
+       COALESCE(SUM(CASE WHEN pa.action = 'approve' THEN pr.total_amount ELSE 0 END), 0) AS approved_amount
+     FROM pr_approvals pa
+     JOIN purchase_requests pr ON pr.id = pa.pr_id
+     WHERE pa.stage IN (?, ?)
+       AND pa.action IN ('approve', 'reject')
+       AND YEAR(pa.created_at) = YEAR(CURDATE())
+       AND MONTH(pa.created_at) = MONTH(CURDATE())`,
+    [STAGE.CFO_REVIEW, STAGE.RFQ_CFO_REVIEW]
+  );
+
+  // Prefer live PO spend for "Total Spend"; fall back to non-draft PR totals if no POs yet
+  const [[spendRow]] = await pool.query(
+    `SELECT COALESCE(SUM(grand_total), 0) AS total_spend
+     FROM purchase_orders
+     WHERE status NOT IN ('draft', 'cancelled', 'rejected')`
+  );
+  const [[prSpendRow]] = await pool.query(
+    `SELECT COALESCE(SUM(pr.total_amount), 0) AS total_spend
+     FROM purchase_requests pr
+     WHERE pr.status NOT IN (?, ?)`,
+    [PR_STATUS.DRAFT, PR_STATUS.REJECTED]
+  );
+
+  const [entityRows] = await pool.query(
+    `SELECT
+       e.id AS entity_id,
+       e.name AS entity_name,
+       e.code AS entity_code,
+       COALESCE(pending.pending_count, 0) AS pending_count,
+       COALESCE(pending.pending_amount, 0) AS pending_amount,
+       COALESCE(approved.approved_amount, 0) AS approved_amount,
+       COALESCE(spend.utilized_amount, 0) AS utilized_amount
+     FROM entity_masters e
+     LEFT JOIN (
+       SELECT entity_id,
+              COUNT(*) AS pending_count,
+              COALESCE(SUM(total_amount), 0) AS pending_amount
+       FROM purchase_requests
+       WHERE status IN (${pendingPlaceholders})
+       GROUP BY entity_id
+     ) pending ON pending.entity_id = e.id
+     LEFT JOIN (
+       SELECT pr.entity_id,
+              COALESCE(SUM(pr.total_amount), 0) AS approved_amount
+       FROM pr_approvals pa
+       JOIN purchase_requests pr ON pr.id = pa.pr_id
+       WHERE pa.stage IN (?, ?)
+         AND pa.action = 'approve'
+         AND YEAR(pa.created_at) = YEAR(CURDATE())
+         AND MONTH(pa.created_at) = MONTH(CURDATE())
+       GROUP BY pr.entity_id
+     ) approved ON approved.entity_id = e.id
+     LEFT JOIN (
+       SELECT entity_id, COALESCE(SUM(total_amount), 0) AS utilized_amount
+       FROM purchase_requests
+       WHERE status NOT IN (?, ?)
+       GROUP BY entity_id
+     ) spend ON spend.entity_id = e.id
+     WHERE e.status = 'active'
+       AND (
+         COALESCE(pending.pending_count, 0) > 0
+         OR COALESCE(spend.utilized_amount, 0) > 0
+         OR COALESCE(approved.approved_amount, 0) > 0
+       )
+     ORDER BY pending.pending_count DESC, e.name ASC`,
+    [
+      ...CFO_PENDING_STATUSES,
+      STAGE.CFO_REVIEW,
+      STAGE.RFQ_CFO_REVIEW,
+      PR_STATUS.DRAFT,
+      PR_STATUS.REJECTED,
+    ]
+  );
+
+  // PRs with no entity still need a bucket on the dashboard
+  const [[unassigned]] = await pool.query(
+    `SELECT
+       COUNT(*) AS pending_count,
+       COALESCE(SUM(total_amount), 0) AS pending_amount
+     FROM purchase_requests
+     WHERE entity_id IS NULL
+       AND status IN (${pendingPlaceholders})`,
+    [...CFO_PENDING_STATUSES]
+  );
+
+  const entities = entityRows.map((row, idx) => {
+    const pendingCount = Number(row.pending_count || 0);
+    const pendingAmount = Number(row.pending_amount || 0);
+    const approvedAmount = Number(row.approved_amount || 0);
+    const utilizedBudget = Number(row.utilized_amount || 0);
+    const allocatedBudget = Math.max(utilizedBudget + pendingAmount, utilizedBudget, 1);
+    const utilizationPercentage = Math.min(
+      100,
+      Math.round((utilizedBudget / allocatedBudget) * 100)
+    );
+    return {
+      id: String(row.entity_id),
+      name: row.entity_name,
+      code: row.entity_code || `E-${row.entity_id}`,
+      allocatedBudget,
+      utilizedBudget,
+      utilizationPercentage,
+      pendingPRsCount: pendingCount,
+      pendingAmount,
+      approvedAmount,
+      color: ENTITY_CARD_COLORS[idx % ENTITY_CARD_COLORS.length],
+    };
+  });
+
+  if (Number(unassigned?.pending_count || 0) > 0) {
+    entities.push({
+      id: 'unassigned',
+      name: 'Unassigned Entity',
+      code: 'N/A',
+      allocatedBudget: Number(unassigned.pending_amount || 0),
+      utilizedBudget: 0,
+      utilizationPercentage: 0,
+      pendingPRsCount: Number(unassigned.pending_count || 0),
+      pendingAmount: Number(unassigned.pending_amount || 0),
+      approvedAmount: 0,
+      color: '#6B7280',
+    });
+  }
+
+  const [alertRows] = await pool.query(
+    `SELECT pr.id, pr.pr_number, pr.title, pr.total_amount, pr.priority,
+            pr.submitted_at, pr.created_at,
+            COALESCE(e.name, d.name, '—') AS entity_name
+     FROM purchase_requests pr
+     JOIN departments d ON d.id = pr.department_id
+     LEFT JOIN entity_masters e ON e.id = pr.entity_id
+     WHERE pr.status IN (${pendingPlaceholders})
+       AND pr.total_amount >= ?
+     ORDER BY pr.total_amount DESC, COALESCE(pr.submitted_at, pr.created_at) ASC
+     LIMIT 10`,
+    [...CFO_PENDING_STATUSES, CFO_HIGH_VALUE_THRESHOLD]
+  );
+
+  const highValueAlerts = alertRows.map((row) => {
+    const started = new Date(row.submitted_at || row.created_at);
+    const daysWaiting = Math.max(0, Math.floor((Date.now() - started.getTime()) / 86400000));
+    return {
+      id: row.pr_number,
+      prId: row.pr_number,
+      title: row.title,
+      entity: row.entity_name,
+      amount: Number(row.total_amount),
+      priority: row.priority || 'High',
+      daysWaiting,
+      isOverdue: daysWaiting > 5,
+    };
+  });
+
+  const [activityRows] = await pool.query(
+    `SELECT pa.id, pa.action, pa.created_at, pa.stage,
+            pr.pr_number, pr.total_amount,
+            COALESCE(e.name, d.name, '—') AS entity_name,
+            COALESCE(u.name, 'System') AS actor_name
+     FROM pr_approvals pa
+     JOIN purchase_requests pr ON pr.id = pa.pr_id
+     JOIN departments d ON d.id = pr.department_id
+     LEFT JOIN entity_masters e ON e.id = pr.entity_id
+     LEFT JOIN users u ON u.id = pa.approver_id
+     WHERE pa.stage IN (?, ?)
+        OR (
+          pr.status IN (${pendingPlaceholders})
+          AND pa.stage IN (?, ?)
+          AND pa.action IN ('approve', 'submitted')
+        )
+     ORDER BY pa.created_at DESC
+     LIMIT 12`,
+    [
+      STAGE.CFO_REVIEW,
+      STAGE.RFQ_CFO_REVIEW,
+      ...CFO_PENDING_STATUSES,
+      STAGE.PR_MANAGER_REVIEW,
+      STAGE.RFQ_L2_REVIEW,
+    ]
+  );
+
+  const recentActivity = activityRows.map((row) => {
+    let type = 'Submitted';
+    if (row.action === 'approve') type = 'Approved';
+    else if (row.action === 'reject') type = 'Rejected';
+    else if (row.action === 'return' || row.action === 'rework') type = 'Info requested';
+    else if (String(row.stage || '').includes('CFO')) type = 'Submitted';
+    return {
+      id: String(row.id),
+      type,
+      prId: row.pr_number,
+      entity: row.entity_name,
+      amount: Number(row.total_amount || 0),
+      user: row.actor_name,
+      timestamp: relativeTimeLabel(row.created_at),
+    };
+  });
+
+  const poSpend = Number(spendRow?.total_spend || 0);
+  const prSpend = Number(prSpendRow?.total_spend || 0);
+
+  return {
+    stats: {
+      totalPendingApprovals: Number(pendingAgg?.pending_count || 0),
+      highValuePRs: Number(pendingAgg?.high_value_count || 0),
+      approvedThisMonth: Number(monthActions?.approved_cnt || 0),
+      rejectedThisMonth: Number(monthActions?.rejected_cnt || 0),
+      totalSpendAllEntities: poSpend > 0 ? poSpend : prSpend,
+      pendingAmount: Number(pendingAgg?.pending_amount || 0),
+      approvedAmountThisMonth: Number(monthActions?.approved_amount || 0),
+    },
+    entities,
+    highValueAlerts,
+    recentActivity,
+  };
+}
+
 /**
  * HOD / L1 can act when My Tasks would show the PR:
  * - pending task assigned to this user id, OR
@@ -3115,23 +3373,31 @@ export function toManagerDashboardFormat(pr) {
 export function toCfoDashboardFormat(pr) {
   const due = new Date(pr.submittedDate || Date.now());
   due.setDate(due.getDate() + 5);
+  const submittedAt = pr.submittedDate ? new Date(pr.submittedDate) : new Date();
+  const daysWaiting = Math.max(0, Math.floor((Date.now() - submittedAt.getTime()) / 86400000));
+  const entityKey = pr.entityId != null ? String(pr.entityId) : 'unassigned';
   return {
     id: pr.prNumber,
     prId: pr.id,
     title: pr.title,
     requester: pr.requester,
     department: pr.department,
-    entity: pr.department,
+    entity: entityKey,
+    entityName: pr.entityName || (entityKey === 'unassigned' ? 'Unassigned Entity' : ''),
+    entityCode: pr.entityCode || '',
     amount: pr.totalAmount,
     priority: pr.priority,
-    status: pr.status === PR_STATUS.PENDING_CFO_APPROVAL ? 'Pending CFO Approval' : pr.statusUI,
+    status:
+      pr.status === PR_STATUS.PENDING_CFO_APPROVAL || pr.status === PR_STATUS.PENDING_RFQ_CFO_APPROVAL
+        ? 'Pending CFO Approval'
+        : pr.statusUI,
     submittedDate: pr.submittedDate,
     dueDate: formatDate(due),
     justification: pr.justification,
-    isHighValue: pr.totalAmount >= 500000,
-    isOverdue: false,
+    isHighValue: Number(pr.totalAmount) >= CFO_HIGH_VALUE_THRESHOLD,
+    isOverdue: daysWaiting > 5,
     vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
-    lineItems: pr.lineItems.map((li) => ({
+    lineItems: (pr.lineItems || []).map((li) => ({
       id: String(li.id),
       itemName: li.itemName || li.description,
       description: li.description,
@@ -3142,7 +3408,7 @@ export function toCfoDashboardFormat(pr) {
       gstPercentage: li.gstPercentage,
       category: li.category,
     })),
-    approvalHistory: pr.approvalHistory.map((h) => ({
+    approvalHistory: (pr.approvalHistory || []).map((h) => ({
       stage: h.stage,
       approver: h.user,
       role: h.role,

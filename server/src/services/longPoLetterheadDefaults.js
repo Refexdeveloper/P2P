@@ -9,6 +9,10 @@ export const LONG_PO_LETTERHEAD_DEFAULTS = {
     '<p style="text-align:center;"><strong>PURCHASE ORDER</strong></p>',
   terms: [
     {
+      termsHeader: 'Quote No',
+      termsDescription: '<p>$aos_quotes_quote_no_c</p>',
+    },
+    {
       termsHeader: 'Inco Terms',
       termsDescription: '<p>$aos_quotes_inco_terms_c</p>',
     },

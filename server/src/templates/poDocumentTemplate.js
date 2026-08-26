@@ -450,20 +450,132 @@ function placeholderText(value, fallback = '—') {
   return escapeHtml(text || fallback).replace(/\n/g, '<br>');
 }
 
+function stripHtmlToText(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isQuoteNoHeader(raw) {
+  const text = stripHtmlToText(raw)
+    .replace(/\./g, '')
+    .replace(/:/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (!text) return false;
+  if (/^(quote\s*no|rfq\s*no|quote\s*number|rfq\s*number|quotation\s*no|quotation\s*number)$/.test(text)) {
+    return true;
+  }
+  return /^(quote|rfq|quotation)\s*(no|number)\b/.test(text) && text.length <= 48;
+}
+
+/** Prefer dedicated quoteNo; else free text typed in the Quote No / RFQ No terms row. */
+function resolveQuoteNo(po) {
+  const td = po.poTermsDetails || {};
+  const direct = String(
+    td.quoteNo || po.quoteNo || td.quote_no || po.quote_no || td.quotationNo || td.rfqNo || td.rfq_no || ''
+  ).trim();
+  if (direct) return direct;
+
+  for (const term of po.termsClauses || []) {
+    const header = term.termsHeader || term.terms_header || '';
+    if (!isQuoteNoHeader(header)) continue;
+    const desc = String(term.termsDescription || term.terms_description || '');
+    const withoutPlaceholders = desc
+      .replace(/\$aos_quotes_[a-z0-9_]+/gi, ' ')
+      .replace(/\$[a-z0-9_]+/gi, ' ');
+    const text = stripHtmlToText(withoutPlaceholders)
+      .replace(/^[—–\-]+|[—–\-]+$/g, '')
+      .trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function quoteNoTermsDescription(quoteNo, existingDesc = '') {
+  if (quoteNo) return `<p>${escapeHtml(quoteNo)}</p>`;
+  const desc = String(existingDesc || '');
+  return desc || '<p></p>';
+}
+
+/** Ensure Quote No is on the header line and in Terms & Conditions (never RFQ No / PR). */
+function withResolvedQuoteNo(po) {
+  const quoteNo = resolveQuoteNo(po);
+  const quoteDate = String(
+    (po.poTermsDetails && (po.poTermsDetails.quoteDate || po.poTermsDetails.quote_date)) ||
+      po.quoteDate ||
+      po.quote_date ||
+      ''
+  ).trim();
+  const td = { ...(po.poTermsDetails || {}), quoteNo, quoteDate };
+  let hasQuoteRow = false;
+  const termsClauses = (po.termsClauses || []).map((term) => {
+    const header = term.termsHeader || term.terms_header || '';
+    if (!isQuoteNoHeader(header)) return term;
+    hasQuoteRow = true;
+    const nextDesc = quoteNoTermsDescription(
+      quoteNo,
+      term.termsDescription || term.terms_description || ''
+    );
+    return {
+      ...term,
+      termsHeader: 'Quote No',
+      terms_header: 'Quote No',
+      termsDescription: nextDesc,
+      terms_description: nextDesc,
+    };
+  });
+  if (!hasQuoteRow) {
+    const nextDesc = quoteNoTermsDescription(quoteNo);
+    termsClauses.unshift({
+      termsHeader: 'Quote No',
+      terms_header: 'Quote No',
+      termsDescription: nextDesc,
+      terms_description: nextDesc,
+      sortOrder: 0,
+    });
+  }
+  return {
+    ...po,
+    quoteNo,
+    quoteDate,
+    poTermsDetails: td,
+    termsClauses,
+  };
+}
+
 /** Replace clause placeholders with live PO entity + vendor + commercial fields */
 function applyClausePlaceholders(html, po) {
   const company = escapeHtml(po.entity || po.entityName || 'Refex Group of Companies');
   const vendor = escapeHtml(po.vendorName || 'Vendor');
   const td = po.poTermsDetails || {};
+  const quoteNo = resolveQuoteNo(po);
+  const deliveryDate = fmtDateDisplay(po.expectedDeliveryDate) || String(po.expectedDeliveryDate || '').trim();
   const isWorkOrder =
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   let out = String(html || '')
+    // Legacy SugarCRM / letterhead labels
+    .replace(/RFQ\s*No\.?/gi, 'Quote No')
+    .replace(/RFQ\s*Number/gi, 'Quote Number')
     .replace(/\[Company Name\]/gi, company)
     .replace(/\[Vendor Name\]/gi, vendor)
     .replace(/\$aos_quotes_company_name_c/gi, company)
     .replace(/\$accounts_aos_quotes_1_name_name/gi, vendor)
+    .replace(/\$aos_quotes_number/gi, placeholderText(quoteNo, ''))
+    .replace(/\$aos_quotes_name/gi, placeholderText(quoteNo, ''))
+    .replace(/\$aos_quotes_quote_no_c/gi, placeholderText(quoteNo, ''))
+    .replace(/\$aos_quotes_rfq_no_c/gi, placeholderText(quoteNo, ''))
     .replace(/\$aos_quotes_inco_terms_c/gi, placeholderText(po.incoterms))
-    .replace(/\$aos_quotes_delivery_schedule_c/gi, placeholderText(po.expectedDeliveryDate))
+    .replace(/\$aos_quotes_delivery_schedule_c/gi, placeholderText(deliveryDate))
     .replace(/\$aos_quotes_shipment_mode_c/gi, placeholderText(po.incoterms))
     .replace(
       /\$aos_quotes_payment_terms_c/gi,
@@ -544,10 +656,19 @@ function termsTheadHtml(po, continued = false) {
 }
 
 function termRowHtml(term, po, index) {
+  const headerRaw = term.termsHeader || term.terms_header || '';
+  const quoteNo = resolveQuoteNo(po);
+  const isQuote = isQuoteNoHeader(headerRaw);
+  const headerHtml = isQuote ? escapeHtml('Quote No') : clauseHeaderHtml(headerRaw, po, 'Term');
+  const cellHtml = isQuote
+    ? quoteNo
+      ? `<p>${escapeHtml(quoteNo)}</p>`
+      : applyClausePlaceholders(term.termsDescription || term.terms_description || '', po)
+    : applyClausePlaceholders(term.termsDescription || term.terms_description || '', po);
   return `
     <tr class="terms-row" data-block="term-${index}">
-      <th class="head-col">${clauseHeaderHtml(term.termsHeader || term.terms_header, po, 'Term')}</th>
-      <td>${applyClausePlaceholders(term.termsDescription || term.terms_description || '', po)}</td>
+      <th class="head-col">${headerHtml}</th>
+      <td>${cellHtml}</td>
     </tr>`;
 }
 
@@ -770,6 +891,8 @@ function adaptLetterheadHeader(html, isWorkOrder) {
     'gi'
   );
   out = out.replace(titleBlock, '');
+  out = out.replace(/RFQ\s*No\.?/gi, 'Quote No').replace(/RFQ\s*Number/gi, 'Quote Number');
+  out = out.replace(/Ref\.?\s*No\s*\/?\s*Date\.?/gi, 'Quote No');
   if (isWorkOrder) {
     out = out
       .replace(/purchase\s+order\s*\/\s*work\s+order(?:\s*\/\s*service\s+order)?/gi, 'Work Order')
@@ -792,6 +915,11 @@ function poIntroHtml(po) {
   const vendorPhone = po.vendorPhone || '—';
   const subjectFallback = (po.poTermsDetails && po.poTermsDetails.subject) || po.prTitle || docLabel;
   const letterheadHtml = adaptLetterheadHeader(po.letterheadHeader, isWorkOrder);
+  const quoteNo = resolveQuoteNo(po);
+  const td = po.poTermsDetails || {};
+  const quoteDate = fmtDateDisplay(td.quoteDate || po.quoteDate) || String(td.quoteDate || po.quoteDate || '').trim();
+  const quoteNoText = quoteNo || '—';
+  const quoteDateText = quoteDate || '—';
   return `
     <div class="title">${docTitle}</div>
     <div class="po-meta">
@@ -808,13 +936,14 @@ function poIntroHtml(po) {
       <p><strong>Email:</strong> <a href="mailto:${escapeHtml(po.vendorEmail)}">${escapeHtml(po.vendorEmail)}</a></p>
       <p><strong>Phone:</strong> ${escapeHtml(vendorPhone)}</p>
       <p>&nbsp;</p>
-      <p><strong>Ref.No/Date.</strong> PR: ${escapeHtml(po.prNumber)}, Date: ${poDate}</p>
+      <p><strong>Quote No:</strong> ${escapeHtml(quoteNoText)} &nbsp;&nbsp; <strong>Date:</strong> ${escapeHtml(quoteDateText)}</p>
       <p>&nbsp;</p>
       <p><strong>Subject:</strong> ${escapeHtml(subjectFallback)}</p>
     </div>`;
 }
 
-export function buildPoDocumentHtml(po, options = {}) {
+export function buildPoDocumentHtml(poInput, options = {}) {
+  const po = withResolvedQuoteNo(poInput || {});
   const isWorkOrder =
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
@@ -868,7 +997,8 @@ ${content}
  * Structured fragments for JS page-packing (PDF only).
  * Preview continues to use buildPoDocumentHtml().
  */
-export function buildPoPdfParts(po, options = {}) {
+export function buildPoPdfParts(poInput, options = {}) {
+  const po = withResolvedQuoteNo(poInput || {});
   const isWorkOrder =
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';

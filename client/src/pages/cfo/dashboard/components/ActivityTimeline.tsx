@@ -50,7 +50,10 @@ export default function ActivityTimeline({ activities }: ActivityTimelineProps) 
         Recent Activity
       </h3>
       <div className="space-y-4">
-        {activities.map((activity, index) => (
+        {activities.length === 0 ? (
+          <p className="text-sm text-gray-500 py-2">No recent CFO activity yet.</p>
+        ) : (
+          activities.map((activity, index) => (
           <div key={activity.id} className="flex gap-3">
             <div className="flex flex-col items-center">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${getActivityColor(activity.type)}`}>
@@ -71,7 +74,8 @@ export default function ActivityTimeline({ activities }: ActivityTimelineProps) 
               <p className="text-xs text-gray-500 mt-1">{activity.timestamp}</p>
             </div>
           </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );

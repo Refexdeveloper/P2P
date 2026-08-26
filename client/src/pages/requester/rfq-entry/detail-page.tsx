@@ -1637,7 +1637,7 @@ export default function RfqEntryDetailPage() {
         r.key === key
           ? { ...r, vendorId, vendorName: vendor?.name || '', vendorEmail: vendor?.email || '' }
           : r
-      );
+    );
       const filled = next.filter((r) => r.vendorId);
       const empty = next.find((r) => !r.vendorId) || newDraftRow();
       return [...filled, empty];
@@ -1659,7 +1659,7 @@ export default function RfqEntryDetailPage() {
                 vendorEmail: vendor.email || '',
               }
             : r
-        );
+      );
         const filled = next.filter((r) => r.vendorId);
         const empty = next.find((r) => !r.vendorId) || newDraftRow();
         return [...filled, empty];
@@ -1875,22 +1875,22 @@ export default function RfqEntryDetailPage() {
             <p className="text-sm text-gray-500 mt-1 max-w-xl">
               {pr?.title || 'Add vendors, get their prices, then pick one to send for approval.'}
             </p>
-            {isScm && config?.requesterSubmittedAt && !config?.finalizedAt && (
+              {isScm && config?.requesterSubmittedAt && !config?.finalizedAt && (
               <span className="inline-flex mt-2 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-semibold">
                 SCM final check
-              </span>
-            )}
+                </span>
+              )}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
             <button type="button" onClick={() => setMode('entry')} className={`px-4 py-2.5 text-sm font-medium ${mode === 'entry' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
               Work on quotes
-            </button>
+                </button>
             <button type="button" onClick={() => setMode('preview')} className={`px-4 py-2.5 text-sm font-medium border-l border-gray-200 ${mode === 'preview' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
               Compare prices
             </button>
-          </div>
+            </div>
           {!isFinalized && (
             <button
               type="button"
@@ -2044,11 +2044,11 @@ export default function RfqEntryDetailPage() {
                     >
                       <span className="w-8 h-8 rounded-lg bg-white border border-teal-100 flex items-center justify-center text-teal-700 shrink-0">
                         <i className="ri-store-2-line" />
-                      </span>
+                  </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-gray-900 truncate">{row.vendorName}</p>
                         <p className="text-xs text-gray-500 truncate">{row.vendorEmail || 'No email on file'}</p>
-                      </div>
+              </div>
                       <button
                         type="button"
                         onClick={() =>
@@ -2061,32 +2061,32 @@ export default function RfqEntryDetailPage() {
                       >
                         Remove
                       </button>
-                    </div>
+              </div>
                   ))}
-                </div>
-              )}
+            </div>
+          )}
 
               {draftRows.filter((r) => !r.vendorId).slice(0, 1).map((row) => (
                 <div key={row.key} className="space-y-2 mb-4">
                   <label className="text-xs font-semibold text-gray-600">Search vendor</label>
                   <VendorSearchSelect
                     vendors={vendorCatalog}
-                    value={row.vendorId}
+                      value={row.vendorId}
                     takenNames={invitedVendorNames}
                     takenIds={new Set(draftRows.filter((r) => r.vendorId).map((r) => r.vendorId))}
                     onChange={(vendorId) => updateDraftVendor(row.key, vendorId)}
                     placeholder="Type name, vendor code, or email"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setAddVendorRowKey(row.key)}
+                    <button
+                      type="button"
+                      onClick={() => setAddVendorRowKey(row.key)}
                     className="text-sm text-teal-700 font-semibold inline-flex items-center gap-1.5"
-                  >
+                    >
                     <i className="ri-user-add-line" />
                     Vendor not in the list? Create new
-                  </button>
-                </div>
-              ))}
+                    </button>
+                  </div>
+                ))}
 
               <p className="text-sm font-semibold text-gray-800 mb-2">How do you want to get the quote?</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -2306,13 +2306,13 @@ export default function RfqEntryDetailPage() {
                               {savingManualId === row.invitationId ? 'Saving…' : 'Save changes'}
                             </button>
                           )}
-                          <button
-                            type="button"
+                            <button
+                              type="button"
                             onClick={closeQuotePopup}
                             className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
-                          >
+                            >
                             Close
-                          </button>
+                            </button>
                         </div>
                       </div>
 
@@ -2336,15 +2336,15 @@ export default function RfqEntryDetailPage() {
                                 {quote?.quotationFileName || row.quotationFileName ? null : <span className="text-red-500">*</span>}
                               </p>
                               {quote?.quotationFileName && quote?.submissionId ? (
-                                <button
-                                  type="button"
+                            <button
+                              type="button"
                                   onClick={() => openFilePreview(quote.submissionId!, quote.quotationFileName)}
                                   className="mb-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-teal-700 hover:bg-teal-50"
-                                >
+                            >
                                   <i className="ri-file-look-line" />
                                   {quote.quotationFileName}
                                   <span className="text-xs text-gray-500">Preview</span>
-                                </button>
+                            </button>
                               ) : null}
                               {quoteFieldsEditable ? (
                                 <label
@@ -2365,7 +2365,7 @@ export default function RfqEntryDetailPage() {
                                     <p className="text-xs text-gray-600 mt-0.5">
                                       PDF, Word, or photo · max 5MB · then type line items and price
                                     </p>
-                                  </div>
+                        </div>
                                   <input
                                     type="file"
                                     accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
@@ -2379,7 +2379,7 @@ export default function RfqEntryDetailPage() {
                               ) : !quote?.quotationFileName ? (
                                 <p className="text-sm text-red-600">No quotation file uploaded.</p>
                               ) : null}
-                            </div>
+                      </div>
 
                             {(() => {
                               const savedLines = (Array.isArray(vals.quoteLineItems)
@@ -2406,7 +2406,7 @@ export default function RfqEntryDetailPage() {
                                       Add another line item
                                     </button>
                                   )}
-                                </div>
+                          </div>
                                 <div className="border border-gray-200 rounded-2xl overflow-hidden">
                                   <table className="w-full text-sm">
                                     <thead className="bg-teal-50/70">
@@ -2475,8 +2475,8 @@ export default function RfqEntryDetailPage() {
                                                   className={inputClass}
                                                   placeholder="Item name"
                                                 />
-                                              ) : (
-                                                <>
+                        ) : (
+                          <>
                                                   <p className="font-medium text-gray-900">{li.description || prItem?.description}</p>
                                                   {(li.category || prItem?.category) ? (
                                                     <p className="text-xs text-gray-400">{li.category || prItem?.category}</p>
@@ -2776,7 +2776,7 @@ export default function RfqEntryDetailPage() {
                               </div>
                             )}
                           </>
-                      </div>
+                                  </div>
                       </div>
                     </div>
                   );
@@ -2817,7 +2817,7 @@ export default function RfqEntryDetailPage() {
             <div className="p-5 space-y-3">
               <label className="block text-sm font-semibold text-gray-700">
                 Why this vendor? <span className="text-red-500">*</span>
-              </label>
+                                </label>
               <textarea
                 value={recommendDraft}
                 onChange={(e) => setRecommendDraft(e.target.value)}
@@ -2830,13 +2830,13 @@ export default function RfqEntryDetailPage() {
               </p>
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
-              <button
-                type="button"
+                                <button
+                                  type="button"
                 onClick={() => setRecommendModal(null)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
+                                >
                 Cancel
-              </button>
+                                </button>
               <button
                 type="button"
                 onClick={() => void confirmRecommend()}
@@ -2844,7 +2844,7 @@ export default function RfqEntryDetailPage() {
               >
                 Save choice
               </button>
-            </div>
+                            </div>
           </div>
         </div>
       )}
@@ -2855,7 +2855,7 @@ export default function RfqEntryDetailPage() {
             <div className="px-5 py-4 border-b border-gray-100">
               <h3 className="text-base font-bold text-gray-900">Save quote with ₹0?</h3>
               <p className="text-sm text-gray-600 mt-1">{zeroSaveAsk.row.vendorName}</p>
-            </div>
+                      </div>
             <div className="p-5 text-sm text-gray-700 space-y-2">
               <p>
                 {zeroSaveAsk.zeroCount > 1
@@ -2864,7 +2864,7 @@ export default function RfqEntryDetailPage() {
                 {zeroSaveAsk.total <= 0 ? ' Total quoted amount is ₹0.' : ''}
               </p>
               <p className="text-xs text-gray-500">Save this quote anyway?</p>
-            </div>
+                    </div>
             <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
               <button
                 type="button"
@@ -2886,9 +2886,9 @@ export default function RfqEntryDetailPage() {
                 Save anyway
               </button>
             </div>
-          </div>
-        </div>
-      )}
+              </div>
+            </div>
+          )}
 
       {quoteAsk && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -2998,7 +2998,7 @@ export default function RfqEntryDetailPage() {
                 >
                   ×
                 </button>
-              </div>
+            </div>
             </div>
             <div className="p-4 flex-1 overflow-auto bg-slate-100/80">
               {/\.pdf$/i.test(filePreview.fileName) ? (

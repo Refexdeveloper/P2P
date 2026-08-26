@@ -1,18 +1,33 @@
 import { useState } from 'react';
-import { entityWisePOSummary } from '../../../mocks/cfo-dashboard-data';
+
+type Entity = {
+  entityName: string;
+  code: string;
+  totalPOAmount: number;
+  color: string;
+};
 
 const formatCurrency = (value: number) => {
   if (value >= 10000000) return `₹${(value / 10000000).toFixed(1)}Cr`;
   if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
-  return `₹${value.toLocaleString()}`;
+  return `₹${Number(value || 0).toLocaleString('en-IN')}`;
 };
 
-export default function EntityPieChart() {
+export default function EntityPieChart({ entities }: { entities: Entity[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const total = entityWisePOSummary.reduce((sum, e) => sum + e.totalPOAmount, 0);
+  const total = entities.reduce((sum, e) => sum + e.totalPOAmount, 0);
+
+  if (!entities.length || total <= 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 p-5">
+        <h3 className="text-sm font-semibold text-gray-800 mb-4">Entity-wise PO Distribution</h3>
+        <p className="text-sm text-gray-500 py-8 text-center">No PO spend data yet.</p>
+      </div>
+    );
+  }
 
   let cumulativePercent = 0;
-  const segments = entityWisePOSummary.map((item) => {
+  const segments = entities.map((item) => {
     const percent = (item.totalPOAmount / total) * 100;
     const startPercent = cumulativePercent;
     cumulativePercent += percent;
@@ -51,7 +66,9 @@ export default function EntityPieChart() {
             <div className="text-center">
               {hoveredIndex !== null ? (
                 <>
-                  <p className="text-xs font-bold text-gray-900">{formatCurrency(segments[hoveredIndex].totalPOAmount)}</p>
+                  <p className="text-xs font-bold text-gray-900">
+                    {formatCurrency(segments[hoveredIndex].totalPOAmount)}
+                  </p>
                   <p className="text-xs text-gray-500">{segments[hoveredIndex].percent.toFixed(0)}%</p>
                 </>
               ) : (
@@ -65,20 +82,25 @@ export default function EntityPieChart() {
         </div>
       </div>
       <div className="space-y-2">
-        {entityWisePOSummary.map((item, index) => (
+        {entities.map((item, index) => (
           <div
-            key={index}
+            key={`${item.entityName}-${index}`}
             className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${hoveredIndex === index ? 'bg-gray-50' : ''}`}
             onMouseEnter={() => setHoveredIndex(index)}
             onMouseLeave={() => setHoveredIndex(null)}
           >
             <div className="flex items-center space-x-2">
-              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }}></div>
+              <div
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: item.color }}
+              ></div>
               <span className="text-xs text-gray-700 truncate max-w-[120px]">{item.entityName}</span>
             </div>
             <div className="text-right">
               <p className="text-xs font-semibold text-gray-900">{formatCurrency(item.totalPOAmount)}</p>
-              <p className="text-xs text-gray-400">{((item.totalPOAmount / total) * 100).toFixed(0)}%</p>
+              <p className="text-xs text-gray-400">
+                {((item.totalPOAmount / total) * 100).toFixed(0)}%
+              </p>
             </div>
           </div>
         ))}

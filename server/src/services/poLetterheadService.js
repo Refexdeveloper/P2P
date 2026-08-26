@@ -37,12 +37,177 @@ export function alignPoTypeWithPurchaseType(poType, purchaseType) {
 }
 
 function mapClause(row) {
+  let termsHeader = String(row.terms_header || '');
+  const plain = termsHeader
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\./g, '')
+    .replace(/:/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (/^(quote\s*no|rfq\s*no|quote\s*number|rfq\s*number)$/.test(plain) || /^(quote|rfq)\s*(no|number)\b/.test(plain)) {
+    termsHeader = 'Quote No';
+  } else {
+    termsHeader = termsHeader.replace(/RFQ\s*No\.?/gi, 'Quote No').replace(/RFQ\s*Number/gi, 'Quote Number');
+  }
+  let termsDescription = String(row.terms_description || '');
+  termsDescription = termsDescription
+    .replace(/\$aos_quotes_rfq_no_c/gi, '$aos_quotes_quote_no_c')
+    .replace(/RFQ\s*No\.?/gi, 'Quote No');
   return {
     id: row.id,
-    termsHeader: row.terms_header,
-    termsDescription: row.terms_description,
+    termsHeader,
+    termsDescription,
     sortOrder: row.sort_order,
   };
+}
+
+function isQuoteNoHeaderPlain(value) {
+  const plain = String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\./g, '')
+    .replace(/:/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (!plain) return false;
+  if (/^(quote\s*no|rfq\s*no|quote\s*number|rfq\s*number)$/.test(plain)) return true;
+  return /^(quote|rfq)\s*(no|number)\b/.test(plain) && plain.length <= 40;
+}
+
+/** Always keep a Quote No (formerly RFQ No) row at the top of Terms & Conditions. */
+export function ensureQuoteNoTermRow(terms = []) {
+  const list = Array.isArray(terms) ? [...terms] : [];
+  const idx = list.findIndex((t) => isQuoteNoHeaderPlain(t.termsHeader || t.terms_header));
+  if (idx >= 0) {
+    const row = { ...list[idx], termsHeader: 'Quote No', terms_header: 'Quote No' };
+    const desc = String(row.termsDescription || row.terms_description || '');
+    if (/\$aos_quotes_rfq_no_c/i.test(desc) || /RFQ\s*No/i.test(desc)) {
+      row.termsDescription = desc
+        .replace(/\$aos_quotes_rfq_no_c/gi, '$aos_quotes_quote_no_c')
+        .replace(/RFQ\s*No\.?/gi, 'Quote No');
+      row.terms_description = row.termsDescription;
+    }
+    list[idx] = row;
+    return list;
+  }
+  return [
+    {
+      termsHeader: 'Quote No',
+      termsDescription: '<p>$aos_quotes_quote_no_c</p>',
+      sortOrder: 0,
+    },
+    ...list,
+  ];
+}
+
+function stripHtmlPlain(html) {
+  return String(html || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeHtmlPlain(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Free text typed in the Quote No terms row (ignores SugarCRM placeholders). */
+export function extractQuoteNoFromTermsDescription(html) {
+  const withoutPlaceholders = String(html || '')
+    .replace(/\$aos_quotes_[a-z0-9_]+/gi, ' ')
+    .replace(/\$[a-z0-9_]+/gi, ' ');
+  const text = stripHtmlPlain(withoutPlaceholders)
+    .replace(/^[—–\-]+|[—–\-]+$/g, '')
+    .trim();
+  return text || '';
+}
+
+/**
+ * Keep Quote No label + value consistent across termsClauses and poTermsDetails
+ * so the Quote No header line and Terms table show the typed value (never RFQ No).
+ */
+export function mergeQuoteNoIntoPoContent(terms = [], poTermsDetails = {}) {
+  const ensured = ensureQuoteNoTermRow(terms);
+  const details = { ...(poTermsDetails || {}) };
+  let quoteNo = String(details.quoteNo || details.quote_no || details.quotationNo || details.rfqNo || '').trim();
+
+  if (!quoteNo) {
+    for (const term of ensured) {
+      const header = term.termsHeader || term.terms_header || '';
+      if (!isQuoteNoHeaderPlain(header)) continue;
+      quoteNo = extractQuoteNoFromTermsDescription(
+        term.termsDescription || term.terms_description || ''
+      );
+      if (quoteNo) break;
+    }
+  }
+
+  const nextTerms = ensured.map((term) => {
+    const header = term.termsHeader || term.terms_header || '';
+    if (!isQuoteNoHeaderPlain(header)) return term;
+    const desc = String(term.termsDescription || term.terms_description || '');
+    const nextDesc = quoteNo
+      ? `<p>${escapeHtmlPlain(quoteNo)}</p>`
+      : desc || '<p>$aos_quotes_quote_no_c</p>';
+    return {
+      ...term,
+      termsHeader: 'Quote No',
+      terms_header: 'Quote No',
+      termsDescription: nextDesc,
+      terms_description: nextDesc,
+    };
+  });
+
+  return {
+    terms: nextTerms,
+    poTermsDetails: { ...details, quoteNo },
+    quoteNo,
+  };
+}
+
+/**
+ * Insert Quote No term into letterhead masters that lost the RFQ/Quote row.
+ */
+async function ensureQuoteNoClauseInDb(poType) {
+  const master = await ensureMaster(poType);
+  const [existing] = await pool.query(
+    `SELECT id, terms_header, terms_description
+     FROM po_letterhead_clauses
+     WHERE master_id = ? AND section_type = 'terms'`,
+    [master.id]
+  );
+  const quoteRow = existing.find((r) => isQuoteNoHeaderPlain(r.terms_header));
+  if (quoteRow) {
+    await pool.query(
+      `UPDATE po_letterhead_clauses
+       SET terms_header = 'Quote No',
+           terms_description = REPLACE(REPLACE(terms_description, '$aos_quotes_rfq_no_c', '$aos_quotes_quote_no_c'), 'RFQ No', 'Quote No'),
+           sort_order = LEAST(sort_order, 1)
+       WHERE id = ?`,
+      [quoteRow.id]
+    );
+    return;
+  }
+  // Shift existing terms down and insert Quote No first
+  await pool.query(
+    `UPDATE po_letterhead_clauses
+     SET sort_order = sort_order + 1
+     WHERE master_id = ? AND section_type = 'terms'`,
+    [master.id]
+  );
+  await pool.query(
+    `INSERT INTO po_letterhead_clauses (master_id, section_type, sort_order, terms_header, terms_description)
+     VALUES (?, 'terms', 1, 'Quote No', ?)`,
+    [master.id, '<p>$aos_quotes_quote_no_c</p>']
+  );
 }
 
 async function ensureMaster(poType) {
@@ -80,7 +245,7 @@ export async function getLetterheadByType(poTypeInput) {
     poTypeLabel: PO_TYPE_LABELS[poType],
     title: master.title,
     letterheadHeader: master.letterhead_header || '',
-    terms,
+    terms: ensureQuoteNoTermRow(terms),
     annexure,
     updatedAt: master.updated_at,
   };

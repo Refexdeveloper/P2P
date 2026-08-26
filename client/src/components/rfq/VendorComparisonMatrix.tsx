@@ -1377,15 +1377,15 @@ export default function VendorComparisonMatrix({
                         className={`px-3 py-3 border-b border-l text-center ${colRev} ${columnFill(isBest, isRecRev, theme.soft)}`}
                       >
                         {vendor ? renderFileActions(col, vendor, 'sm') : '—'}
-                      </td>
+                  </td>
                     );
                   })}
                   <td className={colFiller} aria-hidden="true" />
-                </tr>
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            </tbody>
+          </table>
         </div>
+      </div>
         </section>
       )}
 

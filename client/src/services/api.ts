@@ -318,6 +318,51 @@ export const prApi = {
     request<{ data: { stats: Record<string, number>; departmentBudget: unknown[] } }>(
       '/api/purchase-requests/stats/manager'
     ),
+  cfoDashboard: () =>
+    request<{
+      data: {
+        stats: {
+          totalPendingApprovals: number;
+          highValuePRs: number;
+          approvedThisMonth: number;
+          rejectedThisMonth: number;
+          totalSpendAllEntities: number;
+          pendingAmount?: number;
+          approvedAmountThisMonth?: number;
+        };
+        entities: Array<{
+          id: string;
+          name: string;
+          code: string;
+          allocatedBudget: number;
+          utilizedBudget: number;
+          utilizationPercentage: number;
+          pendingPRsCount: number;
+          pendingAmount: number;
+          approvedAmount: number;
+          color: string;
+        }>;
+        highValueAlerts: Array<{
+          id: string;
+          prId: string;
+          title: string;
+          entity: string;
+          amount: number;
+          priority: string;
+          daysWaiting: number;
+          isOverdue?: boolean;
+        }>;
+        recentActivity: Array<{
+          id: string;
+          type: string;
+          prId: string;
+          entity: string;
+          amount: number;
+          user: string;
+          timestamp: string;
+        }>;
+      };
+    }>('/api/purchase-requests/stats/cfo'),
 };
 
 export const taskApi = {
@@ -592,6 +637,47 @@ export const poApi = {
     request<{ data: { id: number | null; name: string; email: string; role: string } }>(
       '/api/po/scm-manager'
     ),
+  cfoInsights: () =>
+    request<{
+      data: {
+        kpis: {
+          totalPOAmount: number;
+          entityWiseSpend: number;
+          approvedPOAmount: number;
+          pendingPOAmount: number;
+          totalVendorPayments: number;
+          budgetUtilization: number;
+          totalPOCount: number;
+          entityCount: number;
+        };
+        entityWisePOSummary: Array<{
+          entityId: number | null;
+          entityName: string;
+          code: string;
+          totalPOCount: number;
+          totalPOAmount: number;
+          approvedAmount: number;
+          pendingAmount: number;
+          color: string;
+        }>;
+        monthlyPOTrend: Array<Record<string, string | number>>;
+        monthlySeries: Array<{ key: string; label: string; color: string }>;
+        recentPurchaseOrders: Array<{
+          poNumber: string;
+          entity: string;
+          vendorName: string;
+          poAmount: number;
+          poDate: string;
+          status: string;
+        }>;
+        topVendorsByPOAmount: Array<{
+          vendorName: string;
+          entity: string;
+          totalPOAmount: number;
+          poCount: number;
+        }>;
+      };
+    }>('/api/po/stats/cfo'),
   getCreateContext: (prId: number) =>
     request<{ data: { pr: Record<string, unknown>; vendor: Record<string, unknown> } }>(`/api/po/pr/${prId}/context`),
   create: (prId: number, body: Record<string, unknown>) =>

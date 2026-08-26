@@ -463,17 +463,17 @@ export default function CreatePRPage() {
 
         setLineItems((prev) => {
           const fromServer =
-            pr.lineItems.length > 0
-              ? pr.lineItems.map((item, i) => ({
+          pr.lineItems.length > 0
+            ? pr.lineItems.map((item, i) => ({
                   id: String(item.id != null ? `${item.id}-${i}` : `row-${i + 1}`),
-                  itemId: null,
+                itemId: null,
                   itemName: (item as { itemName?: string }).itemName || item.description,
-                  description: item.description,
-                  quantity: item.quantity,
-                  estimatedCost: item.unitCost,
-                  category: item.category,
+                description: item.description,
+                quantity: item.quantity,
+                estimatedCost: item.unitCost,
+                category: item.category,
                   unit: item.unit || 'Nos',
-                  hsnCode: '',
+                hsnCode: '',
                   gstPercentage: Number.isFinite(Number(item.gstPercentage))
                     ? Number(item.gstPercentage)
                     : 18,
@@ -1402,8 +1402,8 @@ export default function CreatePRPage() {
 
   const handleSubmitPR = async () => {
     if (!validateForm()) return;
-    setSubmitAction('submit');
-    setShowConfirmModal(true);
+      setSubmitAction('submit');
+      setShowConfirmModal(true);
     if (prFlow === 'functional') {
       setNextStepLabel(
         selectedApprovalUsers.length > 1
@@ -1737,13 +1737,13 @@ export default function CreatePRPage() {
           await prApi.adminUpdate(id, payload);
           await uploadNewAttachments(id);
           if (silent) return;
-          setCreatedPrNumber(prNumber);
+        setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
           setShowConfirmModal(false);
-          setShowSuccessModal(true);
-          return;
-        }
+        setShowSuccessModal(true);
+        return;
+      }
         if (submit) {
           const res = await prApi.resubmit(id, { ...payload, remarks: resubmitRemarks });
           const data = res.data as {
@@ -1781,7 +1781,7 @@ export default function CreatePRPage() {
           return;
         }
         setShowConfirmModal(false);
-        setShowSuccessModal(true);
+      setShowSuccessModal(true);
       };
 
       // Always resolve from ref/localStorage — never create duplicates while setState is pending.
@@ -1800,7 +1800,7 @@ export default function CreatePRPage() {
         try {
           await finishExisting(targetId);
           return;
-        } catch (err) {
+    } catch (err) {
           if (silent) throw err;
           if (isAdminEditFlow || !isUnusablePersistError(err)) throw err;
           bindSavedDraftId(null);
@@ -2463,15 +2463,15 @@ export default function CreatePRPage() {
                           <p className="text-sm font-medium text-gray-600">No line items yet</p>
                           <p className="text-xs text-gray-400 mt-1">Click Add Line Item to enter the first item</p>
                           {!lineEditor && (
-                            <button
+                    <button
                               type="button"
                               onClick={openAddLineItem}
                               className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer"
-                            >
+                    >
                               <i className="ri-add-line"></i>
                               Add Line Item
-                            </button>
-                          )}
+                    </button>
+                  )}
                         </td>
                       </tr>
                     ) : (
@@ -2518,7 +2518,7 @@ export default function CreatePRPage() {
                             )}
                             <td className="px-3 py-3">
                               <div className="flex items-center justify-end gap-1">
-                                <button
+                      <button
                                   type="button"
                                   onClick={() => openEditLineItem(item)}
                                   className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
@@ -2526,8 +2526,8 @@ export default function CreatePRPage() {
                                   aria-label={`Edit ${item.itemName || item.description || 'line item'}`}
                                 >
                                   <i className="ri-pencil-line text-sm"></i>
-                                </button>
-                                <button
+                      </button>
+                      <button
                                   type="button"
                                   onClick={() => setDeleteLineItemId(item.id)}
                                   className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
@@ -2535,8 +2535,8 @@ export default function CreatePRPage() {
                                   aria-label={`Delete ${item.itemName || item.description || 'line item'}`}
                                 >
                                   <i className="ri-delete-bin-line text-sm"></i>
-                                </button>
-                              </div>
+                      </button>
+                    </div>
                             </td>
                           </tr>
                         );
@@ -2544,8 +2544,8 @@ export default function CreatePRPage() {
                     )}
                   </tbody>
                 </table>
-              </div>
-            </div>
+                  </div>
+                    </div>
           </div>
 
           {/* Total Summary Bar */}
@@ -2563,28 +2563,28 @@ export default function CreatePRPage() {
                 </div>
                 {!hideLinePricing && (
                   <>
-                    <div className="w-px h-8 bg-emerald-200"></div>
-                    <div className="text-center">
+                <div className="w-px h-8 bg-emerald-200"></div>
+                <div className="text-center">
                       <p className="text-xs text-gray-500 mb-0.5">Average Unit Price</p>
-                      <p className="text-lg font-bold text-gray-800">
+                  <p className="text-lg font-bold text-gray-800">
                         {formatMoney(lineItems.length > 0 ? lineItems.reduce((s, i) => s + i.estimatedCost, 0) / lineItems.length : 0, currency, { maximumFractionDigits: 0 })}
-                      </p>
-                    </div>
+                  </p>
+                </div>
                   </>
                 )}
               </div>
               {!hideLinePricing ? (
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
+              <div className="flex items-center gap-3">
+                <div className="text-right">
                     <p className="text-xs text-gray-500 mb-0.5">Estimated Total (incl. GST)</p>
-                    <p className="text-2xl font-extrabold text-emerald-700">
+                  <p className="text-2xl font-extrabold text-emerald-700">
                       {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 flex items-center justify-center bg-emerald-500 rounded-xl">
-                    <i className="ri-money-dollar-circle-line text-white text-xl"></i>
-                  </div>
+                  </p>
                 </div>
+                <div className="w-12 h-12 flex items-center justify-center bg-emerald-500 rounded-xl">
+                  <i className="ri-money-dollar-circle-line text-white text-xl"></i>
+                </div>
+              </div>
               ) : (
                 <p className="text-xs text-teal-800/80 max-w-xs text-right">
                   Own Vendor — unit price, GST and totals are collected during RFQ quotation.
@@ -2754,7 +2754,7 @@ export default function CreatePRPage() {
                           {file.name}
                         </button>
                       ) : (
-                        <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                      <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
                       )}
                       <p className="text-xs text-gray-400">{formatFileSize(file.size)}</p>
                     </div>

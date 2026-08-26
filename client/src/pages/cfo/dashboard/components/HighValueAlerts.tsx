@@ -36,7 +36,10 @@ export default function HighValueAlerts({ alerts }: HighValueAlertsProps) {
         </span>
       </div>
       <div className="space-y-3">
-        {alerts.map(alert => (
+        {alerts.length === 0 ? (
+          <p className="text-sm text-gray-500 py-2">No high-value PRs pending CFO approval.</p>
+        ) : (
+          alerts.map(alert => (
           <div
             key={alert.id}
             className="p-4 bg-gradient-to-r from-red-50 to-orange-50 rounded-lg border border-red-200 hover:shadow-md transition-all cursor-pointer"
@@ -64,7 +67,8 @@ export default function HighValueAlerts({ alerts }: HighValueAlertsProps) {
               </p>
             </div>
           </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath } from './poPdfServ
 import { sendPoVendorNotification, queuePoWorkflowNotification } from './emailService.js';
 import { formatDate, formatDateTime, PR_STATUS } from '../utils/constants.js';
 import { getL1ManagerForEmail } from './refexOneService.js';
-import { getLetterheadByType, alignPoTypeWithPurchaseType } from './poLetterheadService.js';
+import { getLetterheadByType, alignPoTypeWithPurchaseType, mergeQuoteNoIntoPoContent } from './poLetterheadService.js';
 import {
   getActiveLetterheadBranding,
   getLetterheadMasterById,
@@ -310,6 +310,8 @@ export const EMPTY_PO_TERMS_DETAILS = {
   mailingAddress: '',
   reasonForCancellation: '',
   subject: '',
+  quoteNo: '',
+  quoteDate: '',
   locationName: '',
   buyerGstNo: '',
   letterheadLocationId: '',
@@ -802,6 +804,12 @@ async function resolvePoDraftContent(prId, body) {
   const poDate = resolvePoDate(body?.poDate || body?.po_date);
 
   const resolvedPoTermsDetails = normalizePoTermsDetails(bodyPoTermsDetails);
+  if (!resolvedPoTermsDetails.quoteNo) {
+    resolvedPoTermsDetails.quoteNo = String(body?.quoteNo || body?.quote_no || '').trim();
+  }
+  if (!resolvedPoTermsDetails.quoteDate) {
+    resolvedPoTermsDetails.quoteDate = String(body?.quoteDate || body?.quote_date || '').trim();
+  }
   // Prefer free-text payment terms from Terms tab when provided
   const resolvedPaymentTerms =
     String(resolvedPoTermsDetails.paymentTermsText || '').trim() || paymentTerms;
@@ -813,7 +821,11 @@ async function resolvePoDraftContent(prId, body) {
   let resolvedEntity = body?.entity ?? '';
   let resolvedHeaderLogo = body?.headerLogo ?? '';
   let resolvedFooterLogo = body?.footerLogo ?? '';
-  let resolvedTerms = terms;
+  let resolvedTerms = Array.isArray(body?.terms)
+    ? body.terms
+    : Array.isArray(body?.termsClauses)
+      ? body.termsClauses
+      : terms;
   let resolvedAnnexure = annexure;
   const resolvedAnnexureIiHtml = serializeAnnexureIi(
     body?.annexureIiRows || annexureIiHtml || body?.annexureIiHtml || body?.annexure_ii_html || ''
@@ -850,6 +862,10 @@ async function resolvePoDraftContent(prId, body) {
     }
   }
 
+  const quoteMerged = mergeQuoteNoIntoPoContent(resolvedTerms, resolvedPoTermsDetails);
+  resolvedTerms = quoteMerged.terms;
+  Object.assign(resolvedPoTermsDetails, quoteMerged.poTermsDetails);
+
   const mappedLineItems = lineItems.map((item) => {
     const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage ?? item.tax_percentage ?? gstPercentage) || 0));
     const total = lineItemTotal(item.quantity, item.unitPrice);
@@ -881,6 +897,8 @@ async function resolvePoDraftContent(prId, body) {
     poNumber: poNumber || `DRAFT-${pr.prNumber}`,
     createdAt: new Date(),
     prNumber: pr.prNumber,
+    quoteNo: resolvedPoTermsDetails.quoteNo || '',
+    quoteDate: resolvedPoTermsDetails.quoteDate || '',
     prTitle: pr.title,
     department: pr.department,
     requester: pr.requester,
@@ -959,6 +977,12 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
   const poDate = resolvePoDate(body?.poDate || body?.po_date);
 
   const resolvedPoTermsDetails = normalizePoTermsDetails(bodyPoTermsDetails);
+  if (!resolvedPoTermsDetails.quoteNo) {
+    resolvedPoTermsDetails.quoteNo = String(body?.quoteNo || body?.quote_no || '').trim();
+  }
+  if (!resolvedPoTermsDetails.quoteDate) {
+    resolvedPoTermsDetails.quoteDate = String(body?.quoteDate || body?.quote_date || '').trim();
+  }
   const resolvedPaymentTerms =
     String(resolvedPoTermsDetails.paymentTermsText || '').trim() || paymentTerms;
   const resolvedPurchaseTypeEarly = normalizePurchaseType(body?.purchaseType);
@@ -969,7 +993,11 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
   let resolvedEntity = body?.entity ?? '';
   let resolvedHeaderLogo = body?.headerLogo ?? '';
   let resolvedFooterLogo = body?.footerLogo ?? '';
-  let resolvedTerms = terms;
+  let resolvedTerms = Array.isArray(body?.terms)
+    ? body.terms
+    : Array.isArray(body?.termsClauses)
+      ? body.termsClauses
+      : terms;
   let resolvedAnnexure = annexure;
   const resolvedAnnexureIiHtml = serializeAnnexureIi(
     body?.annexureIiRows || annexureIiHtml || body?.annexureIiHtml || body?.annexure_ii_html || ''
@@ -1002,6 +1030,10 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
       /* optional */
     }
   }
+
+  const quoteMerged = mergeQuoteNoIntoPoContent(resolvedTerms, resolvedPoTermsDetails);
+  resolvedTerms = quoteMerged.terms;
+  Object.assign(resolvedPoTermsDetails, quoteMerged.poTermsDetails);
 
   const mappedLineItems = lineItems.map((item) => {
     const taxPercentage = Math.min(
@@ -1037,7 +1069,9 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
   return {
     poNumber: poNumber || 'DRAFT-MANUAL',
     createdAt: new Date(),
-    prNumber: '',
+    prNumber: String(body.prNumber || body.pr_number || '').trim(),
+    quoteNo: resolvedPoTermsDetails.quoteNo || '',
+    quoteDate: resolvedPoTermsDetails.quoteDate || '',
     prTitle: subject || 'Manual Purchase Order',
     department: String(department || '').trim(),
     requester: String(requester || '').trim() || 'SCM Buyer',
@@ -3282,5 +3316,218 @@ export function resolveCancellationAttachment(po, index) {
   return {
     fullPath,
     fileName: String(file.fileName || path.basename(fullPath)),
+  };
+}
+
+const CFO_PO_ENTITY_COLORS = [
+  '#14B8A6',
+  '#F59E0B',
+  '#10B981',
+  '#6366F1',
+  '#3B82F6',
+  '#EC4899',
+  '#8B5CF6',
+  '#F97316',
+];
+
+const CFO_PO_EXCLUDED_STATUSES = ['draft', 'cancelled', 'rejected'];
+const CFO_PO_PENDING_STATUSES = ['pending_approval', 'pending_buyer_verify'];
+const CFO_PO_APPROVED_STATUSES = [
+  'approved',
+  'sent_to_vendor',
+  'awaiting_grn',
+  'grn_completed',
+  'invoice_entry',
+  'pending_accounts_approval',
+  'approved_for_payment',
+  'paid',
+  'imported',
+];
+
+function cfoPoStatusLabel(status) {
+  const s = String(status || '').toLowerCase();
+  if (CFO_PO_PENDING_STATUSES.includes(s)) return 'Pending Approval';
+  if (s === 'rejected') return 'Rejected';
+  if (CFO_PO_APPROVED_STATUSES.includes(s) || s === 'paid') return 'Approved';
+  return status || 'Unknown';
+}
+
+/**
+ * Live CFO Financial Insights: PO KPIs, entity rollups, monthly trend, recent POs, top vendors.
+ */
+export async function getCfoPoInsights() {
+  const excludedPlaceholders = CFO_PO_EXCLUDED_STATUSES.map(() => '?').join(',');
+  const pendingPlaceholders = CFO_PO_PENDING_STATUSES.map(() => '?').join(',');
+  const approvedPlaceholders = CFO_PO_APPROVED_STATUSES.map(() => '?').join(',');
+
+  const [[kpi]] = await pool.query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN status NOT IN (${excludedPlaceholders}) THEN grand_total ELSE 0 END), 0) AS total_po_amount,
+       COALESCE(SUM(CASE WHEN status IN (${approvedPlaceholders}) THEN grand_total ELSE 0 END), 0) AS approved_po_amount,
+       COALESCE(SUM(CASE WHEN status IN (${pendingPlaceholders}) THEN grand_total ELSE 0 END), 0) AS pending_po_amount,
+       COUNT(CASE WHEN status NOT IN (${excludedPlaceholders}) THEN 1 END) AS total_po_count
+     FROM purchase_orders`,
+    [...CFO_PO_EXCLUDED_STATUSES, ...CFO_PO_APPROVED_STATUSES, ...CFO_PO_PENDING_STATUSES]
+  );
+
+  const [[payments]] = await pool.query(
+    `SELECT COALESCE(SUM(invoice_grand_total), 0) AS paid_value
+     FROM invoices
+     WHERE status = 'paid'`
+  );
+
+  const [entityRows] = await pool.query(
+    `SELECT
+       COALESCE(e.id, 0) AS entity_id,
+       COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned') AS entity_name,
+       COALESCE(NULLIF(TRIM(e.code), ''), 'N/A') AS entity_code,
+       COUNT(*) AS total_po_count,
+       COALESCE(SUM(po.grand_total), 0) AS total_po_amount,
+       COALESCE(SUM(CASE WHEN po.status IN (${approvedPlaceholders}) THEN po.grand_total ELSE 0 END), 0) AS approved_amount,
+       COALESCE(SUM(CASE WHEN po.status IN (${pendingPlaceholders}) THEN po.grand_total ELSE 0 END), 0) AS pending_amount
+     FROM purchase_orders po
+     LEFT JOIN entity_masters e ON e.id = po.entity_id
+     WHERE po.status NOT IN (${excludedPlaceholders})
+     GROUP BY COALESCE(e.id, 0),
+              COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned'),
+              COALESCE(NULLIF(TRIM(e.code), ''), 'N/A')
+     ORDER BY total_po_amount DESC`,
+    [...CFO_PO_APPROVED_STATUSES, ...CFO_PO_PENDING_STATUSES, ...CFO_PO_EXCLUDED_STATUSES]
+  );
+
+  const entityWisePOSummary = entityRows.map((row, idx) => ({
+    entityId: Number(row.entity_id) || null,
+    entityName: row.entity_name,
+    code: row.entity_code,
+    totalPOCount: Number(row.total_po_count || 0),
+    totalPOAmount: Number(row.total_po_amount || 0),
+    approvedAmount: Number(row.approved_amount || 0),
+    pendingAmount: Number(row.pending_amount || 0),
+    color: CFO_PO_ENTITY_COLORS[idx % CFO_PO_ENTITY_COLORS.length],
+  }));
+
+  const topEntities = entityWisePOSummary.slice(0, 4);
+  const seriesKeys = topEntities.map((e, i) => ({
+    key: `e${i}`,
+    label: e.code !== 'N/A' ? e.code : e.entityName.slice(0, 12),
+    entityName: e.entityName,
+    color: e.color,
+    matchNames: [e.entityName, e.code].filter(Boolean),
+  }));
+
+  const [monthRows] = await pool.query(
+    `SELECT
+       DATE_FORMAT(COALESCE(po.po_date, po.created_at), '%Y-%m') AS ym,
+       DATE_FORMAT(COALESCE(po.po_date, po.created_at), '%b') AS month_label,
+       COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned') AS entity_name,
+       COALESCE(SUM(po.grand_total), 0) AS amount
+     FROM purchase_orders po
+     LEFT JOIN entity_masters e ON e.id = po.entity_id
+     WHERE po.status NOT IN (${excludedPlaceholders})
+       AND COALESCE(po.po_date, po.created_at) >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
+     GROUP BY ym, month_label, entity_name
+     ORDER BY ym ASC`,
+    [...CFO_PO_EXCLUDED_STATUSES]
+  );
+
+  const monthMap = new Map();
+  for (const row of monthRows) {
+    if (!monthMap.has(row.ym)) {
+      const point = { month: row.month_label, ym: row.ym, total: 0 };
+      for (const s of seriesKeys) point[s.key] = 0;
+      monthMap.set(row.ym, point);
+    }
+    const point = monthMap.get(row.ym);
+    const amount = Number(row.amount || 0);
+    point.total += amount;
+    const series = seriesKeys.find((s) => s.matchNames.includes(row.entity_name));
+    if (series) point[series.key] += amount;
+  }
+
+  // Ensure last 6 calendar months exist even if empty
+  const monthlyPOTrend = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i -= 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleString('en-US', { month: 'short' });
+    if (monthMap.has(ym)) {
+      monthlyPOTrend.push(monthMap.get(ym));
+    } else {
+      const empty = { month: label, ym, total: 0 };
+      for (const s of seriesKeys) empty[s.key] = 0;
+      monthlyPOTrend.push(empty);
+    }
+  }
+
+  const [recentRows] = await pool.query(
+    `SELECT
+       po.po_number,
+       po.vendor_name,
+       po.grand_total,
+       po.status,
+       COALESCE(po.po_date, po.created_at) AS po_date,
+       COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), '—') AS entity_name
+     FROM purchase_orders po
+     LEFT JOIN entity_masters e ON e.id = po.entity_id
+     WHERE po.status NOT IN ('draft', 'cancelled')
+     ORDER BY COALESCE(po.po_date, po.created_at) DESC, po.id DESC
+     LIMIT 12`
+  );
+
+  const recentPurchaseOrders = recentRows.map((row) => ({
+    poNumber: row.po_number,
+    entity: row.entity_name,
+    vendorName: row.vendor_name || '—',
+    poAmount: Number(row.grand_total || 0),
+    poDate: formatDate(row.po_date),
+    status: cfoPoStatusLabel(row.status),
+  }));
+
+  const [vendorRows] = await pool.query(
+    `SELECT
+       COALESCE(NULLIF(TRIM(po.vendor_name), ''), 'Unknown Vendor') AS vendor_name,
+       COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), '—') AS entity_name,
+       COUNT(*) AS po_count,
+       COALESCE(SUM(po.grand_total), 0) AS total_po_amount
+     FROM purchase_orders po
+     LEFT JOIN entity_masters e ON e.id = po.entity_id
+     WHERE po.status NOT IN (${excludedPlaceholders})
+     GROUP BY vendor_name, entity_name
+     ORDER BY total_po_amount DESC
+     LIMIT 10`,
+    [...CFO_PO_EXCLUDED_STATUSES]
+  );
+
+  const topVendorsByPOAmount = vendorRows.map((row) => ({
+    vendorName: row.vendor_name,
+    entity: row.entity_name,
+    totalPOAmount: Number(row.total_po_amount || 0),
+    poCount: Number(row.po_count || 0),
+  }));
+
+  const totalPoAmount = Number(kpi?.total_po_amount || 0);
+  const approvedPoAmount = Number(kpi?.approved_po_amount || 0);
+  const pendingPoAmount = Number(kpi?.pending_po_amount || 0);
+  const vendorPayments = Number(payments?.paid_value || 0);
+  const budgetUtilization =
+    totalPoAmount > 0 ? Math.round((approvedPoAmount / totalPoAmount) * 1000) / 10 : 0;
+
+  return {
+    kpis: {
+      totalPOAmount: totalPoAmount,
+      entityWiseSpend: totalPoAmount,
+      approvedPOAmount: approvedPoAmount,
+      pendingPOAmount: pendingPoAmount,
+      totalVendorPayments: vendorPayments,
+      budgetUtilization,
+      totalPOCount: Number(kpi?.total_po_count || 0),
+      entityCount: entityWisePOSummary.length,
+    },
+    entityWisePOSummary,
+    monthlyPOTrend,
+    monthlySeries: seriesKeys.map(({ key, label, color }) => ({ key, label, color })),
+    recentPurchaseOrders,
+    topVendorsByPOAmount,
   };
 }

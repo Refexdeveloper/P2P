@@ -11,6 +11,7 @@ import {
   listRequesterPurchaseRequests,
   getRequesterStats,
   getManagerStats,
+  getCfoDashboard,
   processApproval,
   updatePurchaseRequest,
   updatePrBillingDelivery,
@@ -145,6 +146,19 @@ router.get(
         percentage: d.allocated ? Math.round((d.utilized / d.allocated) * 100) : 0,
       }));
       res.json({ data: { stats, departmentBudget } });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+router.get(
+  '/stats/cfo',
+  requireRolesOrPermissions(['CFO'], ['nav.cfo_dashboard', 'nav.tasks', 'nav.rfq_approval']),
+  async (req, res) => {
+    try {
+      const data = await getCfoDashboard();
+      res.json({ data });
     } catch (err) {
       res.status(500).json({ message: err.message });
     }

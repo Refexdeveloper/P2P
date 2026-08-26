@@ -59,6 +59,75 @@ function plainTextFromHtml(html: string) {
     .trim();
 }
 
+function isQuoteNoHeader(html: string) {
+  const text = plainTextFromHtml(html)
+    .replace(/\./g, '')
+    .replace(/:/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (!text) return false;
+  if (/^(quote\s*no|rfq\s*no|quote\s*number|rfq\s*number)$/.test(text)) return true;
+  // Letterhead masters sometimes use longer labels
+  return /^(quote|rfq)\s*(no|number)\b/.test(text) && text.length <= 40;
+}
+
+/** Free text in Quote No / RFQ No terms description (ignores SugarCRM placeholders). */
+function extractQuoteNoFromDescription(html: string): string | null {
+  const withoutPlaceholders = String(html || '')
+    .replace(/\$aos_quotes_[a-z0-9_]+/gi, ' ')
+    .replace(/\$[a-z0-9_]+/gi, ' ');
+  const text = plainTextFromHtml(withoutPlaceholders)
+    .replace(/^[—–\-]+|[—–\-]+$/g, '')
+    .trim();
+  if (!text) return null;
+  return text;
+}
+
+function escapeHtmlText(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function syncQuoteNoIntoTermsClauses(
+  clauses: PoLetterheadClause[],
+  quoteNo: string
+): PoLetterheadClause[] {
+  const value = String(quoteNo || '').trim();
+  const description = value
+    ? `<p>${escapeHtmlText(value)}</p>`
+    : '<p>$aos_quotes_quote_no_c</p>';
+  let touched = false;
+  const next = (clauses || []).map((clause) => {
+    if (!isQuoteNoHeader(String(clause.termsHeader || ''))) return clause;
+    touched = true;
+    return {
+      ...clause,
+      termsHeader: 'Quote No',
+      termsDescription: description,
+    };
+  });
+  if (touched) return next;
+  return [
+    {
+      termsHeader: 'Quote No',
+      termsDescription: description,
+      sortOrder: 0,
+    },
+    ...next.map((c, i) => ({ ...c, sortOrder: i + 1 })),
+  ];
+}
+
+function renameRfqHeadersToQuoteNo(clauses: PoLetterheadClause[]): PoLetterheadClause[] {
+  return (clauses || []).map((clause) => {
+    if (!isQuoteNoHeader(String(clause.termsHeader || ''))) return clause;
+    return { ...clause, termsHeader: 'Quote No' };
+  });
+}
+
 function calcLineTotal(quantity: number, unitPrice: number) {
   const gross = (Number(quantity) || 0) * (Number(unitPrice) || 0);
   return Math.round(gross * 100) / 100;
@@ -164,6 +233,8 @@ const EMPTY_PO_TERMS_DETAILS = {
   mailingAddress: '',
   reasonForCancellation: '',
   subject: '',
+  quoteNo: '',
+  quoteDate: '',
   locationName: '',
   buyerGstNo: '',
   letterheadLocationId: '',
@@ -186,6 +257,23 @@ function buildInvoicingAddressFromLocation(loc: LetterheadLocationRecord) {
 }
 
 type PoTermsDetails = typeof EMPTY_PO_TERMS_DETAILS;
+
+/** Sync Quote No both ways before save / preview so Terms & Conditions always has the row. */
+function withSyncedQuoteNo(
+  clauses: PoLetterheadClause[],
+  details: PoTermsDetails
+): { terms: PoLetterheadClause[]; poTermsDetails: PoTermsDetails; quoteNo: string } {
+  const renamed = renameRfqHeadersToQuoteNo(clauses);
+  const quoteRow = renamed.find((c) => isQuoteNoHeader(String(c.termsHeader || '')));
+  const fromField = String(details.quoteNo || '').trim();
+  const fromTerms = extractQuoteNoFromDescription(String(quoteRow?.termsDescription || '')) || '';
+  const quoteNo = fromField || fromTerms;
+  return {
+    terms: syncQuoteNoIntoTermsClauses(renamed, quoteNo),
+    poTermsDetails: { ...details, quoteNo },
+    quoteNo,
+  };
+}
 
 /** Incoterms® 2020 — all 11 ICC rules (latest edition; no 2021 release) */
 const INCOTERMS_OPTIONS = [
@@ -260,6 +348,7 @@ function adaptWordingForDocumentType(
       .replace(new RegExp(`Work${DOC_WORD_GAP}Order`, 'g'), 'Purchase$1Order')
       .replace(new RegExp(`work${DOC_WORD_GAP}order`, 'gi'), 'purchase$1order');
   }
+  out = out.replace(/RFQ\s*No\.?/gi, 'Quote No').replace(/RFQ\s*Number/gi, 'Quote Number');
   return out;
 }
 
@@ -267,14 +356,16 @@ function adaptClausesForDocumentType(
   clauses: PoLetterheadClause[],
   documentType: 'purchase_order' | 'work_order'
 ): PoLetterheadClause[] {
-  return (clauses || []).map((clause) => ({
-    ...clause,
-    termsHeader: adaptWordingForDocumentType(String(clause.termsHeader || ''), documentType),
-    termsDescription: adaptWordingForDocumentType(
-      String(clause.termsDescription || ''),
-      documentType
-    ),
-  }));
+  return renameRfqHeadersToQuoteNo(
+    (clauses || []).map((clause) => ({
+      ...clause,
+      termsHeader: adaptWordingForDocumentType(String(clause.termsHeader || ''), documentType),
+      termsDescription: adaptWordingForDocumentType(
+        String(clause.termsDescription || ''),
+        documentType
+      ),
+    }))
+  );
 }
 
 /** Letterhead master embeds "PURCHASE ORDER" — hide/adapt for Work Order preview */
@@ -1239,7 +1330,6 @@ export default function CreatePOPage() {
       setLetterheadHeader(
         adaptWordingForDocumentType(String(po.letterheadHeader || ''), loadedDocType)
       );
-      setTermsClauses(adaptClausesForDocumentType(loadedTerms, loadedDocType));
       setAnnexureClauses(adaptClausesForDocumentType(loadedAnnexure, loadedDocType));
       {
         const loadedIi = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '');
@@ -1248,34 +1338,47 @@ export default function CreatePOPage() {
       {
         const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
         const addr = loadedDetails.siteAddress || String(po.deliveryAddress || '');
+        const adaptedTerms = adaptClausesForDocumentType(loadedTerms, loadedDocType);
+        const quoteFromTerms = adaptedTerms.find((c) => isQuoteNoHeader(String(c.termsHeader || '')));
+        const extractedQuote =
+          extractQuoteNoFromDescription(String(quoteFromTerms?.termsDescription || '')) || '';
+        const quoteNo = String(loadedDetails.quoteNo || extractedQuote || '').trim();
         setDeliveryAddress(addr);
         setPoTermsDetails({
           ...loadedDetails,
           paymentTermsText: loadedDetails.paymentTermsText || String(po.paymentTerms || ''),
           siteAddress: addr,
+          quoteNo,
+          quoteDate: toInputDate(loadedDetails.quoteDate) || '',
         });
+        setTermsClauses(syncQuoteNoIntoTermsClauses(adaptedTerms, quoteNo));
         setLocationGstNo(loadedDetails.buyerGstNo || '');
         setLetterheadLocationKey(loadedDetails.letterheadLocationId || '');
-      }
 
-      // If PO has no saved clauses, pull defaults from PO Type Master
-      if (!loadedTerms.length || !loadedAnnexure.length || !po.letterheadHeader) {
-        try {
-          const masterRes = await poLetterheadApi.get(loadedType);
-          const master = masterRes.data;
-          if (!po.letterheadHeader) {
-            setLetterheadHeader(
-              adaptWordingForDocumentType(master.letterheadHeader || '', loadedDocType)
-            );
+        // If PO has no saved clauses, pull defaults from PO Type Master
+        if (!loadedTerms.length || !loadedAnnexure.length || !po.letterheadHeader) {
+          try {
+            const masterRes = await poLetterheadApi.get(loadedType);
+            const master = masterRes.data;
+            if (!po.letterheadHeader) {
+              setLetterheadHeader(
+                adaptWordingForDocumentType(master.letterheadHeader || '', loadedDocType)
+              );
+            }
+            if (!loadedTerms.length) {
+              setTermsClauses(
+                syncQuoteNoIntoTermsClauses(
+                  adaptClausesForDocumentType(master.terms || [], loadedDocType),
+                  quoteNo
+                )
+              );
+            }
+            if (!loadedAnnexure.length) {
+              setAnnexureClauses(adaptClausesForDocumentType(master.annexure || [], loadedDocType));
+            }
+          } catch {
+            /* keep empty if master missing */
           }
-          if (!loadedTerms.length) {
-            setTermsClauses(adaptClausesForDocumentType(master.terms || [], loadedDocType));
-          }
-          if (!loadedAnnexure.length) {
-            setAnnexureClauses(adaptClausesForDocumentType(master.annexure || [], loadedDocType));
-          }
-        } catch {
-          /* keep empty if master missing */
         }
       }
       setLineItems(
@@ -1524,6 +1627,25 @@ export default function CreatePOPage() {
     if (key === 'siteAddress') {
       setDeliveryAddress(value);
     }
+    if (key === 'quoteNo') {
+      setTermsClauses((prev) => syncQuoteNoIntoTermsClauses(prev, value));
+    }
+  };
+
+  const handleTermsClausesChange = (next: PoLetterheadClause[]) => {
+    const renamed = renameRfqHeadersToQuoteNo(
+      adaptClausesForDocumentType(next, documentType)
+    );
+    setTermsClauses(renamed);
+    const quoteRow = renamed.find((c) => isQuoteNoHeader(String(c.termsHeader || '')));
+    if (!quoteRow) return;
+    const extracted = extractQuoteNoFromDescription(String(quoteRow.termsDescription || ''));
+    // Only update quoteNo when the terms row has real typed text.
+    // Do not clear an existing Quote No when the row still only has $placeholders.
+    if (extracted == null) return;
+    setPoTermsDetails((prev) =>
+      prev.quoteNo === extracted ? prev : { ...prev, quoteNo: extracted }
+    );
   };
 
   const saveSiteAddressLookup = async () => {
@@ -1630,8 +1752,18 @@ export default function CreatePOPage() {
     setGstPercentage(effectiveGstPercentage);
   }, [effectiveGstPercentage]);
 
-  const buildPreviewPayload = useCallback(() => ({
+  const buildPreviewPayload = useCallback(() => {
+    const synced = withSyncedQuoteNo(termsClauses, {
+      ...poTermsDetails,
+      siteAddress: poTermsDetails.siteAddress || deliveryAddress,
+      paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
+    });
+
+    return {
     poNumber: poNumber || undefined,
+    prNumber: isManualMode ? undefined : pr?.prNumber || undefined,
+    quoteNo: synced.quoteNo || undefined,
+    quoteDate: synced.poTermsDetails.quoteDate || undefined,
     lineItems: lineItems.map((i) => ({
       itemName: i.itemName || '',
       description: i.description,
@@ -1658,14 +1790,12 @@ export default function CreatePOPage() {
     entityId: isManualMode ? manualEntityId || undefined : pr?.entityId || undefined,
     headerLogo,
     footerLogo,
-    terms: termsClauses,
+    terms: synced.terms,
+    termsClauses: synced.terms,
     annexure: annexureClauses,
     annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
     annexureIiHtml: serializeAnnexureIi(annexureIiRows),
-    poTermsDetails: {
-      ...poTermsDetails,
-      siteAddress: poTermsDetails.siteAddress || deliveryAddress,
-    },
+    poTermsDetails: synced.poTermsDetails,
     purchaseType: documentType,
     vendorName: isManualMode
       ? manualVendorName.trim() || importedVendorName.trim() || undefined
@@ -1676,7 +1806,8 @@ export default function CreatePOPage() {
     title: poTermsDetails.subject || pr?.title || undefined,
     department: pr?.department || undefined,
     requester: pr?.requester || undefined,
-  }), [
+  };
+  }, [
     poNumber,
     lineItems,
     deliveryAddress,
@@ -1883,17 +2014,25 @@ export default function CreatePOPage() {
         entity,
         headerLogo,
         footerLogo,
-        terms: filterNonEmptyClauses(termsClauses),
+        terms: filterNonEmptyClauses(
+          withSyncedQuoteNo(termsClauses, {
+            ...poTermsDetails,
+            paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
+            siteAddress: poTermsDetails.siteAddress || deliveryAddress,
+            letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
+            buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
+          }).terms
+        ),
         annexure: filterNonEmptyClauses(annexureClauses),
         annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
         annexureIiHtml: serializeAnnexureIi(annexureIiRows),
-        poTermsDetails: {
+        poTermsDetails: withSyncedQuoteNo(termsClauses, {
           ...poTermsDetails,
           paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
           siteAddress: poTermsDetails.siteAddress || deliveryAddress,
           letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
           buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
-        },
+        }).poTermsDetails,
         referencePoNumber: referencePoNumber.trim() || undefined,
         purchaseType: documentType,
       };
@@ -1957,9 +2096,6 @@ export default function CreatePOPage() {
     setEntity(String(po.entity || ''));
     setHeaderLogo(String(po.headerLogo || ''));
     setFooterLogo(String(po.footerLogo || ''));
-    setTermsClauses(
-      adaptClausesForDocumentType((po.termsClauses as PoLetterheadClause[]) || [], nextDocType)
-    );
     setAnnexureClauses(
       adaptClausesForDocumentType((po.annexureClauses as PoLetterheadClause[]) || [], nextDocType)
     );
@@ -1970,12 +2106,23 @@ export default function CreatePOPage() {
     {
       const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
       const addr = loadedDetails.siteAddress || String(po.deliveryAddress || '');
+      const adaptedTerms = adaptClausesForDocumentType(
+        (po.termsClauses as PoLetterheadClause[]) || [],
+        nextDocType
+      );
+      const quoteFromTerms = adaptedTerms.find((c) => isQuoteNoHeader(String(c.termsHeader || '')));
+      const extractedQuote =
+        extractQuoteNoFromDescription(String(quoteFromTerms?.termsDescription || '')) || '';
+      const quoteNo = String(loadedDetails.quoteNo || extractedQuote || '').trim();
       setDeliveryAddress(addr);
       setPoTermsDetails({
         ...loadedDetails,
         paymentTermsText: loadedDetails.paymentTermsText || String(po.paymentTerms || ''),
         siteAddress: addr,
+        quoteNo,
+        quoteDate: toInputDate(loadedDetails.quoteDate) || '',
       });
+      setTermsClauses(syncQuoteNoIntoTermsClauses(adaptedTerms, quoteNo));
     }
 
     const refLineItems = ((po.lineItems as Array<Record<string, unknown>>) || []).map((li, index) => {
@@ -2206,18 +2353,27 @@ export default function CreatePOPage() {
         entity,
         headerLogo,
         footerLogo,
-        terms: filterNonEmptyClauses(termsClauses),
+        terms: filterNonEmptyClauses(
+          withSyncedQuoteNo(termsClauses, {
+            ...poTermsDetails,
+            paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
+            siteAddress: poTermsDetails.siteAddress || deliveryAddress,
+            letterheadLocationId:
+              poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
+            buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
+          }).terms
+        ),
         annexure: filterNonEmptyClauses(annexureClauses),
         annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
         annexureIiHtml: serializeAnnexureIi(annexureIiRows),
-        poTermsDetails: {
+        poTermsDetails: withSyncedQuoteNo(termsClauses, {
           ...poTermsDetails,
           paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
           siteAddress: poTermsDetails.siteAddress || deliveryAddress,
           letterheadLocationId:
             poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
           buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
-        },
+        }).poTermsDetails,
         referencePoNumber: referencePoNumber.trim() || undefined,
         changeSummary: changeSummary.trim() || undefined,
         purchaseType: documentType,
@@ -3257,7 +3413,7 @@ export default function CreatePOPage() {
                 descriptionPlaceholder={`Clause details (shown on ${docLabel} PDF)`}
                 emptyHint={`No terms yet — reload from master or add rows. Edits appear on the ${docLabel} PDF.`}
                 clauses={termsClauses}
-                onChange={setTermsClauses}
+                onChange={handleTermsClausesChange}
                 onReloadFromMaster={reloadClausesFromMaster}
                 reloadDisabled={letterheadLoading}
                 docLabel={docLabel}
@@ -3688,6 +3844,34 @@ export default function CreatePOPage() {
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
                       />
                     </div>
+                      <div className="space-y-1.5 md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold text-gray-700">
+                            Quote No
+                          </label>
+                          <input
+                            type="text"
+                            value={poTermsDetails.quoteNo || ''}
+                            onChange={(e) => updatePoTermsField('quoteNo', e.target.value)}
+                            placeholder="Vendor quotation number"
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-semibold text-gray-700">
+                            Quote Date
+                          </label>
+                          <input
+                            type="date"
+                            value={poTermsDetails.quoteDate || ''}
+                            onChange={(e) => updatePoTermsField('quoteDate', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                        <p className="text-[11px] text-gray-500 sm:col-span-2">
+                          Prints on one PDF line as Quote No: (number) Date: (quotation date).
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
