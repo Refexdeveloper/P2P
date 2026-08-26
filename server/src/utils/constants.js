@@ -49,7 +49,7 @@ export const POST_RFQ_ROLE_MAP = {
     nextStatus: PR_STATUS.PENDING_RFQ_L2_APPROVAL,
     nextStage: STAGE.RFQ_L2_REVIEW,
     label: 'L1 Manager Vendor Final Approval',
-    showFullNegotiation: false,
+    showFullNegotiation: true,
   },
   'PR Manager': {
     status: PR_STATUS.PENDING_RFQ_L2_APPROVAL,
@@ -58,7 +58,7 @@ export const POST_RFQ_ROLE_MAP = {
     nextStatus: PR_STATUS.PENDING_RFQ_CFO_APPROVAL,
     nextStage: STAGE.RFQ_CFO_REVIEW,
     label: 'L2 Manager Approval',
-    showFullNegotiation: false,
+    showFullNegotiation: true,
   },
   CFO: {
     status: PR_STATUS.PENDING_RFQ_CFO_APPROVAL,

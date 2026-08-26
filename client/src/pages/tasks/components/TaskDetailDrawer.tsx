@@ -2,8 +2,6 @@ import PriorityBadge from '../../../components/base/PriorityBadge';
 import StatusBadge from '../../../components/base/StatusBadge';
 import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatDate';
 import PrVendorQuotationsPanel from '../../../components/feature/PrVendorQuotationsPanel';
-import { useAuth } from '../../../contexts/AuthContext';
-import { isL1OrL2Manager } from '../../../utils/roleDisplay';
 import { useState } from 'react';
 
 interface LineItem {
@@ -85,8 +83,6 @@ export default function TaskDetailDrawer({
   onReject,
   onReturn,
 }: TaskDetailDrawerProps) {
-  const { user } = useAuth();
-  const hideQuoteDesign = isL1OrL2Manager(user?.role);
   const status = String(task.status || '').toLowerCase();
   const showActions = canShowActions(status, canAct);
   const lineItems = Array.isArray(task.lineItems) ? task.lineItems : [];
@@ -94,7 +90,7 @@ export default function TaskDetailDrawer({
   const [hasQuotes, setHasQuotes] = useState(false);
   const isOwnVendor = task.vendorSelection === 'own';
   /** Own Vendor / quoted PRs: show name, description, qty — hide unit cost & total */
-  const hideLinePricing = hideQuoteDesign || isOwnVendor || hasQuotes;
+  const hideLinePricing = isOwnVendor || hasQuotes;
 
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
@@ -176,15 +172,11 @@ export default function TaskDetailDrawer({
                   <p className="text-sm font-medium text-gray-900">{formatDate(task.requiredDate)}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-0.5">
-                    {hideQuoteDesign ? 'Stage' : hideLinePricing ? 'Vendor Path' : 'Total Amount'}
-                  </p>
+                  <p className="text-xs text-gray-500 mb-0.5">{hideLinePricing ? 'Vendor Path' : 'Total Amount'}</p>
                   <p className="text-sm font-bold text-gray-900">
-                    {hideQuoteDesign
-                      ? 'RFQ approval'
-                      : hideLinePricing
-                        ? 'Own Vendor'
-                        : `₹${Number(task.totalAmount || 0).toLocaleString('en-IN')}`}
+                    {hideLinePricing
+                      ? 'Own Vendor'
+                      : `₹${Number(task.totalAmount || 0).toLocaleString('en-IN')}`}
                   </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
@@ -208,14 +200,13 @@ export default function TaskDetailDrawer({
               </p>
             </div>
 
-            {task.prId && !hideQuoteDesign ? (
+            {task.prId ? (
               <div className={hasQuotes ? '' : 'hidden'}>
                 <PrVendorQuotationsPanel prId={task.prId} onPresenceChange={setHasQuotes} />
               </div>
             ) : null}
 
-            {/* Line Items — hidden for L1 / L2 RFQ approval */}
-            {!hideQuoteDesign && (
+            {/* Line Items */}
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                 Line Items ({lineItems.length})
@@ -293,7 +284,6 @@ export default function TaskDetailDrawer({
                 </table>
               </div>
             </div>
-            )}
 
             {/* Approval History */}
             <div>
