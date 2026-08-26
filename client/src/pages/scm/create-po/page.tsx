@@ -3004,7 +3004,7 @@ export default function CreatePOPage() {
                         <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-20">Qty</th>
                         <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-24">Unit</th>
                         <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-36">Unit Price</th>
-                        <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-24">Tax %</th>
+                        <th className="px-2 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-24">GST</th>
                         <th className="px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-32">Total</th>
                       </tr>
                     </thead>

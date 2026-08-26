@@ -369,12 +369,12 @@ function tableCloseFoot(colSpan) {
 function priceColgroupHtml() {
   return `<colgroup>
     <col class="col-sl" style="width:5%">
-    <col class="col-description" style="width:43%">
-    <col class="col-uom" style="width:6%">
+    <col class="col-description" style="width:40%">
+    <col class="col-uom" style="width:8%">
     <col class="col-qty" style="width:6%">
-    <col class="col-unit-rate" style="width:16%">
-    <col class="col-tax" style="width:7%">
-    <col class="col-total" style="width:17%">
+    <col class="col-unit-rate" style="width:15%">
+    <col class="col-tax" style="width:8%">
+    <col class="col-total" style="width:18%">
   </colgroup>`;
 }
 
@@ -402,11 +402,11 @@ function priceScheduleTheadHtml(continued = false) {
     <tr class="col-heads">
       <th class="col-sl">SI.No</th>
       <th class="col-description">Description Of Work</th>
-      <th class="col-uom">UOM</th>
+      <th class="col-uom"><span class="nowrap">UOM</span></th>
       <th class="col-qty">Qty</th>
       <th class="col-rate col-unit-rate">Unit Rate</th>
-      <th class="col-tax">Tax %</th>
-      <th class="col-total">TOTAL Amt</th>
+      <th class="col-tax"><span class="nowrap">GST</span></th>
+      <th class="col-total"><span class="nowrap">TotalAmount</span></th>
     </tr>
     </thead>`;
 }
@@ -414,7 +414,7 @@ function priceScheduleTheadHtml(continued = false) {
 function priceTotalsBodyHtml(po) {
   return `
     <tr class="total"><td colspan="6">SubTotal</td>${amountCellHtml(po.subtotal, po.currency, 'col-total total-amount-cell')}</tr>
-    <tr class="total"><td colspan="6">Add: Tax (per line)</td>${amountCellHtml(po.taxAmount, po.currency, 'col-total total-amount-cell')}</tr>
+    <tr class="total"><td colspan="6">Add: GST</td>${amountCellHtml(po.taxAmount, po.currency, 'col-total total-amount-cell')}</tr>
     <tr class="total"><td colspan="6">GrandTotal</td>${amountCellHtml(po.grandTotal, po.currency, 'col-total total-amount-cell')}</tr>
     <tr class="amount-words-row">
       <td colspan="7">
@@ -908,7 +908,6 @@ function poIntroHtml(po) {
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
   const docTitle = isWorkOrder ? 'WORK ORDER' : 'PURCHASE ORDER';
-  const poDate = fmtDateDisplay(po.poDate || po.createdAt || new Date());
   const vendorAddress = po.vendorAddress || 'Address not available';
   const vendorGst = po.vendorGst || '—';
   const vendorPan = po.vendorPan || '—';
@@ -924,7 +923,6 @@ function poIntroHtml(po) {
     <div class="title">${docTitle}</div>
     <div class="po-meta">
       <span>${escapeHtml(docLabel)} No. &nbsp;${escapeHtml(po.poNumber)}</span>
-      <span>Date: ${poDate}</span>
     </div>
     ${letterheadHtml ? `<div class="letterhead-block">${letterheadHtml}</div>` : ''}
     <div class="info-box">

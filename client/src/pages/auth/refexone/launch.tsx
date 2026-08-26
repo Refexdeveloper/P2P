@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { resolvePostLoginPath, useAuth } from '../../../contexts/AuthContext';
 import { authApi } from '../../../services/api';
+import {
+  buildRefexOneSamlSsoUrl,
+  getSamlReturnUrl,
+  goToRefexOneSamlSso,
+} from '../../../utils/refexOneUrl';
 
 /**
  * RefexOne app-launcher entry.
@@ -101,15 +106,16 @@ export default function RefexOneLaunchPage() {
       })();
 
     if (!found) {
-      setStatus('No RefexOne session on this link — opening RefexOne…');
-      // User must launch P2P from RefexOne My Apps (SAML) when already logged in there
+      setStatus('No RefexOne session on this link — opening RefexOne SSO…');
+      const returnUrl = getSamlReturnUrl('/');
       authApi
         .refexOneConfig()
         .then((cfg) => {
-          window.location.replace((cfg.refexoneUrl || 'https://refexone.com').replace(/\/$/, ''));
+          const sso = buildRefexOneSamlSsoUrl(cfg, returnUrl);
+          goToRefexOneSamlSso(sso || authApi.refexOneSsoStartUrl(returnUrl));
         })
         .catch(() => {
-          window.location.replace('https://refexone.com');
+          goToRefexOneSamlSso(authApi.refexOneSsoStartUrl(returnUrl));
         });
       return;
     }

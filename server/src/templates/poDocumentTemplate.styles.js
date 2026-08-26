@@ -140,6 +140,17 @@ export const PO_STYLES = `
     word-break: normal;
     white-space: normal;
   }
+  body.po-document-pdf-pages table.price th.col-uom,
+  body.po-document-pdf-pages table.price td.col-uom,
+  body.po-document-pdf-pages table.price th.col-tax,
+  body.po-document-pdf-pages table.price td.col-tax,
+  body.po-document-pdf-pages table.price th.col-total,
+  body.po-document-pdf-pages table.price th.col-qty,
+  body.po-document-pdf-pages table.price th.col-sl {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+  }
   body.po-document-pdf-pages .table-frame {
     border: none;
   }
@@ -501,6 +512,7 @@ export const PO_STYLES = `
 
   .title { text-align: center; font-weight: bold; font-size: 16px; letter-spacing: 1px; margin: 8px 0 12px 0; }
   .po-meta { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 10px; font-size: 13px; width: 100%; }
+  .nowrap { white-space: nowrap !important; word-break: keep-all !important; overflow-wrap: normal !important; }
 
   .info-box {
     border: 1px solid #000;
@@ -706,13 +718,28 @@ export const PO_STYLES = `
     padding-left: 2px;
     padding-right: 2px;
   }
-  table.price col.col-description { width: 43%; }
-  table.price col.col-uom { width: 6%; }
+  table.price col.col-description { width: 40%; }
+  table.price col.col-uom { width: 8%; }
   table.price col.col-qty { width: 6%; }
   table.price col.col-unit-rate,
-  table.price col.col-rate { width: 16%; }
-  table.price col.col-tax { width: 7%; }
-  table.price col.col-total { width: 17%; }
+  table.price col.col-rate { width: 15%; }
+  table.price col.col-tax { width: 8%; }
+  table.price col.col-total { width: 18%; }
+  table.price th.col-uom,
+  table.price td.col-uom,
+  table.price th.col-qty,
+  table.price td.col-qty,
+  table.price th.col-tax,
+  table.price td.col-tax,
+  table.price th.col-sl,
+  table.price th.col-total,
+  table.price th.col-rate,
+  table.price th.col-unit-rate {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    word-wrap: normal !important;
+  }
   table.price td.center, table.price th { text-align: center; }
   table.price td.right { text-align: right; }
   table.price td.amount-cell,

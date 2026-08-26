@@ -156,8 +156,22 @@ export const authApi = {
       refexoneUrl: string;
       launchUrl?: string;
       homeUrl?: string;
-      saml?: { entityId: string; acsUrl: string; homeUrl: string };
+      samlAppId?: string | null;
+      ssoUrl?: string | null;
+      saml?: {
+        entityId: string;
+        acsUrl: string;
+        homeUrl: string;
+        appId?: string | null;
+        ssoUrl?: string | null;
+      };
     }>('/api/auth/refexone/config'),
+  /** 302 to https://refexone.com/api/saml/{APP_ID}/sso?RelayState= */
+  refexOneSsoStartUrl: (returnUrl?: string) => {
+    const qs = new URLSearchParams();
+    if (returnUrl) qs.set('returnUrl', returnUrl);
+    return `${API_URL}/api/auth/refexone/sso${qs.toString() ? `?${qs}` : ''}`;
+  },
   me: () => request<{ user: AuthUser }>('/api/auth/me'),
 };
 

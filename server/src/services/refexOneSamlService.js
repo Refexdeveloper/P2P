@@ -45,6 +45,40 @@ function apiUrl(path = '') {
   return `${safeBase}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+export function getRefexOneSamlAppId() {
+  return String(process.env.REFEXONE_SAML_APP_ID || '').trim();
+}
+
+/**
+ * SP-initiated SSO: https://refexone.com/api/saml/{APP_ID}/sso?RelayState={return_url}
+ */
+export function getRefexOneSamlSsoUrl(relayState) {
+  const appId = getRefexOneSamlAppId();
+  if (!appId) return null;
+  const apiBase = (process.env.REFEXONE_API_URL || 'https://refexone.com/api').replace(/\/$/, '');
+  const url = new URL(`${apiBase}/saml/${encodeURIComponent(appId)}/sso`);
+  if (relayState) url.searchParams.set('RelayState', String(relayState));
+  return url.toString();
+}
+
+export function resolveSamlRelayState(requested, fallbackAppUrl) {
+  const appBase = fallbackAppUrl || appUrl();
+  try {
+    const target = new URL(String(requested || appBase), appBase);
+    if (target.origin !== new URL(appBase).origin) return appBase;
+    // Never send the user back to /login (that would loop into SSO)
+    const path = target.pathname.replace(/\/$/, '') || '/';
+    if (path === '/login' || path === '/admin/login' || path.startsWith('/auth/refexone')) {
+      target.pathname = '/';
+      target.search = '';
+      target.hash = '';
+    }
+    return target.toString();
+  } catch {
+    return appBase;
+  }
+}
+
 export function getRefexOneSamlConfig() {
   const entityId =
     process.env.REFEXONE_SAML_ENTITY_ID || `${appUrl()}/auth/refexone/saml`;
@@ -53,13 +87,18 @@ export function getRefexOneSamlConfig() {
     apiUrl('/api/auth/refexone/saml/acs');
   const launchUrl = appUrl('/auth/refexone/launch');
   const homeUrl = launchUrl;
+  const appBase = appUrl();
+  const samlAppId = getRefexOneSamlAppId();
+  const ssoUrl = getRefexOneSamlSsoUrl(appBase);
   return {
     entityId,
     acsUrl,
     homeUrl,
     launchUrl,
-    appUrl: appUrl(),
+    appUrl: appBase,
     refexoneUrl: (process.env.REFEXONE_WEB_URL || 'https://refexone.com').replace(/\/$/, ''),
+    samlAppId,
+    ssoUrl,
   };
 }
 

@@ -2,7 +2,11 @@
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { resolvePostLoginPath, useAuth } from '../../contexts/AuthContext';
 import { authApi } from '../../services/api';
-import { getRefexOneUrl, goToRefexOne } from '../../utils/refexOneUrl';
+import {
+  buildRefexOneSamlSsoUrl,
+  getSamlReturnUrl,
+  goToRefexOneSamlSso,
+} from '../../utils/refexOneUrl';
 
 const REFEXONE_TOKEN_KEYS = [
   'access_token',
@@ -65,7 +69,7 @@ export default function LoginPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [refexoneUrl, setRefexoneUrl] = useState(getRefexOneUrl());
+  const [ssoUrl, setSsoUrl] = useState<string | null>(null);
   const [status, setStatus] = useState('Checking RefexOne session…');
 
   const redirectPath = (() => {
@@ -77,13 +81,17 @@ export default function LoginPage() {
   })();
 
   useEffect(() => {
+    const returnUrl = getSamlReturnUrl(redirectPath);
     authApi
       .refexOneConfig()
       .then((cfg) => {
-        if (cfg.refexoneUrl) setRefexoneUrl(cfg.refexoneUrl.replace(/\/$/, ''));
+        const built = buildRefexOneSamlSsoUrl(cfg, returnUrl);
+        setSsoUrl(built || authApi.refexOneSsoStartUrl(returnUrl));
       })
-      .catch(() => undefined);
-  }, []);
+      .catch(() => {
+        setSsoUrl(authApi.refexOneSsoStartUrl(returnUrl));
+      });
+  }, [redirectPath]);
 
   useEffect(() => {
     if (authBootLoading) return;
@@ -127,7 +135,7 @@ export default function LoginPage() {
           if (!cancelled) {
             clearTokenFromUrl(searchParams);
             setStatus('Redirecting to RefexOne…');
-            window.location.replace(refexoneUrl || getRefexOneUrl());
+            goToRefexOneSamlSso(ssoUrl || authApi.refexOneSsoStartUrl(getSamlReturnUrl(redirectPath)));
           }
         }
       })();
@@ -136,10 +144,11 @@ export default function LoginPage() {
       };
     }
 
-    // No session → RefexOne login
+    // No session → RefexOne SAML SSO
+    if (!ssoUrl) return;
     setStatus('Redirecting to RefexOne…');
     const t = window.setTimeout(() => {
-      window.location.replace(refexoneUrl || getRefexOneUrl());
+      goToRefexOneSamlSso(ssoUrl);
     }, 400);
     return () => window.clearTimeout(t);
   }, [
@@ -151,7 +160,7 @@ export default function LoginPage() {
     searchParams,
     loginWithRefexOneToken,
     completeSessionLogin,
-    refexoneUrl,
+    ssoUrl,
   ]);
 
   return (
@@ -163,7 +172,9 @@ export default function LoginPage() {
         <div className="mt-6 flex flex-col gap-2">
           <button
             type="button"
-            onClick={() => goToRefexOne()}
+            onClick={() =>
+              goToRefexOneSamlSso(ssoUrl || authApi.refexOneSsoStartUrl(getSamlReturnUrl(redirectPath)))
+            }
             className="text-sm text-indigo-600 hover:underline cursor-pointer"
           >
             Continue to RefexOne now

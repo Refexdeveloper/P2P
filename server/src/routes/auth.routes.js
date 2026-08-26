@@ -12,7 +12,9 @@ import {
 } from '../services/refexOneService.js';
 import {
   getRefexOneSamlConfig,
+  getRefexOneSamlSsoUrl,
   parseRefexOneSamlResponse,
+  resolveSamlRelayState,
 } from '../services/refexOneSamlService.js';
 
 const router = Router();
@@ -74,14 +76,14 @@ async function completeSamlLoginAndRedirect(res, userRow, relayState) {
   const authUser = await enrichAuthUser(userRow);
   const token = signUserToken(authUser);
   const { launchUrl, appUrl } = getRefexOneSamlConfig();
+  const resolved = resolveSamlRelayState(relayState, appUrl);
 
   let target;
   try {
-    target = relayState ? new URL(relayState, appUrl) : new URL(launchUrl);
+    target = new URL(resolved);
   } catch {
     target = new URL(launchUrl);
   }
-  // Only allow redirects back to our app
   if (target.origin !== new URL(appUrl).origin) {
     target = new URL(launchUrl);
   }
@@ -224,13 +226,35 @@ router.get('/refexone/config', (_req, res) => {
     /** Set this as HOME URL in RefexOne app launcher */
     launchUrl: saml.launchUrl,
     homeUrl: saml.homeUrl,
+    samlAppId: saml.samlAppId || null,
+    /** SP-initiated SSO (RelayState defaults to P2P home) */
+    ssoUrl: saml.ssoUrl,
     /** Values for RefexOne "Add SAML App" form */
     saml: {
       entityId: saml.entityId,
       acsUrl: saml.acsUrl,
       homeUrl: saml.homeUrl,
+      appId: saml.samlAppId || null,
+      ssoUrl: saml.ssoUrl,
     },
   });
+});
+
+/**
+ * Start RefexOne SAML SSO:
+ * 302 → https://refexone.com/api/saml/{APP_ID}/sso?RelayState={return_url}
+ */
+router.get('/refexone/sso', (req, res) => {
+  const saml = getRefexOneSamlConfig();
+  const returnUrl = resolveSamlRelayState(
+    req.query.returnUrl || req.query.RelayState || req.query.redirect,
+    saml.appUrl
+  );
+  const ssoUrl = getRefexOneSamlSsoUrl(returnUrl);
+  if (!ssoUrl) {
+    return res.redirect(302, saml.refexoneUrl);
+  }
+  return res.redirect(302, ssoUrl);
 });
 
 /**
@@ -284,7 +308,7 @@ router.get('/refexone/saml/acs', (_req, res) => {
   <ul>
     <li><strong>Entity ID:</strong> <code>${saml.entityId}</code></li>
     <li><strong>ACS URL:</strong> <code>${saml.acsUrl}</code></li>
-    <li><strong>HOME URL:</strong> <code>${saml.homeUrl}</code></li>
+    <li><strong>SAML SSO:</strong> <code>${saml.ssoUrl || 'Set REFEXONE_SAML_APP_ID'}</code></li>
   </ul>
   <p>If clicking the app only opens HOME without SSO, keep these ACS/HOME values and ask RefexOne admin to enable IdP-initiated SAML for this app.</p>
 </body></html>`);
