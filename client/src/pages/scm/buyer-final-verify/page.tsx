@@ -135,7 +135,7 @@ export default function BuyerFinalVerifyPage() {
     setModal({ open: true, type, po });
     setRemarks(
       type === 'verify'
-        ? 'Final verified — notify requester and approvers'
+        ? 'Final verified — requester, approvers, and SCM team notified (no vendor mail)'
         : type === 'sendback'
           ? ''
           : ''
@@ -163,7 +163,7 @@ export default function BuyerFinalVerifyPage() {
     try {
       if (modal.type === 'verify') {
         const res = await poApi.finalVerify(modal.po.id, remarks.trim());
-        showToast(res.message || `${modal.po.poNumber} verified — requester and approvers notified`, 'success');
+        showToast(res.message || `${modal.po.poNumber} verified — requester, approvers, and SCM team notified`, 'success');
       } else if (modal.type === 'sendback') {
         const res = await poApi.sendBackFinalVerify(modal.po.id, remarks.trim());
         showToast(res.message || `${modal.po.poNumber} sent back to manager`, 'success');
@@ -186,7 +186,7 @@ export default function BuyerFinalVerifyPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">SCM Buyer — Final Verify</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Review Manager-signed POs — verify (notifies requester and approvers only), send back, or reject
+          Review Manager-signed POs — verify (notifies requester, approvers, and SCM team with signed PO). Vendor is not emailed.
         </p>
       </div>
 
@@ -231,7 +231,7 @@ export default function BuyerFinalVerifyPage() {
           <div>
             <h2 className="text-base font-bold text-gray-900">Signed POs awaiting buyer verify</h2>
             <p className="text-xs text-gray-400 mt-1">
-              Edit PO if needed, then verify to notify requester and approvers only (no vendor mail)
+              Edit PO if needed, then verify to notify requester, approvers, and SCM team with the signed PO (no vendor mail)
             </p>
           </div>
           <div className="relative">
@@ -509,7 +509,7 @@ export default function BuyerFinalVerifyPage() {
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 {modal.type === 'verify'
-                  ? 'Email goes to the requester, L1, and PR approvers only. Vendor is not copied.'
+                  ? 'Email goes to the requester, approvers, and SCM team with the signed PO attached. Vendor is not copied.'
                   : modal.type === 'sendback'
                     ? 'Signature is cleared and PO returns to manager approval queue'
                     : 'PO will be marked rejected and will not be sent to vendor'}

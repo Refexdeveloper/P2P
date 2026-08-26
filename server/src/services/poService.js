@@ -2494,15 +2494,54 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   let parties = { emails: [], name: updated.requester || 'User' };
   try {
     parties = await collectRequesterAndApproverEmails(updated, {
-      excludeEmails: [user.email, updated.vendorEmail],
+      excludeEmails: [updated.vendorEmail],
     });
   } catch (err) {
     console.warn('Final-verify notify lookup failed:', err.message);
   }
+
+  try {
+    const scmBuyers = await getScmBuyerNotifyEmails();
+    const scmManagers = await getScmManagerNotifyEmails();
+    const exclude = new Set(
+      [updated.vendorEmail, updated.vendor_email]
+        .map((e) => String(e || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+    parties.emails = [...new Set([...parties.emails, ...scmBuyers, ...scmManagers])]
+      .map((e) => String(e || '').trim())
+      .filter(
+        (e) =>
+          e &&
+          e.includes('@') &&
+          !exclude.has(e.toLowerCase()) &&
+          !e.toLowerCase().endsWith('@imported.local')
+      );
+  } catch (err) {
+    console.warn('Final-verify SCM team lookup failed:', err.message);
+  }
+
+  const signedFile = updated.signedPdfPath || updated.signed_pdf_path || updated.pdfPath || updated.pdf_path;
+  const signedFull = signedFile
+    ? path.isAbsolute(signedFile)
+      ? signedFile
+      : path.join(PO_UPLOAD_DIR, signedFile)
+    : '';
+  const attachments =
+    signedFull && fs.existsSync(signedFull)
+      ? [
+          {
+            filename: `${updated.poNumber || 'PO'}_signed.pdf`,
+            path: signedFull,
+            contentType: 'application/pdf',
+          },
+        ]
+      : [];
+
   if (parties.emails.length) {
     queuePoWorkflowNotification(updated, {
       action: 'verified',
-      stageLabel: 'PO Final Verified',
+      stageLabel: 'PO signed — SCM team copy',
       recipientEmails: parties.emails,
       recipientName: parties.name,
       actorName: user.name,
@@ -2512,12 +2551,13 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
       ctaLabel: 'Track PO',
       bccOps: false,
       notifyWhatsApp: false,
+      attachments,
     });
   } else {
-    console.warn(`No requester/approver emails for final-verify ${updated.poNumber}`);
+    console.warn(`No requester/approver/SCM emails for final-verify ${updated.poNumber}`);
   }
 
-  // Vendor mail is a separate step on Vendor PO Acceptance — never sent here
+  // Vendor mail is a separate optional step — never sent from final verify
   return updated;
 }
 

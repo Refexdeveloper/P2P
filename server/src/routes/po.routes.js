@@ -625,7 +625,7 @@ router.post('/:id/final-verify', requireRoles('SCM Buyer'), async (req, res) => 
     const data = await finalVerifyPurchaseOrder(req.user, Number(req.params.id), req.body?.remarks);
     res.json({
       data,
-      message: 'PO final-verified. Requester and approvers notified. Vendor is not emailed from this step.',
+      message: 'PO final-verified. Requester, approvers, and SCM team notified with signed PO. Vendor is not emailed.',
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

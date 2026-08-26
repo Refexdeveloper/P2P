@@ -72,7 +72,7 @@ export function buildPoWorkflowEmail({
               : action === 'sendback'
                 ? ` a purchase order was sent back by <strong style="color:#fff;">${escapeHtml(actorName || roleDisplay || 'Approver')}</strong>.`
                 : action === 'verified'
-                  ? ` the purchase order was final-verified by <strong style="color:#fff;">${escapeHtml(actorName || 'SCM Buyer')}</strong>. This notice is for requester and approvers only.`
+                  ? ` the signed purchase order was final-verified by <strong style="color:#fff;">${escapeHtml(actorName || 'SCM Buyer')}</strong>. This mail goes to the requester, approvers, and SCM team only — the vendor is not emailed.`
                 : ` a purchase order was rejected by <strong style="color:#fff;">${escapeHtml(actorName || roleDisplay || 'Approver')}</strong>.`
           }
         </div>
@@ -92,6 +92,11 @@ export function buildPoWorkflowEmail({
               ${
                 actorName || roleDisplay
                   ? `<div><strong>By:</strong> ${escapeHtml(actorName || '')}${roleDisplay ? ` (${escapeHtml(roleDisplay)})` : ''}</div>`
+                  : ''
+              }
+              ${
+                action === 'verified'
+                  ? `<div style="margin-top:12px;font-size:13px;color:#047857;"><strong>Signed PO</strong> is attached for SCM team. Vendor is not copied on this mail.</div>`
                   : ''
               }
             </div>

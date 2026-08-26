@@ -996,10 +996,11 @@ export async function sendPoWorkflowNotification(po, {
   portalUrl,
   ctaLabel,
   bccOps = true,
+  attachments = [],
 }) {
   const vendorLower = String(po?.vendorEmail || po?.vendor_email || '').trim().toLowerCase();
   let emails = [...new Set((recipientEmails || []).map((e) => String(e || '').trim()).filter(Boolean))];
-  if (action === 'verified' && vendorLower) {
+  if (vendorLower) {
     emails = emails.filter((e) => e.toLowerCase() !== vendorLower);
   }
   if (!emails.length) {
@@ -1038,7 +1039,7 @@ export async function sendPoWorkflowNotification(po, {
 
   console.log(`PO workflow mail (${action}) → ${emails.join(', ')} for ${po?.poNumber || po?.id}`);
 
-  return sendMailToRecipients(emails, subject, html, text, [], {
+  return sendMailToRecipients(emails, subject, html, text, attachments || [], {
     bcc,
     emailType: 'po_workflow',
     poId: po?.id || po?.poId || null,
