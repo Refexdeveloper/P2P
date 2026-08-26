@@ -2,11 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { resolvePostLoginPath, useAuth } from '../../../contexts/AuthContext';
 import { authApi } from '../../../services/api';
-import {
-  buildRefexOneSamlSsoUrl,
-  getSamlReturnUrl,
-  goToRefexOneSamlSso,
-} from '../../../utils/refexOneUrl';
+import { getUnauthenticatedSsoUrl, goToRefexOneSamlSso } from '../../../utils/refexOneUrl';
 
 /**
  * RefexOne app-launcher entry.
@@ -107,16 +103,7 @@ export default function RefexOneLaunchPage() {
 
     if (!found) {
       setStatus('No RefexOne session on this link — opening RefexOne SSO…');
-      const returnUrl = getSamlReturnUrl('/');
-      authApi
-        .refexOneConfig()
-        .then((cfg) => {
-          const sso = buildRefexOneSamlSsoUrl(cfg, returnUrl);
-          goToRefexOneSamlSso(sso || authApi.refexOneSsoStartUrl(returnUrl));
-        })
-        .catch(() => {
-          goToRefexOneSamlSso(authApi.refexOneSsoStartUrl(returnUrl));
-        });
+      goToRefexOneSamlSso(getUnauthenticatedSsoUrl('/'));
       return;
     }
 

@@ -1,9 +1,13 @@
-/** RefexOne portal — login / logout entry */
+/** RefexOne portal */
 export const DEFAULT_REFEXONE_URL = 'https://refexone.com';
 
+/** Live P2P app (RelayState after SSO). */
+export const DEFAULT_P2P_APP_URL = 'https://p2p-backend-645830234926.asia-south1.run.app';
+
+/** RefexOne SAML App ID for P2P — set in code, not env */
+export const DEFAULT_REFEXONE_SAML_APP_ID = 'bcc7387a-613a-4607-ae97-028fbdf5dd3b';
+
 export function getRefexOneUrl(): string {
-  const fromEnv = String(import.meta.env.VITE_REFEXONE_WEB_URL || '').trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, '');
   return DEFAULT_REFEXONE_URL;
 }
 
@@ -14,19 +18,28 @@ export type RefexOneSsoConfig = {
   saml?: { appId?: string | null; ssoUrl?: string | null };
 };
 
-function envSamlAppId(): string {
-  return String(import.meta.env.VITE_REFEXONE_SAML_APP_ID || '').trim();
+function publicP2pOrigin(): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : DEFAULT_P2P_APP_URL;
+  if (/localhost|127\.0\.0\.1/i.test(origin)) return DEFAULT_P2P_APP_URL;
+  return origin.replace(/\/$/, '');
 }
 
 /** Safe return URL after SSO (never /login — that would loop). */
 export function getSamlReturnUrl(redirectPath?: string): string {
-  const origin = window.location.origin;
+  const origin = publicP2pOrigin();
   const raw = String(redirectPath || '').trim();
   if (!raw || raw.startsWith('http')) {
     if (raw.startsWith('http')) {
       try {
         const u = new URL(raw);
-        if (u.origin === origin && u.pathname !== '/login' && u.pathname !== '/admin/login') {
+        const allowed =
+          u.origin === origin ||
+          u.origin === DEFAULT_P2P_APP_URL ||
+          u.origin === (typeof window !== 'undefined' ? window.location.origin : '');
+        if (allowed && u.pathname !== '/login' && u.pathname !== '/admin/login') {
+          if (/localhost|127\.0\.0\.1/i.test(u.hostname)) {
+            return `${DEFAULT_P2P_APP_URL}${u.pathname}${u.search}${u.hash}`;
+          }
           return u.toString();
         }
       } catch {
@@ -46,23 +59,17 @@ export function getSamlReturnUrl(redirectPath?: string): string {
  * https://refexone.com/api/saml/{APP_ID}/sso?RelayState={return_url}
  */
 export function buildRefexOneSamlSsoUrl(
-  cfg: RefexOneSsoConfig | null | undefined,
+  _cfg: RefexOneSsoConfig | null | undefined,
   returnUrl: string
-): string | null {
-  const appId = String(cfg?.samlAppId || cfg?.saml?.appId || envSamlAppId() || '').trim();
-  const existing = String(cfg?.ssoUrl || cfg?.saml?.ssoUrl || '').trim();
-  if (existing) {
-    try {
-      const url = new URL(existing);
-      url.searchParams.set('RelayState', returnUrl);
-      return url.toString();
-    } catch {
-      /* build from app id */
-    }
-  }
-  if (!appId) return null;
-  const web = (cfg?.refexoneUrl || getRefexOneUrl()).replace(/\/$/, '');
+): string {
+  const web = DEFAULT_REFEXONE_URL.replace(/\/$/, '');
+  const appId = DEFAULT_REFEXONE_SAML_APP_ID;
   return `${web}/api/saml/${encodeURIComponent(appId)}/sso?RelayState=${encodeURIComponent(returnUrl)}`;
+}
+
+/** Unauthenticated redirect: RefexOne SSO → live P2P. */
+export function getUnauthenticatedSsoUrl(returnPath?: string): string {
+  return buildRefexOneSamlSsoUrl(null, getSamlReturnUrl(returnPath));
 }
 
 /** Full-page navigate to RefexOne portal (logout). */
@@ -71,6 +78,6 @@ export function goToRefexOne(): void {
 }
 
 /** Full-page navigate to RefexOne SAML SSO (login). */
-export function goToRefexOneSamlSso(url: string): void {
-  window.location.replace(url);
+export function goToRefexOneSamlSso(url?: string): void {
+  window.location.replace(url || getUnauthenticatedSsoUrl());
 }

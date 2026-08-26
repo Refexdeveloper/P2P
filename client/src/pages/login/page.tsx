@@ -1,12 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { resolvePostLoginPath, useAuth } from '../../contexts/AuthContext';
-import { authApi } from '../../services/api';
-import {
-  buildRefexOneSamlSsoUrl,
-  getSamlReturnUrl,
-  goToRefexOneSamlSso,
-} from '../../utils/refexOneUrl';
+import { getUnauthenticatedSsoUrl, goToRefexOneSamlSso } from '../../utils/refexOneUrl';
 
 const REFEXONE_TOKEN_KEYS = [
   'access_token',
@@ -81,16 +76,7 @@ export default function LoginPage() {
   })();
 
   useEffect(() => {
-    const returnUrl = getSamlReturnUrl(redirectPath);
-    authApi
-      .refexOneConfig()
-      .then((cfg) => {
-        const built = buildRefexOneSamlSsoUrl(cfg, returnUrl);
-        setSsoUrl(built || authApi.refexOneSsoStartUrl(returnUrl));
-      })
-      .catch(() => {
-        setSsoUrl(authApi.refexOneSsoStartUrl(returnUrl));
-      });
+    setSsoUrl(getUnauthenticatedSsoUrl(redirectPath));
   }, [redirectPath]);
 
   useEffect(() => {
@@ -135,7 +121,7 @@ export default function LoginPage() {
           if (!cancelled) {
             clearTokenFromUrl(searchParams);
             setStatus('Redirecting to RefexOne…');
-            goToRefexOneSamlSso(ssoUrl || authApi.refexOneSsoStartUrl(getSamlReturnUrl(redirectPath)));
+            goToRefexOneSamlSso(ssoUrl || getUnauthenticatedSsoUrl(redirectPath));
           }
         }
       })();
@@ -173,7 +159,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() =>
-              goToRefexOneSamlSso(ssoUrl || authApi.refexOneSsoStartUrl(getSamlReturnUrl(redirectPath)))
+              goToRefexOneSamlSso(ssoUrl || getUnauthenticatedSsoUrl(redirectPath))
             }
             className="text-sm text-indigo-600 hover:underline cursor-pointer"
           >

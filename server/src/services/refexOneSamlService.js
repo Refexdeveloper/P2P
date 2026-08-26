@@ -45,11 +45,13 @@ function apiUrl(path = '') {
   return `${safeBase}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-/** RefexOne SAML App ID (P2P). Override with REFEXONE_SAML_APP_ID. */
+/** RefexOne SAML — hardcoded in code (not env). */
+export const DEFAULT_REFEXONE_WEB_URL = 'https://refexone.com';
+export const DEFAULT_REFEXONE_API_URL = 'https://refexone.com/api';
 export const DEFAULT_REFEXONE_SAML_APP_ID = 'bcc7387a-613a-4607-ae97-028fbdf5dd3b';
 
 export function getRefexOneSamlAppId() {
-  return String(process.env.REFEXONE_SAML_APP_ID || DEFAULT_REFEXONE_SAML_APP_ID).trim();
+  return DEFAULT_REFEXONE_SAML_APP_ID;
 }
 
 /**
@@ -57,8 +59,7 @@ export function getRefexOneSamlAppId() {
  */
 export function getRefexOneSamlSsoUrl(relayState) {
   const appId = getRefexOneSamlAppId();
-  if (!appId) return null;
-  const apiBase = (process.env.REFEXONE_API_URL || 'https://refexone.com/api').replace(/\/$/, '');
+  const apiBase = DEFAULT_REFEXONE_API_URL.replace(/\/$/, '');
   const url = new URL(`${apiBase}/saml/${encodeURIComponent(appId)}/sso`);
   if (relayState) url.searchParams.set('RelayState', String(relayState));
   return url.toString();
@@ -145,7 +146,7 @@ export function getRefexOneSamlConfig() {
     homeUrl,
     launchUrl,
     appUrl: appBase,
-    refexoneUrl: (process.env.REFEXONE_WEB_URL || 'https://refexone.com').replace(/\/$/, ''),
+    refexoneUrl: DEFAULT_REFEXONE_WEB_URL,
     samlAppId,
     ssoUrl,
   };
