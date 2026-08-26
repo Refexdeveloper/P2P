@@ -5,6 +5,7 @@ import PriorityBadge from '../../../../components/base/PriorityBadge';
 import { prApi } from '../../../../services/api';
 import { useAuth } from '../../../../contexts/AuthContext';
 import PrVendorQuotationsPanel from '../../../../components/feature/PrVendorQuotationsPanel';
+import { isL1OrL2Manager } from '../../../../utils/roleDisplay';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -85,6 +86,7 @@ interface PRDetailDrawerProps {
 
 export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerProps) {
   const { user } = useAuth();
+  const hideQuoteDesign = isL1OrL2Manager(user?.role);
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'quotes' | 'history'>('details');
   const [hasQuotes, setHasQuotes] = useState(false);
 
@@ -156,7 +158,11 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
 
             <div className="px-6 pt-4 flex gap-2 border-b border-gray-100 overflow-x-auto">
               {(['details', 'items', 'quotes', 'history'] as const)
-                .filter((tab) => tab !== 'quotes' || hasQuotes)
+                .filter((tab) => {
+                  if (hideQuoteDesign && (tab === 'quotes' || tab === 'items')) return false;
+                  if (tab === 'quotes' && !hasQuotes) return false;
+                  return true;
+                })
                 .map((tab) => (
                 <button
                   key={tab}
@@ -266,7 +272,7 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                       </div>
                     </div>
                   )}
-                  {hasQuotes && (
+                  {hasQuotes && !hideQuoteDesign && (
                     <button
                       type="button"
                       onClick={() => setActiveTab('quotes')}
@@ -282,7 +288,7 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                 </>
               )}
 
-              {pr.id ? (
+              {pr.id && !hideQuoteDesign ? (
                 <div className={activeTab === 'quotes' ? '' : 'hidden'}>
                   <PrVendorQuotationsPanel prId={pr.id} onPresenceChange={setHasQuotes} />
                 </div>

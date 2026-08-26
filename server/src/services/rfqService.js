@@ -2212,6 +2212,16 @@ export async function getVendorComparisonMatrix(user, prId) {
   );
   const configuredMaxRounds = config.maxRounds != null ? Number(config.maxRounds) : null;
 
+  const lineItems = (pr.lineItems || []).map((li) => ({
+    id: li.id,
+    description: li.description || li.item || '',
+    category: li.category || '',
+    quantity: Number(li.quantity) || 0,
+    uom: li.uom || li.unit || 'Nos',
+    unitCost: showFullNegotiation ? Number(li.unitCost ?? li.unitPrice) || 0 : 0,
+    total: showFullNegotiation ? Number(li.total) || 0 : 0,
+  }));
+
   return {
     pr: {
       id: pr.id,
@@ -2222,30 +2232,22 @@ export async function getVendorComparisonMatrix(user, prId) {
       entityName: pr.entityName || '',
       entityCode: pr.entityCode || '',
       requestType: pr.requestType,
-      totalAmount: pr.totalAmount,
-      estimatedBudget: pr.totalAmount,
+      totalAmount: showFullNegotiation ? pr.totalAmount : null,
+      estimatedBudget: showFullNegotiation ? pr.totalAmount : null,
       status: pr.status,
       statusUI: pr.statusUI,
       vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
       prFlow: pr.prFlow === 'functional' ? 'functional' : 'standard',
       justification: pr.justification,
       approvalHistory: pr.approvalHistory,
-      lineItems: (pr.lineItems || []).map((li) => ({
-        id: li.id,
-        description: li.description || li.item || '',
-        category: li.category || '',
-        quantity: Number(li.quantity) || 0,
-        uom: li.uom || li.unit || 'Nos',
-        unitCost: Number(li.unitCost ?? li.unitPrice) || 0,
-        total: Number(li.total) || 0,
-      })),
+      lineItems: showFullNegotiation ? lineItems : [],
     },
     vendorCount: vendors.length,
-    totalRounds,
+    totalRounds: showFullNegotiation ? totalRounds : 0,
     maxRounds: configuredMaxRounds,
-    recommendedVendorId: config.recommendedInvitationId,
-    recommendedVendorName: recommendedVendor?.name || '',
-    recommendationJustification: config.recommendationJustification || '',
+    recommendedVendorId: showFullNegotiation ? config.recommendedInvitationId : null,
+    recommendedVendorName: showFullNegotiation ? recommendedVendor?.name || '' : '',
+    recommendationJustification: showFullNegotiation ? config.recommendationJustification || '' : '',
     showFullNegotiation,
     stageLabel: roleConfig?.label || null,
     /** Own-vendor HOD final: UI must ask Yes=CFO path / No=SCM vendor selection */
@@ -2274,9 +2276,9 @@ export async function getVendorComparisonMatrix(user, prId) {
               ((user.role === 'SCM Manager' || user.role === 'SCM Buyer') &&
                 pendingTask.assigned_role === user.role))
     ),
-    vendors,
-    parameters,
-    matrix,
+    vendors: showFullNegotiation ? vendors : [],
+    parameters: showFullNegotiation ? parameters : [],
+    matrix: showFullNegotiation ? matrix : {},
     finalizedAt: config.finalizedAt,
   };
 }

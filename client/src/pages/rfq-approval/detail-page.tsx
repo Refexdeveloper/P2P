@@ -5,6 +5,7 @@ import VendorComparisonMatrix from '../../components/rfq/VendorComparisonMatrix'
 import PostRfqApprovalModal from './components/PostRfqApprovalModal';
 import { rfqApi, VendorComparisonData } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { isL1OrL2Manager } from '../../utils/roleDisplay';
 
 export default function RfqApprovalDetailPage() {
   const { prId } = useParams();
@@ -170,7 +171,7 @@ export default function RfqApprovalDetailPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <p className="text-sm text-gray-500">Loading vendor comparison...</p>
+        <p className="text-sm text-gray-500">Loading RFQ approval...</p>
       </DashboardLayout>
     );
   }
@@ -183,6 +184,8 @@ export default function RfqApprovalDetailPage() {
       </DashboardLayout>
     );
   }
+
+  const hideQuoteDesign = isL1OrL2Manager(user?.role) || data.showFullNegotiation === false;
 
   return (
     <DashboardLayout>
@@ -219,13 +222,15 @@ export default function RfqApprovalDetailPage() {
               <strong>Department:</strong> {data.pr.department || '—'}
             </span>
             <span>
-              {data.vendorCount
-                ? `Requester stage complete · ${data.vendorCount} vendors quoted`
-                : data.pr.prFlow === 'functional'
-                  ? 'Functional Flow · awaiting SCM RFQ'
-                  : 'RFQ quotation'}
+              {hideQuoteDesign
+                ? 'RFQ approval'
+                : data.vendorCount
+                  ? `Requester stage complete · ${data.vendorCount} vendors quoted`
+                  : data.pr.prFlow === 'functional'
+                    ? 'Functional Flow · awaiting SCM RFQ'
+                    : 'RFQ quotation'}
             </span>
-            {data.recommendedVendorName && (
+            {!hideQuoteDesign && data.recommendedVendorName && (
               <span className="text-emerald-700 font-medium break-words">
                 ⭐ Recommended: {data.recommendedVendorName}
               </span>
@@ -268,14 +273,11 @@ export default function RfqApprovalDetailPage() {
         </div>
       )}
 
-      {!data.showFullNegotiation && (
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-          <i className="ri-information-line mr-1"></i>
-          Summary view for Manager Approval. SCM Buyer handles PO creation after manager approval.
+      {hideQuoteDesign ? (
+        <div className="mb-4 p-4 bg-white rounded-xl border border-gray-200 text-sm text-gray-700">
+          Review this RFQ and use Approve, Send Back, or Reject.
         </div>
-      )}
-
-      {(!data.vendors || data.vendors.length === 0) && data.pr.prFlow === 'standard' && data.pr.status === 'PENDING_BUSINESS_APPROVAL' ? (
+      ) : (!data.vendors || data.vendors.length === 0) && data.pr.prFlow === 'standard' && data.pr.status === 'PENDING_BUSINESS_APPROVAL' ? (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-base font-bold text-gray-900 mb-3">PR Details</h3>
           <p className="text-sm text-gray-600 mb-4">{data.pr.justification || 'No additional justification.'}</p>
