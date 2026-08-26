@@ -188,7 +188,18 @@ export default function CreatePRPage() {
   const savedDraftIdRef = useRef<number | null>(null);
   const createDraftLockRef = useRef<Promise<number | null> | null>(null);
   const suppressSoftResumeRef = useRef(false);
-  const savePRRef = useRef<(submit: boolean, options?: { silent?: boolean; forceUploadFiles?: boolean }) => Promise<void>>(async () => undefined);
+  const bootRedirectDoneRef = useRef(false);
+  const loadedEditPrIdRef = useRef<number | null>(null);
+  const userIdRef = useRef(user?.id);
+  userIdRef.current = user?.id;
+  const editPrIdRef = useRef(editPrId);
+  editPrIdRef.current = editPrId;
+  const savePRRef = useRef<
+    (
+      submit: boolean,
+      options?: { silent?: boolean; forceUploadFiles?: boolean; allowCreate?: boolean }
+    ) => Promise<void>
+  >(async () => undefined);
 
   const bindSavedDraftId = (id: number | null) => {
     savedDraftIdRef.current = id && id > 0 ? id : null;
@@ -227,6 +238,8 @@ export default function CreatePRPage() {
   const backTo = isAdminEditFlow || isEditMode ? '/requester/track-pr' : '/requester/dashboard';
   const persistPrId = editPrId || savedDraftId;
   const askBillingOnCreatePr = !(prFlow === 'standard' && vendorSelection === 'own');
+  /** Standard + Own Vendor: no unit price / HSN / GST on PR lines (quotes come at RFQ). */
+  const hideLinePricing = prFlow === 'standard' && vendorSelection === 'own';
   const restoredKeyRef = useRef('');
 
   const applyDraftSnapshot = (draft: CreatePrDraftSnapshot, options?: { preserveRicherLineItems?: boolean }) => {
@@ -300,7 +313,7 @@ export default function CreatePRPage() {
     }
   }, [editPrId]);
 
-  // Create PR (?new=1) = blank form. Leaving mid-work sets soft-resume so menu return keeps same PR#.
+  // Create PR (?new=1) = blank form. Soft-resume / existing draft → edit-pr once at boot (never mid-edit).
   useEffect(() => {
     if (editPrId || isLoadingPr) return;
     if (freshHandledRef.current) return;
@@ -310,6 +323,20 @@ export default function CreatePRPage() {
     if (soft) {
       // Coming back from another menu — resume same PR#, ignore ?new=
       if (wantFreshStart) setSearchParams({}, { replace: true });
+      const softId = typeof soft === 'number' ? soft : null;
+      const draftId =
+        softId ||
+        Number(
+          readCreatePrDraft(user?.id, null)?.backendPrId ||
+            readCreatePrDraft('anon', null)?.backendPrId ||
+            0
+        ) ||
+        null;
+      if (draftId && !bootRedirectDoneRef.current) {
+        bootRedirectDoneRef.current = true;
+        bindSavedDraftId(draftId);
+        navigate(`/requester/edit-pr/${draftId}`, { replace: true });
+      }
       return;
     }
     if (wantFreshStart) {
@@ -318,20 +345,27 @@ export default function CreatePRPage() {
       savedDraftIdRef.current = null;
       setSearchParams({}, { replace: true });
       setSoftSaveHint('Starting a new purchase requisition');
+      return;
     }
-  }, [editPrId, isLoadingPr, wantFreshStart, user?.id, setSearchParams]);
 
-  // If we already have a server draft id on /create-pr, open it as edit-pr/:id (same PR number).
-  useEffect(() => {
-    if (editPrId || isLoadingPr || !hydrateDoneRef.current) return;
-    const id = resolvePersistPrId();
-    if (!id) return;
-    if (wantFreshStart && !peekCreatePrSoftResume()) return;
-    navigate(`/requester/edit-pr/${id}`, { replace: true });
-  }, [editPrId, isLoadingPr, hydrateVersion, navigate, wantFreshStart]);
+    // Hard refresh on /create-pr with an active server draft — open edit-pr once before typing.
+    const existing =
+      Number(
+        readCreatePrDraft(user?.id, null)?.backendPrId ||
+          readCreatePrDraft('anon', null)?.backendPrId ||
+          0
+      ) || null;
+    if (existing && !bootRedirectDoneRef.current) {
+      bootRedirectDoneRef.current = true;
+      bindSavedDraftId(existing);
+      navigate(`/requester/edit-pr/${existing}`, { replace: true });
+    }
+  }, [editPrId, isLoadingPr, wantFreshStart, user?.id, setSearchParams, navigate]);
 
   useEffect(() => {
     if (!editPrId) return;
+    // Auth boot resolving user.id must not remount/reload and wipe a just-added line item.
+    if (loadedEditPrIdRef.current === editPrId) return;
     let cancelled = false;
     (async () => {
       setIsLoadingPr(true);
@@ -339,6 +373,7 @@ export default function CreatePRPage() {
       try {
         const res = await prApi.get(editPrId);
         if (cancelled) return;
+        loadedEditPrIdRef.current = editPrId;
         const pr = res.data as {
           prNumber: string;
           title?: string;
@@ -432,7 +467,7 @@ export default function CreatePRPage() {
               ? pr.lineItems.map((item, i) => ({
                   id: String(item.id != null ? `${item.id}-${i}` : `row-${i + 1}`),
                   itemId: null,
-                  itemName: item.description,
+                  itemName: (item as { itemName?: string }).itemName || item.description,
                   description: item.description,
                   quantity: item.quantity,
                   estimatedCost: item.unitCost,
@@ -487,7 +522,11 @@ export default function CreatePRPage() {
     return () => {
       cancelled = true;
     };
-  }, [editPrId, user?.id]);
+  }, [editPrId]);
+
+  useEffect(() => {
+    if (!editPrId) loadedEditPrIdRef.current = null;
+  }, [editPrId]);
 
   useEffect(() => {
     if (isLoadingPr) return;
@@ -557,7 +596,7 @@ export default function CreatePRPage() {
                   return serverItems.map((item, i) => ({
                     id: String(item.id != null ? `${item.id}-${i}` : `row-${i + 1}`),
                     itemId: null,
-                    itemName: item.description,
+                    itemName: (item as { itemName?: string }).itemName || item.description,
                     description: item.description,
                     quantity: item.quantity,
                     estimatedCost: item.unitCost,
@@ -749,11 +788,18 @@ export default function CreatePRPage() {
       const snap = snapshotRef.current;
       if (!snap || !hasMeaningfulCreatePrDraft(snap)) return;
       const id = resolvePersistPrId();
-      writeCreatePrDraft(user?.id, id ?? editPrId, { ...snap, backendPrId: id ?? snap.backendPrId });
+      writeCreatePrDraft(userIdRef.current, id ?? editPrIdRef.current, {
+        ...snap,
+        backendPrId: id ?? snap.backendPrId,
+      });
       markCreatePrSoftResume(id);
       // Upload quotation files + persist same PR# when leaving to another menu.
       if (snap.entityId && !savingInFlightRef.current) {
-        void savePRRef.current(false, { silent: true, forceUploadFiles: true });
+        void savePRRef.current(false, {
+          silent: true,
+          forceUploadFiles: true,
+          allowCreate: true,
+        });
       }
     };
     const onHide = () => {
@@ -763,14 +809,16 @@ export default function CreatePRPage() {
     window.addEventListener('beforeunload', flushOnLeave);
     document.addEventListener('visibilitychange', onHide);
     return () => {
+      // Only flush on real unmount (menu leave), not when draft id / user deps change.
       flushOnLeave();
       window.removeEventListener('pagehide', flushOnLeave);
       window.removeEventListener('beforeunload', flushOnLeave);
       document.removeEventListener('visibilitychange', onHide);
     };
-  }, [editPrId, persistPrId, user?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Debounced server draft — reuses one PR number; uploads quotation files when present.
+  // Debounced server draft — updates existing PR only (never create mid-edit / refresh the page).
   useEffect(() => {
     if (
       !hydrateDoneRef.current ||
@@ -809,6 +857,11 @@ export default function CreatePRPage() {
         ...snap,
         backendPrId: existingId ?? snap.backendPrId ?? null,
       });
+      // Autosave must not create a new PR (that remounted /edit-pr and wiped the new line item).
+      if (!existingId) {
+        setSoftSaveHint('Draft auto-saved locally');
+        return;
+      }
       void savePRRef.current(false, { silent: true, forceUploadFiles: true }).then(() => {
         if (!skipSoftSaveRef.current) setSoftSaveHint('Draft auto-saved');
       });
@@ -1444,11 +1497,16 @@ export default function CreatePRPage() {
     paymentTerms: paymentTerms.trim() || undefined,
     lineItems: items.map((item) => ({
       category: item.category,
+      itemName: item.itemName || item.description,
       description: item.description,
       quantity: item.quantity,
-      unitCost: item.estimatedCost,
+      unitCost: hideLinePricing ? 0 : item.estimatedCost,
       unit: item.unit || 'Nos',
-      gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
+      gstPercentage: hideLinePricing
+        ? 0
+        : Number.isFinite(Number(item.gstPercentage))
+          ? Number(item.gstPercentage)
+          : 18,
     })),
   });
 
@@ -1462,10 +1520,11 @@ export default function CreatePRPage() {
 
   const savePR = async (
     submit: boolean,
-    options?: { silent?: boolean; forceUploadFiles?: boolean }
+    options?: { silent?: boolean; forceUploadFiles?: boolean; allowCreate?: boolean }
   ) => {
     const silent = Boolean(options?.silent);
     const forceUploadFiles = Boolean(options?.forceUploadFiles);
+    const allowCreate = Boolean(options?.allowCreate) || !silent;
     if (!silent) setSubmitError('');
     if (!silent) setIsSubmitting(true);
     savingInFlightRef.current = true;
@@ -1757,7 +1816,12 @@ export default function CreatePRPage() {
         return;
       }
 
-      // First server draft for this session (manual Save Draft, or autosave/leave with entity).
+      // First server draft: manual Save Draft / submit, or leave-menu flush (allowCreate).
+      // Silent autosave without an id stays local — creating here remounted the page and wiped line items.
+      if (silent && !allowCreate) {
+        setSoftSaveHint('Draft auto-saved locally');
+        return;
+      }
       if (silent && !entityId) {
         setSoftSaveHint('Draft auto-saved locally');
         return;
@@ -1887,9 +1951,13 @@ export default function CreatePRPage() {
                 <i className="ri-money-dollar-circle-line text-emerald-300 text-sm"></i>
               </div>
               <div>
-                <p className="text-emerald-300/80 text-xs leading-none mb-0.5">Total Amount</p>
+                <p className="text-emerald-300/80 text-xs leading-none mb-0.5">
+                  {hideLinePricing ? 'Vendor Path' : 'Total Amount'}
+                </p>
                 <p className="text-emerald-300 font-bold text-base">
-                  {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {hideLinePricing
+                    ? 'Own Vendor'
+                    : formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
             </div>
@@ -1933,12 +2001,24 @@ export default function CreatePRPage() {
           <span className="text-xs text-gray-400">
             {lineItems.length === 0
               ? 'No items yet'
-              : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
+              : hideLinePricing
+                ? `${lineItems.filter((i) => i.description || i.itemName).length}/${lineItems.length} items filled`
+                : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
           </span>
           <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
             <div
               className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-              style={{ width: `${lineItems.length > 0 ? (lineItems.filter(i => i.description && i.estimatedCost > 0).length / lineItems.length) * 100 : 0}%` }}
+              style={{
+                width: `${
+                  lineItems.length > 0
+                    ? ((hideLinePricing
+                        ? lineItems.filter((i) => i.description || i.itemName).length
+                        : lineItems.filter((i) => i.description && i.estimatedCost > 0).length) /
+                        lineItems.length) *
+                      100
+                    : 0
+                }%`,
+              }}
             />
           </div>
         </div>
@@ -2345,6 +2425,7 @@ export default function CreatePRPage() {
                 requestType={requestType}
                 currency={currency}
                 moneySymbol={moneySymbol}
+                hidePricing={hideLinePricing}
                 onSave={saveLineItem}
                 onCancel={closeLineEditor}
                 onMasterItemCreated={rememberMasterItem}
@@ -2357,24 +2438,28 @@ export default function CreatePRPage() {
 
             <div className="border border-gray-200 rounded-xl overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-sm">
+                <table className={`w-full text-sm ${hideLinePricing ? 'min-w-[520px]' : 'min-w-[720px]'}`}>
                   <thead className="bg-slate-50 border-b border-gray-200">
                     <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                       <th className="px-3 py-2.5 w-10">#</th>
                       <th className="px-3 py-2.5">Item Name</th>
                       <th className="px-3 py-2.5">Category</th>
                       <th className="px-3 py-2.5 text-right">Qty</th>
-                      <th className="px-3 py-2.5 text-right">Unit Price</th>
-                      <th className="px-3 py-2.5">HSN</th>
-                      <th className="px-3 py-2.5 text-right">GST %</th>
-                      <th className="px-3 py-2.5 text-right">Amount (incl. GST)</th>
+                      {!hideLinePricing && (
+                        <>
+                          <th className="px-3 py-2.5 text-right">Unit Price</th>
+                          <th className="px-3 py-2.5">HSN</th>
+                          <th className="px-3 py-2.5 text-right">GST %</th>
+                          <th className="px-3 py-2.5 text-right">Amount (incl. GST)</th>
+                        </>
+                      )}
                       <th className="px-3 py-2.5 text-right w-24">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {lineItems.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-10 text-center">
+                        <td colSpan={hideLinePricing ? 5 : 9} className="px-4 py-10 text-center">
                           <p className="text-sm font-medium text-gray-600">No line items yet</p>
                           <p className="text-xs text-gray-400 mt-1">Click Add Line Item to enter the first item</p>
                           {!lineEditor && (
@@ -2410,23 +2495,27 @@ export default function CreatePRPage() {
                             <td className="px-3 py-3 text-right text-gray-700">
                               {item.quantity} <span className="text-xs text-gray-400">{item.unit || 'Nos'}</span>
                             </td>
-                            <td className="px-3 py-3 text-right text-gray-700">
-                              {formatMoney(item.estimatedCost, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-3 py-3 text-gray-600">{item.hsnCode || '—'}</td>
-                            <td className="px-3 py-3 text-right text-gray-700">
-                              {item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
-                            </td>
-                            <td className="px-3 py-3 text-right font-semibold text-emerald-700">
-                              {formatMoney(
-                                lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
-                                currency,
-                                {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              }
-                              )}
-                            </td>
+                            {!hideLinePricing && (
+                              <>
+                                <td className="px-3 py-3 text-right text-gray-700">
+                                  {formatMoney(item.estimatedCost, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-3 py-3 text-gray-600">{item.hsnCode || '—'}</td>
+                                <td className="px-3 py-3 text-right text-gray-700">
+                                  {item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
+                                </td>
+                                <td className="px-3 py-3 text-right font-semibold text-emerald-700">
+                                  {formatMoney(
+                                    lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
+                                    currency,
+                                    {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  }
+                                  )}
+                                </td>
+                              </>
+                            )}
                             <td className="px-3 py-3">
                               <div className="flex items-center justify-end gap-1">
                                 <button
@@ -2472,25 +2561,35 @@ export default function CreatePRPage() {
                   <p className="text-xs text-gray-500 mb-0.5">Total Quantity</p>
                   <p className="text-lg font-bold text-gray-800">{lineItems.reduce((s, i) => s + i.quantity, 0)}</p>
                 </div>
-                <div className="w-px h-8 bg-emerald-200"></div>
-                <div className="text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">Average Unit Price</p>
-                  <p className="text-lg font-bold text-gray-800">
-                    {formatMoney(lineItems.length > 0 ? lineItems.reduce((s, i) => s + i.estimatedCost, 0) / lineItems.length : 0, currency, { maximumFractionDigits: 0 })}
-                  </p>
-                </div>
+                {!hideLinePricing && (
+                  <>
+                    <div className="w-px h-8 bg-emerald-200"></div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 mb-0.5">Average Unit Price</p>
+                      <p className="text-lg font-bold text-gray-800">
+                        {formatMoney(lineItems.length > 0 ? lineItems.reduce((s, i) => s + i.estimatedCost, 0) / lineItems.length : 0, currency, { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <p className="text-xs text-gray-500 mb-0.5">Estimated Total (incl. GST)</p>
-                  <p className="text-2xl font-extrabold text-emerald-700">
-                    {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
+              {!hideLinePricing ? (
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500 mb-0.5">Estimated Total (incl. GST)</p>
+                    <p className="text-2xl font-extrabold text-emerald-700">
+                      {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 flex items-center justify-center bg-emerald-500 rounded-xl">
+                    <i className="ri-money-dollar-circle-line text-white text-xl"></i>
+                  </div>
                 </div>
-                <div className="w-12 h-12 flex items-center justify-center bg-emerald-500 rounded-xl">
-                  <i className="ri-money-dollar-circle-line text-white text-xl"></i>
-                </div>
-              </div>
+              ) : (
+                <p className="text-xs text-teal-800/80 max-w-xs text-right">
+                  Own Vendor — unit price, GST and totals are collected during RFQ quotation.
+                </p>
+              )}
             </div>
           </div>
         </div>

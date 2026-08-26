@@ -237,19 +237,38 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
       target.assignedRole === 'SCM Buyer'
         ? undefined
         : [assignee.email];
+    const mailOpts = {
+      postRfq: target.taskType === 'RFQ_POST_APPROVAL',
+      rfqEntry: isRfqEntry,
+      createPo: isCreatePo,
+      stageLabel: `Sent back — ${target.label}`,
+      approverEmails: notifyEmails,
+      approverName: target.assignedRole === 'SCM Buyer' ? 'SCM Buyer' : assignee.name || undefined,
+    };
+    // After quotation rounds, include negotiation + files (Standard Own / SCM vendor / Functional Own)
+    if (target.taskType === 'RFQ_POST_APPROVAL' || isCreatePo || (isRfqEntry && updatedPr.vendorSelection === 'own')) {
+      void import('./rfqService.js')
+        .then(({ queuePostQuotationApprovalMail }) =>
+          queuePostQuotationApprovalMail(updatedPr, target.assignedRole, mailOpts)
+        )
+        .catch((err) => {
+          console.warn('Send-back RFQ pack mail failed, falling back:', err.message);
+          queuePrApprovalPendingNotification(
+            updatedPr,
+            target.assignedRole,
+            { name: updatedPr.requester, email: '' },
+            updatedPr.departmentId ?? updatedPr.department_id ?? null,
+            mailOpts
+          );
+        });
+      return;
+    }
     queuePrApprovalPendingNotification(
       updatedPr,
       target.assignedRole,
       { name: updatedPr.requester, email: '' },
       updatedPr.departmentId ?? updatedPr.department_id ?? null,
-      {
-        postRfq: target.taskType === 'RFQ_POST_APPROVAL',
-        rfqEntry: isRfqEntry,
-        createPo: isCreatePo,
-        stageLabel: `Sent back — ${target.label}`,
-        approverEmails: notifyEmails,
-        approverName: target.assignedRole === 'SCM Buyer' ? 'SCM Buyer' : assignee.name || undefined,
-      }
+      mailOpts
     );
     return;
   }

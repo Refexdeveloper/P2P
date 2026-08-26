@@ -5,6 +5,7 @@ import { buildPrApprovalPendingEmail } from '../templates/prApprovalPendingEmail
 import { buildRfqInvitationEmail, buildRfqSendBackEmail } from '../templates/rfqVendorEmail.js';
 import { buildRfqSubmittedNotifyRequesterEmail } from '../templates/rfqSubmittedEmail.js';
 import { buildPostRfqActionEmail } from '../templates/prPostRfqActionEmail.js';
+import { buildPrStepProgressEmail } from '../templates/prStepProgressEmail.js';
 import { buildPoVendorEmail } from '../templates/poVendorEmail.js';
 import { buildPoWorkflowEmail } from '../templates/poWorkflowEmail.js';
 import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceRequestEmail.js';
@@ -607,7 +608,8 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
   });
 
   console.log(
-    `Step mail → ${assignedRole} (${primaryName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}`
+    `Step mail → ${assignedRole} (${primaryName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}` +
+      ` [attachments=${(options.attachments || []).length}]`
   );
 
   return sendMailToRecipients(emails, subject, html, text, options.attachments || [], {
@@ -826,6 +828,85 @@ export function queuePostRfqActionNotification(pr, approverRole, action, remarks
     actionUrl: portal,
     requesterName: requester?.name || pr.requester || 'Requester',
     assigneeName: requester?.name || pr.requester || 'Requester',
+  });
+}
+
+/** Requester FYI — every approve / submit that moves the PR to the next step */
+export async function sendRequesterStepProgressNotification(pr, options = {}) {
+  const [requesterRows] = await pool.query(`SELECT email, name FROM users WHERE id = ?`, [
+    pr.requesterId || pr.requester_id,
+  ]);
+  const requesterEmail = requesterRows[0]?.email || options.requesterEmail;
+  const requesterName =
+    requesterRows[0]?.name || options.requesterName || pr.requester || 'Requester';
+
+  const emails = requesterEmail ? [requesterEmail] : [];
+  if (!emails.length) {
+    console.warn(`No requester email for step progress on ${pr.prNumber || pr.id}`);
+    await createEmailLog({
+      emailType: 'pr_step_progress',
+      status: 'skipped',
+      prId: pr.id || pr.prId || null,
+      prNumber: pr.prNumber || pr.pr_number || null,
+      toAddresses: '',
+      subject: `PR step update ${pr.prNumber || pr.id || ''}`.trim(),
+      errorMessage: 'No requester email',
+      meta: {
+        action: options.action || 'approve',
+        nextStepLabel: options.nextStepLabel || null,
+      },
+    });
+    return;
+  }
+
+  const emailSet = new Set(emails.map((e) => e.toLowerCase()));
+  const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
+
+  const { subject, html, text } = buildPrStepProgressEmail({
+    pr,
+    requesterName,
+    action: options.action || 'approve',
+    actorRole: options.actorRole || '',
+    actorName: options.actorName || '',
+    completedStepLabel: options.completedStepLabel || '',
+    nextStepLabel: options.nextStepLabel || '',
+    remarks: options.remarks || '',
+    appBaseUrl: getAppBaseUrl(),
+  });
+
+  console.log(
+    `Step progress → Requester (${requesterName}): ${emails.join(', ')} for ${pr.prNumber || pr.id} → ${options.nextStepLabel || 'next'}`
+  );
+
+  return sendMailToRecipients(emails, subject, html, text, [], {
+    bcc,
+    emailType: 'pr_step_progress',
+    prId: pr.id || pr.prId || null,
+    prNumber: pr.prNumber || pr.pr_number || null,
+    meta: {
+      action: options.action || 'approve',
+      actorRole: options.actorRole || null,
+      actorName: options.actorName || null,
+      completedStepLabel: options.completedStepLabel || null,
+      nextStepLabel: options.nextStepLabel || null,
+    },
+  });
+}
+
+export function queueRequesterStepProgressNotification(pr, options = {}) {
+  enqueueMail(() => sendRequesterStepProgressNotification(pr, options)).catch((err) => {
+    console.error('Email send failure (requester step progress):', err.message);
+  });
+
+  notifyWorkflowWhatsApp({
+    pr,
+    emails: [options.requesterEmail].filter(Boolean),
+    stage: options.nextStepLabel
+      ? `Moved to: ${options.nextStepLabel}`
+      : 'PR workflow update',
+    actionUrl: `${getAppBaseUrl()}/requester/track-pr`,
+    requesterName: options.requesterName || pr.requester || 'Requester',
+    assigneeName: options.requesterName || pr.requester || 'Requester',
   });
 }
 
@@ -1190,11 +1271,16 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       }
     }
     let rfqSummary = null;
-    if (meta.includeRfqDetail && pr.id) {
+    // Rebuild quotation summary + file attachments whenever this step had RFQ detail
+    if (
+      pr.id &&
+      (meta.includeRfqDetail || meta.postRfq || meta.rfqEntry || meta.createPo || assignedRole === 'SCM Buyer')
+    ) {
       try {
         const { getRfqEmailPack } = await import('./rfqService.js');
         const pack = await getRfqEmailPack(pr.id);
         rfqSummary = pack.rfqSummary;
+        attachments = pack.attachments || [];
       } catch (err) {
         console.warn('RFQ pack for resend failed:', err.message);
       }
@@ -1211,6 +1297,23 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       appBaseUrl: getAppBaseUrl(),
       roleDisplayName: meta.roleDisplayName || null,
       rfqSummary,
+    });
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+  } else if (type === 'pr_step_progress') {
+    if (!pr) throw new Error('Related PR was not found — cannot rebuild this mail');
+    if (!to.length && requester.email) to = [requester.email];
+    const built = buildPrStepProgressEmail({
+      pr,
+      requesterName: requester.name || 'Requester',
+      action: meta.action || 'approve',
+      actorRole: meta.actorRole || '',
+      actorName: meta.actorName || '',
+      completedStepLabel: meta.completedStepLabel || '',
+      nextStepLabel: meta.nextStepLabel || '',
+      remarks: meta.remarks || '',
+      appBaseUrl: getAppBaseUrl(),
     });
     subject = built.subject;
     html = built.html;

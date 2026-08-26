@@ -5,6 +5,7 @@ import PrVendorQuotationsPanel from '../../../components/feature/PrVendorQuotati
 import { useState } from 'react';
 
 interface LineItem {
+  itemName?: string;
   description: string;
   qty: number;
   unit: string;
@@ -42,6 +43,7 @@ interface PRTask {
   requiredDate: string;
   currentApprover: string;
   justification: string;
+  vendorSelection?: 'own' | 'scm';
   lineItems: LineItem[];
   approvalHistory: ApprovalStep[];
   slaHours: number;
@@ -86,6 +88,9 @@ export default function TaskDetailDrawer({
   const lineItems = Array.isArray(task.lineItems) ? task.lineItems : [];
   const approvalHistory = Array.isArray(task.approvalHistory) ? task.approvalHistory : [];
   const [hasQuotes, setHasQuotes] = useState(false);
+  const isOwnVendor = task.vendorSelection === 'own';
+  /** Own Vendor / quoted PRs: show name, description, qty — hide unit cost & total */
+  const hideLinePricing = isOwnVendor || hasQuotes;
 
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
@@ -167,9 +172,11 @@ export default function TaskDetailDrawer({
                   <p className="text-sm font-medium text-gray-900">{formatDate(task.requiredDate)}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-0.5">Total Amount</p>
+                  <p className="text-xs text-gray-500 mb-0.5">{hideLinePricing ? 'Vendor Path' : 'Total Amount'}</p>
                   <p className="text-sm font-bold text-gray-900">
-                    ₹{Number(task.totalAmount || 0).toLocaleString('en-IN')}
+                    {hideLinePricing
+                      ? 'Own Vendor'
+                      : `₹${Number(task.totalAmount || 0).toLocaleString('en-IN')}`}
                   </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
@@ -209,47 +216,71 @@ export default function TaskDetailDrawer({
                   <thead>
                     <tr className="bg-gray-50">
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">#</th>
-                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Description</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
+                        Item Name
+                      </th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
+                        Description
+                      </th>
                       <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Qty</th>
-                      <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Unit Cost</th>
-                      <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Total</th>
+                      {!hideLinePricing && (
+                        <>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Unit Cost</th>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Total</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {lineItems.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-3 py-6 text-center text-gray-400 text-sm">
+                        <td colSpan={hideLinePricing ? 4 : 6} className="px-3 py-6 text-center text-gray-400 text-sm">
                           No line items
                         </td>
                       </tr>
                     ) : (
-                      lineItems.map((item, idx) => (
-                        <tr key={idx} className="border-t border-gray-100">
-                          <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
-                          <td className="px-3 py-2 font-medium text-gray-900">{item.description}</td>
-                          <td className="px-3 py-2 text-center text-gray-700 tabular-nums">
-                            {Number(item.qty) || 0}
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-700">
-                            ₹{Number(item.unitCost || 0).toLocaleString('en-IN')}
-                          </td>
-                          <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                            ₹{Number(item.total || 0).toLocaleString('en-IN')}
-                          </td>
-                        </tr>
-                      ))
+                      lineItems.map((item, idx) => {
+                        const name = String(item.itemName || item.description || '—').trim() || '—';
+                        const desc = String(item.description || '').trim();
+                        const showDesc = desc && desc !== name;
+                        return (
+                          <tr key={idx} className="border-t border-gray-100">
+                            <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                            <td className="px-3 py-2 font-medium text-gray-900">{name}</td>
+                            <td className="px-3 py-2 text-gray-600">{showDesc ? desc : '—'}</td>
+                            <td className="px-3 py-2 text-center text-gray-700 tabular-nums">
+                              {Number(item.qty) || 0}
+                              {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
+                                <span className="text-xs text-gray-400 font-normal ml-1">{item.unit}</span>
+                              ) : null}
+                            </td>
+                            {!hideLinePricing && (
+                              <>
+                                <td className="px-3 py-2 text-right text-gray-700">
+                                  ₹{Number(item.unitCost || 0).toLocaleString('en-IN')}
+                                </td>
+                                <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                  ₹{Number(item.total || 0).toLocaleString('en-IN')}
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-gray-200 bg-gray-50">
-                      <td colSpan={4} className="px-3 py-2 text-right font-bold text-gray-700 uppercase text-xs">
-                        Grand Total
-                      </td>
-                      <td className="px-3 py-2 text-right font-bold text-gray-900">
-                        ₹{Number(task.totalAmount || 0).toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  </tfoot>
+                  {!hideLinePricing && (
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-200 bg-gray-50">
+                        <td colSpan={5} className="px-3 py-2 text-right font-bold text-gray-700 uppercase text-xs">
+                          Grand Total
+                        </td>
+                        <td className="px-3 py-2 text-right font-bold text-gray-900">
+                          ₹{Number(task.totalAmount || 0).toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </div>

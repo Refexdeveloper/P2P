@@ -212,6 +212,7 @@ export async function listEmailLogs({
 export const EMAIL_TYPE_LABELS = {
   pr_raised: 'PR Raised (Ops notify)',
   pr_approval_pending: 'Approval Pending (L1/L2/CFO/SCM)',
+  pr_step_progress: 'Requester Step Moved / Approved',
   pr_post_rfq_action: 'PR Reject / Return',
   rfq_vendor: 'RFQ Vendor Invite',
   rfq_send_back: 'RFQ Send Back',

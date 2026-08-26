@@ -194,7 +194,15 @@ export default function TasksPage() {
     requiredDate: string;
     currentApprover: string;
     justification: string;
-    lineItems: Array<{ description: string; qty: number; unit: string; unitCost: number; total: number }>;
+    vendorSelection?: 'own' | 'scm';
+    lineItems: Array<{
+      itemName?: string;
+      description: string;
+      qty: number;
+      unit: string;
+      unitCost: number;
+      total: number;
+    }>;
     approvalHistory: Array<{
       step: string;
       approver: string;
@@ -206,6 +214,7 @@ export default function TasksPage() {
     slaHours: number;
     slaRemaining: number;
     isOverdue: boolean;
+    prId?: number;
   } | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
 
@@ -294,6 +303,7 @@ export default function TasksPage() {
       requiredDate: '',
       currentApprover: task.currentApprover,
       justification: 'Loading…',
+      vendorSelection: task.vendorSelection === 'own' ? 'own' : 'scm',
       lineItems: [],
       approvalHistory: [],
       slaHours: 48,
@@ -308,8 +318,11 @@ export default function TasksPage() {
       const lineItems = ((pr.lineItems as Array<Record<string, unknown>>) || []).map((li) => {
         const qty = Number(li.quantity ?? li.qty);
         const unitRaw = String(li.unit || '').trim();
+        const description = String(li.description || li.item || '');
+        const itemName = String(li.itemName || li.item_name || li.item || description || '');
         return {
-          description: String(li.description || li.item || ''),
+          itemName,
+          description,
           qty: Number.isFinite(qty) && qty > 0 ? qty : 0,
           unit: !unitRaw || /^\d+(\.\d+)?$/.test(unitRaw) ? 'Nos' : unitRaw,
           unitCost: Number(li.unitCost || li.unitPrice || 0),
@@ -327,6 +340,8 @@ export default function TasksPage() {
       const firstCategory = lineItems.length
         ? String(((pr.lineItems as Array<Record<string, unknown>>)[0]?.category) || 'General')
         : 'General';
+      const vendorSelection =
+        pr.vendorSelection === 'own' || task.vendorSelection === 'own' ? 'own' : 'scm';
 
       setDrawerDetail({
         id: task.id,
@@ -348,6 +363,7 @@ export default function TasksPage() {
         requiredDate: String(pr.requiredDate || ''),
         currentApprover: formatApproverStage(pr, task),
         justification: String(pr.justification || 'No justification provided.'),
+        vendorSelection,
         lineItems,
         approvalHistory,
         slaHours: 48,

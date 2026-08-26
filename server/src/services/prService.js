@@ -3,6 +3,7 @@ import {
   queuePrRaisedNotification,
   queuePrApprovalPendingNotification,
   queuePostRfqActionNotification,
+  queueRequesterStepProgressNotification,
 } from './emailService.js';
 import {
   getL1ManagerForEmail,
@@ -99,6 +100,22 @@ async function resolvePrBilling(entityId, body = {}, fallback = {}) {
     null;
 
   if (!loc) {
+    // Free-text / custom region (e.g. RFQ Entry when master has no match, or no regions loaded)
+    if (!requestedId && (requestedName || requestedGst)) {
+      return {
+        billingLocationId: null,
+        billingLocation: requestedName,
+        billingGstNo: requestedGst,
+      };
+    }
+    // Client sent empty location fields while updating address/delivery — keep existing
+    if (!requestedId && !requestedName && !requestedGst) {
+      return {
+        billingLocationId: fallback.billingLocationId ?? fallback.billing_location_id ?? null,
+        billingLocation: fallback.billingLocation ?? fallback.billing_location ?? '',
+        billingGstNo: fallback.billingGstNo ?? fallback.billing_gst_no ?? '',
+      };
+    }
     if (requestedId || requestedName || requestedGst) {
       throw new Error('Billing GST must be selected from the entity region list');
     }
@@ -166,20 +183,36 @@ async function insertPrLineItem(db, prId, item) {
   const gstPct = lineGstPercent(item);
   const total = lineInclusiveTotal(qty, cost, gstPct);
   const unit = normalizeLineUnit(item.unit || item.uom);
+  const description = String(item.description || '').trim();
+  const itemName = String(item.itemName || item.item_name || item.item || '').trim() || description;
   try {
     await db.query(
-      `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, gst_percentage, total)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [prId, item.category || '', item.description, qty, unit, cost, gstPct, total]
+      `INSERT INTO pr_line_items (pr_id, category, item_name, description, quantity, unit, unit_cost, gst_percentage, total)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [prId, item.category || '', itemName, description, qty, unit, cost, gstPct, total]
     );
   } catch (err) {
-    if (err?.code !== 'ER_BAD_FIELD_ERROR' && !String(err?.message || '').includes('gst_percentage')) {
+    const msg = String(err?.message || '');
+    if (err?.code === 'ER_BAD_FIELD_ERROR' && msg.includes('item_name')) {
+      try {
+        await db.query(
+          `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, gst_percentage, total)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [prId, item.category || '', description, qty, unit, cost, gstPct, total]
+        );
+        return;
+      } catch (err2) {
+        if (err2?.code !== 'ER_BAD_FIELD_ERROR' && !String(err2?.message || '').includes('gst_percentage')) {
+          throw err2;
+        }
+      }
+    } else if (err?.code !== 'ER_BAD_FIELD_ERROR' && !msg.includes('gst_percentage')) {
       throw err;
     }
     await db.query(
       `INSERT INTO pr_line_items (pr_id, category, description, quantity, unit, unit_cost, total)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [prId, item.category || '', item.description, qty, unit, cost, total]
+      [prId, item.category || '', description, qty, unit, cost, total]
     );
   }
 }
@@ -504,8 +537,9 @@ async function enrichPR(row) {
     lineItems: lineItems.map((li) => ({
       id: li.id,
       category: li.category,
+      itemName: li.item_name || li.description,
       description: li.description,
-      item: li.description,
+      item: li.item_name || li.description,
       quantity: lineQuantity(li.quantity),
       unit: normalizeLineUnit(li.unit || li.uom),
       unitCost: Number(li.unit_cost),
@@ -809,6 +843,16 @@ function queuePrSubmitNotifications({
           attachments: mailPack.attachments,
         }
       );
+      // Requester FYI — PR raised / resubmitted and moved to first approval step
+      queueRequesterStepProgressNotification(pr, {
+        action: isResubmit ? 'submitted' : 'raised',
+        actorRole: 'Requester',
+        actorName: user.name,
+        completedStepLabel: isResubmit ? 'PR Resubmitted' : 'PR Raised',
+        nextStepLabel: nextStep || (prFlow === 'functional' ? 'Selected Approver' : 'L1 Manager Approval'),
+        requesterEmail: user.email,
+        requesterName: user.name,
+      });
     })().catch((err) => {
       console.error('PR submit notification failed (save already committed):', err.message);
     });
@@ -1866,11 +1910,28 @@ export async function processApproval(user, prId, action, remarks, options = {})
 
     await conn.commit();
     const updatedPr = await getPurchaseRequestById(prId);
+
+    const notifyRequesterStepMoved = (nextStepLabel, completedStepLabel) => {
+      if (action !== 'approve') return;
+      queueRequesterStepProgressNotification(updatedPr, {
+        action: 'approve',
+        actorRole: actingAsHod ? 'HOD Approver' : actingRole,
+        actorName: user.name,
+        completedStepLabel:
+          completedStepLabel ||
+          (isFunctional ? 'User Approval' : `${actingAsHod ? 'L1 Manager' : actingRole} Approval`),
+        nextStepLabel,
+        remarks: typeof remarks === 'string' ? remarks.replace(/\s*\[User Approval[^\]]*\]\s*/g, ' ').trim() : '',
+        requesterName: updatedPr.requester,
+      });
+    };
+
     if (nextFunctionalApprover && action === 'approve') {
       const { step, total } = approvalStepIndex(
         { ...pr, approval_user_id: nextFunctionalApprover.id },
         nextFunctionalApprover.id
       );
+      const nextLabel = total > 1 ? `User Approval ${step} of ${total}` : 'User Approval';
       queuePrApprovalPendingNotification(
         updatedPr,
         'HOD Approver',
@@ -1881,11 +1942,17 @@ export async function processApproval(user, prId, action, remarks, options = {})
             ? [nextAssignee.hodEmail || nextAssignee.email]
             : undefined,
           approverName: nextAssignee?.hodName || nextAssignee?.name || undefined,
-          stageLabel: total > 1 ? `User Approval ${step} of ${total}` : 'User Approval',
+          stageLabel: nextLabel,
           roleDisplayName: 'Selected Approver',
         }
       );
+      const { step: doneStep, total: doneTotal } = approvalStepIndex(pr, user.id);
+      notifyRequesterStepMoved(
+        nextLabel,
+        doneTotal > 1 ? `User Approval ${doneStep} of ${doneTotal}` : 'User Approval'
+      );
     } else if (nextRole && action === 'approve') {
+      const nextLabel = nextRole === 'PR Manager' ? 'L2 Manager Approval' : `${nextRole} Approval`;
       queuePrApprovalPendingNotification(
         updatedPr,
         nextRole,
@@ -1894,9 +1961,10 @@ export async function processApproval(user, prId, action, remarks, options = {})
         {
           approverEmails: nextAssignee?.email ? [nextAssignee.email] : undefined,
           approverName: nextAssignee?.name || undefined,
-          stageLabel: nextRole === 'PR Manager' ? 'L2 Manager Approval' : `${nextRole} Approval`,
+          stageLabel: nextLabel,
         }
       );
+      notifyRequesterStepMoved(nextLabel);
     } else if (rfqEntryRequester?.email) {
       // Particular requester — RFQ entry step
       queuePrApprovalPendingNotification(
@@ -1910,26 +1978,37 @@ export async function processApproval(user, prId, action, remarks, options = {})
           stageLabel: 'RFQ Entry Required',
         }
       );
+      notifyRequesterStepMoved('RFQ Entry (Own Vendor)', 'L1 Manager Approval');
     } else if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve') {
-      const mailPack = await loadFunctionalOwnRfqMailPack(
-        isFunctional ? 'functional' : 'standard',
-        pr.vendor_selection,
-        prId
-      );
-      queuePrApprovalPendingNotification(
-        updatedPr,
-        'SCM Buyer',
-        { name: updatedPr.requester, email: '' },
-        updatedPr.departmentId,
-        {
+      // Functional Own (and any PR that already has quotation rounds) → SCM Buyer with files attached
+      const scmLabel =
+        isFunctional && pr.vendor_selection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry';
+      try {
+        const { queuePostQuotationApprovalMail } = await import('./rfqService.js');
+        await queuePostQuotationApprovalMail(updatedPr, 'SCM Buyer', {
           rfqEntry: true,
-          stageLabel:
-            isFunctional && pr.vendor_selection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry',
+          stageLabel: scmLabel,
           approverEmails: scmRfqBuyerEmails.length ? scmRfqBuyerEmails : undefined,
           approverName: 'SCM Buyer',
-          rfqSummary: mailPack.rfqSummary,
-          attachments: mailPack.attachments,
-        }
+        });
+      } catch (err) {
+        console.warn('SCM Buyer RFQ mail pack failed, sending without files:', err.message);
+        queuePrApprovalPendingNotification(
+          updatedPr,
+          'SCM Buyer',
+          { name: updatedPr.requester, email: '' },
+          updatedPr.departmentId,
+          {
+            rfqEntry: true,
+            stageLabel: scmLabel,
+            approverEmails: scmRfqBuyerEmails.length ? scmRfqBuyerEmails : undefined,
+            approverName: 'SCM Buyer',
+          }
+        );
+      }
+      notifyRequesterStepMoved(
+        scmLabel,
+        isFunctional ? 'User Approval (chain complete)' : `${actingRole} Approval`
       );
     } else if (action === 'reject' || action === 'return' || action === 'rework') {
       // Particular requester — return / reject
@@ -3051,9 +3130,10 @@ export function toCfoDashboardFormat(pr) {
     justification: pr.justification,
     isHighValue: pr.totalAmount >= 500000,
     isOverdue: false,
+    vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
     lineItems: pr.lineItems.map((li) => ({
       id: String(li.id),
-      itemName: li.description,
+      itemName: li.itemName || li.description,
       description: li.description,
       quantity: li.quantity,
       unit: li.unit || li.uom || 'Nos',

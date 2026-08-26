@@ -26,10 +26,18 @@ export interface RfqQuoteTableRow {
   canSendBack?: boolean;
   quotationFileName?: string;
   /** Server submission id for Open / View of saved quotation file */
-  quotationSubmissionId?: number;
+  quotationSubmissionId?: number | null;
+  /** Alias used by RFQ detail API table rows */
+  submissionId?: number | null;
   /** True when a local File is still in browser memory (not yet uploaded) */
   hasLocalQuotationFile?: boolean;
-  quotes?: Array<{ round: number; quotedPrice: number; status?: string }>;
+  quotes?: Array<{
+    round: number;
+    quotedPrice: number;
+    status?: string;
+    submissionId?: number | null;
+    quotationFileName?: string;
+  }>;
   fieldValues?: Record<string, unknown>;
 }
 
@@ -59,6 +67,31 @@ function roundQuote(row: RfqQuoteTableRow, roundNum: number) {
     quotes.find((q) => Number(q.round) === roundNum) ||
     null
   );
+}
+
+function fileMetaForRow(row: RfqQuoteTableRow, focusRound: number) {
+  const quote = roundQuote(row, focusRound);
+  const fileName =
+    (quote?.quotationFileName && String(quote.quotationFileName)) ||
+    (row.quotationFileName && String(row.quotationFileName)) ||
+    '';
+  const submissionId =
+    (quote?.submissionId != null && Number(quote.submissionId)) ||
+    (row.quotationSubmissionId != null && Number(row.quotationSubmissionId)) ||
+    (row.submissionId != null && Number(row.submissionId)) ||
+    null;
+  return {
+    fileName,
+    submissionId: submissionId && Number.isFinite(submissionId) && submissionId > 0 ? submissionId : null,
+  };
+}
+
+function isImageFileName(name: string) {
+  return /\.(png|jpe?g|gif|webp|bmp)$/i.test(name || '');
+}
+
+function isPdfFileName(name: string) {
+  return /\.pdf$/i.test(name || '');
 }
 
 function roundPrice(row: RfqQuoteTableRow, roundNum: number): number | null {
@@ -271,6 +304,11 @@ export default function RfqVendorQuoteTable({
               const tabRound = activeTab === 'all' ? null : Number(activeTab);
               const hasTabQuote = tabRound ? prices[tabRound - 1] != null : row.hasActiveQuote;
               const barValue = tabRound ? focusPrice : latest;
+              const fileFocusRound = tabRound || latestRound || Number(row.round) || 1;
+              const fileMeta = fileMetaForRow(row, fileFocusRound);
+              const canPreview =
+                Boolean(onViewFile) &&
+                (Boolean(fileMeta.submissionId) || Boolean(row.hasLocalQuotationFile));
               return (
                 <tr key={row.id} className={`hover:bg-gray-50 ${isRecommended ? 'bg-teal-50/40' : ''}`}>
                   <td className="px-5 py-3.5">
@@ -289,9 +327,9 @@ export default function RfqVendorQuoteTable({
                       {awaitingEmail && (
                         <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700">Waiting</span>
                       )}
-                      {isRecommended && (
-                        <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800">Selected</span>
-                      )}
+                        {isRecommended && (
+                          <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">Selected</span>
+                        )}
                       {tabRound && !hasTabQuote && row.hasActiveQuote && (
                         <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-500">No Q{tabRound}</span>
                       )}
@@ -343,24 +381,43 @@ export default function RfqVendorQuoteTable({
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
-                    {row.quotationFileName || row.hasLocalQuotationFile || row.quotationSubmissionId ? (
-                      <div className="flex flex-col gap-1 min-w-[120px]">
+                    {fileMeta.fileName || row.hasLocalQuotationFile || fileMeta.submissionId ? (
+                      <div className="flex flex-col gap-1.5 min-w-[140px]">
                         <p
-                          className="text-[11px] text-slate-600 truncate max-w-[140px]"
-                          title={row.quotationFileName || 'Quotation file'}
+                          className="text-[11px] text-slate-600 truncate max-w-[160px]"
+                          title={fileMeta.fileName || 'Quotation file'}
                         >
-                          <i className="ri-file-pdf-2-line text-teal-600 mr-1" />
-                          {row.quotationFileName || 'Attached'}
+                          <i
+                            className={`mr-1 ${
+                              isPdfFileName(fileMeta.fileName)
+                                ? 'ri-file-pdf-2-line text-red-500'
+                                : isImageFileName(fileMeta.fileName)
+                                  ? 'ri-image-line text-teal-600'
+                                  : 'ri-attachment-2 text-teal-600'
+                            }`}
+                          />
+                          {fileMeta.fileName || 'Attached'}
                         </p>
-                        {onViewFile && (row.hasLocalQuotationFile || row.quotationSubmissionId) ? (
+                        {canPreview ? (
                           <button
                             type="button"
-                            onClick={() => onViewFile(row)}
-                            className="inline-flex items-center gap-1 self-start px-2 py-1 rounded-md border border-teal-200 text-teal-700 text-[11px] font-semibold hover:bg-teal-50"
+                            onClick={() =>
+                              onViewFile?.({
+                                ...row,
+                                quotationFileName: fileMeta.fileName || row.quotationFileName,
+                                quotationSubmissionId: fileMeta.submissionId,
+                                submissionId: fileMeta.submissionId,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 self-start px-2.5 py-1 rounded-md border border-teal-200 bg-teal-50 text-teal-800 text-[11px] font-semibold hover:bg-teal-100"
                           >
                             <i className="ri-eye-line" />
-                            View
+                            {isImageFileName(fileMeta.fileName) || isPdfFileName(fileMeta.fileName)
+                              ? 'Preview'
+                              : 'View'}
                           </button>
+                        ) : fileMeta.fileName ? (
+                          <span className="text-[10px] text-amber-700">File saved — open Edit to preview</span>
                         ) : null}
                       </div>
                     ) : (

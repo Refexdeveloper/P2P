@@ -588,6 +588,10 @@ export interface VendorComparisonData {
 const PO_API_URL = API_URL;
 
 export const poApi = {
+  getScmManager: () =>
+    request<{ data: { id: number | null; name: string; email: string; role: string } }>(
+      '/api/po/scm-manager'
+    ),
   getCreateContext: (prId: number) =>
     request<{ data: { pr: Record<string, unknown>; vendor: Record<string, unknown> } }>(`/api/po/pr/${prId}/context`),
   create: (prId: number, body: Record<string, unknown>) =>

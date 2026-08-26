@@ -29,6 +29,11 @@ import { authenticate, requireRoles } from '../middleware/auth.js';
   resolveCancellationAttachment,
 } from '../services/poService.js';
 import {
+  resolveScmManagerUser,
+  getPreferredScmManagerEmail,
+  getPreferredScmManagerName,
+} from '../utils/scmAssignee.js';
+import {
   listLetterheads,
   getLetterheadByType,
   saveLetterhead,
@@ -136,6 +141,27 @@ router.delete('/signatures/:id', requireRoles('SCM Manager'), async (req, res) =
     res.status(400).json({ message: err.message });
   }
 });
+
+/** Who receives PO approval next (shown on Create / Save confirm) */
+router.get(
+  '/scm-manager',
+  requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'),
+  async (_req, res) => {
+    try {
+      const mgr = await resolveScmManagerUser();
+      res.json({
+        data: {
+          id: mgr?.id || null,
+          name: mgr?.name || getPreferredScmManagerName(),
+          email: mgr?.email || getPreferredScmManagerEmail(),
+          role: 'SCM Manager',
+        },
+      });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
 
 /** Excel / CSV PO import — no approval workflow */
 const poImportRoles = requireRoles('SCM Buyer', 'Super Admin');

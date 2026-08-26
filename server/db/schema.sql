@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS pr_line_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   pr_id INT NOT NULL,
   category VARCHAR(100),
+  item_name VARCHAR(255) NULL,
   description VARCHAR(255) NOT NULL,
   quantity INT NOT NULL DEFAULT 1,
   unit VARCHAR(50) NOT NULL DEFAULT 'Nos',

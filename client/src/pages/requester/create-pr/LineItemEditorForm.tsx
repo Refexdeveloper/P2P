@@ -1,8 +1,9 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { CategoryRecord, ItemRecord } from '../../../services/api';
 import { CurrencyCode, formatMoney } from '../../../constants/currency';
 import ItemCombobox from './ItemCombobox';
 import CategoryCombobox from './CategoryCombobox';
+import UomCombobox from './UomCombobox';
 
 export interface LineItem {
   id: string;
@@ -122,6 +123,8 @@ interface Props {
   onCategoryCreated: (category: CategoryRecord) => void;
   /** Fires as the user edits so Save Draft can commit an in-progress row. */
   onLiveChange?: (item: LineItem | null) => void;
+  /** Own Vendor: hide unit price / HSN / GST / total (quotes come later). */
+  hidePricing?: boolean;
 }
 
 export default function LineItemEditorForm({
@@ -137,6 +140,7 @@ export default function LineItemEditorForm({
   onMasterItemCreated,
   onCategoryCreated,
   onLiveChange,
+  hidePricing = false,
 }: Props) {
   const [draft, setDraft] = useState<LineItem>(initial);
   const [qtyInput, setQtyInput] = useState(initial.quantity > 0 ? String(initial.quantity) : '');
@@ -171,6 +175,14 @@ export default function LineItemEditorForm({
   const gstPercentage =
     parsedGst != null && Number.isFinite(parsedGst) ? Math.min(100, Math.max(0, parsedGst)) : undefined;
 
+  const uomExtras = useMemo(
+    () =>
+      masterItems
+        .map((item) => String(item.unit || '').trim())
+        .filter(Boolean),
+    [masterItems]
+  );
+
   useEffect(() => {
     onLiveChangeRef.current?.({
       ...draft,
@@ -193,7 +205,14 @@ export default function LineItemEditorForm({
     }
     if (!draft.category) next.category = 'Category is required';
     if (!(quantity >= 1)) next.quantity = 'Enter a quantity of 1 or more';
-    if (gstInput.trim() !== '' && parsedGst != null && Number.isFinite(parsedGst) && (parsedGst < 0 || parsedGst > 100)) {
+    if (!String(draft.unit || '').trim()) next.unit = 'Select or add a UOM';
+    if (
+      !hidePricing &&
+      gstInput.trim() !== '' &&
+      parsedGst != null &&
+      Number.isFinite(parsedGst) &&
+      (parsedGst < 0 || parsedGst > 100)
+    ) {
       next.gst = 'Enter GST between 0 and 100';
     }
     setErrors(next);
@@ -207,8 +226,10 @@ export default function LineItemEditorForm({
       itemName: draft.itemName || draft.description,
       description: draft.description.trim(),
       quantity,
-      unit: draft.unit || 'Nos',
-      gstPercentage: gstPercentage ?? 0,
+      unit: String(draft.unit || '').trim() || 'Nos',
+      estimatedCost: hidePricing ? 0 : Number(draft.estimatedCost) || 0,
+      hsnCode: hidePricing ? '' : draft.hsnCode || '',
+      gstPercentage: hidePricing ? 0 : gstPercentage ?? 0,
     });
   };
 
@@ -320,100 +341,118 @@ export default function LineItemEditorForm({
               <i className="ri-add-line text-sm"></i>
             </button>
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">Unit: {draft.unit || 'Nos'} · Minimum 1</p>
+          <p className="text-[11px] text-gray-400 mt-1">Minimum 1</p>
           {errors.quantity && <p className="text-xs text-red-500 mt-1">{errors.quantity}</p>}
         </div>
 
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">
-            Unit Price ({moneySymbol})
+            UOM <span className="text-red-500">*</span>
           </label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-semibold pointer-events-none">
-              {moneySymbol}
-            </span>
-            <input
-              type="number"
-              value={draft.estimatedCost || ''}
-              onChange={(e) => {
-                const raw = e.target.value;
-                const parsed = raw === '' || raw === '.' ? 0 : parseFloat(raw);
-                updateDraft({ estimatedCost: Number.isFinite(parsed) ? Math.max(0, parsed) : 0 });
-              }}
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              placeholder="0.00"
-              className={`w-full pl-8 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${noSpinnerClass} ${errors.cost ? 'border-red-400' : 'border-gray-200'}`}
-              title="Unit Price"
-              aria-label="Unit Price"
-            />
-          </div>
-          {errors.cost && <p className="text-xs text-red-500 mt-1">{errors.cost}</p>}
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">HSN Code</label>
-          <input
-            type="text"
-            value={draft.hsnCode || ''}
-            onChange={(e) => updateDraft({ hsnCode: e.target.value })}
-            placeholder="From Item Master"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+          <UomCombobox
+            value={draft.unit || 'Nos'}
+            hasError={Boolean(errors.unit)}
+            extraUnits={uomExtras}
+            onChange={(unit) => updateDraft({ unit })}
           />
+          <p className="text-[11px] text-gray-400 mt-1">Select a unit, or type a new one to add it</p>
+          {errors.unit && <p className="text-xs text-red-500 mt-1">{errors.unit}</p>}
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">GST %</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={gstInput}
-            onChange={(e) => {
-              const raw = e.target.value.trim();
-              if (raw === '') {
-                setGstInput('');
-                return;
-              }
-              if (!/^\d{0,3}(\.\d{0,2})?$/.test(raw)) return;
-              const parsed = parseFloat(raw);
-              if (Number.isFinite(parsed) && parsed > 100) {
-                setGstInput('100');
-                return;
-              }
-              setGstInput(raw);
-            }}
-            placeholder="e.g. 18"
-            className={`w-full px-3 py-2 border rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-400 ${errors.gst ? 'border-red-400' : 'border-gray-200'}`}
-          />
-          <p className="text-[11px] text-gray-400 mt-1">Optional. Type 0 for GST-exempt items</p>
-          {errors.gst && <p className="text-xs text-red-500 mt-1">{errors.gst}</p>}
-        </div>
+        {!hidePricing && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                Unit Price ({moneySymbol})
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-semibold pointer-events-none">
+                  {moneySymbol}
+                </span>
+                <input
+                  type="number"
+                  value={draft.estimatedCost || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const parsed = raw === '' || raw === '.' ? 0 : parseFloat(raw);
+                    updateDraft({ estimatedCost: Number.isFinite(parsed) ? Math.max(0, parsed) : 0 });
+                  }}
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className={`w-full pl-8 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${noSpinnerClass} ${errors.cost ? 'border-red-400' : 'border-gray-200'}`}
+                  title="Unit Price"
+                  aria-label="Unit Price"
+                />
+              </div>
+              {errors.cost && <p className="text-xs text-red-500 mt-1">{errors.cost}</p>}
+            </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Estimated Total (incl. GST)</label>
-          <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-            <span className="text-sm font-bold text-emerald-700">
-              {formatMoney(
-                lineInclusiveAmount(quantity || 0, draft.estimatedCost, gstPercentage),
-                currency,
-                {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                }
-              )}
-            </span>
-            {lineGstPercent({ gstPercentage }) > 0 && draft.estimatedCost > 0 && quantity > 0 && (
-              <p className="text-[11px] text-emerald-800/70 mt-0.5">
-                {formatMoney(lineExGstAmount(quantity || 0, draft.estimatedCost), currency, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}{' '}
-                + GST {lineGstPercent({ gstPercentage })}%
-              </p>
-            )}
-          </div>
-        </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">HSN Code</label>
+              <input
+                type="text"
+                value={draft.hsnCode || ''}
+                onChange={(e) => updateDraft({ hsnCode: e.target.value })}
+                placeholder="From Item Master"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">GST %</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={gstInput}
+                onChange={(e) => {
+                  const raw = e.target.value.trim();
+                  if (raw === '') {
+                    setGstInput('');
+                    return;
+                  }
+                  if (!/^\d{0,3}(\.\d{0,2})?$/.test(raw)) return;
+                  const parsed = parseFloat(raw);
+                  if (Number.isFinite(parsed) && parsed > 100) {
+                    setGstInput('100');
+                    return;
+                  }
+                  setGstInput(raw);
+                }}
+                placeholder="e.g. 18"
+                className={`w-full px-3 py-2 border rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-400 ${errors.gst ? 'border-red-400' : 'border-gray-200'}`}
+              />
+              <p className="text-[11px] text-gray-400 mt-1">Optional. Type 0 for GST-exempt items</p>
+              {errors.gst && <p className="text-xs text-red-500 mt-1">{errors.gst}</p>}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">Estimated Total (incl. GST)</label>
+              <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <span className="text-sm font-bold text-emerald-700">
+                  {formatMoney(
+                    lineInclusiveAmount(quantity || 0, draft.estimatedCost, gstPercentage),
+                    currency,
+                    {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    }
+                  )}
+                </span>
+                {lineGstPercent({ gstPercentage }) > 0 && draft.estimatedCost > 0 && quantity > 0 && (
+                  <p className="text-[11px] text-emerald-800/70 mt-0.5">
+                    {formatMoney(lineExGstAmount(quantity || 0, draft.estimatedCost), currency, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{' '}
+                    + GST {lineGstPercent({ gstPercentage })}%
+                  </p>
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="md:col-span-2 lg:col-span-4">
           <label className="block text-xs font-medium text-gray-500 mb-1.5">

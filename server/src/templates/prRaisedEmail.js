@@ -10,14 +10,59 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-function buildLineItemsTable(lineItems = []) {
+function isOwnVendorPr(pr) {
+  return pr?.vendorSelection === 'own' || pr?.vendor_selection === 'own';
+}
+
+function lineItemName(item) {
+  return String(item?.itemName || item?.item_name || item?.item || item?.description || '').trim() || '—';
+}
+
+function lineItemDescription(item) {
+  const name = lineItemName(item);
+  const desc = String(item?.description || '').trim();
+  if (!desc || desc === name) return '';
+  return desc;
+}
+
+function buildLineItemsTable(lineItems = [], { ownVendor = false } = {}) {
+  if (ownVendor) {
+    const rows = lineItems
+      .map((item, index) => {
+        const name = lineItemName(item);
+        const desc = lineItemDescription(item);
+        return `
+        <tr>
+          <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#6b7280;text-align:center;">${index + 1}</td>
+          <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">
+            <strong style="display:block;color:#111827;">${escapeHtml(name)}</strong>
+            ${desc ? `<span style="color:#6b7280;font-size:12px;">${escapeHtml(desc)}</span>` : ''}
+          </td>
+        </tr>`;
+      })
+      .join('');
+
+    return `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;border-radius:8px;border-collapse:collapse;overflow:hidden;background:#ffffff;">
+      <thead>
+        <tr style="background:#f8fafc;">
+          <th style="padding:12px 10px;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #e5e7eb;text-align:center;">#</th>
+          <th style="padding:12px 10px;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #e5e7eb;text-align:left;">Item Name / Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>`;
+  }
+
   const rows = lineItems
     .map(
       (item, index) => `
         <tr>
           <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#6b7280;text-align:center;">${index + 1}</td>
           <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">
-            <strong style="display:block;color:#111827;">${escapeHtml(item.description)}</strong>
+            <strong style="display:block;color:#111827;">${escapeHtml(lineItemName(item))}</strong>
             <span style="color:#6b7280;font-size:12px;">${escapeHtml(item.category || '—')}</span>
           </td>
           <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;text-align:center;">${item.quantity}</td>
@@ -73,6 +118,7 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
   const intro = isResubmit
     ? 'A purchase request has been updated and resubmitted for approval workflow.'
     : 'A new purchase request has been raised and submitted for approval.';
+  const ownVendor = isOwnVendorPr(pr);
 
   const html = `
 <!DOCTYPE html>
@@ -82,36 +128,25 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(subject)}</title>
 </head>
-<body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+<body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef2f7;padding:24px 12px;">
     <tr>
       <td align="center">
-        <table width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dbe3ee;box-shadow:0 10px 30px rgba(15,23,42,0.08);">
+        <table width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dbe3ee;">
           <tr>
-            <td style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 55%,#334155 100%);padding:28px 32px;">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td>
-                    <div style="font-size:12px;color:#94a3b8;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">P2P Procurement System</div>
-                    <div style="font-size:26px;color:#ffffff;font-weight:800;margin-top:8px;line-height:1.2;">${headline}</div>
-                    <div style="font-size:14px;color:#cbd5e1;margin-top:8px;line-height:1.5;">${intro}</div>
-                  </td>
-                  <td align="right" style="vertical-align:top;">
-                    <span style="display:inline-block;background:#10b981;color:#ffffff;font-size:11px;font-weight:700;padding:8px 12px;border-radius:999px;text-transform:uppercase;letter-spacing:0.06em;">
-                      ${isResubmit ? 'Resubmitted' : 'PR Raised'}
-                    </span>
-                  </td>
-                </tr>
-              </table>
+            <td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:28px 32px;">
+              <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;font-weight:700;">P2P Procurement</div>
+              <div style="font-size:24px;color:#ffffff;font-weight:800;margin-top:8px;">${headline}</div>
+              <div style="font-size:14px;color:#cbd5e1;margin-top:8px;line-height:1.5;">${intro}</div>
             </td>
           </tr>
 
           <tr>
             <td style="padding:28px 32px 8px 32px;">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
                 <tr>
-                  <td style="padding-bottom:18px;">
-                    <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;">PR Number</div>
+                  <td style="padding:18px 20px;">
+                    <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;">PR Number</div>
                     <div style="font-size:22px;color:#0f172a;font-weight:800;margin-top:4px;">${escapeHtml(pr.prNumber)}</div>
                     <div style="font-size:15px;color:#334155;margin-top:6px;font-weight:600;">${escapeHtml(pr.title)}</div>
                   </td>
@@ -140,7 +175,11 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
                   ${infoCell('Submitted On', pr.submittedDate || pr.createdAt)}
                 </tr>
                 <tr>
-                  ${infoCell('Total Amount', formatCurrency(pr.totalAmount))}
+                  ${
+                    ownVendor
+                      ? infoCell('Vendor Path', 'Own Vendor')
+                      : infoCell('Total Amount', formatCurrency(pr.totalAmount))
+                  }
                   ${infoCell('Entity Cost Center', pr.entityCostCenter || '—')}
                 </tr>
               </table>
@@ -161,7 +200,7 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
           <tr>
             <td style="padding:0 32px 24px 32px;">
               <div style="font-size:13px;color:#0f172a;font-weight:700;margin-bottom:12px;">Line Items</div>
-              ${buildLineItemsTable(pr.lineItems)}
+              ${buildLineItemsTable(pr.lineItems, { ownVendor })}
             </td>
           </tr>
 
@@ -204,16 +243,20 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
     `Type: ${pr.requestType}`,
     `Priority: ${pr.priority}`,
     `Required Date: ${pr.requiredDate || '—'}`,
-    `Total Amount: ${formatCurrency(pr.totalAmount)}`,
+    ownVendor ? 'Vendor Path: Own Vendor' : `Total Amount: ${formatCurrency(pr.totalAmount)}`,
     '',
     'Business Justification:',
     pr.justification || 'Not provided',
     '',
     'Line Items:',
-    ...pr.lineItems.map(
-      (item, i) =>
-        `${i + 1}. ${item.description} | ${item.category} | Qty: ${item.quantity} | Unit: ${formatCurrency(item.unitCost)} | Total: ${formatCurrency(item.total)}`
-    ),
+    ...(pr.lineItems || []).map((item, i) => {
+      const name = lineItemName(item);
+      const desc = lineItemDescription(item);
+      if (ownVendor) {
+        return desc ? `${i + 1}. ${name} — ${desc}` : `${i + 1}. ${name}`;
+      }
+      return `${i + 1}. ${item.description} | ${item.category} | Qty: ${item.quantity} | Unit: ${formatCurrency(item.unitCost)} | Total: ${formatCurrency(item.total)}`;
+    }),
   ].join('\n');
 
   return { subject, html, text };

@@ -834,6 +834,8 @@ export default function CreatePOPage() {
     annexureCount: number;
   } | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showScmConfirm, setShowScmConfirm] = useState(false);
+  const [scmManager, setScmManager] = useState<{ name: string; email: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'terms' | 'preview'>('details');
   const [draftSaved, setDraftSaved] = useState(false);
   const [poEditStatus, setPoEditStatus] = useState('');
@@ -1154,6 +1156,28 @@ export default function CreatePOPage() {
     const nextType = alignTemplateWithDocument(poType, documentType);
     if (nextType !== poType) setPoType(nextType);
   }, [documentType, poType]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await poApi.getScmManager();
+        if (!cancelled && res.data) {
+          setScmManager({
+            name: res.data.name || 'SCM Manager',
+            email: res.data.email || '',
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setScmManager({ name: 'Rajeev V', email: 'rajeev.v@refex.co.in' });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;
@@ -2084,55 +2108,76 @@ export default function CreatePOPage() {
     void loadPoDetailsByNumber(refPoParam.trim());
   }, [isEditMode, pr, refPoParam, referencePoLoaded, loadPoDetailsByNumber]);
 
-  const handleSendForApproval = async () => {
-    if ((!numericPrId && !editPoId && !isManualMode) || !pr) return;
+  const validateBeforeSend = (): boolean => {
+    if ((!numericPrId && !editPoId && !isManualMode) || !pr) return false;
     if (!String(poTermsDetails.subject || '').trim()) {
       alert(`Please enter ${documentType === 'work_order' ? 'Work Order' : 'Purchase Order'} Subject`);
       setActiveTab('details');
-      return;
+      return false;
     }
     if (isManualMode) {
       if (!manualVendorName.trim()) {
         alert('Please enter vendor name');
         setActiveTab('details');
-        return;
+        return false;
       }
       if (!manualVendorEmail.trim()) {
         alert('Please enter vendor email');
         setActiveTab('details');
-        return;
+        return false;
       }
       if (!resolvedManualEntityId && !letterheadId) {
         alert('Please select a letterhead entity for PO / WO numbering');
         setActiveTab('terms');
-        return;
+        return false;
       }
     }
     if (!skipApproval && !letterheadId) {
       alert('Please select a letterhead entity');
       setActiveTab('terms');
-      return;
+      return false;
     }
     if (!skipApproval && letterheadLocations.length > 0 && !letterheadLocationKey) {
       alert('Please select a location for the letterhead entity');
       setActiveTab('terms');
-      return;
+      return false;
     }
     if (!poDate) {
       alert(`Please select ${documentType === 'work_order' ? 'WO' : 'PO'} date`);
       setActiveTab('details');
-      return;
+      return false;
     }
     if (!(poTermsDetails.siteAddress || deliveryAddress).trim()) {
       alert('Please select site / delivery address');
       setActiveTab('terms');
-      return;
+      return false;
     }
     if (!expectedDeliveryDate) {
       alert('Please select expected delivery date');
       setActiveTab('terms');
+      return false;
+    }
+    return true;
+  };
+
+  /** Create / draft Save that goes to SCM Manager for approval */
+  const needsScmManagerConfirm =
+    !skipApproval &&
+    !isBuyerVerifyEdit &&
+    (!isEditMode || poEditStatus === 'draft');
+
+  const handleSendForApproval = () => {
+    if (!validateBeforeSend()) return;
+    if (needsScmManagerConfirm) {
+      setShowScmConfirm(true);
       return;
     }
+    void executeSendForApproval();
+  };
+
+  const executeSendForApproval = async () => {
+    if ((!numericPrId && !editPoId && !isManualMode) || !pr) return;
+    setShowScmConfirm(false);
     setSubmitting(true);
     try {
       const payload: Record<string, unknown> = {
@@ -3875,8 +3920,12 @@ export default function CreatePOPage() {
                       {isEditMode
                         ? isBuyerVerifyEdit
                           ? 'Changes update the signed PO before you verify and send to vendor'
-                          : 'Updated PO stays pending until you sign from PO Approval'
-                        : 'PO will be sent to SCM Manager for approval'}
+                          : poEditStatus === 'draft'
+                            ? `Saving will send this draft to SCM Manager${scmManager?.name ? ` (${scmManager.name})` : ''} for approval`
+                            : 'Updated PO stays pending until you sign from PO Approval'
+                        : skipApproval
+                          ? 'Create PO without manager approval (legacy import)'
+                          : `PO will be sent to SCM Manager${scmManager?.name ? ` — ${scmManager.name}` : ''} for approval`}
                     </p>
                   </div>
                 </div>
@@ -3906,6 +3955,62 @@ export default function CreatePOPage() {
           )}
         </div>
       </div>
+
+      {/* ── Confirm: send to SCM Manager ── */}
+      {showScmConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="bg-gradient-to-br from-teal-600 to-teal-700 px-6 py-5">
+              <h3 className="text-lg font-bold text-white">
+                {isEditMode && poEditStatus === 'draft'
+                  ? 'Send draft for approval?'
+                  : 'Send for SCM Manager approval?'}
+              </h3>
+              <p className="text-teal-100 text-sm mt-1">
+                Confirm before moving this {docLabel.toLowerCase()} to the next level
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-700 leading-relaxed">
+                Is it okay to send this {docLabel.toLowerCase()} to the{' '}
+                <strong>next level — SCM Manager</strong> for sign &amp; approval?
+              </p>
+              <div className="rounded-xl border border-teal-200 bg-teal-50/80 p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-teal-700 mb-2">
+                  SCM Manager
+                </p>
+                <p className="text-base font-bold text-gray-900">
+                  {scmManager?.name || 'SCM Manager'}
+                </p>
+                {scmManager?.email ? (
+                  <p className="text-sm text-teal-800 mt-0.5 break-all">{scmManager.email}</p>
+                ) : null}
+                <p className="text-xs text-gray-500 mt-2">
+                  They will receive the approval task and email for this {docNoLabel}.
+                </p>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowScmConfirm(false)}
+                  disabled={submitting}
+                  className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void executeSendForApproval()}
+                  disabled={submitting}
+                  className="flex-1 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-bold disabled:opacity-50"
+                >
+                  {submitting ? 'Sending…' : 'Yes, send to SCM Manager'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Success Modal ── */}
       {showSuccessModal && (

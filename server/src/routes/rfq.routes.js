@@ -47,23 +47,31 @@ router.post('/quote/:token', async (req, res) => {
 router.get('/submissions/:id/file', authenticate, async (req, res) => {
   try {
     const { fullPath, fileName, buffer } = await getSubmissionFile(req.user, Number(req.params.id));
-    if (buffer) {
-      const lower = String(fileName || '').toLowerCase();
-      const contentType = lower.endsWith('.pdf')
-        ? 'application/pdf'
-        : lower.endsWith('.png')
-          ? 'image/png'
-          : lower.endsWith('.jpg') || lower.endsWith('.jpeg')
-            ? 'image/jpeg'
-            : lower.endsWith('.webp')
-              ? 'image/webp'
+    const lower = String(fileName || '').toLowerCase();
+    const contentType = lower.endsWith('.pdf')
+      ? 'application/pdf'
+      : lower.endsWith('.png')
+        ? 'image/png'
+        : lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+          ? 'image/jpeg'
+          : lower.endsWith('.webp')
+            ? 'image/webp'
+            : lower.endsWith('.gif')
+              ? 'image/gif'
               : 'application/octet-stream';
+    const disposition = `inline; filename="${String(fileName || 'quotation').replace(/"/g, '')}"`;
+
+    if (buffer) {
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `inline; filename="${String(fileName).replace(/"/g, '')}"`);
+      res.setHeader('Content-Disposition', disposition);
       res.setHeader('Content-Length', buffer.length);
       return res.send(buffer);
     }
-    return res.download(fullPath, fileName);
+
+    // Prefer inline so RFQ Entry can preview JPG/PDF in-browser
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', disposition);
+    return res.sendFile(fullPath);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

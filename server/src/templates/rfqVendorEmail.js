@@ -1,6 +1,53 @@
 import { escapeHtml, formatCurrency, formatEntity } from './emailUtils.js';
 
-function buildLineItemsTable(lineItems = []) {
+function isOwnVendorPr(pr) {
+  return pr?.vendorSelection === 'own' || pr?.vendor_selection === 'own';
+}
+
+function lineItemName(item) {
+  return String(item?.itemName || item?.item_name || item?.item || item?.description || '').trim() || '—';
+}
+
+function lineItemDescription(item) {
+  const name = lineItemName(item);
+  const desc = String(item?.description || '').trim();
+  if (!desc || desc === name) return '';
+  return desc;
+}
+
+function buildLineItemsTable(lineItems = [], { ownVendor = false } = {}) {
+  if (ownVendor) {
+    const rows = lineItems
+      .map((item, i) => {
+        const name = lineItemName(item);
+        const desc = lineItemDescription(item);
+        const qty = Number(item?.quantity) || 0;
+        const unit = String(item?.unit || item?.uom || 'Nos').trim() || 'Nos';
+        return `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">${i + 1}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">
+          <strong style="display:block;">${escapeHtml(name)}</strong>
+          ${desc ? `<span style="color:#6b7280;font-size:12px;">${escapeHtml(desc)}</span>` : ''}
+        </td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">${qty}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;color:#64748b;">${escapeHtml(unit)}</td>
+      </tr>`;
+      })
+      .join('');
+
+    return `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;border-collapse:collapse;margin-top:12px;">
+      <thead><tr style="background:#f8fafc;">
+        <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;">#</th>
+        <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;text-align:left;">Item Name / Description</th>
+        <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;">Qty</th>
+        <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;">UOM</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
   const rows = lineItems
     .map(
       (item, i) => `
@@ -38,6 +85,7 @@ export function buildRfqInvitationEmail({ pr, vendorName, submitUrl, round = 1 }
     round > 1
       ? `Please review the feedback and submit a revised quotation for Round ${round}.`
       : 'You have been invited to submit a quotation for the purchase request below.';
+  const ownVendor = isOwnVendorPr(pr);
 
   const html = `
 <!DOCTYPE html>
@@ -63,15 +111,25 @@ export function buildRfqInvitationEmail({ pr, vendorName, submitUrl, round = 1 }
             <div style="font-size:14px;font-weight:600;margin-top:4px;">${escapeHtml(pr.department)}</div>
           </div></td>
         </tr>
-        <tr>
+        ${
+          ownVendor
+            ? `<tr>
+          <td width="50%" style="padding:6px;"><div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;padding:12px;">
+            <div style="font-size:10px;color:#047857;font-weight:700;">VENDOR PATH</div>
+            <div style="font-size:16px;font-weight:800;color:#047857;margin-top:4px;">Own Vendor</div>
+          </div></td>
+          <td width="50%" style="padding:6px;"></td>
+        </tr>`
+            : `<tr>
           <td width="50%" style="padding:6px;"><div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;padding:12px;">
             <div style="font-size:10px;color:#047857;font-weight:700;">ESTIMATED VALUE</div>
             <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${formatCurrency(pr.totalAmount)}</div>
           </div></td>
           <td width="50%" style="padding:6px;"></td>
-        </tr></table>
+        </tr>`
+        }</table>
         <div style="margin-top:16px;font-size:13px;font-weight:700;color:#0f172a;">Line Items</div>
-        ${buildLineItemsTable(pr.lineItems)}
+        ${buildLineItemsTable(pr.lineItems, { ownVendor })}
         <div style="margin-top:20px;font-size:13px;font-weight:700;">Business Justification</div>
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px;font-size:14px;color:#78350f;margin-top:8px;">${escapeHtml(pr.justification || '—')}</div>
         <table cellpadding="0" cellspacing="0" align="center" style="margin:28px auto 8px;"><tr><td>
@@ -87,7 +145,7 @@ export function buildRfqInvitationEmail({ pr, vendorName, submitUrl, round = 1 }
     subject,
     `Vendor: ${vendorName}`,
     `PR: ${pr.prNumber} — ${pr.title}`,
-    `Amount: ${formatCurrency(pr.totalAmount)}`,
+    ownVendor ? 'Vendor Path: Own Vendor' : `Amount: ${formatCurrency(pr.totalAmount)}`,
     `Submit: ${submitUrl}`,
   ].join('\n');
 

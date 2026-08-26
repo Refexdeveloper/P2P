@@ -1,5 +1,20 @@
 import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
 
+function isOwnVendorPr(pr) {
+  return pr?.vendorSelection === 'own' || pr?.vendor_selection === 'own';
+}
+
+function lineItemName(item) {
+  return String(item?.itemName || item?.item_name || item?.item || item?.description || '').trim() || '—';
+}
+
+function lineItemDescription(item) {
+  const name = lineItemName(item);
+  const desc = String(item?.description || '').trim();
+  if (!desc || desc === name) return '';
+  return desc;
+}
+
 const ROLE_PORTAL_PATH = {
   'HOD Approver': '/tasks',
   'PR Manager': '/pr-manager/dashboard',
@@ -384,12 +399,93 @@ function buildQuotationFilesBlock(rfqSummary) {
         </tr>`;
 }
 
+function buildRecommendedQuoteLineItemsBlock(rfqSummary) {
+  let lines = Array.isArray(rfqSummary?.recommendedQuoteLineItems)
+    ? rfqSummary.recommendedQuoteLineItems
+    : [];
+  if (!lines.length) {
+    const recommended = (rfqSummary?.vendors || []).find((v) => v.isRecommended);
+    const fromVendor =
+      recommended?.quoteLineItems ||
+      recommended?.rounds?.[recommended.rounds.length - 1]?.quoteLineItems ||
+      recommended?.latest?.quoteLineItems ||
+      [];
+    if (Array.isArray(fromVendor) && fromVendor.length) lines = fromVendor;
+  }
+  if (!lines.length) return '';
+
+  const vendor = escapeHtml(rfqSummary?.recommendedVendor || 'Recommended vendor');
+  const roundLabel = rfqSummary?.recommendedRound
+    ? ` · Quote ${rfqSummary.recommendedRound}`
+    : '';
+  const rows = lines
+    .map((item, i) => {
+      const desc = escapeHtml(
+        String(item?.description || item?.itemName || item?.item_name || '—').trim() || '—'
+      );
+      const qty = Number(item?.quantity) || 0;
+      const unit = Number(item?.quotedUnitPrice) || 0;
+      const gst = item?.gstPercent != null ? Number(item.gstPercent) : null;
+      const total =
+        Number(item?.quotedTotal) ||
+        Math.round(qty * unit * (1 + (Number(gst) || 0) / 100) * 100) / 100;
+      return `
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;color:#64748b;">${i + 1}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#0f172a;">${desc}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">${qty}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;">${formatCurrency(unit)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;color:#64748b;">${gst != null ? `${gst}%` : '—'}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;font-weight:700;color:#047857;">${formatCurrency(total)}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const grand = lines.reduce((sum, item) => {
+    const qty = Number(item?.quantity) || 0;
+    const unit = Number(item?.quotedUnitPrice) || 0;
+    const gst = Number(item?.gstPercent) || 0;
+    return (
+      sum +
+      (Number(item?.quotedTotal) || Math.round(qty * unit * (1 + gst / 100) * 100) / 100)
+    );
+  }, 0);
+
+  return `
+        <div style="margin-top:16px;border:1px solid #a7f3d0;border-radius:12px;overflow:hidden;background:#ecfdf5;">
+          <div style="padding:12px 14px;background:#059669;color:#fff;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">Recommended quotation — line items</div>
+            <div style="font-size:14px;font-weight:700;margin-top:4px;">${vendor}${roundLabel}</div>
+          </div>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;background:#fff;">
+            <thead>
+              <tr style="background:#f0fdf4;">
+                <th style="padding:8px 10px;font-size:10px;color:#047857;text-align:center;">#</th>
+                <th style="padding:8px 10px;font-size:10px;color:#047857;text-align:left;">Description</th>
+                <th style="padding:8px 10px;font-size:10px;color:#047857;text-align:center;">Qty</th>
+                <th style="padding:8px 10px;font-size:10px;color:#047857;text-align:right;">Unit</th>
+                <th style="padding:8px 10px;font-size:10px;color:#047857;text-align:center;">GST</th>
+                <th style="padding:8px 10px;font-size:10px;color:#047857;text-align:right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+            <tfoot>
+              <tr style="background:#ecfdf5;">
+                <td colspan="5" style="padding:10px;font-size:12px;font-weight:700;color:#065f46;text-align:right;">Quoted total</td>
+                <td style="padding:10px;font-size:14px;font-weight:800;color:#047857;text-align:right;">${formatCurrency(Number(rfqSummary?.quotedPrice) || grand)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`;
+}
+
 function buildNegotiationRoundsBlock(pr, rfqSummary) {
   if (!rfqSummary?.vendors?.length) return '';
 
   return `
         ${buildQuotedAmountBlock(pr, rfqSummary)}
         ${buildRecommendationJustificationBlock(rfqSummary)}
+        ${buildRecommendedQuoteLineItemsBlock(rfqSummary)}
         ${buildPriceNegotiationTrendBlock(rfqSummary)}
         ${buildVendorComparisonBlock(rfqSummary)}
         ${buildQuotationFilesBlock(rfqSummary)}`;
@@ -522,17 +618,30 @@ export function buildPrApprovalPendingEmail({
       Click a button to open the portal — the approval popup will open automatically.
     </p>`;
 
+  const lineOwnVendor = isOwnVendorPr(pr);
   const lineRows = (pr.lineItems || [])
-    .map(
-      (item, i) => `
+    .map((item, i) => {
+      if (lineOwnVendor) {
+        const name = lineItemName(item);
+        const desc = lineItemDescription(item);
+        return `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#6b7280;text-align:center;">${i + 1}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">
+          <strong style="display:block;">${escapeHtml(name)}</strong>
+          ${desc ? `<span style="color:#6b7280;font-size:12px;">${escapeHtml(desc)}</span>` : ''}
+        </td>
+      </tr>`;
+      }
+      return `
       <tr>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#6b7280;text-align:center;">${i + 1}</td>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">${escapeHtml(item.description)}</td>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">${item.quantity}</td>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;">${formatCurrency(item.unitCost)}</td>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;font-weight:700;color:#047857;">${formatCurrency(item.total)}</td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join('');
 
   const rfqBlock = hasRfqVendors
@@ -630,7 +739,17 @@ export function buildPrApprovalPendingEmail({
               ${
                 hasRfqVendors
                   ? ''
-                  : `<tr>
+                  : lineOwnVendor
+                    ? `<tr>
+                <td width="50%" style="padding:6px;">
+                  <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
+                    <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">Vendor Path</div>
+                    <div style="font-size:16px;font-weight:800;color:#047857;margin-top:4px;">Own Vendor</div>
+                  </td></tr></table>
+                </td>
+                <td width="50%" style="padding:6px;"></td>
+              </tr>`
+                    : `<tr>
                 <td width="50%" style="padding:6px;">
                   <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
                     <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">Total Amount</div>
@@ -656,10 +775,14 @@ export function buildPrApprovalPendingEmail({
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;border-collapse:collapse;">
               <thead><tr style="background:#f8fafc;">
                 <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;">#</th>
-                <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;text-align:left;">Description</th>
+                ${
+                  lineOwnVendor
+                    ? `<th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;text-align:left;">Item Name / Description</th>`
+                    : `<th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;text-align:left;">Description</th>
                 <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;">Qty</th>
                 <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;text-align:right;">Unit</th>
-                <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;text-align:right;">Total</th>
+                <th style="padding:10px;font-size:10px;color:#64748b;border-bottom:1px solid #e5e7eb;text-align:right;">Total</th>`
+                }
               </tr></thead>
               <tbody>${lineRows}</tbody>
             </table>
@@ -693,7 +816,7 @@ export function buildPrApprovalPendingEmail({
     `Role: ${roleDisplayName}`,
     `Stage: ${stageText}`,
     `Requester: ${requester?.name || pr.requester}`,
-    `PR Amount: ${formatCurrency(pr.totalAmount)}`,
+    lineOwnVendor ? 'Vendor Path: Own Vendor' : `PR Amount: ${formatCurrency(pr.totalAmount)}`,
     bestQuote ? `Quoted Amount: ${formatCurrency(bestQuote.price)} (${bestQuote.vendor})` : '',
     rfqSummary?.recommendedVendor
       ? `Recommended: ${rfqSummary.recommendedVendor} (${formatCurrency(rfqSummary.quotedPrice || 0)})`

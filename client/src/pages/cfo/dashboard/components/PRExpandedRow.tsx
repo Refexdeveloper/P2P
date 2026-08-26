@@ -35,6 +35,7 @@ interface PR {
   submittedDate: string;
   dueDate: string;
   justification: string;
+  vendorSelection?: 'own' | 'scm';
   lineItems: LineItem[];
   approvalHistory: ApprovalHistoryItem[];
   isHighValue: boolean;
@@ -50,6 +51,7 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'history'>('details');
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | 'request-info'>('approve');
+  const isOwnVendor = pr.vendorSelection === 'own';
 
   const tabs = [
     { id: 'details' as const, label: 'PR Details', icon: 'ri-file-text-line' },
@@ -191,45 +193,60 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">#</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Item Name</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Quantity</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Unit Price</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Total</th>
+                {!isOwnVendor && (
+                  <>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Quantity</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Unit Price</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Total</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {pr.lineItems.map((item, index) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-600">{index + 1}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.itemName}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{item.description}</td>
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
-                      {item.category}
-                    </span>
+              {pr.lineItems.map((item, index) => {
+                const name = String(item.itemName || item.description || '—').trim() || '—';
+                const desc = String(item.description || '').trim();
+                const showDesc = desc && desc !== name;
+                return (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-600">{index + 1}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{showDesc ? desc : '—'}</td>
+                    {!isOwnVendor && (
+                      <>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+                            {item.category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">
+                          {Number(item.quantity) || 0}
+                          {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
+                            <span className="text-xs text-gray-400 font-normal ml-1">{item.unit}</span>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                          ₹{item.estimatedPrice.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                          ₹{item.totalPrice.toLocaleString()}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+              {!isOwnVendor && (
+                <tr className="bg-gray-50 font-semibold">
+                  <td colSpan={6} className="px-4 py-3 text-right text-sm text-gray-900">
+                    Grand Total:
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">
-                    {Number(item.quantity) || 0}
-                    {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
-                      <span className="text-xs text-gray-400 font-normal ml-1">{item.unit}</span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                    ₹{item.estimatedPrice.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
-                    ₹{item.totalPrice.toLocaleString()}
+                  <td className="px-4 py-3 text-right text-lg font-bold text-gray-900">
+                    ₹{pr.amount.toLocaleString()}
                   </td>
                 </tr>
-              ))}
-              <tr className="bg-gray-50 font-semibold">
-                <td colSpan={6} className="px-4 py-3 text-right text-sm text-gray-900">
-                  Grand Total:
-                </td>
-                <td className="px-4 py-3 text-right text-lg font-bold text-gray-900">
-                  ₹{pr.amount.toLocaleString()}
-                </td>
-              </tr>
+              )}
             </tbody>
           </table>
         </div>

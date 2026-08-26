@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
 import SendBackModal from '../../scm/rfq-entry/components/SendBackModal';
@@ -23,6 +23,12 @@ import RfqExtraQuestionsPanel from './components/RfqExtraQuestionsPanel';
 import PrBillingDeliverySection, {
   PrBillingDeliveryValue,
 } from '../create-pr/PrBillingDeliverySection';
+import {
+  billingFromDraft,
+  clearRfqEntryDraft,
+  readRfqEntryDraft,
+  writeRfqEntryDraft,
+} from './rfqEntryDraftStorage';
 
 const REQUESTER_SCORE_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
 
@@ -91,6 +97,40 @@ function formatCurrency(n: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 }
 
+/** Indian-style commas while typing (e.g. 45000 → 45,000). Keeps a trailing decimal point. */
+function formatInrTyping(value: unknown): string {
+  if (value === undefined || value === null || value === '') return '';
+  const raw = String(value).replace(/[,₹\s]/g, '');
+  if (raw === '' || raw === '.') return raw === '.' ? '0.' : '';
+  if (!/^\d*\.?\d{0,2}$/.test(raw)) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return '';
+    return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  }
+  const hasDot = raw.includes('.');
+  const [intRaw, decRaw = ''] = raw.split('.');
+  const intPart = intRaw === '' ? '0' : String(Number(intRaw));
+  const grouped = Number(intPart).toLocaleString('en-IN');
+  if (!hasDot) return grouped;
+  return `${grouped}.${decRaw.slice(0, 2)}`;
+}
+
+/** Strip ₹ / commas → number, or keep a partial decimal string while typing. */
+function parseInrAmountInput(raw: string): number | string | '' {
+  const text = String(raw).replace(/[,₹\s]/g, '');
+  if (text === '') return '';
+  if (!/^\d*\.?\d{0,2}$/.test(text)) {
+    const n = Number(text);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : '';
+  }
+  // Keep intermediate typing states: ".", "12.", "12.5"
+  if (text === '.' || text.endsWith('.') || /^\d+\.\d$/.test(text)) {
+    return text === '.' ? '0.' : text;
+  }
+  const n = Number(text);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : '';
+}
+
 function formatFieldValue(field: RfqFieldDefinition, value: unknown) {
   if (value === undefined || value === null || value === '') return '—';
   if (field.type === 'boolean') return value ? 'Yes' : 'No';
@@ -116,6 +156,7 @@ export default function RfqEntryDetailPage() {
   const { prId } = useParams<{ prId: string }>();
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const isScm = location.pathname.startsWith('/scm/rfq-entry');
   const listPath = isScm ? '/scm/rfq-entry' : '/requester/rfq-entry';
   const taskId = searchParams.get('taskId');
@@ -202,6 +243,28 @@ export default function RfqEntryDetailPage() {
   const [entities, setEntities] = useState<EntityRecord[]>([]);
   const [billing, setBilling] = useState<PrBillingDeliveryValue>(emptyBilling);
   const billingHydratedRef = useRef(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [softSaveHint, setSoftSaveHint] = useState('');
+  /** True only after local draft restore attempt finished for this PR (blocks empty wipe). */
+  const draftHydratedRef = useRef(false);
+  const localDraftRestoredForPrRef = useRef<number | null>(null);
+  const dirtyRef = useRef(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const skipLeaveBlockRef = useRef(false);
+  const skipDirtyOnceRef = useRef(true);
+  const billingRef = useRef(billing);
+  billingRef.current = billing;
+
+  const markDirty = () => {
+    if (isFinalized || !draftHydratedRef.current) return;
+    dirtyRef.current = true;
+    setIsDirty(true);
+  };
+
+  const clearDirty = () => {
+    dirtyRef.current = false;
+    setIsDirty(false);
+  };
 
   const loadVendors = useCallback(async () => {
     try {
@@ -259,13 +322,7 @@ export default function RfqEntryDetailPage() {
     return Math.round(qty * unit * (1 + gst / 100) * 100) / 100;
   };
 
-  const parseAmountInput = (raw: string): number | string | '' => {
-    const text = String(raw).replace(/[,₹\s]/g, '');
-    if (text === '') return '';
-    if (/^\d*\.?\d{0,2}$/.test(text)) return text;
-    const n = Number(text);
-    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : '';
-  };
+  const parseAmountInput = (raw: string): number | string | '' => parseInrAmountInput(raw);
 
   const seedQuoteLines = (savedLines: ManualQuoteLine[] = []): ManualQuoteLine[] => {
     const saved = Array.isArray(savedLines) ? savedLines : [];
@@ -316,14 +373,56 @@ export default function RfqEntryDetailPage() {
       quotedTotal: lineQuotedTotal(l),
     }));
     const total = nextLines.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
+    setManualDrafts((prev) => {
+      const prevDraft = prev[invitationId] || {};
+      const keepManual = Boolean(prevDraft.quotedPriceManual);
+      return {
+        ...prev,
+        [invitationId]: {
+          ...prevDraft,
+          quoteLineItems: nextLines,
+          // Keep a manually typed Quoted Price; otherwise sync from line totals
+          ...(keepManual ? {} : { quotedPrice: total }),
+          lineItemsTotal: total,
+        },
+      };
+    });
+  };
+
+  const setQuotedPriceManual = (invitationId: number, value: number | string | '') => {
     setManualDrafts((prev) => ({
       ...prev,
       [invitationId]: {
         ...prev[invitationId],
-        quoteLineItems: nextLines,
-        quotedPrice: total,
+        quotedPrice: value,
+        quotedPriceManual: true,
       },
     }));
+  };
+
+  const useLineTotalAsQuotedPrice = (invitationId: number) => {
+    const total = getManualQuoteTotal(invitationId);
+    setManualDrafts((prev) => ({
+      ...prev,
+      [invitationId]: {
+        ...prev[invitationId],
+        quotedPrice: total,
+        quotedPriceManual: false,
+        lineItemsTotal: total,
+      },
+    }));
+  };
+
+  const getEffectiveQuotedPrice = (invitationId: number, fallback = 0) => {
+    const draft = manualDrafts[invitationId] || {};
+    if (draft.quotedPriceManual) {
+      const n = Number(String(draft.quotedPrice ?? '').toString().replace(/[,₹\s]/g, ''));
+      return Number.isFinite(n) && n >= 0 ? n : fallback;
+    }
+    const lineTotal = getManualQuoteTotal(invitationId);
+    if (lineTotal > 0) return lineTotal;
+    const n = Number(draft.quotedPrice);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
   };
 
   const getManualLineDraft = (invitationId: number, lineItemId: string): ManualQuoteLine | undefined => {
@@ -505,8 +604,137 @@ export default function RfqEntryDetailPage() {
 
   useEffect(() => {
     billingHydratedRef.current = false;
+    draftHydratedRef.current = false;
+    localDraftRestoredForPrRef.current = null;
+    skipDirtyOnceRef.current = true;
+    clearDirty();
+    setManualDrafts({});
+    setDraftRows([newDraftRow()]);
     setBilling(emptyBilling());
+    setSoftSaveHint('');
   }, [prId]);
+
+  /** Restore in-progress quote fields / pending vendors after RFQ loads */
+  useEffect(() => {
+    if (!prId || loading || isFinalized) return;
+    if (localDraftRestoredForPrRef.current === Number(prId)) return;
+
+    const snap = readRfqEntryDraft(user?.id, Number(prId));
+    localDraftRestoredForPrRef.current = Number(prId);
+
+    if (snap?.manualDrafts && Object.keys(snap.manualDrafts).length) {
+      const mapped: Record<number, Record<string, unknown>> = {};
+      for (const [k, v] of Object.entries(snap.manualDrafts)) {
+        const id = Number(k);
+        if (Number.isFinite(id) && v && typeof v === 'object') mapped[id] = v;
+      }
+      if (Object.keys(mapped).length) {
+        setManualDrafts(mapped);
+      }
+    }
+
+    if (Array.isArray(snap?.draftRows) && snap.draftRows.length) {
+      const restored = snap.draftRows
+        .filter((r) => r && (r.vendorId || r.vendorName || r.vendorEmail))
+        .map((r) => ({
+          key: r.key || `rfq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          vendorId: String(r.vendorId || ''),
+          vendorName: String(r.vendorName || ''),
+          vendorEmail: String(r.vendorEmail || ''),
+        }));
+      if (restored.length) {
+        setDraftRows([...restored, newDraftRow()]);
+      }
+    }
+
+    if (snap?.recommendedInvitationId != null) {
+      setRecommendedId((prev) => prev ?? Number(snap.recommendedInvitationId));
+    }
+    if (snap?.recommendationJustification?.trim()) {
+      setRecommendationJustification((prev) =>
+        prev.trim() ? prev : String(snap.recommendationJustification)
+      );
+    }
+
+    const localBilling = billingFromDraft(snap);
+    if (localBilling) {
+      setBilling((prev) => ({
+        billingLocationId: localBilling.billingLocationId || prev.billingLocationId || '',
+        billingLocation: localBilling.billingLocation.trim() || prev.billingLocation || '',
+        billingGstNo: localBilling.billingGstNo.trim() || prev.billingGstNo || '',
+        billingAddress: localBilling.billingAddress.trim() || prev.billingAddress || '',
+        deliveryPoc: localBilling.deliveryPoc.trim() || prev.deliveryPoc || '',
+        placeOfDelivery: localBilling.placeOfDelivery.trim() || prev.placeOfDelivery || '',
+        expectedDeliveryTimeline:
+          localBilling.expectedDeliveryTimeline.trim() || prev.expectedDeliveryTimeline || '',
+        paymentTerms: localBilling.paymentTerms.trim() || prev.paymentTerms || '',
+      }));
+    }
+
+    // Allow soft-autosave only after restore state has been scheduled
+    window.setTimeout(() => {
+      draftHydratedRef.current = true;
+      skipDirtyOnceRef.current = true;
+    }, 0);
+  }, [prId, loading, isFinalized, user?.id]);
+
+  // If user id arrives later, retry restore once when still empty
+  useEffect(() => {
+    if (!prId || loading || isFinalized || !user?.id) return;
+    if (!draftHydratedRef.current) return;
+    const snap = readRfqEntryDraft(user.id, Number(prId));
+    if (!snap) return;
+    if (Object.keys(manualDrafts).length === 0 && snap.manualDrafts && Object.keys(snap.manualDrafts).length) {
+      const mapped: Record<number, Record<string, unknown>> = {};
+      for (const [k, v] of Object.entries(snap.manualDrafts)) {
+        const id = Number(k);
+        if (Number.isFinite(id) && v && typeof v === 'object') mapped[id] = v;
+      }
+      if (Object.keys(mapped).length) setManualDrafts(mapped);
+    }
+    if (recommendedId == null && snap.recommendedInvitationId != null) {
+      setRecommendedId(Number(snap.recommendedInvitationId));
+    }
+    if (!recommendationJustification.trim() && snap.recommendationJustification?.trim()) {
+      setRecommendationJustification(String(snap.recommendationJustification));
+    }
+    const localBilling = billingFromDraft(snap);
+    if (localBilling) {
+      const hasLocal =
+        localBilling.billingLocation.trim() ||
+        localBilling.billingAddress.trim() ||
+        localBilling.billingGstNo.trim() ||
+        localBilling.deliveryPoc.trim() ||
+        localBilling.placeOfDelivery.trim();
+      if (hasLocal) {
+        setBilling((prev) => {
+          const serverEmpty =
+            !prev.billingLocation.trim() &&
+            !prev.billingAddress.trim() &&
+            !prev.billingGstNo.trim();
+          if (!serverEmpty) return prev;
+          return {
+            billingLocationId: localBilling.billingLocationId || '',
+            billingLocation: localBilling.billingLocation,
+            billingGstNo: localBilling.billingGstNo,
+            billingAddress: localBilling.billingAddress,
+            deliveryPoc: localBilling.deliveryPoc,
+            placeOfDelivery: localBilling.placeOfDelivery,
+            expectedDeliveryTimeline: localBilling.expectedDeliveryTimeline,
+            paymentTerms: localBilling.paymentTerms,
+          };
+        });
+      }
+    }
+  }, [
+    user?.id,
+    prId,
+    loading,
+    isFinalized,
+    manualDrafts,
+    recommendedId,
+    recommendationJustification,
+  ]);
 
   useEffect(() => {
     if (isScm) return;
@@ -527,12 +755,66 @@ export default function RfqEntryDetailPage() {
   }, [hasInvitations, isFinalized, loadRfq]);
 
   useEffect(() => {
-    if (isScm || !prId || isFinalized || !billingHydratedRef.current) return;
+    if (isScm || !prId || isFinalized || !billingHydratedRef.current || !draftHydratedRef.current) {
+      return;
+    }
     const timer = window.setTimeout(() => {
       void persistBilling().catch(() => undefined);
     }, 900);
     return () => window.clearTimeout(timer);
   }, [billing, isScm, prId, isFinalized]);
+
+  /** Soft-persist in-progress quote forms so refresh doesn't lose work */
+  useEffect(() => {
+    if (!prId || isFinalized || loading) return;
+    if (!draftHydratedRef.current) return;
+    const timer = window.setTimeout(() => {
+      if (!prId || isFinalized || !draftHydratedRef.current) return;
+      writeRfqEntryDraft(
+        user?.id,
+        Number(prId),
+        {
+          recommendedInvitationId: recommendedId,
+          recommendationJustification,
+          maxRounds: config?.maxRounds ?? null,
+          draftRows: draftRows.filter((r) => r.vendorId || r.vendorName || r.vendorEmail),
+          manualDrafts: manualDrafts as unknown as Record<string, Record<string, unknown>>,
+          billing,
+        },
+        { allowEmptyOverwrite: false }
+      );
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [
+    prId,
+    isFinalized,
+    loading,
+    recommendedId,
+    recommendationJustification,
+    manualDrafts,
+    draftRows,
+    billing,
+    config?.maxRounds,
+    user?.id,
+  ]);
+
+  /** Track unsaved edits after hydrate (skip restore-driven updates). */
+  useEffect(() => {
+    if (!draftHydratedRef.current || isFinalized) return;
+    if (skipDirtyOnceRef.current) {
+      skipDirtyOnceRef.current = false;
+      return;
+    }
+    dirtyRef.current = true;
+    setIsDirty(true);
+  }, [
+    billing,
+    manualDrafts,
+    draftRows,
+    recommendedId,
+    recommendationJustification,
+    isFinalized,
+  ]);
 
   useEffect(() => {
     if (mode !== 'preview' || !prId || !hasInvitations) {
@@ -709,16 +991,19 @@ export default function RfqEntryDetailPage() {
     const vals = quoteFieldValues(quote, row);
     const savedLines = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
     const quoteLineItems = seedQuoteLines(savedLines);
-    const quotedPrice =
-      quoteLineItems.length > 0
-        ? quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0)
-        : Number(vals.quotedPrice) || 0;
+    const lineTotal = quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
+    const savedPrice = Number(vals.quotedPrice) || 0;
+    const quotedPriceManual =
+      savedPrice > 0 && lineTotal > 0 && Math.abs(savedPrice - lineTotal) > 0.009;
+    const quotedPrice = quotedPriceManual ? savedPrice : lineTotal || savedPrice;
 
     setManualDrafts((prev) => ({
       ...prev,
       [row.invitationId]: {
         ...vals,
         quotedPrice,
+        quotedPriceManual,
+        lineItemsTotal: lineTotal,
         quoteLineItems,
         leadTime: vals.leadTime ?? '',
         paymentTerms: vals.paymentTerms ?? 'Net 30',
@@ -807,13 +1092,27 @@ export default function RfqEntryDetailPage() {
       failQuote('Enter quoted unit price for every line item (0 is allowed)');
       return null;
     }
-    const quotedPrice = quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
-    if (quotedPrice < 0) {
+    const lineTotal = quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
+    const manualRaw = draft.quotedPrice;
+    const manualPrice =
+      manualRaw === '' || manualRaw === null || manualRaw === undefined
+        ? NaN
+        : Number(String(manualRaw).replace(/[,₹\s]/g, ''));
+    const quotedPrice =
+      draft.quotedPriceManual && Number.isFinite(manualPrice) && manualPrice >= 0
+        ? manualPrice
+        : Number.isFinite(manualPrice) && manualPrice > 0 && Math.abs(manualPrice - lineTotal) > 0.009
+          ? manualPrice
+          : lineTotal;
+    if (!Number.isFinite(quotedPrice) || quotedPrice < 0) {
       failQuote('Quotation price cannot be negative');
       return null;
     }
+    if (quotedPrice === 0 && !draft.quotedPriceManual) {
+      // still allow zero via confirm dialog below
+    }
     const zeroCount = quoteLineItems.filter((l) => Number(l.quotedUnitPrice) === 0).length;
-    return { quote, draft, file, quoteLineItems, quotedPrice, zeroCount };
+    return { quote, draft, file, quoteLineItems, quotedPrice, zeroCount, lineTotal };
   };
 
   const handleSaveExistingQuote = async (row: TableRow, opts?: { acceptZero?: boolean }) => {
@@ -1003,13 +1302,34 @@ export default function RfqEntryDetailPage() {
         />
       );
     }
-    const isMoney = field.id === 'quotedPrice';
-    const isNumber = field.type === 'number';
+    const isMoney = field.id === 'quotedPrice' || /price|amount|cost/i.test(field.id + field.label);
+    const isNumber = field.type === 'number' && !isMoney;
+    if (isMoney) {
+      return (
+        <div className="flex items-center h-11 border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
+          <span className="pl-3 pr-1 text-sm font-semibold text-gray-500 shrink-0 select-none">₹</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            disabled={disabled}
+            value={formatInrTyping(value)}
+            onChange={(e) => onChange(parseInrAmountInput(e.target.value))}
+            onBlur={() => {
+              const n = Number(String(value ?? '').replace(/[,₹\s]/g, ''));
+              if (Number.isFinite(n) && n >= 0) onChange(Math.round(n * 100) / 100);
+            }}
+            className="w-full h-full min-w-0 pr-3 text-sm text-right font-semibold text-gray-900 outline-none disabled:bg-gray-50"
+            placeholder="e.g. 45,000"
+            aria-label={field.label}
+          />
+        </div>
+      );
+    }
     return (
       <input
         type={isNumber ? 'number' : 'text'}
         min={isNumber ? 0 : undefined}
-        step={isMoney ? '1' : undefined}
         value={value === undefined || value === null ? '' : String(value)}
         disabled={disabled}
         onChange={(e) => {
@@ -1046,17 +1366,157 @@ export default function RfqEntryDetailPage() {
 
   const persistBilling = async () => {
     if (!prId || isScm) return;
+    const b = billingRef.current;
     await prApi.updateBilling(Number(prId), {
-      billingLocationId: billing.billingLocationId || undefined,
-      billingLocation: billing.billingLocation.trim() || undefined,
-      billingGstNo: billing.billingGstNo.trim() || undefined,
-      billingAddress: billing.billingAddress.trim() || undefined,
-      deliveryPoc: billing.deliveryPoc.trim() || undefined,
-      placeOfDelivery: billing.placeOfDelivery.trim() || undefined,
-      expectedDeliveryTimeline: billing.expectedDeliveryTimeline.trim() || undefined,
-      paymentTerms: billing.paymentTerms.trim() || undefined,
+      billingLocationId: b.billingLocationId || undefined,
+      billingLocation: b.billingLocation.trim() || undefined,
+      billingGstNo: b.billingGstNo.trim() || undefined,
+      billingAddress: b.billingAddress.trim() || undefined,
+      deliveryPoc: b.deliveryPoc.trim() || undefined,
+      placeOfDelivery: b.placeOfDelivery.trim() || undefined,
+      expectedDeliveryTimeline: b.expectedDeliveryTimeline.trim() || undefined,
+      paymentTerms: b.paymentTerms.trim() || undefined,
     });
   };
+
+  const buildLocalDraftPayload = () => ({
+    recommendedInvitationId: recommendedId,
+    recommendationJustification,
+    maxRounds: config?.maxRounds ?? null,
+    draftRows: draftRows.filter((r) => r.vendorId || r.vendorName || r.vendorEmail),
+    manualDrafts: manualDrafts as unknown as Record<string, Record<string, unknown>>,
+    billing: billingRef.current,
+  });
+
+  const persistLocalDraft = (force = false) => {
+    if (!prId || isFinalized) return false;
+    return writeRfqEntryDraft(user?.id, Number(prId), buildLocalDraftPayload(), {
+      allowEmptyOverwrite: force,
+    });
+  };
+
+  /** Save progress without sending for approval */
+  const handleSaveDraft = async (): Promise<boolean> => {
+    if (!prId || isFinalized) return false;
+    setSavingDraft(true);
+    setError('');
+    try {
+      // Always keep a local copy first so reload restores even if API fails
+      persistLocalDraft(true);
+      if (!isScm) await persistBilling();
+      await rfqApi.saveConfig(Number(prId), {
+        fieldDefinitions: fields,
+        recommendedInvitationId: recommendedId,
+        maxRounds: config?.maxRounds ?? null,
+        recommendationJustification: recommendationJustification.trim() || undefined,
+      });
+      const ok = persistLocalDraft(true);
+      draftHydratedRef.current = true;
+      localDraftRestoredForPrRef.current = Number(prId);
+      skipDirtyOnceRef.current = true;
+      clearDirty();
+      setSoftSaveHint(ok ? 'Draft saved' : 'Draft saved on server');
+      showToast('RFQ draft saved — you can leave and continue later');
+      window.setTimeout(() => setSoftSaveHint(''), 4000);
+      return true;
+    } catch (err) {
+      // Local draft already written — still clear dirty so leave isn't blocked forever
+      persistLocalDraft(true);
+      const msg = err instanceof Error ? err.message : 'Failed to save draft';
+      setError(msg);
+      showToast(msg, 'err');
+      return false;
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  /** Ask to save before leaving RFQ Entry (sidebar / reload). */
+  useEffect(() => {
+    if (isFinalized) return;
+
+    const flushLocal = () => {
+      if (!prId || !draftHydratedRef.current) return;
+      writeRfqEntryDraft(user?.id, Number(prId), buildLocalDraftPayload(), {
+        allowEmptyOverwrite: true,
+      });
+    };
+
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (skipLeaveBlockRef.current || !dirtyRef.current) {
+        flushLocal();
+        return;
+      }
+      flushLocal();
+      e.preventDefault();
+      e.returnValue = '';
+    };
+
+    const onPageHide = () => {
+      flushLocal();
+    };
+
+    const onDocClick = (e: MouseEvent) => {
+      if (skipLeaveBlockRef.current || !dirtyRef.current || isFinalized) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const anchor = target.closest('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) {
+        return;
+      }
+      if (/^https?:\/\//i.test(href) && !href.includes(window.location.host)) return;
+
+      let path = href;
+      try {
+        const u = new URL(href, window.location.origin);
+        path = u.pathname + u.search;
+      } catch {
+        /* keep href */
+      }
+      const basename = String(__BASE_PATH__ || '').replace(/\/$/, '');
+      if (basename && path.startsWith(basename)) {
+        path = path.slice(basename.length) || '/';
+      }
+      const here = location.pathname;
+      if (path === here || path.startsWith(`${here}?`)) return;
+      // Staying on same RFQ detail (mode toggles etc.)
+      if (prId && (path.includes(`/rfq-entry/${prId}`) || path.includes(`/rfq/${prId}`))) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const save = window.confirm(
+        'You have unsaved RFQ changes.\n\nOK = Save Draft and leave\nCancel = Stay on this page'
+      );
+      if (!save) return;
+
+      skipLeaveBlockRef.current = true;
+      void (async () => {
+        const ok = await handleSaveDraft();
+        if (!ok) {
+          // Local draft saved in handleSaveDraft; still allow leave after confirm
+          clearDirty();
+        }
+        navigate(path);
+        window.setTimeout(() => {
+          skipLeaveBlockRef.current = false;
+        }, 500);
+      })();
+    };
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('click', onDocClick, true);
+    return () => {
+      flushLocal();
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('click', onDocClick, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: leave guards use refs + latest handlers via closure refresh on key deps
+  }, [prId, isFinalized, user?.id, location.pathname, recommendedId, recommendationJustification, manualDrafts, draftRows, billing, config?.maxRounds, fields]);
 
   const handleSubmitRfq = async () => {
     if (!prId || !recommendedId) {
@@ -1101,6 +1561,7 @@ export default function RfqEntryDetailPage() {
         justification
       );
       showToast(res.message || 'RFQ submitted for HOD vendor final approval');
+      clearRfqEntryDraft(user?.id, Number(prId));
       await loadRfq();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Submit failed');
@@ -1146,7 +1607,23 @@ export default function RfqEntryDetailPage() {
         throw new Error(message);
       }
       const blob = await res.blob();
-      setFilePreview({ url: URL.createObjectURL(blob), fileName });
+      if (filePreview?.url) URL.revokeObjectURL(filePreview.url);
+      // Prefer server content-type so JPG/PDF render correctly even if name is odd
+      const typed =
+        blob.type && blob.type !== 'application/octet-stream'
+          ? blob
+          : new Blob([blob], {
+              type: /\.pdf$/i.test(fileName)
+                ? 'application/pdf'
+                : /\.png$/i.test(fileName)
+                  ? 'image/png'
+                  : /\.(jpe?g)$/i.test(fileName)
+                    ? 'image/jpeg'
+                    : /\.webp$/i.test(fileName)
+                      ? 'image/webp'
+                      : blob.type || 'application/octet-stream',
+            });
+      setFilePreview({ url: URL.createObjectURL(typed), fileName });
     } catch (err) {
       failQuote(err instanceof Error ? err.message : 'Preview failed');
     }
@@ -1414,11 +1891,24 @@ export default function RfqEntryDetailPage() {
               Compare prices
             </button>
           </div>
+          {!isFinalized && (
+            <button
+              type="button"
+              onClick={() => void handleSaveDraft()}
+              disabled={savingDraft || submitting || loading}
+              className={`px-5 py-2.5 border text-sm font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-50 ${
+                isDirty ? 'border-amber-400 text-amber-900 bg-amber-50' : 'border-gray-300 text-gray-700'
+              }`}
+            >
+              <i className="ri-save-line mr-1.5"></i>
+              {savingDraft ? 'Saving…' : isDirty ? 'Save Draft*' : 'Save Draft'}
+            </button>
+          )}
           {!isFinalized && hasInvitations && (
             <button
               type="button"
               onClick={handleSubmitRfq}
-              disabled={submitting || !recommendedId || !canSubmitRfq}
+              disabled={submitting || savingDraft || !recommendedId || !canSubmitRfq}
               title={
                 !recommendedId
                   ? 'First choose a recommended vendor'
@@ -1435,6 +1925,13 @@ export default function RfqEntryDetailPage() {
           )}
         </div>
       </div>
+
+      {softSaveHint && !isFinalized && (
+        <p className="mb-3 text-xs text-emerald-600 font-medium">
+          <i className="ri-checkbox-circle-line mr-1"></i>
+          {softSaveHint}
+        </p>
+      )}
 
       {!isFinalized && mode === 'entry' && !loading && (
         <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1499,7 +1996,9 @@ export default function RfqEntryDetailPage() {
             billingLocations={billingLocations}
             disabled={isFinalized}
             hint="For Standard + Own vendor, fill billing and delivery here (not on Create PR)."
-            onChange={(patch) => setBilling((prev) => ({ ...prev, ...patch }))}
+            onChange={(patch) => {
+              setBilling((prev) => ({ ...prev, ...patch }));
+            }}
           />
         </div>
       )}
@@ -1700,6 +2199,18 @@ export default function RfqEntryDetailPage() {
                 onResend={(row) => handleResendMail(row as TableRow)}
                 onSendBack={(row) => askBeforeRequote(row as TableRow)}
                 onNextRound={(nextRound) => setPreferredTab(nextRound)}
+                onViewFile={(row) => {
+                  const submissionId =
+                    Number(row.quotationSubmissionId) ||
+                    Number(row.submissionId) ||
+                    0;
+                  const fileName = row.quotationFileName || 'quotation';
+                  if (!submissionId) {
+                    failQuote('No saved quotation file to preview. Open Edit and re-upload if needed.');
+                    return;
+                  }
+                  void openFilePreview(submissionId, fileName);
+                }}
               />
 
               {tableRows.filter((row) => row.invitationId === quotePopupId).map((row, i) => {
@@ -1760,8 +2271,8 @@ export default function RfqEntryDetailPage() {
                                 {statusLabel}
                               </span>
                               {isRecommended && (
-                                <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold flex items-center gap-1">
-                                  <i className="ri-star-fill text-amber-500"></i>
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold flex items-center gap-1">
+                                  <i className="ri-star-fill text-emerald-500"></i>
                                   Selected
                                 </span>
                               )}
@@ -2004,11 +2515,12 @@ export default function RfqEntryDetailPage() {
                                             <td className="px-4 py-3">
                                               {editable ? (
                                                 <div className="flex items-center h-10 border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-teal-500">
-                                                  <span className="pl-2 pr-1 text-sm text-gray-500 shrink-0">₹</span>
+                                                  <span className="pl-2 pr-1 text-sm font-semibold text-gray-500 shrink-0">₹</span>
                                                   <input
                                                     type="text"
                                                     inputMode="decimal"
-                                                    value={unitPrice === '' ? '' : String(unitPrice)}
+                                                    autoComplete="off"
+                                                    value={formatInrTyping(unitPrice)}
                                                     onChange={(e) =>
                                                       setManualLineField(
                                                         row.invitationId,
@@ -2017,8 +2529,8 @@ export default function RfqEntryDetailPage() {
                                                         parseAmountInput(e.target.value)
                                                       )
                                                     }
-                                                    className="w-full h-full min-w-0 px-1 text-sm text-right outline-none"
-                                                    placeholder="0.00"
+                                                    className="w-full h-full min-w-0 px-1 text-sm text-right font-medium outline-none"
+                                                    placeholder="0"
                                                   />
                                                 </div>
                                               ) : (
@@ -2103,11 +2615,7 @@ export default function RfqEntryDetailPage() {
                             <div>
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">Other quote details</p>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                                {(prLineItems.length > 0 ||
-                                ((manualDrafts[row.invitationId]?.quoteLineItems as ManualQuoteLine[]) || []).length > 0
-                                  ? vendorFieldsWithoutPrice
-                                  : vendorFields
-                                ).map((f) => (
+                                {vendorFieldsWithoutPrice.map((f) => (
                                   <div
                                     key={f.id}
                                     className={`flex flex-col gap-2 min-w-0 rounded-xl border border-gray-200 bg-gray-50/70 p-3.5 ${
@@ -2131,16 +2639,70 @@ export default function RfqEntryDetailPage() {
                                   </div>
                                 ))}
                                 <div className="flex flex-col gap-2 min-w-0 rounded-xl border border-teal-200 bg-teal-50/70 p-3.5">
-                                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-teal-700 leading-none">
-                                      Quoted Price (₹) <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="min-h-[44px] px-3 rounded-xl bg-white border border-teal-100 text-sm font-bold text-teal-800 flex items-center">
-                                      {formatCurrency(
-                                        quoteFieldsEditable
-                                          ? getManualQuoteTotal(row.invitationId)
-                                          : Number(vals.quotedPrice) || 0
-                                      )}
+                                    <div className="flex items-center justify-between gap-2">
+                                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-teal-700 leading-none">
+                                        Quoted Price (₹) <span className="text-red-500">*</span>
+                                      </label>
+                                      {quoteFieldsEditable &&
+                                        Boolean(manualDrafts[row.invitationId]?.quotedPriceManual) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => useLineTotalAsQuotedPrice(row.invitationId)}
+                                            className="text-[10px] font-semibold text-teal-700 hover:text-teal-900 underline"
+                                          >
+                                            Use line total
+                                          </button>
+                                        )}
                                     </div>
+                                    {quoteFieldsEditable ? (
+                                      <div className="flex items-center h-11 border border-teal-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
+                                        <span className="pl-3 pr-1 text-sm font-semibold text-teal-600 shrink-0 select-none">
+                                          ₹
+                                        </span>
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          autoComplete="off"
+                                          value={formatInrTyping(
+                                            getManualValue(
+                                              row.invitationId,
+                                              'quotedPrice',
+                                              getManualQuoteTotal(row.invitationId) || ''
+                                            )
+                                          )}
+                                          onChange={(e) =>
+                                            setQuotedPriceManual(
+                                              row.invitationId,
+                                              parseInrAmountInput(e.target.value)
+                                            )
+                                          }
+                                          onBlur={() => {
+                                            const raw = getManualValue(row.invitationId, 'quotedPrice', '');
+                                            const n = Number(String(raw ?? '').replace(/[,₹\s]/g, ''));
+                                            if (Number.isFinite(n) && n >= 0) {
+                                              setQuotedPriceManual(row.invitationId, Math.round(n * 100) / 100);
+                                            }
+                                          }}
+                                          className="w-full h-full min-w-0 pr-3 text-sm text-right font-bold text-teal-900 outline-none"
+                                          placeholder="Type total quoted price"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="min-h-[44px] px-3 rounded-xl bg-white border border-teal-100 text-sm font-bold text-teal-800 flex items-center">
+                                        {formatCurrency(Number(vals.quotedPrice) || 0)}
+                                      </div>
+                                    )}
+                                    {quoteFieldsEditable && (
+                                      <p className="text-[11px] text-teal-800/80 leading-snug">
+                                        You can type Quoted Price manually. Line table total is{' '}
+                                        <span className="font-semibold">
+                                          {formatCurrency(getManualQuoteTotal(row.invitationId))}
+                                        </span>
+                                        {manualDrafts[row.invitationId]?.quotedPriceManual
+                                          ? ' — manual value will be saved.'
+                                          : ' — editing lines updates this unless you type a custom amount.'}
+                                      </p>
+                                    )}
                                   </div>
                               </div>
                             </div>
@@ -2414,17 +2976,53 @@ export default function RfqEntryDetailPage() {
       ) : null}
 
       {filePreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div className="p-4 border-b flex justify-between">
-              <span className="font-semibold">{filePreview.fileName}</span>
-              <button type="button" onClick={() => { URL.revokeObjectURL(filePreview.url); setFilePreview(null); }}>×</button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-white rounded-xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl">
+            <div className="p-4 border-b flex items-center justify-between gap-3">
+              <span className="font-semibold text-gray-900 truncate">{filePreview.fileName}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={filePreview.url}
+                  download={filePreview.fileName}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Download
+                </a>
+                <button
+                  type="button"
+                  className="w-9 h-9 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                  onClick={() => {
+                    URL.revokeObjectURL(filePreview.url);
+                    setFilePreview(null);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             </div>
-            <div className="p-4 flex-1">
+            <div className="p-4 flex-1 overflow-auto bg-slate-100/80">
               {/\.pdf$/i.test(filePreview.fileName) ? (
-                <iframe title="preview" src={filePreview.url} className="w-full h-[70vh] border rounded" />
+                <iframe title="Quotation preview" src={filePreview.url} className="w-full h-[75vh] border rounded-lg bg-white" />
+              ) : /\.(png|jpe?g|gif|webp|bmp)$/i.test(filePreview.fileName) ? (
+                <div className="flex items-center justify-center min-h-[50vh]">
+                  <img
+                    src={filePreview.url}
+                    alt={filePreview.fileName}
+                    className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-sm bg-white"
+                  />
+                </div>
               ) : (
-                <img src={filePreview.url} alt="" className="max-h-[70vh] mx-auto" />
+                <div className="text-center py-16 text-sm text-gray-600 space-y-3">
+                  <p>Preview is not available for this file type.</p>
+                  <a
+                    href={filePreview.url}
+                    download={filePreview.fileName}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 text-white font-semibold"
+                  >
+                    <i className="ri-download-line" />
+                    Download file
+                  </a>
+                </div>
               )}
             </div>
           </div>

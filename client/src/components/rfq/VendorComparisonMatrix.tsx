@@ -168,14 +168,21 @@ const cardClass =
 
 const stickyEdge = 'md:shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]';
 
-/** Sticky helpers — mobile: Sr + Description only (~168px); desktop: all 4 (~312px) */
-const stSr = `sticky left-0 z-30 w-10 min-w-[40px] md:w-14 md:min-w-[56px] bg-inherit ${stickyEdge}`;
-const stDesc = `sticky left-10 md:left-14 z-30 w-[128px] min-w-[128px] md:w-[200px] md:min-w-[200px] bg-inherit ${stickyEdge}`;
-const stQty = `hidden md:table-cell md:sticky md:left-[256px] md:z-30 md:w-14 md:min-w-[56px] bg-inherit`;
-const stUom = `hidden md:table-cell md:sticky md:left-[312px] md:z-30 md:w-14 md:min-w-[56px] bg-inherit ${stickyEdge}`;
-/** Landed/GST labels: Desc-only sticky on mobile; span Desc+Qty+UOM on md+ */
-const stLabelMobile = `md:hidden sticky left-10 z-30 w-[128px] min-w-[128px] border-r border-[#E5EAF0] bg-inherit ${stickyEdge}`;
-const stLabelDesktop = `hidden md:table-cell sticky md:left-14 z-30 border-r border-[#E5EAF0] bg-inherit ${stickyEdge}`;
+/** Sticky helpers — mobile: Sr + Description only (~168px); desktop: all 4 (~320px) */
+const stSr = `sticky left-0 z-30 w-11 min-w-[44px] md:w-12 md:min-w-[48px] bg-inherit align-middle ${stickyEdge}`;
+const stDesc = `sticky left-11 md:left-12 z-30 w-[140px] min-w-[140px] md:w-[220px] md:min-w-[220px] bg-inherit align-middle ${stickyEdge}`;
+const stQty = `hidden md:table-cell md:sticky md:left-[268px] md:z-30 md:w-14 md:min-w-[56px] bg-inherit align-middle`;
+const stUom = `hidden md:table-cell md:sticky md:left-[324px] md:z-30 md:w-14 md:min-w-[56px] bg-inherit align-middle ${stickyEdge}`;
+
+/** Unit price / Amount — fixed so Quote 1/2/3 stay aligned; leftover width goes to filler col */
+const colUnit = 'w-[112px] min-w-[112px] max-w-[128px] align-middle';
+const colAmount = 'w-[128px] min-w-[128px] max-w-[148px] align-middle';
+/** Absorbs leftover viewport so 1–2 quote columns don’t stretch Unit/Amount apart */
+const colFiller = 'border-b border-[#E5EAF0] bg-white p-0 w-full min-w-0';
+/** Other-terms sticky label ≈ Sr+Desc+Qty+UOM */
+const stOtherLabel = `sticky left-0 z-20 w-[324px] min-w-[324px] md:w-[380px] md:min-w-[380px] bg-inherit align-middle ${stickyEdge}`;
+/** Match Unit+Amount pair width so Other terms lines up under price columns */
+const colRev = 'w-[240px] min-w-[240px] max-w-[276px] align-middle';
 
 async function fetchQuoteBlob(submissionId: number) {
   const token = localStorage.getItem('p2p_token');
@@ -406,6 +413,7 @@ export default function VendorComparisonMatrix({
     return { col, t, isBest, isRecRev, theme };
   });
   const bestMeta = columnMeta.find((c) => c.isBest) || null;
+  const needsSideScroll = columnMeta.length >= 3;
 
   const displayLines =
     lineItems.length > 0
@@ -829,12 +837,14 @@ export default function VendorComparisonMatrix({
 
             {/* Desktop / tablet: horizontally scrollable table */}
             <div className="hidden md:block w-full min-w-0 max-w-full">
-            <p className="px-4 py-2 text-xs text-slate-500 flex items-center gap-1.5 print:hidden border-b border-[#E5EAF0] bg-slate-50">
-              <i className="ri-arrow-left-right-line"></i>
-              Scroll sideways to see every vendor. Gold = lowest total.
-            </p>
+            {needsSideScroll && (
+              <p className="px-4 py-2 text-xs text-slate-500 flex items-center gap-1.5 print:hidden border-b border-[#E5EAF0] bg-slate-50">
+                <i className="ri-arrow-left-right-line"></i>
+                Scroll sideways to see every quote round. Gold = lowest total.
+              </p>
+            )}
             <div className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch]">
-              <table className="border-separate border-spacing-0 text-sm w-max min-w-full">
+              <table className="border-separate border-spacing-0 text-sm w-full min-w-max">
                 <thead>
                   {/* Row 1: revision labels */}
                   <tr>
@@ -863,7 +873,7 @@ export default function VendorComparisonMatrix({
                         <th
                           key={`${col.key}-rev`}
                           colSpan={2}
-                          className={`px-2 py-2.5 border-b border-l text-center text-xs font-bold whitespace-nowrap ${
+                          className={`px-2 py-2.5 border-b border-l text-center text-xs font-bold whitespace-nowrap align-middle ${
                             isBest
                               ? 'bg-amber-400 text-amber-950 border-amber-500'
                               : isRecRev
@@ -889,6 +899,7 @@ export default function VendorComparisonMatrix({
                         </th>
                       );
                     })}
+                    <th className={`${colFiller} border-b bg-slate-50`} aria-hidden="true" />
                   </tr>
                   {/* Row 2: vendor names */}
                   <tr>
@@ -901,7 +912,7 @@ export default function VendorComparisonMatrix({
                         <th
                           key={`${col.key}-vendor`}
                           colSpan={2}
-                          className={`px-2 py-3 border-b border-l text-center text-xs sm:text-sm font-bold ${
+                          className={`px-2 py-3 border-b border-l text-center text-xs sm:text-sm font-bold align-middle ${
                             isBest
                               ? 'bg-amber-100 text-amber-950 border-amber-300'
                               : isRecRev
@@ -930,6 +941,7 @@ export default function VendorComparisonMatrix({
                   </th>
                       );
                     })}
+                    <th className={`${colFiller} border-b bg-slate-50`} aria-hidden="true" />
                   </tr>
                   {/* Row 3: Rate / Amount */}
                   <tr>
@@ -939,14 +951,15 @@ export default function VendorComparisonMatrix({
                     <th className={`${stUom} bg-white border-b border-r border-[#E5EAF0]`} />
                     {columnMeta.map(({ col, isBest, isRecRev, theme }) => (
                       <Fragment key={`${col.key}-ra`}>
-                        <th className={`px-2 py-2 border-b border-l text-center text-[11px] font-bold uppercase min-w-[88px] sm:min-w-[100px] ${columnFill(isBest, isRecRev, theme.soft)} ${isBest ? 'text-amber-950' : 'text-[#12284A]'}`}>
+                        <th className={`px-2 py-2 border-b border-l text-center text-[11px] font-bold uppercase ${colUnit} ${columnFill(isBest, isRecRev, theme.soft)} ${isBest ? 'text-amber-950' : 'text-[#12284A]'}`}>
                           Unit price
                         </th>
-                        <th className={`px-2 py-2 border-b text-center text-[11px] font-bold uppercase min-w-[96px] sm:min-w-[110px] ${columnFill(isBest, isRecRev, theme.soft)} ${isBest ? 'text-amber-950' : 'text-[#12284A]'}`}>
+                        <th className={`px-2 py-2 border-b text-center text-[11px] font-bold uppercase ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)} ${isBest ? 'text-amber-950' : 'text-[#12284A]'}`}>
                           Amount
                         </th>
                       </Fragment>
                 ))}
+                    <th className={colFiller} aria-hidden="true" />
               </tr>
             </thead>
 
@@ -954,11 +967,11 @@ export default function VendorComparisonMatrix({
                   {displayLines.map((li, lineIdx) => (
                     <tr key={String(li.id)} className="hover:bg-[#F8FAFC]">
                       <td
-                        className={`${stSr} z-10 px-1 py-3.5 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#12284A] text-xs md:text-sm`}
+                        className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#12284A] text-xs md:text-sm`}
                       >
                         {lineIdx + 1}
                       </td>
-                      <td className={`${stDesc} z-10 px-2 md:px-3 py-3.5 border-b border-[#E5EAF0] bg-white`}>
+                      <td className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-white`}>
                         <p className="font-bold text-[#12284A] text-[13px] md:text-[15px] leading-snug break-words">
                           {li.description}
                         </p>
@@ -970,12 +983,12 @@ export default function VendorComparisonMatrix({
                         </p>
                       </td>
                       <td
-                        className={`${stQty} px-2 py-3.5 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#12284A]`}
+                        className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#12284A]`}
                       >
                         {li.quantity}
                       </td>
                       <td
-                        className={`${stUom} px-2 py-3.5 border-b border-r border-[#E5EAF0] bg-white text-center text-xs font-medium text-[#64748B]`}
+                        className={`${stUom} px-2 py-3 border-b border-r border-[#E5EAF0] bg-white text-center text-xs font-medium text-[#64748B]`}
                       >
                         {li.uom || 'Nos'}
                       </td>
@@ -989,15 +1002,16 @@ export default function VendorComparisonMatrix({
                             : getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
                         return (
                           <Fragment key={`${col.key}-${li.id}`}>
-                            <td className={`px-2 sm:px-3 py-3.5 border-b border-l text-right tabular-nums text-[#334155] text-xs sm:text-sm whitespace-nowrap ${columnFill(isBest, isRecRev, theme.soft)}`}>
+                            <td className={`px-2 sm:px-3 py-3 border-b border-l text-right tabular-nums text-[#334155] text-xs sm:text-sm whitespace-nowrap ${colUnit} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {rate > 0 ? `₹${formatNum(rate)}` : '—'}
                             </td>
-                            <td className={`px-2 sm:px-3 py-3.5 border-b text-right font-semibold tabular-nums text-[#12284A] text-xs sm:text-sm whitespace-nowrap ${columnFill(isBest, isRecRev, theme.soft)}`}>
+                            <td className={`px-2 sm:px-3 py-3 border-b text-right font-semibold tabular-nums text-[#12284A] text-xs sm:text-sm whitespace-nowrap ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {amount > 0 ? `₹${formatNum(amount)}` : '—'}
                             </td>
                           </Fragment>
                         );
                       })}
+                      <td className={colFiller} aria-hidden="true" />
                     </tr>
                   ))}
 
@@ -1006,16 +1020,12 @@ export default function VendorComparisonMatrix({
                     <tr key={`info-${param.id}`} className="hover:bg-[#F8FAFC]">
                       <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-white`} />
                       <td
-                        className={`${stLabelMobile} px-2 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A] text-xs`}
+                        className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A] text-xs md:text-sm`}
                       >
                         {param.label}
                       </td>
-                      <td
-                        colSpan={3}
-                        className={`${stLabelDesktop} px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A]`}
-                      >
-                        {param.label}
-                      </td>
+                      <td className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-white`} />
+                      <td className={`${stUom} px-2 py-3 border-b border-r border-[#E5EAF0] bg-white`} />
                       {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                         const raw =
                           col.values[param.id] ??
@@ -1034,15 +1044,16 @@ export default function VendorComparisonMatrix({
                               : String(raw);
                 return (
                           <Fragment key={`${col.key}-info-${param.id}`}>
-                            <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${columnFill(isBest, isRecRev, theme.soft)}`}>
+                            <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${colUnit} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               —
                             </td>
-                            <td className={`px-2 sm:px-3 py-3 border-b text-right font-semibold text-[#12284A] text-xs sm:text-sm ${columnFill(isBest, isRecRev, theme.soft)}`}>
+                            <td className={`px-2 sm:px-3 py-3 border-b text-right font-semibold text-[#12284A] text-xs sm:text-sm ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {display}
                             </td>
                           </Fragment>
                         );
                       })}
+                      <td className={colFiller} aria-hidden="true" />
                     </tr>
                   ))}
 
@@ -1050,26 +1061,23 @@ export default function VendorComparisonMatrix({
                   <tr className="bg-slate-50">
                     <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-slate-50`} />
                     <td
-                      className={`${stLabelMobile} px-2 py-3 border-b border-[#E5EAF0] bg-slate-50 font-bold text-slate-800 text-xs`}
+                      className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-slate-50 font-bold text-slate-800 text-xs md:text-sm`}
                     >
                       {gstRowLabel}
                     </td>
-                    <td
-                      colSpan={3}
-                      className={`${stLabelDesktop} px-3 py-3 border-b border-[#E5EAF0] bg-slate-50 font-bold text-slate-800`}
-                    >
-                      {gstRowLabel}
-                    </td>
+                    <td className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-slate-50`} />
+                    <td className={`${stUom} px-2 py-3 border-b border-r border-[#E5EAF0] bg-slate-50`} />
                     {columnMeta.map(({ t, isBest, isRecRev }, i) => (
                       <Fragment key={`gst-${i}`}>
-                        <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${columnFill(isBest, isRecRev, 'bg-slate-50')}`}>
+                        <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${colUnit} ${columnFill(isBest, isRecRev, 'bg-slate-50')}`}>
                           —
                         </td>
-                        <td className={`px-2 sm:px-3 py-3 border-b text-right font-bold tabular-nums text-slate-800 text-xs sm:text-sm whitespace-nowrap ${columnFill(isBest, isRecRev, 'bg-slate-50')}`}>
+                        <td className={`px-2 sm:px-3 py-3 border-b text-right font-bold tabular-nums text-slate-800 text-xs sm:text-sm whitespace-nowrap ${colAmount} ${columnFill(isBest, isRecRev, 'bg-slate-50')}`}>
                           {t.material > 0 ? `₹${formatNum(t.gst)}` : '—'}
                         </td>
                       </Fragment>
                     ))}
+                    <td className={`${colFiller} bg-slate-50`} aria-hidden="true" />
                   </tr>
 
                   {/* Dynamic HDG / Freight (RFQ Entry only) */}
@@ -1077,26 +1085,22 @@ export default function VendorComparisonMatrix({
                     <tr key={`cost-${param.id}`} className="hover:bg-[#F8FAFC]">
                       <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-white`} />
                       <td
-                        className={`${stLabelMobile} px-2 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A] text-xs`}
+                        className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A] text-xs md:text-sm`}
                       >
                         {param.label}
                       </td>
-                      <td
-                        colSpan={3}
-                        className={`${stLabelDesktop} px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A]`}
-                      >
-                        {param.label}
-                      </td>
+                      <td className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-white`} />
+                      <td className={`${stUom} px-2 py-3 border-b border-r border-[#E5EAF0] bg-white`} />
                       {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                         const extra = cellExtra(col.values, paramKeys(param));
                         const d = statusValueDisplay(extra);
                         const isFreight = isFreightParam(param);
                         return (
                           <Fragment key={`${col.key}-cost-${param.id}`}>
-                            <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${columnFill(isBest, isRecRev, theme.soft)}`}>
+                            <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${colUnit} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               —
                             </td>
-                            <td className={`px-2 sm:px-3 py-3 border-b text-right align-middle ${columnFill(isBest, isRecRev, theme.soft)}`}>
+                            <td className={`px-2 sm:px-3 py-3 border-b text-right align-middle ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {d.mode === 'number' ? (
                                 isFreight ? (
                                   <span className="inline-flex flex-col items-end gap-0.5">
@@ -1123,25 +1127,26 @@ export default function VendorComparisonMatrix({
                           </Fragment>
                         );
                       })}
+                      <td className={colFiller} aria-hidden="true" />
                     </tr>
                   ))}
 
                   {/* Landed Cost */}
                   <tr>
-                    <td className={`${stSr} z-10 px-1 py-4 border-b border-[#E5EAF0] bg-[#F8FAFC]`} />
-                    <td className={`${stLabelMobile} px-2 py-4 border-b border-[#E5EAF0] bg-[#F8FAFC]`}>
-                      <span className="font-bold text-[#12284A] text-sm">Total cost</span>
-                      <span className="block text-[10px] font-medium text-slate-500">incl. GST</span>
+                    <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-[#F8FAFC]`} />
+                    <td className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-[#F8FAFC]`}>
+                      <span className="font-bold text-[#12284A] text-sm md:text-base">Total cost</span>
+                      <span className="block md:inline md:ml-2 text-[10px] md:text-xs font-medium text-slate-500">
+                        including GST
+                      </span>
                     </td>
-                    <td colSpan={3} className={`${stLabelDesktop} px-3 py-4 border-b border-[#E5EAF0] bg-[#F8FAFC]`}>
-                      <span className="font-bold text-[#12284A] text-base">Total cost</span>
-                      <span className="ml-2 text-xs font-medium text-slate-500">including GST</span>
-                    </td>
+                    <td className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-[#F8FAFC]`} />
+                    <td className={`${stUom} px-2 py-3 border-b border-r border-[#E5EAF0] bg-[#F8FAFC]`} />
                     {columnMeta.map(({ t, isBest, isRecRev }, i) => {
                       return (
                         <Fragment key={`landed-${i}`}>
                           <td
-                            className={`px-2 sm:px-3 py-4 border-b border-l text-right text-slate-300 tabular-nums ${
+                            className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${colUnit} ${
                               isBest
                                 ? 'bg-amber-100 border-amber-300'
                                 : isRecRev
@@ -1152,7 +1157,7 @@ export default function VendorComparisonMatrix({
                             —
                           </td>
                           <td
-                            className={`px-2 sm:px-3 py-4 border-b text-right align-middle ${
+                            className={`px-2 sm:px-3 py-3 border-b text-right align-middle ${colAmount} ${
                               isBest
                                 ? 'bg-amber-100 border-amber-300'
                                 : isRecRev
@@ -1189,6 +1194,7 @@ export default function VendorComparisonMatrix({
                         </Fragment>
                       );
                     })}
+                    <td className={`${colFiller} bg-[#F8FAFC]`} aria-hidden="true" />
                   </tr>
                 </tbody>
               </table>
@@ -1275,53 +1281,62 @@ export default function VendorComparisonMatrix({
             })}
                       </div>
 
-          {/* Desktop table */}
+          {/* Desktop table — same Quote 1 / 2 / 3 columns as price comparison */}
           <div className="hidden md:block w-full min-w-0 max-w-full">
-          <p className="px-4 py-2 text-xs text-slate-500 flex items-center gap-1.5 print:hidden border-b border-[#E5EAF0] bg-slate-50">
-            <i className="ri-arrow-left-right-line"></i>
-            Scroll sideways to see every vendor
-          </p>
+          {needsSideScroll && (
+            <p className="px-4 py-2 text-xs text-slate-500 flex items-center gap-1.5 print:hidden border-b border-[#E5EAF0] bg-slate-50">
+              <i className="ri-arrow-left-right-line"></i>
+              Scroll sideways to see every quote round
+            </p>
+          )}
           <div className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch]">
-            <table className="border-separate border-spacing-0 text-sm w-max min-w-full">
+            <table className="border-separate border-spacing-0 text-sm w-full min-w-max">
               <thead>
                 <tr>
                   <th
-                    className={`sticky left-0 z-20 w-[132px] min-w-[132px] md:w-[220px] md:min-w-[220px] px-2.5 md:px-4 py-3.5 border-b border-r border-[#E5EAF0] bg-slate-100 text-slate-700 text-left text-[10px] md:text-[12px] font-bold uppercase ${stickyEdge}`}
+                    className={`${stOtherLabel} z-20 px-2.5 md:px-4 py-3 border-b border-r border-[#E5EAF0] bg-slate-100 text-slate-700 text-left text-[10px] md:text-[12px] font-bold uppercase`}
                   >
                     Other terms
                   </th>
-                  {vendorGroups.map(({ vendor, theme, vendorIndex }) => (
+                  {columnMeta.map(({ col, isBest, isRecRev, theme }) => (
                     <th
-                      key={`tech-h-${vendor.id}`}
-                      className={`px-3 md:px-4 py-3.5 border-b border-l text-center text-xs md:text-sm font-bold min-w-[140px] md:min-w-[160px] ${
-                        vendor.isRecommended ? 'bg-emerald-600 text-white border-emerald-700' : theme.bar
+                      key={`tech-h-${col.key}`}
+                      className={`px-3 py-3 border-b border-l text-center text-xs font-bold ${colRev} ${
+                        isBest
+                          ? 'bg-amber-400 text-amber-950 border-amber-500'
+                          : isRecRev
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : theme.bar
                       }`}
                     >
-                      <span className="truncate inline-block max-w-[140px] md:max-w-[180px]" title={vendor.name}>
-                        {vendor.name}
+                      <span className="inline-flex flex-col items-center gap-0.5">
+                        <span className="truncate max-w-[200px]" title={col.vendorName}>
+                          {col.vendorName}
                         </span>
+                        <span className="text-[10px] font-semibold opacity-90">{col.revisionLabel}</span>
+                      </span>
                     </th>
                   ))}
+                  <th className={`${colFiller} border-b bg-slate-50`} aria-hidden="true" />
                 </tr>
               </thead>
               <tbody>
                 {technicalSheetParams.map((param) => (
                   <tr key={param.id} className="hover:bg-[#F8FAFC]">
                     <td
-                      className={`sticky left-0 z-10 w-[132px] min-w-[132px] md:w-[220px] md:min-w-[220px] px-2.5 md:px-4 py-3.5 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#12284A] text-xs md:text-sm break-words ${stickyEdge}`}
+                      className={`${stOtherLabel} z-10 px-2.5 md:px-4 py-3 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#12284A] text-xs md:text-sm break-words`}
                     >
                       {param.label}
                     </td>
-                    {vendorGroups.map(({ vendor, cols, theme }) => {
-                      const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
+                    {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                       const raw =
-                        latestCol?.values?.[param.id] ??
-                        latestCol?.values?.[param.label] ??
+                        col.values?.[param.id] ??
+                        col.values?.[param.label] ??
                         (isMakeLikeParam(param)
-                          ? latestCol?.values?.make ??
-                            latestCol?.values?.Make ??
-                            latestCol?.values?.brand ??
-                            latestCol?.values?.Brand
+                          ? col.values?.make ??
+                            col.values?.Make ??
+                            col.values?.brand ??
+                            col.values?.Brand
                           : undefined);
                       const display =
                         raw === undefined || raw === null || raw === ''
@@ -1333,10 +1348,8 @@ export default function VendorComparisonMatrix({
                             : String(raw);
                       return (
                         <td
-                          key={`${vendor.id}-${param.id}`}
-                          className={`px-4 py-3.5 border-b border-l text-center text-[#334155] whitespace-pre-wrap ${
-                            vendor.isRecommended ? 'bg-emerald-50/70 border-emerald-100' : `${theme.soft} border-[#E5EAF0]`
-                          }`}
+                          key={`${col.key}-${param.id}`}
+                          className={`px-3 py-3 border-b border-l text-center text-[#334155] whitespace-pre-wrap ${colRev} ${columnFill(isBest, isRecRev, theme.soft)}`}
                         >
                           {isMakeLikeParam(param) ? (
                             <span className="font-bold text-slate-800">{display}</span>
@@ -1346,33 +1359,33 @@ export default function VendorComparisonMatrix({
                         </td>
                       );
                     })}
+                    <td className={colFiller} aria-hidden="true" />
                   </tr>
                 ))}
 
                 <tr>
                   <td
-                    className={`sticky left-0 z-10 w-[132px] min-w-[132px] md:w-[220px] md:min-w-[220px] px-2.5 md:px-4 py-3.5 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#12284A] text-xs md:text-sm ${stickyEdge}`}
+                    className={`${stOtherLabel} z-10 px-2.5 md:px-4 py-3 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#12284A] text-xs md:text-sm`}
                   >
                     Quotation File
                   </td>
-                  {vendorGroups.map(({ vendor, cols, theme }) => {
-                    const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
+                  {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
+                    const vendor = vendors.find((v) => Number(v.id) === Number(col.vendorId));
                     return (
                       <td
-                        key={`file-${vendor.id}`}
-                        className={`px-4 py-3.5 border-b border-l text-center ${
-                          vendor.isRecommended ? 'bg-emerald-50/70 border-emerald-100' : `${theme.soft} border-[#E5EAF0]`
-                        }`}
+                        key={`file-${col.key}`}
+                        className={`px-3 py-3 border-b border-l text-center ${colRev} ${columnFill(isBest, isRecRev, theme.soft)}`}
                       >
-                        {renderFileActions(latestCol, vendor, 'sm')}
-                  </td>
+                        {vendor ? renderFileActions(col, vendor, 'sm') : '—'}
+                      </td>
                     );
                   })}
-              </tr>
-            </tbody>
-          </table>
+                  <td className={colFiller} aria-hidden="true" />
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
         </section>
       )}
 
