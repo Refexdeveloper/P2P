@@ -1,14 +1,16 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import RfqListExpandedRow from '../../../components/feature/RfqListExpandedRow';
 import { rfqApi, type ScmRfqEntryItem } from '../../../services/api';
+import { finalizeGoPo, rfqEntryPath } from '../../../utils/scmGoPo';
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
 /** SCM RFQ pending list — detail uses the same UI as Requester RFQ Entry. */
 export default function ScmRfqEntryListPage() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const prId = searchParams.get('prId');
   const taskId = searchParams.get('taskId');
@@ -17,6 +19,24 @@ export default function ScmRfqEntryListPage() {
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState('');
   const [expandedPrId, setExpandedPrId] = useState<number | null>(null);
+  const [goPoPrId, setGoPoPrId] = useState<number | null>(null);
+
+  const handleGoPo = async (item: ScmRfqEntryItem) => {
+    if (!item.canGoPo) {
+      navigate(rfqEntryPath(item.prId));
+      return;
+    }
+    setGoPoPrId(item.prId);
+    setListError('');
+    try {
+      const result = await finalizeGoPo(item);
+      navigate(result.nextPath);
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : 'Go PO failed');
+    } finally {
+      setGoPoPrId(null);
+    }
+  };
 
   const loadEntryList = useCallback(async () => {
     setListLoading(true);
@@ -116,12 +136,27 @@ export default function ScmRfqEntryListPage() {
                         <td className="px-4 py-3 text-sm">{item.vendorCount}</td>
                         <td className="px-4 py-3 text-sm font-semibold">{formatCurrency(item.totalAmount)}</td>
                         <td className="px-4 py-3">
-                          <Link
-                            to={`/scm/rfq-entry/${item.prId}`}
-                            className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-semibold inline-block"
-                          >
-                            {isOwn ? 'SCM Final' : 'Open RFQ'}
-                          </Link>
+                          <div className="flex items-center gap-1.5">
+                            <Link
+                              to={`/scm/rfq-entry/${item.prId}`}
+                              className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-xs font-semibold inline-block hover:bg-gray-50"
+                            >
+                              {isOwn ? 'SCM Final' : 'Open RFQ'}
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => void handleGoPo(item)}
+                              disabled={goPoPrId === item.prId}
+                              title={
+                                item.canGoPo
+                                  ? 'Finalize RFQ and send to RFQ Approval / Create PO'
+                                  : 'Open RFQ, pick a vendor and quote, then Go PO'
+                              }
+                              className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-semibold hover:bg-teal-700 disabled:opacity-50"
+                            >
+                              {goPoPrId === item.prId ? 'Go PO…' : 'Go PO'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                       {open && (
@@ -130,12 +165,22 @@ export default function ScmRfqEntryListPage() {
                           colSpan={9}
                           statusLabel={isOwn ? 'SCM Final RFQ' : item.status || 'RFQ Entry'}
                           actionSlot={
-                            <Link
-                              to={`/scm/rfq-entry/${item.prId}`}
-                              className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold"
-                            >
-                              {isOwn ? 'SCM Final' : 'Open RFQ'}
-                            </Link>
+                            <div className="flex items-center gap-1.5">
+                              <Link
+                                to={`/scm/rfq-entry/${item.prId}`}
+                                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-xs font-semibold"
+                              >
+                                {isOwn ? 'SCM Final' : 'Open RFQ'}
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => void handleGoPo(item)}
+                                disabled={goPoPrId === item.prId}
+                                className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold disabled:opacity-50"
+                              >
+                                {goPoPrId === item.prId ? 'Go PO…' : 'Go PO'}
+                              </button>
+                            </div>
                           }
                         />
                       )}

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { poApi, rfqApi, taskApi, PostRfqPendingItem } from '../../../services/api';
+import { poApi, rfqApi, taskApi, PostRfqPendingItem, ScmRfqEntryItem } from '../../../services/api';
+import { finalizeGoPo, rfqEntryPath } from '../../../utils/scmGoPo';
 
 type DashTask = {
   id: string;
@@ -39,20 +40,25 @@ function isBuyerVerifyTask(t: Record<string, unknown>) {
 export default function SCMPurchaseRequestsPage() {
   const navigate = useNavigate();
   const [rfqPending, setRfqPending] = useState<PostRfqPendingItem[]>([]);
+  const [rfqGoPo, setRfqGoPo] = useState<ScmRfqEntryItem[]>([]);
   const [createPoTasks, setCreatePoTasks] = useState<DashTask[]>([]);
   const [verifyTasks, setVerifyTasks] = useState<DashTask[]>([]);
   const [acceptanceTasks, setAcceptanceTasks] = useState<DashTask[]>([]);
+  const [goPoPrId, setGoPoPrId] = useState<number | null>(null);
+  const [goPoError, setGoPoError] = useState('');
 
   const loadQueues = useCallback(async () => {
     try {
-      const [rfqRes, taskRes, readyRes, verifyRes, acceptRes] = await Promise.all([
+      const [rfqRes, entryRes, taskRes, readyRes, verifyRes, acceptRes] = await Promise.all([
         rfqApi.listPostApprovalPending().catch(() => ({ data: [] as PostRfqPendingItem[] })),
+        rfqApi.listScmEntryPending().catch(() => ({ data: [] as ScmRfqEntryItem[] })),
         taskApi.list().catch(() => ({ data: [] as unknown[] })),
         poApi.listTrack({ page: 1, limit: 100, status: 'ready' }).catch(() => ({ data: [] })),
         poApi.listPendingBuyerVerify().catch(() => ({ data: [] as unknown[] })),
         poApi.listVendorAcceptance().catch(() => ({ data: [] as unknown[] })),
       ]);
       setRfqPending(rfqRes.data || []);
+      setRfqGoPo(entryRes.data || []);
 
       const createMap = new Map<string, DashTask>();
       const verifyMap = new Map<string, DashTask>();
@@ -144,6 +150,7 @@ export default function SCMPurchaseRequestsPage() {
       setAcceptanceTasks(acceptRows);
     } catch {
       setRfqPending([]);
+      setRfqGoPo([]);
       setCreatePoTasks([]);
       setVerifyTasks([]);
       setAcceptanceTasks([]);
@@ -156,6 +163,28 @@ export default function SCMPurchaseRequestsPage() {
 
   const rfqPendingCount = rfqPending.filter((i) => i.approvalState === 'pending').length;
   const rfqPendingOnly = rfqPending.filter((i) => i.approvalState === 'pending');
+  const rfqCardCount = rfqGoPo.length + rfqPendingCount;
+
+  const handleGoPo = async (item: ScmRfqEntryItem) => {
+    if (!item.canGoPo) {
+      navigate(rfqEntryPath(item.prId));
+      return;
+    }
+    setGoPoPrId(item.prId);
+    setGoPoError('');
+    try {
+      const result = await finalizeGoPo(item);
+      if (result.isOwn) {
+        navigate(result.nextPath);
+        return;
+      }
+      await loadQueues();
+    } catch (err) {
+      setGoPoError(err instanceof Error ? err.message : 'Go PO failed');
+    } finally {
+      setGoPoPrId(null);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -163,7 +192,7 @@ export default function SCMPurchaseRequestsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">SCM Buyer Dashboard</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Pending RFQ, Create PO, Buyer Final Verify, and Vendor Acceptance
+            RFQ Approval (Go PO), Create PO, Buyer Final Verify, and Vendor Acceptance
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -189,10 +218,10 @@ export default function SCMPurchaseRequestsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
         {[
           {
-            label: 'Pending RFQ Approval',
-            value: rfqPendingCount,
-            sub: 'Waiting for SCM Manager',
-            icon: 'ri-time-line',
+            label: 'RFQ Approval',
+            value: rfqCardCount,
+            sub: rfqGoPo.length ? `${rfqGoPo.length} ready for Go PO` : 'Waiting for SCM Manager',
+            icon: 'ri-bar-chart-box-line',
             to: '/rfq-approval',
             border: 'border-amber-100',
             text: 'text-amber-700',
@@ -249,45 +278,119 @@ export default function SCMPurchaseRequestsPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-gray-900">Pending RFQ Approvals</h2>
-              <p className="text-xs text-gray-500">Waiting for SCM Manager</p>
-            </div>
-            <Link to="/rfq-approval" className="text-xs font-semibold text-teal-700 hover:text-teal-900">
-              Open queue →
-            </Link>
-          </div>
-          <div className="divide-y divide-gray-50 max-h-[360px] overflow-y-auto">
-            {rfqPendingOnly.length === 0 ? (
-              <p className="px-5 py-8 text-sm text-gray-400 text-center">No pending RFQ approvals</p>
-            ) : (
-              rfqPendingOnly.map((item) => (
-                <button
-                  key={item.prId}
-                  type="button"
-                  onClick={() => navigate(`/rfq-approval/${item.prId}?from=rfq-approval`)}
-                  className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 text-left"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-teal-700 truncate">
-                      {item.prNumber || `PR #${item.prId}`}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {item.title || item.stageLabel || 'RFQ approval'}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                    Pending
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
+      {goPoError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{goPoError}</div>
+      )}
 
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-5">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">RFQ Approval</h2>
+            <p className="text-xs text-gray-500">
+              Go PO finalizes RFQ. Own vendor goes to Create PO; SCM vendor waits for manager here.
+            </p>
+          </div>
+          <Link to="/rfq-approval" className="text-xs font-semibold text-teal-700 hover:text-teal-900">
+            Open queue →
+          </Link>
+        </div>
+        {rfqGoPo.length === 0 && rfqPendingOnly.length === 0 ? (
+          <p className="px-5 py-8 text-sm text-gray-400 text-center">No RFQ approval tasks</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  {['PR Number', 'Title', 'Vendor', 'Requester', 'Amount', 'Status', 'Actions'].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rfqGoPo.map((item) => (
+                  <tr key={`gopo-${item.prId}`} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-semibold text-teal-700 whitespace-nowrap">
+                      {item.prNumber}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-800 truncate max-w-[240px]" title={item.title}>
+                      {item.title}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700 truncate max-w-[180px]">
+                      {item.recommendedVendor || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 truncate">{item.requester}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
+                      ₹{Number(item.totalAmount || 0).toLocaleString('en-IN')}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-100 text-teal-700">
+                        Ready for Go PO
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => navigate(rfqEntryPath(item.prId))}
+                          className="px-2.5 py-1.5 border border-gray-300 text-gray-700 rounded-md text-xs font-semibold hover:bg-gray-50"
+                        >
+                          Open RFQ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleGoPo(item)}
+                          disabled={goPoPrId === item.prId}
+                          className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold hover:bg-teal-700 disabled:opacity-50"
+                        >
+                          {goPoPrId === item.prId ? 'Go PO…' : 'Go PO'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {rfqPendingOnly.map((item) => (
+                  <tr key={`mgr-${item.prId}`} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-semibold text-teal-700 whitespace-nowrap">
+                      {item.prNumber || `PR #${item.prId}`}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-800 truncate max-w-[240px]" title={item.title}>
+                      {item.title}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700 truncate max-w-[180px]">
+                      {item.recommendedVendor || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 truncate">{item.requester}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
+                      ₹{Number(item.totalAmount || 0).toLocaleString('en-IN')}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700">
+                        Pending Manager
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/rfq-approval/${item.prId}?from=rfq-approval`)}
+                        className="px-2.5 py-1.5 border border-teal-300 text-teal-800 rounded-md text-xs font-semibold hover:bg-teal-50"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>

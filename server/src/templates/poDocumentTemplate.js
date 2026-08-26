@@ -915,14 +915,16 @@ function poIntroHtml(po) {
   const subjectFallback = (po.poTermsDetails && po.poTermsDetails.subject) || po.prTitle || docLabel;
   const letterheadHtml = adaptLetterheadHeader(po.letterheadHeader, isWorkOrder);
   const quoteNo = resolveQuoteNo(po);
-  const td = po.poTermsDetails || {};
-  const quoteDate = fmtDateDisplay(td.quoteDate || po.quoteDate) || String(td.quoteDate || po.quoteDate || '').trim();
   const quoteNoText = quoteNo || '—';
-  const quoteDateText = quoteDate || '—';
+  const poDateText =
+    fmtDateDisplay(po.poDate || po.createdAt || new Date()) ||
+    String(po.poDate || '').trim() ||
+    '—';
   return `
     <div class="title">${docTitle}</div>
     <div class="po-meta">
       <span>${escapeHtml(docLabel)} No. &nbsp;${escapeHtml(po.poNumber)}</span>
+      <span>Date: ${escapeHtml(poDateText)}</span>
     </div>
     ${letterheadHtml ? `<div class="letterhead-block">${letterheadHtml}</div>` : ''}
     <div class="info-box">
@@ -934,7 +936,7 @@ function poIntroHtml(po) {
       <p><strong>Email:</strong> <a href="mailto:${escapeHtml(po.vendorEmail)}">${escapeHtml(po.vendorEmail)}</a></p>
       <p><strong>Phone:</strong> ${escapeHtml(vendorPhone)}</p>
       <p>&nbsp;</p>
-      <p><strong>Quote No:</strong> ${escapeHtml(quoteNoText)} &nbsp;&nbsp; <strong>Date:</strong> ${escapeHtml(quoteDateText)}</p>
+      <p><strong>Quote No:</strong> ${escapeHtml(quoteNoText)}</p>
       <p>&nbsp;</p>
       <p><strong>Subject:</strong> ${escapeHtml(subjectFallback)}</p>
     </div>`;

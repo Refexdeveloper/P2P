@@ -2788,8 +2788,9 @@ export default function CreatePOPage() {
                     </div>
                   </div>
                   <p className="text-xs text-gray-500 mt-1.5">
-                    Shown as Subject and Date on the {docLabel} document
-                    {isManualMode ? '.' : '. Defaults from PR title when empty.'} Document type (PO / WO) is set on the Terms &amp; Conditions tab.
+                    {docNoLabel === 'WO No' ? 'WO Date' : 'PO Date'} prints next to the document number on the PDF.
+                    Subject prints below Quote No
+                    {isManualMode ? '.' : ' (defaults from PR title when empty).'} Document type (PO / WO) is set on the Terms &amp; Conditions tab.
                   </p>
                 </div>
 
@@ -3844,32 +3845,19 @@ export default function CreatePOPage() {
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
                       />
                     </div>
-                      <div className="space-y-1.5 md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold text-gray-700">
-                            Quote No
-                          </label>
-                          <input
-                            type="text"
-                            value={poTermsDetails.quoteNo || ''}
-                            onChange={(e) => updatePoTermsField('quoteNo', e.target.value)}
-                            placeholder="Vendor quotation number"
-                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold text-gray-700">
-                            Quote Date
-                          </label>
-                          <input
-                            type="date"
-                            value={poTermsDetails.quoteDate || ''}
-                            onChange={(e) => updatePoTermsField('quoteDate', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          />
-                        </div>
-                        <p className="text-[11px] text-gray-500 sm:col-span-2">
-                          Prints on one PDF line as Quote No: (number) Date: (quotation date).
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="block text-xs font-semibold text-gray-700">
+                          Quote No
+                        </label>
+                        <input
+                          type="text"
+                          value={poTermsDetails.quoteNo || ''}
+                          onChange={(e) => updatePoTermsField('quoteNo', e.target.value)}
+                          placeholder="Vendor quotation number"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                        <p className="text-[11px] text-gray-500">
+                          Prints on the PDF as Quote No only. {docNoLabel === 'WO No' ? 'WO' : 'PO'} Date is next to the document number.
                         </p>
                       </div>
                     </div>

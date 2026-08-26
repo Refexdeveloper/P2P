@@ -573,6 +573,10 @@ export interface ScmRfqEntryItem {
   vendorSelection?: 'own' | 'scm';
   vendorCount: number;
   status: string;
+  recommendedInvitationId?: number | null;
+  recommendationJustification?: string;
+  recommendedVendor?: string;
+  canGoPo?: boolean;
 }
 
 export interface VendorComparisonData {

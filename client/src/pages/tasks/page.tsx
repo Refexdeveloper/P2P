@@ -638,25 +638,31 @@ export default function TasksPage() {
                 ? 'Approve (Vendor Comparison)'
                 : task.isPoSign
                   ? 'Sign & Approve'
-                  : 'Approve'
+                  : task.actionPath?.includes('/scm/buyer-final-verify')
+                    ? 'Verify'
+                    : 'Approve'
             }
           >
             <i className={task.isPoSign ? 'ri-quill-pen-line' : 'ri-check-line'}></i>
           </button>
-          <button
-            onClick={() => openModal(task.id, 'return')}
-            className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors cursor-pointer"
-            title={task.isPoSign ? 'Send Back to Buyer' : 'Send Back'}
-          >
-            <i className="ri-arrow-go-back-line"></i>
-          </button>
-          <button
-            onClick={() => openModal(task.id, 'reject')}
-            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
-            title="Reject"
-          >
-            <i className="ri-close-line"></i>
-          </button>
+          {!task.actionPath?.includes('/scm/buyer-final-verify') && (
+            <>
+              <button
+                onClick={() => openModal(task.id, 'return')}
+                className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors cursor-pointer"
+                title={task.isPoSign ? 'Send Back to Buyer' : 'Send Back'}
+              >
+                <i className="ri-arrow-go-back-line"></i>
+              </button>
+              <button
+                onClick={() => openModal(task.id, 'reject')}
+                className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                title="Reject"
+              >
+                <i className="ri-close-line"></i>
+              </button>
+            </>
+          )}
         </>
       )}
     </div>

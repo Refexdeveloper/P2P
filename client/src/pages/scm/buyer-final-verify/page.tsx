@@ -85,9 +85,8 @@ export default function BuyerFinalVerifyPage() {
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [modal, setModal] = useState<{
     open: boolean;
-    type: 'verify' | 'reject' | 'sendback';
     po: VerifyPO | null;
-  }>({ open: false, type: 'verify', po: null });
+  }>({ open: false, po: null });
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -131,46 +130,26 @@ export default function BuyerFinalVerifyPage() {
     [filtered]
   );
 
-  const openModal = (po: VerifyPO, type: 'verify' | 'reject' | 'sendback') => {
-    setModal({ open: true, type, po });
-    setRemarks(
-      type === 'verify'
-        ? 'Final verified — requester, approvers, and SCM team notified (no vendor mail)'
-        : type === 'sendback'
-          ? ''
-          : ''
-    );
+  const openModal = (po: VerifyPO) => {
+    setModal({ open: true, po });
+    setRemarks('Final verified — requester, approvers, and SCM team notified (no vendor mail)');
     setError('');
   };
 
   const closeModal = () => {
     if (submitting) return;
-    setModal({ open: false, type: 'verify', po: null });
+    setModal({ open: false, po: null });
     setRemarks('');
     setError('');
   };
 
   const handleConfirm = async () => {
     if (!modal.po) return;
-    if ((modal.type === 'reject' || modal.type === 'sendback') && !remarks.trim()) {
-      setError(
-        modal.type === 'sendback' ? 'Send-back remarks are required' : 'Rejection remarks are required'
-      );
-      return;
-    }
     setSubmitting(true);
     setError('');
     try {
-      if (modal.type === 'verify') {
-        const res = await poApi.finalVerify(modal.po.id, remarks.trim());
-        showToast(res.message || `${modal.po.poNumber} verified — requester, approvers, and SCM team notified`, 'success');
-      } else if (modal.type === 'sendback') {
-        const res = await poApi.sendBackFinalVerify(modal.po.id, remarks.trim());
-        showToast(res.message || `${modal.po.poNumber} sent back to manager`, 'success');
-      } else {
-        await poApi.rejectFinalVerify(modal.po.id, remarks.trim());
-        showToast(`${modal.po.poNumber} rejected at final verify`, 'error');
-      }
+      const res = await poApi.finalVerify(modal.po.id, remarks.trim());
+      showToast(res.message || `${modal.po.poNumber} verified — requester, approvers, and SCM team notified`, 'success');
       setExpandedId(null);
       closeModal();
       await load();
@@ -316,24 +295,10 @@ export default function BuyerFinalVerifyPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => openModal(po, 'verify')}
+                              onClick={() => openModal(po)}
                               className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 cursor-pointer"
                             >
                               Verify
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openModal(po, 'sendback')}
-                              className="px-3 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 cursor-pointer"
-                            >
-                              Send Back
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openModal(po, 'reject')}
-                              className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 cursor-pointer"
-                            >
-                              Reject
                             </button>
                             <button
                               type="button"
@@ -444,24 +409,10 @@ export default function BuyerFinalVerifyPage() {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => openModal(po, 'verify')}
+                                      onClick={() => openModal(po)}
                                       className="flex-1 min-w-[160px] px-4 py-2.5 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 cursor-pointer"
                                     >
                                       Verify
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => openModal(po, 'sendback')}
-                                      className="px-4 py-2.5 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 cursor-pointer"
-                                    >
-                                      Send Back
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => openModal(po, 'reject')}
-                                      className="px-4 py-2.5 text-sm font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 cursor-pointer"
-                                    >
-                                      Reject
                                     </button>
                                   </div>
                                 </div>
@@ -483,36 +434,10 @@ export default function BuyerFinalVerifyPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeModal} />
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div
-              className={`px-6 py-4 ${
-                modal.type === 'verify'
-                  ? 'bg-teal-50'
-                  : modal.type === 'sendback'
-                    ? 'bg-amber-50'
-                    : 'bg-red-50'
-              }`}
-            >
-              <h3
-                className={`text-base font-bold ${
-                  modal.type === 'verify'
-                    ? 'text-teal-900'
-                    : modal.type === 'sendback'
-                      ? 'text-amber-900'
-                      : 'text-red-900'
-                }`}
-              >
-                {modal.type === 'verify'
-                  ? 'Final Verify'
-                  : modal.type === 'sendback'
-                    ? 'Send Back to SCM Manager'
-                    : 'Reject at Final Verify'}
-              </h3>
+            <div className="px-6 py-4 bg-teal-50">
+              <h3 className="text-base font-bold text-teal-900">Final Verify</h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                {modal.type === 'verify'
-                  ? 'Email goes to the requester, approvers, and SCM team with the signed PO attached. Vendor is not copied.'
-                  : modal.type === 'sendback'
-                    ? 'Signature is cleared and PO returns to manager approval queue'
-                    : 'PO will be marked rejected and will not be sent to vendor'}
+                Email goes to the requester, approvers, and SCM team with the signed PO attached. Vendor is not copied.
               </p>
             </div>
             <div className="px-6 py-4 space-y-4">
@@ -526,24 +451,14 @@ export default function BuyerFinalVerifyPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  {modal.type === 'verify'
-                    ? 'Verification remarks'
-                    : modal.type === 'sendback'
-                      ? 'Send-back remarks *'
-                      : 'Rejection remarks *'}
+                  Verification remarks
                 </label>
                 <textarea
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   rows={3}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
-                  placeholder={
-                    modal.type === 'verify'
-                      ? 'Optional notes for audit trail'
-                      : modal.type === 'sendback'
-                        ? 'Explain what the manager should correct before re-signing'
-                        : 'Explain why this PO should not be sent'
-                  }
+                  placeholder="Optional notes for audit trail"
                 />
               </div>
               {error && (
@@ -564,21 +479,9 @@ export default function BuyerFinalVerifyPage() {
                   type="button"
                   onClick={handleConfirm}
                   disabled={submitting}
-                  className={`px-5 py-2 text-sm font-semibold text-white rounded-lg cursor-pointer disabled:opacity-50 ${
-                    modal.type === 'verify'
-                      ? 'bg-teal-600 hover:bg-teal-700'
-                      : modal.type === 'sendback'
-                        ? 'bg-amber-600 hover:bg-amber-700'
-                        : 'bg-red-600 hover:bg-red-700'
-                  }`}
+                  className="px-5 py-2 text-sm font-semibold text-white rounded-lg cursor-pointer disabled:opacity-50 bg-teal-600 hover:bg-teal-700"
                 >
-                  {submitting
-                    ? 'Processing...'
-                    : modal.type === 'verify'
-                      ? 'Verify'
-                      : modal.type === 'sendback'
-                        ? 'Send Back'
-                        : 'Reject PO'}
+                  {submitting ? 'Processing...' : 'Verify'}
                 </button>
               </div>
             </div>

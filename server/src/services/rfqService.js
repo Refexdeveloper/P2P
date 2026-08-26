@@ -1545,8 +1545,19 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
   );
 
   if (taskId) {
-    await completeRequesterTask(user, taskId);
+    try {
+      await completeRequesterTask(user, taskId);
+    } catch {
+      // SCM Go PO may pass a buyer RFQ_ENTRY task id — completed below
+    }
   }
+
+  await pool.query(
+    `UPDATE workflow_tasks
+     SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND task_type = 'RFQ_ENTRY' AND status = 'pending'`,
+    [prId]
+  );
 
   // SCM Buyer vendor selection / final RFQ — always record in approval history
   const selectionRemarks = isOwnVendor
@@ -1567,7 +1578,16 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
     await startScmVendorPostRfqWorkflow(prId);
   }
 
-  return { success: true, recommendedVendor: recommended.vendorName };
+  return {
+    success: true,
+    recommendedVendor: recommended.vendorName,
+    goPo: true,
+    nextStep: isOwnVendor && isScmBuyer ? 'create_po' : 'rfq_approval',
+    message:
+      isOwnVendor && isScmBuyer
+        ? 'RFQ finalized. Continue to Create PO.'
+        : 'RFQ finalized. Task is now in RFQ Approval.',
+  };
 }
 
 async function getRequesterEmailForPr(prId) {
@@ -2272,7 +2292,18 @@ export async function listScmRfqEntryPrs(user) {
             pr.required_date, pr.status, pr.updated_at, pr.vendor_selection,
             d.name AS department_name, u.name AS requester_name,
             rc.finalized_at, rc.requester_submitted_at,
-            (SELECT COUNT(*) FROM rfq_invitations ri WHERE ri.pr_id = pr.id) AS vendor_count
+            rc.recommended_invitation_id, rc.recommendation_justification,
+            (SELECT COUNT(*) FROM rfq_invitations ri WHERE ri.pr_id = pr.id) AS vendor_count,
+            (SELECT ri.vendor_name FROM rfq_invitations ri WHERE ri.id = rc.recommended_invitation_id) AS recommended_vendor,
+            (
+              SELECT vqs.quoted_price
+              FROM vendor_quotation_submissions vqs
+              WHERE vqs.rfq_invitation_id = rc.recommended_invitation_id
+                AND vqs.status IN ('submitted', 'sent_back')
+                AND vqs.quoted_price IS NOT NULL
+              ORDER BY vqs.round DESC, vqs.id DESC
+              LIMIT 1
+            ) AS recommended_quoted_price
      FROM purchase_requests pr
      JOIN departments d ON d.id = pr.department_id
      JOIN users u ON u.id = pr.requester_id
@@ -2287,20 +2318,34 @@ export async function listScmRfqEntryPrs(user) {
     [PR_STATUS.APPROVED]
   );
 
-  return rows.map((row) => ({
-    prId: row.id,
-    prNumber: row.pr_number,
-    title: row.title,
-    department: row.department_name,
-    requester: row.requester_name,
-    totalAmount: Number(row.total_amount),
-    requestType: row.request_type,
-    priority: row.priority,
-    requiredDate: formatDate(row.required_date),
-    vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
-    vendorCount: Number(row.vendor_count),
-    status: row.vendor_selection === 'own' ? 'Ready for SCM Final RFQ' : 'RFQ Entry',
-  }));
+  return rows.map((row) => {
+    const recommendedInvitationId = row.recommended_invitation_id
+      ? Number(row.recommended_invitation_id)
+      : null;
+    const recommendationJustification = String(row.recommendation_justification || '').trim();
+    const quoted = Number(row.recommended_quoted_price);
+    const canGoPo = Boolean(
+      recommendedInvitationId && recommendationJustification && Number.isFinite(quoted) && quoted > 0
+    );
+    return {
+      prId: row.id,
+      prNumber: row.pr_number,
+      title: row.title,
+      department: row.department_name,
+      requester: row.requester_name,
+      totalAmount: Number.isFinite(quoted) && quoted > 0 ? quoted : Number(row.total_amount),
+      requestType: row.request_type,
+      priority: row.priority,
+      requiredDate: formatDate(row.required_date),
+      vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+      vendorCount: Number(row.vendor_count),
+      status: row.vendor_selection === 'own' ? 'Ready for SCM Final RFQ' : 'RFQ Entry',
+      recommendedInvitationId,
+      recommendationJustification,
+      recommendedVendor: row.recommended_vendor || '',
+      canGoPo,
+    };
+  });
 }
 
 export async function listPostRfqPending(user) {

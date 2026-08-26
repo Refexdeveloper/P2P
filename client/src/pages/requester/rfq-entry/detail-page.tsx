@@ -1560,8 +1560,21 @@ export default function RfqEntryDetailPage() {
         taskId ? Number(taskId) : undefined,
         justification
       );
-      showToast(res.message || 'RFQ submitted for HOD vendor final approval');
       clearRfqEntryDraft(user?.id, Number(prId));
+      if (isScm) {
+        const isOwn = String(pr?.vendorSelection || '').toLowerCase() === 'own';
+        showToast(
+          res.message ||
+            (isOwn ? 'RFQ finalized. Continue to Create PO.' : 'RFQ finalized. Task is now in RFQ Approval.')
+        );
+        navigate(
+          isOwn
+            ? `/scm/create-po?prId=${prId}&from=rfq-entry`
+            : '/scm/purchase-requests'
+        );
+        return;
+      }
+      showToast(res.message || 'RFQ submitted for HOD vendor final approval');
       await loadRfq();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Submit failed');
@@ -1920,7 +1933,7 @@ export default function RfqEntryDetailPage() {
               }
               className="px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
             >
-              {submitting ? 'Submitting...' : isScm ? 'Finish RFQ' : 'Send for approval'}
+              {submitting ? (isScm ? 'Go PO…' : 'Submitting...') : isScm ? 'Go PO' : 'Send for approval'}
             </button>
           )}
         </div>
@@ -2017,7 +2030,7 @@ export default function RfqEntryDetailPage() {
         <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
           {config?.finalizedAt
             ? isScm
-              ? 'RFQ finalized. Ready for next SCM step (vendor approval / Create PO).'
+              ? 'RFQ finalized. This task is on SCM Dashboard → RFQ Approval (or Create PO for own vendor).'
               : 'RFQ finalized. Task completed.'
             : 'RFQ submitted for HOD vendor final → L2 → CFO approval. Task completed.'}
         </div>
