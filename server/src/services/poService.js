@@ -23,11 +23,12 @@ import {
   getScmBuyerNotifyEmails,
   resolveScmManagerUser,
   getScmManagerNotifyEmails,
+  getPreferredScmManagerName,
   insertScmManagerPoApprovalTask,
 } from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
-import { buildSignatureRenderOptions } from './signatureService.js';
+import { wrapPortalUrlWithSso } from './refexOneSamlService.js';
 
 function todayYmd() {
   const d = new Date();
@@ -76,7 +77,7 @@ async function resolveEntityIdFromPoBody(body = {}, existing = null) {
 
 function poPortalUrl(path) {
   const base = getWhatsAppPublicBaseUrl().replace(/\/$/, '');
-  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+  return wrapPortalUrlWithSso(`${base}${path.startsWith('/') ? path : `/${path}`}`);
 }
 
 async function resolveRoleEmails(role) {
@@ -296,6 +297,22 @@ function parseSignatureDsc(value) {
   } catch {
     return null;
   }
+}
+
+/** Keep the stored SCM Manager signature on live preview so Buyer Final Verify shows the signed block. */
+function attachStoredPoSignature(preview, row) {
+  if (!preview || !row) return preview;
+  return {
+    ...preview,
+    signedAt: row.signed_at ? formatDateTime(row.signed_at) : null,
+    signedPdfPath: row.signed_pdf_path || null,
+    signatureName: row.signature_name || null,
+    signatureImagePath: row.signature_image_path || null,
+    signatureImageData: row.signature_image_data || null,
+    signatureDsc: parseSignatureDsc(row.signature_dsc_json),
+    signerComments: row.signer_comments || null,
+    signerId: row.signer_id || null,
+  };
 }
 
 export const EMPTY_PO_TERMS_DETAILS = {
@@ -1147,27 +1164,33 @@ export async function buildPoPreviewForPo(user, poId, body) {
   if (!rows.length) throw new Error('PO not found');
   if (!body?.lineItems?.length) throw new Error('At least one line item is required for preview');
   if (!rows[0].pr_id) {
-    return resolveManualPoDraftContent({
+    return attachStoredPoSignature(
+      await resolveManualPoDraftContent({
+        ...body,
+        poNumber: rows[0].po_number,
+        vendorName: body.vendorName || rows[0].vendor_name,
+        vendorEmail: body.vendorEmail || rows[0].vendor_email,
+        poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
+        terms: body.terms ?? body.termsClauses,
+        annexure: body.annexure ?? body.annexureClauses,
+        annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
+        annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? rows[0].annexure_ii_html),
+      }),
+      rows[0]
+    );
+  }
+  return attachStoredPoSignature(
+    await resolvePoDraftContent(rows[0].pr_id, {
       ...body,
       poNumber: rows[0].po_number,
-      vendorName: body.vendorName || rows[0].vendor_name,
-      vendorEmail: body.vendorEmail || rows[0].vendor_email,
       poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
       terms: body.terms ?? body.termsClauses,
       annexure: body.annexure ?? body.annexureClauses,
       annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
       annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? rows[0].annexure_ii_html),
-    });
-  }
-  return resolvePoDraftContent(rows[0].pr_id, {
-    ...body,
-    poNumber: rows[0].po_number,
-    poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
-    terms: body.terms ?? body.termsClauses,
-    annexure: body.annexure ?? body.annexureClauses,
-    annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
-    annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? rows[0].annexure_ii_html),
-  });
+    }),
+    rows[0]
+  );
 }
 
 export async function createPurchaseOrder(user, prId, body) {
@@ -2573,18 +2596,22 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   }
 
   const attachments = await signedPoPdfMailAttachment(updated);
+  const signerName =
+    String(updated.signatureName || rows[0].signature_name || '').trim() ||
+    getPreferredScmManagerName() ||
+    'SCM Manager';
 
   if (parties.emails.length) {
     queuePoWorkflowNotification(updated, {
       action: 'verified',
-      stageLabel: 'PO signed — SCM team copy',
+      stageLabel: 'PO approved and signed',
       recipientEmails: parties.emails,
       recipientName: parties.name,
-      actorName: user.name,
-      actorRole: user.role,
+      actorName: signerName,
+      actorRole: 'SCM Manager',
       remarks: verifyRemarks,
-      portalUrl: poPortalUrl('/scm/track-po'),
-      ctaLabel: 'Track PO',
+      portalUrl: '',
+      ctaLabel: false,
       bccOps: false,
       notifyWhatsApp: false,
       attachments,
@@ -3067,20 +3094,21 @@ export async function updatePurchaseOrder(user, poId, body) {
   const updatedPo = await getPurchaseOrderById(poId);
 
   // Buyer edits after Manager sign: refresh draft + re-embed existing signature into signed PDF
-  if (canBuyerEdit && existing.signature_image_path) {
-    const { signatureFileToDataUrl } = await import('./signatureService.js');
-    const imageDataUrl = signatureFileToDataUrl(existing.signature_image_path);
+  if (canBuyerEdit && (existing.signed_at || existing.signature_image_path || existing.signature_image_data)) {
     const signedFileName = `${updatedPo.poNumber}_signed.pdf`;
     const { fileName } = await generatePoPdf(updatedPo, {
       fileName: signedFileName,
       signed: true,
-      signature: {
-        name: existing.signature_name || updatedPo.signatureName || 'SCM Manager',
-        date: updatedPo.signedAt || formatDateTime(new Date()),
-        comments: existing.signer_comments || '',
-        imageDataUrl,
-        dsc: updatedPo.signatureDsc || parseSignatureDsc(existing.signature_dsc_json) || undefined,
-      },
+      signature: buildSignatureRenderOptions({
+        ...updatedPo,
+        signatureName: existing.signature_name || updatedPo.signatureName,
+        signatureImagePath: existing.signature_image_path,
+        signatureImageData: existing.signature_image_data,
+        signatureDsc: updatedPo.signatureDsc || parseSignatureDsc(existing.signature_dsc_json),
+        signerComments: existing.signer_comments,
+        signedAt: updatedPo.signedAt || existing.signed_at,
+        signedPdfPath: existing.signed_pdf_path,
+      }),
     });
     await pool.query(
       `UPDATE purchase_orders SET pdf_path = ?, signed_pdf_path = ?, updated_at = NOW() WHERE id = ?`,

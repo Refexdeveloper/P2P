@@ -537,7 +537,8 @@ router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin', 'CFO'
 router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer'), async (req, res) => {
   try {
     const po = await buildPoPreviewForPo(req.user, Number(req.params.id), req.body);
-    const html = buildPoHtml(po);
+    const { buildSignatureRenderOptions } = await import('../services/signatureService.js');
+    const html = buildPoHtml(po, { signature: buildSignatureRenderOptions(po) });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (err) {

@@ -45,8 +45,11 @@ function apiUrl(path = '') {
   return `${safeBase}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+/** RefexOne SAML App ID (P2P). Override with REFEXONE_SAML_APP_ID. */
+export const DEFAULT_REFEXONE_SAML_APP_ID = 'bcc7387a-613a-4607-ae97-028fbdf5dd3b';
+
 export function getRefexOneSamlAppId() {
-  return String(process.env.REFEXONE_SAML_APP_ID || '').trim();
+  return String(process.env.REFEXONE_SAML_APP_ID || DEFAULT_REFEXONE_SAML_APP_ID).trim();
 }
 
 /**
@@ -59,6 +62,52 @@ export function getRefexOneSamlSsoUrl(relayState) {
   const url = new URL(`${apiBase}/saml/${encodeURIComponent(appId)}/sso`);
   if (relayState) url.searchParams.set('RelayState', String(relayState));
   return url.toString();
+}
+
+function mailPublicBase() {
+  const candidates = [
+    process.env.API_PUBLIC_URL,
+    process.env.WHATSAPP_APP_URL,
+    process.env.APP_URL,
+    LIVE_APP_URL,
+  ];
+  for (const c of candidates) {
+    const base = String(c || '').trim().replace(/\/$/, '');
+    if (/^https:\/\//i.test(base) && !/localhost|127\.0\.0\.1/i.test(base)) return base;
+  }
+  return LIVE_APP_URL;
+}
+
+function isVendorFacingUrl(url) {
+  return /\/vendor\/submit-quote|\/vendor\/invoice-submit|\/vendor\/quote/i.test(String(url || ''));
+}
+
+/**
+ * Wrap an internal P2P page URL so email/WhatsApp clicks go through RefexOne SSO,
+ * then land on the original approval/reject page (RelayState).
+ */
+export function wrapPortalUrlWithSso(targetUrl) {
+  const raw = String(targetUrl || '').trim();
+  if (!raw) return '';
+  if (/\/api\/saml\/[^/]+\/sso/i.test(raw)) return raw;
+  if (isVendorFacingUrl(raw)) return raw;
+
+  const publicBaseUrl = mailPublicBase();
+  let absolute = raw;
+  if (raw.startsWith('/')) {
+    absolute = `${publicBaseUrl}${raw}`;
+  } else {
+    try {
+      const parsed = new URL(raw);
+      if (/localhost|127\.0\.0\.1/i.test(parsed.hostname)) {
+        absolute = `${publicBaseUrl}${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+    } catch {
+      absolute = `${publicBaseUrl}${raw.startsWith('/') ? raw : `/${raw}`}`;
+    }
+  }
+
+  return getRefexOneSamlSsoUrl(absolute) || absolute;
 }
 
 export function resolveSamlRelayState(requested, fallbackAppUrl) {

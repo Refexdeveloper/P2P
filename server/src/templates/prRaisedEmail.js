@@ -1,3 +1,5 @@
+import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
+
 function formatCurrency(amount) {
   return `₹${Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -209,7 +211,7 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
               <table cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="background:#0f172a;border-radius:10px;">
-                    <a href="${escapeHtml(process.env.APP_URL || 'http://localhost:3000')}/requester/dashboard" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">
+                    <a href="${escapeHtml(wrapPortalUrlWithSso(`${process.env.APP_URL || 'http://localhost:3000'}/requester/dashboard`))}" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">
                       View in P2P Portal
                     </a>
                   </td>

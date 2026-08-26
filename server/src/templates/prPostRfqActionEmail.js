@@ -1,4 +1,5 @@
 import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
+import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 export function buildPostRfqActionEmail({
   pr,
@@ -13,11 +14,13 @@ export function buildPostRfqActionEmail({
   const actionLabel = isReject ? 'Rejected' : 'Sent Back for Rework';
   const subject = `PR ${pr.prNumber} ${actionLabel} — ${pr.title}`;
   const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const portalUrl = isReject
-    ? `${base}/requester/track-pr`
-    : editPr
-      ? `${base}/requester/edit-pr/${pr.id}`
-      : `${base}/requester/rfq-entry/${pr.id}`;
+  const portalUrl = wrapPortalUrlWithSso(
+    isReject
+      ? `${base}/requester/track-pr`
+      : editPr
+        ? `${base}/requester/edit-pr/${pr.id}`
+        : `${base}/requester/rfq-entry/${pr.id}`
+  );
   const entityLabel = formatEntity(pr);
   const roleDisplayName = formatRoleDisplayName(approverRole);
   const ctaLabel = isReject

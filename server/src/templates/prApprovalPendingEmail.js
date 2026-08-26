@@ -1,4 +1,5 @@
 import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
+import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 function isOwnVendorPr(pr) {
   return pr?.vendorSelection === 'own' || pr?.vendor_selection === 'own';
@@ -61,9 +62,10 @@ function buildActionUrl(prId, action, role, postRfq = false, rfqEntry = false, c
 }
 
 function actionButton(label, url, bgColor, textColor = '#ffffff') {
+  const href = wrapPortalUrlWithSso(url);
   return `
     <td style="padding:0 6px;">
-      <a href="${url}" target="_blank" style="display:inline-block;padding:14px 20px;background:${bgColor};color:${textColor};text-decoration:none;font-size:13px;font-weight:700;border-radius:10px;min-width:110px;text-align:center;">
+      <a href="${href}" target="_blank" style="display:inline-block;padding:14px 20px;background:${bgColor};color:${textColor};text-decoration:none;font-size:13px;font-weight:700;border-radius:10px;min-width:110px;text-align:center;">
         ${escapeHtml(label)}
       </a>
     </td>`;
@@ -536,19 +538,21 @@ export function buildPrApprovalPendingEmail({
           : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
   const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const path = getPortalPath(assignedRole, postRfq && !isCreatePoStep);
-  const portalUrl = isCreatePoStep
-    ? `${base}/scm/create-po?prId=${pr.id}`
-    : isRequesterStep
-      ? `${base}/requester/rfq-entry/${pr.id}`
-      : isScmRfqEntry
-        ? `${base}/scm/rfq-entry/${pr.id}`
-        : postRfq
-          ? path === '/scm/create-po'
-            ? `${base}${path}?prId=${pr.id}`
-            : `${base}${path}/${pr.id}`
-          : path === '/tasks'
-            ? `${base}${path}?prId=${pr.id}`
-            : `${base}${path}?prId=${pr.id}`;
+  const portalUrl = wrapPortalUrlWithSso(
+    isCreatePoStep
+      ? `${base}/scm/create-po?prId=${pr.id}`
+      : isRequesterStep
+        ? `${base}/requester/rfq-entry/${pr.id}`
+        : isScmRfqEntry
+          ? `${base}/scm/rfq-entry/${pr.id}`
+          : postRfq
+            ? path === '/scm/create-po'
+              ? `${base}${path}?prId=${pr.id}`
+              : `${base}${path}/${pr.id}`
+            : path === '/tasks'
+              ? `${base}${path}?prId=${pr.id}`
+              : `${base}${path}?prId=${pr.id}`
+  );
 
   const approveUrl = buildActionUrl(
     pr.id,

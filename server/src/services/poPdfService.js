@@ -11,8 +11,13 @@ import { PO_STYLES } from '../templates/poDocumentTemplate.styles.js';
 import { buildSignatureRenderOptions } from './signatureService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 
+function withResolvedSignature(po, options = {}) {
+  const signature = options.signature || buildSignatureRenderOptions(po);
+  return { ...options, signature };
+}
+
 export function buildPoHtml(po, options = {}) {
-  return buildPoDocumentHtml(po, options);
+  return buildPoDocumentHtml(po, withResolvedSignature(po, options));
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -521,6 +526,7 @@ export async function htmlToPdf(html, filePath) {
 
 export async function generatePoPdf(po, options = {}) {
   ensurePoDir();
+  options = withResolvedSignature(po, options);
   const baseName = options.fileName || `${po.poNumber}_${options.signed ? 'signed' : 'draft'}`;
   const fileName = baseName.endsWith('.pdf') ? baseName : `${baseName}.pdf`;
   const htmlFileName = fileName.replace(/\.pdf$/i, '.html');

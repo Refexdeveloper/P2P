@@ -19,6 +19,7 @@ import {
   getDefaultNotifyPhones,
 } from './whatsappService.js';
 import { createEmailLog, updateEmailLog, getEmailLogById } from './emailLogService.js';
+import { wrapPortalUrlWithSso } from './refexOneSamlService.js';
 
 /**
  * Outbound email master switch — set manually here (no env).
@@ -160,20 +161,20 @@ function buildWorkflowPortalUrl(pr, assignedRole, options = {}) {
     stage.includes('create po') ||
     (postRfq && assignedRole === 'SCM Buyer');
 
-  if (isCreatePo) return `${base}/scm/create-po?prId=${prId}`;
-  if (assignedRole === 'Requester') {
-    if (options.editPr) return `${base}/requester/edit-pr/${prId}`;
-    return `${base}/requester/rfq-entry/${prId}`;
-  }
-  if (rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq)) {
-    return `${base}/scm/rfq-entry/${prId}`;
-  }
-  if (assignedRole === 'SCM Manager' && postRfq) return `${base}/rfq-approval/${prId}`;
-  if (postRfq) return `${base}/rfq-approval/${prId}`;
-  if (assignedRole === 'CFO') return `${base}/cfo/dashboard?prId=${prId}`;
-  if (assignedRole === 'PR Manager') return `${base}/pr-manager/dashboard?prId=${prId}`;
-  if (assignedRole === 'SCM Manager') return `${base}/scm/po-approval`;
-  return `${base}/tasks?prId=${prId}`;
+  let url = `${base}/tasks?prId=${prId}`;
+  if (isCreatePo) url = `${base}/scm/create-po?prId=${prId}`;
+  else if (assignedRole === 'Requester') {
+    url = options.editPr
+      ? `${base}/requester/edit-pr/${prId}`
+      : `${base}/requester/rfq-entry/${prId}`;
+  } else if (rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq)) {
+    url = `${base}/scm/rfq-entry/${prId}`;
+  } else if (assignedRole === 'SCM Manager' && postRfq) url = `${base}/rfq-approval/${prId}`;
+  else if (postRfq) url = `${base}/rfq-approval/${prId}`;
+  else if (assignedRole === 'CFO') url = `${base}/cfo/dashboard?prId=${prId}`;
+  else if (assignedRole === 'PR Manager') url = `${base}/pr-manager/dashboard?prId=${prId}`;
+  else if (assignedRole === 'SCM Manager') url = `${base}/scm/po-approval`;
+  return wrapPortalUrlWithSso(url);
 }
 
 async function notifyWorkflowWhatsApp({
@@ -225,7 +226,7 @@ async function notifyWorkflowWhatsApp({
       appName: 'Procure to Pay',
       documentNumber: prNumber || `PR-${prId}`,
       stage,
-      actionUrl: actionUrl || `${getAppBaseUrl()}/tasks`,
+      actionUrl: wrapPortalUrlWithSso(actionUrl || `${getAppBaseUrl()}/tasks`),
       assigneeName: assigneeName || 'Approver',
     });
     queueWorkflowWhatsApp({
@@ -816,11 +817,13 @@ export function queuePostRfqActionNotification(pr, approverRole, action, remarks
       : action === 'return' || action === 'rework'
         ? 'Sent Back'
         : action;
-  const portal = options.editPr
-    ? `${getAppBaseUrl()}/requester/edit-pr/${pr.id || pr.prId}`
-    : action === 'reject'
-      ? `${getAppBaseUrl()}/requester/track-pr`
-      : `${getAppBaseUrl()}/requester/rfq-entry/${pr.id || pr.prId}`;
+  const portal = wrapPortalUrlWithSso(
+    options.editPr
+      ? `${getAppBaseUrl()}/requester/edit-pr/${pr.id || pr.prId}`
+      : action === 'reject'
+        ? `${getAppBaseUrl()}/requester/track-pr`
+        : `${getAppBaseUrl()}/requester/rfq-entry/${pr.id || pr.prId}`
+  );
   notifyWorkflowWhatsApp({
     pr,
     emails: [requester?.email].filter(Boolean),
@@ -904,7 +907,7 @@ export function queueRequesterStepProgressNotification(pr, options = {}) {
     stage: options.nextStepLabel
       ? `Moved to: ${options.nextStepLabel}`
       : 'PR workflow update',
-    actionUrl: `${getAppBaseUrl()}/requester/track-pr`,
+    actionUrl: wrapPortalUrlWithSso(`${getAppBaseUrl()}/requester/track-pr`),
     requesterName: options.requesterName || pr.requester || 'Requester',
     assigneeName: options.requesterName || pr.requester || 'Requester',
   });
@@ -962,7 +965,7 @@ export async function sendRfqSubmittedNotifyRequester(pr, vendorName, requesterE
     vendorName,
     requesterName,
     submission,
-    reviewUrl,
+    reviewUrl: wrapPortalUrlWithSso(reviewUrl),
   });
   return sendMailToRecipients(recipients, subject, html, text, [], {
     bcc,
@@ -1033,7 +1036,7 @@ export async function sendPoWorkflowNotification(po, {
     actorName,
     actorRole,
     remarks,
-    portalUrl,
+    portalUrl: wrapPortalUrlWithSso(portalUrl),
     ctaLabel,
   });
 
@@ -1078,7 +1081,7 @@ export function queuePoWorkflowNotification(po, options = {}) {
     pr: prLike,
     emails,
     stage: stageLabel,
-    actionUrl: options.portalUrl || `${getAppBaseUrl()}/scm/buyer-final-verify`,
+    actionUrl: wrapPortalUrlWithSso(options.portalUrl || `${getAppBaseUrl()}/scm/buyer-final-verify`),
     requesterName: po?.requester || options.actorName || 'User',
     assigneeName: options.recipientName || 'Approver',
   });
@@ -1380,7 +1383,7 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       vendorName: meta.vendorName || 'Vendor',
       requesterName: requester.name,
       submission: {},
-      reviewUrl: `${getAppBaseUrl()}/requester/rfq-entry/${pr.id}`,
+      reviewUrl: wrapPortalUrlWithSso(`${getAppBaseUrl()}/requester/rfq-entry/${pr.id}`),
     });
     subject = built.subject;
     html = built.html;
@@ -1400,7 +1403,7 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       actorName: meta.actorName || '',
       actorRole: meta.actorRole || '',
       remarks: meta.remarks || '',
-      portalUrl: meta.portalUrl || `${getAppBaseUrl()}/scm/po-approval`,
+      portalUrl: wrapPortalUrlWithSso(meta.portalUrl || `${getAppBaseUrl()}/scm/po-approval`),
       ctaLabel: meta.ctaLabel || 'Open',
     });
     subject = built.subject;
@@ -1409,7 +1412,7 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
   } else if (type === 'po_vendor') {
     if (!po) throw new Error('Related PO was not found — cannot rebuild this mail');
     if (!to.length && po.vendorEmail) to = [po.vendorEmail];
-    const portalUrl = `${getAppBaseUrl()}/scm/vendor-po-acceptance`;
+    const portalUrl = wrapPortalUrlWithSso(`${getAppBaseUrl()}/scm/vendor-po-acceptance`);
     const built = buildPoVendorEmail({
       po,
       signerName: meta.signerName || po.signatureName || '',

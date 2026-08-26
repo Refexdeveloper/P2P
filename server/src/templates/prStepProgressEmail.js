@@ -4,6 +4,7 @@ import {
   formatEntity,
   formatRoleDisplayName,
 } from './emailUtils.js';
+import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 /**
  * Requester FYI mail — every workflow step move (approved / submitted / next step).
@@ -20,7 +21,7 @@ export function buildPrStepProgressEmail({
   appBaseUrl = null,
 }) {
   const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const trackUrl = `${base}/requester/track-pr`;
+  const trackUrl = wrapPortalUrlWithSso(`${base}/requester/track-pr`);
   const entityLabel = formatEntity(pr);
   const roleDisplay = formatRoleDisplayName(actorRole) || actorRole || 'Approver';
   const actorLine = actorName ? `${actorName} (${roleDisplay})` : roleDisplay;

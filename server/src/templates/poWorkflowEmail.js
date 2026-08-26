@@ -1,4 +1,5 @@
 import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
+import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 const ACTION_META = {
   assign: {
@@ -20,8 +21,8 @@ const ACTION_META = {
     accent: '#b91c1c',
   },
   verified: {
-    subjectPrefix: 'PO final verified',
-    badge: 'Final verified',
+    subjectPrefix: 'PO approved and signed',
+    badge: 'Approved & signed',
     headerBg: 'linear-gradient(135deg,#047857,#10b981)',
     accent: '#047857',
   },
@@ -49,6 +50,7 @@ export function buildPoWorkflowEmail({
   const amount = po.grandTotal ?? po.totalAmount ?? 0;
   const roleDisplay = formatRoleDisplayName(actorRole || '');
   const stage = stageLabel || 'PO Workflow';
+  const ssoPortalUrl = wrapPortalUrlWithSso(portalUrl);
 
   const subject = `${meta.subjectPrefix}: ${poNumber} — ${stage}`;
 
@@ -72,7 +74,7 @@ export function buildPoWorkflowEmail({
               : action === 'sendback'
                 ? ` a purchase order was sent back by <strong style="color:#fff;">${escapeHtml(actorName || roleDisplay || 'Approver')}</strong>.`
                 : action === 'verified'
-                  ? ` the signed purchase order was final-verified by <strong style="color:#fff;">${escapeHtml(actorName || 'SCM Buyer')}</strong>. This mail goes to the requester, approvers, and SCM team only — the vendor is not emailed.`
+                  ? ` the purchase order was approved and signed by <strong style="color:#fff;">${escapeHtml(actorName || 'SCM Manager')}</strong>${roleDisplay ? ` (${escapeHtml(roleDisplay)})` : ''}. This mail goes to the requester, approvers, and SCM team only — the vendor is not emailed.`
                 : ` a purchase order was rejected by <strong style="color:#fff;">${escapeHtml(actorName || roleDisplay || 'Approver')}</strong>.`
           }
         </div>
@@ -111,10 +113,10 @@ export function buildPoWorkflowEmail({
             : ''
         }
         ${
-          portalUrl
+          portalUrl && action !== 'verified' && ctaLabel !== false
             ? `<p style="text-align:center;margin:24px 0 8px 0;">
-          <a href="${portalUrl}" target="_blank" style="display:inline-block;padding:13px 26px;background:${meta.accent};color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">
-            ${escapeHtml(ctaLabel || (action === 'assign' ? 'Open task' : action === 'sendback' ? 'Review &amp; re-sign' : action === 'verified' ? 'Track PO' : 'View status'))}
+          <a href="${ssoPortalUrl}" target="_blank" style="display:inline-block;padding:13px 26px;background:${meta.accent};color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">
+            ${escapeHtml(ctaLabel || (action === 'assign' ? 'Open task' : action === 'sendback' ? 'Review &amp; re-sign' : 'View status'))}
           </a>
         </p>`
             : ''
@@ -136,9 +138,9 @@ export function buildPoWorkflowEmail({
     prNumber ? `PR: ${prNumber}` : '',
     `Vendor: ${po.vendorName || po.vendor_name || '—'}`,
     `Amount: ${formatCurrency(amount)}`,
-    actorName ? `By: ${actorName}` : '',
+    actorName ? `By: ${actorName}${roleDisplay ? ` (${roleDisplay})` : ''}` : '',
     remarks ? `Remarks: ${remarks}` : '',
-    portalUrl ? `Open: ${portalUrl}` : '',
+    portalUrl && action !== 'verified' ? `Open: ${ssoPortalUrl}` : '',
   ]
     .filter(Boolean)
     .join('\n');
