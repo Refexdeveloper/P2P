@@ -2330,7 +2330,18 @@ export async function signPurchaseOrder(user, poId, {
   } else if (dscDetails) {
     // DSC stamp is generated on the client and sent as signatureImage; allow text-only if missing
   } else {
-    throw new Error('Please provide a signature (draw, upload, gallery, or Digital Signature / DSC)');
+    // Fall back to Rajeev default handwritten signature
+    const { getDefaultScmManagerSignatureDataUrl, DEFAULT_SCM_MANAGER_SIGNATURE_FILE } =
+      await import('./signatureService.js');
+    const defaultUrl = getDefaultScmManagerSignatureDataUrl();
+    if (!defaultUrl) {
+      throw new Error('Please provide a signature (draw, upload, gallery, or Digital Signature / DSC)');
+    }
+    imageDataUrl = defaultUrl;
+    const { ext, buffer } = parseDataUrlImage(defaultUrl);
+    signatureImagePath = saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
+    // Keep a stable default path reference as well for gallery parity
+    if (!signatureImagePath) signatureImagePath = DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
   }
 
   const po = await enrichPO(rows[0]);

@@ -977,6 +977,7 @@ export interface UserSignatureItem {
   imagePath: string;
   imageDataUrl: string;
   createdAt?: string;
+  isDefault?: boolean;
 }
 
 export type PoType = 'short_po' | 'long_po' | 'short_wo' | 'long_wo';
@@ -1556,6 +1557,33 @@ export const adminApi = {
     }>('/api/admin/reset-data', {
       method: 'POST',
       body: JSON.stringify({ confirm }),
+    }),
+  getScmManagerSignature: () =>
+    request<{
+      data: {
+        fileName: string;
+        label: string;
+        managerName: string;
+        managerEmail: string;
+        imageDataUrl: string | null;
+        updatedAt: string | null;
+      };
+    }>('/api/admin/scm-manager-signature'),
+  updateScmManagerSignature: (image: string, applyToSignedPos = true) =>
+    request<{
+      data: {
+        fileName: string;
+        label: string;
+        managerName: string;
+        managerEmail: string;
+        imageDataUrl: string | null;
+        updatedAt: string | null;
+        backfilled?: number;
+      };
+      message: string;
+    }>('/api/admin/scm-manager-signature', {
+      method: 'PUT',
+      body: JSON.stringify({ image, applyToSignedPos }),
     }),
 };
 

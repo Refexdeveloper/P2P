@@ -268,6 +268,13 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-notification-3-line',
     group: 'Admin',
   },
+  'nav.admin_scm_signature': {
+    code: 'nav.admin_scm_signature',
+    label: 'SCM Signature',
+    path: '/admin/scm-signature',
+    icon: 'ri-quill-pen-line',
+    group: 'Admin',
+  },
 };
 
 const MASTER_NAV_CODES = [
@@ -351,6 +358,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   'Super Admin': [
     'nav.admin_users',
     'nav.admin_email_logs',
+    'nav.admin_scm_signature',
     'nav.track_pr',
     'nav.scm_rfq_entry',
     'nav.rfq_approval',

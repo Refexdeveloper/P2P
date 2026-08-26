@@ -129,8 +129,29 @@ export default function SignatureCapture({ onChange }: Props) {
   }, []);
 
   useEffect(() => {
+    // Prefetch gallery so Rajeev default signature is ready for next approvals
+    void loadGallery();
+  }, [loadGallery]);
+
+  useEffect(() => {
     if (mode === 'gallery') loadGallery();
   }, [mode, loadGallery]);
+
+  useEffect(() => {
+    if (!gallery.length || selectedGalleryId != null || preview) return;
+    const preferred =
+      gallery.find((g) => g.isDefault) || gallery[0];
+    if (!preferred?.imageDataUrl) return;
+    setMode('gallery');
+    setSelectedGalleryId(preferred.id);
+    setPreview(preferred.imageDataUrl);
+    emit({
+      signatureId: preferred.id,
+      signatureImage: preferred.imageDataUrl,
+      signatureName: user?.name || 'Rajeev V',
+      saveToGallery: false,
+    });
+  }, [gallery, selectedGalleryId, preview, emit, user?.name]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

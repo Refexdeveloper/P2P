@@ -132,4 +132,31 @@ router.get('/whatsapp-logs', async (req, res) => {
   }
 });
 
+router.get('/scm-manager-signature', async (_req, res) => {
+  try {
+    const { getDefaultScmManagerSignatureInfo } = await import('../services/signatureService.js');
+    res.json({ data: getDefaultScmManagerSignatureInfo() });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.put('/scm-manager-signature', async (req, res) => {
+  try {
+    const { updateDefaultScmManagerSignature } = await import('../services/signatureService.js');
+    const data = await updateDefaultScmManagerSignature({
+      image: req.body?.image,
+      applyToSignedPos: req.body?.applyToSignedPos !== false,
+    });
+    res.json({
+      data,
+      message: data.backfilled
+        ? `Default signature updated and applied to ${data.backfilled} signed PO(s)`
+        : 'Default SCM Manager signature updated',
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 export default router;

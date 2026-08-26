@@ -481,14 +481,17 @@ router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manag
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
-    const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath);
+    const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || po.signedAt);
     const preferredName = isSigned
       ? po.signedPdfPath || `${po.poNumber || `PO-${po.id}`}_signed.pdf`
       : po.pdfPath || `${po.poNumber || `PO-${po.id}`}_draft.pdf`;
+    const { buildSignatureRenderOptions } = await import('../services/signatureService.js');
+    const signatureOpts = buildSignatureRenderOptions(po);
     const { fullPath, fileName } = await ensurePoPdf(po, {
       fileName: preferredName,
       signed: isSigned,
-      // Prefer existing signed PDF on disk; only regenerate when missing/invalid
+      signature: signatureOpts,
+      // Prefer existing PDF; deleted on signature backfill so missing files regenerate with Rajeev sig
       forceRegenerate: false,
     });
     // Persist regenerated PDF path when previous value was HTML-only

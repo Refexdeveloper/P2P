@@ -556,4 +556,19 @@ export async function runStartupMigrations() {
   } catch (err) {
     console.warn('SCM Manager assignee seed skipped:', err.message);
   }
+
+  try {
+    const { ensureDefaultScmManagerSignature } = await import('./signatureService.js');
+    const sig = await ensureDefaultScmManagerSignature({ backfill: true });
+    if (sig?.ok) {
+      console.log(
+        `SCM Manager default signature seeded for ${sig.managerEmail}` +
+          ` (galleryId=${sig.galleryId}, backfilledPOs=${sig.backfilled})`
+      );
+    } else {
+      console.warn('SCM Manager default signature seed skipped:', sig?.reason || 'unknown');
+    }
+  } catch (err) {
+    console.warn('SCM Manager default signature seed skipped:', err.message);
+  }
 }

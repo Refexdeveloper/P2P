@@ -42,6 +42,7 @@ export const NAV_ITEMS = [
   { code: 'nav.vendor_dashboard', label: 'Dashboard', path: '/vendor/dashboard', icon: 'ri-dashboard-line', group: 'Vendor', sort: 110 },
   { code: 'nav.admin_users', label: 'User Permissions', path: '/admin/user-permissions', icon: 'ri-shield-user-line', group: 'Admin', sort: 1 },
   { code: 'nav.admin_email_logs', label: 'Notification Logs', path: '/admin/email-logs', icon: 'ri-notification-3-line', group: 'Admin', sort: 2 },
+  { code: 'nav.admin_scm_signature', label: 'SCM Signature', path: '/admin/scm-signature', icon: 'ri-quill-pen-line', group: 'Admin', sort: 3 },
 ];
 
 export const ROLE_DEFAULT_PERMISSIONS = {
