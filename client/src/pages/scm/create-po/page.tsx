@@ -61,15 +61,20 @@ function plainTextFromHtml(html: string) {
 
 function isQuoteNoHeader(html: string) {
   const text = plainTextFromHtml(html)
+    .replace(/\//g, ' ')
     .replace(/\./g, '')
     .replace(/:/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
   if (!text) return false;
-  if (/^(quote\s*no|rfq\s*no|quote\s*number|rfq\s*number)$/.test(text)) return true;
-  // Letterhead masters sometimes use longer labels
-  return /^(quote|rfq)\s*(no|number)\b/.test(text) && text.length <= 40;
+  if (
+    /^(quote|quotation|rfq)\s*(no|number)(\s*(date|c))?$/.test(text) ||
+    /^ref\s*no(\s*date)?$/.test(text)
+  ) {
+    return true;
+  }
+  return /^(quote|rfq|quotation)\s*(no|number)\b/.test(text) && text.length <= 48;
 }
 
 /** Free text in Quote No / RFQ No terms description (ignores SugarCRM placeholders). */
@@ -92,33 +97,8 @@ function escapeHtmlText(value: string) {
     .replace(/"/g, '&quot;');
 }
 
-function syncQuoteNoIntoTermsClauses(
-  clauses: PoLetterheadClause[],
-  quoteNo: string
-): PoLetterheadClause[] {
-  const value = String(quoteNo || '').trim();
-  const description = value
-    ? `<p>${escapeHtmlText(value)}</p>`
-    : '<p>$aos_quotes_quote_no_c</p>';
-  let touched = false;
-  const next = (clauses || []).map((clause) => {
-    if (!isQuoteNoHeader(String(clause.termsHeader || ''))) return clause;
-    touched = true;
-    return {
-      ...clause,
-      termsHeader: 'Quote No',
-      termsDescription: description,
-    };
-  });
-  if (touched) return next;
-  return [
-    {
-      termsHeader: 'Quote No',
-      termsDescription: description,
-      sortOrder: 0,
-    },
-    ...next.map((c, i) => ({ ...c, sortOrder: i + 1 })),
-  ];
+function stripQuoteNoFromTermsClauses(clauses: PoLetterheadClause[]): PoLetterheadClause[] {
+  return (clauses || []).filter((clause) => !isQuoteNoHeader(String(clause.termsHeader || '')));
 }
 
 function renameRfqHeadersToQuoteNo(clauses: PoLetterheadClause[]): PoLetterheadClause[] {
@@ -258,7 +238,7 @@ function buildInvoicingAddressFromLocation(loc: LetterheadLocationRecord) {
 
 type PoTermsDetails = typeof EMPTY_PO_TERMS_DETAILS;
 
-/** Sync Quote No both ways before save / preview so Terms & Conditions always has the row. */
+/** Quote No is a header field only — strip it from Terms & Conditions before save / preview. */
 function withSyncedQuoteNo(
   clauses: PoLetterheadClause[],
   details: PoTermsDetails
@@ -269,7 +249,7 @@ function withSyncedQuoteNo(
   const fromTerms = extractQuoteNoFromDescription(String(quoteRow?.termsDescription || '')) || '';
   const quoteNo = fromField || fromTerms;
   return {
-    terms: syncQuoteNoIntoTermsClauses(renamed, quoteNo),
+    terms: stripQuoteNoFromTermsClauses(renamed),
     poTermsDetails: { ...details, quoteNo },
     quoteNo,
   };
@@ -971,7 +951,7 @@ export default function CreatePOPage() {
       const terms = res.data.terms || [];
       const annexure = res.data.annexure || [];
       setLetterheadHeader(adaptWordingForDocumentType(res.data.letterheadHeader || '', targetDoc));
-      setTermsClauses(adaptClausesForDocumentType(terms, targetDoc));
+      setTermsClauses(stripQuoteNoFromTermsClauses(adaptClausesForDocumentType(terms, targetDoc)));
       setAnnexureClauses(adaptClausesForDocumentType(annexure, targetDoc));
       setLoadedTemplate({
         poType: alignedType,
@@ -1351,7 +1331,7 @@ export default function CreatePOPage() {
           quoteNo,
           quoteDate: toInputDate(loadedDetails.quoteDate) || '',
         });
-        setTermsClauses(syncQuoteNoIntoTermsClauses(adaptedTerms, quoteNo));
+        setTermsClauses(stripQuoteNoFromTermsClauses(adaptedTerms));
         setLocationGstNo(loadedDetails.buyerGstNo || '');
         setLetterheadLocationKey(loadedDetails.letterheadLocationId || '');
 
@@ -1367,9 +1347,8 @@ export default function CreatePOPage() {
             }
             if (!loadedTerms.length) {
               setTermsClauses(
-                syncQuoteNoIntoTermsClauses(
-                  adaptClausesForDocumentType(master.terms || [], loadedDocType),
-                  quoteNo
+                stripQuoteNoFromTermsClauses(
+                  adaptClausesForDocumentType(master.terms || [], loadedDocType)
                 )
               );
             }
@@ -1628,13 +1607,13 @@ export default function CreatePOPage() {
       setDeliveryAddress(value);
     }
     if (key === 'quoteNo') {
-      setTermsClauses((prev) => syncQuoteNoIntoTermsClauses(prev, value));
+      setTermsClauses((prev) => stripQuoteNoFromTermsClauses(prev));
     }
   };
 
   const handleTermsClausesChange = (next: PoLetterheadClause[]) => {
-    const renamed = renameRfqHeadersToQuoteNo(
-      adaptClausesForDocumentType(next, documentType)
+    const renamed = stripQuoteNoFromTermsClauses(
+      renameRfqHeadersToQuoteNo(adaptClausesForDocumentType(next, documentType))
     );
     setTermsClauses(renamed);
     const quoteRow = renamed.find((c) => isQuoteNoHeader(String(c.termsHeader || '')));
@@ -2122,7 +2101,7 @@ export default function CreatePOPage() {
         quoteNo,
         quoteDate: toInputDate(loadedDetails.quoteDate) || '',
       });
-      setTermsClauses(syncQuoteNoIntoTermsClauses(adaptedTerms, quoteNo));
+      setTermsClauses(stripQuoteNoFromTermsClauses(adaptedTerms));
     }
 
     const refLineItems = ((po.lineItems as Array<Record<string, unknown>>) || []).map((li, index) => {
@@ -2210,7 +2189,9 @@ export default function CreatePOPage() {
     if (payload.entity) setEntity(payload.entity);
     if (payload.letterheadHeader) setLetterheadHeader(payload.letterheadHeader);
     if (payload.referencePoNumber) setReferencePoNumber(payload.referencePoNumber);
-    if (payload.termsClauses?.length) setTermsClauses(payload.termsClauses);
+    if (payload.termsClauses?.length) {
+      setTermsClauses(stripQuoteNoFromTermsClauses(payload.termsClauses as PoLetterheadClause[]));
+    }
     if (payload.annexureClauses?.length) setAnnexureClauses(payload.annexureClauses);
     if (payload.poNumber) setImportedPoNumber(payload.poNumber);
     if (payload.vendorName) setImportedVendorName(payload.vendorName);
@@ -3857,7 +3838,7 @@ export default function CreatePOPage() {
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
                         />
                         <p className="text-[11px] text-gray-500">
-                          Prints on the PDF as Quote No only. {docNoLabel === 'WO No' ? 'WO' : 'PO'} Date is next to the document number.
+                          Prints on the PDF header as Quote No. It is not listed in Terms &amp; Conditions.
                         </p>
                       </div>
                     </div>

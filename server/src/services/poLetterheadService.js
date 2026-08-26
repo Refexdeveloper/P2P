@@ -67,40 +67,27 @@ function isQuoteNoHeaderPlain(value) {
   const plain = String(value || '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
+    .replace(/\//g, ' ')
     .replace(/\./g, '')
     .replace(/:/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
   if (!plain) return false;
-  if (/^(quote\s*no|rfq\s*no|quote\s*number|rfq\s*number)$/.test(plain)) return true;
-  return /^(quote|rfq)\s*(no|number)\b/.test(plain) && plain.length <= 40;
+  if (
+    /^(quote|quotation|rfq)\s*(no|number)(\s*(date|c))?$/.test(plain) ||
+    /^ref\s*no(\s*date)?$/.test(plain)
+  ) {
+    return true;
+  }
+  return /^(quote|rfq|quotation)\s*(no|number)\b/.test(plain) && plain.length <= 48;
 }
 
-/** Always keep a Quote No (formerly RFQ No) row at the top of Terms & Conditions. */
-export function ensureQuoteNoTermRow(terms = []) {
-  const list = Array.isArray(terms) ? [...terms] : [];
-  const idx = list.findIndex((t) => isQuoteNoHeaderPlain(t.termsHeader || t.terms_header));
-  if (idx >= 0) {
-    const row = { ...list[idx], termsHeader: 'Quote No', terms_header: 'Quote No' };
-    const desc = String(row.termsDescription || row.terms_description || '');
-    if (/\$aos_quotes_rfq_no_c/i.test(desc) || /RFQ\s*No/i.test(desc)) {
-      row.termsDescription = desc
-        .replace(/\$aos_quotes_rfq_no_c/gi, '$aos_quotes_quote_no_c')
-        .replace(/RFQ\s*No\.?/gi, 'Quote No');
-      row.terms_description = row.termsDescription;
-    }
-    list[idx] = row;
-    return list;
-  }
-  return [
-    {
-      termsHeader: 'Quote No',
-      termsDescription: '<p>$aos_quotes_quote_no_c</p>',
-      sortOrder: 0,
-    },
-    ...list,
-  ];
+/** Quote No belongs on the document header only — never in Terms & Conditions. */
+export function stripQuoteNoTermRows(terms = []) {
+  return (Array.isArray(terms) ? terms : []).filter(
+    (t) => !isQuoteNoHeaderPlain(t.termsHeader || t.terms_header)
+  );
 }
 
 function stripHtmlPlain(html) {
@@ -131,16 +118,15 @@ export function extractQuoteNoFromTermsDescription(html) {
 }
 
 /**
- * Keep Quote No label + value consistent across termsClauses and poTermsDetails
- * so the Quote No header line and Terms table show the typed value (never RFQ No).
+ * Keep Quote No on poTermsDetails (header line) and remove it from Terms & Conditions.
  */
 export function mergeQuoteNoIntoPoContent(terms = [], poTermsDetails = {}) {
-  const ensured = ensureQuoteNoTermRow(terms);
+  const list = Array.isArray(terms) ? [...terms] : [];
   const details = { ...(poTermsDetails || {}) };
   let quoteNo = String(details.quoteNo || details.quote_no || details.quotationNo || details.rfqNo || '').trim();
 
   if (!quoteNo) {
-    for (const term of ensured) {
+    for (const term of list) {
       const header = term.termsHeader || term.terms_header || '';
       if (!isQuoteNoHeaderPlain(header)) continue;
       quoteNo = extractQuoteNoFromTermsDescription(
@@ -150,63 +136,29 @@ export function mergeQuoteNoIntoPoContent(terms = [], poTermsDetails = {}) {
     }
   }
 
-  const nextTerms = ensured.map((term) => {
-    const header = term.termsHeader || term.terms_header || '';
-    if (!isQuoteNoHeaderPlain(header)) return term;
-    const desc = String(term.termsDescription || term.terms_description || '');
-    const nextDesc = quoteNo
-      ? `<p>${escapeHtmlPlain(quoteNo)}</p>`
-      : desc || '<p>$aos_quotes_quote_no_c</p>';
-    return {
-      ...term,
-      termsHeader: 'Quote No',
-      terms_header: 'Quote No',
-      termsDescription: nextDesc,
-      terms_description: nextDesc,
-    };
-  });
-
   return {
-    terms: nextTerms,
+    terms: stripQuoteNoTermRows(list),
     poTermsDetails: { ...details, quoteNo },
     quoteNo,
   };
 }
 
 /**
- * Insert Quote No term into letterhead masters that lost the RFQ/Quote row.
+ * Remove Quote No / RFQ No rows from letterhead masters — Quote No is header-only.
  */
-async function ensureQuoteNoClauseInDb(poType) {
+async function deleteQuoteNoClausesFromDb(poType) {
   const master = await ensureMaster(poType);
   const [existing] = await pool.query(
-    `SELECT id, terms_header, terms_description
+    `SELECT id, terms_header
      FROM po_letterhead_clauses
      WHERE master_id = ? AND section_type = 'terms'`,
     [master.id]
   );
-  const quoteRow = existing.find((r) => isQuoteNoHeaderPlain(r.terms_header));
-  if (quoteRow) {
-    await pool.query(
-      `UPDATE po_letterhead_clauses
-       SET terms_header = 'Quote No',
-           terms_description = REPLACE(REPLACE(terms_description, '$aos_quotes_rfq_no_c', '$aos_quotes_quote_no_c'), 'RFQ No', 'Quote No'),
-           sort_order = LEAST(sort_order, 1)
-       WHERE id = ?`,
-      [quoteRow.id]
-    );
-    return;
-  }
-  // Shift existing terms down and insert Quote No first
+  const ids = existing.filter((r) => isQuoteNoHeaderPlain(r.terms_header)).map((r) => r.id);
+  if (!ids.length) return;
   await pool.query(
-    `UPDATE po_letterhead_clauses
-     SET sort_order = sort_order + 1
-     WHERE master_id = ? AND section_type = 'terms'`,
-    [master.id]
-  );
-  await pool.query(
-    `INSERT INTO po_letterhead_clauses (master_id, section_type, sort_order, terms_header, terms_description)
-     VALUES (?, 'terms', 1, 'Quote No', ?)`,
-    [master.id, '<p>$aos_quotes_quote_no_c</p>']
+    `DELETE FROM po_letterhead_clauses WHERE id IN (${ids.map(() => '?').join(',')})`,
+    ids
   );
 }
 
@@ -223,6 +175,7 @@ async function ensureMaster(poType) {
 
 export async function getLetterheadByType(poTypeInput) {
   const poType = normalizePoType(poTypeInput);
+  await deleteQuoteNoClausesFromDb(poType);
   const master = await ensureMaster(poType);
 
   const [clauses] = await pool.query(
@@ -245,7 +198,7 @@ export async function getLetterheadByType(poTypeInput) {
     poTypeLabel: PO_TYPE_LABELS[poType],
     title: master.title,
     letterheadHeader: master.letterhead_header || '',
-    terms: ensureQuoteNoTermRow(terms),
+    terms: stripQuoteNoTermRows(terms),
     annexure,
     updatedAt: master.updated_at,
   };
@@ -308,7 +261,7 @@ export async function saveLetterhead(poTypeInput, payload) {
       }
     };
 
-    await insertClause('terms', terms);
+    await insertClause('terms', stripQuoteNoTermRows(terms));
     await insertClause('annexure', annexure);
 
     await conn.commit();

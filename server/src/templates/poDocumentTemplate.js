@@ -466,19 +466,42 @@ function stripHtmlToText(html) {
 
 function isQuoteNoHeader(raw) {
   const text = stripHtmlToText(raw)
+    .replace(/\//g, ' ')
     .replace(/\./g, '')
     .replace(/:/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
   if (!text) return false;
-  if (/^(quote\s*no|rfq\s*no|quote\s*number|rfq\s*number|quotation\s*no|quotation\s*number)$/.test(text)) {
+  if (
+    /^(quote|quotation|rfq)\s*(no|number)(\s*(date|c))?$/.test(text) ||
+    /^ref\s*no(\s*date)?$/.test(text)
+  ) {
     return true;
   }
   return /^(quote|rfq|quotation)\s*(no|number)\b/.test(text) && text.length <= 48;
 }
 
-/** Prefer dedicated quoteNo; else free text typed in the Quote No / RFQ No terms row. */
+function blankQuotePlaceholders(html) {
+  return String(html || '')
+    .replace(/\$aos_quotes_quote_no_c/gi, '')
+    .replace(/\$aos_quotes_number/gi, '')
+    .replace(/\$aos_quotes_name/gi, '')
+    .replace(/\$aos_quotes_rfq_no_c/gi, '');
+}
+
+/** Quote No is shown on the header line only — never as a Terms & Conditions row. */
+function withoutQuoteNoTerms(terms) {
+  return (terms || [])
+    .filter((term) => !isQuoteNoHeader(term.termsHeader || term.terms_header || ''))
+    .map((term) => ({
+      ...term,
+      termsDescription: blankQuotePlaceholders(term.termsDescription || term.terms_description || ''),
+      terms_description: blankQuotePlaceholders(term.termsDescription || term.terms_description || ''),
+    }));
+}
+
+/** Prefer dedicated quoteNo; else free text typed in a leftover Quote No / RFQ No terms row. */
 function resolveQuoteNo(po) {
   const td = po.poTermsDetails || {};
   const direct = String(
@@ -501,55 +524,14 @@ function resolveQuoteNo(po) {
   return '';
 }
 
-function quoteNoTermsDescription(quoteNo, existingDesc = '') {
-  if (quoteNo) return `<p>${escapeHtml(quoteNo)}</p>`;
-  const desc = String(existingDesc || '');
-  return desc || '<p></p>';
-}
-
-/** Ensure Quote No is on the header line and in Terms & Conditions (never RFQ No / PR). */
 function withResolvedQuoteNo(po) {
   const quoteNo = resolveQuoteNo(po);
-  const quoteDate = String(
-    (po.poTermsDetails && (po.poTermsDetails.quoteDate || po.poTermsDetails.quote_date)) ||
-      po.quoteDate ||
-      po.quote_date ||
-      ''
-  ).trim();
-  const td = { ...(po.poTermsDetails || {}), quoteNo, quoteDate };
-  let hasQuoteRow = false;
-  const termsClauses = (po.termsClauses || []).map((term) => {
-    const header = term.termsHeader || term.terms_header || '';
-    if (!isQuoteNoHeader(header)) return term;
-    hasQuoteRow = true;
-    const nextDesc = quoteNoTermsDescription(
-      quoteNo,
-      term.termsDescription || term.terms_description || ''
-    );
-    return {
-      ...term,
-      termsHeader: 'Quote No',
-      terms_header: 'Quote No',
-      termsDescription: nextDesc,
-      terms_description: nextDesc,
-    };
-  });
-  if (!hasQuoteRow) {
-    const nextDesc = quoteNoTermsDescription(quoteNo);
-    termsClauses.unshift({
-      termsHeader: 'Quote No',
-      terms_header: 'Quote No',
-      termsDescription: nextDesc,
-      terms_description: nextDesc,
-      sortOrder: 0,
-    });
-  }
+  const td = { ...(po.poTermsDetails || {}), quoteNo };
   return {
     ...po,
     quoteNo,
-    quoteDate,
     poTermsDetails: td,
-    termsClauses,
+    termsClauses: withoutQuoteNoTerms(po.termsClauses),
   };
 }
 
@@ -558,7 +540,6 @@ function applyClausePlaceholders(html, po) {
   const company = escapeHtml(po.entity || po.entityName || 'Refex Group of Companies');
   const vendor = escapeHtml(po.vendorName || 'Vendor');
   const td = po.poTermsDetails || {};
-  const quoteNo = resolveQuoteNo(po);
   const deliveryDate = fmtDateDisplay(po.expectedDeliveryDate) || String(po.expectedDeliveryDate || '').trim();
   const isWorkOrder =
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
@@ -570,10 +551,10 @@ function applyClausePlaceholders(html, po) {
     .replace(/\[Vendor Name\]/gi, vendor)
     .replace(/\$aos_quotes_company_name_c/gi, company)
     .replace(/\$accounts_aos_quotes_1_name_name/gi, vendor)
-    .replace(/\$aos_quotes_number/gi, placeholderText(quoteNo, ''))
-    .replace(/\$aos_quotes_name/gi, placeholderText(quoteNo, ''))
-    .replace(/\$aos_quotes_quote_no_c/gi, placeholderText(quoteNo, ''))
-    .replace(/\$aos_quotes_rfq_no_c/gi, placeholderText(quoteNo, ''))
+    .replace(/\$aos_quotes_number/gi, '')
+    .replace(/\$aos_quotes_name/gi, '')
+    .replace(/\$aos_quotes_quote_no_c/gi, '')
+    .replace(/\$aos_quotes_rfq_no_c/gi, '')
     .replace(/\$aos_quotes_inco_terms_c/gi, placeholderText(po.incoterms))
     .replace(/\$aos_quotes_delivery_schedule_c/gi, placeholderText(deliveryDate))
     .replace(/\$aos_quotes_shipment_mode_c/gi, placeholderText(po.incoterms))
@@ -657,14 +638,9 @@ function termsTheadHtml(po, continued = false) {
 
 function termRowHtml(term, po, index) {
   const headerRaw = term.termsHeader || term.terms_header || '';
-  const quoteNo = resolveQuoteNo(po);
-  const isQuote = isQuoteNoHeader(headerRaw);
-  const headerHtml = isQuote ? escapeHtml('Quote No') : clauseHeaderHtml(headerRaw, po, 'Term');
-  const cellHtml = isQuote
-    ? quoteNo
-      ? `<p>${escapeHtml(quoteNo)}</p>`
-      : applyClausePlaceholders(term.termsDescription || term.terms_description || '', po)
-    : applyClausePlaceholders(term.termsDescription || term.terms_description || '', po);
+  if (isQuoteNoHeader(headerRaw)) return '';
+  const headerHtml = clauseHeaderHtml(headerRaw, po, 'Term');
+  const cellHtml = applyClausePlaceholders(term.termsDescription || term.terms_description || '', po);
   return `
     <tr class="terms-row" data-block="term-${index}">
       <th class="head-col">${headerHtml}</th>
@@ -698,8 +674,9 @@ function annexureRowHtml(item, po, idx) {
 }
 
 function termsSummaryHtml(po, terms, forPdf) {
-  if (!terms?.length) return '';
-  const rows = terms.map((term, index) => termRowHtml(term, po, index)).join('');
+  const visible = withoutQuoteNoTerms(terms);
+  if (!visible.length) return '';
+  const rows = visible.map((term, index) => termRowHtml(term, po, index)).join('');
 
   return wrapSheet(
     `
@@ -1003,7 +980,7 @@ export function buildPoPdfParts(poInput, options = {}) {
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
   const items = po.lineItems || [];
-  const terms = po.termsClauses || [];
+  const terms = withoutQuoteNoTerms(po.termsClauses || []);
   const annexure = po.annexureClauses || [];
   const annexureIi = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '').filter(
     (row) => !annexureIiRowIsEmpty(row)
@@ -1021,7 +998,7 @@ export function buildPoPdfParts(poInput, options = {}) {
     totalsRows: priceTotalsBodyHtml(po),
     termsThead: terms.length ? termsTheadHtml(po, false) : '',
     termsTheadContinued: terms.length ? termsTheadHtml(po, true) : '',
-    termRows: terms.map((term, index) => termRowHtml(term, po, index)),
+    termRows: terms.map((term, index) => termRowHtml(term, po, index)).filter(Boolean),
     annexureThead: annexure.length ? annexureTheadHtml(docLabel, false) : '',
     annexureTheadContinued: annexure.length ? annexureTheadHtml(docLabel, true) : '',
     annexureRows: annexure.map((item, idx) => annexureRowHtml(item, po, idx)),

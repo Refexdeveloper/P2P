@@ -505,8 +505,7 @@ router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manag
       fileName: preferredName,
       signed: isSigned,
       signature: signatureOpts,
-      // Prefer existing PDF; deleted on signature backfill so missing files regenerate with Rajeev sig
-      forceRegenerate: false,
+      forceRegenerate: isSigned,
     });
     // Persist regenerated PDF path when previous value was HTML-only
     if (!isSigned && po.pdfPath !== fileName) {

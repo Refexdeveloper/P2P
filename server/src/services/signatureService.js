@@ -36,10 +36,22 @@ export function saveSignatureFile(buffer, ext, fileBaseName) {
   return fileName;
 }
 
+export function signatureBufferToDataUrl(buffer, mime = 'image/png') {
+  if (!buffer) return null;
+  const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  if (!buf.length) return null;
+  return `data:${mime};base64,${buf.toString('base64')}`;
+}
+
 export function signatureFileToDataUrl(fileName) {
   if (!fileName) return null;
-  const fullPath = path.join(SIGNATURE_UPLOAD_DIR, fileName);
-  if (!fs.existsSync(fullPath)) return null;
+  const candidates = [
+    path.join(SIGNATURE_UPLOAD_DIR, fileName),
+    path.join(SIGNATURE_SEED_DIR, fileName),
+    path.join(__dirname, '../../assets/signatures', fileName),
+  ];
+  const fullPath = candidates.find((p) => fs.existsSync(p) && fs.statSync(p).size > 0);
+  if (!fullPath) return null;
   const ext = path.extname(fileName).slice(1).toLowerCase() || 'png';
   const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
   const buffer = fs.readFileSync(fullPath);
@@ -275,7 +287,13 @@ export async function getUserSignatureImage(userId, signatureId) {
 export function buildSignatureRenderOptions(po = {}) {
   const name = po.signatureName || po.signature_name || '';
   let imagePath = po.signatureImagePath || po.signature_image_path || '';
-  let imageDataUrl = imagePath ? signatureFileToDataUrl(imagePath) : null;
+  const blob = po.signatureImageData || po.signature_image_data;
+  let imageDataUrl =
+    (po.signatureImageDataUrl && String(po.signatureImageDataUrl).startsWith('data:image/')
+      ? po.signatureImageDataUrl
+      : null) ||
+    signatureBufferToDataUrl(blob) ||
+    (imagePath ? signatureFileToDataUrl(imagePath) : null);
   let dsc = po.signatureDsc || po.signature_dsc || null;
   if (!dsc && po.signature_dsc_json) {
     try {
@@ -296,6 +314,7 @@ export function buildSignatureRenderOptions(po = {}) {
       po.signerId ||
       po.signer_id ||
       imagePath ||
+      blob ||
       dsc
   );
 

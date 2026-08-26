@@ -20,6 +20,7 @@ interface VerifyPO {
   statusRaw: string;
   signedAt: string | null;
   signatureName: string;
+  signatureImageDataUrl: string;
   signerComments: string;
   paymentTerms: string;
   expectedDeliveryDate: string;
@@ -55,6 +56,7 @@ function mapApiPo(raw: Record<string, unknown>): VerifyPO {
     statusRaw: String(raw.statusRaw || ''),
     signedAt: raw.signedAt ? String(raw.signedAt) : null,
     signatureName: String(raw.signatureName || ''),
+    signatureImageDataUrl: String(raw.signatureImageDataUrl || ''),
     signerComments: String(raw.signerComments || ''),
     paymentTerms: String(raw.paymentTerms || ''),
     expectedDeliveryDate: String(raw.expectedDeliveryDate || ''),
@@ -271,10 +273,21 @@ export default function BuyerFinalVerifyPage() {
                           <p className="text-xs text-gray-400">{po.department}</p>
                         </td>
                         <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap">
-                          {po.signedAt || '—'}
-                          {po.signatureName && (
-                            <p className="text-xs text-gray-400">by {po.signatureName}</p>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {po.signatureImageDataUrl ? (
+                              <img
+                                src={po.signatureImageDataUrl}
+                                alt={po.signatureName || 'SCM Manager signature'}
+                                className="h-8 max-w-[88px] object-contain bg-white border border-gray-200 rounded px-1"
+                              />
+                            ) : null}
+                            <div>
+                              <p>{po.signedAt || '—'}</p>
+                              {po.signatureName && (
+                                <p className="text-xs text-gray-400">by {po.signatureName}</p>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-4 py-4 text-sm font-semibold text-gray-900 whitespace-nowrap">
                           {formatCurrency(po.grandTotal)}
@@ -332,7 +345,18 @@ export default function BuyerFinalVerifyPage() {
                                     ].map((item) => (
                                       <div key={item.label} className="bg-gray-50 rounded-lg p-3">
                                         <p className="text-xs text-gray-500 mb-1">{item.label}</p>
-                                        <p className="text-sm font-medium text-gray-800">{item.value}</p>
+                                        {item.label === 'Manager Signature' && po.signatureImageDataUrl ? (
+                                          <div>
+                                            <img
+                                              src={po.signatureImageDataUrl}
+                                              alt={po.signatureName || 'SCM Manager signature'}
+                                              className="h-14 max-w-[180px] object-contain bg-white border border-gray-200 rounded px-2 py-1 mb-1"
+                                            />
+                                            <p className="text-sm font-medium text-gray-800">{item.value}</p>
+                                          </div>
+                                        ) : (
+                                          <p className="text-sm font-medium text-gray-800">{item.value}</p>
+                                        )}
                                       </div>
                                     ))}
                                   </div>

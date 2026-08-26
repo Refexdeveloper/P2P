@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import pool from '../config/db.js';
 import { getPurchaseRequestById } from './prService.js';
-import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath } from './poPdfService.js';
+import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath, ensurePoPdf } from './poPdfService.js';
 import { sendPoVendorNotification, queuePoWorkflowNotification } from './emailService.js';
 import { formatDate, formatDateTime, PR_STATUS } from '../utils/constants.js';
 import { getL1ManagerForEmail } from './refexOneService.js';
@@ -27,6 +27,7 @@ import {
 } from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
+import { buildSignatureRenderOptions } from './signatureService.js';
 
 function todayYmd() {
   const d = new Date();
@@ -448,6 +449,10 @@ async function enrichPO(row) {
     : [[]];
   const cancelledBy = cancelledByRows[0] || {};
   const approvalHistory = await getFullPoApprovalHistory(row);
+  const quoteMerged = mergeQuoteNoIntoPoContent(
+    parseClauseJson(row.terms_clauses),
+    normalizePoTermsDetails(row.po_terms_details)
+  );
 
   return {
     id: row.id,
@@ -479,11 +484,11 @@ async function enrichPO(row) {
     entity: row.entity || '',
     headerLogo: row.header_logo || '',
     footerLogo: row.footer_logo || '',
-    termsClauses: parseClauseJson(row.terms_clauses),
+    termsClauses: quoteMerged.terms,
     annexureClauses: parseClauseJson(row.annexure_clauses),
     annexureIiHtml: row.annexure_ii_html || '',
     annexureIiRows: parseAnnexureIi(row.annexure_ii_html || ''),
-    poTermsDetails: normalizePoTermsDetails(row.po_terms_details),
+    poTermsDetails: quoteMerged.poTermsDetails,
     gstPercentage: Number(row.gst_percentage),
     currency: normalizeCurrency(row.currency),
     subtotal: Number(row.subtotal),
@@ -510,6 +515,18 @@ async function enrichPO(row) {
     signedPdfPath: row.signed_pdf_path,
     signatureName: row.signature_name,
     signatureImagePath: row.signature_image_path || null,
+    signatureImageDataUrl:
+      row.signed_at || row.signature_image_path || row.signed_pdf_path || row.signature_image_data
+        ? buildSignatureRenderOptions({
+            signatureName: row.signature_name,
+            signatureImagePath: row.signature_image_path,
+            signatureImageData: row.signature_image_data,
+            signatureDsc: parseSignatureDsc(row.signature_dsc_json),
+            signedAt: row.signed_at,
+            signedPdfPath: row.signed_pdf_path,
+            signerComments: row.signer_comments,
+          })?.imageDataUrl || null
+        : null,
     signatureDsc: parseSignatureDsc(row.signature_dsc_json),
     signerComments: row.signer_comments,
     signedAt: row.signed_at ? formatDateTime(row.signed_at) : null,
@@ -2304,6 +2321,34 @@ export function resolvePoPdfPath(po) {
   return resolvePoDocumentPath(po);
 }
 
+async function signedPoPdfMailAttachment(po) {
+  if (!po) return [];
+  try {
+    const signature = buildSignatureRenderOptions(po);
+    const preferred =
+      po.signedPdfPath || po.signed_pdf_path || `${po.poNumber || 'PO'}_signed.pdf`;
+    const { fullPath, fileName } = await ensurePoPdf(po, {
+      fileName: String(preferred).replace(/\.html$/i, '.pdf'),
+      signed: true,
+      signature,
+      forceRegenerate: true,
+    });
+    if (po.id && fileName && fileName !== po.signedPdfPath) {
+      await pool.query(`UPDATE purchase_orders SET signed_pdf_path = ? WHERE id = ?`, [fileName, po.id]);
+    }
+    return [
+      {
+        filename: `${po.poNumber || 'PO'}_signed.pdf`,
+        path: fullPath,
+        contentType: 'application/pdf',
+      },
+    ];
+  } catch (err) {
+    console.warn('Signed PO PDF attachment skipped:', err.message);
+    return [];
+  }
+}
+
 export async function signPurchaseOrder(user, poId, {
   remarks,
   signatureName,
@@ -2348,15 +2393,18 @@ export async function signPurchaseOrder(user, poId, {
 
   let imageDataUrl = null;
   let signatureImagePath = null;
+  let signatureImageData = null;
 
   if (signatureId) {
     const gallery = await getUserSignatureImage(user.id, Number(signatureId));
     imageDataUrl = gallery.dataUrl;
     const { ext, buffer } = parseDataUrlImage(gallery.dataUrl);
+    signatureImageData = buffer;
     signatureImagePath = saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
   } else if (signatureImage) {
     const { ext, buffer, dataUrl } = parseDataUrlImage(signatureImage);
     imageDataUrl = dataUrl;
+    signatureImageData = buffer;
     signatureImagePath = saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
     if (saveToGallery) {
       await saveUserSignature(user.id, { image: dataUrl, label: `${signName} Signature` });
@@ -2373,8 +2421,8 @@ export async function signPurchaseOrder(user, poId, {
     }
     imageDataUrl = defaultUrl;
     const { ext, buffer } = parseDataUrlImage(defaultUrl);
+    signatureImageData = buffer;
     signatureImagePath = saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
-    // Keep a stable default path reference as well for gallery parity
     if (!signatureImagePath) signatureImagePath = DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
   }
 
@@ -2394,7 +2442,7 @@ export async function signPurchaseOrder(user, poId, {
 
   await pool.query(
     `UPDATE purchase_orders SET status = 'pending_buyer_verify', signed_pdf_path = ?, signer_id = ?,
-     signature_name = ?, signature_image_path = ?, signer_comments = ?, signed_at = NOW(),
+     signature_name = ?, signature_image_path = ?, signature_image_data = ?, signer_comments = ?, signed_at = NOW(),
      signature_dsc_json = ?, updated_at = NOW()
      WHERE id = ?`,
     [
@@ -2402,6 +2450,7 @@ export async function signPurchaseOrder(user, poId, {
       user.id,
       signName,
       signatureImagePath,
+      signatureImageData,
       remarks.trim(),
       dscDetails ? JSON.stringify({ ...dscDetails, signedAt: new Date().toISOString() }) : null,
       poId,
@@ -2432,6 +2481,7 @@ export async function signPurchaseOrder(user, poId, {
   const scmBuyer = await resolveScmBuyerUser();
   const updated = await getPurchaseOrderById(poId);
   const buyerEmails = await getScmBuyerNotifyEmails();
+  const attachments = await signedPoPdfMailAttachment(updated);
   if (buyerEmails.length) {
     queuePoWorkflowNotification(updated, {
       action: 'assign',
@@ -2445,6 +2495,7 @@ export async function signPurchaseOrder(user, poId, {
       ctaLabel: 'Open Buyer Final Verify',
       bccOps: false,
       notifyWhatsApp: false,
+      attachments,
     });
   }
 
@@ -2521,22 +2572,7 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     console.warn('Final-verify SCM team lookup failed:', err.message);
   }
 
-  const signedFile = updated.signedPdfPath || updated.signed_pdf_path || updated.pdfPath || updated.pdf_path;
-  const signedFull = signedFile
-    ? path.isAbsolute(signedFile)
-      ? signedFile
-      : path.join(PO_UPLOAD_DIR, signedFile)
-    : '';
-  const attachments =
-    signedFull && fs.existsSync(signedFull)
-      ? [
-          {
-            filename: `${updated.poNumber || 'PO'}_signed.pdf`,
-            path: signedFull,
-            contentType: 'application/pdf',
-          },
-        ]
-      : [];
+  const attachments = await signedPoPdfMailAttachment(updated);
 
   if (parties.emails.length) {
     queuePoWorkflowNotification(updated, {
