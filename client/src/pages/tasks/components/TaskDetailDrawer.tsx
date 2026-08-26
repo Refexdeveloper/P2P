@@ -206,7 +206,8 @@ export default function TaskDetailDrawer({
               </div>
             ) : null}
 
-            {/* Line Items */}
+            {/* PR line items — hidden once vendor quotations are present (show quote lines instead) */}
+            {!hasQuotes && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                 Line Items ({lineItems.length})
@@ -284,6 +285,7 @@ export default function TaskDetailDrawer({
                 </table>
               </div>
             </div>
+            )}
 
             {/* Approval History */}
             <div>

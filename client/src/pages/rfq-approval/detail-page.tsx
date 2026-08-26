@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../components/rfq/VendorComparisonMatrix';
+import ManagerRfqQuoteSummary from '../../components/rfq/ManagerRfqQuoteSummary';
 import PostRfqApprovalModal from './components/PostRfqApprovalModal';
 import { rfqApi, VendorComparisonData } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { isL1OrL2Manager } from '../../utils/roleDisplay';
 
 export default function RfqApprovalDetailPage() {
   const { prId } = useParams();
@@ -271,32 +273,10 @@ export default function RfqApprovalDetailPage() {
       {(!data.vendors || data.vendors.length === 0) && data.pr.prFlow === 'standard' && data.pr.status === 'PENDING_BUSINESS_APPROVAL' ? (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-base font-bold text-gray-900 mb-3">PR Details</h3>
-          <p className="text-sm text-gray-600 mb-4">{data.pr.justification || 'No additional justification.'}</p>
-          {(data.pr.lineItems || []).length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase text-gray-500 border-b">
-                    <th className="py-2 pr-3">Item</th>
-                    <th className="py-2 pr-3">Qty</th>
-                    <th className="py-2 pr-3">UOM</th>
-                    <th className="py-2">Est. cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data.pr.lineItems || []).map((li) => (
-                    <tr key={li.id} className="border-b border-gray-100">
-                      <td className="py-2 pr-3">{li.description}</td>
-                      <td className="py-2 pr-3">{li.quantity}</td>
-                      <td className="py-2 pr-3">{li.uom || 'Nos'}</td>
-                      <td className="py-2">{Number(li.unitCost || 0).toLocaleString('en-IN')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <p className="text-sm text-gray-600">{data.pr.justification || 'No additional justification.'}</p>
         </div>
+      ) : isL1OrL2Manager(user?.role) ? (
+        <ManagerRfqQuoteSummary data={data} onPreviewFile={handlePreviewFile} />
       ) : (
         <VendorComparisonMatrix data={data} onPreviewFile={handlePreviewFile} />
       )}

@@ -614,6 +614,15 @@ export interface VendorComparisonData {
   recommendedVendorId: number | null;
   recommendedVendorName: string;
   recommendationJustification?: string;
+  recommendedRound?: number | null;
+  recommendedQuoteLineItems?: Array<{
+    lineItemId?: string | number;
+    description?: string;
+    quantity?: number;
+    quotedUnitPrice?: number;
+    gstPercent?: number;
+    quotedTotal?: number;
+  }>;
   showFullNegotiation: boolean;
   stageLabel: string | null;
   /** Own-vendor HOD final: ask Yes=CFO / No=SCM vendor selection */
@@ -629,6 +638,7 @@ export interface VendorComparisonData {
     latestSubmissionId: number | null;
     quotationFileName?: string;
     hasQuotationFile?: boolean;
+    quoteLineItems?: Array<Record<string, unknown>>;
     rounds: Array<{
       round: number;
       values: Record<string, unknown>;
@@ -636,6 +646,7 @@ export interface VendorComparisonData {
       quotationFileName: string;
       hasQuotationFile?: boolean;
       submissionId: number;
+      quoteLineItems?: Array<Record<string, unknown>>;
     }>;
   }>;
   parameters: Array<{

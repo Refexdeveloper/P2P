@@ -2152,6 +2152,7 @@ export async function getVendorComparisonMatrix(user, prId) {
         submissionId: s.id,
         sendBackReason: inv.sendBackReason,
         status: s.status,
+        quoteLineItems: s.quoteLineItems || s.customFields?.quoteLineItems || [],
       }));
 
     return {
@@ -2165,6 +2166,8 @@ export async function getVendorComparisonMatrix(user, prId) {
       latestSubmissionId: activeSubmission?.id || null,
       quotationFileName: activeSubmission?.quotationFileName || '',
       hasQuotationFile: Boolean(activeSubmission?.hasQuotationFile || activeSubmission?.quotationFileName),
+      quoteLineItems:
+        activeSubmission?.quoteLineItems || activeSubmission?.customFields?.quoteLineItems || [],
       // Always pass full round history for comparison sheet columns (Round 1 + Round 2…)
       // Compact/manager views still use latest for matrix "best" cells via vendor.latest
       rounds: allRounds,
@@ -2205,6 +2208,17 @@ export async function getVendorComparisonMatrix(user, prId) {
   }
 
   const recommendedVendor = vendors.find((v) => v.isRecommended);
+  const recommendedLatestRound = [...(recommendedVendor?.rounds || [])].sort(
+    (a, b) => Number(a.round) - Number(b.round)
+  ).pop();
+  const quoteLineCandidates = [
+    recommendedVendor?.quoteLineItems,
+    recommendedLatestRound?.quoteLineItems,
+    recommendedLatestRound?.values?.quoteLineItems,
+    recommendedVendor?.latest?.quoteLineItems,
+  ];
+  const recommendedQuoteLineItems =
+    quoteLineCandidates.find((rows) => Array.isArray(rows) && rows.length > 0) || [];
   const totalRounds = Math.max(
     1,
     ...vendors.map((v) => Math.max(Number(v.round) || 0, ...(v.rounds || []).map((r) => Number(r.round) || 0))),
@@ -2246,6 +2260,10 @@ export async function getVendorComparisonMatrix(user, prId) {
     recommendedVendorId: config.recommendedInvitationId,
     recommendedVendorName: recommendedVendor?.name || '',
     recommendationJustification: config.recommendationJustification || '',
+    recommendedRound: recommendedLatestRound?.round || recommendedVendor?.round || null,
+    recommendedQuoteLineItems: Array.isArray(recommendedQuoteLineItems)
+      ? recommendedQuoteLineItems
+      : [],
     showFullNegotiation,
     stageLabel: roleConfig?.label || null,
     /** Own-vendor HOD final: UI must ask Yes=CFO path / No=SCM vendor selection */
