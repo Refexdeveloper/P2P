@@ -44,6 +44,11 @@ interface PRTask {
   currentApprover: string;
   justification: string;
   vendorSelection?: 'own' | 'scm';
+  billingLocation?: string;
+  billingGstNo?: string;
+  billingAddress?: string;
+  placeOfDelivery?: string;
+  deliveryPoc?: string;
   lineItems: LineItem[];
   approvalHistory: ApprovalStep[];
   slaHours: number;
@@ -186,6 +191,40 @@ export default function TaskDetailDrawer({
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-xs text-gray-500 mb-0.5">Submitted</p>
                   <p className="text-sm font-medium text-gray-900">{formatDate(task.submittedDate)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                Location, GSTIN &amp; Delivery
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-0.5">Location</p>
+                  <p className="text-sm font-medium text-gray-900">{task.billingLocation || '—'}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-0.5">GSTIN</p>
+                  <p className="text-sm font-medium text-gray-900 font-mono tracking-wide">
+                    {task.billingGstNo || '—'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                  <p className="text-xs text-gray-500 mb-0.5">Billing Address</p>
+                  <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">
+                    {task.billingAddress || '—'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                  <p className="text-xs text-gray-500 mb-0.5">Site / Delivery Address</p>
+                  <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">
+                    {task.placeOfDelivery || '—'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                  <p className="text-xs text-gray-500 mb-0.5">POC for Delivery</p>
+                  <p className="text-sm font-medium text-gray-900">{task.deliveryPoc || '—'}</p>
                 </div>
               </div>
             </div>

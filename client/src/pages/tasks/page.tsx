@@ -195,6 +195,11 @@ export default function TasksPage() {
     currentApprover: string;
     justification: string;
     vendorSelection?: 'own' | 'scm';
+    billingLocation?: string;
+    billingGstNo?: string;
+    billingAddress?: string;
+    placeOfDelivery?: string;
+    deliveryPoc?: string;
     lineItems: Array<{
       itemName?: string;
       description: string;
@@ -304,6 +309,11 @@ export default function TasksPage() {
       currentApprover: task.currentApprover,
       justification: 'Loading…',
       vendorSelection: task.vendorSelection === 'own' ? 'own' : 'scm',
+      billingLocation: '',
+      billingGstNo: '',
+      billingAddress: '',
+      placeOfDelivery: '',
+      deliveryPoc: '',
       lineItems: [],
       approvalHistory: [],
       slaHours: 48,
@@ -364,6 +374,11 @@ export default function TasksPage() {
         currentApprover: formatApproverStage(pr, task),
         justification: String(pr.justification || 'No justification provided.'),
         vendorSelection,
+        billingLocation: String(pr.billingLocation || ''),
+        billingGstNo: String(pr.billingGstNo || ''),
+        billingAddress: String(pr.billingAddress || ''),
+        placeOfDelivery: String(pr.placeOfDelivery || ''),
+        deliveryPoc: String(pr.deliveryPoc || ''),
         lineItems,
         approvalHistory,
         slaHours: 48,

@@ -565,7 +565,7 @@ function ClauseTableEditor({
             {rows.length} row{rows.length !== 1 ? 's' : ''}
           </span>
           <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
-            Editable · shown on {docLabel} PDF
+            Rich text · paste keeps bold · shown on {docLabel} PDF
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -616,6 +616,7 @@ function ClauseTableEditor({
                     onChange={(html) => updateRow(index, { termsHeader: html })}
                     placeholder={headerPlaceholder}
                     minHeight={72}
+                    advanced
                   />
                 </td>
                 <td className="px-5 py-4">
@@ -625,7 +626,8 @@ function ClauseTableEditor({
                     value={row.termsDescription || ''}
                     onChange={(html) => updateRow(index, { termsDescription: html })}
                     placeholder={descriptionPlaceholder}
-                    minHeight={100}
+                    minHeight={120}
+                    advanced
                   />
                 </td>
                 <td className="px-5 py-4">
@@ -988,6 +990,8 @@ export default function CreatePOPage() {
   const annexureDraftRef = useRef<PoLetterheadClause[]>([]);
   const annexureIiDraftRef = useRef<AnnexureIiRow[]>([emptyAnnexureIiRow()]);
   const lineItemsDraftRef = useRef<LineItem[]>([]);
+  const poTermsDetailsRef = useRef(poTermsDetails);
+  poTermsDetailsRef.current = poTermsDetails;
   const createdPoIdRef = useRef<number | null>(null);
   createdPoIdRef.current = createdPoId;
   const userEditedDraftRef = useRef(false);
@@ -1309,12 +1313,14 @@ export default function CreatePOPage() {
 
   useEffect(() => {
     if (isEditMode || letterheadLocked) return;
+    // Wait for PR context — it may redirect to an existing draft PO.
+    if (numericPrId && !pr) return;
     if (skipNextLetterheadLoad.current) {
       skipNextLetterheadLoad.current = false;
       return;
     }
     void loadLetterhead(poType, documentType);
-  }, [poType, documentType, loadLetterhead, letterheadLocked, isEditMode]);
+  }, [poType, documentType, loadLetterhead, letterheadLocked, isEditMode, numericPrId, pr]);
 
   useEffect(() => {
     if (!isManualMode) return;
@@ -1617,8 +1623,34 @@ export default function CreatePOPage() {
       setLoading(false);
       return;
     }
+    let redirectedToDraft = false;
     try {
       const res = await poApi.getCreateContext(numericPrId);
+      if (!shouldApplyContext()) return;
+      let existingDraftId = Number(
+        (res.data as { draftPoId?: number | null })?.draftPoId || 0
+      );
+      if (!existingDraftId) {
+        try {
+          const listed = await poApi.list();
+          const hit = ((listed.data || []) as Array<Record<string, unknown>>).find((row) => {
+            const prMatch = Number(row.prId || 0) === numericPrId;
+            const status = String(row.statusRaw || row.status || '').toLowerCase().replace(/\s+/g, '_');
+            return prMatch && status === 'draft';
+          });
+          existingDraftId = Number(hit?.id || 0);
+        } catch {
+          /* list is optional — context.draftPoId is enough when backend is current */
+        }
+      }
+      if (existingDraftId > 0) {
+        redirectedToDraft = true;
+        navigate(
+          `/scm/create-po?poId=${existingDraftId}&from=${encodeURIComponent(fromParam || 'create-po')}`,
+          { replace: true }
+        );
+        return;
+      }
       const prData = res.data.pr as {
         id: number;
         prNumber: string;
@@ -1699,9 +1731,9 @@ export default function CreatePOPage() {
       setLoadError(err instanceof Error ? err.message : 'Failed to load PR');
       setPr(null);
     } finally {
-      setLoading(false);
+      if (!redirectedToDraft) setLoading(false);
     }
-  }, [numericPrId, isEditMode, isManualMode]);
+  }, [numericPrId, isEditMode, isManualMode, navigate, fromParam]);
 
   useEffect(() => {
     loadContext();
@@ -1714,7 +1746,11 @@ export default function CreatePOPage() {
   }, [pdfPreviewUrl]);
 
   const updatePoTermsField = (key: keyof PoTermsDetails, value: string) => {
-    setPoTermsDetails((prev) => ({ ...prev, [key]: value }));
+    setPoTermsDetails((prev) => {
+      const next = { ...prev, [key]: value };
+      poTermsDetailsRef.current = next;
+      return next;
+    });
     if (key === 'paymentTermsText') {
       const firstLine = value.trim().split('\n')[0]?.trim();
       if (firstLine) setPaymentTerms(firstLine.slice(0, 120));
@@ -2045,9 +2081,17 @@ export default function CreatePOPage() {
     };
   }, [previewHtmlUrl]);
 
-  const handleQtyChange = (id: string | number, val: number) => {
+  const patchLineItems = (updater: (prev: LineItem[]) => LineItem[]) => {
     markDraftEdited();
-    setLineItems((prev) =>
+    setLineItems((prev) => {
+      const next = updater(prev);
+      lineItemsDraftRef.current = next;
+      return next;
+    });
+  };
+
+  const handleQtyChange = (id: string | number, val: number) => {
+    patchLineItems((prev) =>
       prev.map((item) =>
         item.id === id
           ? { ...item, quantity: val, total: calcLineTotal(val, item.unitPrice) }
@@ -2057,11 +2101,9 @@ export default function CreatePOPage() {
   };
 
   const handlePriceChange = (id: string | number, raw: string) => {
-    markDraftEdited();
-    setLineItems((prev) =>
+    patchLineItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
-        // Keep field editable; empty while typing does not wipe the column
         const parsed = raw === '' || raw === '.' ? 0 : parseFloat(raw);
         const val = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
         return { ...item, unitPrice: val, total: calcLineTotal(item.quantity, val) };
@@ -2070,44 +2112,36 @@ export default function CreatePOPage() {
   };
 
   const handleTaxPercentageChange = (id: string | number, val: number) => {
-    markDraftEdited();
-    setLineItems((prev) =>
+    patchLineItems((prev) =>
       prev.map((item) =>
-        item.id === id
-          ? { ...item, taxPercentage: Math.min(100, Math.max(0, val)) }
-          : item
+        item.id === id ? { ...item, taxPercentage: Math.min(100, Math.max(0, val)) } : item
       )
     );
   };
 
   const handleUnitChange = (id: string | number, val: string) => {
-    markDraftEdited();
-    setLineItems((prev) =>
+    patchLineItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, unit: val } : item))
     );
   };
 
   const handleItemNameChange = (id: string | number, val: string) => {
-    markDraftEdited();
-    setLineItems((prev) =>
+    patchLineItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, itemName: val } : item))
     );
   };
 
   const handleDescriptionChange = (id: string | number, val: string) => {
-    markDraftEdited();
-    setLineItems((prev) =>
+    patchLineItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, description: val } : item))
     );
   };
 
   const handleAddLineItem = () => {
-    markDraftEdited();
-    const newId = `new-${Date.now()}`;
-    setLineItems((prev) => [
+    patchLineItems((prev) => [
       ...prev,
       {
-        id: newId,
+        id: `new-${Date.now()}`,
         itemName: '',
         description: '',
         quantity: 1,
@@ -2120,13 +2154,30 @@ export default function CreatePOPage() {
   };
 
   const handleDeleteLineItem = (id: string | number) => {
-    markDraftEdited();
-    setLineItems((prev) => prev.filter((item) => item.id !== id));
+    patchLineItems((prev) => prev.filter((item) => item.id !== id));
   };
 
   const resolvedManualEntityId =
     Number(manualEntityId || pr?.entityId || matchEntityFromLetterhead(selectedLetterhead, entityOptions)?.id || 0) ||
     '';
+
+  const flushLiveEditors = () => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    document.querySelectorAll('[contenteditable="true"]').forEach((node) => {
+      if (node instanceof HTMLElement) node.blur();
+    });
+  };
+
+  const collectLiveDraft = () => {
+    const details = poTermsDetailsRef.current;
+    return {
+      details,
+      termsToSave: termsDraftRef.current.length ? termsDraftRef.current : termsClauses,
+      annexureToSave: annexureDraftRef.current.length ? annexureDraftRef.current : annexureClauses,
+      annexureIiLive: annexureIiDraftRef.current.length ? annexureIiDraftRef.current : annexureIiRows,
+      lineItemsLive: lineItemsDraftRef.current.length ? lineItemsDraftRef.current : lineItems,
+    };
+  };
 
   const handleSaveDraft = async () => {
     if ((!numericPrId && !editPoId && !isManualMode) || !pr) return;
@@ -2137,21 +2188,9 @@ export default function CreatePOPage() {
     }
     setSubmitting(true);
     try {
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      flushLiveEditors();
       await new Promise((r) => window.setTimeout(r, 80));
-      const termsToSave =
-        userEditedDraftRef.current || termsDraftRef.current.length
-          ? termsDraftRef.current
-          : termsClauses;
-      const annexureToSave =
-        userEditedDraftRef.current || annexureDraftRef.current.length
-          ? annexureDraftRef.current
-          : annexureClauses;
-      const annexureIiLive =
-        userEditedDraftRef.current || annexureIiDraftRef.current.length
-          ? annexureIiDraftRef.current
-          : annexureIiRows;
-      const lineItemsLive = lineItems;
+      const { details, termsToSave, annexureToSave, annexureIiLive, lineItemsLive } = collectLiveDraft();
       const annexureIiToSave = annexureIiLive.filter((row) => !annexureIiRowIsEmpty(row));
       const payload: Record<string, unknown> = {
         skipLetterheadMaster: true,
@@ -2164,7 +2203,7 @@ export default function CreatePOPage() {
           taxPercentage: i.taxPercentage || 0,
           discount: 0,
         })),
-        deliveryAddress: poTermsDetails.siteAddress || deliveryAddress,
+        deliveryAddress: details.siteAddress || deliveryAddress,
         expectedDeliveryDate: expectedDeliveryDate || undefined,
         poDate,
         paymentTerms,
@@ -2174,30 +2213,30 @@ export default function CreatePOPage() {
         poType,
         letterheadHeader,
         letterheadId: letterheadId || undefined,
-        letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || undefined,
-        locationName: poTermsDetails.locationName || undefined,
+        letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || undefined,
+        locationName: details.locationName || undefined,
         currency,
         entity,
         headerLogo,
         footerLogo,
         terms: filterNonEmptyClauses(
           withSyncedQuoteNo(termsToSave, {
-            ...poTermsDetails,
-            paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
-            siteAddress: poTermsDetails.siteAddress || deliveryAddress,
-            letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
-            buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
+            ...details,
+            paymentTermsText: details.paymentTermsText || paymentTerms,
+            siteAddress: details.siteAddress || deliveryAddress,
+            letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || '',
+            buyerGstNo: details.buyerGstNo || locationGstNo || '',
           }).terms
         ),
         annexure: filterNonEmptyClauses(annexureToSave),
         annexureIiRows: annexureIiToSave,
         annexureIiHtml: serializeAnnexureIi(annexureIiToSave),
         poTermsDetails: withSyncedQuoteNo(termsToSave, {
-          ...poTermsDetails,
-          paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
-          siteAddress: poTermsDetails.siteAddress || deliveryAddress,
-          letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
-          buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
+          ...details,
+          paymentTermsText: details.paymentTermsText || paymentTerms,
+          siteAddress: details.siteAddress || deliveryAddress,
+          letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || '',
+          buyerGstNo: details.buyerGstNo || locationGstNo || '',
         }).poTermsDetails,
         referencePoNumber: referencePoNumber.trim() || undefined,
         purchaseType: documentType,
@@ -2207,7 +2246,7 @@ export default function CreatePOPage() {
         payload.vendorName = manualVendorName.trim() || undefined;
         payload.vendorEmail = manualVendorEmail.trim() || undefined;
         payload.entityId = resolvedManualEntityId;
-        payload.title = poTermsDetails.subject || '';
+        payload.title = details.subject || '';
         payload.department = pr.department || '';
         payload.requester = pr.requester || '';
       }
@@ -2506,24 +2545,13 @@ export default function CreatePOPage() {
     setShowScmConfirm(false);
     setSubmitting(true);
     try {
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      flushLiveEditors();
       await new Promise((r) => window.setTimeout(r, 80));
-      const termsToSave =
-        userEditedDraftRef.current || termsDraftRef.current.length
-          ? termsDraftRef.current
-          : termsClauses;
-      const annexureToSave =
-        userEditedDraftRef.current || annexureDraftRef.current.length
-          ? annexureDraftRef.current
-          : annexureClauses;
-      const annexureIiLive =
-        userEditedDraftRef.current || annexureIiDraftRef.current.length
-          ? annexureIiDraftRef.current
-          : annexureIiRows;
+      const { details, termsToSave, annexureToSave, annexureIiLive, lineItemsLive } = collectLiveDraft();
       const annexureIiToSave = annexureIiLive.filter((row) => !annexureIiRowIsEmpty(row));
       const payload: Record<string, unknown> = {
         skipLetterheadMaster: true,
-        lineItems: lineItems.map((i) => ({
+        lineItems: lineItemsLive.map((i) => ({
           itemName: i.itemName || '',
           description: i.description,
           quantity: i.quantity,
@@ -2532,7 +2560,7 @@ export default function CreatePOPage() {
           taxPercentage: i.taxPercentage || 0,
           discount: 0,
         })),
-        deliveryAddress: poTermsDetails.siteAddress || deliveryAddress,
+        deliveryAddress: details.siteAddress || deliveryAddress,
         expectedDeliveryDate,
         poDate,
         paymentTerms,
@@ -2542,32 +2570,30 @@ export default function CreatePOPage() {
         poType,
         letterheadHeader,
         letterheadId: letterheadId || undefined,
-        letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || undefined,
-        locationName: poTermsDetails.locationName || undefined,
+        letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || undefined,
+        locationName: details.locationName || undefined,
         currency,
         entity,
         headerLogo,
         footerLogo,
         terms: filterNonEmptyClauses(
           withSyncedQuoteNo(termsToSave, {
-            ...poTermsDetails,
-            paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
-            siteAddress: poTermsDetails.siteAddress || deliveryAddress,
-            letterheadLocationId:
-              poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
-            buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
+            ...details,
+            paymentTermsText: details.paymentTermsText || paymentTerms,
+            siteAddress: details.siteAddress || deliveryAddress,
+            letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || '',
+            buyerGstNo: details.buyerGstNo || locationGstNo || '',
           }).terms
         ),
         annexure: filterNonEmptyClauses(annexureToSave),
         annexureIiRows: annexureIiToSave,
         annexureIiHtml: serializeAnnexureIi(annexureIiToSave),
         poTermsDetails: withSyncedQuoteNo(termsToSave, {
-          ...poTermsDetails,
-          paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
-          siteAddress: poTermsDetails.siteAddress || deliveryAddress,
-          letterheadLocationId:
-            poTermsDetails.letterheadLocationId || letterheadLocationKey || '',
-          buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
+          ...details,
+          paymentTermsText: details.paymentTermsText || paymentTerms,
+          siteAddress: details.siteAddress || deliveryAddress,
+          letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || '',
+          buyerGstNo: details.buyerGstNo || locationGstNo || '',
         }).poTermsDetails,
         referencePoNumber: referencePoNumber.trim() || undefined,
         changeSummary: changeSummary.trim() || undefined,
@@ -2578,7 +2604,7 @@ export default function CreatePOPage() {
         payload.vendorName = manualVendorName.trim();
         payload.vendorEmail = manualVendorEmail.trim();
         payload.entityId = resolvedManualEntityId;
-        payload.title = poTermsDetails.subject || '';
+        payload.title = details.subject || '';
         payload.department = pr.department || '';
         payload.requester = pr.requester || '';
       }

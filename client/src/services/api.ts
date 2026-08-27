@@ -708,7 +708,9 @@ export const poApi = {
       };
     }>('/api/po/stats/cfo'),
   getCreateContext: (prId: number) =>
-    request<{ data: { pr: Record<string, unknown>; vendor: Record<string, unknown> } }>(`/api/po/pr/${prId}/context`),
+    request<{
+      data: { pr: Record<string, unknown>; vendor: Record<string, unknown>; draftPoId?: number | null };
+    }>(`/api/po/pr/${prId}/context`),
   create: (prId: number, body: Record<string, unknown>) =>
     request<{ data: Record<string, unknown>; message: string }>(`/api/po/pr/${prId}`, {
       method: 'POST',

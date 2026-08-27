@@ -51,6 +51,126 @@ function toPlainBreakHtml(html: string) {
   return escapeForInsert(htmlToPlainText(html));
 }
 
+const PASTE_ALLOWED_TAGS = new Set([
+  'P',
+  'BR',
+  'DIV',
+  'SPAN',
+  'B',
+  'STRONG',
+  'I',
+  'EM',
+  'U',
+  'S',
+  'STRIKE',
+  'UL',
+  'OL',
+  'LI',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'TABLE',
+  'THEAD',
+  'TBODY',
+  'TR',
+  'TD',
+  'TH',
+  'SUB',
+  'SUP',
+  'BLOCKQUOTE',
+]);
+
+function unwrapElement(el: Element) {
+  const parent = el.parentNode;
+  if (!parent) {
+    el.remove();
+    return;
+  }
+  while (el.firstChild) parent.insertBefore(el.firstChild, el);
+  parent.removeChild(el);
+}
+
+function sanitizeStyleAttr(style: string) {
+  const keep: string[] = [];
+  for (const part of String(style || '').split(';')) {
+    const colon = part.indexOf(':');
+    if (colon < 0) continue;
+    const key = part.slice(0, colon).trim().toLowerCase();
+    const val = part.slice(colon + 1).trim();
+    if (!val) continue;
+    if (key === 'font-weight' && /^(bold|bolder|[6-9]00)$/i.test(val)) keep.push(`font-weight:${val}`);
+    if (key === 'font-style' && /italic/i.test(val)) keep.push('font-style:italic');
+    if (key === 'text-decoration' && /underline/i.test(val)) keep.push('text-decoration:underline');
+    if (key === 'text-align' && /^(left|right|center|justify)$/i.test(val)) {
+      keep.push(`text-align:${val.toLowerCase()}`);
+    }
+  }
+  return keep.join(';');
+}
+
+function wrapWithTag(el: HTMLElement, tagName: string) {
+  if (el.tagName === tagName.toUpperCase()) return;
+  if (el.querySelector(tagName) && el.childNodes.length === 1) return;
+  const wrap = el.ownerDocument.createElement(tagName);
+  while (el.firstChild) wrap.appendChild(el.firstChild);
+  el.appendChild(wrap);
+}
+
+/** Keep bold/italic/underline/lists from Word, Google Docs, and browsers. Strip scripts and junk. */
+function sanitizePastedHtml(raw: string, allowImages = false) {
+  const html = String(raw || '').trim();
+  if (!html) return '';
+  let fragment = html;
+  const start = fragment.indexOf('<!--StartFragment-->');
+  const end = fragment.indexOf('<!--EndFragment-->');
+  if (start >= 0 && end > start) {
+    fragment = fragment.slice(start + 20, end);
+  }
+  const doc = new DOMParser().parseFromString(fragment, 'text/html');
+  doc.querySelectorAll('script,style,meta,link,noscript,iframe,object,embed,xml,head').forEach((n) => n.remove());
+
+  const nodes = Array.from(doc.body.querySelectorAll('*'));
+  for (const node of nodes) {
+    const el = node as HTMLElement;
+    const tag = el.tagName;
+    if (tag === 'IMG') {
+      if (!allowImages) {
+        unwrapElement(el);
+        continue;
+      }
+      const src = el.getAttribute('src') || '';
+      if (src.startsWith('data:image/') || /^https?:\/\//i.test(src)) {
+        [...el.attributes].forEach((attr) => {
+          if (attr.name !== 'src' && attr.name !== 'alt') el.removeAttribute(attr.name);
+        });
+        el.setAttribute('style', 'max-width:100%;height:auto;');
+      } else {
+        unwrapElement(el);
+      }
+      continue;
+    }
+    if (!PASTE_ALLOWED_TAGS.has(tag)) {
+      unwrapElement(el);
+      continue;
+    }
+    const style = sanitizeStyleAttr(el.getAttribute('style') || '');
+    [...el.attributes].forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      const keepAttr =
+        (tag === 'TD' || tag === 'TH') && (name === 'colspan' || name === 'rowspan');
+      if (!keepAttr) el.removeAttribute(attr.name);
+    });
+    if (/font-weight\s*:\s*(bold|bolder|[6-9]00)/i.test(style)) wrapWithTag(el, 'strong');
+    if (/font-style\s*:\s*italic/i.test(style)) wrapWithTag(el, 'em');
+    if (/text-decoration[^;]*underline/i.test(style)) wrapWithTag(el, 'u');
+    if (style) el.setAttribute('style', style);
+  }
+  return doc.body.innerHTML.trim();
+}
+
 export default function RichTextEditor({
   value,
   onChange,
@@ -65,6 +185,10 @@ export default function RichTextEditor({
   const fileRef = useRef<HTMLInputElement>(null);
   const lastSyncedValue = useRef<string | null>(null);
   const mountedKey = useRef<string | undefined>(undefined);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const plainTextOnlyRef = useRef(plainTextOnly);
+  plainTextOnlyRef.current = plainTextOnly;
 
   useEffect(() => {
     if (!editorRef.current) return;
@@ -85,14 +209,27 @@ export default function RichTextEditor({
   const emitHtml = useCallback(() => {
     if (!editorRef.current) return;
     let html = editorRef.current.innerHTML;
-    if (plainTextOnly && /<(b|strong|i|em|u|font|span|h[1-6]|style)\b/i.test(html)) {
+    if (plainTextOnlyRef.current && /<(b|strong|i|em|u|font|span|h[1-6]|style)\b/i.test(html)) {
       const normalized = toPlainBreakHtml(html);
       editorRef.current.innerHTML = normalized;
       html = normalized;
     }
     lastSyncedValue.current = html;
-    onChange(html);
-  }, [onChange, plainTextOnly]);
+    onChangeRef.current(html);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      const el = editorRef.current;
+      if (!el) return;
+      let html = el.innerHTML;
+      if (plainTextOnlyRef.current && /<(b|strong|i|em|u|font|span|h[1-6]|style)\b/i.test(html)) {
+        html = toPlainBreakHtml(html);
+      }
+      lastSyncedValue.current = html;
+      onChangeRef.current(html);
+    };
+  }, []);
 
   const exec = useCallback(
     (command: string, arg?: string) => {
@@ -164,12 +301,23 @@ export default function RichTextEditor({
 
     e.preventDefault();
     e.stopPropagation();
+
+    if (!plainTextOnly) {
+      const html = e.clipboardData?.getData('text/html') || '';
+      const sanitized = sanitizePastedHtml(html, allowImages);
+      if (sanitized && htmlToPlainText(sanitized).trim()) {
+        document.execCommand('insertHTML', false, sanitized);
+        emitHtml();
+        return;
+      }
+    }
+
     let plain = e.clipboardData?.getData('text/plain') || '';
     if (!plain.trim()) {
       plain = htmlToPlainText(e.clipboardData?.getData('text/html') || '');
     }
     if (!plain) return;
-    document.execCommand('removeFormat', false);
+    if (plainTextOnly) document.execCommand('removeFormat', false);
     const ok = document.execCommand('insertHTML', false, escapeForInsert(plain));
     if (!ok && editorRef.current) {
       const sel = window.getSelection();
@@ -310,7 +458,7 @@ export default function RichTextEditor({
         onPaste={handlePaste}
         data-placeholder={placeholder}
         style={{ minHeight, lineHeight: advanced ? 1.5 : undefined }}
-        className="px-3 py-2.5 text-sm text-gray-800 font-sans font-normal focus:outline-none prose prose-sm max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 [&_img]:max-w-full [&_img]:h-auto [&_figure]:my-3 [&_*]:font-sans [&_*]:text-inherit"
+        className="px-3 py-2.5 text-sm text-gray-800 font-sans focus:outline-none prose prose-sm max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 [&_img]:max-w-full [&_img]:h-auto [&_figure]:my-3 [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline"
       />
     </div>
   );

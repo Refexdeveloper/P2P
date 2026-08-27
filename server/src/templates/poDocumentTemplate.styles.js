@@ -688,6 +688,13 @@ export const PO_STYLES = `
     vertical-align: top;
   }
   table.terms td { text-align: left; }
+  table.terms td b,
+  table.terms td strong,
+  table.terms td .head-col b,
+  table.terms td .head-col strong { font-weight: 700; }
+  table.terms td i,
+  table.terms td em { font-style: italic; }
+  table.terms td u { text-decoration: underline; }
   table.terms col.col-sno,
   table.terms td.sno-col,
   table.terms th.sno-col {

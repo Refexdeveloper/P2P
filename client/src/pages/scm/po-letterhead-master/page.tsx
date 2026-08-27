@@ -160,6 +160,7 @@ function ClauseTable({
                     onChange={(html) => updateRow(index, { termsHeader: html })}
                     placeholder={headerPlaceholder}
                     minHeight={72}
+                    advanced
                   />
                 </td>
                 <td className="px-5 py-4">
@@ -169,7 +170,8 @@ function ClauseTable({
                     value={row.termsDescription}
                     onChange={(html) => updateRow(index, { termsDescription: html })}
                     placeholder={descriptionPlaceholder}
-                    minHeight={100}
+                    minHeight={120}
+                    advanced
                   />
                 </td>
                 <td className="px-5 py-4">

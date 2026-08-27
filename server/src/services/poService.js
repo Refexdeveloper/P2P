@@ -765,6 +765,15 @@ export async function getPoCreateContext(user, prId) {
 
   const lineItems = await lookupUnitsFromItemMaster(pr.lineItems || []);
 
+  let draftSql = `SELECT id FROM purchase_orders WHERE pr_id = ? AND status = 'draft'`;
+  const draftParams = [prId];
+  if (!canEditAnyScmPurchaseOrder(user)) {
+    draftSql += ` AND created_by = ?`;
+    draftParams.push(user.id);
+  }
+  draftSql += ` ORDER BY updated_at DESC, id DESC LIMIT 1`;
+  const [draftRows] = await pool.query(draftSql, draftParams);
+
   return {
     pr: {
       id: pr.id,
@@ -794,6 +803,7 @@ export async function getPoCreateContext(user, prId) {
       deliveryTerms: quote.delivery_terms || 'DDP',
       quotedPrice: Number(quote.quoted_price) || pr.totalAmount,
     },
+    draftPoId: Number(draftRows[0]?.id || 0) || null,
   };
 }
 
