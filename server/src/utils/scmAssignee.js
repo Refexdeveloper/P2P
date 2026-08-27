@@ -22,6 +22,15 @@ export function getPreferredScmBuyerEmail() {
   return getPreferredScmBuyerEmails()[0];
 }
 
+/** Designated SCM Buyers (Satish + Gopi) may edit any draft PO, not only ones they created. */
+export function canEditAnyScmPurchaseOrder(user) {
+  if (!user) return false;
+  if (user.role === 'Super Admin' || user.role === 'SCM Manager') return true;
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!email) return false;
+  return getPreferredScmBuyerEmails().includes(email);
+}
+
 function mapBuyerRow(row) {
   return {
     id: row.id,

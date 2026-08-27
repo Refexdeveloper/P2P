@@ -25,6 +25,7 @@ import {
   getScmManagerNotifyEmails,
   getPreferredScmManagerName,
   insertScmManagerPoApprovalTask,
+  canEditAnyScmPurchaseOrder,
 } from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
@@ -471,14 +472,7 @@ async function enrichPO(row) {
   }
   const lineItems = await getLineItems(row.id);
 
-  const [vendorRows] = await pool.query(
-    `SELECT name, email, address, gst_number, pan_number, phone
-     FROM vendors
-     WHERE email = ? OR name = ?
-     LIMIT 1`,
-    [row.vendor_email, row.vendor_name]
-  );
-  const vendor = vendorRows[0] || {};
+  const vendor = await lookupVendorMaster(row.vendor_email, row.vendor_name);
   const [creatorRows] = await pool.query(`SELECT name, role FROM users WHERE id = ?`, [row.created_by]);
   const creator = creatorRows[0] || {};
   const [cancelledByRows] = row.cancelled_by
@@ -500,8 +494,8 @@ async function enrichPO(row) {
     prTitle: pr?.title || '',
     department: pr?.department || '',
     requester: pr?.requester || '',
-    vendorName: row.vendor_name,
-    vendorEmail: row.vendor_email,
+    vendorName: vendor.name || row.vendor_name,
+    vendorEmail: vendor.email || row.vendor_email,
     vendorAddress: vendor.address || '',
     vendorGst: vendor.gst_number || '',
     vendorPan: vendor.pan_number || '',
@@ -803,15 +797,52 @@ export async function getPoCreateContext(user, prId) {
   };
 }
 
-async function lookupVendorMaster(vendorEmail, vendorName) {
-  const [vendorRows] = await pool.query(
-    `SELECT name, email, address, gst_number, pan_number, phone
-     FROM vendors
-     WHERE email = ? OR name = ?
-     LIMIT 1`,
-    [vendorEmail, vendorName]
-  );
-  return vendorRows[0] || {};
+async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
+  const email = String(vendorEmail || '').trim();
+  const name = String(vendorName || '').trim();
+  const gst = String(extras.gst || extras.gstNumber || extras.gst_number || '').trim();
+  const select = `SELECT name, email, address, gst_number, pan_number, phone FROM vendors`;
+
+  // Name first — email on the PO is often stale after Vendor Master updates.
+  if (name) {
+    const [byName] = await pool.query(
+      `${select} WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1`,
+      [name]
+    );
+    if (byName[0]) return byName[0];
+  }
+  if (gst) {
+    const [byGst] = await pool.query(
+      `${select} WHERE REPLACE(UPPER(IFNULL(gst_number, '')), ' ', '') = REPLACE(UPPER(?), ' ', '') LIMIT 1`,
+      [gst]
+    );
+    if (byGst[0]) return byGst[0];
+  }
+  if (email) {
+    const [byEmail] = await pool.query(
+      `${select} WHERE LOWER(TRIM(email)) = LOWER(?) LIMIT 1`,
+      [email]
+    );
+    if (byEmail[0]) return byEmail[0];
+  }
+  return {};
+}
+
+async function overlayVendorMasterOnPo(po) {
+  if (!po) return po;
+  const master = await lookupVendorMaster(po.vendorEmail, po.vendorName, {
+    gst: po.vendorGst,
+  });
+  if (!master?.email && !master?.name && !master?.address) return po;
+  return {
+    ...po,
+    vendorName: master.name || po.vendorName,
+    vendorEmail: master.email || po.vendorEmail,
+    vendorAddress: master.address || po.vendorAddress || '',
+    vendorGst: master.gst_number || po.vendorGst || '',
+    vendorPan: master.pan_number || po.vendorPan || '',
+    vendorPhone: master.phone || po.vendorPhone || '',
+  };
 }
 
 async function resolvePoDraftContent(prId, body) {
@@ -960,8 +991,8 @@ async function resolvePoDraftContent(prId, body) {
     prTitle: pr.title,
     department: pr.department,
     requester: pr.requester,
-    vendorName: vendor.vendor_name,
-    vendorEmail: vendor.vendor_email,
+    vendorName: vendorMaster.name || vendor.vendor_name,
+    vendorEmail: vendorMaster.email || vendor.vendor_email,
     vendorAddress: vendorMaster.address || '',
     vendorGst: vendorMaster.gst_number || '',
     vendorPan: vendorMaster.pan_number || '',
@@ -1013,6 +1044,8 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
   }
 
   const vendorMaster = await lookupVendorMaster(vendorEmail, vendorName);
+  if (vendorMaster.email) vendorEmail = vendorMaster.email;
+  if (vendorMaster.name) vendorName = vendorMaster.name;
   const {
     lineItems = [],
     deliveryAddress = '',
@@ -1181,7 +1214,7 @@ export async function buildPoPreviewDocument(user, prId, body) {
     throw new Error('Unauthorized to preview purchase orders');
   }
   if (!body?.lineItems?.length) throw new Error('At least one line item is required for preview');
-  return resolvePoDraftContent(prId, body);
+  return overlayVendorMasterOnPo(await resolvePoDraftContent(prId, body));
 }
 
 export async function buildPoPreviewForPo(user, poId, body) {
@@ -1193,30 +1226,34 @@ export async function buildPoPreviewForPo(user, poId, body) {
   if (!body?.lineItems?.length) throw new Error('At least one line item is required for preview');
   if (!rows[0].pr_id) {
     return attachStoredPoSignature(
-      await resolveManualPoDraftContent({
+      await overlayVendorMasterOnPo(
+        await resolveManualPoDraftContent({
+          ...body,
+          poNumber: rows[0].po_number,
+          vendorName: body.vendorName || rows[0].vendor_name,
+          vendorEmail: body.vendorEmail || rows[0].vendor_email,
+          poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
+          terms: body.terms ?? body.termsClauses,
+          annexure: body.annexure ?? body.annexureClauses,
+          annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
+          annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? rows[0].annexure_ii_html),
+        })
+      ),
+      rows[0]
+    );
+  }
+  return attachStoredPoSignature(
+    await overlayVendorMasterOnPo(
+      await resolvePoDraftContent(rows[0].pr_id, {
         ...body,
         poNumber: rows[0].po_number,
-        vendorName: body.vendorName || rows[0].vendor_name,
-        vendorEmail: body.vendorEmail || rows[0].vendor_email,
         poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
         terms: body.terms ?? body.termsClauses,
         annexure: body.annexure ?? body.annexureClauses,
         annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
         annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? rows[0].annexure_ii_html),
-      }),
-      rows[0]
-    );
-  }
-  return attachStoredPoSignature(
-    await resolvePoDraftContent(rows[0].pr_id, {
-      ...body,
-      poNumber: rows[0].po_number,
-      poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
-      terms: body.terms ?? body.termsClauses,
-      annexure: body.annexure ?? body.annexureClauses,
-      annexureIiHtml: body.annexureIiHtml ?? rows[0].annexure_ii_html ?? '',
-      annexureIiRows: body.annexureIiRows ?? parseAnnexureIi(body.annexureIiHtml ?? rows[0].annexure_ii_html),
-    }),
+      })
+    ),
     rows[0]
   );
 }
@@ -1618,7 +1655,7 @@ export async function buildManualPoPreviewDocument(user, body) {
   if (!payload.expectedDeliveryDate) {
     payload.expectedDeliveryDate = new Date().toISOString().slice(0, 10);
   }
-  return resolveManualPoDraftContent(payload, { forPreview: true });
+  return overlayVendorMasterOnPo(await resolveManualPoDraftContent(payload, { forPreview: true }));
 }
 
 function normalizeDraftSaveBody(body = {}) {
@@ -1791,7 +1828,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     existing = rows[0] || null;
     if (!existing) throw new Error('PO not found');
     if (existing.status !== 'draft') throw new Error('Only draft POs can be saved with Save Draft');
-    if (user.role === 'SCM Buyer' && existing.created_by !== user.id) {
+    if (user.role === 'SCM Buyer' && existing.created_by !== user.id && !canEditAnyScmPurchaseOrder(user)) {
       throw new Error('You can only edit your own draft POs');
     }
   } else if (prId) {
@@ -1801,11 +1838,19 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     );
     if (active.length) throw new Error('A purchase order already exists for this PR');
 
-    const [draftRows] = await pool.query(
-      `SELECT * FROM purchase_orders WHERE pr_id = ? AND status = 'draft' AND created_by = ? ORDER BY id DESC LIMIT 1`,
-      [prId, user.id]
-    );
-    existing = draftRows[0] || null;
+    if (canEditAnyScmPurchaseOrder(user)) {
+      const [draftRows] = await pool.query(
+        `SELECT * FROM purchase_orders WHERE pr_id = ? AND status = 'draft' ORDER BY id DESC LIMIT 1`,
+        [prId]
+      );
+      existing = draftRows[0] || null;
+    } else {
+      const [draftRows] = await pool.query(
+        `SELECT * FROM purchase_orders WHERE pr_id = ? AND status = 'draft' AND created_by = ? ORDER BY id DESC LIMIT 1`,
+        [prId, user.id]
+      );
+      existing = draftRows[0] || null;
+    }
   }
 
   const isManual = !existing?.pr_id && !prId;
@@ -2034,7 +2079,7 @@ export async function listPurchaseOrders(
         'sent_to_vendor'
       )`;
     }
-  } else if (user.role === 'SCM Buyer') {
+  } else if (user.role === 'SCM Buyer' && !canEditAnyScmPurchaseOrder(user)) {
     sql += ` AND po.created_by = ?`;
     params.push(user.id);
   }
@@ -3237,7 +3282,7 @@ export async function listVendorAcceptancePOs(user) {
     WHERE po.status = 'sent_to_vendor'
   `;
   const params = [];
-  if (user.role === 'SCM Buyer') {
+  if (user.role === 'SCM Buyer' && !canEditAnyScmPurchaseOrder(user)) {
     sql += ` AND po.created_by = ?`;
     params.push(user.id);
   }

@@ -408,6 +408,45 @@ function matchEntityFromLetterhead(
   );
 }
 
+function normalizeVendorMatchKey(value: string) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(private|limited|pvt|ltd|llp|inc|corp|company)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchVendorFromMaster(
+  vendors: VendorRecord[],
+  opts: { name?: string; email?: string; gst?: string }
+) {
+  const name = normalizeVendorMatchKey(opts.name || '');
+  const email = String(opts.email || '').trim().toLowerCase();
+  const gst = String(opts.gst || '').replace(/\s+/g, '').toUpperCase();
+  if (name) {
+    const byName = vendors.find((v) => normalizeVendorMatchKey(v.name) === name);
+    if (byName) return byName;
+    const byPartial = vendors.find((v) => {
+      const vn = normalizeVendorMatchKey(v.name);
+      return vn.length > 8 && (vn.includes(name) || name.includes(vn));
+    });
+    if (byPartial) return byPartial;
+  }
+  if (gst) {
+    const byGst = vendors.find(
+      (v) => String(v.gstNumber || '').replace(/\s+/g, '').toUpperCase() === gst
+    );
+    if (byGst) return byGst;
+  }
+  if (email) {
+    const byEmail = vendors.find((v) => String(v.email || '').trim().toLowerCase() === email);
+    if (byEmail) return byEmail;
+  }
+  return null;
+}
+
 type EditableClauseRow = PoLetterheadClause & { clientKey: string };
 
 function makeClauseClientKey() {
@@ -1164,21 +1203,45 @@ export default function CreatePOPage() {
   }, []);
 
   useEffect(() => {
-    if (!isManualMode || manualVendorId || !masterVendors.length) return;
-    const name = (manualVendorName || importedVendorName).trim().toLowerCase();
-    if (!name) return;
-    const hit = masterVendors.find((v) => v.name.trim().toLowerCase() === name);
+    if (!masterVendors.length) return;
+    const name = (
+      manualVendorName ||
+      importedVendorName ||
+      vendorMeta.name ||
+      pr?.recommendedVendor ||
+      ''
+    ).trim();
+    const email = (manualVendorEmail || importedVendorEmail || vendorMeta.email || pr?.vendorEmail || '').trim();
+    const hit = matchVendorFromMaster(masterVendors, { name, email });
     if (!hit) return;
-    setManualVendorId(String(hit.id));
-    setManualVendorName(hit.name);
-    const email = (hit.email || '').trim() || manualVendorEmail.trim() || importedVendorEmail.trim();
-    if (email) {
-      setManualVendorEmail(email);
-      setVendorMeta((prev) => ({ ...prev, name: hit.name, email }));
-    } else {
-      setVendorMeta((prev) => ({ ...prev, name: hit.name }));
+    const masterEmail = String(hit.email || '').trim();
+    if (isManualMode && !manualVendorId) {
+      setManualVendorId(String(hit.id));
+      if (hit.name) setManualVendorName(hit.name);
     }
-  }, [isManualMode, masterVendors, manualVendorName, importedVendorName, manualVendorId, manualVendorEmail, importedVendorEmail]);
+    if (masterEmail) {
+      if (isManualMode && masterEmail.toLowerCase() !== manualVendorEmail.trim().toLowerCase()) {
+        setManualVendorEmail(masterEmail);
+      }
+      setVendorMeta((prev) =>
+        prev.name === (hit.name || prev.name) && prev.email === masterEmail
+          ? prev
+          : { ...prev, name: hit.name || prev.name, email: masterEmail }
+      );
+    }
+  }, [
+    isManualMode,
+    manualVendorId,
+    masterVendors,
+    manualVendorName,
+    importedVendorName,
+    manualVendorEmail,
+    importedVendorEmail,
+    vendorMeta.name,
+    vendorMeta.email,
+    pr?.recommendedVendor,
+    pr?.vendorEmail,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1793,6 +1856,16 @@ export default function CreatePOPage() {
       paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
     });
 
+    const vendorNameForPo = isManualMode
+      ? manualVendorName.trim() || importedVendorName.trim() || vendorMeta.name.trim() || undefined
+      : importedVendorName.trim() || pr?.recommendedVendor || vendorMeta.name.trim() || undefined;
+    const vendorEmailFromForm = isManualMode
+      ? manualVendorEmail.trim() || importedVendorEmail.trim() || vendorMeta.email.trim() || undefined
+      : importedVendorEmail.trim() || pr?.vendorEmail || vendorMeta.email.trim() || undefined;
+    const masterVendor = matchVendorFromMaster(masterVendors, {
+      name: vendorNameForPo,
+      email: vendorEmailFromForm,
+    });
     return {
     poNumber: poNumber || undefined,
     prNumber: isManualMode ? undefined : pr?.prNumber || undefined,
@@ -1831,12 +1904,8 @@ export default function CreatePOPage() {
     annexureIiHtml: serializeAnnexureIi(annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row))),
     poTermsDetails: synced.poTermsDetails,
     purchaseType: documentType,
-    vendorName: isManualMode
-      ? manualVendorName.trim() || importedVendorName.trim() || undefined
-      : importedVendorName.trim() || pr?.recommendedVendor || undefined,
-    vendorEmail: isManualMode
-      ? manualVendorEmail.trim() || importedVendorEmail.trim() || undefined
-      : importedVendorEmail.trim() || pr?.vendorEmail || undefined,
+    vendorName: masterVendor?.name || vendorNameForPo,
+    vendorEmail: masterVendor?.email || vendorEmailFromForm,
     title: poTermsDetails.subject || pr?.title || undefined,
     department: pr?.department || undefined,
     requester: pr?.requester || undefined,
@@ -1871,6 +1940,9 @@ export default function CreatePOPage() {
     importedVendorName,
     importedVendorEmail,
     pr,
+    vendorMeta.name,
+    vendorMeta.email,
+    masterVendors,
   ]);
 
   useEffect(() => {
