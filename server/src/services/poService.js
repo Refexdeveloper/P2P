@@ -289,6 +289,25 @@ function parseClauseJson(value) {
   }
 }
 
+/** True when the client sent this array key (including empty = user cleared it). */
+function pickProvidedArray(body, ...keys) {
+  if (!body || typeof body !== 'object') return { provided: false, value: [] };
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(body, key) && Array.isArray(body[key])) {
+      return { provided: true, value: body[key] };
+    }
+  }
+  return { provided: false, value: [] };
+}
+
+function pickAnnexureIiSource(body, fallback = '') {
+  if (!body || typeof body !== 'object') return fallback;
+  if (Array.isArray(body.annexureIiRows)) return body.annexureIiRows;
+  if (Object.prototype.hasOwnProperty.call(body, 'annexureIiHtml')) return body.annexureIiHtml || '';
+  if (Object.prototype.hasOwnProperty.call(body, 'annexure_ii_html')) return body.annexure_ii_html || '';
+  return fallback;
+}
+
 function parseSignatureDsc(value) {
   if (!value) return null;
   if (typeof value === 'object') return value;
@@ -856,15 +875,15 @@ async function resolvePoDraftContent(prId, body) {
   let resolvedEntity = body?.entity ?? '';
   let resolvedHeaderLogo = body?.headerLogo ?? '';
   let resolvedFooterLogo = body?.footerLogo ?? '';
-  let resolvedTerms = Array.isArray(body?.terms)
-    ? body.terms
-    : Array.isArray(body?.termsClauses)
-      ? body.termsClauses
-      : terms;
-  let resolvedAnnexure = annexure;
-  const resolvedAnnexureIiHtml = serializeAnnexureIi(
-    body?.annexureIiRows || annexureIiHtml || body?.annexureIiHtml || body?.annexure_ii_html || ''
-  );
+  const termsPick = pickProvidedArray(body, 'terms', 'termsClauses');
+  const annexurePick = pickProvidedArray(body, 'annexure', 'annexureClauses');
+  let resolvedTerms = termsPick.provided ? termsPick.value : Array.isArray(terms) ? terms : [];
+  let resolvedAnnexure = annexurePick.provided
+    ? annexurePick.value
+    : Array.isArray(annexure)
+      ? annexure
+      : [];
+  const resolvedAnnexureIiHtml = serializeAnnexureIi(pickAnnexureIiSource(body, annexureIiHtml || ''));
 
   // Branding from selected Letterhead Master (entity + logos) for PO PDF.
   // Header and footer are common on the letterhead; location only affects GST/invoicing.
@@ -890,8 +909,8 @@ async function resolvePoDraftContent(prId, body) {
     try {
       const master = await getLetterheadByType(normalizedPoType);
       resolvedLetterhead = resolvedLetterhead || master.letterheadHeader || '';
-      if (!resolvedTerms.length) resolvedTerms = master.terms || [];
-      if (!resolvedAnnexure.length) resolvedAnnexure = master.annexure || [];
+      if (!termsPick.provided && !resolvedTerms.length) resolvedTerms = master.terms || [];
+      if (!annexurePick.provided && !resolvedAnnexure.length) resolvedAnnexure = master.annexure || [];
     } catch {
       /* master optional when client already sent full content */
     }
@@ -1028,15 +1047,15 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
   let resolvedEntity = body?.entity ?? '';
   let resolvedHeaderLogo = body?.headerLogo ?? '';
   let resolvedFooterLogo = body?.footerLogo ?? '';
-  let resolvedTerms = Array.isArray(body?.terms)
-    ? body.terms
-    : Array.isArray(body?.termsClauses)
-      ? body.termsClauses
-      : terms;
-  let resolvedAnnexure = annexure;
-  const resolvedAnnexureIiHtml = serializeAnnexureIi(
-    body?.annexureIiRows || annexureIiHtml || body?.annexureIiHtml || body?.annexure_ii_html || ''
-  );
+  const termsPick = pickProvidedArray(body, 'terms', 'termsClauses');
+  const annexurePick = pickProvidedArray(body, 'annexure', 'annexureClauses');
+  let resolvedTerms = termsPick.provided ? termsPick.value : Array.isArray(terms) ? terms : [];
+  let resolvedAnnexure = annexurePick.provided
+    ? annexurePick.value
+    : Array.isArray(annexure)
+      ? annexure
+      : [];
+  const resolvedAnnexureIiHtml = serializeAnnexureIi(pickAnnexureIiSource(body, annexureIiHtml || ''));
 
   try {
     if (resolvedLetterheadId) {
@@ -1059,8 +1078,8 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     try {
       const master = await getLetterheadByType(normalizedPoType);
       resolvedLetterhead = resolvedLetterhead || master.letterheadHeader || '';
-      if (!resolvedTerms.length) resolvedTerms = master.terms || [];
-      if (!resolvedAnnexure.length) resolvedAnnexure = master.annexure || [];
+      if (!termsPick.provided && !resolvedTerms.length) resolvedTerms = master.terms || [];
+      if (!annexurePick.provided && !resolvedAnnexure.length) resolvedAnnexure = master.annexure || [];
     } catch {
       /* optional */
     }

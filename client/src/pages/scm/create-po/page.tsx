@@ -932,7 +932,7 @@ export default function CreatePOPage() {
   const [masterVendors, setMasterVendors] = useState<VendorRecord[]>([]);
   const csvAppliedRef = useRef(false);
   const brandingAutoApplied = useRef(false);
-  const skipNextLetterheadLoad = useRef(false);
+  const skipNextLetterheadLoad = useRef(Boolean(poIdParam));
 
   const documentTypeRef = useRef(documentType);
   documentTypeRef.current = documentType;
@@ -1252,7 +1252,8 @@ export default function CreatePOPage() {
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;
     skipNextLetterheadLoad.current = true;
-    setLetterheadLocked(false);
+    letterheadLoadSeq.current += 1;
+    setLetterheadLocked(true);
     setLoading(true);
     try {
       const res = await poApi.get(editPoId);
@@ -1305,7 +1306,6 @@ export default function CreatePOPage() {
       prevDocumentTypeRef.current = loadedDocType;
       const loadedTerms = (po.termsClauses as PoLetterheadClause[]) || [];
       const loadedAnnexure = (po.annexureClauses as PoLetterheadClause[]) || [];
-      const loadedType = coercePoType(po.poType, loadedDocType);
       setLetterheadHeader(
         adaptWordingForDocumentType(String(po.letterheadHeader || ''), loadedDocType)
       );
@@ -1333,31 +1333,6 @@ export default function CreatePOPage() {
         setTermsClauses(stripQuoteNoFromTermsClauses(adaptedTerms));
         setLocationGstNo(loadedDetails.buyerGstNo || '');
         setLetterheadLocationKey(loadedDetails.letterheadLocationId || '');
-
-        // If PO has no saved clauses, pull defaults from PO Type Master
-        if (!loadedTerms.length || !loadedAnnexure.length || !po.letterheadHeader) {
-          try {
-            const masterRes = await poLetterheadApi.get(loadedType);
-            const master = masterRes.data;
-            if (!po.letterheadHeader) {
-              setLetterheadHeader(
-                adaptWordingForDocumentType(master.letterheadHeader || '', loadedDocType)
-              );
-            }
-            if (!loadedTerms.length) {
-              setTermsClauses(
-                stripQuoteNoFromTermsClauses(
-                  adaptClausesForDocumentType(master.terms || [], loadedDocType)
-                )
-              );
-            }
-            if (!loadedAnnexure.length) {
-              setAnnexureClauses(adaptClausesForDocumentType(master.annexure || [], loadedDocType));
-            }
-          } catch {
-            /* keep empty if master missing */
-          }
-        }
       }
       setLineItems(
         ((po.lineItems as Array<Record<string, unknown>>) || []).map((li) => {
@@ -1772,7 +1747,7 @@ export default function CreatePOPage() {
     termsClauses: synced.terms,
     annexure: annexureClauses,
     annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
-    annexureIiHtml: serializeAnnexureIi(annexureIiRows),
+    annexureIiHtml: serializeAnnexureIi(annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row))),
     poTermsDetails: synced.poTermsDetails,
     purchaseType: documentType,
     vendorName: isManualMode
@@ -1966,6 +1941,8 @@ export default function CreatePOPage() {
     }
     setSubmitting(true);
     try {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      const annexureIiToSave = annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row));
       const payload: Record<string, unknown> = {
         lineItems: lineItems.map((i) => ({
           itemName: i.itemName || '',
@@ -2002,8 +1979,8 @@ export default function CreatePOPage() {
           }).terms
         ),
         annexure: filterNonEmptyClauses(annexureClauses),
-        annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
-        annexureIiHtml: serializeAnnexureIi(annexureIiRows),
+        annexureIiRows: annexureIiToSave,
+        annexureIiHtml: serializeAnnexureIi(annexureIiToSave),
         poTermsDetails: withSyncedQuoteNo(termsClauses, {
           ...poTermsDetails,
           paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
@@ -2307,6 +2284,8 @@ export default function CreatePOPage() {
     setShowScmConfirm(false);
     setSubmitting(true);
     try {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      const annexureIiToSave = annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row));
       const payload: Record<string, unknown> = {
         lineItems: lineItems.map((i) => ({
           itemName: i.itemName || '',
@@ -2344,8 +2323,8 @@ export default function CreatePOPage() {
           }).terms
         ),
         annexure: filterNonEmptyClauses(annexureClauses),
-        annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
-        annexureIiHtml: serializeAnnexureIi(annexureIiRows),
+        annexureIiRows: annexureIiToSave,
+        annexureIiHtml: serializeAnnexureIi(annexureIiToSave),
         poTermsDetails: withSyncedQuoteNo(termsClauses, {
           ...poTermsDetails,
           paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,

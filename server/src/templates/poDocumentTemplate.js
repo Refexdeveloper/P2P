@@ -711,7 +711,7 @@ function annexureHtmlIsEmpty(html) {
     .trim();
 }
 
-function annexureIiItemHtml(row, idx, total, docLabel) {
+function annexureIiItemHtml(row) {
   const headerHtml = sanitizeAnnexureHtml(row.header || '');
   const bodyHtml = sanitizeAnnexureHtml(row.description || '');
   const extraImages = (row.images || [])
@@ -727,10 +727,7 @@ function annexureIiItemHtml(row, idx, total, docLabel) {
   const comments = String(row.comments || '').trim();
   return `
       <div class="annexure-ii">
-        <div class="annexure-ii-title">ANNEXURE-II — TECHNICAL DATA / SCOPE / SPECIFICATIONS (${escapeHtml(
-          docLabel
-        ).toUpperCase()})</div>
-        <div class="annexure-ii-meta">Item ${idx + 1} of ${total}</div>
+        <div class="annexure-ii-title">ANNEXURE-II</div>
         ${
           headerHtml && !annexureHtmlIsEmpty(headerHtml)
             ? `<div class="annexure-ii-header">${headerHtml}</div>`
