@@ -124,15 +124,33 @@ export default function RichTextEditor({
 
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items;
-    if (!allowImages || !items) return;
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (file) insertImageFile(file);
-        return;
+    if (allowImages && items) {
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) insertImageFile(file);
+          return;
+        }
       }
     }
+
+    // Strip source formatting (Word/web bold, fonts, colors) — paste as default editor text
+    const plain = e.clipboardData?.getData('text/plain') ?? '';
+    e.preventDefault();
+    if (!plain) return;
+    const inserted = document.execCommand('insertText', false, plain);
+    if (!inserted && editorRef.current) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) {
+        sel.deleteFromDocument();
+        sel.getRangeAt(0).insertNode(document.createTextNode(plain));
+        sel.collapseToEnd();
+      } else {
+        editorRef.current.append(document.createTextNode(plain));
+      }
+    }
+    emitHtml();
   };
 
   const tools = [
@@ -258,7 +276,7 @@ export default function RichTextEditor({
         onPaste={handlePaste}
         data-placeholder={placeholder}
         style={{ minHeight, lineHeight: advanced ? 1.5 : undefined }}
-        className="px-3 py-2.5 text-sm text-gray-800 focus:outline-none prose prose-sm max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 [&_img]:max-w-full [&_img]:h-auto [&_figure]:my-3"
+        className="px-3 py-2.5 text-sm text-gray-800 font-sans font-normal focus:outline-none prose prose-sm max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 [&_img]:max-w-full [&_img]:h-auto [&_figure]:my-3 [&_*]:font-sans [&_*]:text-inherit"
       />
     </div>
   );

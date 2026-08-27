@@ -1,0 +1,31 @@
+{
+  "name": "playwright-uat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated Playwright UAT automation for P2P Create PR → PO Sign flows",
+  "scripts": {
+    "uat": "playwright test",
+    "uat:headed": "playwright test --headed",
+    "uat:smoke": "playwright test tests/smoke --project=chromium",
+    "uat:create-pr": "playwright test tests/create-pr --project=chromium",
+    "uat:submit-pr": "playwright test tests/submit-pr --project=chromium",
+    "uat:approvals": "playwright test tests/approvals --project=chromium",
+    "uat:returned": "playwright test tests/returned-pr --project=chromium",
+    "uat:rfq": "playwright test tests/rfq --project=chromium",
+    "uat:post-rfq": "playwright test tests/post-rfq --project=chromium",
+    "uat:po": "playwright test tests/purchase-order --project=chromium",
+    "uat:notifications": "playwright test tests/notifications --project=chromium",
+    "uat:security": "playwright test tests/security --project=chromium",
+    "uat:golden": "playwright test tests/golden-paths --project=chromium",
+    "uat:priority": "playwright test --grep \"A01|A02|A05|A06|B01|C01|C03|C04|D03|E1\\.01|E1\\.06|F02|F09|G01|H03|H06|I01|I05|SMOKE\" --project=chromium",
+    "uat:report": "playwright show-report reports/html",
+    "uat:install": "playwright install chromium",
+    "auth:setup": "playwright test --project=setup"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "@types/node": "^22.15.30",
+    "dotenv": "^16.5.0",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+.env
+.auth/
+reports/html/
+reports/results.json
+reports/junit.xml
+test-results/
+playwright-report/
+blob-report/
+screenshots/**/*.png
+!screenshots/.gitkeep
+*.log
