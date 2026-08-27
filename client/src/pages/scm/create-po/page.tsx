@@ -472,15 +472,20 @@ function ClauseTableEditor({
 }) {
   const [rows, setRows] = useState<EditableClauseRow[]>(() => toEditableClauseRows(clauses));
   const lastExternalSig = useRef(clauseListSignature(clauses));
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   useEffect(() => {
     const sig = clauseListSignature(clauses);
     if (sig === lastExternalSig.current) return;
     lastExternalSig.current = sig;
-    setRows(toEditableClauseRows(clauses));
+    const next = toEditableClauseRows(clauses);
+    rowsRef.current = next;
+    setRows(next);
   }, [clauses]);
 
   const commit = (nextRows: EditableClauseRow[]) => {
+    rowsRef.current = nextRows;
     setRows(nextRows);
     const payload = nextRows.map(({ clientKey: _key, ...clause }, index) => ({
       ...clause,
@@ -491,23 +496,23 @@ function ClauseTableEditor({
   };
 
   const updateRow = (index: number, patch: Partial<EditableClauseRow>) => {
-    commit(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    commit(rowsRef.current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   };
 
-  const addRow = () => commit([...rows, emptyClauseRow()]);
+  const addRow = () => commit([...rowsRef.current, emptyClauseRow()]);
 
   const removeRow = (index: number) => {
-    if (rows.length <= 1) {
+    if (rowsRef.current.length <= 1) {
       commit([emptyClauseRow()]);
       return;
     }
-    commit(rows.filter((_, i) => i !== index));
+    commit(rowsRef.current.filter((_, i) => i !== index));
   };
 
   const moveRow = (index: number, direction: -1 | 1) => {
     const target = index + direction;
-    if (target < 0 || target >= rows.length) return;
-    const next = [...rows];
+    if (target < 0 || target >= rowsRef.current.length) return;
+    const next = [...rowsRef.current];
     [next[index], next[target]] = [next[target], next[index]];
     commit(next);
   };
@@ -649,15 +654,20 @@ function AnnexureIiTableEditor({
 }) {
   const [localRows, setLocalRows] = useState<EditableAnnexureIiRow[]>(() => toEditableAnnexureIiRows(rows));
   const lastSig = useRef(serializeAnnexureIi(rows));
+  const localRowsRef = useRef(localRows);
+  localRowsRef.current = localRows;
 
   useEffect(() => {
     const sig = serializeAnnexureIi(rows);
     if (sig === lastSig.current) return;
     lastSig.current = sig;
-    setLocalRows(toEditableAnnexureIiRows(rows.length ? rows : [emptyAnnexureIiRow()]));
+    const next = toEditableAnnexureIiRows(rows.length ? rows : [emptyAnnexureIiRow()]);
+    localRowsRef.current = next;
+    setLocalRows(next);
   }, [rows]);
 
   const commit = (next: EditableAnnexureIiRow[]) => {
+    localRowsRef.current = next;
     setLocalRows(next);
     const payload = next.map(({ clientKey: _key, ...row }) => row);
     lastSig.current = serializeAnnexureIi(payload);
@@ -665,24 +675,24 @@ function AnnexureIiTableEditor({
   };
 
   const updateRow = (index: number, patch: Partial<AnnexureIiRow>) => {
-    commit(localRows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    commit(localRowsRef.current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   };
 
   const addRow = () =>
-    commit([...localRows, { ...emptyAnnexureIiRow(), clientKey: makeClauseClientKey() }]);
+    commit([...localRowsRef.current, { ...emptyAnnexureIiRow(), clientKey: makeClauseClientKey() }]);
 
   const removeRow = (index: number) => {
-    if (localRows.length <= 1) {
+    if (localRowsRef.current.length <= 1) {
       commit([{ ...emptyAnnexureIiRow(), clientKey: makeClauseClientKey() }]);
       return;
     }
-    commit(localRows.filter((_, i) => i !== index));
+    commit(localRowsRef.current.filter((_, i) => i !== index));
   };
 
   const moveRow = (index: number, direction: -1 | 1) => {
     const target = index + direction;
-    if (target < 0 || target >= localRows.length) return;
-    const next = [...localRows];
+    if (target < 0 || target >= localRowsRef.current.length) return;
+    const next = [...localRowsRef.current];
     [next[index], next[target]] = [next[target], next[index]];
     commit(next);
   };
@@ -933,12 +943,32 @@ export default function CreatePOPage() {
   const csvAppliedRef = useRef(false);
   const brandingAutoApplied = useRef(false);
   const skipNextLetterheadLoad = useRef(Boolean(poIdParam));
+  const letterheadLockedRef = useRef(false);
+  letterheadLockedRef.current = letterheadLocked;
+  const termsDraftRef = useRef<PoLetterheadClause[]>([]);
+  const annexureDraftRef = useRef<PoLetterheadClause[]>([]);
+  const annexureIiDraftRef = useRef<AnnexureIiRow[]>([emptyAnnexureIiRow()]);
+  const lineItemsDraftRef = useRef<LineItem[]>([]);
+  const createdPoIdRef = useRef<number | null>(null);
+  createdPoIdRef.current = createdPoId;
+  const userEditedDraftRef = useRef(false);
+  const prLineItemsHydratedRef = useRef(false);
+  const keepLocalDraftAfterSaveRef = useRef(false);
+  const contextLoadSeq = useRef(0);
+
+  const markDraftEdited = useCallback(() => {
+    userEditedDraftRef.current = true;
+    if (!letterheadLockedRef.current) {
+      letterheadLockedRef.current = true;
+      setLetterheadLocked(true);
+    }
+  }, []);
 
   const documentTypeRef = useRef(documentType);
   documentTypeRef.current = documentType;
   const letterheadLoadSeq = useRef(0);
 
-  const loadLetterhead = useCallback(async (type: PoType, docType?: 'purchase_order' | 'work_order') => {
+  const loadLetterhead = useCallback(async (type: PoType, docType?: 'purchase_order' | 'work_order', force = false) => {
     const targetDoc = docType || documentTypeRef.current;
     const alignedType = alignTemplateWithDocument(type, targetDoc);
     const seq = ++letterheadLoadSeq.current;
@@ -947,11 +977,16 @@ export default function CreatePOPage() {
     try {
       const res = await poLetterheadApi.get(alignedType);
       if (seq !== letterheadLoadSeq.current) return;
+      if ((letterheadLockedRef.current || userEditedDraftRef.current) && !force) return;
       const terms = res.data.terms || [];
       const annexure = res.data.annexure || [];
+      const nextTerms = stripQuoteNoFromTermsClauses(adaptClausesForDocumentType(terms, targetDoc));
+      const nextAnnexure = adaptClausesForDocumentType(annexure, targetDoc);
       setLetterheadHeader(adaptWordingForDocumentType(res.data.letterheadHeader || '', targetDoc));
-      setTermsClauses(stripQuoteNoFromTermsClauses(adaptClausesForDocumentType(terms, targetDoc)));
-      setAnnexureClauses(adaptClausesForDocumentType(annexure, targetDoc));
+      termsDraftRef.current = nextTerms;
+      annexureDraftRef.current = nextAnnexure;
+      setTermsClauses(nextTerms);
+      setAnnexureClauses(nextAnnexure);
       setLoadedTemplate({
         poType: alignedType,
         title: res.data.title || res.data.poTypeLabel || alignedType,
@@ -960,7 +995,10 @@ export default function CreatePOPage() {
       });
     } catch (err) {
       if (seq !== letterheadLoadSeq.current) return;
+      if ((letterheadLockedRef.current || userEditedDraftRef.current) && !force) return;
       setLetterheadHeader('');
+      termsDraftRef.current = [];
+      annexureDraftRef.current = [];
       setTermsClauses([]);
       setAnnexureClauses([]);
       setLoadedTemplate(null);
@@ -973,9 +1011,11 @@ export default function CreatePOPage() {
   const applyPoTypeTemplate = useCallback(
     (nextType: PoType, nextDoc?: 'purchase_order' | 'work_order') => {
       skipNextLetterheadLoad.current = false;
+      userEditedDraftRef.current = false;
+      letterheadLockedRef.current = false;
       setLetterheadLocked(false);
       setPoType(nextType);
-      void loadLetterhead(nextType, nextDoc || documentTypeRef.current);
+      void loadLetterhead(nextType, nextDoc || documentTypeRef.current, true);
     },
     [loadLetterhead]
   );
@@ -1192,13 +1232,26 @@ export default function CreatePOPage() {
   }, [letterheadId, letterheadOptions.length]);
 
   useEffect(() => {
-    if (letterheadLocked) return;
+    termsDraftRef.current = termsClauses;
+  }, [termsClauses]);
+  useEffect(() => {
+    annexureDraftRef.current = annexureClauses;
+  }, [annexureClauses]);
+  useEffect(() => {
+    annexureIiDraftRef.current = annexureIiRows;
+  }, [annexureIiRows]);
+  useEffect(() => {
+    lineItemsDraftRef.current = lineItems;
+  }, [lineItems]);
+
+  useEffect(() => {
+    if (isEditMode || letterheadLocked) return;
     if (skipNextLetterheadLoad.current) {
       skipNextLetterheadLoad.current = false;
       return;
     }
     void loadLetterhead(poType, documentType);
-  }, [poType, documentType, loadLetterhead, letterheadLocked]);
+  }, [poType, documentType, loadLetterhead, letterheadLocked, isEditMode]);
 
   useEffect(() => {
     if (!isManualMode) return;
@@ -1214,8 +1267,10 @@ export default function CreatePOPage() {
 
   const reloadClausesFromMaster = useCallback(async () => {
     skipNextLetterheadLoad.current = false;
+    userEditedDraftRef.current = false;
+    letterheadLockedRef.current = false;
     setLetterheadLocked(false);
-    await loadLetterhead(poType, documentType);
+    await loadLetterhead(poType, documentType, true);
   }, [loadLetterhead, poType, documentType]);
 
   // Keep Short/Long template family aligned with Purchase Order vs Work Order
@@ -1251,6 +1306,16 @@ export default function CreatePOPage() {
 
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;
+    if (keepLocalDraftAfterSaveRef.current) {
+      keepLocalDraftAfterSaveRef.current = false;
+      skipNextLetterheadLoad.current = true;
+      letterheadLoadSeq.current += 1;
+      letterheadLockedRef.current = true;
+      setLetterheadLocked(true);
+      setCreatedPoId(editPoId);
+      prLineItemsHydratedRef.current = true;
+      return;
+    }
     skipNextLetterheadLoad.current = true;
     letterheadLoadSeq.current += 1;
     setLetterheadLocked(true);
@@ -1310,9 +1375,12 @@ export default function CreatePOPage() {
         adaptWordingForDocumentType(String(po.letterheadHeader || ''), loadedDocType)
       );
       setAnnexureClauses(adaptClausesForDocumentType(loadedAnnexure, loadedDocType));
+      annexureDraftRef.current = adaptClausesForDocumentType(loadedAnnexure, loadedDocType);
       {
         const loadedIi = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '');
-        setAnnexureIiRows(loadedIi.length ? loadedIi : [emptyAnnexureIiRow()]);
+        const nextIi = loadedIi.length ? loadedIi : [emptyAnnexureIiRow()];
+        annexureIiDraftRef.current = nextIi;
+        setAnnexureIiRows(nextIi);
       }
       {
         const loadedDetails = { ...EMPTY_PO_TERMS_DETAILS, ...((po.poTermsDetails as PoTermsDetails) || {}) };
@@ -1331,28 +1399,30 @@ export default function CreatePOPage() {
           quoteDate: toInputDate(loadedDetails.quoteDate) || '',
         });
         setTermsClauses(stripQuoteNoFromTermsClauses(adaptedTerms));
+        termsDraftRef.current = stripQuoteNoFromTermsClauses(adaptedTerms);
         setLocationGstNo(loadedDetails.buyerGstNo || '');
         setLetterheadLocationKey(loadedDetails.letterheadLocationId || '');
       }
-      setLineItems(
-        ((po.lineItems as Array<Record<string, unknown>>) || []).map((li) => {
-          const quantity = Number(li.quantity) || 0;
-          const unitPrice = Number(li.unitPrice) || 0;
-          const taxPercentage = Math.max(0, Number(li.taxPercentage ?? li.tax_percentage ?? po.gstPercentage) || 18);
-          const description = String(li.description || '');
-          const itemName = String(li.itemName || li.name || '').trim() || plainTextFromHtml(description);
-          return {
-            id: Number(li.id) || `li-${itemName || description}`,
-            itemName,
-            description,
-            quantity,
-            unitPrice,
-            taxPercentage,
-            total: Number(li.total) || calcLineTotal(quantity, unitPrice),
-            unit: lineItemUnit(li),
-          };
-        })
-      );
+      const mappedLineItems = ((po.lineItems as Array<Record<string, unknown>>) || []).map((li) => {
+        const quantity = Number(li.quantity) || 0;
+        const unitPrice = Number(li.unitPrice) || 0;
+        const taxPercentage = Math.max(0, Number(li.taxPercentage ?? li.tax_percentage ?? po.gstPercentage) || 18);
+        const description = String(li.description || '');
+        const itemName = String(li.itemName || li.name || '').trim() || plainTextFromHtml(description);
+        return {
+          id: Number(li.id) || `li-${itemName || description}`,
+          itemName,
+          description,
+          quantity,
+          unitPrice,
+          taxPercentage,
+          total: Number(li.total) || calcLineTotal(quantity, unitPrice),
+          unit: lineItemUnit(li),
+        };
+      });
+      lineItemsDraftRef.current = mappedLineItems;
+      setLineItems(mappedLineItems);
+      prLineItemsHydratedRef.current = true;
       setPr({
         id: prDbId,
         prNumber: String(po.prNumber || ''),
@@ -1422,6 +1492,11 @@ export default function CreatePOPage() {
 
   const loadContext = useCallback(async () => {
     if (isEditMode) return;
+    const seq = ++contextLoadSeq.current;
+    const shouldApplyContext = () =>
+      seq === contextLoadSeq.current &&
+      !createdPoIdRef.current &&
+      !keepLocalDraftAfterSaveRef.current;
     if (isManualMode) {
       setLoading(true);
       try {
@@ -1431,6 +1506,7 @@ export default function CreatePOPage() {
           name: String(e.name || ''),
           code: String(e.code || ''),
         }));
+        if (!shouldApplyContext()) return;
         setEntityOptions(ents);
         setPr({
           id: 0,
@@ -1498,6 +1574,7 @@ export default function CreatePOPage() {
         lineItems: Array<{ id: number; description: string; quantity: number; unitCost: number; category?: string; unit?: string; uom?: string }>;
       };
       const vendor = res.data.vendor as { name: string; email: string; paymentTerms: string; deliveryTerms: string };
+      if (!shouldApplyContext()) return;
       const prCurrency = normalizeCurrency(prData.currency);
       setCurrency(prCurrency);
       setPr({
@@ -1524,11 +1601,13 @@ export default function CreatePOPage() {
         })),
       });
       setDocumentType(prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
-      setPoType(
-        defaultTemplateForDocument(
-          prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order'
-        )
-      );
+      if (!userEditedDraftRef.current) {
+        setPoType(
+          defaultTemplateForDocument(
+            prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order'
+          )
+        );
+      }
       setPaymentTerms(vendor.paymentTerms || prData.paymentTerms || 'Net 30 Days');
       setIncoterms(normalizeIncoterm(vendor.deliveryTerms));
       if (prData.placeOfDelivery) {
@@ -1586,9 +1665,11 @@ export default function CreatePOPage() {
   };
 
   const handleTermsClausesChange = (next: PoLetterheadClause[]) => {
+    markDraftEdited();
     const renamed = stripQuoteNoFromTermsClauses(
       renameRfqHeadersToQuoteNo(adaptClausesForDocumentType(next, documentType))
     );
+    termsDraftRef.current = renamed;
     setTermsClauses(renamed);
     const quoteRow = renamed.find((c) => isQuoteNoHeader(String(c.termsHeader || '')));
     if (!quoteRow) return;
@@ -1863,7 +1944,8 @@ export default function CreatePOPage() {
     };
   }, [previewHtmlUrl]);
 
-  const handleQtyChange = (id: string | number, val: number) =>
+  const handleQtyChange = (id: string | number, val: number) => {
+    markDraftEdited();
     setLineItems((prev) =>
       prev.map((item) =>
         item.id === id
@@ -1871,8 +1953,10 @@ export default function CreatePOPage() {
           : item
       )
     );
+  };
 
-  const handlePriceChange = (id: string | number, raw: string) =>
+  const handlePriceChange = (id: string | number, raw: string) => {
+    markDraftEdited();
     setLineItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
@@ -1882,8 +1966,10 @@ export default function CreatePOPage() {
         return { ...item, unitPrice: val, total: calcLineTotal(item.quantity, val) };
       })
     );
+  };
 
-  const handleTaxPercentageChange = (id: string | number, val: number) =>
+  const handleTaxPercentageChange = (id: string | number, val: number) => {
+    markDraftEdited();
     setLineItems((prev) =>
       prev.map((item) =>
         item.id === id
@@ -1891,25 +1977,33 @@ export default function CreatePOPage() {
           : item
       )
     );
+  };
 
-  const handleUnitChange = (id: string | number, val: string) =>
+  const handleUnitChange = (id: string | number, val: string) => {
+    markDraftEdited();
     setLineItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, unit: val } : item))
     );
+  };
 
-  const handleItemNameChange = (id: string | number, val: string) =>
+  const handleItemNameChange = (id: string | number, val: string) => {
+    markDraftEdited();
     setLineItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, itemName: val } : item))
     );
+  };
 
-  const handleDescriptionChange = (id: string | number, val: string) =>
-    setLineItems(prev =>
-      prev.map(item => item.id === id ? { ...item, description: val } : item)
+  const handleDescriptionChange = (id: string | number, val: string) => {
+    markDraftEdited();
+    setLineItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, description: val } : item))
     );
+  };
 
   const handleAddLineItem = () => {
+    markDraftEdited();
     const newId = `new-${Date.now()}`;
-    setLineItems(prev => [
+    setLineItems((prev) => [
       ...prev,
       {
         id: newId,
@@ -1925,7 +2019,8 @@ export default function CreatePOPage() {
   };
 
   const handleDeleteLineItem = (id: string | number) => {
-    setLineItems(prev => prev.filter(item => item.id !== id));
+    markDraftEdited();
+    setLineItems((prev) => prev.filter((item) => item.id !== id));
   };
 
   const resolvedManualEntityId =
@@ -1942,9 +2037,24 @@ export default function CreatePOPage() {
     setSubmitting(true);
     try {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      const annexureIiToSave = annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row));
+      await new Promise((r) => window.setTimeout(r, 80));
+      const termsToSave =
+        userEditedDraftRef.current || termsDraftRef.current.length
+          ? termsDraftRef.current
+          : termsClauses;
+      const annexureToSave =
+        userEditedDraftRef.current || annexureDraftRef.current.length
+          ? annexureDraftRef.current
+          : annexureClauses;
+      const annexureIiLive =
+        userEditedDraftRef.current || annexureIiDraftRef.current.length
+          ? annexureIiDraftRef.current
+          : annexureIiRows;
+      const lineItemsLive = lineItems;
+      const annexureIiToSave = annexureIiLive.filter((row) => !annexureIiRowIsEmpty(row));
       const payload: Record<string, unknown> = {
-        lineItems: lineItems.map((i) => ({
+        skipLetterheadMaster: true,
+        lineItems: lineItemsLive.map((i) => ({
           itemName: i.itemName || '',
           description: i.description,
           quantity: i.quantity,
@@ -1970,7 +2080,7 @@ export default function CreatePOPage() {
         headerLogo,
         footerLogo,
         terms: filterNonEmptyClauses(
-          withSyncedQuoteNo(termsClauses, {
+          withSyncedQuoteNo(termsToSave, {
             ...poTermsDetails,
             paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
             siteAddress: poTermsDetails.siteAddress || deliveryAddress,
@@ -1978,10 +2088,10 @@ export default function CreatePOPage() {
             buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
           }).terms
         ),
-        annexure: filterNonEmptyClauses(annexureClauses),
+        annexure: filterNonEmptyClauses(annexureToSave),
         annexureIiRows: annexureIiToSave,
         annexureIiHtml: serializeAnnexureIi(annexureIiToSave),
-        poTermsDetails: withSyncedQuoteNo(termsClauses, {
+        poTermsDetails: withSyncedQuoteNo(termsToSave, {
           ...poTermsDetails,
           paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
           siteAddress: poTermsDetails.siteAddress || deliveryAddress,
@@ -2001,17 +2111,26 @@ export default function CreatePOPage() {
         payload.requester = pr.requester || '';
       }
 
-      if (editPoId) payload.poId = editPoId;
+      if (editPoId || createdPoId) payload.poId = editPoId || createdPoId;
       else if (numericPrId) payload.prId = numericPrId;
 
       const res = await poApi.saveDraft(payload);
       const savedId = Number((res.data as { id?: number }).id);
       const savedPoNumber = String((res.data as { poNumber?: string }).poNumber || '');
-      if (savedId) setCreatedPoId(savedId);
+      if (savedId) {
+        createdPoIdRef.current = savedId;
+        setCreatedPoId(savedId);
+      }
       if (savedPoNumber) setPoNumber(savedPoNumber);
-    setDraftSaved(true);
-    setTimeout(() => setDraftSaved(false), 3000);
+      skipNextLetterheadLoad.current = true;
+      letterheadLoadSeq.current += 1;
+      contextLoadSeq.current += 1;
+      letterheadLockedRef.current = true;
+      setLetterheadLocked(true);
+      setDraftSaved(true);
+      setTimeout(() => setDraftSaved(false), 3000);
       if (!editPoId && savedId) {
+        keepLocalDraftAfterSaveRef.current = true;
         navigate(`/scm/create-po?poId=${savedId}&from=create-po`, { replace: true });
       }
     } catch (err) {
@@ -2192,18 +2311,20 @@ export default function CreatePOPage() {
     if (refPoParam?.trim()) return;
 
     if (!pr.lineItems?.length) return;
-    setLineItems(
-      pr.lineItems.map((item) => ({
-        id: item.id,
-        itemName: plainTextFromHtml(item.description || ''),
-        description: item.description || '',
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        taxPercentage: 18,
-        total: calcLineTotal(item.quantity, item.unitPrice),
-        unit: item.unit || 'Nos',
-      }))
-    );
+    if (prLineItemsHydratedRef.current || userEditedDraftRef.current) return;
+    prLineItemsHydratedRef.current = true;
+    const mapped = pr.lineItems.map((item) => ({
+      id: item.id,
+      itemName: plainTextFromHtml(item.description || ''),
+      description: item.description || '',
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      taxPercentage: 18,
+      total: calcLineTotal(item.quantity, item.unitPrice),
+      unit: item.unit || 'Nos',
+    }));
+    lineItemsDraftRef.current = mapped;
+    setLineItems(mapped);
   }, [pr, isEditMode, fromCsvParam, refPoParam, applyCsvImportPayload]);
 
   // Auto-import reference PO when opened from Purchase Requests with ?refPo=
@@ -2285,8 +2406,22 @@ export default function CreatePOPage() {
     setSubmitting(true);
     try {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      const annexureIiToSave = annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row));
+      await new Promise((r) => window.setTimeout(r, 80));
+      const termsToSave =
+        userEditedDraftRef.current || termsDraftRef.current.length
+          ? termsDraftRef.current
+          : termsClauses;
+      const annexureToSave =
+        userEditedDraftRef.current || annexureDraftRef.current.length
+          ? annexureDraftRef.current
+          : annexureClauses;
+      const annexureIiLive =
+        userEditedDraftRef.current || annexureIiDraftRef.current.length
+          ? annexureIiDraftRef.current
+          : annexureIiRows;
+      const annexureIiToSave = annexureIiLive.filter((row) => !annexureIiRowIsEmpty(row));
       const payload: Record<string, unknown> = {
+        skipLetterheadMaster: true,
         lineItems: lineItems.map((i) => ({
           itemName: i.itemName || '',
           description: i.description,
@@ -2313,7 +2448,7 @@ export default function CreatePOPage() {
         headerLogo,
         footerLogo,
         terms: filterNonEmptyClauses(
-          withSyncedQuoteNo(termsClauses, {
+          withSyncedQuoteNo(termsToSave, {
             ...poTermsDetails,
             paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
             siteAddress: poTermsDetails.siteAddress || deliveryAddress,
@@ -2322,10 +2457,10 @@ export default function CreatePOPage() {
             buyerGstNo: poTermsDetails.buyerGstNo || locationGstNo || '',
           }).terms
         ),
-        annexure: filterNonEmptyClauses(annexureClauses),
+        annexure: filterNonEmptyClauses(annexureToSave),
         annexureIiRows: annexureIiToSave,
         annexureIiHtml: serializeAnnexureIi(annexureIiToSave),
-        poTermsDetails: withSyncedQuoteNo(termsClauses, {
+        poTermsDetails: withSyncedQuoteNo(termsToSave, {
           ...poTermsDetails,
           paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
           siteAddress: poTermsDetails.siteAddress || deliveryAddress,
@@ -3365,7 +3500,6 @@ export default function CreatePOPage() {
                 <p className="text-xs text-red-600">{templateLoadError}</p>
               )}
               <ClauseTableEditor
-                key={`terms-${poType}`}
                 title={`${docLabel} — Terms & Conditions`}
                 headerColumnLabel="Terms Header"
                 descriptionColumnLabel="Terms Description"
@@ -3380,7 +3514,6 @@ export default function CreatePOPage() {
                 editorRevision={`${documentType}-${poType}`}
               />
               <ClauseTableEditor
-                key={`annexure-${poType}`}
                 title={`${docLabel} — Annexure I`}
                 headerColumnLabel="Annexure Header"
                 descriptionColumnLabel="Annexure Description"
@@ -3388,7 +3521,11 @@ export default function CreatePOPage() {
                 descriptionPlaceholder={`Annexure details (shown on ${docLabel} PDF)`}
                 emptyHint={`No annexure yet — reload from master or add rows. Edits appear on the ${docLabel} PDF.`}
                 clauses={annexureClauses}
-                onChange={setAnnexureClauses}
+                onChange={(next) => {
+                  markDraftEdited();
+                  annexureDraftRef.current = next;
+                  setAnnexureClauses(next);
+                }}
                 onReloadFromMaster={reloadClausesFromMaster}
                 reloadDisabled={letterheadLoading}
                 docLabel={docLabel}
@@ -3398,7 +3535,11 @@ export default function CreatePOPage() {
               <AnnexureIiTableEditor
                 title={`${docLabel} — Annexure II`}
                 rows={annexureIiRows}
-                onChange={setAnnexureIiRows}
+                onChange={(next) => {
+                  markDraftEdited();
+                  annexureIiDraftRef.current = next;
+                  setAnnexureIiRows(next);
+                }}
                 docLabel={docLabel}
                 editorRevision={`${documentType}-${poType}`}
               />

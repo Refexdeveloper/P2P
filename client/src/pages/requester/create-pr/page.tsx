@@ -990,16 +990,21 @@ export default function CreatePRPage() {
                   ...row,
                   quotes: row.quotes.map((q) => {
                     const sub = subs.find((s) => Number(s.round) === Number(q.round));
-                    if (!sub) return q;
+                    if (!sub && !q.file) return q;
                     return {
                       ...q,
-                      quotedPrice: q.quotedPrice || (sub.quotedPrice != null ? String(sub.quotedPrice) : ''),
-                      leadTime: q.leadTime || (sub.leadTime != null ? String(sub.leadTime) : ''),
-                      paymentTerms: q.paymentTerms || sub.paymentTerms || '',
-                      // Server file wins — drop local File once it is stored
-                      file: sub.quotationFileName ? null : q.file,
-                      savedFileName: sub.quotationFileName || q.savedFileName,
-                      savedSubmissionId: sub.id ? Number(sub.id) : q.savedSubmissionId,
+                      quotedPrice: q.quotedPrice || (sub?.quotedPrice != null ? String(sub.quotedPrice) : ''),
+                      leadTime: q.leadTime || (sub?.leadTime != null ? String(sub.leadTime) : ''),
+                      paymentTerms: q.paymentTerms || sub?.paymentTerms || '',
+                      // Keep an unsaved local File; only drop it once the server has that same name.
+                      file:
+                        q.file && (!sub?.quotationFileName || sub.quotationFileName !== q.file.name)
+                          ? q.file
+                          : sub?.quotationFileName
+                            ? null
+                            : q.file,
+                      savedFileName: q.file?.name || sub?.quotationFileName || q.savedFileName,
+                      savedSubmissionId: sub?.id ? Number(sub.id) : q.savedSubmissionId,
                     };
                   }),
                 };
@@ -1583,7 +1588,7 @@ export default function CreatePRPage() {
       };
       if (prFlow === 'functional' && vendorSelection === 'own') {
         const needsQuotationUpload = rfqVendors.some((row) =>
-          row.quotes.some((q) => Boolean(q.file) && !q.savedSubmissionId)
+          row.quotes.some((q) => Boolean(q.file))
         );
         // Always upload local quotation Files (also on silent / menu leave) so they survive navigation.
         const packed = await buildRfqVendorsPayload({
@@ -1736,6 +1741,7 @@ export default function CreatePRPage() {
         if (isAdminEditFlow) {
           await prApi.adminUpdate(id, payload);
           await uploadNewAttachments(id);
+          await markQuoteFilesSaved(id);
           if (silent) return;
         setCreatedPrNumber(prNumber);
           setNextStepLabel('');

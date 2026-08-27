@@ -306,6 +306,7 @@ export default function RichTextEditor({
         contentEditable
         suppressContentEditableWarning
         onInput={handleInput}
+        onBlur={emitHtml}
         onPaste={handlePaste}
         data-placeholder={placeholder}
         style={{ minHeight, lineHeight: advanced ? 1.5 : undefined }}

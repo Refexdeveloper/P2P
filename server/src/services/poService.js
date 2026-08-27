@@ -905,7 +905,11 @@ async function resolvePoDraftContent(prId, body) {
     if (resolvedLetterheadId) throw err;
   }
 
-  if (!resolvedTerms.length || !resolvedAnnexure.length || !resolvedLetterhead) {
+  const skipMaster = Boolean(body?.skipLetterheadMaster);
+  if (
+    !skipMaster &&
+    (!resolvedTerms.length || !resolvedAnnexure.length || !resolvedLetterhead)
+  ) {
     try {
       const master = await getLetterheadByType(normalizedPoType);
       resolvedLetterhead = resolvedLetterhead || master.letterheadHeader || '';
@@ -1074,7 +1078,11 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     if (resolvedLetterheadId) throw err;
   }
 
-  if (!resolvedTerms.length || !resolvedAnnexure.length || !resolvedLetterhead) {
+  const skipMaster = Boolean(body?.skipLetterheadMaster);
+  if (
+    !skipMaster &&
+    (!resolvedTerms.length || !resolvedAnnexure.length || !resolvedLetterhead)
+  ) {
     try {
       const master = await getLetterheadByType(normalizedPoType);
       resolvedLetterhead = resolvedLetterhead || master.letterheadHeader || '';
@@ -1639,8 +1647,9 @@ function normalizeDraftSaveBody(body = {}) {
 }
 
 async function resolveDraftSaveContent({ prId, existing, body }) {
-  const payload = normalizeDraftSaveBody(body);
+  const payload = normalizeDraftSaveBody({ ...body, skipLetterheadMaster: true });
   const effectivePrId = existing?.pr_id || prId;
+  let draft;
   if (effectivePrId) {
     let vendor;
     try {
@@ -1659,29 +1668,85 @@ async function resolveDraftSaveContent({ prId, existing, body }) {
         vendor_email: String(payload.vendorEmail || '').trim() || vendor.vendor_email,
       };
     }
-    const draft = await resolvePoDraftContent(effectivePrId, {
+    draft = await resolvePoDraftContent(effectivePrId, {
       ...payload,
+      skipLetterheadMaster: true,
       poNumber: existing?.po_number || payload.poNumber,
       vendorName: vendor.vendor_name,
       vendorEmail: vendor.vendor_email,
       poDate: payload.poDate || payload.po_date || formatDate(existing?.po_date) || formatDate(existing?.created_at),
     });
-    return { ...draft, vendorName: vendor.vendor_name, vendorEmail: vendor.vendor_email, rfqInvitationId: vendor.id || null };
+    draft = {
+      ...draft,
+      vendorName: vendor.vendor_name,
+      vendorEmail: vendor.vendor_email,
+      rfqInvitationId: vendor.id || null,
+    };
+  } else {
+    const needsPreviewVendor =
+      !String(payload.vendorName || existing?.vendor_name || '').trim() ||
+      !String(payload.vendorEmail || existing?.vendor_email || '').trim();
+    draft = await resolveManualPoDraftContent(
+      {
+        ...payload,
+        skipLetterheadMaster: true,
+        poNumber: existing?.po_number || payload.poNumber,
+        vendorName: payload.vendorName || existing?.vendor_name,
+        vendorEmail: payload.vendorEmail || existing?.vendor_email,
+        poDate: payload.poDate || payload.po_date || formatDate(existing?.po_date) || formatDate(existing?.created_at),
+      },
+      { forPreview: needsPreviewVendor }
+    );
   }
 
-  const needsPreviewVendor =
-    !String(payload.vendorName || existing?.vendor_name || '').trim() ||
-    !String(payload.vendorEmail || existing?.vendor_email || '').trim();
-  const draft = await resolveManualPoDraftContent(
-    {
-      ...payload,
-      poNumber: existing?.po_number || payload.poNumber,
-      vendorName: payload.vendorName || existing?.vendor_name,
-      vendorEmail: payload.vendorEmail || existing?.vendor_email,
-      poDate: payload.poDate || payload.po_date || formatDate(existing?.po_date) || formatDate(existing?.created_at),
-    },
-    { forPreview: needsPreviewVendor }
-  );
+  // Persist exactly what the user sent — never rehydrate Type Master clauses on draft save
+  const termsPick = pickProvidedArray(payload, 'terms', 'termsClauses');
+  const annexurePick = pickProvidedArray(payload, 'annexure', 'annexureClauses');
+  if (termsPick.provided) {
+    const quoteMerged = mergeQuoteNoIntoPoContent(termsPick.value, draft.poTermsDetails || {});
+    draft.termsClauses = quoteMerged.terms;
+    draft.poTermsDetails = { ...draft.poTermsDetails, ...quoteMerged.poTermsDetails };
+  }
+  if (annexurePick.provided) {
+    draft.annexureClauses = annexurePick.value;
+  }
+  if (Array.isArray(payload.lineItems)) {
+    draft.lineItems = payload.lineItems.map((item) => {
+      const taxPercentage = Math.min(
+        100,
+        Math.max(0, Number(item.taxPercentage ?? item.tax_percentage ?? payload.gstPercentage) || 0)
+      );
+      const total = lineItemTotal(item.quantity, item.unitPrice);
+      const unit = normalizeUnit(item.unit || item.uom);
+      return {
+        itemName: item.itemName || item.name || '',
+        description: item.description,
+        category: item.category || '',
+        quantity: Number(item.quantity),
+        unit,
+        uom: unit,
+        unitPrice: Number(item.unitPrice),
+        discount: 0,
+        taxPercentage,
+        total,
+        taxAmount: lineItemTax(total, taxPercentage),
+      };
+    });
+    const subtotal = roundMoney(draft.lineItems.reduce((sum, item) => sum + item.total, 0));
+    const taxAmount = roundMoney(draft.lineItems.reduce((sum, item) => sum + item.taxAmount, 0));
+    draft.subtotal = subtotal;
+    draft.taxAmount = taxAmount;
+    draft.grandTotal = roundMoney(subtotal + taxAmount);
+  }
+  if (
+    Array.isArray(payload.annexureIiRows) ||
+    Object.prototype.hasOwnProperty.call(payload, 'annexureIiHtml') ||
+    Object.prototype.hasOwnProperty.call(payload, 'annexure_ii_html')
+  ) {
+    const html = serializeAnnexureIi(pickAnnexureIiSource(payload, ''));
+    draft.annexureIiHtml = html;
+    draft.annexureIiRows = parseAnnexureIi(html);
+  }
   return draft;
 }
 

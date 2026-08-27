@@ -466,8 +466,8 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
     (Array.isArray(v.quotes) ? v.quotes : []).some((q) => Boolean(q.quotationFileData))
   );
 
-  // Fast path: files already on server, client only sent prices/names — UPDATE in place (no DELETE/BLOB copy).
-  if (!hasNewFileData && invitationsByEmail.size) {
+  // Fast path: existing invitations — UPDATE prices in place, and replace files when the client sent new BLOBs.
+  if (invitationsByEmail.size) {
     const resolved = [];
     let canFastUpdate = true;
     for (const vendor of vendors) {
@@ -488,6 +488,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
           leadTime: Number(q.leadTime) || 0,
           paymentTerms: String(q.paymentTerms || 'Net 30').trim() || 'Net 30',
           quotationFileName: q.quotationFileName,
+          quotationFileData: q.quotationFileData,
         }))
         .filter((q) => q.round <= maxRounds)
         .sort((a, b) => a.round - b.round);
@@ -540,19 +541,58 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
           const existingSub = submissionsByEmailRound.get(key);
           const prev = previousFiles.get(key);
           if (existingSub?.submission_id) {
-            await pool.query(
-              `UPDATE vendor_quotation_submissions
-               SET quoted_price = ?, lead_time_days = ?, payment_terms = ?,
-                   vendor_notes = ?, status = 'submitted'
-               WHERE id = ?`,
-              [
-                quote.quotedPrice,
-                quote.leadTime,
-                quote.paymentTerms,
-                `Entered on Create PR by ${user.name || user.email}`,
-                existingSub.submission_id,
-              ]
-            );
+            let fileName = existingSub.quotation_file_name || prev?.fileName || quote.quotationFileName || null;
+            let filePath = existingSub.quotation_file_path || prev?.filePath || null;
+            let fileBuffer = null;
+            let replaceFile = false;
+            if (quote.quotationFileName && quote.quotationFileData) {
+              const fileInfo = saveQuotationFile(
+                inv.id,
+                quote.round,
+                quote.quotationFileName,
+                quote.quotationFileData
+              );
+              if (!fileInfo.filePath && !fileInfo.buffer) {
+                throw new Error(`Failed to save quotation file for ${name} round ${quote.round}`);
+              }
+              fileName = fileInfo.fileName;
+              filePath = fileInfo.filePath;
+              fileBuffer = fileInfo.buffer;
+              replaceFile = true;
+            }
+            if (replaceFile) {
+              await pool.query(
+                `UPDATE vendor_quotation_submissions
+                 SET quoted_price = ?, lead_time_days = ?, payment_terms = ?,
+                     vendor_notes = ?, status = 'submitted',
+                     quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?
+                 WHERE id = ?`,
+                [
+                  quote.quotedPrice,
+                  quote.leadTime,
+                  quote.paymentTerms,
+                  `Updated on Track PR / Create PR by ${user.name || user.email}`,
+                  fileName,
+                  filePath,
+                  fileBuffer,
+                  existingSub.submission_id,
+                ]
+              );
+            } else {
+              await pool.query(
+                `UPDATE vendor_quotation_submissions
+                 SET quoted_price = ?, lead_time_days = ?, payment_terms = ?,
+                     vendor_notes = ?, status = 'submitted'
+                 WHERE id = ?`,
+                [
+                  quote.quotedPrice,
+                  quote.leadTime,
+                  quote.paymentTerms,
+                  `Entered on Create PR by ${user.name || user.email}`,
+                  existingSub.submission_id,
+                ]
+              );
+            }
           } else if (prev?.fileName) {
             // Round existed as file metadata only — keep DB blob (Cloud Run disk is ephemeral).
             let fileBuffer = null;

@@ -2621,6 +2621,13 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     conn.release();
   }
 
+  // Track PR / admin Edit PR: persist quotation file replacements (header-only update used to drop them).
+  if (prFlow === 'functional' && vendorMode === 'own' && (body.rfqVendors || body.rfq_vendors)) {
+    await persistFunctionalOwnRfq(user, prId, body, {
+      markSubmitted: pr.status !== PR_STATUS.DRAFT,
+    });
+  }
+
   return getPurchaseRequestById(prId);
 }
 

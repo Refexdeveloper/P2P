@@ -260,9 +260,16 @@ export default function FunctionalOwnRfqSection({
   const comparisonRows: RfqQuoteTableRow[] = rows.map((r, i) => {
     const quotes = r.quotes
       .filter((q) => Number.isFinite(Number(q.quotedPrice)) && String(q.quotedPrice).trim() !== '' && Number(q.quotedPrice) >= 0)
-      .map((q) => ({ round: q.round, quotedPrice: Number(q.quotedPrice), status: 'submitted' }));
+      .map((q) => ({
+        round: q.round,
+        quotedPrice: Number(q.quotedPrice),
+        status: 'submitted' as const,
+        quotationFileName: q.file?.name || q.savedFileName || '',
+        submissionId: q.savedSubmissionId || null,
+      }));
     const hasActive = quotes.length > 0;
     const fileQuote =
+      r.quotes.find((q) => q.round === (quotes.reduce((max, q) => Math.max(max, q.round), 1))) ||
       r.quotes.find((q) => q.file || q.savedFileName || q.savedSubmissionId) ||
       r.quotes.find((q) => q.round === 1);
     return {
@@ -523,7 +530,12 @@ export default function FunctionalOwnRfqSection({
             onViewFile={(tableRow) => {
               const row = rows.find((r) => r.key === tableRow.id);
               if (!row) return;
+              const sid = Number(tableRow.quotationSubmissionId || tableRow.submissionId) || 0;
+              const named = String(tableRow.quotationFileName || '');
               const quote =
+                (sid ? row.quotes.find((q) => Number(q.savedSubmissionId) === sid) : null) ||
+                row.quotes.find((q) => q.file && q.file.name === named) ||
+                row.quotes.find((q) => q.savedFileName && q.savedFileName === named) ||
                 row.quotes.find((q) => q.file || q.savedSubmissionId || q.savedFileName) ||
                 row.quotes.find((q) => q.round === 1);
               if (!quote) {
