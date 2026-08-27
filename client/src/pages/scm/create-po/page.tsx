@@ -1945,6 +1945,36 @@ export default function CreatePOPage() {
     masterVendors,
   ]);
 
+  const applyMasterVendorToPayload = useCallback(
+    async (payload: Record<string, unknown>) => {
+      const vendorNameLive = String(
+        payload.vendorName || vendorMeta.name || pr?.recommendedVendor || ''
+      ).trim();
+      let masterHit = matchVendorFromMaster(masterVendors, {
+        name: vendorNameLive,
+        email: String(payload.vendorEmail || vendorMeta.email || ''),
+      });
+      if (!masterHit && vendorNameLive) {
+        try {
+          const searchTerm = vendorNameLive.split(/\s+/).slice(0, 3).join(' ');
+          const res = await vendorApi.list(searchTerm);
+          masterHit = matchVendorFromMaster(res.data || [], {
+            name: vendorNameLive,
+            email: String(payload.vendorEmail || ''),
+          });
+        } catch {
+          /* keep payload email */
+        }
+      }
+      if (masterHit?.email) {
+        payload.vendorName = masterHit.name || payload.vendorName;
+        payload.vendorEmail = masterHit.email;
+      }
+      return payload;
+    },
+    [masterVendors, vendorMeta.name, vendorMeta.email, pr?.recommendedVendor]
+  );
+
   useEffect(() => {
     if (activeTab !== 'preview' || (!numericPrId && !editPoId && !isManualMode)) return;
 
@@ -1955,9 +1985,8 @@ export default function CreatePOPage() {
       setPreviewLoading(true);
       setPreviewError('');
       try {
-        const payload = buildPreviewPayload();
-        // Prefer live vendor fields + vendorMeta so preview matches what user typed
-        if (isManualMode) {
+        const payload = await applyMasterVendorToPayload(buildPreviewPayload());
+        if (!payload.vendorEmail && isManualMode) {
           payload.vendorName =
             String(payload.vendorName || '').trim() ||
             manualVendorName.trim() ||
@@ -2008,7 +2037,7 @@ export default function CreatePOPage() {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [activeTab, numericPrId, editPoId, isEditMode, isManualMode, buildPreviewPayload, manualVendorName, manualVendorEmail, vendorMeta.name, vendorMeta.email]);
+  }, [activeTab, numericPrId, editPoId, isEditMode, isManualMode, buildPreviewPayload, applyMasterVendorToPayload, manualVendorName, manualVendorEmail, vendorMeta.name, vendorMeta.email, masterVendors]);
 
   useEffect(() => {
     return () => {
@@ -4138,19 +4167,7 @@ export default function CreatePOPage() {
                       onClick={async () => {
                         try {
                           setPdfDownloading(true);
-                          const payload = buildPreviewPayload();
-                          if (isManualMode) {
-                            payload.vendorName =
-                              String(payload.vendorName || '').trim() ||
-                              manualVendorName.trim() ||
-                              vendorMeta.name.trim() ||
-                              'Vendor Name';
-                            payload.vendorEmail =
-                              String(payload.vendorEmail || '').trim() ||
-                              manualVendorEmail.trim() ||
-                              vendorMeta.email.trim() ||
-                              'vendor@example.com';
-                          }
+                          const payload = await applyMasterVendorToPayload(buildPreviewPayload());
                           const blob =
                             isEditMode && editPoId
                               ? await poApi.previewPdfBlobByPoId(editPoId, payload)

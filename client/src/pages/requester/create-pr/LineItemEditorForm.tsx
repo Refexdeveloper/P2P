@@ -151,12 +151,8 @@ export default function LineItemEditorForm({
   const onLiveChangeRef = useRef(onLiveChange);
   onLiveChangeRef.current = onLiveChange;
 
-  useEffect(() => {
-    setDraft(initial);
-    setQtyInput(initial.quantity > 0 ? String(initial.quantity) : '');
-    setGstInput(initial.gstPercentage == null ? '18' : String(initial.gstPercentage));
-    setErrors({});
-  }, [initial]);
+  // Seed once per mount. Parent remounts this form via key when the line item id changes.
+  // Do not reset from `initial` on every parent render — that wiped fields during autosave.
 
   const updateDraft = (patch: Partial<LineItem>) => {
     setDraft((prev) => ({ ...prev, ...patch }));

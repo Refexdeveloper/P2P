@@ -803,6 +803,15 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
   const gst = String(extras.gst || extras.gstNumber || extras.gst_number || '').trim();
   const select = `SELECT name, email, address, gst_number, pan_number, phone FROM vendors`;
 
+  const nameKey = (value) =>
+    String(value || '')
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\b(private|limited|pvt|ltd|llp|inc|corp|company)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
   // Name first — email on the PO is often stale after Vendor Master updates.
   if (name) {
     const [byName] = await pool.query(
@@ -810,6 +819,22 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
       [name]
     );
     if (byName[0]) return byName[0];
+
+    const token = nameKey(name).split(' ').find((t) => t.length >= 4) || '';
+    if (token) {
+      const [fuzzy] = await pool.query(
+        `${select} WHERE LOWER(name) LIKE ? LIMIT 25`,
+        [`%${token}%`]
+      );
+      const key = nameKey(name);
+      const hit =
+        fuzzy.find((row) => nameKey(row.name) === key) ||
+        fuzzy.find((row) => {
+          const k = nameKey(row.name);
+          return k && key && (k.includes(key) || key.includes(k));
+        });
+      if (hit) return hit;
+    }
   }
   if (gst) {
     const [byGst] = await pool.query(

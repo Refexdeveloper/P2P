@@ -793,6 +793,8 @@ export default function CreatePRPage() {
         backendPrId: id ?? snap.backendPrId,
       });
       markCreatePrSoftResume(id);
+      // Keep the Add/Edit line-item form open; local draft is already written above.
+      if (lineEditorModeRef.current) return;
       // Upload quotation files + persist same PR# when leaving to another menu.
       if (snap.entityId && !savingInFlightRef.current) {
         void savePRRef.current(false, {
@@ -859,6 +861,11 @@ export default function CreatePRPage() {
       });
       // Autosave must not create a new PR (that remounted /edit-pr and wiped the new line item).
       if (!existingId) {
+        setSoftSaveHint('Draft auto-saved locally');
+        return;
+      }
+      // Keep Add/Edit line-item form open — silent save used to close it and wipe fields.
+      if (lineEditorModeRef.current) {
         setSoftSaveHint('Draft auto-saved locally');
         return;
       }
@@ -1234,7 +1241,8 @@ export default function CreatePRPage() {
   };
 
   /** Commit open Add/Edit form into the table before Save Draft / autosave. */
-  const commitPendingLineItem = (): LineItem[] => {
+  const commitPendingLineItem = (options?: { closeEditor?: boolean }): LineItem[] => {
+    const closeEditor = options?.closeEditor !== false;
     const pending = pendingLineDraftRef.current;
     const mode = lineEditorModeRef.current || lineEditor?.mode;
     if (!pending || !mode) return lineItems;
@@ -1259,9 +1267,11 @@ export default function CreatePRPage() {
       next = [...lineItems, normalized];
     }
     setLineItems(next);
-    pendingLineDraftRef.current = null;
-    lineEditorModeRef.current = null;
-    setLineEditor(null);
+    if (closeEditor) {
+      pendingLineDraftRef.current = null;
+      lineEditorModeRef.current = null;
+      setLineEditor(null);
+    }
     return next;
   };
 
@@ -1535,7 +1545,7 @@ export default function CreatePRPage() {
     savingInFlightRef.current = true;
     if (submit) skipSoftSaveRef.current = true;
     try {
-      const itemsForSave = commitPendingLineItem();
+      const itemsForSave = commitPendingLineItem({ closeEditor: !silent });
       const draftSnap: CreatePrDraftSnapshot = {
         ...(snapshotRef.current || {
           v: 1 as const,

@@ -60,7 +60,7 @@ function newLine(partial?: Partial<LineDraft>): LineDraft {
     description: '',
     quantity: 1,
     unitCost: 0,
-    ...partial,
+    ...partial, 
   };
 }
 
