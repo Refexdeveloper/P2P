@@ -600,12 +600,6 @@ function clauseHeaderHtml(raw, po, fallback = 'Term') {
   return escapeHtml(value);
 }
 
-function termsSectionTitle(po) {
-  return String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order'
-    ? 'Terms and Conditions — Work Order'
-    : 'Terms and Conditions — Purchase Order';
-}
-
 function termsColgroupHtml() {
   return `<colgroup>
     <col class="col-head" style="width:24%">
@@ -621,17 +615,13 @@ function annexureColgroupHtml() {
   </colgroup>`;
 }
 
-function termsTheadHtml(po, continued = false) {
-  const title = continued ? `${termsSectionTitle(po)} — Continued` : termsSectionTitle(po);
+function termsTheadHtml(_po, continued = false) {
+  const title = continued ? 'TERMS AND CONDITIONS — Continued' : 'TERMS AND CONDITIONS';
   return `
           ${termsColgroupHtml()}
           <thead>
             <tr>
-              <th class="section-title" colspan="2">${escapeHtml(title)}</th>
-            </tr>
-            <tr class="col-heads">
-              <th class="head-col">HEADERS</th>
-              <th class="col-terms">TERMS AND CONDITIONS</th>
+              <th class="section-title" colspan="2">${title}</th>
             </tr>
           </thead>`;
 }
@@ -649,7 +639,7 @@ function termRowHtml(term, po, index) {
 }
 
 function annexureTheadHtml(docLabel, continued = false) {
-  const title = `ANNEXURE-I — ${escapeHtml(docLabel).toUpperCase()} COMMERCIAL TERMS AND CONDITIONS${continued ? ' — Continued' : ''}`;
+  const title = `ANNEXURE-I — ${escapeHtml(docLabel).toUpperCase()}${continued ? ' — Continued' : ''}`;
   return `
             ${annexureColgroupHtml()}
             <thead>
