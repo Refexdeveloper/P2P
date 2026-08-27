@@ -2510,19 +2510,28 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     'HOD Approver',
     'PR Manager',
     'CFO',
+    'Requester',
   ];
   const allowedByRole = allowed.includes(user.role) || isSuperAdmin(user.role);
   if (!allowedByRole) {
     const codes = await getUserPermissionCodes(user.id, user.role);
-    const ok = ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard'].some((c) =>
-      codes.includes(c)
-    );
+    const ok = [
+      'nav.rfq_approval',
+      'nav.track_pr',
+      'nav.tasks',
+      'nav.pr_manager_dashboard',
+      'nav.rfq_entry',
+      'nav.scm_rfq_entry',
+    ].some((c) => codes.includes(c));
     if (!ok) throw new Error('Unauthorized');
   }
 
   const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
   if (!prRows.length) throw new Error('PR not found');
   const pr = prRows[0];
+  if (user.role === 'Requester' && Number(pr.requester_id) !== Number(user.id) && !isSuperAdmin(user.role)) {
+    throw new Error('Unauthorized');
+  }
 
   const {
     title,

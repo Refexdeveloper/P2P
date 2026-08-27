@@ -23,6 +23,7 @@ import RfqExtraQuestionsPanel from './components/RfqExtraQuestionsPanel';
 import PrBillingDeliverySection, {
   PrBillingDeliveryValue,
 } from '../create-pr/PrBillingDeliverySection';
+import RfqEditPrModal from './components/RfqEditPrModal';
 import {
   billingFromDraft,
   clearRfqEntryDraft,
@@ -245,6 +246,7 @@ export default function RfqEntryDetailPage() {
   const billingHydratedRef = useRef(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [softSaveHint, setSoftSaveHint] = useState('');
+  const [editPrOpen, setEditPrOpen] = useState(false);
   /** True only after local draft restore attempt finished for this PR (blocks empty wipe). */
   const draftHydratedRef = useRef(false);
   const localDraftRestoredForPrRef = useRef<number | null>(null);
@@ -1904,6 +1906,16 @@ export default function RfqEntryDetailPage() {
               Compare prices
             </button>
             </div>
+          {prId && (!isFinalized || user?.role === 'Super Admin') && (
+            <button
+              type="button"
+              onClick={() => setEditPrOpen(true)}
+              className="px-5 py-2.5 border border-teal-300 text-teal-800 bg-teal-50 text-sm font-semibold rounded-xl hover:bg-teal-100"
+            >
+              <i className="ri-edit-line mr-1.5"></i>
+              Edit PR
+            </button>
+          )}
           {!isFinalized && (
             <button
               type="button"
@@ -3041,6 +3053,19 @@ export default function RfqEntryDetailPage() {
           </div>
         </div>
       )}
+
+      {prId ? (
+        <RfqEditPrModal
+          open={editPrOpen}
+          prId={Number(prId)}
+          onClose={() => setEditPrOpen(false)}
+          onToast={(msg) => showToast(msg)}
+          onSaved={() => {
+            billingHydratedRef.current = false;
+            void loadRfq();
+          }}
+        />
+      ) : null}
     </DashboardLayout>
   );
 }

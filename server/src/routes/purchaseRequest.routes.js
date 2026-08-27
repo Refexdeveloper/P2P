@@ -36,6 +36,10 @@ const canApproveAdmin = requireRolesOrPermissions(
   ['Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO'],
   ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard']
 );
+const canEditPrDetails = requireRolesOrPermissions(
+  ['Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO', 'Requester'],
+  ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard', 'nav.rfq_entry', 'nav.scm_rfq_entry', 'nav.create_pr']
+);
 
 router.use(authenticate);
 
@@ -250,7 +254,7 @@ router.put(
 );
 
 /** RFQ Approval / admin: edit full PR details at any status */
-router.put('/:id/admin', canApproveAdmin, async (req, res) => {
+router.put('/:id/admin', canEditPrDetails, async (req, res) => {
   try {
     const pr = await adminUpdatePurchaseRequest(req.user, Number(req.params.id), req.body);
     res.json({ data: pr, message: 'PR details updated successfully' });
