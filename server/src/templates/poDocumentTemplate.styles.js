@@ -858,6 +858,7 @@ export const PO_STYLES = `
   }
   .special-notes p, .ack-box p { margin: 6px 0; }
   .special-notes .lbl { font-weight: bold; }
+  .special-notes .inv-addr-plain { font-weight: normal; font-style: normal; font-family: inherit; }
   .sig-space { min-height: 72px; margin: 8px 0 12px; }
   .sig-space .sig-img {
     max-height: 90px;

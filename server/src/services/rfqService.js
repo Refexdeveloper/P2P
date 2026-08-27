@@ -2816,10 +2816,13 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
   if (user.role === 'Requester' && row.requester_id !== user.id) {
     throw new Error('Unauthorized');
   }
-  if (user.role === 'Requester') {
+  {
     const config = await getOrCreateRfqConfig(row.pr_id);
     if (config.finalizedAt) {
       throw new Error('RFQ already finalized — quotation amounts cannot be changed');
+    }
+    if (user.role === 'Requester' && config.requesterSubmittedAt) {
+      throw new Error('RFQ already submitted — quotation amounts cannot be changed');
     }
   }
 

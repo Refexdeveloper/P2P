@@ -464,6 +464,28 @@ function stripHtmlToText(html) {
     .trim();
 }
 
+function richTextToPlainLines(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function invoicingAddressPlainHtml(raw) {
+  const text = richTextToPlainLines(raw);
+  if (!text) return '';
+  return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
 function isQuoteNoHeader(raw) {
   const text = stripHtmlToText(raw)
     .replace(/\//g, ' ')
@@ -578,7 +600,7 @@ function applyClausePlaceholders(html, po) {
     .replace(/\$aos_quotes_pm_email_c/gi, placeholderText(td.projectManagerEmail))
     .replace(
       /\$aos_quotes_invoicing_address_c/gi,
-      placeholderText(td.invoicingAddress || td.locationName)
+      invoicingAddressPlainHtml(td.invoicingAddress || td.locationName) || '—'
     )
     .replace(/\$aos_quotes_original_address_c/gi, placeholderText(td.mailingAddress));
   if (isWorkOrder) {
@@ -774,21 +796,15 @@ function specialNotesInnerHtml(po, options = {}) {
       ${siteAddress ? `<p><span class="lbl">Site Address:</span> ${escapeHtml(siteAddress).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.siteContactPerson || td.siteContactPhone || td.siteContactEmail ? `<p><span class="lbl">Contact person at the site:</span> Name: ${escapeHtml(td.siteContactPerson || '—')}, Phone: ${escapeHtml(td.siteContactPhone || '—')}, Email: ${escapeHtml(td.siteContactEmail || '—')}</p>` : ''}
       ${td.projectManagerHo || td.projectManagerContact || td.projectManagerEmail ? `<p><span class="lbl">Project Manager at the head office:</span> ${escapeHtml(td.projectManagerHo || '—')}, Phone: ${escapeHtml(td.projectManagerContact || '—')}, Email: ${escapeHtml(td.projectManagerEmail || '—')}</p>` : ''}
-      ${td.invoicingAddress || td.locationName || td.buyerGstNo ? `<div><p><span class="lbl">Invoicing address:</span></p><p><strong>${escapeHtml(entityLabel)},</strong></p> ${(() => {
+      ${td.invoicingAddress || td.locationName || td.buyerGstNo ? `<div><p><span class="lbl">Invoicing address:</span></p><p>${escapeHtml(entityLabel)},</p> ${(() => {
         const raw = String(td.invoicingAddress || '').trim();
-        if (looksLikeHtml(raw)) return `<div class="inv-addr-rich">${raw}</div>`;
+        const body = invoicingAddressPlainHtml(raw);
+        if (body) return `<div class="inv-addr-plain">${body}</div>`;
         const lines = [
-          raw,
-          !raw.includes(String(td.locationName || '')) && td.locationName ? td.locationName : '',
-          td.buyerGstNo && !raw.toUpperCase().includes('GSTIN') ? `GSTIN: ${td.buyerGstNo}` : '',
+          !raw && td.locationName ? td.locationName : '',
+          td.buyerGstNo ? `GSTIN: ${td.buyerGstNo}` : '',
         ].filter(Boolean);
-        if (!lines.length && (td.locationName || td.buyerGstNo)) {
-          return `<div class="inv-addr-rich">${[
-            td.locationName ? `<p><strong>${escapeHtml(td.locationName)}</strong></p>` : '',
-            td.buyerGstNo ? `<p>GSTIN: ${escapeHtml(td.buyerGstNo)}</p>` : '',
-          ].join('')}</div>`;
-        }
-        return escapeHtml(lines.join('\n')).replace(/\n/g, '<br>');
+        return `<div class="inv-addr-plain">${escapeHtml(lines.join('\n')).replace(/\n/g, '<br>')}</div>`;
       })()}</div>` : ''}
       ${td.mailingAddress ? `<p><span class="lbl">Original invoice to be sent at:</span></p><p><strong>Refex Group of Companies,</strong></p><p>${escapeHtml(td.mailingAddress).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.reasonForCancellation ? `<p><span class="lbl">Reason For Cancellation:</span> ${escapeHtml(td.reasonForCancellation).replace(/\n/g, '<br>')}</p>` : ''}

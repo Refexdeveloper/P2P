@@ -219,7 +219,7 @@ function letterheadLocKey(loc: LetterheadLocationRecord, index = 0) {
 function buildInvoicingAddressFromLocation(loc: LetterheadLocationRecord) {
   const parts: string[] = [];
   if (loc.location?.trim()) {
-    parts.push(`<p><strong>${loc.location.trim()}</strong></p>`);
+    parts.push(`<p>${loc.location.trim()}</p>`);
   }
   if (loc.gstNo?.trim()) {
     parts.push(`<p>GSTIN: ${loc.gstNo.trim()}</p>`);
@@ -3770,8 +3770,9 @@ export default function CreatePOPage() {
                           editorKey={`inv-addr-${letterheadId || 'none'}-${letterheadLocationKey || 'none'}`}
                           value={poTermsDetails.invoicingAddress}
                           onChange={(html) => updatePoTermsField('invoicingAddress', html)}
-                          placeholder="Enter invoicing address (rich text). Auto-fills from selected location + GSTIN."
+                          placeholder="Enter invoicing address. Pasted text is always normal (no bold or other fonts)."
                           minHeight={120}
+                          plainTextOnly
                         />
                     </div>
                       <div className="space-y-1.5">

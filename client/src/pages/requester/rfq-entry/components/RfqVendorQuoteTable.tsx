@@ -428,19 +428,22 @@ export default function RfqVendorQuoteTable({
                     <div className="flex flex-wrap justify-end gap-1.5">
                       <button
                         type="button"
-                        onClick={() => onEdit(row, activeTab === 'all' ? undefined : Number(activeTab))}
-                        disabled={isFinalized}
-                        title="Fill quote fields"
-                        className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 disabled:opacity-40 inline-flex items-center gap-1"
+                        onClick={() => {
+                          if (isFinalized) return;
+                          onEdit(row, activeTab === 'all' ? undefined : Number(activeTab));
+                        }}
+                        disabled={Boolean(isFinalized)}
+                        title={isFinalized ? 'RFQ is approved — editing is locked' : 'Fill quote fields'}
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none disabled:hover:bg-slate-900 inline-flex items-center gap-1"
                       >
                         <i className="ri-edit-line" />
                         Edit
                       </button>
                       <button
                         type="button"
-                        disabled={isFinalized || !row.hasActiveQuote}
+                        disabled={Boolean(isFinalized) || !row.hasActiveQuote}
                         onClick={() => onChoose(row)}
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40 ${
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none ${
                           isRecommended
                             ? 'bg-teal-600 text-white border-teal-600'
                             : 'bg-white text-gray-700 border-gray-200'

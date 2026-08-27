@@ -1118,6 +1118,10 @@ export default function RfqEntryDetailPage() {
   };
 
   const handleSaveExistingQuote = async (row: TableRow, opts?: { acceptZero?: boolean }) => {
+    if (isFinalized) {
+      failQuote('RFQ is approved — quotation cannot be edited');
+      return;
+    }
     const checked = validateRequiredQuote(row);
     if (!checked) return;
     const { quote, draft, file, quoteLineItems, quotedPrice, zeroCount } = checked;
@@ -1799,6 +1803,7 @@ export default function RfqEntryDetailPage() {
   };
 
   const openQuotePopup = (row: TableRow, targetRound?: number) => {
+    if (isFinalized) return;
     setError('');
     setQuotePopupError('');
     const existingRound = latestExistingRound(row);
@@ -1906,7 +1911,7 @@ export default function RfqEntryDetailPage() {
               Compare prices
             </button>
             </div>
-          {prId && (!isFinalized || user?.role === 'Super Admin') && (
+          {prId && !isFinalized && (
             <button
               type="button"
               onClick={() => setEditPrOpen(true)}
@@ -2250,6 +2255,7 @@ export default function RfqEntryDetailPage() {
                   const isEditingExisting = editingQuoteIds.has(row.invitationId);
                   const quoteFieldsEditable =
                     mode === 'entry' &&
+                    !isFinalized &&
                     (awaitingManualEntry || (isEditingExisting && canEditExistingQuote));
                   const awaitingVendorEmail =
                     isEmailRow &&
@@ -2321,7 +2327,9 @@ export default function RfqEntryDetailPage() {
                               {savingManualId === row.invitationId ? 'Saving...' : 'Save quote + file'}
                             </button>
                           )}
-                          {(isEditingExisting || (row.hasActiveQuote && canEditExistingQuote)) && !awaitingManualEntry && (
+                          {!isFinalized &&
+                            (isEditingExisting || (row.hasActiveQuote && canEditExistingQuote)) &&
+                            !awaitingManualEntry && (
                             <button
                               type="button"
                               onClick={() => void handleSaveExistingQuote(row)}
@@ -2747,7 +2755,7 @@ export default function RfqEntryDetailPage() {
                                       <label className="block text-[11px] font-semibold uppercase tracking-wide text-violet-700 leading-none">
                                         {f.label}
                                       </label>
-                                      {mode === 'entry' && (!isFinalized || isEditingExisting) ? (
+                                      {mode === 'entry' && !isFinalized ? (
                                         quoteFieldsEditable ? (
                                           renderFieldInput(
                                             f,

@@ -9,6 +9,8 @@ interface RichTextEditorProps {
   /** Extra formatting: font size, alignment, spacing, images */
   advanced?: boolean;
   allowImages?: boolean;
+  /** Paste and stored value stay normal text (no bold/italic/fonts from Word/web). */
+  plainTextOnly?: boolean;
 }
 
 const FONT_SIZES = [
@@ -30,6 +32,25 @@ const LINE_SPACING = [
 
 const MAX_IMAGE_BYTES = 1_600_000;
 
+function escapeForInsert(text: string) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\r\n|\r|\n/g, '<br>');
+}
+
+function htmlToPlainText(html: string) {
+  const el = document.createElement('div');
+  el.innerHTML = html || '';
+  return String(el.innerText || el.textContent || '').replace(/\u00a0/g, ' ');
+}
+
+function toPlainBreakHtml(html: string) {
+  return escapeForInsert(htmlToPlainText(html));
+}
+
 export default function RichTextEditor({
   value,
   onChange,
@@ -38,6 +59,7 @@ export default function RichTextEditor({
   editorKey,
   advanced = false,
   allowImages = false,
+  plainTextOnly = false,
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -62,10 +84,15 @@ export default function RichTextEditor({
 
   const emitHtml = useCallback(() => {
     if (!editorRef.current) return;
-    const html = editorRef.current.innerHTML;
+    let html = editorRef.current.innerHTML;
+    if (plainTextOnly && /<(b|strong|i|em|u|font|span|h[1-6]|style)\b/i.test(html)) {
+      const normalized = toPlainBreakHtml(html);
+      editorRef.current.innerHTML = normalized;
+      html = normalized;
+    }
     lastSyncedValue.current = html;
     onChange(html);
-  }, [onChange]);
+  }, [onChange, plainTextOnly]);
 
   const exec = useCallback(
     (command: string, arg?: string) => {
@@ -124,7 +151,7 @@ export default function RichTextEditor({
 
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items;
-    if (allowImages && items) {
+    if (allowImages && !plainTextOnly && items) {
       for (const item of Array.from(items)) {
         if (item.type.startsWith('image/')) {
           e.preventDefault();
@@ -135,12 +162,16 @@ export default function RichTextEditor({
       }
     }
 
-    // Strip source formatting (Word/web bold, fonts, colors) — paste as default editor text
-    const plain = e.clipboardData?.getData('text/plain') ?? '';
     e.preventDefault();
+    e.stopPropagation();
+    let plain = e.clipboardData?.getData('text/plain') || '';
+    if (!plain.trim()) {
+      plain = htmlToPlainText(e.clipboardData?.getData('text/html') || '');
+    }
     if (!plain) return;
-    const inserted = document.execCommand('insertText', false, plain);
-    if (!inserted && editorRef.current) {
+    document.execCommand('removeFormat', false);
+    const ok = document.execCommand('insertHTML', false, escapeForInsert(plain));
+    if (!ok && editorRef.current) {
       const sel = window.getSelection();
       if (sel && sel.rangeCount) {
         sel.deleteFromDocument();
@@ -170,6 +201,7 @@ export default function RichTextEditor({
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+      {!plainTextOnly && (
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-gray-100 bg-gray-50">
         {tools.map((tool) => (
           <button
@@ -268,6 +300,7 @@ export default function RichTextEditor({
           </>
         )}
       </div>
+      )}
       <div
         ref={editorRef}
         contentEditable
