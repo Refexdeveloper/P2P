@@ -3448,6 +3448,10 @@ const CFO_PO_APPROVED_STATUSES = [
   'imported',
 ];
 
+function sqlInList(values) {
+  return values.map((v) => `'${String(v).replace(/'/g, "''")}'`).join(',');
+}
+
 function cfoPoStatusLabel(status) {
   const s = String(status || '').toLowerCase();
   if (CFO_PO_PENDING_STATUSES.includes(s)) return 'Pending Approval';
@@ -3460,18 +3464,17 @@ function cfoPoStatusLabel(status) {
  * Live CFO Financial Insights: PO KPIs, entity rollups, monthly trend, recent POs, top vendors.
  */
 export async function getCfoPoInsights() {
-  const excludedPlaceholders = CFO_PO_EXCLUDED_STATUSES.map(() => '?').join(',');
-  const pendingPlaceholders = CFO_PO_PENDING_STATUSES.map(() => '?').join(',');
-  const approvedPlaceholders = CFO_PO_APPROVED_STATUSES.map(() => '?').join(',');
+  const excludedSql = sqlInList(CFO_PO_EXCLUDED_STATUSES);
+  const pendingSql = sqlInList(CFO_PO_PENDING_STATUSES);
+  const approvedSql = sqlInList(CFO_PO_APPROVED_STATUSES);
 
   const [[kpi]] = await pool.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN status NOT IN (${excludedPlaceholders}) THEN grand_total ELSE 0 END), 0) AS total_po_amount,
-       COALESCE(SUM(CASE WHEN status IN (${approvedPlaceholders}) THEN grand_total ELSE 0 END), 0) AS approved_po_amount,
-       COALESCE(SUM(CASE WHEN status IN (${pendingPlaceholders}) THEN grand_total ELSE 0 END), 0) AS pending_po_amount,
-       COUNT(CASE WHEN status NOT IN (${excludedPlaceholders}) THEN 1 END) AS total_po_count
-     FROM purchase_orders`,
-    [...CFO_PO_EXCLUDED_STATUSES, ...CFO_PO_APPROVED_STATUSES, ...CFO_PO_PENDING_STATUSES]
+       COALESCE(SUM(CASE WHEN status NOT IN (${excludedSql}) THEN grand_total ELSE 0 END), 0) AS total_po_amount,
+       COALESCE(SUM(CASE WHEN status IN (${approvedSql}) THEN grand_total ELSE 0 END), 0) AS approved_po_amount,
+       COALESCE(SUM(CASE WHEN status IN (${pendingSql}) THEN grand_total ELSE 0 END), 0) AS pending_po_amount,
+       COUNT(CASE WHEN status NOT IN (${excludedSql}) THEN 1 END) AS total_po_count
+     FROM purchase_orders`
   );
 
   const [[payments]] = await pool.query(
@@ -3487,16 +3490,15 @@ export async function getCfoPoInsights() {
        COALESCE(NULLIF(TRIM(e.code), ''), 'N/A') AS entity_code,
        COUNT(*) AS total_po_count,
        COALESCE(SUM(po.grand_total), 0) AS total_po_amount,
-       COALESCE(SUM(CASE WHEN po.status IN (${approvedPlaceholders}) THEN po.grand_total ELSE 0 END), 0) AS approved_amount,
-       COALESCE(SUM(CASE WHEN po.status IN (${pendingPlaceholders}) THEN po.grand_total ELSE 0 END), 0) AS pending_amount
+       COALESCE(SUM(CASE WHEN po.status IN (${approvedSql}) THEN po.grand_total ELSE 0 END), 0) AS approved_amount,
+       COALESCE(SUM(CASE WHEN po.status IN (${pendingSql}) THEN po.grand_total ELSE 0 END), 0) AS pending_amount
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     WHERE po.status NOT IN (${excludedPlaceholders})
+     WHERE po.status NOT IN (${excludedSql})
      GROUP BY COALESCE(e.id, 0),
               COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned'),
               COALESCE(NULLIF(TRIM(e.code), ''), 'N/A')
-     ORDER BY total_po_amount DESC`,
-    [...CFO_PO_APPROVED_STATUSES, ...CFO_PO_PENDING_STATUSES, ...CFO_PO_EXCLUDED_STATUSES]
+     ORDER BY total_po_amount DESC`
   );
 
   const entityWisePOSummary = entityRows.map((row, idx) => ({
@@ -3527,11 +3529,10 @@ export async function getCfoPoInsights() {
        COALESCE(SUM(po.grand_total), 0) AS amount
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     WHERE po.status NOT IN (${excludedPlaceholders})
+     WHERE po.status NOT IN (${excludedSql})
        AND COALESCE(po.po_date, po.created_at) >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
      GROUP BY ym, month_label, entity_name
-     ORDER BY ym ASC`,
-    [...CFO_PO_EXCLUDED_STATUSES]
+     ORDER BY ym ASC`
   );
 
   const monthMap = new Map();
@@ -3596,11 +3597,10 @@ export async function getCfoPoInsights() {
        COALESCE(SUM(po.grand_total), 0) AS total_po_amount
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     WHERE po.status NOT IN (${excludedPlaceholders})
+     WHERE po.status NOT IN (${excludedSql})
      GROUP BY vendor_name, entity_name
      ORDER BY total_po_amount DESC
-     LIMIT 10`,
-    [...CFO_PO_EXCLUDED_STATUSES]
+     LIMIT 10`
   );
 
   const topVendorsByPOAmount = vendorRows.map((row) => ({
