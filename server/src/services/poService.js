@@ -29,6 +29,7 @@ import {
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 import { wrapPortalUrlWithSso } from './refexOneSamlService.js';
+import { buildSignatureRenderOptions } from './signatureService.js';
 
 function todayYmd() {
   const d = new Date();
