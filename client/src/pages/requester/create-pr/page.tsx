@@ -53,6 +53,30 @@ interface AttachedFile {
   existingId?: number;
 }
 
+function mapServerAttachments(atts: PrAttachmentRecord[] | undefined | null): AttachedFile[] {
+  return (atts || [])
+    .filter((att) => Number(att?.id) > 0)
+    .map((att) => ({
+      id: `existing-${att.id}`,
+      name: att.fileName,
+      size: Number(att.size) || 0,
+      existingId: Number(att.id),
+    }));
+}
+
+function mergeAttachedFiles(prev: AttachedFile[], incoming: AttachedFile[]): AttachedFile[] {
+  const byExisting = new Map<number, AttachedFile>();
+  const pending: AttachedFile[] = [];
+  for (const file of [...prev, ...incoming]) {
+    if (file.existingId) {
+      byExisting.set(file.existingId, { id: file.id, name: file.name, size: file.size, existingId: file.existingId });
+    } else if (file.file) {
+      pending.push(file);
+    }
+  }
+  return [...byExisting.values(), ...pending];
+}
+
 interface ReturnFeedback {
   stage: string;
   user: string;
@@ -299,11 +323,20 @@ export default function CreatePRPage() {
       if (preserveRicher && prev.length > next.length) return prev;
       return next;
     });
-    setAttachedFiles(
-      (draft.attachedFiles || [])
-        .filter((f) => f.existingId)
-        .map((f) => ({ id: f.id, name: f.name, size: f.size, existingId: f.existingId }))
-    );
+    setAttachedFiles((prev) => {
+      const persisted = (draft.attachedFiles || [])
+        .filter((f) => Number(f.existingId) > 0)
+        .map((f) => ({
+          id: f.id || `existing-${f.existingId}`,
+          name: f.name,
+          size: f.size,
+          existingId: Number(f.existingId),
+        }));
+      // localStorage cannot keep File blobs. Never wipe server-hydrated FSD files
+      // with a draft that only has unsaved names (no existingId).
+      if (!persisted.length) return prev;
+      return mergeAttachedFiles(prev, persisted);
+    });
     if (draft.prNumber) setPrNumber(draft.prNumber);
   };
 
@@ -491,14 +524,7 @@ export default function CreatePRPage() {
           }
           return fromServer.length ? fromServer : prev;
         });
-        setAttachedFiles(
-          (pr.attachments || []).map((att) => ({
-            id: `existing-${att.id}`,
-            name: att.fileName,
-            size: att.size,
-            existingId: att.id,
-          }))
-        );
+        setAttachedFiles(mapServerAttachments(pr.attachments));
 
         // Prefer newer local auto-draft (justification / address) over stale server — line items already merged above.
         const local = readCreatePrDraft(user?.id, editPrId);
@@ -583,11 +609,13 @@ export default function CreatePRPage() {
               expectedDeliveryTimeline?: string;
               paymentTerms?: string;
               title?: string;
+              attachments?: PrAttachmentRecord[];
             };
             if (isReusableDraftStatus(data.status)) {
               bindSavedDraftId(backendId);
               setPrStatus(String(data.status || '').toUpperCase());
               if (data.prNumber) setPrNumber(data.prNumber);
+              setAttachedFiles((prev) => mergeAttachedFiles(prev, mapServerAttachments(data.attachments)));
               const localCount = draft.lineItems?.length || 0;
               const serverItems = Array.isArray(data.lineItems) ? data.lineItems : [];
               if (localCount === 0 && serverItems.length > 0) {
@@ -1325,9 +1353,9 @@ export default function CreatePRPage() {
   };
   const removeFile = async (id: string) => {
     const target = attachedFiles.find((f) => f.id === id);
-    if (target?.existingId && editPrId) {
+    if (target?.existingId && persistPrId) {
       try {
-        await prApi.deleteAttachment(editPrId, target.existingId);
+        await prApi.deleteAttachment(persistPrId, target.existingId);
       } catch (err) {
         setSubmitError(err instanceof Error ? err.message : 'Failed to remove file');
         return;
@@ -1525,11 +1553,56 @@ export default function CreatePRPage() {
     })),
   });
 
+  const persistAttachedFilesSnapshot = (prId: number, files: AttachedFile[]) => {
+    const meta = files
+      .filter((f) => Number(f.existingId) > 0)
+      .map((f) => ({
+        id: f.id,
+        name: f.name,
+        size: f.size,
+        existingId: Number(f.existingId),
+      }));
+    if (!snapshotRef.current) return;
+    snapshotRef.current = {
+      ...snapshotRef.current,
+      backendPrId: prId,
+      attachedFiles: meta,
+    };
+    writeCreatePrDraft(user?.id, prId, snapshotRef.current);
+  };
+
   const uploadNewAttachments = async (prId: number) => {
     const pending = attachedFiles.filter((item) => item.file);
+    const uploaded: AttachedFile[] = [];
     for (const item of pending) {
       const filePayload = await fileToAttachmentPayload(item.file as File);
-      await prApi.uploadAttachment(prId, filePayload);
+      const res = await prApi.uploadAttachment(prId, filePayload);
+      const rec = res.data;
+      if (rec?.id) {
+        uploaded.push({
+          id: `existing-${rec.id}`,
+          name: rec.fileName || item.name,
+          size: Number(rec.size) || item.size,
+          existingId: Number(rec.id),
+        });
+      }
+    }
+    let next = mergeAttachedFiles(
+      attachedFiles.filter((item) => !item.file),
+      uploaded
+    );
+    if (pending.length) {
+      try {
+        const res = await prApi.get(prId);
+        const fromServer = mapServerAttachments(
+          (res.data as { attachments?: PrAttachmentRecord[] })?.attachments
+        );
+        if (fromServer.length) next = mergeAttachedFiles(next, fromServer);
+      } catch {
+        /* keep upload-response ids */
+      }
+      setAttachedFiles(next);
+      persistAttachedFilesSnapshot(prId, next);
     }
   };
 
@@ -1586,6 +1659,12 @@ export default function CreatePRPage() {
         prTitle,
         backendPrId: persistPrId,
         savedAt: Date.now(),
+        attachedFiles: attachedFiles.map((f) => ({
+          id: f.id,
+          name: f.name,
+          size: f.size,
+          existingId: f.existingId,
+        })),
       };
       if (hasMeaningfulCreatePrDraft(draftSnap)) {
         writeCreatePrDraft(user?.id, persistPrId ?? editPrId, draftSnap);
@@ -1788,6 +1867,7 @@ export default function CreatePRPage() {
             lineItems: (snapshotRef.current?.lineItems?.length
               ? snapshotRef.current.lineItems
               : lineItems) as CreatePrDraftSnapshot['lineItems'],
+            attachedFiles: snapshotRef.current?.attachedFiles || [],
           });
         }
         if (silent) return;
@@ -2758,12 +2838,12 @@ export default function CreatePRPage() {
                       <i className="ri-file-text-line text-slate-600 text-sm"></i>
                     </div>
                     <div className="flex-1 min-w-0">
-                      {file.existingId && editPrId ? (
+                      {file.existingId && persistPrId ? (
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            prApi.downloadAttachment(editPrId, file.existingId as number, file.name);
+                            prApi.downloadAttachment(persistPrId, file.existingId as number, file.name);
                           }}
                           className="text-sm font-medium text-teal-700 hover:underline truncate text-left cursor-pointer"
                         >
