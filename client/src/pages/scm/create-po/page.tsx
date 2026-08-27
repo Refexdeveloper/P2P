@@ -191,15 +191,6 @@ function mergeProjectManagers(apiRows: PoSiteLookupRecord[]) {
   return mergeLookups(DEFAULT_PROJECT_MANAGERS, apiRows);
 }
 
-const PAYMENT_TERMS_OPTIONS = [
-  'Net 15 Days',
-  'Net 30 Days',
-  'Net 45 Days',
-  'Net 60 Days',
-  'Advance Payment',
-  '50% Advance, 50% on Delivery',
-];
-
 const EMPTY_PO_TERMS_DETAILS = {
   paymentTermsText: '',
   siteAddress: '',
@@ -255,8 +246,11 @@ function withSyncedQuoteNo(
   };
 }
 
-/** Incoterms® 2020 — all 11 ICC rules (latest edition; no 2021 release) */
+const INCOTERM_NOT_APPLICABLE = 'Not applicable';
+
+/** Incoterms® 2020 — all 11 ICC rules, plus Not applicable */
 const INCOTERMS_OPTIONS = [
+  { code: INCOTERM_NOT_APPLICABLE, label: 'Not applicable' },
   { code: 'EXW', label: 'EXW — Ex Works' },
   { code: 'FCA', label: 'FCA — Free Carrier' },
   { code: 'CPT', label: 'CPT — Carriage Paid To' },
@@ -271,13 +265,18 @@ const INCOTERMS_OPTIONS = [
 ] as const;
 
 function normalizeIncoterm(value?: string | null): string {
-  const raw = String(value || '').trim().toUpperCase();
+  const raw = String(value || '').trim();
   if (!raw) return 'DDP';
+  const upper = raw.toUpperCase().replace(/[_-]+/g, ' ');
+  if (['NA', 'N/A', 'N.A.', 'NOT APPLICABLE'].includes(upper)) {
+    return INCOTERM_NOT_APPLICABLE;
+  }
   // Map retired DAT (2010) → DPU (2020)
-  if (raw === 'DAT' || raw.includes('DAT')) return 'DPU';
-  const match = INCOTERMS_OPTIONS.find(
-    (o) => raw === o.code || raw.startsWith(`${o.code} `) || raw.startsWith(`${o.code}-`) || raw.includes(o.code)
-  );
+  if (upper === 'DAT' || upper.includes('DAT')) return 'DPU';
+  const match = INCOTERMS_OPTIONS.find((o) => {
+    if (o.code === INCOTERM_NOT_APPLICABLE) return false;
+    return upper === o.code || upper.startsWith(`${o.code} `) || upper.startsWith(`${o.code}-`) || upper.includes(o.code);
+  });
   return match?.code || 'DDP';
 }
 
@@ -3856,21 +3855,6 @@ export default function CreatePOPage() {
                     <h3 className="text-sm font-bold text-gray-900">Payment &amp; Commercial Terms</h3>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payment Terms (quick select)</label>
-                      <select
-                        value={paymentTerms}
-                        onChange={(e) => {
-                          setPaymentTerms(e.target.value);
-                          updatePoTermsField('paymentTermsText', e.target.value);
-                        }}
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
-                      >
-                        {PAYMENT_TERMS_OPTIONS.map((o) => (
-                          <option key={o}>{o}</option>
-                        ))}
-                      </select>
-                    </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                         Incoterms® 2020
