@@ -155,6 +155,18 @@ CREATE TABLE IF NOT EXISTS vendor_quotation_submissions (
   INDEX idx_vq_invitation (rfq_invitation_id)
 );
 
+CREATE TABLE IF NOT EXISTS vendor_quotation_files (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  submission_id INT NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_path VARCHAR(500) NULL,
+  file_data LONGBLOB NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (submission_id) REFERENCES vendor_quotation_submissions(id) ON DELETE CASCADE,
+  INDEX idx_vqf_submission (submission_id, sort_order)
+);
+
 CREATE TABLE IF NOT EXISTS rfq_configs (
   pr_id INT PRIMARY KEY,
   field_definitions JSON NOT NULL,

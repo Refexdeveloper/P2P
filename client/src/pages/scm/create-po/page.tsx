@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import { useAuth } from '../../../contexts/AuthContext';
 import RichTextEditor from '../../../components/base/RichTextEditor';
 import AddableSelect from '../../../components/base/AddableSelect';
 import {
@@ -841,6 +842,7 @@ function AnnexureIiTableEditor({
 export default function CreatePOPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const prIdParam = searchParams.get('prId');
   const poIdParam = searchParams.get('poId');
   const refPoParam = searchParams.get('refPo');
@@ -887,6 +889,9 @@ export default function CreatePOPage() {
   } | null>(null);
 
   const [poNumber, setPoNumber] = useState('');
+  const handlePoNumberChange = (value: string) => {
+    setPoNumber(value.replace(/[\r\n\t]/g, '').slice(0, 40));
+  };
   const [referencePoNumber, setReferencePoNumber] = useState('');
   const [referencePoLoading, setReferencePoLoading] = useState(false);
   const [referencePoError, setReferencePoError] = useState('');
@@ -2034,12 +2039,17 @@ export default function CreatePOPage() {
             vendorMeta.email.trim() ||
             'vendor@example.com';
         }
+        const previewPrId =
+          (numericPrId && !Number.isNaN(numericPrId) ? numericPrId : 0) ||
+          (Number(pr?.id) > 0 ? Number(pr.id) : 0);
         const html =
-          isEditMode && editPoId
-            ? await poApi.previewDocumentHtmlByPoId(editPoId, payload)
-            : isManualMode
-              ? await poApi.previewManualDocumentHtml(payload)
-              : await poApi.previewDocumentHtml(numericPrId!, payload);
+          previewPrId && user?.role === 'SCM Buyer'
+            ? await poApi.previewDocumentHtml(previewPrId, payload)
+            : isEditMode && editPoId
+              ? await poApi.previewDocumentHtmlByPoId(editPoId, payload)
+              : isManualMode
+                ? await poApi.previewManualDocumentHtml(payload)
+                : await poApi.previewDocumentHtml(numericPrId!, payload);
         if (cancelled) return;
         objectUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
         setPreviewHtmlUrl((prev) => {
@@ -2073,7 +2083,7 @@ export default function CreatePOPage() {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [activeTab, numericPrId, editPoId, isEditMode, isManualMode, buildPreviewPayload, applyMasterVendorToPayload, manualVendorName, manualVendorEmail, vendorMeta.name, vendorMeta.email, masterVendors]);
+  }, [activeTab, numericPrId, editPoId, isEditMode, isManualMode, buildPreviewPayload, applyMasterVendorToPayload, manualVendorName, manualVendorEmail, vendorMeta.name, vendorMeta.email, masterVendors, pr?.id, user?.role]);
 
   useEffect(() => {
     return () => {
@@ -2240,6 +2250,7 @@ export default function CreatePOPage() {
         }).poTermsDetails,
         referencePoNumber: referencePoNumber.trim() || undefined,
         purchaseType: documentType,
+        poNumber: poNumber.trim() || undefined,
       };
 
       if (isManualMode) {
@@ -2598,6 +2609,7 @@ export default function CreatePOPage() {
         referencePoNumber: referencePoNumber.trim() || undefined,
         changeSummary: changeSummary.trim() || undefined,
         purchaseType: documentType,
+        poNumber: poNumber.trim() || undefined,
       };
 
       if (isManualMode) {
@@ -2776,8 +2788,17 @@ export default function CreatePOPage() {
               {isBuyerVerifyEdit ? 'BUYER FINAL VERIFY' : isEditMode ? 'PENDING REVIEW' : 'DRAFT'}
                   </span>
 
-            <span className="text-[11px] text-gray-500 truncate min-w-0 hidden md:inline">
-              {docNoLabel}: <span className="font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
+            <span className="text-[11px] text-gray-500 min-w-0 hidden md:inline-flex items-center gap-1.5">
+              {docNoLabel}:
+              <input
+                type="text"
+                value={poNumber}
+                onChange={(e) => handlePoNumberChange(e.target.value)}
+                onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
+                placeholder="Auto on save"
+                maxLength={40}
+                className="font-semibold text-teal-700 bg-white border border-teal-200 rounded px-1.5 py-0.5 w-[11.5rem] text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-500"
+              />
               <span className="text-gray-300 mx-1">·</span>
               Date: <span className="font-semibold text-gray-700">{formatPoDateLabel(poDate)}</span>
               <span className="text-gray-300 mx-1">·</span>
@@ -2860,8 +2881,17 @@ export default function CreatePOPage() {
               </button>
             </div>
           </div>
-          <div className="md:hidden text-[11px] text-gray-500 truncate mt-1 pl-10">
-            {docNoLabel}: <span className="font-semibold text-teal-600">{poNumber || 'Auto on save'}</span>
+          <div className="md:hidden text-[11px] text-gray-500 mt-1 pl-10 flex items-center gap-1.5">
+            {docNoLabel}:
+            <input
+              type="text"
+              value={poNumber}
+              onChange={(e) => handlePoNumberChange(e.target.value)}
+              onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
+              placeholder="Auto on save"
+              maxLength={40}
+              className="font-semibold text-teal-700 bg-white border border-teal-200 rounded px-1.5 py-0.5 w-[11.5rem] text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
             <span className="text-gray-300 mx-1">·</span>
             Date: <span className="font-semibold text-gray-700">{formatPoDateLabel(poDate)}</span>
             <span className="text-gray-300 mx-1">·</span>
@@ -2983,7 +3013,7 @@ export default function CreatePOPage() {
 
                 {/* Subject — prints on document PDF */}
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_200px_180px] gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                         {docLabel} Subject <span className="text-red-500">*</span>
@@ -2994,6 +3024,20 @@ export default function CreatePOPage() {
                         onChange={(e) => updatePoTermsField('subject', e.target.value)}
                         placeholder="e.g. Supply of laptops for IT department"
                         className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                        {docNoLabel}
+                      </label>
+                      <input
+                        type="text"
+                        value={poNumber}
+                        onChange={(e) => handlePoNumberChange(e.target.value)}
+                        onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
+                        placeholder="Auto on save"
+                        maxLength={40}
+                        className="w-full px-3.5 py-2.5 border border-teal-200 rounded-lg text-sm font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-teal-50/40"
                       />
                     </div>
                     <div>
@@ -3009,7 +3053,8 @@ export default function CreatePOPage() {
                     </div>
                   </div>
                   <p className="text-xs text-gray-500 mt-1.5">
-                    {docNoLabel === 'WO No' ? 'WO Date' : 'PO Date'} prints next to the document number on the PDF.
+                    {docNoLabel} prints at the top of the {docLabel} template. Leave blank to auto-generate on first save.
+                    {' '}{docNoLabel === 'WO No' ? 'WO Date' : 'PO Date'} prints next to it.
                     Subject prints below Quote No
                     {isManualMode ? '.' : ' (defaults from PR title when empty).'} Document type (PO / WO) is set on the Terms &amp; Conditions tab.
                   </p>
@@ -4103,6 +4148,20 @@ export default function CreatePOPage() {
                     <h3 className="text-sm font-bold text-gray-900">Payment &amp; Commercial Terms</h3>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                        {docNoLabel}
+                      </label>
+                      <input
+                        type="text"
+                        value={poNumber}
+                        onChange={(e) => handlePoNumberChange(e.target.value)}
+                        onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
+                        placeholder="Auto on save"
+                        maxLength={40}
+                        className="w-full px-3.5 py-2.5 border border-teal-200 rounded-lg text-sm font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-teal-50/40"
+                      />
+                    </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                         Incoterms® 2020

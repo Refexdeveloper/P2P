@@ -516,6 +516,8 @@ export const rfqApi = {
     }),
   quotationFileUrl: (submissionId: number) =>
     `${API_URL}/api/rfq/submissions/${submissionId}/file`,
+  quotationExtraFileUrl: (fileId: number) =>
+    `${API_URL}/api/rfq/quotation-files/${fileId}/file`,
   getComparison: (prId: number) =>
     request<{ data: VendorComparisonData }>(`/api/rfq/pr/${prId}/comparison`),
   listPostApprovalPending: () =>

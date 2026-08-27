@@ -363,6 +363,16 @@ const MIGRATIONS = [
   `ALTER TABLE invoices ADD UNIQUE INDEX uk_inv_vendor_token (vendor_invoice_token)`,
   // Persist RFQ quotation binaries in DB — Cloud Run disk is ephemeral
   `ALTER TABLE vendor_quotation_submissions ADD COLUMN quotation_file_data LONGBLOB NULL`,
+  `CREATE TABLE IF NOT EXISTS vendor_quotation_files (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    submission_id INT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NULL,
+    file_data LONGBLOB NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_vqf_submission (submission_id, sort_order)
+  )`,
   `CREATE TABLE IF NOT EXISTS payments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     invoice_id INT NOT NULL,

@@ -573,7 +573,7 @@ function applyClausePlaceholders(html, po) {
     .replace(/\[Vendor Name\]/gi, vendor)
     .replace(/\$aos_quotes_company_name_c/gi, company)
     .replace(/\$accounts_aos_quotes_1_name_name/gi, vendor)
-    .replace(/\$aos_quotes_number/gi, '')
+    .replace(/\$aos_quotes_number/gi, escapeHtml(po.poNumber || ''))
     .replace(/\$aos_quotes_name/gi, '')
     .replace(/\$aos_quotes_quote_no_c/gi, '')
     .replace(/\$aos_quotes_rfq_no_c/gi, '')
@@ -903,7 +903,7 @@ function poIntroHtml(po) {
   return `
     <div class="title">${docTitle}</div>
     <div class="po-meta">
-      <span>${escapeHtml(docLabel)} No. &nbsp;${escapeHtml(po.poNumber)}</span>
+      <span>${escapeHtml(docLabel)} No. &nbsp;${escapeHtml(po.poNumber || '—')}</span>
       <span>Date: ${escapeHtml(poDateText)}</span>
     </div>
     ${letterheadHtml ? `<div class="letterhead-block">${letterheadHtml}</div>` : ''}

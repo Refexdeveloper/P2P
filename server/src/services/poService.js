@@ -378,6 +378,44 @@ async function generatePoNumber(entityId, purchaseType = 'purchase_order', conne
   return nextDocumentNumber(docType, entityId, connection);
 }
 
+const PO_NUMBER_MAX_LEN = 40;
+
+function normalizeRequestedPoNumber(value) {
+  const n = String(value || '').trim().slice(0, PO_NUMBER_MAX_LEN);
+  return n || null;
+}
+
+async function assertPoNumberAvailable(poNumber, excludeId, connection = pool, docLabel = 'Purchase Order') {
+  const sql = excludeId
+    ? `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) AND id <> ? LIMIT 1`
+    : `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) LIMIT 1`;
+  const params = excludeId ? [poNumber, excludeId] : [poNumber];
+  const [dup] = await connection.query(sql, params);
+  if (dup.length) throw new Error(`${docLabel} number ${poNumber} already exists`);
+}
+
+/** Use the buyer-typed number when unique; otherwise keep the existing / generated number. */
+async function resolvePersistedPoNumber({
+  requested,
+  existingNumber,
+  entityId,
+  purchaseType,
+  excludeId,
+  connection,
+  docLabel,
+}) {
+  const custom = normalizeRequestedPoNumber(requested);
+  const current = String(existingNumber || '').trim() || null;
+  if (custom) {
+    if (!current || custom.toLowerCase() !== current.toLowerCase()) {
+      await assertPoNumberAvailable(custom, excludeId, connection, docLabel);
+    }
+    return custom;
+  }
+  if (current) return current;
+  return generatePoNumber(entityId, purchaseType, connection);
+}
+
 async function getRecommendedVendor(prId) {
   const [configRows] = await pool.query(`SELECT recommended_invitation_id FROM rfq_configs WHERE pr_id = ?`, [prId]);
   if (!configRows.length || !configRows[0].recommended_invitation_id) {
@@ -1264,7 +1302,7 @@ export async function buildPoPreviewForPo(user, poId, body) {
       await overlayVendorMasterOnPo(
         await resolveManualPoDraftContent({
           ...body,
-          poNumber: rows[0].po_number,
+          poNumber: normalizeRequestedPoNumber(body.poNumber) || rows[0].po_number,
           vendorName: body.vendorName || rows[0].vendor_name,
           vendorEmail: body.vendorEmail || rows[0].vendor_email,
           poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
@@ -1281,7 +1319,7 @@ export async function buildPoPreviewForPo(user, poId, body) {
     await overlayVendorMasterOnPo(
       await resolvePoDraftContent(rows[0].pr_id, {
         ...body,
-        poNumber: rows[0].po_number,
+        poNumber: normalizeRequestedPoNumber(body.poNumber) || rows[0].po_number,
         poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
         terms: body.terms ?? body.termsClauses,
         annexure: body.annexure ?? body.annexureClauses,
@@ -1307,7 +1345,7 @@ export async function createPurchaseOrder(user, prId, body) {
 
   // Old / historical PO import: create only — no manager approval workflow
   const skipApproval = Boolean(body?.skipApproval || body?.legacyImport || body?.oldPoImport);
-  const requestedPoNumber = String(body?.poNumber || body?.existingPoNumber || '').trim() || null;
+  const requestedPoNumber = normalizeRequestedPoNumber(body?.poNumber || body?.existingPoNumber);
   const bodyVendorName = String(body?.vendorName || '').trim();
   const bodyVendorEmail = String(body?.vendorEmail || '').trim();
 
@@ -1375,16 +1413,15 @@ export async function createPurchaseOrder(user, prId, body) {
   try {
     await conn.beginTransaction();
 
-    let poNumber = requestedPoNumber;
-    if (poNumber) {
-      const [dup] = await conn.query(
-        `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) LIMIT 1`,
-        [poNumber]
-      );
-      if (dup.length) throw new Error(`${docLabel} number ${poNumber} already exists`);
-    } else {
-      poNumber = await generatePoNumber(entityIdForNumber, purchaseType, conn);
-    }
+    const poNumber = await resolvePersistedPoNumber({
+      requested: requestedPoNumber,
+      existingNumber: null,
+      entityId: entityIdForNumber,
+      purchaseType,
+      excludeId: null,
+      connection: conn,
+      docLabel,
+    });
 
     const [result] = await conn.query(
       `INSERT INTO purchase_orders
@@ -1552,23 +1589,22 @@ export async function createManualPurchaseOrder(user, body = {}) {
   const purchaseType = normalizePurchaseType(body.purchaseType || 'purchase_order');
   const docLabel = purchaseTypeLabel(purchaseType);
   const referencePoNumber = body.referencePoNumber?.trim() || null;
-  const requestedPoNumber = String(body?.poNumber || body?.existingPoNumber || '').trim() || null;
+  const requestedPoNumber = normalizeRequestedPoNumber(body?.poNumber || body?.existingPoNumber);
   const initialStatus = skipApproval ? 'approved' : 'pending_approval';
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    let poNumber = requestedPoNumber;
-    if (poNumber) {
-      const [dup] = await conn.query(
-        `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) LIMIT 1`,
-        [poNumber]
-      );
-      if (dup.length) throw new Error(`${docLabel} number ${poNumber} already exists`);
-    } else {
-      poNumber = await generatePoNumber(entityIdForNumber, purchaseType, conn);
-    }
+    const poNumber = await resolvePersistedPoNumber({
+      requested: requestedPoNumber,
+      existingNumber: null,
+      entityId: entityIdForNumber,
+      purchaseType,
+      excludeId: null,
+      connection: conn,
+      docLabel,
+    });
 
     const [result] = await conn.query(
       `INSERT INTO purchase_orders
@@ -1743,7 +1779,7 @@ async function resolveDraftSaveContent({ prId, existing, body }) {
     draft = await resolvePoDraftContent(effectivePrId, {
       ...payload,
       skipLetterheadMaster: true,
-      poNumber: existing?.po_number || payload.poNumber,
+      poNumber: normalizeRequestedPoNumber(payload.poNumber) || existing?.po_number || null,
       vendorName: vendor.vendor_name,
       vendorEmail: vendor.vendor_email,
       poDate: payload.poDate || payload.po_date || formatDate(existing?.po_date) || formatDate(existing?.created_at),
@@ -1762,7 +1798,7 @@ async function resolveDraftSaveContent({ prId, existing, body }) {
       {
         ...payload,
         skipLetterheadMaster: true,
-        poNumber: existing?.po_number || payload.poNumber,
+        poNumber: normalizeRequestedPoNumber(payload.poNumber) || existing?.po_number || null,
         vendorName: payload.vendorName || existing?.vendor_name,
         vendorEmail: payload.vendorEmail || existing?.vendor_email,
         poDate: payload.poDate || payload.po_date || formatDate(existing?.po_date) || formatDate(existing?.created_at),
@@ -1936,11 +1972,22 @@ export async function savePurchaseOrderDraft(user, body = {}) {
   try {
     await conn.beginTransaction();
 
+    const docLabel = purchaseTypeLabel(purchaseType);
     let poNumber = existing?.po_number || null;
 
     if (existing) {
+      poNumber = await resolvePersistedPoNumber({
+        requested: body.poNumber || body.existingPoNumber,
+        existingNumber: existing.po_number,
+        entityId: entityIdForNumber || existing.entity_id,
+        purchaseType,
+        excludeId: existing.id,
+        connection: conn,
+        docLabel,
+      });
       await conn.query(
         `UPDATE purchase_orders SET
+          po_number = ?,
           reference_po_number = ?,
           vendor_name = ?, vendor_email = ?,
           delivery_address = ?, expected_delivery_date = ?, po_date = ?, payment_terms = ?, incoterms = ?,
@@ -1950,6 +1997,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
           status = 'draft', updated_at = NOW()
          WHERE id = ?`,
         [
+          poNumber,
           referencePoNumber,
           vendorName,
           vendorEmail,
@@ -1986,7 +2034,15 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       const prEntityId = Number(pr.entityId || body.entityId || 0);
       if (!prEntityId) throw new Error('PR has no entity. Set entity on the PR before saving a draft.');
 
-      poNumber = await generatePoNumber(prEntityId, purchaseType, conn);
+      poNumber = await resolvePersistedPoNumber({
+        requested: body.poNumber || body.existingPoNumber,
+        existingNumber: null,
+        entityId: prEntityId,
+        purchaseType,
+        excludeId: null,
+        connection: conn,
+        docLabel,
+      });
       const [result] = await conn.query(
         `INSERT INTO purchase_orders
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
@@ -2030,7 +2086,15 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       savedPoId = result.insertId;
       await persistDraftLineItems(conn, savedPoId, lineItems);
     } else {
-      poNumber = await generatePoNumber(entityIdForNumber, purchaseType, conn);
+      poNumber = await resolvePersistedPoNumber({
+        requested: body.poNumber || body.existingPoNumber,
+        existingNumber: null,
+        entityId: entityIdForNumber,
+        purchaseType,
+        excludeId: null,
+        connection: conn,
+        docLabel,
+      });
       const [result] = await conn.query(
         `INSERT INTO purchase_orders
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
@@ -3107,7 +3171,7 @@ export async function updatePurchaseOrder(user, poId, body) {
   const draft = existing.pr_id
     ? await resolvePoDraftContent(existing.pr_id, {
         ...body,
-        poNumber: existing.po_number,
+        poNumber: normalizeRequestedPoNumber(body.poNumber) || existing.po_number,
         poDate: body.poDate || body.po_date || formatDate(existing.po_date) || formatDate(existing.created_at),
         currency: body.currency ?? existing.currency,
         terms: body.terms ?? body.termsClauses,
@@ -3117,7 +3181,7 @@ export async function updatePurchaseOrder(user, poId, body) {
       })
     : await resolveManualPoDraftContent({
         ...body,
-        poNumber: existing.po_number,
+        poNumber: normalizeRequestedPoNumber(body.poNumber) || existing.po_number,
         poDate: body.poDate || body.po_date || formatDate(existing.po_date) || formatDate(existing.created_at),
         vendorName: body.vendorName || existing.vendor_name,
         vendorEmail: body.vendorEmail || existing.vendor_email,
@@ -3174,8 +3238,19 @@ export async function updatePurchaseOrder(user, poId, body) {
         ? body.referencePoNumber?.trim() || null
         : existing.reference_po_number;
 
+    const nextPoNumber = await resolvePersistedPoNumber({
+      requested: body.poNumber || body.existingPoNumber,
+      existingNumber: existing.po_number,
+      entityId: existing.entity_id,
+      purchaseType: normalizePurchaseType(body.purchaseType || existing.purchase_type),
+      excludeId: poId,
+      connection: conn,
+      docLabel: purchaseTypeLabel(normalizePurchaseType(body.purchaseType || existing.purchase_type)),
+    });
+
     await conn.query(
       `UPDATE purchase_orders SET
+        po_number = ?,
         reference_po_number = ?,
         delivery_address = ?, expected_delivery_date = ?, po_date = ?, payment_terms = ?, incoterms = ?,
         special_instructions = ?, po_type = ?, letterhead_header = ?, letterhead_id = ?, entity = ?,
@@ -3184,6 +3259,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         updated_at = NOW()
        WHERE id = ?`,
       [
+        nextPoNumber,
         referencePoNumber,
         deliveryAddress,
         expectedDeliveryDate,

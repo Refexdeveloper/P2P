@@ -35,6 +35,7 @@ export type CreatePrDraftSnapshot = {
       paymentTerms: string;
       savedFileName?: string;
       savedSubmissionId?: number;
+      savedFiles?: Array<{ id?: number | null; fileName: string; isPrimary?: boolean }>;
     }>;
   }>;
   priority: string;

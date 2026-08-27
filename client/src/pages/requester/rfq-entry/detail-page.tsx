@@ -84,6 +84,7 @@ interface TableRow {
     round: number;
     quotedPrice: number;
     quotationFileName: string;
+    quotationFiles?: Array<{ id?: number | null; fileName: string; isPrimary?: boolean; submissionId?: number }>;
     fieldValues: Record<string, unknown>;
     requesterFields: Record<string, unknown>;
     status?: string;
@@ -218,7 +219,8 @@ export default function RfqEntryDetailPage() {
   const [sendBackTarget, setSendBackTarget] = useState<TableRow | null>(null);
   const [filePreview, setFilePreview] = useState<{ url: string; fileName: string } | null>(null);
   const [manualDrafts, setManualDrafts] = useState<Record<number, Record<string, unknown>>>({});
-  const [manualFiles, setManualFiles] = useState<Record<number, File | null>>({});
+  const [manualFiles, setManualFiles] = useState<Record<number, File[]>>({});
+  const [removedExtraIds, setRemovedExtraIds] = useState<Record<number, number[]>>({});
   const [savingManualId, setSavingManualId] = useState<number | null>(null);
   const [resendingId, setResendingId] = useState<number | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
@@ -287,6 +289,51 @@ export default function RfqEntryDetailPage() {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+
+  const localFilesFor = (invitationId: number) => manualFiles[invitationId] || [];
+
+  const savedQuoteFilesFor = (
+    row: TableRow,
+    quote?: TableRow['quotes'][number] | null
+  ) => {
+    const q = quote || null;
+    const extras = Array.isArray(q?.quotationFiles) ? q!.quotationFiles : [];
+    const removed = new Set(removedExtraIds[row.invitationId] || []);
+    const list =
+      extras.length > 0
+        ? extras
+        : q?.quotationFileName
+          ? [{ id: null as number | null, fileName: q.quotationFileName, isPrimary: true }]
+          : [];
+    return list.filter((f) => !f.id || !removed.has(Number(f.id)));
+  };
+
+  const packQuoteFilePayload = async (
+    row: TableRow,
+    quote: TableRow['quotes'][number] | undefined,
+    files: File[]
+  ) => {
+    const saved = savedQuoteFilesFor(row, quote);
+    const out: Record<string, unknown> = {
+      keepExtraFileIds: saved.filter((f) => Number(f.id) > 0).map((f) => Number(f.id)),
+    };
+    if (!files.length) return out;
+    const uploaded = [];
+    for (const f of files) {
+      const data = await readFileAsBase64(f);
+      if (!data) throw new Error('Could not read quotation file — try again');
+      uploaded.push({ fileName: f.name, fileData: data });
+    }
+    const hasPrimary = saved.some((s) => s.isPrimary) || Boolean(quote?.quotationFileName);
+    if (!hasPrimary) {
+      out.quotationFileName = uploaded[0].fileName;
+      out.quotationFileData = uploaded[0].fileData;
+      if (uploaded.length > 1) out.quotationFiles = uploaded.slice(1);
+    } else {
+      out.quotationFiles = uploaded;
+    }
+    return out;
+  };
 
   const getManualValue = (invitationId: number, fieldId: string, fallback: unknown = '') => {
     const draft = manualDrafts[invitationId];
@@ -966,6 +1013,11 @@ export default function RfqEntryDetailPage() {
         delete next[row.invitationId];
         return next;
       });
+      setRemovedExtraIds((prev) => {
+        const next = { ...prev };
+        delete next[row.invitationId];
+        return next;
+      });
       showToast(res.message || `"${row.vendorName}" removed`);
       await loadRfq();
     } catch (err) {
@@ -1040,6 +1092,11 @@ export default function RfqEntryDetailPage() {
       delete next[invitationId];
       return next;
     });
+    setRemovedExtraIds((prev) => {
+      const next = { ...prev };
+      delete next[invitationId];
+      return next;
+    });
     setEditingRoundById((prev) => {
       const next = { ...prev };
       delete next[invitationId];
@@ -1050,15 +1107,19 @@ export default function RfqEntryDetailPage() {
   const validateRequiredQuote = (row: TableRow) => {
     const quote = getDisplayQuote(row, editingRoundById[row.invitationId]);
     const draft = manualDrafts[row.invitationId] || {};
-    const file = manualFiles[row.invitationId];
-    const previousFile = (row.quotes || []).some((q) => Boolean(q.quotationFileName)) || Boolean(row.quotationFileName);
-    const hasFile = Boolean(file) || Boolean(quote?.quotationFileName) || previousFile;
+    const files = localFilesFor(row.invitationId);
+    const saved = savedQuoteFilesFor(row, quote);
+    const previousFile =
+      saved.length > 0 ||
+      (row.quotes || []).some((q) => Boolean(q.quotationFileName) || (q.quotationFiles && q.quotationFiles.length)) ||
+      Boolean(row.quotationFileName);
+    const hasFile = files.length > 0 || previousFile;
     if (!hasFile) {
       failQuote('Quotation file is required. Upload a PDF or photo first.');
       return null;
     }
-    if (file && file.size > 5 * 1024 * 1024) {
-      failQuote('Quotation file must be under 5MB');
+    if (files.some((f) => f.size > 10 * 1024 * 1024)) {
+      failQuote('Each quotation file must be under 10MB');
       return null;
     }
     const quoteLineItems = getWorkingLines(row.invitationId)
@@ -1114,7 +1175,7 @@ export default function RfqEntryDetailPage() {
       // still allow zero via confirm dialog below
     }
     const zeroCount = quoteLineItems.filter((l) => Number(l.quotedUnitPrice) === 0).length;
-    return { quote, draft, file, quoteLineItems, quotedPrice, zeroCount, lineTotal };
+    return { quote, draft, files, quoteLineItems, quotedPrice, zeroCount, lineTotal };
   };
 
   const handleSaveExistingQuote = async (row: TableRow, opts?: { acceptZero?: boolean }) => {
@@ -1124,7 +1185,7 @@ export default function RfqEntryDetailPage() {
     }
     const checked = validateRequiredQuote(row);
     if (!checked) return;
-    const { quote, draft, file, quoteLineItems, quotedPrice, zeroCount } = checked;
+    const { quote, draft, files, quoteLineItems, quotedPrice, zeroCount } = checked;
     if ((zeroCount > 0 || quotedPrice === 0) && !opts?.acceptZero) {
       setZeroSaveAsk({ row, kind: 'existing', zeroCount: zeroCount || 1, total: quotedPrice });
       return;
@@ -1155,15 +1216,7 @@ export default function RfqEntryDetailPage() {
         overallScore: Number(draft.overallScore) || 0,
         customFields: draft,
       };
-      if (file) {
-        const quotationFileData = await readFileAsBase64(file);
-        if (!quotationFileData) {
-          failQuote('Could not read quotation file — try again');
-          return;
-        }
-        body.quotationFileName = file.name;
-        body.quotationFileData = quotationFileData;
-      }
+      Object.assign(body, await packQuoteFilePayload(row, editingQuote || quote, files));
 
       const res = await rfqApi.updateSubmission(submissionId, body);
       showToast(res.message || 'Quotation updated');
@@ -1186,13 +1239,16 @@ export default function RfqEntryDetailPage() {
   const handleSaveManualEntry = async (row: TableRow, opts?: { acceptZero?: boolean }) => {
     const checked = validateRequiredQuote(row);
     if (!checked) return;
-    const { draft, file, quoteLineItems, quotedPrice, zeroCount } = checked;
+    const { draft, files, quoteLineItems, quotedPrice, zeroCount } = checked;
     if ((zeroCount > 0 || quotedPrice === 0) && !opts?.acceptZero) {
       setZeroSaveAsk({ row, kind: 'new', zeroCount: zeroCount || 1, total: quotedPrice });
       return;
     }
-    const previousFile = (row.quotes || []).some((q) => Boolean(q.quotationFileName)) || Boolean(row.quotationFileName);
-    if (!file && !previousFile) {
+    const previousFile =
+      savedQuoteFilesFor(row, quoteForRound(row, editingRoundById[row.invitationId]) || row.quotes?.[0]).length > 0 ||
+      (row.quotes || []).some((q) => Boolean(q.quotationFileName) || (q.quotationFiles && q.quotationFiles.length)) ||
+      Boolean(row.quotationFileName);
+    if (!files.length && !previousFile) {
       failQuote('Quotation file is required. Upload a PDF or photo first.');
       return;
     }
@@ -1201,16 +1257,11 @@ export default function RfqEntryDetailPage() {
     setError('');
     setQuotePopupError('');
     try {
-      let quotationFileName: string | undefined;
-      let quotationFileData: string | undefined;
-      if (file) {
-        quotationFileData = await readFileAsBase64(file);
-        if (!quotationFileData) {
-          failQuote('Could not read quotation file — try again');
-          return;
-        }
-        quotationFileName = file.name;
-      }
+      const filePayload = await packQuoteFilePayload(
+        row,
+        quoteForRound(row, editingRoundById[row.invitationId]) || row.quotes?.[0],
+        files
+      );
 
       const requesterFieldValues: Record<string, unknown> = {};
       for (const f of requesterFields) {
@@ -1226,9 +1277,7 @@ export default function RfqEntryDetailPage() {
         deliveryTerms: String(draft.deliveryTerms || ''),
         compliance: draft.compliance !== false,
         vendorNotes: String(draft.vendorNotes || 'Manually entered by requester'),
-        ...(quotationFileName && quotationFileData
-          ? { quotationFileName, quotationFileData }
-          : {}),
+        ...filePayload,
         requesterFields: requesterFieldValues,
         technicalScore: Number(draft.technicalScore) || 0,
         commercialScore: Number(draft.commercialScore) || 0,
@@ -1244,6 +1293,11 @@ export default function RfqEntryDetailPage() {
         return next;
       });
       setManualFiles((prev) => {
+        const next = { ...prev };
+        delete next[row.invitationId];
+        return next;
+      });
+      setRemovedExtraIds((prev) => {
         const next = { ...prev };
         delete next[row.invitationId];
         return next;
@@ -1609,10 +1663,11 @@ export default function RfqEntryDetailPage() {
     }
   };
 
-  const openFilePreview = async (submissionId: number, fileName: string) => {
+  const openFilePreview = async (submissionId: number, fileName: string, extraFileId?: number | null) => {
     const token = localStorage.getItem('p2p_token');
     try {
-      const res = await fetch(rfqApi.quotationFileUrl(submissionId), {
+      const res = await fetch(
+        extraFileId ? rfqApi.quotationExtraFileUrl(extraFileId) : rfqApi.quotationFileUrl(submissionId), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) {
@@ -2365,53 +2420,109 @@ export default function RfqEntryDetailPage() {
                         <>
                             <div>
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
-                                Quotation file{' '}
-                                {quote?.quotationFileName || row.quotationFileName ? null : <span className="text-red-500">*</span>}
+                                Quotation files{' '}
+                                {savedQuoteFilesFor(row, quote).length || localFilesFor(row.invitationId).length
+                                  ? null
+                                  : <span className="text-red-500">*</span>}
                               </p>
-                              {quote?.quotationFileName && quote?.submissionId ? (
-                            <button
-                              type="button"
-                                  onClick={() => openFilePreview(quote.submissionId!, quote.quotationFileName)}
-                                  className="mb-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-teal-700 hover:bg-teal-50"
-                            >
+                              {(() => {
+                                const saved = savedQuoteFilesFor(row, quote);
+                                const locals = localFilesFor(row.invitationId);
+                                const hasAny = saved.length + locals.length > 0;
+                                return (
+                                  <>
+                              {saved.map((sf, idx) => (
+                                <button
+                                  key={`saved-${sf.id || sf.fileName}-${idx}`}
+                                  type="button"
+                                  onClick={() => {
+                                    if (sf.id) void openFilePreview(quote?.submissionId || 0, sf.fileName, sf.id);
+                                    else if (quote?.submissionId) void openFilePreview(quote.submissionId, sf.fileName);
+                                  }}
+                                  className="mb-2 mr-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-teal-700 hover:bg-teal-50"
+                                >
                                   <i className="ri-file-look-line" />
-                                  {quote.quotationFileName}
+                                  <span className="truncate max-w-[220px]">{sf.fileName}</span>
                                   <span className="text-xs text-gray-500">Preview</span>
-                            </button>
-                              ) : null}
+                                  {quoteFieldsEditable ? (
+                                    <span
+                                      role="button"
+                                      className="ml-1 text-gray-400 hover:text-red-600"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (sf.id) {
+                                          setRemovedExtraIds((prev) => ({
+                                            ...prev,
+                                            [row.invitationId]: [...(prev[row.invitationId] || []), Number(sf.id)],
+                                          }));
+                                        }
+                                      }}
+                                    >
+                                      <i className="ri-close-line" />
+                                    </span>
+                                  ) : null}
+                                </button>
+                              ))}
+                              {locals.map((lf, idx) => (
+                                <span
+                                  key={`local-${lf.name}-${idx}`}
+                                  className="mb-2 mr-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-teal-200 bg-teal-50 text-sm font-medium text-teal-800"
+                                >
+                                  {lf.name}
+                                  <button
+                                    type="button"
+                                    className="text-gray-400 hover:text-red-600"
+                                    onClick={() =>
+                                      setManualFiles((prev) => ({
+                                        ...prev,
+                                        [row.invitationId]: (prev[row.invitationId] || []).filter((_, i) => i !== idx),
+                                      }))
+                                    }
+                                  >
+                                    <i className="ri-close-line" />
+                                  </button>
+                                </span>
+                              ))}
                               {quoteFieldsEditable ? (
                                 <label
                                   className={`flex flex-wrap items-center gap-3 px-4 py-3.5 border-2 border-dashed rounded-xl cursor-pointer ${
-                                    manualFiles[row.invitationId] || quote?.quotationFileName
+                                    hasAny
                                       ? 'border-teal-300 bg-teal-50/40 hover:bg-teal-50'
                                       : 'border-red-200 bg-red-50/40 hover:bg-red-50/70'
                                   }`}
                                 >
-                                  <i className={`text-xl shrink-0 ${manualFiles[row.invitationId] || quote?.quotationFileName ? 'ri-upload-2-line text-teal-700' : 'ri-upload-cloud-2-line text-red-500'}`} />
+                                  <i className={`text-xl shrink-0 ${hasAny ? 'ri-upload-2-line text-teal-700' : 'ri-upload-cloud-2-line text-red-500'}`} />
                                   <div className="min-w-0 flex-1">
-                                    <p className={`text-sm font-semibold truncate ${manualFiles[row.invitationId] || quote?.quotationFileName ? 'text-teal-800' : 'text-red-700'}`}>
-                                      {manualFiles[row.invitationId]?.name ||
-                                        (quote?.quotationFileName
-                                          ? 'Replace quotation file'
-                                          : 'Upload quotation file (required)')}
+                                    <p className={`text-sm font-semibold ${hasAny ? 'text-teal-800' : 'text-red-700'}`}>
+                                      {hasAny ? 'Add more quotation files' : 'Upload quotation files (required)'}
                                     </p>
                                     <p className="text-xs text-gray-600 mt-0.5">
-                                      PDF, Word, or photo · max 5MB · then type line items and price
+                                      PDF, Word, Excel, or photo · multiple files · max 10MB each
                                     </p>
-                        </div>
+                                  </div>
                                   <input
                                     type="file"
-                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                                    multiple
+                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
                                     className="text-xs max-w-full"
                                     onChange={(e) => {
-                                      const nextFile = e.target.files?.[0] || null;
-                                      setManualFiles((prev) => ({ ...prev, [row.invitationId]: nextFile }));
+                                      const picked = Array.from(e.target.files || []);
+                                      e.target.value = '';
+                                      if (!picked.length) return;
+                                      setManualFiles((prev) => ({
+                                        ...prev,
+                                        [row.invitationId]: [...(prev[row.invitationId] || []), ...picked],
+                                      }));
                                     }}
                                   />
                                 </label>
-                              ) : !quote?.quotationFileName ? (
+                              ) : !hasAny ? (
                                 <p className="text-sm text-red-600">No quotation file uploaded.</p>
                               ) : null}
+                                  </>
+                                );
+                              })()}
                       </div>
 
                             {(() => {

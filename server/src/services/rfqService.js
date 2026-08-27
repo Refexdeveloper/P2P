@@ -183,6 +183,273 @@ function saveQuotationFile(invitationId, round, fileName, base64Data) {
   return { fileName: safeName, filePath: storedName, buffer };
 }
 
+function bufferFromDiskPath(filePath) {
+  if (!filePath) return null;
+  try {
+    const full = path.isAbsolute(String(filePath))
+      ? String(filePath)
+      : path.join(UPLOAD_DIR, String(filePath));
+    if (!fs.existsSync(full)) return null;
+    const buf = fs.readFileSync(full);
+    return buf.length ? buf : null;
+  } catch {
+    return null;
+  }
+}
+
+/** mysql2 may return LONGBLOB as Buffer, Uint8Array, or a JSON-style { type:'Buffer', data:[] }. */
+function mysqlBlobToBuffer(value) {
+  if (value == null || value === '') return null;
+  if (Buffer.isBuffer(value)) return value.length ? value : null;
+  if (value instanceof Uint8Array) return value.byteLength ? Buffer.from(value) : null;
+  if (Array.isArray(value) && value.length) return Buffer.from(value);
+  if (typeof value === 'object' && Array.isArray(value.data) && value.data.length) {
+    return Buffer.from(value.data);
+  }
+  if (typeof value === 'string' && value.length) {
+    const raw = value.includes(',') ? value.split(',').pop() : value;
+    try {
+      const buf = Buffer.from(String(raw).replace(/\s/g, ''), 'base64');
+      if (buf.length) return buf;
+    } catch {
+      /* fall through */
+    }
+    const latin = Buffer.from(value, 'binary');
+    return latin.length ? latin : null;
+  }
+  if (typeof value === 'object' && typeof value.length === 'number' && value.length > 0) {
+    try {
+      return Buffer.from(value);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function hasStoredQuotationBlob(row) {
+  if (Number(row?.quotation_file_bytes) > 0) return true;
+  return Boolean(mysqlBlobToBuffer(row?.quotation_file_data || row?.file_data));
+}
+
+async function persistPrimaryQuotationBlob(submissionId, buffer) {
+  if (!submissionId) throw new Error('Quotation submission is missing');
+  const blob = mysqlBlobToBuffer(buffer);
+  if (!blob?.length) throw new Error('Quotation file data is empty or invalid');
+  await pool.query(
+    `UPDATE vendor_quotation_submissions SET quotation_file_data = ? WHERE id = ?`,
+    [blob, submissionId]
+  );
+  const [rows] = await pool.query(
+    `SELECT LENGTH(quotation_file_data) AS n FROM vendor_quotation_submissions WHERE id = ?`,
+    [submissionId]
+  );
+  if (!(Number(rows[0]?.n) > 0)) {
+    throw new Error(
+      'Quotation file did not save to the database. Upload a PDF under 5MB and save again.'
+    );
+  }
+}
+
+function collectIncomingQuoteFiles(quote = {}) {
+  const files = [];
+  const push = (fileName, fileData) => {
+    const name = String(fileName || '').trim();
+    if (!name || !fileData) return;
+    if (files.some((f) => f.fileName === name && f.fileData === fileData)) return;
+    files.push({ fileName: name, fileData });
+  };
+  push(quote.quotationFileName, quote.quotationFileData);
+  const extra = Array.isArray(quote.quotationFiles) ? quote.quotationFiles : [];
+  for (const f of extra) {
+    push(f?.fileName || f?.quotationFileName, f?.fileData || f?.quotationFileData);
+  }
+  return files;
+}
+
+async function insertExtraQuotationFiles(submissionId, invitationId, round, files) {
+  if (!files?.length || !submissionId) return;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const info = saveQuotationFile(invitationId, round, files[i].fileName, files[i].fileData);
+      if (!info.filePath && !info.buffer) {
+        throw new Error(`Failed to save quotation file ${files[i].fileName}`);
+      }
+      await pool.query(
+        `INSERT INTO vendor_quotation_files (submission_id, file_name, file_path, file_data, sort_order)
+         VALUES (?, ?, ?, ?, ?)`,
+        [submissionId, info.fileName, info.filePath, info.buffer, i]
+      );
+      const [check] = await pool.query(
+        `SELECT LENGTH(file_data) AS n FROM vendor_quotation_files
+         WHERE submission_id = ? AND file_name = ? ORDER BY id DESC LIMIT 1`,
+        [submissionId, info.fileName]
+      );
+      if (!(Number(check[0]?.n) > 0)) {
+        throw new Error(`Quotation file ${files[i].fileName} did not save to the database`);
+      }
+    }
+  } catch (err) {
+    if (String(err?.code || '') === 'ER_NO_SUCH_TABLE') {
+      console.warn('vendor_quotation_files table missing — extra quotation files skipped until migrate');
+      return;
+    }
+    throw err;
+  }
+}
+
+async function persistQuoteFileSet({
+  submissionId,
+  invitationId,
+  round,
+  quote,
+  existingPrimaryName = null,
+}) {
+  if (!submissionId) return;
+  const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: quote.quotationFiles });
+  const primaryIncoming =
+    quote.quotationFileName && quote.quotationFileData
+      ? [{ fileName: quote.quotationFileName, fileData: quote.quotationFileData }]
+      : [];
+  const extrasArray = Array.isArray(quote.quotationFiles);
+  const keepIds =
+    quote.keepExtraFileIds !== undefined
+      ? (Array.isArray(quote.keepExtraFileIds)
+          ? quote.keepExtraFileIds.map(Number).filter((n) => n > 0)
+          : [])
+      : null;
+
+  const writePrimary = async (file) => {
+    const info = saveQuotationFile(invitationId, round, file.fileName, file.fileData);
+    if (!info.filePath && !info.buffer) throw new Error('Failed to save quotation file');
+    await pool.query(
+      `UPDATE vendor_quotation_submissions
+       SET quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?
+       WHERE id = ?`,
+      [info.fileName, info.filePath, info.buffer, submissionId]
+    );
+    await persistPrimaryQuotationBlob(submissionId, info.buffer);
+  };
+
+  const finish = async () => {
+    try {
+      const [rows] = await pool.query(
+        `SELECT LENGTH(quotation_file_data) AS n, quotation_file_path
+         FROM vendor_quotation_submissions WHERE id = ?`,
+        [submissionId]
+      );
+      if (Number(rows[0]?.n) > 0) return;
+      const disk = bufferFromDiskPath(rows[0]?.quotation_file_path);
+      if (disk) await persistPrimaryQuotationBlob(submissionId, disk);
+    } catch (err) {
+      console.warn('Quotation blob backfill skipped:', err.message);
+    }
+  };
+
+  // Legacy single-file replace (no extras payload)
+  if (
+    primaryIncoming.length &&
+    existingPrimaryName &&
+    !extrasArray &&
+    keepIds === null &&
+    !quote.replacePrimary
+  ) {
+    await writePrimary(primaryIncoming[0]);
+    await finish();
+    return;
+  }
+
+  if (quote.replacePrimary) {
+    const first = primaryIncoming[0] || extraIncoming[0];
+    if (first) await writePrimary(first);
+    await pool.query(`DELETE FROM vendor_quotation_files WHERE submission_id = ?`, [submissionId]);
+    const rest = primaryIncoming.length ? extraIncoming : extraIncoming.slice(1);
+    await insertExtraQuotationFiles(submissionId, invitationId, round, rest);
+    await finish();
+    return;
+  }
+
+  if (keepIds) {
+    if (keepIds.length) {
+      await pool.query(
+        `DELETE FROM vendor_quotation_files WHERE submission_id = ? AND id NOT IN (${keepIds
+          .map(() => '?')
+          .join(',')})`,
+        [submissionId, ...keepIds]
+      );
+    } else {
+      await pool.query(`DELETE FROM vendor_quotation_files WHERE submission_id = ?`, [submissionId]);
+    }
+  }
+
+  if (!existingPrimaryName) {
+    const first = primaryIncoming[0] || extraIncoming[0];
+    if (first) await writePrimary(first);
+    const rest = primaryIncoming.length ? extraIncoming : extraIncoming.slice(1);
+    await insertExtraQuotationFiles(submissionId, invitationId, round, rest);
+    await finish();
+    return;
+  }
+
+  await insertExtraQuotationFiles(submissionId, invitationId, round, extraIncoming);
+  await finish();
+}
+
+async function listExtraFilesBySubmissionIds(submissionIds) {
+  const ids = [...new Set((submissionIds || []).map(Number).filter((n) => n > 0))];
+  if (!ids.length) return new Map();
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, submission_id, file_name FROM vendor_quotation_files
+       WHERE submission_id IN (${ids.map(() => '?').join(',')})
+       ORDER BY sort_order ASC, id ASC`,
+      ids
+    );
+    const map = new Map();
+    for (const row of rows) {
+      const list = map.get(row.submission_id) || [];
+      list.push({ id: row.id, fileName: row.file_name, isPrimary: false });
+      map.set(row.submission_id, list);
+    }
+    return map;
+  } catch (err) {
+    if (String(err?.code || '') === 'ER_NO_SUCH_TABLE') return new Map();
+    throw err;
+  }
+}
+
+function withQuotationFiles(submission, extras = []) {
+  const primary = submission.quotationFileName
+    ? [
+        {
+          id: null,
+          submissionId: submission.id,
+          fileName: submission.quotationFileName,
+          isPrimary: true,
+        },
+      ]
+    : [];
+  const quotationFiles = [
+    ...primary,
+    ...extras.map((e) => ({
+      id: e.id,
+      submissionId: submission.id,
+      fileName: e.fileName,
+      isPrimary: false,
+    })),
+  ];
+  return {
+    ...submission,
+    quotationFiles,
+    hasQuotationFile: Boolean(submission.hasQuotationFile || quotationFiles.length),
+  };
+}
+
+async function attachQuotationFilesToSubmissions(submissions) {
+  const extras = await listExtraFilesBySubmissionIds((submissions || []).map((s) => s.id));
+  return (submissions || []).map((s) => withQuotationFiles(s, extras.get(s.id) || []));
+}
+
 function normalizeQuoteLineItems(rawLines, prLineItems = []) {
   const prLines = Array.isArray(prLineItems) ? prLineItems : [];
   const byId = new Map(prLines.map((li) => [String(li.id), li]));
@@ -293,14 +560,7 @@ function mapSubmissionRow(s) {
     deliveryTerms: s.delivery_terms || '',
     quotationFileName: s.quotation_file_name || '',
     quotationFilePath: s.quotation_file_path || '',
-    hasQuotationFile: Boolean(
-      s.quotation_file_name ||
-        s.quotation_file_path ||
-        (s.quotation_file_data &&
-          (Buffer.isBuffer(s.quotation_file_data)
-            ? s.quotation_file_data.length > 0
-            : Boolean(s.quotation_file_data.length)))
-    ),
+    hasQuotationFile: hasStoredQuotationBlob(s),
     quoteLineItems,
     customFields,
     requesterFields,
@@ -489,6 +749,9 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
           paymentTerms: String(q.paymentTerms || 'Net 30').trim() || 'Net 30',
           quotationFileName: q.quotationFileName,
           quotationFileData: q.quotationFileData,
+          quotationFiles: q.quotationFiles,
+          keepExtraFileIds: q.keepExtraFileIds,
+          replacePrimary: q.replacePrimary,
         }))
         .filter((q) => q.round <= maxRounds)
         .sort((a, b) => a.round - b.round);
@@ -497,7 +760,11 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         throw new Error(`Enter a round-1 quoted price for ${name}`);
       }
       const round1Prev = previousFiles.get(`${email}::1`);
-      if (!round1.quotationFileName && !round1Prev?.fileName) {
+      if (
+        !round1.quotationFileName &&
+        !collectIncomingQuoteFiles(round1).length &&
+        !round1Prev?.fileName
+      ) {
         throw new Error(`Attach a round-1 quotation file for ${name}`);
       }
       for (const quote of quotes) {
@@ -541,58 +808,26 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
           const existingSub = submissionsByEmailRound.get(key);
           const prev = previousFiles.get(key);
           if (existingSub?.submission_id) {
-            let fileName = existingSub.quotation_file_name || prev?.fileName || quote.quotationFileName || null;
-            let filePath = existingSub.quotation_file_path || prev?.filePath || null;
-            let fileBuffer = null;
-            let replaceFile = false;
-            if (quote.quotationFileName && quote.quotationFileData) {
-              const fileInfo = saveQuotationFile(
-                inv.id,
-                quote.round,
-                quote.quotationFileName,
-                quote.quotationFileData
-              );
-              if (!fileInfo.filePath && !fileInfo.buffer) {
-                throw new Error(`Failed to save quotation file for ${name} round ${quote.round}`);
-              }
-              fileName = fileInfo.fileName;
-              filePath = fileInfo.filePath;
-              fileBuffer = fileInfo.buffer;
-              replaceFile = true;
-            }
-            if (replaceFile) {
-              await pool.query(
-                `UPDATE vendor_quotation_submissions
-                 SET quoted_price = ?, lead_time_days = ?, payment_terms = ?,
-                     vendor_notes = ?, status = 'submitted',
-                     quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?
-                 WHERE id = ?`,
-                [
-                  quote.quotedPrice,
-                  quote.leadTime,
-                  quote.paymentTerms,
-                  `Updated on Track PR / Create PR by ${user.name || user.email}`,
-                  fileName,
-                  filePath,
-                  fileBuffer,
-                  existingSub.submission_id,
-                ]
-              );
-            } else {
-              await pool.query(
-                `UPDATE vendor_quotation_submissions
-                 SET quoted_price = ?, lead_time_days = ?, payment_terms = ?,
-                     vendor_notes = ?, status = 'submitted'
-                 WHERE id = ?`,
-                [
-                  quote.quotedPrice,
-                  quote.leadTime,
-                  quote.paymentTerms,
-                  `Entered on Create PR by ${user.name || user.email}`,
-                  existingSub.submission_id,
-                ]
-              );
-            }
+            await pool.query(
+              `UPDATE vendor_quotation_submissions
+               SET quoted_price = ?, lead_time_days = ?, payment_terms = ?,
+                   vendor_notes = ?, status = 'submitted'
+               WHERE id = ?`,
+              [
+                quote.quotedPrice,
+                quote.leadTime,
+                quote.paymentTerms,
+                `Entered on Create PR by ${user.name || user.email}`,
+                existingSub.submission_id,
+              ]
+            );
+            await persistQuoteFileSet({
+              submissionId: existingSub.submission_id,
+              invitationId: inv.id,
+              round: quote.round,
+              quote,
+              existingPrimaryName: existingSub.quotation_file_name || prev?.fileName || null,
+            });
           } else if (prev?.fileName) {
             // Round existed as file metadata only — keep DB blob (Cloud Run disk is ephemeral).
             let fileBuffer = null;
@@ -601,9 +836,12 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
                 `SELECT quotation_file_data FROM vendor_quotation_submissions WHERE id = ?`,
                 [prev.submissionId]
               );
-              fileBuffer = blobRows[0]?.quotation_file_data || null;
+            fileBuffer = blobRows[0]?.quotation_file_data || null;
+            if (!mysqlBlobToBuffer(fileBuffer)) {
+              fileBuffer = bufferFromDiskPath(prev.filePath);
             }
-            await pool.query(
+            }
+            const [ins] = await pool.query(
               `INSERT INTO vendor_quotation_submissions
                (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes,
                 warranty, delivery_terms, quotation_file_name, quotation_file_path, quotation_file_data, custom_fields, requester_fields, status)
@@ -622,6 +860,16 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
                 JSON.stringify({ enteredBy: user.name, entryMode: 'create-pr' }),
               ]
             );
+            await persistQuoteFileSet({
+              submissionId: ins.insertId,
+              invitationId: inv.id,
+              round: quote.round,
+              quote,
+              existingPrimaryName: prev.fileName,
+            });
+            if (mysqlBlobToBuffer(fileBuffer)) {
+              await persistPrimaryQuotationBlob(ins.insertId, fileBuffer);
+            }
           }
         }
       }
@@ -644,7 +892,21 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       `SELECT quotation_file_data FROM vendor_quotation_submissions WHERE id = ?`,
       [meta.submissionId]
     );
-    meta.buffer = blobRows[0]?.quotation_file_data || null;
+    meta.buffer = mysqlBlobToBuffer(blobRows[0]?.quotation_file_data) || bufferFromDiskPath(meta.filePath);
+    try {
+      const [extraRows] = await pool.query(
+        `SELECT file_name, file_path, file_data, sort_order FROM vendor_quotation_files WHERE submission_id = ?`,
+        [meta.submissionId]
+      );
+      meta.extras = extraRows.map((r) => ({
+        fileName: r.file_name,
+        filePath: r.file_path,
+        buffer: r.file_data,
+        sortOrder: r.sort_order,
+      }));
+    } catch {
+      meta.extras = [];
+    }
   }
 
   if (existing.length) {
@@ -668,6 +930,9 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         paymentTerms: String(q.paymentTerms || 'Net 30').trim() || 'Net 30',
         quotationFileName: q.quotationFileName,
         quotationFileData: q.quotationFileData,
+        quotationFiles: q.quotationFiles,
+        keepExtraFileIds: q.keepExtraFileIds,
+        replacePrimary: q.replacePrimary,
       }))
       .filter((q) => q.round <= maxRounds)
       .sort((a, b) => a.round - b.round);
@@ -678,12 +943,15 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
     }
     const round1Prev = previousFiles.get(`${email}::1`);
     if (!round1.quotationFileName || !round1.quotationFileData) {
-      if (!round1Prev?.fileName) {
+      const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: round1.quotationFiles });
+      if (!round1Prev?.fileName && !extraIncoming.length) {
         throw new Error(`Attach a round-1 quotation file for ${name}`);
       }
-      round1.quotationFileName = round1Prev.fileName;
-      round1.quotationFileData = null;
-      round1._reuse = round1Prev;
+      if (round1Prev?.fileName && !extraIncoming.length) {
+        round1.quotationFileName = round1Prev.fileName;
+        round1.quotationFileData = null;
+        round1._reuse = round1Prev;
+      }
     }
 
     const token = generateToken();
@@ -718,11 +986,16 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       } else if (prev?.fileName) {
         fileName = prev.fileName;
         filePath = prev.filePath;
-        fileBuffer = prev.buffer || null;
+        fileBuffer = mysqlBlobToBuffer(prev.buffer) || bufferFromDiskPath(prev.filePath);
+        if (!fileBuffer?.length && !quote.quotationFileData) {
+          throw new Error(
+            `Quotation file for ${name} is missing after deploy. Re-upload the PDF on Create PR and save.`
+          );
+        }
       } else {
         continue;
       }
-      await pool.query(
+      const [ins] = await pool.query(
         `INSERT INTO vendor_quotation_submissions
          (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes,
           warranty, delivery_terms, quotation_file_name, quotation_file_path, quotation_file_data, custom_fields, requester_fields, status)
@@ -741,6 +1014,24 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
           JSON.stringify({ enteredBy: user.name, entryMode: 'create-pr' }),
         ]
       );
+      await persistQuoteFileSet({
+        submissionId: ins.insertId,
+        invitationId,
+        round: quote.round,
+        quote,
+        existingPrimaryName: fileName,
+      });
+      if (fileBuffer) await persistPrimaryQuotationBlob(ins.insertId, fileBuffer);
+      const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: quote.quotationFiles });
+      if (prev?.extras?.length && !extraIncoming.length) {
+        for (const extra of prev.extras) {
+          await pool.query(
+            `INSERT INTO vendor_quotation_files (submission_id, file_name, file_path, file_data, sort_order)
+             VALUES (?, ?, ?, ?, ?)`,
+            [ins.insertId, extra.fileName, extra.filePath, extra.buffer, extra.sortOrder || 0]
+          );
+        }
+      }
     }
   }
 
@@ -888,7 +1179,13 @@ async function getInvitationsWithSubmissions(prId) {
   const result = [];
   for (const inv of invitations) {
     const [submissions] = await pool.query(
-      `SELECT * FROM vendor_quotation_submissions WHERE rfq_invitation_id = ? ORDER BY round ASC, submitted_at ASC`,
+      `SELECT id, rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance,
+              vendor_notes, warranty, delivery_terms, quotation_file_name, quotation_file_path,
+              custom_fields, requester_fields, status, submitted_at,
+              LENGTH(quotation_file_data) AS quotation_file_bytes
+       FROM vendor_quotation_submissions
+       WHERE rfq_invitation_id = ?
+       ORDER BY round ASC, submitted_at ASC`,
       [inv.id]
     );
     result.push({
@@ -902,7 +1199,7 @@ async function getInvitationsWithSubmissions(prId) {
       inviteMode: inv.invite_mode || 'email',
       sendBackReason: inv.send_back_reason,
       sendBackFields: parseJsonArray(inv.send_back_fields),
-      submissions: submissions.map(mapSubmissionRow),
+      submissions: await attachQuotationFilesToSubmissions(submissions.map(mapSubmissionRow)),
     });
   }
   return result;
@@ -1149,20 +1446,21 @@ export async function submitVendorQuotation(token, body = {}) {
   const config = await getOrCreateRfqConfig(inv.pr_id);
   const { core, customFields } = extractCoreVendorValues(body, config.fieldDefinitions);
 
+  const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: body.quotationFiles });
   if (!quotationFileName || !quotationFileData) {
-    throw new Error('Quotation file is required (PDF or image)');
+    if (!extraIncoming.length) {
+      throw new Error('Quotation file is required (PDF or image)');
+    }
   }
-  const fileInfo = saveQuotationFile(
-    inv.id,
-    inv.round,
-    quotationFileName,
-    quotationFileData
-  );
+  const primaryFile = quotationFileName && quotationFileData
+    ? { fileName: quotationFileName, fileData: quotationFileData }
+    : extraIncoming[0];
+  const fileInfo = saveQuotationFile(inv.id, inv.round, primaryFile.fileName, primaryFile.fileData);
   if (!fileInfo.filePath && !fileInfo.buffer) {
     throw new Error('Failed to save quotation file');
   }
 
-  await pool.query(
+  const [ins] = await pool.query(
     `INSERT INTO vendor_quotation_submissions
      (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes, warranty, delivery_terms, quotation_file_name, quotation_file_path, quotation_file_data, custom_fields, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
@@ -1182,6 +1480,16 @@ export async function submitVendorQuotation(token, body = {}) {
       JSON.stringify(customFields),
     ]
   );
+  await persistPrimaryQuotationBlob(ins.insertId, fileInfo.buffer);
+  await persistQuoteFileSet({
+    submissionId: ins.insertId,
+    invitationId: inv.id,
+    round: inv.round,
+    quote: {
+      quotationFiles: quotationFileName && quotationFileData ? extraIncoming : extraIncoming.slice(1),
+    },
+    existingPrimaryName: fileInfo.fileName,
+  });
 
   await pool.query(
     `UPDATE rfq_invitations SET status = 'submitted', send_back_reason = NULL, send_back_fields = NULL, updated_at = NOW() WHERE id = ?`,
@@ -1243,6 +1551,7 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
       throw new Error('Failed to save quotation file — try a smaller PDF/image under 5MB');
     }
   } else {
+    const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: body.quotationFiles });
     const [prevFiles] = await pool.query(
       `SELECT quotation_file_name, quotation_file_path, quotation_file_data
        FROM vendor_quotation_submissions
@@ -1251,14 +1560,24 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
        LIMIT 1`,
       [inv.id]
     );
-    if (!prevFiles.length) {
+    if (!prevFiles.length && !extraIncoming.length) {
       throw new Error('Quotation file is required. Upload a PDF or photo first.');
     }
-    fileInfo = {
-      fileName: prevFiles[0].quotation_file_name,
-      filePath: prevFiles[0].quotation_file_path,
-      buffer: prevFiles[0].quotation_file_data,
-    };
+    if (prevFiles.length) {
+      fileInfo = {
+        fileName: prevFiles[0].quotation_file_name,
+        filePath: prevFiles[0].quotation_file_path,
+        buffer: prevFiles[0].quotation_file_data,
+      };
+    } else {
+      fileInfo = saveQuotationFile(
+        inv.id,
+        inv.round,
+        extraIncoming[0].fileName,
+        extraIncoming[0].fileData
+      );
+      body.quotationFiles = extraIncoming.slice(1);
+    }
   }
 
   const requesterFieldDefs = config.fieldDefinitions.filter((f) => f.filledBy === 'requester');
@@ -1280,7 +1599,7 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
     ? body.vendorNotes.trim()
     : `Manually entered by ${user.name}`;
 
-  await pool.query(
+  const [ins] = await pool.query(
     `INSERT INTO vendor_quotation_submissions
      (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes, warranty, delivery_terms, quotation_file_name, quotation_file_path, quotation_file_data, custom_fields, requester_fields, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
@@ -1301,6 +1620,14 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
       JSON.stringify(requesterFields),
     ]
   );
+  if (fileInfo.buffer) await persistPrimaryQuotationBlob(ins.insertId, fileInfo.buffer);
+  await persistQuoteFileSet({
+    submissionId: ins.insertId,
+    invitationId: inv.id,
+    round: inv.round,
+    quote: body,
+    existingPrimaryName: fileInfo.fileName,
+  });
 
   await pool.query(
     `UPDATE rfq_invitations SET status = 'submitted', send_back_reason = NULL, send_back_fields = NULL, updated_at = NOW() WHERE id = ?`,
@@ -1787,21 +2114,12 @@ async function buildRfqSummary(prId) {
 }
 
 function nodemailerAttachment(filename, row) {
-  if (row.quotation_file_data && row.quotation_file_data.length) {
-    const content = Buffer.isBuffer(row.quotation_file_data)
-      ? row.quotation_file_data
-      : Buffer.from(row.quotation_file_data);
-    if (content.length) return { filename, content };
+  const fromDb = mysqlBlobToBuffer(row.quotation_file_data || row.file_data);
+  if (fromDb?.length) {
+    return { filename, content: fromDb };
   }
-  const stored = row.quotation_file_path ? String(row.quotation_file_path) : '';
-  const diskPath = stored
-    ? path.isAbsolute(stored)
-      ? stored
-      : path.join(UPLOAD_DIR, stored)
-    : null;
-  if (diskPath && fs.existsSync(diskPath)) {
-    return { filename, path: diskPath };
-  }
+  const diskBuf = bufferFromDiskPath(row.quotation_file_path || row.file_path);
+  if (diskBuf?.length) return { filename, content: diskBuf };
   return null;
 }
 
@@ -1842,6 +2160,42 @@ async function loadQuotationMailAttachments(prId) {
     }
     seen.add(uniqueName.toLowerCase());
     attachments.push({ ...attachment, filename: uniqueName });
+  }
+
+  try {
+    const ids = rows.map((r) => r.id).filter(Boolean);
+    if (ids.length) {
+      const [extras] = await pool.query(
+        `SELECT vqf.file_name, vqf.file_path, vqf.file_data, vqs.round, ri.vendor_name
+         FROM vendor_quotation_files vqf
+         JOIN vendor_quotation_submissions vqs ON vqs.id = vqf.submission_id
+         JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id
+         WHERE vqf.submission_id IN (${ids.map(() => '?').join(',')})`,
+        ids
+      );
+      for (const extra of extras) {
+        const safeVendor = String(extra.vendor_name || 'vendor').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const safeFile = String(extra.file_name || 'quotation.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${safeVendor}_R${extra.round}_${safeFile}`;
+        const attachment = nodemailerAttachment(filename, {
+          quotation_file_data: extra.file_data,
+          quotation_file_path: extra.file_path,
+        });
+        if (!attachment) continue;
+        let uniqueName = filename;
+        let n = 2;
+        while (seen.has(uniqueName.toLowerCase())) {
+          uniqueName = `${safeVendor}_R${extra.round}_${n}_${safeFile}`;
+          n += 1;
+        }
+        seen.add(uniqueName.toLowerCase());
+        attachments.push({ ...attachment, filename: uniqueName });
+      }
+    }
+  } catch (err) {
+    if (String(err?.code || '') !== 'ER_NO_SUCH_TABLE') {
+      console.warn('Extra quotation mail attachments skipped:', err.message);
+    }
   }
   return attachments;
 }
@@ -2819,6 +3173,7 @@ export function mapInvitationsToTableRows(invitations, config = null) {
         compliance: s.compliance,
         vendorNotes: s.vendorNotes,
         quotationFileName: s.quotationFileName,
+        quotationFiles: s.quotationFiles || [],
         quoteLineItems: s.quoteLineItems || [],
         customFields: s.customFields,
         requesterFields: s.requesterFields,
@@ -2946,6 +3301,7 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
         submissionId,
       ]
     );
+    if (fileBuffer) await persistPrimaryQuotationBlob(submissionId, fileBuffer);
   } else {
     await pool.query(
       `UPDATE vendor_quotation_submissions
@@ -2967,6 +3323,14 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
       ]
     );
   }
+
+  await persistQuoteFileSet({
+    submissionId,
+    invitationId: row.invitation_id,
+    round: row.round || row.inv_round || 1,
+    quote: body,
+    existingPrimaryName: replaceFile ? fileName : row.quotation_file_name,
+  });
 
   const full = await getRfqByPrId(user, row.pr_id);
   const rfq = await getInvitationsWithSubmissions(row.pr_id);
@@ -3026,6 +3390,7 @@ export async function attachQuotationFileToSubmission(user, submissionId, body) 
      WHERE id = ?`,
     [fileInfo.fileName, fileInfo.filePath, fileInfo.buffer, submissionId]
   );
+  await persistPrimaryQuotationBlob(submissionId, fileInfo.buffer);
 
   return {
     submissionId,
@@ -3074,37 +3439,80 @@ export async function getSubmissionFile(user, submissionId) {
   const fileName = row.quotation_file_name || 'quotation.pdf';
 
   // Deployed Cloud Run: DB blob is source of truth (disk is ephemeral).
-  if (row.quotation_file_data && row.quotation_file_data.length) {
-    const buffer = Buffer.isBuffer(row.quotation_file_data)
-      ? row.quotation_file_data
-      : Buffer.from(row.quotation_file_data);
-    return { fullPath: null, fileName, buffer };
+  const fromDb = mysqlBlobToBuffer(row.quotation_file_data);
+  if (fromDb?.length) {
+    return { fullPath: null, fileName, buffer: fromDb };
   }
 
-  const diskPath =
-    row.quotation_file_path && path.join(UPLOAD_DIR, row.quotation_file_path);
-
-  if (diskPath && fs.existsSync(diskPath)) {
-    const buffer = fs.readFileSync(diskPath);
-    if (buffer.length) {
-      try {
-        await pool.query(
-          `UPDATE vendor_quotation_submissions SET quotation_file_data = ? WHERE id = ?`,
-          [buffer, submissionId]
-        );
-      } catch (err) {
-        console.warn('Quotation DB backfill skipped:', err.message);
-      }
+  const diskBuf = bufferFromDiskPath(row.quotation_file_path);
+  if (diskBuf?.length) {
+    try {
+      await persistPrimaryQuotationBlob(submissionId, diskBuf);
+    } catch (err) {
+      console.warn('Quotation DB backfill skipped:', err.message);
     }
-    return { fullPath: diskPath, fileName, buffer };
+    return { fullPath: null, fileName, buffer: diskBuf };
   }
 
   if (!row.quotation_file_path && !row.quotation_file_name) {
     throw new Error('No quotation file attached');
   }
   throw new Error(
-    'Quotation file missing after deploy. Re-upload via Attach file on the RFQ Entry card.'
+    'Quotation file missing after deploy. Re-upload the PDF on Create PR (or Attach file on RFQ Entry) and save.'
   );
+}
+
+export async function getQuotationExtraFile(user, fileId) {
+  const [rows] = await pool.query(
+    `SELECT vqf.id, vqf.file_name, vqf.file_path, vqf.file_data, vqs.id AS submission_id,
+            ri.pr_id, pr.requester_id, pr.approval_user_id, pr.approval_user_ids
+     FROM vendor_quotation_files vqf
+     JOIN vendor_quotation_submissions vqs ON vqs.id = vqf.submission_id
+     JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id
+     JOIN purchase_requests pr ON pr.id = ri.pr_id
+     WHERE vqf.id = ?`,
+    [fileId]
+  );
+  if (!rows.length) throw new Error('Quotation file not found');
+  const row = rows[0];
+  let chain = [];
+  try {
+    const raw = row.approval_user_ids;
+    if (Array.isArray(raw)) chain = raw.map(Number).filter((id) => id > 0);
+    else if (typeof raw === 'string' && raw.trim()) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) chain = parsed.map(Number).filter((id) => id > 0);
+    }
+  } catch {
+    chain = [];
+  }
+  const pr = {
+    id: row.pr_id,
+    requesterId: row.requester_id,
+    approvalUserId: row.approval_user_id,
+    approvalUserIds: chain.length ? chain : row.approval_user_id ? [row.approval_user_id] : [],
+  };
+  if (!(await userCanViewPrQuotes(user, pr))) {
+    throw new Error('Unauthorized');
+  }
+  const fileName = row.file_name || 'quotation.pdf';
+  const fromDb = mysqlBlobToBuffer(row.file_data);
+  if (fromDb?.length) {
+    return { fullPath: null, fileName, buffer: fromDb };
+  }
+  const diskBuf = bufferFromDiskPath(row.file_path);
+  if (diskBuf?.length) {
+    try {
+      await pool.query(`UPDATE vendor_quotation_files SET file_data = ? WHERE id = ?`, [
+        diskBuf,
+        fileId,
+      ]);
+    } catch (err) {
+      console.warn('Extra quotation DB backfill skipped:', err.message);
+    }
+    return { fullPath: null, fileName, buffer: diskBuf };
+  }
+  throw new Error('Quotation file missing after deploy. Re-upload the file on Create PR or RFQ Entry.');
 }
 
 export function mapInvitationsToQuotations(invitations) {
@@ -3124,6 +3532,7 @@ export function mapInvitationsToQuotations(invitations) {
               ? `/api/rfq/submissions/${s.id}/file`
               : null,
           quotationFileName: s.quotationFileName || '',
+          quotationFiles: s.quotationFiles || [],
           status: s.status === 'sent_back' ? 'sent-back' : 'active',
           sentBackReason: inv.sendBackReason || undefined,
           sentBackFields: inv.sendBackFields?.length ? inv.sendBackFields : undefined,

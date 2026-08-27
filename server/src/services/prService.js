@@ -2974,15 +2974,26 @@ function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, display
   };
 }
 
-/** Latest approve/reject/return decisions by this user for their approval stage(s). */
+/** Latest approve/reject/return decisions by this user (any stage they acted on). */
 async function listMyApprovalDecisions(user) {
+  const userEmail = String(user.email || '').toLowerCase().trim();
+  // L2 (PR Manager) can also be the Functional "User Approval" performer.
+  // That decision is stored as HOD_REVIEW, not PR_MANAGER_REVIEW — include it
+  // so Approved on My Tasks is not empty after they approve.
   const stages = [
-    ROLE_STAGE_MAP[user.role]?.stage,
-    POST_RFQ_ROLE_MAP[user.role]?.stage,
-  ].filter(Boolean);
-  if (!stages.length) {
-    stages.push(STAGE.HOD_REVIEW);
-  }
+    ...new Set(
+      [
+        ROLE_STAGE_MAP[user.role]?.stage,
+        POST_RFQ_ROLE_MAP[user.role]?.stage,
+        STAGE.HOD_REVIEW,
+        STAGE.PR_MANAGER_REVIEW,
+        STAGE.RFQ_MANAGER_REVIEW,
+        STAGE.RFQ_L2_REVIEW,
+        STAGE.CFO_REVIEW,
+        STAGE.RFQ_CFO_REVIEW,
+      ].filter(Boolean)
+    ),
+  ];
 
   const placeholders = stages.map(() => '?').join(',');
   const [rows] = await pool.query(
@@ -2991,19 +3002,23 @@ async function listMyApprovalDecisions(user) {
             pa.action AS my_action, pa.created_at AS decided_at, pa.stage AS my_stage
      FROM pr_approvals pa
      INNER JOIN (
-       SELECT pr_id, MAX(id) AS max_id
-       FROM pr_approvals
-       WHERE approver_id = ?
-         AND stage IN (${placeholders})
-         AND action IN ('approve', 'reject', 'return', 'rework')
-       GROUP BY pr_id
+       SELECT pa2.pr_id, MAX(pa2.id) AS max_id
+       FROM pr_approvals pa2
+       LEFT JOIN users au ON au.id = pa2.approver_id
+       WHERE pa2.action IN ('approve', 'reject', 'return', 'rework')
+         AND pa2.stage IN (${placeholders})
+         AND (
+           pa2.approver_id = ?
+           OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+         )
+       GROUP BY pa2.pr_id
      ) latest ON latest.max_id = pa.id
      JOIN purchase_requests pr ON pr.id = pa.pr_id
      JOIN departments d ON d.id = pr.department_id
      JOIN users u ON u.id = pr.requester_id
      LEFT JOIN entity_masters e ON e.id = pr.entity_id
      ORDER BY pa.created_at DESC`,
-    [user.id, ...stages]
+    [...stages, user.id, userEmail, userEmail]
   );
 
   return rows.map((row) => {
@@ -3035,19 +3050,22 @@ export async function listTasks(user) {
     prs = all.filter((p) => allowedStatuses.has(p.status));
   }
 
-  // Always include PRs where this user is the assigned approver
-  // Match by assigned_user_id first (even if assigned_role was stored wrong).
+  // Always include PRs where this user is the assigned approver / User Approval performer.
+  // Match by user id or email (SSO / re-synced user rows).
+  const userEmail = String(user.email || '').toLowerCase().trim();
   const [assignedRows] = await pool.query(
     `SELECT DISTINCT pr.id, wt.task_type, pr.status AS pr_status
      FROM purchase_requests pr
      JOIN workflow_tasks wt ON wt.pr_id = pr.id
+     LEFT JOIN users au ON au.id = wt.assigned_user_id
      WHERE wt.status = 'pending'
        AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
        AND (
          wt.assigned_user_id = ?
          OR (wt.assigned_user_id IS NULL AND wt.assigned_role = ?)
+         OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
        )`,
-    [user.id, user.role]
+    [user.id, user.role, userEmail, userEmail]
   );
   const pendingIds = new Set(prs.map((p) => p.id));
   // Only RFQ_POST_APPROVAL (or post-RFQ statuses) count as post-RFQ — not every assigned PR

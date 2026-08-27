@@ -461,6 +461,9 @@ export default function TasksPage() {
       setModalState((prev) => ({ ...prev, isOpen: false }));
       setSelectedTask(null);
       setDrawerDetail(null);
+      if (type === 'approve') setFilter('approved');
+      else if (type === 'reject') setFilter('rejected');
+      else setFilter('returned');
       await loadTasks();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Action failed', 'error');
@@ -581,6 +584,7 @@ export default function TasksPage() {
   const widgetCards = [
     {
       title: 'Pending Approval',
+      filterKey: 'pending_approval',
       value: stats.pending,
       icon: 'ri-time-line',
       textColor: 'text-amber-600',
@@ -588,6 +592,7 @@ export default function TasksPage() {
     },
     {
       title: 'Approved',
+      filterKey: 'approved',
       value: stats.approved,
       icon: 'ri-check-double-line',
       textColor: 'text-emerald-600',
@@ -595,6 +600,7 @@ export default function TasksPage() {
     },
     {
       title: 'Rejected',
+      filterKey: 'rejected',
       value: stats.rejected,
       icon: 'ri-close-circle-line',
       textColor: 'text-red-600',
@@ -602,6 +608,7 @@ export default function TasksPage() {
     },
     {
       title: 'Overdue SLA',
+      filterKey: 'pending_approval',
       value: stats.overdue,
       icon: 'ri-alarm-warning-line',
       textColor: 'text-orange-600',
@@ -687,8 +694,15 @@ export default function TasksPage() {
     <DashboardLayout>
       {/* Widget Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-4 sm:mb-6">
-        {widgetCards.map((card, index) => (
-          <div key={index} className="bg-white rounded-lg border border-gray-200 p-3 sm:p-6">
+        {widgetCards.map((card) => (
+          <button
+            key={card.title}
+            type="button"
+            onClick={() => setFilter(card.filterKey)}
+            className={`text-left bg-white rounded-lg border p-3 sm:p-6 cursor-pointer transition-colors ${
+              filter === card.filterKey ? 'border-amber-400 ring-1 ring-amber-200' : 'border-gray-200 hover:bg-gray-50'
+            }`}
+          >
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">{card.title}</p>
@@ -698,7 +712,7 @@ export default function TasksPage() {
                 <i className={`${card.icon} text-lg sm:text-2xl ${card.textColor}`}></i>
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -1044,8 +1058,20 @@ export default function TasksPage() {
         {!loading && filteredTasks.length === 0 && (
           <div className="p-12 text-center">
             <i className="ri-file-list-3-line text-5xl text-gray-300 mb-4 block"></i>
-            <p className="text-gray-500 text-sm">No pending tasks for your approval</p>
-            <p className="text-gray-400 text-xs mt-1">PRs appear here after the previous approver completes their step</p>
+            <p className="text-gray-500 text-sm">
+              {filter === 'approved'
+                ? 'No approved items yet'
+                : filter === 'rejected'
+                  ? 'No rejected items'
+                  : filter === 'returned'
+                    ? 'No sent-back items'
+                    : 'No pending tasks for your approval'}
+            </p>
+            <p className="text-gray-400 text-xs mt-1">
+              {filter === 'approved'
+                ? 'PRs you approve as User Approval or L2 Manager show here'
+                : 'PRs appear here after the previous approver completes their step'}
+            </p>
             {(searchTerm || priorityFilter !== 'all' || filter !== 'all') && (
               <button
                 onClick={() => {

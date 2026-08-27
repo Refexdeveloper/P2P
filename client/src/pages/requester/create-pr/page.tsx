@@ -12,6 +12,10 @@ import LineItemEditorForm, {
 } from './LineItemEditorForm';
 import FunctionalOwnRfqSection, {
   FunctionalRfqVendorRow,
+  quoteHasQuotationFile,
+  localQuoteFiles,
+  savedQuoteFiles,
+  filesFromSubmission,
 } from './FunctionalOwnRfqSection';
 import UserSearchSelect from './UserSearchSelect';
 import PrBillingDeliverySection from './PrBillingDeliverySection';
@@ -296,6 +300,8 @@ export default function CreatePRPage() {
           leadTime: q.leadTime,
           paymentTerms: q.paymentTerms,
           file: null,
+          files: [],
+          savedFiles: q.savedFiles || (q.savedFileName ? [{ id: null, fileName: q.savedFileName, isPrimary: true }] : []),
           savedFileName: q.savedFileName || undefined,
           savedSubmissionId: q.savedSubmissionId || undefined,
         })),
@@ -739,6 +745,7 @@ export default function CreatePRPage() {
           // Only persist server-confirmed file names — never File.name (lost on refresh).
           savedFileName: q.savedFileName || undefined,
           savedSubmissionId: q.savedSubmissionId || undefined,
+          savedFiles: savedQuoteFiles(q),
         })),
       })),
       priority,
@@ -981,12 +988,17 @@ export default function CreatePRPage() {
               leadTime?: number;
               paymentTerms?: string;
               quotationFileName?: string;
+              quotationFiles?: Array<{ id?: number | null; fileName?: string; isPrimary?: boolean }>;
             }>;
           }>;
         };
         const invitations = data?.invitations || [];
         const hasQuotes = invitations.some((inv) =>
-          (inv.submissions || []).some((q) => Number(q.quotedPrice) >= 0 && Boolean(q.quotationFileName))
+          (inv.submissions || []).some(
+            (q) =>
+              Number(q.quotedPrice) >= 0 &&
+              Boolean(q.quotationFileName || (Array.isArray(q.quotationFiles) && q.quotationFiles.length))
+          )
         );
         setExistingRfqHasQuotes(hasQuotes);
 
@@ -1025,20 +1037,21 @@ export default function CreatePRPage() {
                   ...row,
                   quotes: row.quotes.map((q) => {
                     const sub = subs.find((s) => Number(s.round) === Number(q.round));
-                    if (!sub && !q.file) return q;
+                    if (!sub && !q.file && !q.files?.length) return q;
+                    const locals = localQuoteFiles(q);
+                    const saved = filesFromSubmission(sub);
+                    const remainingLocals = locals.filter(
+                      (f) => !saved.some((s) => s.fileName === f.name)
+                    );
                     return {
                       ...q,
                       quotedPrice: q.quotedPrice || (sub?.quotedPrice != null ? String(sub.quotedPrice) : ''),
                       leadTime: q.leadTime || (sub?.leadTime != null ? String(sub.leadTime) : ''),
                       paymentTerms: q.paymentTerms || sub?.paymentTerms || '',
-                      // Keep an unsaved local File; only drop it once the server has that same name.
-                      file:
-                        q.file && (!sub?.quotationFileName || sub.quotationFileName !== q.file.name)
-                          ? q.file
-                          : sub?.quotationFileName
-                            ? null
-                            : q.file,
-                      savedFileName: q.file?.name || sub?.quotationFileName || q.savedFileName,
+                      file: remainingLocals[0] || null,
+                      files: remainingLocals,
+                      savedFiles: saved.length ? saved : q.savedFiles,
+                      savedFileName: saved[0]?.fileName || q.savedFileName,
                       savedSubmissionId: sub?.id ? Number(sub.id) : q.savedSubmissionId,
                     };
                   }),
@@ -1051,13 +1064,16 @@ export default function CreatePRPage() {
                 const quotes = Array.from({ length: Math.min(4, maxR) }, (_, i) => {
                   const round = i + 1;
                   const sub = subs.find((s) => Number(s.round) === round);
+                  const saved = filesFromSubmission(sub);
                   return {
                     round,
                     quotedPrice: sub?.quotedPrice != null ? String(sub.quotedPrice) : '',
                     leadTime: sub?.leadTime != null ? String(sub.leadTime) : '',
                     paymentTerms: sub?.paymentTerms || '',
                     file: null as File | null,
-                    savedFileName: sub?.quotationFileName || undefined,
+                    files: [],
+                    savedFiles: saved,
+                    savedFileName: saved[0]?.fileName || sub?.quotationFileName || undefined,
                     savedSubmissionId: sub?.id ? Number(sub.id) : undefined,
                   };
                 });
@@ -1397,7 +1413,7 @@ export default function CreatePRPage() {
           Number.isFinite(price) &&
           price >= 0 &&
           String(round1?.quotedPrice ?? '').trim() !== '' &&
-          Boolean(round1?.file || round1?.savedFileName || round1?.savedSubmissionId)
+          quoteHasQuotationFile(round1)
         );
       });
       if (!hasRound1 && !existingRfqHasQuotes) {
@@ -1483,8 +1499,10 @@ export default function CreatePRPage() {
       for (const quote of row.quotes) {
         const price = Number(quote.quotedPrice);
         if (!Number.isFinite(price) || price < 0) continue;
-        const hasNewFile = Boolean(quote.file);
-        const hasSavedFile = Boolean(quote.savedFileName || quote.savedSubmissionId);
+        const locals = localQuoteFiles(quote);
+        const saved = savedQuoteFiles(quote);
+        const hasNewFile = locals.length > 0;
+        const hasSavedFile = saved.length > 0 || Boolean(quote.savedFileName || quote.savedSubmissionId);
         if (!hasNewFile && !hasSavedFile) continue;
         const entry: Record<string, unknown> = {
           round: quote.round,
@@ -1492,16 +1510,32 @@ export default function CreatePRPage() {
           leadTime: Number(quote.leadTime) || 0,
           paymentTerms: quote.paymentTerms || undefined,
         };
-        // Local File must always be uploaded — skipFileData only when already on server.
-        const alreadyOnServer = Boolean(quote.savedSubmissionId || (quote.savedFileName && !quote.file));
+        const alreadyOnServer = Boolean(quote.savedSubmissionId || (saved.length && !locals.length));
         if (skipFileData && alreadyOnServer) {
-          entry.quotationFileName = quote.savedFileName;
-        } else if (quote.file) {
-          const filePayload = await fileToAttachmentPayload(quote.file);
-          entry.quotationFileName = filePayload.fileName;
-          entry.quotationFileData = filePayload.data;
+          entry.quotationFileName = saved[0]?.fileName || quote.savedFileName;
+          entry.keepExtraFileIds = saved.filter((f) => f.id).map((f) => f.id);
+        } else if (locals.length) {
+          const uploaded = [];
+          for (const file of locals) {
+            uploaded.push(await fileToAttachmentPayload(file));
+          }
+          if (!saved.some((f) => f.isPrimary) && !quote.savedFileName) {
+            entry.quotationFileName = uploaded[0].fileName;
+            entry.quotationFileData = uploaded[0].data;
+            if (uploaded.length > 1) {
+              entry.quotationFiles = uploaded.slice(1).map((p) => ({ fileName: p.fileName, fileData: p.data }));
+            }
+          } else {
+            entry.quotationFileName = saved[0]?.fileName || quote.savedFileName;
+            entry.quotationFiles = uploaded.map((p) => ({ fileName: p.fileName, fileData: p.data }));
+          }
+          entry.keepExtraFileIds = saved.filter((f) => !f.isPrimary && f.id).map((f) => f.id);
+          if (!saved.some((f) => f.isPrimary) && quote.savedFileName) {
+            entry.replacePrimary = true;
+          }
         } else if (quote.savedFileName) {
           entry.quotationFileName = quote.savedFileName;
+          entry.keepExtraFileIds = saved.filter((f) => f.id).map((f) => f.id);
         }
         quotes.push(entry);
       }
@@ -1677,7 +1711,7 @@ export default function CreatePRPage() {
       };
       if (prFlow === 'functional' && vendorSelection === 'own') {
         const needsQuotationUpload = rfqVendors.some((row) =>
-          row.quotes.some((q) => Boolean(q.file))
+          row.quotes.some((q) => localQuoteFiles(q).length > 0)
         );
         // Always upload local quotation Files (also on silent / menu leave) so they survive navigation.
         const packed = await buildRfqVendorsPayload({
@@ -1705,16 +1739,6 @@ export default function CreatePRPage() {
       }
 
       const markQuoteFilesSaved = async (savedPrId?: number) => {
-        setRfqVendors((prev) =>
-          prev.map((row) => ({
-            ...row,
-            quotes: row.quotes.map((q) => ({
-              ...q,
-              savedFileName: q.file?.name || q.savedFileName,
-              file: null,
-            })),
-          }))
-        );
         if (payload.rfqVendors) setExistingRfqHasQuotes(true);
         const prId = Number(savedPrId || persistPrId || editPrId);
         if (!prId) return;
@@ -1724,7 +1748,12 @@ export default function CreatePRPage() {
             invitations?: Array<{
               vendorName?: string;
               vendorEmail?: string;
-              submissions?: Array<{ id?: number; round?: number; quotationFileName?: string }>;
+              submissions?: Array<{
+                id?: number;
+                round?: number;
+                quotationFileName?: string;
+                quotationFiles?: Array<{ id?: number | null; fileName?: string; isPrimary?: boolean }>;
+              }>;
             }>;
           })?.invitations || [];
           if (!invitations.length) return;
@@ -1742,11 +1771,15 @@ export default function CreatePRPage() {
                 ...row,
                 quotes: row.quotes.map((q) => {
                   const sub = (inv.submissions || []).find((s) => Number(s.round) === Number(q.round));
-                  if (!sub?.id && !sub?.quotationFileName) return q;
+                  if (!sub?.id && !sub?.quotationFileName && !sub?.quotationFiles?.length) return q;
+                  const saved = filesFromSubmission(sub);
+                  const keepLocal = localQuoteFiles(q);
                   return {
                     ...q,
-                    file: null,
-                    savedFileName: sub.quotationFileName || q.savedFileName,
+                    file: sub.id ? null : q.file,
+                    files: sub.id ? [] : keepLocal,
+                    savedFiles: saved.length ? saved : q.savedFiles,
+                    savedFileName: saved[0]?.fileName || sub.quotationFileName || q.savedFileName,
                     savedSubmissionId: sub.id ? Number(sub.id) : q.savedSubmissionId,
                   };
                 }),
@@ -1769,6 +1802,7 @@ export default function CreatePRPage() {
                     paymentTerms: q.paymentTerms,
                     savedFileName: q.savedFileName,
                     savedSubmissionId: q.savedSubmissionId,
+                    savedFiles: q.savedFiles,
                   })),
                 })),
               });

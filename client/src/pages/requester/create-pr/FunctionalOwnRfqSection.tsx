@@ -8,17 +8,63 @@ import type { VendorRecord } from '../../../services/api';
 import { rfqApi } from '../../../services/api';
 import { PR_PAYMENT_TERM_OPTIONS } from '../../../constants/prRequisition';
 
+export type SavedQuotationFile = {
+  id?: number | null;
+  fileName: string;
+  isPrimary?: boolean;
+};
+
 export type FunctionalRfqQuote = {
   round: number;
   quotedPrice: string;
   leadTime: string;
   paymentTerms: string;
   file: File | null;
+  files: File[];
+  savedFiles?: SavedQuotationFile[];
   /** File name already stored on the server (no re-upload needed). */
   savedFileName?: string;
   /** Server submission id — used to Open/View saved quotation file. */
   savedSubmissionId?: number;
 };
+
+export function localQuoteFiles(q: FunctionalRfqQuote | undefined): File[] {
+  if (!q) return [];
+  if (Array.isArray(q.files) && q.files.length) return q.files;
+  return q.file ? [q.file] : [];
+}
+
+export function savedQuoteFiles(q: FunctionalRfqQuote | undefined): SavedQuotationFile[] {
+  if (!q) return [];
+  if (Array.isArray(q.savedFiles) && q.savedFiles.length) return q.savedFiles;
+  if (q.savedFileName) return [{ id: null, fileName: q.savedFileName, isPrimary: true }];
+  return [];
+}
+
+export function quoteHasQuotationFile(q: FunctionalRfqQuote | undefined): boolean {
+  return localQuoteFiles(q).length > 0 || savedQuoteFiles(q).length > 0 || Boolean(q?.savedSubmissionId);
+}
+
+export function filesFromSubmission(sub?: {
+  id?: number;
+  quotationFileName?: string;
+  quotationFiles?: Array<{ id?: number | null; fileName?: string; isPrimary?: boolean }>;
+}): SavedQuotationFile[] {
+  const extra = Array.isArray(sub?.quotationFiles) ? sub.quotationFiles : [];
+  if (extra.length) {
+    return extra
+      .map((f, i) => ({
+        id: f.id ?? null,
+        fileName: String(f.fileName || ''),
+        isPrimary: Boolean(f.isPrimary ?? i === 0),
+      }))
+      .filter((f) => f.fileName);
+  }
+  if (sub?.quotationFileName) {
+    return [{ id: null, fileName: sub.quotationFileName, isPrimary: true }];
+  }
+  return [];
+}
 
 export type FunctionalRfqVendorRow = {
   key: string;
@@ -36,6 +82,7 @@ function emptyQuotes(maxRounds: number): FunctionalRfqQuote[] {
     leadTime: '',
     paymentTerms: '',
     file: null,
+    files: [],
   }));
 }
 
@@ -118,7 +165,7 @@ export default function FunctionalOwnRfqSection({
   const takenIds = useMemo(() => new Set(rows.map((r) => r.vendorId).filter(Boolean)), [rows]);
   const quotedCount = rows.filter((r) => {
     const q1 = r.quotes.find((q) => q.round === 1);
-    return Number(q1?.quotedPrice) >= 0 && String(q1?.quotedPrice || '').trim() !== '' && Boolean(q1?.file || q1?.savedFileName || q1?.savedSubmissionId);
+    return Number(q1?.quotedPrice) >= 0 && String(q1?.quotedPrice || '').trim() !== '' && quoteHasQuotationFile(q1);
   }).length;
   const guideStep = quotedCount > 0 ? 2 : rows.length > 0 ? 2 : 1;
 
@@ -199,51 +246,56 @@ export default function FunctionalOwnRfqSection({
     if (saved) setQuoteDraft(saved);
   };
 
-  const openQuotationPreview = async (quote: FunctionalRfqQuote) => {
+  const openQuotationPreview = async (
+    quote: FunctionalRfqQuote,
+    target?: { file?: File; saved?: SavedQuotationFile }
+  ) => {
     setFileViewError('');
     setFileViewBusy(true);
     try {
-      if (quote.file) {
-        const url = URL.createObjectURL(quote.file);
-        const win = window.open(url, '_blank', 'noopener,noreferrer');
-        if (!win) {
-          // Popup blocked — download instead so the user can still open it
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = quote.file.name || 'quotation';
-          a.click();
-        }
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        return;
-      }
-      if (quote.savedSubmissionId) {
-        const token = localStorage.getItem('p2p_token');
-        const res = await fetch(rfqApi.quotationFileUrl(quote.savedSubmissionId), {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) {
-          let message = 'Could not open quotation file';
-          try {
-            const body = (await res.json()) as { message?: string };
-            if (body?.message) message = body.message;
-          } catch {
-            /* keep */
-          }
-          throw new Error(message);
-        }
-        const blob = await res.blob();
+      const local = target?.file || localQuoteFiles(quote)[0];
+      const saved = target?.saved || savedQuoteFiles(quote)[0];
+      const openBlob = (blob: Blob, name: string) => {
         const url = URL.createObjectURL(blob);
         const win = window.open(url, '_blank', 'noopener,noreferrer');
         if (!win) {
           const a = document.createElement('a');
           a.href = url;
-          a.download = quote.savedFileName || 'quotation.pdf';
+          a.download = name || 'quotation';
           a.click();
         }
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      };
+      if (local) {
+        openBlob(local, local.name);
         return;
       }
-      setFileViewError('No file to open yet — upload a quotation first');
+      const token = localStorage.getItem('p2p_token');
+      let url = '';
+      let name = saved?.fileName || quote.savedFileName || 'quotation.pdf';
+      if (saved?.id) {
+        url = rfqApi.quotationExtraFileUrl(saved.id);
+      } else if (quote.savedSubmissionId) {
+        url = rfqApi.quotationFileUrl(quote.savedSubmissionId);
+      }
+      if (!url) {
+        setFileViewError('No file to open yet — upload a quotation first');
+        return;
+      }
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        let message = 'Could not open quotation file';
+        try {
+          const body = (await res.json()) as { message?: string };
+          if (body?.message) message = body.message;
+        } catch {
+          /* keep */
+        }
+        throw new Error(message);
+      }
+      openBlob(await res.blob(), name);
     } catch (err) {
       setFileViewError(err instanceof Error ? err.message : 'Could not open quotation file');
     } finally {
@@ -264,13 +316,13 @@ export default function FunctionalOwnRfqSection({
         round: q.round,
         quotedPrice: Number(q.quotedPrice),
         status: 'submitted' as const,
-        quotationFileName: q.file?.name || q.savedFileName || '',
+        quotationFileName: q.file?.name || q.files?.[0]?.name || q.savedFileName || savedQuoteFiles(q)[0]?.fileName || '',
         submissionId: q.savedSubmissionId || null,
       }));
     const hasActive = quotes.length > 0;
     const fileQuote =
       r.quotes.find((q) => q.round === (quotes.reduce((max, q) => Math.max(max, q.round), 1))) ||
-      r.quotes.find((q) => q.file || q.savedFileName || q.savedSubmissionId) ||
+      r.quotes.find((q) => q.file || q.files?.length || q.savedFileName || q.savedFiles?.length || q.savedSubmissionId) ||
       r.quotes.find((q) => q.round === 1);
     return {
       id: r.key,
@@ -283,9 +335,13 @@ export default function FunctionalOwnRfqSection({
       canSendBack: hasActive && quotes.reduce((max, q) => Math.max(max, q.round), 0) < 4,
       isRecommended: recommendedKey === r.key,
       quotationFileName:
-        fileQuote?.file?.name || fileQuote?.savedFileName || undefined,
+        fileQuote?.file?.name ||
+        fileQuote?.files?.[0]?.name ||
+        fileQuote?.savedFileName ||
+        savedQuoteFiles(fileQuote)[0]?.fileName ||
+        undefined,
       quotationSubmissionId: fileQuote?.savedSubmissionId,
-      hasLocalQuotationFile: Boolean(fileQuote?.file),
+      hasLocalQuotationFile: Boolean(fileQuote?.file || fileQuote?.files?.length),
       quotes,
     };
   });
@@ -377,7 +433,7 @@ export default function FunctionalOwnRfqSection({
               const hasQuote =
                 Number(round1?.quotedPrice) >= 0 &&
                 String(round1?.quotedPrice || '').trim() !== '' &&
-                Boolean(round1?.file || round1?.savedFileName || round1?.savedSubmissionId);
+                quoteHasQuotationFile(round1);
               return (
                 <div
                   key={row.key}
@@ -596,114 +652,125 @@ export default function FunctionalOwnRfqSection({
               </div>
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
-                  Quotation file {quoteRound === 1 ? <span className="text-red-500">*</span> : null}
+                  Quotation files {quoteRound === 1 ? <span className="text-red-500">*</span> : null}
                 </p>
+                {(() => {
+                  const locals = localQuoteFiles(editingQuote);
+                  const saved = savedQuoteFiles(editingQuote);
+                  const hasAny = locals.length + saved.length > 0;
+                  return (
+                    <>
                 <label
                   className={`flex flex-wrap items-center gap-3 px-4 py-3.5 border-2 border-dashed rounded-xl cursor-pointer ${
-                    editingQuote.file || editingQuote.savedFileName
+                    hasAny
                       ? 'border-teal-300 bg-teal-50/40 hover:bg-teal-50'
                       : 'border-red-200 bg-red-50/40 hover:bg-red-50/70'
                   }`}
                 >
                   <i
                     className={`text-xl shrink-0 ${
-                      editingQuote.file || editingQuote.savedFileName
-                        ? 'ri-upload-2-line text-teal-700'
-                        : 'ri-upload-cloud-2-line text-red-500'
+                      hasAny ? 'ri-upload-2-line text-teal-700' : 'ri-upload-cloud-2-line text-red-500'
                     }`}
                   />
                   <div className="min-w-0 flex-1">
-                    <p
-                      className={`text-sm font-semibold truncate ${
-                        editingQuote.file || editingQuote.savedFileName ? 'text-teal-800' : 'text-red-700'
-                      }`}
-                    >
-                      {editingQuote.file?.name ||
-                        (editingQuote.savedFileName
-                          ? `Saved: ${editingQuote.savedFileName}`
-                          : 'Upload quotation file (required)')}
+                    <p className={`text-sm font-semibold ${hasAny ? 'text-teal-800' : 'text-red-700'}`}>
+                      {hasAny
+                        ? `Add more files (${locals.length + saved.length} attached)`
+                        : 'Upload quotation files (required)'}
                     </p>
-                    <p className="text-xs text-gray-600 mt-0.5">PDF, Word, or photo · then type quoted price</p>
+                    <p className="text-xs text-gray-600 mt-0.5">PDF, Word, Excel, or photo · you can select multiple</p>
                   </div>
                   <input
                     type="file"
+                    multiple
                     accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
                     className="text-xs max-w-full"
                     onChange={(e) => {
-                      const nextFile = e.target.files?.[0] || null;
+                      const picked = Array.from(e.target.files || []);
+                      e.target.value = '';
+                      if (!picked.length) return;
+                      const nextFiles = [...locals, ...picked];
                       updateQuote(editing.key, quoteRound, {
-                        file: nextFile,
-                        // New local file replaces prior saved reference until Save Draft / Submit
-                        savedFileName: nextFile ? undefined : editingQuote.savedFileName,
-                        savedSubmissionId: nextFile ? undefined : editingQuote.savedSubmissionId,
+                        files: nextFiles,
+                        file: nextFiles[0] || null,
                       });
                       setFileViewError('');
                     }}
                   />
                 </label>
-                {(editingQuote.file || editingQuote.savedFileName || editingQuote.savedSubmissionId) && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={fileViewBusy || (!editingQuote.file && !editingQuote.savedSubmissionId)}
-                      onClick={() => void openQuotationPreview(editingQuote)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal-300 bg-white text-teal-800 text-xs font-semibold hover:bg-teal-50 disabled:opacity-50 cursor-pointer"
-                      title={
-                        editingQuote.file || editingQuote.savedSubmissionId
-                          ? 'Open quotation in a new tab'
-                          : 'Save the PR once so this file can be opened from the server'
-                      }
-                    >
-                      <i className="ri-eye-line"></i>
-                      {fileViewBusy ? 'Opening…' : 'Open / Show'}
-                    </button>
-                    {(editingQuote.file || editingQuote.savedSubmissionId) && (
-                      <button
-                        type="button"
-                        disabled={fileViewBusy}
-                        onClick={async () => {
-                          setFileViewError('');
-                          setFileViewBusy(true);
-                          try {
-                            let blob: Blob;
-                            let name = editingQuote.file?.name || editingQuote.savedFileName || 'quotation.pdf';
-                            if (editingQuote.file) {
-                              blob = editingQuote.file;
-                            } else if (editingQuote.savedSubmissionId) {
-                              const token = localStorage.getItem('p2p_token');
-                              const res = await fetch(rfqApi.quotationFileUrl(editingQuote.savedSubmissionId), {
-                                headers: token ? { Authorization: `Bearer ${token}` } : {},
-                              });
-                              if (!res.ok) throw new Error('Could not download quotation file');
-                              blob = await res.blob();
-                            } else {
-                              return;
-                            }
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = name;
-                            a.click();
-                            window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-                          } catch (err) {
-                            setFileViewError(err instanceof Error ? err.message : 'Download failed');
-                          } finally {
-                            setFileViewBusy(false);
-                          }
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                {(saved.length > 0 || locals.length > 0) && (
+                  <ul className="mt-2 space-y-1.5">
+                    {saved.map((sf, idx) => (
+                      <li
+                        key={`saved-${sf.id || sf.fileName}-${idx}`}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-teal-200 bg-teal-50/50 text-xs"
                       >
-                        <i className="ri-download-line"></i>
-                        Download
-                      </button>
-                    )}
-                    {!editingQuote.file && editingQuote.savedFileName && !editingQuote.savedSubmissionId && (
-                      <p className="text-[11px] text-amber-700">
-                        File name is saved on this draft. Save Draft / Submit once, then reopen Edit to Open from server.
-                      </p>
-                    )}
-                  </div>
+                        <i className="ri-file-check-line text-teal-700 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate font-medium text-teal-800" title={sf.fileName}>
+                          {sf.fileName}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={fileViewBusy || (!sf.id && !editingQuote.savedSubmissionId)}
+                          onClick={() => void openQuotationPreview(editingQuote, { saved: sf })}
+                          className="text-teal-700 font-semibold hover:underline disabled:opacity-50"
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextSaved = saved.filter((_, i) => i !== idx);
+                            updateQuote(editing.key, quoteRound, {
+                              savedFiles: nextSaved,
+                              savedFileName: nextSaved[0]?.fileName,
+                            });
+                          }}
+                          className="text-gray-400 hover:text-red-600"
+                          title="Remove"
+                        >
+                          <i className="ri-close-line" />
+                        </button>
+                      </li>
+                    ))}
+                    {locals.map((lf, idx) => (
+                      <li
+                        key={`local-${lf.name}-${idx}`}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs"
+                      >
+                        <i className="ri-file-add-line text-slate-600 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate font-medium text-slate-800" title={lf.name}>
+                          {lf.name}
+                        </span>
+                        <span className="text-[10px] text-slate-500">New</span>
+                        <button
+                          type="button"
+                          onClick={() => void openQuotationPreview(editingQuote, { file: lf })}
+                          className="text-teal-700 font-semibold hover:underline"
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextFiles = locals.filter((_, i) => i !== idx);
+                            updateQuote(editing.key, quoteRound, {
+                              files: nextFiles,
+                              file: nextFiles[0] || null,
+                            });
+                          }}
+                          className="text-gray-400 hover:text-red-600"
+                          title="Remove"
+                        >
+                          <i className="ri-close-line" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
+                    </>
+                  );
+                })()}
                 {fileViewError ? (
                   <p className="mt-2 text-xs text-red-600 flex items-center gap-1">
                     <i className="ri-error-warning-line" />
@@ -763,7 +830,7 @@ export default function FunctionalOwnRfqSection({
                     setLocalError('Round 1 needs a quoted price (0 is allowed)');
                     return;
                   }
-                  if (quoteRound === 1 && !editingQuote.file && !editingQuote.savedFileName && !existingQuoteNote) {
+                  if (quoteRound === 1 && !quoteHasQuotationFile(editingQuote) && !existingQuoteNote) {
                     setLocalError('Round 1 needs a quotation file');
                     return;
                   }
@@ -877,7 +944,13 @@ export default function FunctionalOwnRfqSection({
           setFocusTab(nextVisible);
           const nextQuotes = syncQuotes(existing?.quotes || emptyQuotes(nextVisible), nextVisible).map((q) =>
             q.round === targetRound
-              ? { ...q, quotedPrice: String(quotedPrice), file, paymentTerms: q.paymentTerms || 'Net 30 Days' }
+              ? {
+                  ...q,
+                  quotedPrice: String(quotedPrice),
+                  file,
+                  files: [file],
+                  paymentTerms: q.paymentTerms || 'Net 30 Days',
+                }
               : q
           );
           if (existing) {
