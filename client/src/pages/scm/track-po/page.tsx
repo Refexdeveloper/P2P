@@ -4,6 +4,7 @@ import DashboardLayout from '../../../components/feature/DashboardLayout';
 import PoSampleCsvTable from '../../../components/feature/PoSampleCsvTable';
 import TrackPoExpandedRow from './components/TrackPoExpandedRow';
 import { masterApi, poApi, prApi, CategoryRecord, DepartmentRecord, EntityRecord } from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
 import {
   parseAllPoImportCsv,
   storePoCsvImport,
@@ -158,6 +159,8 @@ function statusColor(status: string) {
 
 export default function TrackPoPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
   const csvFileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<TrackRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,6 +191,8 @@ export default function TrackPoPage() {
   const [importChecking, setImportChecking] = useState(false);
   const [oldPoImport, setOldPoImport] = useState(true);
   const [readyOptions, setReadyOptions] = useState<ReadyOption[]>([]);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [toast, setToast] = useState('');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -229,6 +234,49 @@ export default function TrackPoPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleAdminDelete = async (row: TrackRow) => {
+    if (!isSuperAdmin) return;
+    if (row.poId) {
+      const ok = window.confirm(
+        `Delete ${row.poNumber || 'this PO'}?\n\nThis permanently removes the purchase order. This cannot be undone.`
+      );
+      if (!ok) return;
+      setDeletingKey(row.key);
+      setError('');
+      try {
+        const res = await poApi.adminDelete(row.poId);
+        setToast(res.message || `${row.poNumber} deleted`);
+        setTimeout(() => setToast(''), 3500);
+        if (expandedKey === row.key) setExpandedKey(null);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to delete PO');
+      } finally {
+        setDeletingKey(null);
+      }
+      return;
+    }
+    if (row.prId > 0) {
+      const ok = window.confirm(
+        `Delete ${row.prNumber || 'this PR'}?\n\nThis permanently removes the purchase request and any linked RFQ / PO. This cannot be undone.`
+      );
+      if (!ok) return;
+      setDeletingKey(row.key);
+      setError('');
+      try {
+        const res = await prApi.adminDelete(row.prId);
+        setToast(res.message || `${row.prNumber} deleted`);
+        setTimeout(() => setToast(''), 3500);
+        if (expandedKey === row.key) setExpandedKey(null);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to delete PR');
+      } finally {
+        setDeletingKey(null);
+      }
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -405,6 +453,11 @@ export default function TrackPoPage() {
 
   return (
     <DashboardLayout>
+      {toast ? (
+        <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+          {toast}
+        </div>
+      ) : null}
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Track PO</h1>
@@ -657,6 +710,17 @@ export default function TrackPoPage() {
                                   className="px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50"
                                 >
                                   View PDF
+                                </button>
+                              )}
+                              {isSuperAdmin && (row.poId || row.prId > 0) && (
+                                <button
+                                  type="button"
+                                  disabled={deletingKey === row.key}
+                                  onClick={() => void handleAdminDelete(row)}
+                                  className="px-3 py-1.5 border border-rose-300 text-rose-700 rounded-md text-xs font-medium hover:bg-rose-50 disabled:opacity-50"
+                                  title={row.poId ? 'Permanently delete this PO' : 'Permanently delete this PR'}
+                                >
+                                  {deletingKey === row.key ? 'Deleting…' : 'Delete'}
                                 </button>
                               )}
                             </div>

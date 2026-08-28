@@ -726,6 +726,7 @@ export default function TrackPRPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
+  const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
   const [rows, setRows] = useState<TrackPR[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -757,6 +758,7 @@ export default function TrackPRPage() {
   const [sendBackLoading, setSendBackLoading] = useState(false);
   const [sendBackError, setSendBackError] = useState('');
   const [toast, setToast] = useState('');
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const openAdminSendBack = async (pr: TrackPR) => {
     setSendBackModal({ prId: pr.prId, prNumber: pr.id, title: pr.title });
@@ -802,6 +804,26 @@ export default function TrackPRPage() {
       setSendBackError(err instanceof Error ? err.message : 'Send back failed');
     } finally {
       setSendBackLoading(false);
+    }
+  };
+
+  const handleAdminDeletePr = async (pr: TrackPR) => {
+    if (!isSuperAdmin || !pr.prId) return;
+    const ok = window.confirm(
+      `Delete ${pr.prNumber || 'this PR'}?\n\nThis permanently removes the purchase request, RFQ, quotes, and any linked POs. This cannot be undone.`
+    );
+    if (!ok) return;
+    setDeletingId(pr.prId);
+    setError('');
+    try {
+      const res = await prApi.adminDelete(pr.prId);
+      setToast(res.message || `${pr.prNumber} deleted`);
+      setTimeout(() => setToast(''), 3500);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete PR');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -1151,6 +1173,17 @@ export default function TrackPRPage() {
                                     title="Send PR back to any previous workflow step"
                                   >
                                     Send Back
+                                  </button>
+                                )}
+                                {isSuperAdmin && (
+                                  <button
+                                    type="button"
+                                    disabled={deletingId === pr.prId}
+                                    onClick={() => void handleAdminDeletePr(pr)}
+                                    className="px-3 py-1.5 text-xs font-medium text-rose-700 border border-rose-300 rounded-md hover:bg-rose-50 transition-colors whitespace-nowrap disabled:opacity-50"
+                                    title="Permanently delete this purchase request"
+                                  >
+                                    {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
                                   </button>
                                 )}
                                 {isAdminEditor && pr.status !== 'draft' && (

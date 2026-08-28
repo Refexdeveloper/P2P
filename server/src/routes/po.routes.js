@@ -29,6 +29,7 @@ import {
   resolveCancellationAttachment,
   getCfoPoInsights,
 } from '../services/poService.js';
+import { adminDeletePurchaseOrder } from '../services/adminDeleteService.js';
 import {
   resolveScmManagerUser,
   getPreferredScmManagerEmail,
@@ -617,6 +618,16 @@ router.post('/:id/cancel', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin
     res.json({ data, message: 'PO cancelled successfully' });
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+});
+
+/** Super Admin only: permanently delete a purchase order */
+router.delete('/:id', requireRoles('Super Admin'), async (req, res) => {
+  try {
+    const data = await adminDeletePurchaseOrder(req.user, Number(req.params.id));
+    res.json({ data, message: `PO ${data.poNumber} deleted` });
+  } catch (err) {
+    res.status(err.message === 'Purchase order not found' ? 404 : 400).json({ message: err.message });
   }
 });
 

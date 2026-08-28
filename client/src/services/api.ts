@@ -261,6 +261,10 @@ export const prApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  adminDelete: (id: number) =>
+    request<{ data: { prId: number; prNumber: string }; message: string }>(`/api/purchase-requests/${id}`, {
+      method: 'DELETE',
+    }),
   approve: (
     id: number,
     action: 'approve' | 'reject' | 'return' | 'rework',
@@ -897,6 +901,10 @@ export const poApi = {
   getByNumber: (poNumber: string) =>
     request<{ data: Record<string, unknown> }>(`/api/po/by-number/${encodeURIComponent(poNumber)}`),
   get: (poId: number) => request<{ data: Record<string, unknown> }>(`/api/po/${poId}`),
+  adminDelete: (poId: number) =>
+    request<{ data: { poId: number; poNumber: string }; message: string }>(`/api/po/${poId}`, {
+      method: 'DELETE',
+    }),
   getPdfUrl: (poId: number) => `${PO_API_URL}/api/po/${poId}/pdf`,
   downloadPdf: async (poId: number) => {
     const blob = await poApi.fetchPdfBlob(poId);

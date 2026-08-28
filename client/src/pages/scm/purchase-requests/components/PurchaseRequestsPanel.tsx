@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { poApi } from '../../../../services/api';
+import { poApi, prApi } from '../../../../services/api';
+import { useAuth } from '../../../../contexts/AuthContext';
 import PRBucketExpandedRow from './PRBucketExpandedRow';
 import PoSampleCsvTable from '../../../../components/feature/PoSampleCsvTable';
 import {
@@ -89,6 +90,8 @@ type Props = {
 
 export default function PurchaseRequestsPanel({ showPageActions = true }: Props) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
   const [rows, setRows] = useState<BucketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -124,6 +127,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
   const [cancelFiles, setCancelFiles] = useState<File[]>([]);
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [cancelError, setCancelError] = useState('');
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const csvFileRef = useRef<HTMLInputElement>(null);
   const cancelFileRef = useRef<HTMLInputElement>(null);
 
@@ -190,6 +194,45 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleAdminDelete = async (pr: BucketRow) => {
+    if (!isSuperAdmin) return;
+    if (pr.poId) {
+      const ok = window.confirm(
+        `Delete ${pr.poNumber || 'this PO'}?\n\nThis permanently removes the purchase order. This cannot be undone.`
+      );
+      if (!ok) return;
+      setDeletingKey(pr.key);
+      setError('');
+      try {
+        await poApi.adminDelete(pr.poId);
+        if (expandedKey === pr.key) setExpandedKey(null);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to delete PO');
+      } finally {
+        setDeletingKey(null);
+      }
+      return;
+    }
+    if (pr.prId > 0) {
+      const ok = window.confirm(
+        `Delete ${pr.prNumber || 'this PR'}?\n\nThis permanently removes the purchase request and any linked RFQ / PO. This cannot be undone.`
+      );
+      if (!ok) return;
+      setDeletingKey(pr.key);
+      setError('');
+      try {
+        await prApi.adminDelete(pr.prId);
+        if (expandedKey === pr.key) setExpandedKey(null);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to delete PR');
+      } finally {
+        setDeletingKey(null);
+      }
+    }
+  };
 
   const loadReadyOptions = async (): Promise<BucketRow[]> => {
     try {
@@ -573,6 +616,17 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                   className="px-2.5 py-1.5 border border-rose-300 text-rose-700 rounded-md text-xs font-medium hover:bg-rose-50 whitespace-nowrap"
                                 >
                                   Cancel PO
+                                </button>
+                              )}
+                              {isSuperAdmin && (pr.poId || pr.prId > 0) && (
+                                <button
+                                  type="button"
+                                  disabled={deletingKey === pr.key}
+                                  onClick={() => void handleAdminDelete(pr)}
+                                  className="px-2.5 py-1.5 border border-rose-400 text-rose-800 rounded-md text-xs font-semibold hover:bg-rose-50 whitespace-nowrap disabled:opacity-50"
+                                  title={pr.poId ? 'Permanently delete this PO' : 'Permanently delete this PR'}
+                                >
+                                  {deletingKey === pr.key ? 'Deleting…' : 'Delete'}
                                 </button>
                               )}
                               {pr.status !== 'Ready for PO' && !pr.poId && pr.prId > 0 && (

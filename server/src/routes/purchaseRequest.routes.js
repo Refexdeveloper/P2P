@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import {
   authenticate,
+  requireRoles,
   requireRolesOrPermissions,
   CREATE_PR_ROLES,
 } from '../middleware/auth.js';
+import { adminDeletePurchaseRequest } from '../services/adminDeleteService.js';
 import {
   createPurchaseRequest,
   getPurchaseRequestById,
@@ -279,6 +281,16 @@ router.get('/:id/send-back-targets', async (req, res) => {
     res.json({ data: targets });
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+});
+
+/** Super Admin only: permanently delete a purchase request and related RFQ / PO records */
+router.delete('/:id', requireRoles('Super Admin'), async (req, res) => {
+  try {
+    const data = await adminDeletePurchaseRequest(req.user, Number(req.params.id));
+    res.json({ data, message: `PR ${data.prNumber} deleted` });
+  } catch (err) {
+    res.status(err.message === 'Purchase request not found' ? 404 : 400).json({ message: err.message });
   }
 });
 
