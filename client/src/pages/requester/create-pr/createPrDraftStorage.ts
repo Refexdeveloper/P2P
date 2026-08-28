@@ -50,6 +50,9 @@ export type CreatePrDraftSnapshot = {
   placeOfDelivery: string;
   expectedDeliveryTimeline: string;
   paymentTerms: string;
+  requestCategory?: 'Product' | 'Service' | '';
+  projectDetail?: string;
+  specialNotes?: string;
   lineItems: Array<{
     id: string;
     itemId?: number | null;

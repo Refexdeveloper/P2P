@@ -52,6 +52,9 @@ interface TrackPR {
   id: string;
   title: string;
   requestType: string;
+  requestCategory?: string;
+  projectDetail?: string;
+  specialNotes?: string;
   department: string;
   amount: number;
   status: string;
@@ -597,6 +600,9 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     id: prNumber,
     title: asText(pr.title),
     requestType: asText(pr.requestType),
+    requestCategory: asText(pr.requestCategory),
+    projectDetail: asText(pr.projectDetail),
+    specialNotes: asText(pr.specialNotes),
     department: asText(pr.department),
     amount: Number(pr.totalAmount ?? pr.amount ?? 0),
     status: mapTrackStatus(rawStatus, statusFrontend),
@@ -1204,6 +1210,22 @@ export default function TrackPRPage() {
                                           </div>
                                           <div>
                                             <p className="text-xs text-gray-400 mb-0.5">
+                                              Request Category
+                                            </p>
+                                            <p className="text-sm font-medium text-gray-900">
+                                              {pr.requestCategory || '—'}
+                                            </p>
+                                          </div>
+                                          <div className="col-span-2">
+                                            <p className="text-xs text-gray-400 mb-0.5">
+                                              Project Detail
+                                            </p>
+                                            <p className="text-sm font-medium text-gray-900">
+                                              {pr.projectDetail || '—'}
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-400 mb-0.5">
                                               Required Date
                                             </p>
                                             <p className="text-sm font-medium text-gray-900">
@@ -1229,6 +1251,14 @@ export default function TrackPRPage() {
                                           </p>
                                           <p className="text-xs text-gray-700 leading-relaxed">
                                             {pr.justification}
+                                          </p>
+                                        </div>
+                                        <div className="mt-3 pt-3 border-t border-gray-100">
+                                          <p className="text-xs text-gray-400 mb-1">
+                                            Special Notes
+                                          </p>
+                                          <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                            {pr.specialNotes || '—'}
                                           </p>
                                         </div>
                                       </div>

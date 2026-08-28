@@ -54,6 +54,9 @@ export interface PRDetail {
   prNumber: string;
   title: string;
   requestType: string;
+  requestCategory?: string;
+  projectDetail?: string;
+  specialNotes?: string;
   department: string;
   entityId?: number | null;
   entityName?: string;
@@ -204,6 +207,14 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                       <p className="text-sm font-medium text-gray-900">{pr.requestType}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-0.5">Request Category</p>
+                      <p className="text-sm font-medium text-gray-900">{pr.requestCategory || '—'}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                      <p className="text-xs text-gray-500 mb-0.5">Project Detail</p>
+                      <p className="text-sm font-medium text-gray-900">{pr.projectDetail || '—'}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Required Date</p>
                       <p className="text-sm font-medium text-gray-900">{pr.requiredDate || '—'}</p>
                     </div>
@@ -248,6 +259,10 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                   <div>
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Business Justification</h4>
                     <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3">{pr.justification || '—'}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Special Notes</h4>
+                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 whitespace-pre-wrap">{pr.specialNotes || '—'}</p>
                   </div>
                   {pr.attachments && pr.attachments.length > 0 && (
                     <div>

@@ -40,6 +40,10 @@ import {
   formatMoney,
   normalizeCurrency,
 } from '../../../constants/currency';
+import {
+  PR_REQUEST_CATEGORY_OPTIONS,
+  normalizeRequestCategory,
+} from '../../../constants/prRequisition';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -94,6 +98,7 @@ const FIELD_SCROLL_ORDER = [
   'prTitle',
   'entityId',
   'department',
+  'requestCategory',
   'businessJustification',
   'requiredDate',
   'billingLocationId',
@@ -149,6 +154,9 @@ export default function CreatePRPage() {
   const [entities, setEntities] = useState<EntityRecord[]>([]);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [requestType, setRequestType] = useState<'Capex' | 'Opex' | 'Service'>('Opex');
+  const [requestCategory, setRequestCategory] = useState<'Product' | 'Service'>('Product');
+  const [projectDetail, setProjectDetail] = useState('');
+  const [specialNotes, setSpecialNotes] = useState('');
   const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order'>('purchase_order');
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
   const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
@@ -280,6 +288,9 @@ export default function CreatePRPage() {
     setDepartment(draft.department || '');
     setEntityId(draft.entityId === '' || draft.entityId == null ? '' : Number(draft.entityId));
     setRequestType(draft.requestType || 'Opex');
+    setRequestCategory(normalizeRequestCategory(draft.requestCategory) || 'Product');
+    setProjectDetail(draft.projectDetail || '');
+    setSpecialNotes(draft.specialNotes || '');
     setPurchaseType(draft.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
     setVendorSelection(draft.vendorSelection === 'own' ? 'own' : 'scm');
     setPrFlow(draft.prFlow === 'functional' ? 'functional' : 'standard');
@@ -423,6 +434,9 @@ export default function CreatePRPage() {
           department: string;
           entityId?: number;
           requestType: 'Capex' | 'Opex' | 'Service';
+          requestCategory?: string;
+          projectDetail?: string;
+          specialNotes?: string;
           purchaseType?: 'purchase_order' | 'work_order' | string;
           vendorSelection?: 'own' | 'scm';
           prFlow?: 'standard' | 'functional';
@@ -461,6 +475,9 @@ export default function CreatePRPage() {
             ? 'Opex'
             : pr.requestType
         );
+        setRequestCategory(normalizeRequestCategory(pr.requestCategory) || 'Product');
+        setProjectDetail(pr.projectDetail || '');
+        setSpecialNotes(pr.specialNotes || '');
         setVendorSelection(pr.vendorSelection === 'own' ? 'own' : 'scm');
         setPrFlow(pr.prFlow === 'functional' ? 'functional' : 'standard');
         setApprovalUserIds(
@@ -728,6 +745,9 @@ export default function CreatePRPage() {
       entityId,
       requestType,
       purchaseType,
+      requestCategory,
+      projectDetail,
+      specialNotes,
       vendorSelection,
       prFlow,
       approvalUserIds,
@@ -794,6 +814,9 @@ export default function CreatePRPage() {
     entityId,
     requestType,
     purchaseType,
+    requestCategory,
+    projectDetail,
+    specialNotes,
     vendorSelection,
     prFlow,
     approvalUserIds,
@@ -922,6 +945,9 @@ export default function CreatePRPage() {
     entityId,
     requestType,
     purchaseType,
+    requestCategory,
+    projectDetail,
+    specialNotes,
     vendorSelection,
     prFlow,
     approvalUserIds,
@@ -1250,6 +1276,9 @@ export default function CreatePRPage() {
           entityId,
           requestType,
           purchaseType,
+          requestCategory,
+          projectDetail,
+          specialNotes,
           vendorSelection,
           prFlow,
           approvalUserIds,
@@ -1395,6 +1424,7 @@ export default function CreatePRPage() {
     if (!prTitle.trim()) newErrors.prTitle = 'PR Title is required';
     if (!entityId) newErrors.entityId = 'Entity is required';
     if (!department) newErrors.department = 'Department is required';
+    if (!requestCategory) newErrors.requestCategory = 'Request category is required';
     if (!businessJustification.trim()) newErrors.businessJustification = 'Business justification is required';
     if (!requiredDate) newErrors.requiredDate = 'Required date is required';
     if (askBillingOnCreatePr) {
@@ -1559,6 +1589,9 @@ export default function CreatePRPage() {
     title: prTitle.trim() || items[0]?.description || `${requestType} Request`,
     requestType,
     purchaseType,
+    requestCategory,
+    projectDetail: projectDetail.trim() || undefined,
+    specialNotes: specialNotes.trim() || undefined,
     department,
     entityId: entityId ? Number(entityId) : undefined,
     priority,
@@ -1668,6 +1701,9 @@ export default function CreatePRPage() {
           entityId,
           requestType,
           purchaseType,
+          requestCategory,
+          projectDetail,
+          specialNotes,
           vendorSelection,
           prFlow,
           approvalUserIds,
@@ -2448,6 +2484,74 @@ export default function CreatePRPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Request Category — Product or Service */}
+            <div data-field="requestCategory">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Request Category <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-2">
+                {PR_REQUEST_CATEGORY_OPTIONS.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => {
+                      setRequestCategory(cat);
+                      if (errors.requestCategory) {
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.requestCategory;
+                          return next;
+                        });
+                      }
+                    }}
+                    className={`flex-1 py-2.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer whitespace-nowrap ${
+                      requestCategory === cat
+                        ? cat === 'Product'
+                          ? 'bg-sky-100 text-sky-700 border-sky-200 shadow-sm'
+                          : 'bg-amber-100 text-amber-700 border-amber-200 shadow-sm'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+              {errors.requestCategory && (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                  <i className="ri-error-warning-line"></i>
+                  {errors.requestCategory}
+                </p>
+              )}
+            </div>
+
+            {/* Project Detail */}
+            <div data-field="projectDetail">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Project Detail
+              </label>
+              <input
+                type="text"
+                value={projectDetail}
+                onChange={(e) => setProjectDetail(e.target.value)}
+                placeholder="Project name, code, or reference"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+              />
+            </div>
+
+            {/* Special Notes */}
+            <div className="md:col-span-2 lg:col-span-3" data-field="specialNotes">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Special Notes
+              </label>
+              <textarea
+                value={specialNotes}
+                onChange={(e) => setSpecialNotes(e.target.value)}
+                rows={3}
+                placeholder="Any special instructions or notes for SCM / vendors"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none"
+              />
             </div>
 
             {/* Priority */}

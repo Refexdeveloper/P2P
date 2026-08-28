@@ -222,6 +222,10 @@ export class CreatePrPage {
     }
     await this.selectDepartment();
     await this.fillRequiredDate();
+    const categoryBtn = this.page.getByRole('button', { name: /^product$/i }).first();
+    if (await categoryBtn.isVisible().catch(() => false)) {
+      await categoryBtn.click();
+    }
     if (!options.skipLineItem) {
       await this.addLineItem();
     }

@@ -8,8 +8,9 @@ import {
 import {
   PR_PAYMENT_TERM_OPTIONS,
   PR_DELIVERY_TIMELINE_OPTIONS,
+  PR_REQUEST_CATEGORY_OPTIONS,
+  normalizeRequestCategory,
 } from '../../../constants/prRequisition';
-
 type LineDraft = {
   key: string;
   id?: number | string;
@@ -22,6 +23,9 @@ type LineDraft = {
 type PrForm = {
   title: string;
   requestType: string;
+  requestCategory: string;
+  projectDetail: string;
+  specialNotes: string;
   purchaseType: string;
   department: string;
   entityId: number | '';
@@ -122,6 +126,9 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
       setForm({
         title: String(pr.title || ''),
         requestType: String(pr.requestType || 'Opex'),
+        requestCategory: normalizeRequestCategory(pr.requestCategory) || 'Product',
+        projectDetail: String(pr.projectDetail || ''),
+        specialNotes: String(pr.specialNotes || ''),
         purchaseType:
           pr.purchaseType === 'work_order' || pr.purchaseType === 'Work Order'
             ? 'work_order'
@@ -200,6 +207,9 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
       await prApi.adminUpdate(prId, {
         title: form.title.trim(),
         requestType: form.requestType,
+        requestCategory: form.requestCategory,
+        projectDetail: form.projectDetail.trim() || null,
+        specialNotes: form.specialNotes.trim() || null,
         purchaseType: form.purchaseType,
         department: form.department,
         entityId: form.entityId === '' ? null : form.entityId,
@@ -378,6 +388,34 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="block text-sm">
+              <span className="text-xs font-semibold text-gray-600">Request category *</span>
+              <select
+                disabled={!editing}
+                value={form.requestCategory}
+                onChange={(e) => setField('requestCategory', e.target.value)}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
+              >
+                {PR_REQUEST_CATEGORY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block text-sm md:col-span-2">
+              <span className="text-xs font-semibold text-gray-600">Project detail</span>
+              <input
+                disabled={!editing}
+                type="text"
+                value={form.projectDetail}
+                onChange={(e) => setField('projectDetail', e.target.value)}
+                placeholder="Project name, code, or reference"
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
+              />
             </label>
 
             <label className="block text-sm">
@@ -616,6 +654,18 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
                 rows={3}
                 value={form.justification}
                 onChange={(e) => setField('justification', e.target.value)}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50 resize-none"
+              />
+            </label>
+
+            <label className="block text-sm md:col-span-2 xl:col-span-3">
+              <span className="text-xs font-semibold text-gray-600">Special notes</span>
+              <textarea
+                disabled={!editing}
+                rows={3}
+                value={form.specialNotes}
+                onChange={(e) => setField('specialNotes', e.target.value)}
+                placeholder="Any special instructions or notes for SCM / vendors"
                 className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50 resize-none"
               />
             </label>

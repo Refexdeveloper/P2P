@@ -31,6 +31,13 @@ function clipText(value, max) {
   return String(value || '').trim().slice(0, max);
 }
 
+function normalizeRequestCategory(value) {
+  const s = String(value || '').trim().toLowerCase();
+  if (s === 'product') return 'Product';
+  if (s === 'service') return 'Service';
+  return '';
+}
+
 function parseRequisitionExtras(body = {}, fallback = {}) {
   const pick = (keys, max = 255) => {
     for (const key of keys) {
@@ -46,6 +53,8 @@ function parseRequisitionExtras(body = {}, fallback = {}) {
     billingAddress: pick(['billingAddress'], 4000),
     expectedDeliveryTimeline: pick(['expectedDeliveryTimeline']),
     paymentTerms: pick(['paymentTerms']),
+    projectDetail: pick(['projectDetail', 'project_detail']),
+    specialNotes: pick(['specialNotes', 'special_notes'], 4000),
   };
 }
 
@@ -561,6 +570,9 @@ async function enrichPR(row) {
     placeOfDelivery: row.place_of_delivery || '',
     expectedDeliveryTimeline: row.expected_delivery_timeline || '',
     paymentTerms: row.payment_terms || '',
+    requestCategory: normalizeRequestCategory(row.request_category),
+    projectDetail: row.project_detail || '',
+    specialNotes: row.special_notes || '',
     recommendedVendor: vendorRows[0]?.vendor_name || '',
     currentStage: row.current_stage,
     currentApprover: assignees.currentApprover,
@@ -982,6 +994,7 @@ export async function createPurchaseRequest(user, body) {
     submit = false,
   } = body;
   const extras = parseRequisitionExtras(body);
+  const requestCategory = normalizeRequestCategory(body.requestCategory ?? body.request_category);
   const billing = await resolvePrBilling(entityId ? Number(entityId) : null, body);
 
   const prFlow = parsePrFlow(prFlowRaw, 'standard');
@@ -1038,41 +1051,85 @@ export async function createPurchaseRequest(user, body) {
 
     const prNumber = await nextDocumentNumber('PR', Number(entityId), conn);
 
-    const [result] = await conn.query(
-      `INSERT INTO purchase_requests
-       (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, pr_flow, approval_user_id, approval_user_ids, current_stage, submitted_at,
-        billing_location_id, billing_location, billing_gst_no, billing_address, delivery_poc, place_of_delivery, expected_delivery_timeline, payment_terms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        prNumber,
-        prTitle,
-        requestType,
-        normalizedPurchaseType,
-        departmentId,
-        Number(entityId),
-        user.id,
-        priority,
-        justification,
-        requiredDate || null,
-        normalizedCurrency,
-        totalAmount,
-        status,
-        vendorMode,
-        prFlow,
-        selectedApprover?.id || null,
-        selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
-        currentStage,
-        submit ? new Date() : null,
-        billing.billingLocationId,
-        billing.billingLocation || null,
-        billing.billingGstNo || null,
-        extras.billingAddress || null,
-        extras.deliveryPoc || null,
-        extras.placeOfDelivery || null,
-        extras.expectedDeliveryTimeline || null,
-        extras.paymentTerms || null,
-      ]
-    );
+    let result;
+    try {
+      [result] = await conn.query(
+        `INSERT INTO purchase_requests
+         (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, pr_flow, approval_user_id, approval_user_ids, current_stage, submitted_at,
+          billing_location_id, billing_location, billing_gst_no, billing_address, delivery_poc, place_of_delivery, expected_delivery_timeline, payment_terms,
+          request_category, project_detail, special_notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          prNumber,
+          prTitle,
+          requestType,
+          normalizedPurchaseType,
+          departmentId,
+          Number(entityId),
+          user.id,
+          priority,
+          justification,
+          requiredDate || null,
+          normalizedCurrency,
+          totalAmount,
+          status,
+          vendorMode,
+          prFlow,
+          selectedApprover?.id || null,
+          selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
+          currentStage,
+          submit ? new Date() : null,
+          billing.billingLocationId,
+          billing.billingLocation || null,
+          billing.billingGstNo || null,
+          extras.billingAddress || null,
+          extras.deliveryPoc || null,
+          extras.placeOfDelivery || null,
+          extras.expectedDeliveryTimeline || null,
+          extras.paymentTerms || null,
+          requestCategory || null,
+          extras.projectDetail || null,
+          extras.specialNotes || null,
+        ]
+      );
+    } catch (err) {
+      if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      [result] = await conn.query(
+        `INSERT INTO purchase_requests
+         (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, pr_flow, approval_user_id, approval_user_ids, current_stage, submitted_at,
+          billing_location_id, billing_location, billing_gst_no, billing_address, delivery_poc, place_of_delivery, expected_delivery_timeline, payment_terms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          prNumber,
+          prTitle,
+          requestType,
+          normalizedPurchaseType,
+          departmentId,
+          Number(entityId),
+          user.id,
+          priority,
+          justification,
+          requiredDate || null,
+          normalizedCurrency,
+          totalAmount,
+          status,
+          vendorMode,
+          prFlow,
+          selectedApprover?.id || null,
+          selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
+          currentStage,
+          submit ? new Date() : null,
+          billing.billingLocationId,
+          billing.billingLocation || null,
+          billing.billingGstNo || null,
+          extras.billingAddress || null,
+          extras.deliveryPoc || null,
+          extras.placeOfDelivery || null,
+          extras.expectedDeliveryTimeline || null,
+          extras.paymentTerms || null,
+        ]
+      );
+    }
 
     const prId = result.insertId;
 
@@ -2366,7 +2423,12 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
     billingAddress: pr.billing_address,
     expectedDeliveryTimeline: pr.expected_delivery_timeline,
     paymentTerms: pr.payment_terms,
+    projectDetail: pr.project_detail,
+    specialNotes: pr.special_notes,
   });
+  const requestCategory = normalizeRequestCategory(
+    body.requestCategory ?? body.request_category ?? pr.request_category
+  );
   if (!lineItems.length && pr.status !== PR_STATUS.DRAFT && pr.status !== PR_STATUS.RETURNED) {
     throw new Error('At least one line item is required');
   }
@@ -2423,6 +2485,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
            required_date = ?, currency = ?, total_amount = ?, vendor_selection = ?, pr_flow = ?, approval_user_id = ?, approval_user_ids = ?,
            billing_location_id = ?, billing_location = ?, billing_gst_no = ?, billing_address = ?,
            delivery_poc = ?, place_of_delivery = ?, expected_delivery_timeline = ?, payment_terms = ?,
+           request_category = ?, project_detail = ?, special_notes = ?,
            updated_at = NOW()
        WHERE id = ?`,
       [
@@ -2448,6 +2511,9 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
         extras.placeOfDelivery || null,
         extras.expectedDeliveryTimeline || null,
         extras.paymentTerms || null,
+        requestCategory || null,
+        extras.projectDetail || null,
+        extras.specialNotes || null,
         prId,
       ]
     );
@@ -2558,7 +2624,12 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     billingAddress: pr.billing_address,
     expectedDeliveryTimeline: pr.expected_delivery_timeline,
     paymentTerms: pr.payment_terms,
+    projectDetail: pr.project_detail,
+    specialNotes: pr.special_notes,
   });
+  const requestCategory = normalizeRequestCategory(
+    body.requestCategory ?? body.request_category ?? pr.request_category
+  );
   if (!Array.isArray(lineItems) || !lineItems.length) {
     throw new Error('At least one line item is required');
   }
@@ -2607,6 +2678,7 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
            vendor_selection = ?, pr_flow = ?, approval_user_id = ?, approval_user_ids = ?,
            billing_location_id = ?, billing_location = ?, billing_gst_no = ?, billing_address = ?,
            delivery_poc = ?, place_of_delivery = ?, expected_delivery_timeline = ?, payment_terms = ?,
+           request_category = ?, project_detail = ?, special_notes = ?,
            updated_at = NOW()
        WHERE id = ?`,
       [
@@ -2632,6 +2704,9 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
         extras.placeOfDelivery || null,
         extras.expectedDeliveryTimeline || null,
         extras.paymentTerms || null,
+        requestCategory || null,
+        extras.projectDetail || null,
+        extras.specialNotes || null,
         prId,
       ]
     );
@@ -3387,6 +3462,9 @@ export function toRequesterDashboardFormat(pr) {
     createdAt: pr.createdAt,
     requiredDate: pr.requiredDate,
     justification: pr.justification,
+    requestCategory: pr.requestCategory || '',
+    projectDetail: pr.projectDetail || '',
+    specialNotes: pr.specialNotes || '',
     lineItems: pr.lineItems,
     approvalHistory: pr.approvalHistory,
     requester: pr.requester,

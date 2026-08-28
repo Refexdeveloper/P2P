@@ -410,6 +410,9 @@ const MIGRATIONS = [
     FOREIGN KEY (pr_id) REFERENCES purchase_requests(id) ON DELETE CASCADE,
     INDEX idx_pr_attachments_pr (pr_id)
   )`,
+  `ALTER TABLE purchase_requests ADD COLUMN request_category ENUM('Product', 'Service') NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN project_detail VARCHAR(255) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN special_notes TEXT NULL`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

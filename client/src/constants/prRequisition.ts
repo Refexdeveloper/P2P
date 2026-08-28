@@ -1,3 +1,13 @@
+export const PR_REQUEST_CATEGORY_OPTIONS = ['Product', 'Service'] as const;
+export type PrRequestCategory = (typeof PR_REQUEST_CATEGORY_OPTIONS)[number];
+
+export function normalizeRequestCategory(value: unknown): PrRequestCategory | '' {
+  const s = String(value || '').trim().toLowerCase();
+  if (s === 'product') return 'Product';
+  if (s === 'service') return 'Service';
+  return '';
+}
+
 export const PR_PAYMENT_TERM_OPTIONS = [
   'Net 15 Days',
   'Net 30 Days',

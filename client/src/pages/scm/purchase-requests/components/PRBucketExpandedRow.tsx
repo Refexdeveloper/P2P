@@ -22,6 +22,9 @@ interface PRDetail {
   department: string;
   requester: string;
   requestType: string;
+  requestCategory?: string;
+  projectDetail?: string;
+  specialNotes?: string;
   priority: string;
   requiredDate: string;
   submittedDate: string;
@@ -371,6 +374,9 @@ export default function PRBucketExpandedRow({
               department: String(d.department || ''),
               requester: String(d.requester || ''),
               requestType: String(d.requestType || ''),
+              requestCategory: String(d.requestCategory || ''),
+              projectDetail: String(d.projectDetail || ''),
+              specialNotes: String(d.specialNotes || ''),
               priority: String(d.priority || d.priorityLower || ''),
               requiredDate: String(d.requiredDate || ''),
               submittedDate: String(d.submittedDate || ''),
@@ -574,6 +580,8 @@ export default function PRBucketExpandedRow({
                       ['Department', pr.department],
                       ['Requester', pr.requester],
                       ['Request Type', pr.requestType],
+                      ['Request Category', pr.requestCategory],
+                      ['Project Detail', pr.projectDetail],
                       ['Priority', pr.priority],
                       ['Required Date', pr.requiredDate || '—'],
                       ['Submitted', pr.submittedDate || '—'],
@@ -620,6 +628,14 @@ export default function PRBucketExpandedRow({
                     </h4>
                     <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words">
                       {pr.justification || 'No justification provided.'}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      Special Notes
+                    </h4>
+                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words">
+                      {pr.specialNotes || '—'}
                     </p>
                   </div>
                   <div>
