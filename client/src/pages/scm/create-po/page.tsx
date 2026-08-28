@@ -1670,6 +1670,11 @@ export default function CreatePOPage() {
         purchaseTypeLabel?: string;
         placeOfDelivery?: string;
         deliveryPoc?: string;
+        deliveryPocEmail?: string;
+        deliveryPocPhone?: string;
+        projectManagerHo?: string;
+        projectManagerContact?: string;
+        projectManagerEmail?: string;
         paymentTerms?: string;
         lineItems: Array<{ id: number; description: string; quantity: number; unitCost: number; category?: string; unit?: string; uom?: string }>;
       };
@@ -1719,6 +1724,11 @@ export default function CreatePOPage() {
         paymentTermsText: prev.paymentTermsText || vendor.paymentTerms || prData.paymentTerms || 'Net 30 Days',
         siteAddress: prev.siteAddress || prData.placeOfDelivery || '',
         siteContactPerson: prev.siteContactPerson || prData.deliveryPoc || '',
+        siteContactEmail: prev.siteContactEmail || prData.deliveryPocEmail || '',
+        siteContactPhone: prev.siteContactPhone || prData.deliveryPocPhone || '',
+        projectManagerHo: prev.projectManagerHo || prData.projectManagerHo || '',
+        projectManagerEmail: prev.projectManagerEmail || prData.projectManagerEmail || '',
+        projectManagerContact: prev.projectManagerContact || prData.projectManagerContact || '',
       }));
       setVendorMeta({
         name: vendor.name,

@@ -318,6 +318,8 @@ async function persistQuoteFileSet({
           ? quote.keepExtraFileIds.map(Number).filter((n) => n > 0)
           : [])
       : null;
+  const clearPrimary = Boolean(quote.clearPrimary);
+  let primaryName = existingPrimaryName || null;
 
   const writePrimary = async (file) => {
     const info = saveQuotationFile(invitationId, round, file.fileName, file.fileData);
@@ -382,7 +384,17 @@ async function persistQuoteFileSet({
     }
   }
 
-  if (!existingPrimaryName) {
+  if (clearPrimary && !primaryIncoming.length) {
+    await pool.query(
+      `UPDATE vendor_quotation_submissions
+       SET quotation_file_name = NULL, quotation_file_path = NULL, quotation_file_data = NULL
+       WHERE id = ?`,
+      [submissionId]
+    );
+    primaryName = null;
+  }
+
+  if (!primaryName) {
     const first = primaryIncoming[0] || extraIncoming[0];
     if (first) await writePrimary(first);
     const rest = primaryIncoming.length ? extraIncoming : extraIncoming.slice(1);
@@ -391,6 +403,7 @@ async function persistQuoteFileSet({
     return;
   }
 
+  if (primaryIncoming.length) await writePrimary(primaryIncoming[0]);
   await insertExtraQuotationFiles(submissionId, invitationId, round, extraIncoming);
   await finish();
 }
@@ -3277,6 +3290,21 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
       ? `${row.vendor_notes}`
       : noteSuffix;
 
+  const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: body.quotationFiles });
+  const keepIdsPre =
+    body.keepExtraFileIds !== undefined
+      ? (Array.isArray(body.keepExtraFileIds) ? body.keepExtraFileIds.map(Number).filter((n) => n > 0) : [])
+      : null;
+  if (
+    body.clearPrimary &&
+    !replaceFile &&
+    !extraIncoming.length &&
+    Array.isArray(keepIdsPre) &&
+    keepIdsPre.length === 0
+  ) {
+    throw new Error('Quotation file is required. Upload a replacement file before removing the last one.');
+  }
+
   if (replaceFile) {
     await pool.query(
       `UPDATE vendor_quotation_submissions
@@ -3329,7 +3357,7 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
     invitationId: row.invitation_id,
     round: row.round || row.inv_round || 1,
     quote: body,
-    existingPrimaryName: replaceFile ? fileName : row.quotation_file_name,
+    existingPrimaryName: body.clearPrimary && !replaceFile ? null : replaceFile ? fileName : row.quotation_file_name,
   });
 
   const full = await getRfqByPrId(user, row.pr_id);

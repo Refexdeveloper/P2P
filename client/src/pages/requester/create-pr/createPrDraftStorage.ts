@@ -47,6 +47,11 @@ export type CreatePrDraftSnapshot = {
   billingGstNo: string;
   billingAddress: string;
   deliveryPoc: string;
+  deliveryPocEmail?: string;
+  deliveryPocPhone?: string;
+  projectManagerHo?: string;
+  projectManagerContact?: string;
+  projectManagerEmail?: string;
   placeOfDelivery: string;
   expectedDeliveryTimeline: string;
   paymentTerms: string;

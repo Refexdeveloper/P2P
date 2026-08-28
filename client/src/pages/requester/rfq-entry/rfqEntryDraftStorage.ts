@@ -7,6 +7,11 @@ export type RfqEntryBillingDraft = {
   billingGstNo: string;
   billingAddress: string;
   deliveryPoc: string;
+  deliveryPocEmail?: string;
+  deliveryPocPhone?: string;
+  projectManagerHo?: string;
+  projectManagerContact?: string;
+  projectManagerEmail?: string;
   placeOfDelivery: string;
   expectedDeliveryTimeline: string;
   paymentTerms: string;
@@ -113,6 +118,11 @@ function sanitizeBilling(billing?: RfqEntryBillingDraft | null): RfqEntryBilling
     billingGstNo: String(billing.billingGstNo || ''),
     billingAddress: String(billing.billingAddress || ''),
     deliveryPoc: String(billing.deliveryPoc || ''),
+    deliveryPocEmail: String(billing.deliveryPocEmail || ''),
+    deliveryPocPhone: String(billing.deliveryPocPhone || ''),
+    projectManagerHo: String(billing.projectManagerHo || ''),
+    projectManagerContact: String(billing.projectManagerContact || ''),
+    projectManagerEmail: String(billing.projectManagerEmail || ''),
     placeOfDelivery: String(billing.placeOfDelivery || ''),
     expectedDeliveryTimeline: String(billing.expectedDeliveryTimeline || ''),
     paymentTerms: String(billing.paymentTerms || ''),

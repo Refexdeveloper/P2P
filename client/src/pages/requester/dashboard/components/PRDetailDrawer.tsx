@@ -68,6 +68,11 @@ export interface PRDetail {
   billingGstNo?: string;
   billingAddress?: string;
   deliveryPoc?: string;
+  deliveryPocEmail?: string;
+  deliveryPocPhone?: string;
+  projectManagerHo?: string;
+  projectManagerContact?: string;
+  projectManagerEmail?: string;
   placeOfDelivery?: string;
   expectedDeliveryTimeline?: string;
   paymentTerms?: string;
@@ -245,7 +250,25 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">POC for Delivery</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.deliveryPoc || '—'}</p>
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">
+                        {pr.deliveryPoc || '—'}
+                        {pr.deliveryPocEmail || pr.deliveryPocPhone ? (
+                          <span className="block text-xs text-gray-500 mt-0.5">
+                            {[pr.deliveryPocPhone, pr.deliveryPocEmail].filter(Boolean).join(' · ')}
+                          </span>
+                        ) : null}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-0.5">Project Manager at HO</p>
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">
+                        {pr.projectManagerHo || '—'}
+                        {pr.projectManagerEmail || pr.projectManagerContact ? (
+                          <span className="block text-xs text-gray-500 mt-0.5">
+                            {[pr.projectManagerContact, pr.projectManagerEmail].filter(Boolean).join(' · ')}
+                          </span>
+                        ) : null}
+                      </p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Place of Delivery</p>

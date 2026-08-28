@@ -1,8 +1,16 @@
-import type { EntityLocationRecord, EntityRecord } from '../../../services/api';
+import { useEffect, useState } from 'react';
+import type { EntityLocationRecord, EntityRecord, PoSiteLookupRecord } from '../../../services/api';
+import { masterApi } from '../../../services/api';
+import AddableSelect from '../../../components/base/AddableSelect';
 import {
   PR_DELIVERY_TIMELINE_OPTIONS,
   PR_PAYMENT_TERM_OPTIONS,
 } from '../../../constants/prRequisition';
+import {
+  mergeProjectManagers,
+  mergeSiteContacts,
+  upsertSiteLookup,
+} from '../../../constants/poSiteLookups';
 
 export type PrBillingDeliveryValue = {
   billingLocationId: number | '';
@@ -10,6 +18,11 @@ export type PrBillingDeliveryValue = {
   billingGstNo: string;
   billingAddress: string;
   deliveryPoc: string;
+  deliveryPocEmail?: string;
+  deliveryPocPhone?: string;
+  projectManagerHo?: string;
+  projectManagerContact?: string;
+  projectManagerEmail?: string;
   placeOfDelivery: string;
   expectedDeliveryTimeline: string;
   paymentTerms: string;
@@ -27,6 +40,9 @@ interface Props {
   onClearError?: (key: string) => void;
 }
 
+const inputClass =
+  'w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50';
+
 export default function PrBillingDeliverySection({
   value,
   selectedEntity,
@@ -38,6 +54,38 @@ export default function PrBillingDeliverySection({
   onChange,
   onClearError,
 }: Props) {
+  const [siteContacts, setSiteContacts] = useState<PoSiteLookupRecord[]>(() => mergeSiteContacts([]));
+  const [projectManagers, setProjectManagers] = useState<PoSiteLookupRecord[]>(() => mergeProjectManagers([]));
+  const [addingSiteContact, setAddingSiteContact] = useState(false);
+  const [addingProjectManager, setAddingProjectManager] = useState(false);
+  const [savingLookup, setSavingLookup] = useState(false);
+  const [lookupError, setLookupError] = useState('');
+  const [newSiteContact, setNewSiteContact] = useState({ label: '', email: '', phone: '' });
+  const [newProjectManager, setNewProjectManager] = useState({ label: '', email: '', phone: '' });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [contactRes, pmRes] = await Promise.all([
+          masterApi.listPoSiteLookups('site_contact'),
+          masterApi.listPoSiteLookups('project_manager'),
+        ]);
+        if (cancelled) return;
+        setSiteContacts(mergeSiteContacts(contactRes.data || []));
+        setProjectManagers(mergeProjectManagers(pmRes.data || []));
+      } catch {
+        if (!cancelled) {
+          setSiteContacts(mergeSiteContacts([]));
+          setProjectManagers(mergeProjectManagers([]));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const applyRegion = (id: number | '', loc?: EntityLocationRecord) => {
     const previousLocation = value.billingLocation;
     onChange({
@@ -53,9 +101,73 @@ export default function PrBillingDeliverySection({
     onClearError?.('billingLocationId');
   };
 
+  const saveSiteContact = async () => {
+    const label = newSiteContact.label.trim();
+    if (!label) {
+      setLookupError('Contact name is required');
+      return;
+    }
+    setSavingLookup(true);
+    setLookupError('');
+    try {
+      const res = await masterApi.createPoSiteLookup({
+        type: 'site_contact',
+        label,
+        email: newSiteContact.email.trim(),
+        phone: newSiteContact.phone.trim(),
+      });
+      const saved = res.data;
+      setSiteContacts((prev) => upsertSiteLookup(prev, saved));
+      onChange({
+        deliveryPoc: saved.label,
+        deliveryPocEmail: saved.email || '',
+        deliveryPocPhone: saved.phone || '',
+      });
+      onClearError?.('deliveryPoc');
+      setNewSiteContact({ label: '', email: '', phone: '' });
+      setAddingSiteContact(false);
+    } catch (err) {
+      setLookupError(err instanceof Error ? err.message : 'Could not save site contact');
+    } finally {
+      setSavingLookup(false);
+    }
+  };
+
+  const saveProjectManager = async () => {
+    const label = newProjectManager.label.trim();
+    if (!label) {
+      setLookupError('Project manager name is required');
+      return;
+    }
+    setSavingLookup(true);
+    setLookupError('');
+    try {
+      const res = await masterApi.createPoSiteLookup({
+        type: 'project_manager',
+        label,
+        email: newProjectManager.email.trim(),
+        phone: newProjectManager.phone.trim(),
+      });
+      const saved = res.data;
+      setProjectManagers((prev) => upsertSiteLookup(prev, saved));
+      onChange({
+        projectManagerHo: saved.label,
+        projectManagerEmail: saved.email || '',
+        projectManagerContact: saved.phone || '',
+      });
+      onClearError?.('projectManagerHo');
+      setNewProjectManager({ label: '', email: '', phone: '' });
+      setAddingProjectManager(false);
+    } catch (err) {
+      setLookupError(err instanceof Error ? err.message : 'Could not save project manager');
+    } finally {
+      setSavingLookup(false);
+    }
+  };
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60 rounded-t-2xl">
         <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
           <i className="ri-map-pin-line text-white text-sm"></i>
         </div>
@@ -103,7 +215,7 @@ export default function PrBillingDeliverySection({
               placeholder={
                 selectedEntity ? 'No regions in entity master — enter billing location' : 'Select entity first'
               }
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50"
+              className={inputClass}
             />
           )}
           {errors.billingLocationId && (
@@ -142,7 +254,7 @@ export default function PrBillingDeliverySection({
           </p>
         </div>
 
-        <div className="md:col-span-2">
+        <div className="md:col-span-2" data-field="billingAddress">
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
             Billing Address
             {requireBillingCore ? <span className="text-red-500"> *</span> : null}
@@ -153,8 +265,8 @@ export default function PrBillingDeliverySection({
               onChange({ billingAddress: e.target.value });
               onClearError?.('billingAddress');
             }}
-            rows={3}
             disabled={disabled}
+            rows={3}
             placeholder="Enter billing / invoicing address"
             className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white resize-none ${
               errors.billingAddress ? 'border-red-400 bg-red-50' : 'border-gray-200'
@@ -166,20 +278,175 @@ export default function PrBillingDeliverySection({
           </p>
         </div>
 
-        <div data-field="deliveryPoc">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            POC for Delivery
-          </label>
-          <input
-            type="text"
+        <div data-field="deliveryPoc" className="min-w-0">
+          <AddableSelect
+            variant="compact"
+            label="POC for Delivery"
             value={value.deliveryPoc}
-            onChange={(e) => {
-              onChange({ deliveryPoc: e.target.value });
+            placeholder="Select site contact person"
+            disabled={disabled}
+            options={siteContacts.map((opt) => ({
+              id: opt.id,
+              label: opt.label,
+              subLabel: [opt.email, opt.phone].filter(Boolean).join(' · '),
+              email: opt.email,
+              phone: opt.phone,
+            }))}
+            adding={addingSiteContact}
+            onOpenAdd={() => {
+              setLookupError('');
+              setAddingProjectManager(false);
+              setAddingSiteContact(true);
+              setNewSiteContact({
+                label: value.deliveryPoc || '',
+                email: value.deliveryPocEmail || '',
+                phone: value.deliveryPocPhone || '',
+              });
+            }}
+            onCloseAdd={() => {
+              setAddingSiteContact(false);
+              setLookupError('');
+            }}
+            onSelect={(opt) => {
+              onChange({
+                deliveryPoc: opt.label,
+                deliveryPocEmail: opt.email || '',
+                deliveryPocPhone: opt.phone || '',
+              });
               onClearError?.('deliveryPoc');
             }}
+            addForm={
+              <>
+                <input
+                  type="text"
+                  value={newSiteContact.label}
+                  onChange={(e) => setNewSiteContact((prev) => ({ ...prev, label: e.target.value }))}
+                  placeholder="Contact name"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                <input
+                  type="email"
+                  value={newSiteContact.email}
+                  onChange={(e) => setNewSiteContact((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="Email"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                <input
+                  type="text"
+                  value={newSiteContact.phone}
+                  onChange={(e) => setNewSiteContact((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="Phone"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                {lookupError && addingSiteContact ? <p className="text-xs text-red-600">{lookupError}</p> : null}
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddingSiteContact(false);
+                      setLookupError('');
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveSiteContact()}
+                    disabled={savingLookup}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-md disabled:opacity-60 cursor-pointer"
+                  >
+                    {savingLookup ? 'Saving...' : 'Add'}
+                  </button>
+                </div>
+              </>
+            }
+          />
+        </div>
+
+        <div data-field="projectManagerHo" className="min-w-0">
+          <AddableSelect
+            variant="compact"
+            label="Project Manager HO"
+            value={value.projectManagerHo || ''}
+            placeholder="Select project manager"
             disabled={disabled}
-            placeholder="Name / phone of site contact"
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+            options={projectManagers.map((opt) => ({
+              id: opt.id,
+              label: opt.label,
+              subLabel: [opt.email, opt.phone].filter(Boolean).join(' · '),
+              email: opt.email,
+              phone: opt.phone,
+            }))}
+            adding={addingProjectManager}
+            onOpenAdd={() => {
+              setLookupError('');
+              setAddingSiteContact(false);
+              setAddingProjectManager(true);
+              setNewProjectManager({
+                label: value.projectManagerHo || '',
+                email: value.projectManagerEmail || '',
+                phone: value.projectManagerContact || '',
+              });
+            }}
+            onCloseAdd={() => {
+              setAddingProjectManager(false);
+              setLookupError('');
+            }}
+            onSelect={(opt) => {
+              onChange({
+                projectManagerHo: opt.label,
+                projectManagerEmail: opt.email || '',
+                projectManagerContact: opt.phone || '',
+              });
+              onClearError?.('projectManagerHo');
+            }}
+            addForm={
+              <>
+                <input
+                  type="text"
+                  value={newProjectManager.label}
+                  onChange={(e) => setNewProjectManager((prev) => ({ ...prev, label: e.target.value }))}
+                  placeholder="Project manager name"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                <input
+                  type="email"
+                  value={newProjectManager.email}
+                  onChange={(e) => setNewProjectManager((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="Email"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                <input
+                  type="text"
+                  value={newProjectManager.phone}
+                  onChange={(e) => setNewProjectManager((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="Phone"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                {lookupError && addingProjectManager ? <p className="text-xs text-red-600">{lookupError}</p> : null}
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddingProjectManager(false);
+                      setLookupError('');
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-md cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveProjectManager()}
+                    disabled={savingLookup}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-md disabled:opacity-60 cursor-pointer"
+                  >
+                    {savingLookup ? 'Saving...' : 'Add'}
+                  </button>
+                </div>
+              </>
+            }
           />
         </div>
 
@@ -196,7 +463,7 @@ export default function PrBillingDeliverySection({
             }}
             disabled={disabled}
             placeholder="Site / warehouse address (can differ from billing)"
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+            className={inputClass}
           />
         </div>
 
@@ -213,7 +480,7 @@ export default function PrBillingDeliverySection({
             }}
             disabled={disabled}
             placeholder="e.g. Within 30 days"
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+            className={inputClass}
           />
           <datalist id="pr-billing-delivery-timeline">
             {PR_DELIVERY_TIMELINE_OPTIONS.map((opt) => (
@@ -235,7 +502,7 @@ export default function PrBillingDeliverySection({
             }}
             disabled={disabled}
             placeholder="e.g. Net 30 Days"
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+            className={inputClass}
           />
           <datalist id="pr-billing-payment-terms">
             {PR_PAYMENT_TERM_OPTIONS.map((opt) => (

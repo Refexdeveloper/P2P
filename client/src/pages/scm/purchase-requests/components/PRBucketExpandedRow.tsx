@@ -73,6 +73,7 @@ interface PoSummary {
 interface AddressContactInfo {
   siteAddress: string;
   contactPersons: string;
+  projectManagerHo: string;
   invoicingAddress: string;
   gstin: string;
 }
@@ -97,6 +98,7 @@ const formatCurrency = (amount: number) =>
 const EMPTY_ADDRESS: AddressContactInfo = {
   siteAddress: '',
   contactPersons: '',
+  projectManagerHo: '',
   invoicingAddress: '',
   gstin: '',
 };
@@ -127,6 +129,55 @@ function htmlToPlain(html: string): string {
     .trim();
 }
 
+function HighlightInfoCard({
+  label,
+  value,
+  icon,
+  tone,
+  className = '',
+}: {
+  label: string;
+  value?: string | null;
+  icon: string;
+  tone: 'entity' | 'address' | 'notes';
+  className?: string;
+}) {
+  const styles = {
+    entity: {
+      box: 'bg-gradient-to-br from-indigo-50 via-indigo-50 to-violet-100/80 border-indigo-200',
+      icon: 'bg-indigo-600 text-white',
+      label: 'text-indigo-700',
+      value: 'text-indigo-950',
+    },
+    address: {
+      box: 'bg-gradient-to-br from-teal-50 via-cyan-50 to-emerald-50 border-teal-200',
+      icon: 'bg-teal-600 text-white',
+      label: 'text-teal-700',
+      value: 'text-teal-950',
+    },
+    notes: {
+      box: 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 border-amber-200',
+      icon: 'bg-amber-500 text-white',
+      label: 'text-amber-800',
+      value: 'text-amber-950',
+    },
+  }[tone];
+
+  return (
+    <div className={`rounded-xl border p-4 min-h-[108px] flex gap-3 ${styles.box} ${className}`}>
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${styles.icon}`}>
+        <i className={`${icon} text-lg`}></i>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={`text-[11px] font-semibold uppercase tracking-wider mb-1.5 ${styles.label}`}>{label}</p>
+        <p className={`text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words ${styles.value}`}>
+          {value?.trim() ? value : '—'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function formatPoContacts(terms: Record<string, unknown>): string {
   const name = pickText(terms.siteContactPerson);
   const phone = pickText(terms.siteContactPhone);
@@ -135,9 +186,22 @@ function formatPoContacts(terms: Record<string, unknown>): string {
 }
 
 function addressFromPr(d: Record<string, unknown>): AddressContactInfo {
+  const poc = [
+    pickText(d.deliveryPoc),
+    [pickText(d.deliveryPocPhone), pickText(d.deliveryPocEmail)].filter(Boolean).join(' · '),
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const pm = [
+    pickText(d.projectManagerHo),
+    [pickText(d.projectManagerContact), pickText(d.projectManagerEmail)].filter(Boolean).join(' · '),
+  ]
+    .filter(Boolean)
+    .join('\n');
   return {
     siteAddress: pickText(d.placeOfDelivery),
-    contactPersons: pickText(d.deliveryPoc),
+    contactPersons: poc,
+    projectManagerHo: pm,
     invoicingAddress: htmlToPlain(pickText(d.billingAddress)),
     gstin: pickText(d.billingGstNo).toUpperCase(),
   };
@@ -145,9 +209,16 @@ function addressFromPr(d: Record<string, unknown>): AddressContactInfo {
 
 function addressFromPo(po: Record<string, unknown>, fallback: AddressContactInfo = EMPTY_ADDRESS): AddressContactInfo {
   const terms = (po.poTermsDetails as Record<string, unknown> | undefined) || {};
+  const pm = [
+    pickText(terms.projectManagerHo),
+    [pickText(terms.projectManagerContact), pickText(terms.projectManagerEmail)].filter(Boolean).join(' · '),
+  ]
+    .filter(Boolean)
+    .join('\n');
   return {
     siteAddress: pickText(terms.siteAddress, po.deliveryAddress, fallback.siteAddress),
     contactPersons: pickText(formatPoContacts(terms), fallback.contactPersons),
+    projectManagerHo: pickText(pm, fallback.projectManagerHo),
     invoicingAddress: pickText(htmlToPlain(String(terms.invoicingAddress || '')), fallback.invoicingAddress),
     gstin: pickText(terms.buyerGstNo, fallback.gstin).toUpperCase(),
   };
@@ -561,6 +632,14 @@ export default function PRBucketExpandedRow({
 
               {!loading && !error && pr && tab === 'details' && (
                 <div className="space-y-4">
+                  {poSummary ? (
+                    <HighlightInfoCard
+                      label="Entity / Location"
+                      value={poSummary.entity}
+                      icon="ri-building-2-line"
+                      tone="entity"
+                    />
+                  ) : null}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {[
                       ...(poSummary
@@ -568,7 +647,6 @@ export default function PRBucketExpandedRow({
                             ['Document No', poSummary.poNumber],
                             ['Document Type', poSummary.purchaseTypeLabel],
                             ['Template', poSummary.poType],
-                            ['Entity', poSummary.entity],
                             ['Vendor', poSummary.vendorName],
                             ['Vendor Email', poSummary.vendorEmail],
                             ['Created By', poSummary.createdBy],
@@ -597,16 +675,23 @@ export default function PRBucketExpandedRow({
                     ))}
                   </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    <div className="bg-gray-50 rounded-lg p-3 min-w-0 lg:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Site Address</p>
+                    <HighlightInfoCard
+                      label="Site Address"
+                      value={addressInfo.siteAddress}
+                      icon="ri-map-pin-line"
+                      tone="address"
+                      className="lg:col-span-2 min-h-[120px]"
+                    />
+                    <div className="bg-gray-50 rounded-lg p-3 min-w-0">
+                      <p className="text-xs text-gray-500 mb-0.5">POC for Delivery</p>
                       <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
-                        {addressInfo.siteAddress || '—'}
+                        {addressInfo.contactPersons || '—'}
                       </p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3 min-w-0">
-                      <p className="text-xs text-gray-500 mb-0.5">Contact Persons</p>
+                      <p className="text-xs text-gray-500 mb-0.5">Project Manager at HO</p>
                       <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
-                        {addressInfo.contactPersons || '—'}
+                        {addressInfo.projectManagerHo || '—'}
                       </p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3 min-w-0">
@@ -622,20 +707,19 @@ export default function PRBucketExpandedRow({
                       </p>
                     </div>
                   </div>
+                  <HighlightInfoCard
+                    label="Special Notes"
+                    value={pr.specialNotes}
+                    icon="ri-sticky-note-line"
+                    tone="notes"
+                    className="min-h-[120px]"
+                  />
                   <div>
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                       Business Justification
                     </h4>
                     <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words">
                       {pr.justification || 'No justification provided.'}
-                    </p>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                      Special Notes
-                    </h4>
-                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words">
-                      {pr.specialNotes || '—'}
                     </p>
                   </div>
                   <div>

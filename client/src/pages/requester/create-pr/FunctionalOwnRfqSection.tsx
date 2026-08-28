@@ -42,7 +42,7 @@ export function savedQuoteFiles(q: FunctionalRfqQuote | undefined): SavedQuotati
 }
 
 export function quoteHasQuotationFile(q: FunctionalRfqQuote | undefined): boolean {
-  return localQuoteFiles(q).length > 0 || savedQuoteFiles(q).length > 0 || Boolean(q?.savedSubmissionId);
+  return localQuoteFiles(q).length > 0 || savedQuoteFiles(q).length > 0;
 }
 
 export function filesFromSubmission(sub?: {

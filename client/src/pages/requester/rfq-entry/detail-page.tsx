@@ -147,6 +147,11 @@ function emptyBilling(): PrBillingDeliveryValue {
     billingGstNo: '',
     billingAddress: '',
     deliveryPoc: '',
+    deliveryPocEmail: '',
+    deliveryPocPhone: '',
+    projectManagerHo: '',
+    projectManagerContact: '',
+    projectManagerEmail: '',
     placeOfDelivery: '',
     expectedDeliveryTimeline: '',
     paymentTerms: '',
@@ -220,7 +225,7 @@ export default function RfqEntryDetailPage() {
   const [filePreview, setFilePreview] = useState<{ url: string; fileName: string } | null>(null);
   const [manualDrafts, setManualDrafts] = useState<Record<number, Record<string, unknown>>>({});
   const [manualFiles, setManualFiles] = useState<Record<number, File[]>>({});
-  const [removedExtraIds, setRemovedExtraIds] = useState<Record<number, number[]>>({});
+  const [removedQuoteFileKeys, setRemovedQuoteFileKeys] = useState<Record<number, string[]>>({});
   const [savingManualId, setSavingManualId] = useState<number | null>(null);
   const [resendingId, setResendingId] = useState<number | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
@@ -292,20 +297,35 @@ export default function RfqEntryDetailPage() {
 
   const localFilesFor = (invitationId: number) => manualFiles[invitationId] || [];
 
+  const quoteFileKey = (f: { id?: number | null; isPrimary?: boolean }) =>
+    Number(f.id) > 0 ? `extra:${Number(f.id)}` : 'primary';
+
   const savedQuoteFilesFor = (
     row: TableRow,
     quote?: TableRow['quotes'][number] | null
   ) => {
     const q = quote || null;
     const extras = Array.isArray(q?.quotationFiles) ? q!.quotationFiles : [];
-    const removed = new Set(removedExtraIds[row.invitationId] || []);
+    const removed = new Set(removedQuoteFileKeys[row.invitationId] || []);
     const list =
       extras.length > 0
         ? extras
         : q?.quotationFileName
           ? [{ id: null as number | null, fileName: q.quotationFileName, isPrimary: true }]
           : [];
-    return list.filter((f) => !f.id || !removed.has(Number(f.id)));
+    return list.filter((f) => !removed.has(quoteFileKey(f)));
+  };
+
+  const removeSavedQuoteFile = (
+    invitationId: number,
+    file: { id?: number | null; isPrimary?: boolean }
+  ) => {
+    const key = quoteFileKey(file);
+    setRemovedQuoteFileKeys((prev) => {
+      const current = prev[invitationId] || [];
+      if (current.includes(key)) return prev;
+      return { ...prev, [invitationId]: [...current, key] };
+    });
   };
 
   const packQuoteFilePayload = async (
@@ -314,8 +334,10 @@ export default function RfqEntryDetailPage() {
     files: File[]
   ) => {
     const saved = savedQuoteFilesFor(row, quote);
+    const hasPrimary = saved.some((s) => s.isPrimary || !(Number(s.id) > 0));
     const out: Record<string, unknown> = {
       keepExtraFileIds: saved.filter((f) => Number(f.id) > 0).map((f) => Number(f.id)),
+      clearPrimary: !hasPrimary,
     };
     if (!files.length) return out;
     const uploaded = [];
@@ -324,7 +346,6 @@ export default function RfqEntryDetailPage() {
       if (!data) throw new Error('Could not read quotation file — try again');
       uploaded.push({ fileName: f.name, fileData: data });
     }
-    const hasPrimary = saved.some((s) => s.isPrimary) || Boolean(quote?.quotationFileName);
     if (!hasPrimary) {
       out.quotationFileName = uploaded[0].fileName;
       out.quotationFileData = uploaded[0].fileData;
@@ -604,6 +625,11 @@ export default function RfqEntryDetailPage() {
         billingGstNo?: string;
         billingAddress?: string;
         deliveryPoc?: string;
+        deliveryPocEmail?: string;
+        deliveryPocPhone?: string;
+        projectManagerHo?: string;
+        projectManagerContact?: string;
+        projectManagerEmail?: string;
         placeOfDelivery?: string;
         expectedDeliveryTimeline?: string;
         paymentTerms?: string;
@@ -617,6 +643,11 @@ export default function RfqEntryDetailPage() {
               billingGstNo: loaded.billingGstNo || '',
               billingAddress: loaded.billingAddress || '',
               deliveryPoc: loaded.deliveryPoc || '',
+              deliveryPocEmail: loaded.deliveryPocEmail || '',
+              deliveryPocPhone: loaded.deliveryPocPhone || '',
+              projectManagerHo: loaded.projectManagerHo || '',
+              projectManagerContact: loaded.projectManagerContact || '',
+              projectManagerEmail: loaded.projectManagerEmail || '',
               placeOfDelivery: loaded.placeOfDelivery || '',
               expectedDeliveryTimeline: loaded.expectedDeliveryTimeline || '',
               paymentTerms: loaded.paymentTerms || '',
@@ -713,6 +744,11 @@ export default function RfqEntryDetailPage() {
         billingGstNo: localBilling.billingGstNo.trim() || prev.billingGstNo || '',
         billingAddress: localBilling.billingAddress.trim() || prev.billingAddress || '',
         deliveryPoc: localBilling.deliveryPoc.trim() || prev.deliveryPoc || '',
+        deliveryPocEmail: localBilling.deliveryPocEmail?.trim() || prev.deliveryPocEmail || '',
+        deliveryPocPhone: localBilling.deliveryPocPhone?.trim() || prev.deliveryPocPhone || '',
+        projectManagerHo: localBilling.projectManagerHo?.trim() || prev.projectManagerHo || '',
+        projectManagerContact: localBilling.projectManagerContact?.trim() || prev.projectManagerContact || '',
+        projectManagerEmail: localBilling.projectManagerEmail?.trim() || prev.projectManagerEmail || '',
         placeOfDelivery: localBilling.placeOfDelivery.trim() || prev.placeOfDelivery || '',
         expectedDeliveryTimeline:
           localBilling.expectedDeliveryTimeline.trim() || prev.expectedDeliveryTimeline || '',
@@ -768,6 +804,11 @@ export default function RfqEntryDetailPage() {
             billingGstNo: localBilling.billingGstNo,
             billingAddress: localBilling.billingAddress,
             deliveryPoc: localBilling.deliveryPoc,
+            deliveryPocEmail: localBilling.deliveryPocEmail || '',
+            deliveryPocPhone: localBilling.deliveryPocPhone || '',
+            projectManagerHo: localBilling.projectManagerHo || '',
+            projectManagerContact: localBilling.projectManagerContact || '',
+            projectManagerEmail: localBilling.projectManagerEmail || '',
             placeOfDelivery: localBilling.placeOfDelivery,
             expectedDeliveryTimeline: localBilling.expectedDeliveryTimeline,
             paymentTerms: localBilling.paymentTerms,
@@ -1013,7 +1054,7 @@ export default function RfqEntryDetailPage() {
         delete next[row.invitationId];
         return next;
       });
-      setRemovedExtraIds((prev) => {
+      setRemovedQuoteFileKeys((prev) => {
         const next = { ...prev };
         delete next[row.invitationId];
         return next;
@@ -1092,7 +1133,7 @@ export default function RfqEntryDetailPage() {
       delete next[invitationId];
       return next;
     });
-    setRemovedExtraIds((prev) => {
+    setRemovedQuoteFileKeys((prev) => {
       const next = { ...prev };
       delete next[invitationId];
       return next;
@@ -1109,11 +1150,7 @@ export default function RfqEntryDetailPage() {
     const draft = manualDrafts[row.invitationId] || {};
     const files = localFilesFor(row.invitationId);
     const saved = savedQuoteFilesFor(row, quote);
-    const previousFile =
-      saved.length > 0 ||
-      (row.quotes || []).some((q) => Boolean(q.quotationFileName) || (q.quotationFiles && q.quotationFiles.length)) ||
-      Boolean(row.quotationFileName);
-    const hasFile = files.length > 0 || previousFile;
+    const hasFile = files.length > 0 || saved.length > 0;
     if (!hasFile) {
       failQuote('Quotation file is required. Upload a PDF or photo first.');
       return null;
@@ -1245,9 +1282,7 @@ export default function RfqEntryDetailPage() {
       return;
     }
     const previousFile =
-      savedQuoteFilesFor(row, quoteForRound(row, editingRoundById[row.invitationId]) || row.quotes?.[0]).length > 0 ||
-      (row.quotes || []).some((q) => Boolean(q.quotationFileName) || (q.quotationFiles && q.quotationFiles.length)) ||
-      Boolean(row.quotationFileName);
+      savedQuoteFilesFor(row, quoteForRound(row, editingRoundById[row.invitationId]) || row.quotes?.[0]).length > 0;
     if (!files.length && !previousFile) {
       failQuote('Quotation file is required. Upload a PDF or photo first.');
       return;
@@ -1297,7 +1332,7 @@ export default function RfqEntryDetailPage() {
         delete next[row.invitationId];
         return next;
       });
-      setRemovedExtraIds((prev) => {
+      setRemovedQuoteFileKeys((prev) => {
         const next = { ...prev };
         delete next[row.invitationId];
         return next;
@@ -1433,6 +1468,11 @@ export default function RfqEntryDetailPage() {
       billingGstNo: b.billingGstNo.trim() || undefined,
       billingAddress: b.billingAddress.trim() || undefined,
       deliveryPoc: b.deliveryPoc.trim() || undefined,
+      deliveryPocEmail: b.deliveryPocEmail?.trim() || undefined,
+      deliveryPocPhone: b.deliveryPocPhone?.trim() || undefined,
+      projectManagerHo: b.projectManagerHo?.trim() || undefined,
+      projectManagerContact: b.projectManagerContact?.trim() || undefined,
+      projectManagerEmail: b.projectManagerEmail?.trim() || undefined,
       placeOfDelivery: b.placeOfDelivery.trim() || undefined,
       expectedDeliveryTimeline: b.expectedDeliveryTimeline.trim() || undefined,
       paymentTerms: b.paymentTerms.trim() || undefined,
@@ -2432,37 +2472,33 @@ export default function RfqEntryDetailPage() {
                                 return (
                                   <>
                               {saved.map((sf, idx) => (
-                                <button
+                                <span
                                   key={`saved-${sf.id || sf.fileName}-${idx}`}
-                                  type="button"
-                                  onClick={() => {
-                                    if (sf.id) void openFilePreview(quote?.submissionId || 0, sf.fileName, sf.id);
-                                    else if (quote?.submissionId) void openFilePreview(quote.submissionId, sf.fileName);
-                                  }}
-                                  className="mb-2 mr-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-teal-700 hover:bg-teal-50"
+                                  className="mb-2 mr-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-teal-700"
                                 >
                                   <i className="ri-file-look-line" />
                                   <span className="truncate max-w-[220px]">{sf.fileName}</span>
-                                  <span className="text-xs text-gray-500">Preview</span>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-gray-500 hover:text-teal-800"
+                                    onClick={() => {
+                                      if (sf.id) void openFilePreview(quote?.submissionId || 0, sf.fileName, sf.id);
+                                      else if (quote?.submissionId) void openFilePreview(quote.submissionId, sf.fileName);
+                                    }}
+                                  >
+                                    Preview
+                                  </button>
                                   {quoteFieldsEditable ? (
-                                    <span
-                                      role="button"
+                                    <button
+                                      type="button"
+                                      title="Remove file"
                                       className="ml-1 text-gray-400 hover:text-red-600"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        if (sf.id) {
-                                          setRemovedExtraIds((prev) => ({
-                                            ...prev,
-                                            [row.invitationId]: [...(prev[row.invitationId] || []), Number(sf.id)],
-                                          }));
-                                        }
-                                      }}
+                                      onClick={() => removeSavedQuoteFile(row.invitationId, sf)}
                                     >
                                       <i className="ri-close-line" />
-                                    </span>
+                                    </button>
                                   ) : null}
-                                </button>
+                                </span>
                               ))}
                               {locals.map((lf, idx) => (
                                 <span

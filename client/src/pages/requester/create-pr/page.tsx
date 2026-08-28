@@ -184,6 +184,11 @@ export default function CreatePRPage() {
   const [billingGstNo, setBillingGstNo] = useState('');
   const [billingAddress, setBillingAddress] = useState('');
   const [deliveryPoc, setDeliveryPoc] = useState('');
+  const [deliveryPocEmail, setDeliveryPocEmail] = useState('');
+  const [deliveryPocPhone, setDeliveryPocPhone] = useState('');
+  const [projectManagerHo, setProjectManagerHo] = useState('');
+  const [projectManagerContact, setProjectManagerContact] = useState('');
+  const [projectManagerEmail, setProjectManagerEmail] = useState('');
   const [placeOfDelivery, setPlaceOfDelivery] = useState('');
   const [expectedDeliveryTimeline, setExpectedDeliveryTimeline] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
@@ -332,6 +337,11 @@ export default function CreatePRPage() {
     setBillingGstNo(draft.billingGstNo || '');
     setBillingAddress(draft.billingAddress || '');
     setDeliveryPoc(draft.deliveryPoc || '');
+    setDeliveryPocEmail(draft.deliveryPocEmail || '');
+    setDeliveryPocPhone(draft.deliveryPocPhone || '');
+    setProjectManagerHo(draft.projectManagerHo || '');
+    setProjectManagerContact(draft.projectManagerContact || '');
+    setProjectManagerEmail(draft.projectManagerEmail || '');
     setPlaceOfDelivery(draft.placeOfDelivery || '');
     setExpectedDeliveryTimeline(draft.expectedDeliveryTimeline || '');
     setPaymentTerms(draft.paymentTerms || '');
@@ -452,6 +462,11 @@ export default function CreatePRPage() {
           billingGstNo?: string;
           billingAddress?: string;
           deliveryPoc?: string;
+          deliveryPocEmail?: string;
+          deliveryPocPhone?: string;
+          projectManagerHo?: string;
+          projectManagerContact?: string;
+          projectManagerEmail?: string;
           placeOfDelivery?: string;
           expectedDeliveryTimeline?: string;
           paymentTerms?: string;
@@ -496,6 +511,11 @@ export default function CreatePRPage() {
         setBillingGstNo(pr.billingGstNo || '');
         setBillingAddress(pr.billingAddress || '');
         setDeliveryPoc(pr.deliveryPoc || '');
+        setDeliveryPocEmail(pr.deliveryPocEmail || '');
+        setDeliveryPocPhone(pr.deliveryPocPhone || '');
+        setProjectManagerHo(pr.projectManagerHo || '');
+        setProjectManagerContact(pr.projectManagerContact || '');
+        setProjectManagerEmail(pr.projectManagerEmail || '');
         setPlaceOfDelivery(pr.placeOfDelivery || '');
         setExpectedDeliveryTimeline(pr.expectedDeliveryTimeline || '');
         setPaymentTerms(pr.paymentTerms || '');
@@ -634,6 +654,11 @@ export default function CreatePRPage() {
               billingAddress?: string;
               placeOfDelivery?: string;
               deliveryPoc?: string;
+              deliveryPocEmail?: string;
+              deliveryPocPhone?: string;
+              projectManagerHo?: string;
+              projectManagerContact?: string;
+              projectManagerEmail?: string;
               expectedDeliveryTimeline?: string;
               paymentTerms?: string;
               title?: string;
@@ -675,6 +700,21 @@ export default function CreatePRPage() {
                 }
                 if (data.deliveryPoc && !draft.deliveryPoc?.trim()) {
                   setDeliveryPoc(data.deliveryPoc);
+                }
+                if (data.deliveryPocEmail && !draft.deliveryPocEmail?.trim()) {
+                  setDeliveryPocEmail(data.deliveryPocEmail);
+                }
+                if (data.deliveryPocPhone && !draft.deliveryPocPhone?.trim()) {
+                  setDeliveryPocPhone(data.deliveryPocPhone);
+                }
+                if (data.projectManagerHo && !draft.projectManagerHo?.trim()) {
+                  setProjectManagerHo(data.projectManagerHo);
+                }
+                if (data.projectManagerContact && !draft.projectManagerContact?.trim()) {
+                  setProjectManagerContact(data.projectManagerContact);
+                }
+                if (data.projectManagerEmail && !draft.projectManagerEmail?.trim()) {
+                  setProjectManagerEmail(data.projectManagerEmail);
                 }
                 if (data.expectedDeliveryTimeline && !draft.expectedDeliveryTimeline?.trim()) {
                   setExpectedDeliveryTimeline(data.expectedDeliveryTimeline);
@@ -782,6 +822,11 @@ export default function CreatePRPage() {
       billingGstNo,
       billingAddress,
       deliveryPoc,
+      deliveryPocEmail,
+      deliveryPocPhone,
+      projectManagerHo,
+      projectManagerContact,
+      projectManagerEmail,
       placeOfDelivery,
       expectedDeliveryTimeline,
       paymentTerms,
@@ -834,6 +879,11 @@ export default function CreatePRPage() {
     billingGstNo,
     billingAddress,
     deliveryPoc,
+    deliveryPocEmail,
+    deliveryPocPhone,
+    projectManagerHo,
+    projectManagerContact,
+    projectManagerEmail,
     placeOfDelivery,
     expectedDeliveryTimeline,
     paymentTerms,
@@ -960,6 +1010,11 @@ export default function CreatePRPage() {
     billingGstNo,
     billingAddress,
     deliveryPoc,
+    deliveryPocEmail,
+    deliveryPocPhone,
+    projectManagerHo,
+    projectManagerContact,
+    projectManagerEmail,
     placeOfDelivery,
     expectedDeliveryTimeline,
     paymentTerms,
@@ -1607,6 +1662,11 @@ export default function CreatePRPage() {
     billingGstNo: billingGstNo.trim() || undefined,
     billingAddress: billingAddress.trim() || undefined,
     deliveryPoc: deliveryPoc.trim() || undefined,
+    deliveryPocEmail: deliveryPocEmail.trim() || undefined,
+    deliveryPocPhone: deliveryPocPhone.trim() || undefined,
+    projectManagerHo: projectManagerHo.trim() || undefined,
+    projectManagerContact: projectManagerContact.trim() || undefined,
+    projectManagerEmail: projectManagerEmail.trim() || undefined,
     placeOfDelivery: placeOfDelivery.trim() || undefined,
     expectedDeliveryTimeline: expectedDeliveryTimeline.trim() || undefined,
     paymentTerms: paymentTerms.trim() || undefined,
@@ -2901,6 +2961,11 @@ export default function CreatePRPage() {
               billingGstNo,
               billingAddress,
               deliveryPoc,
+              deliveryPocEmail,
+              deliveryPocPhone,
+              projectManagerHo,
+              projectManagerContact,
+              projectManagerEmail,
               placeOfDelivery,
               expectedDeliveryTimeline,
               paymentTerms,
@@ -2915,6 +2980,11 @@ export default function CreatePRPage() {
               if (patch.billingGstNo !== undefined) setBillingGstNo(patch.billingGstNo);
               if (patch.billingAddress !== undefined) setBillingAddress(patch.billingAddress);
               if (patch.deliveryPoc !== undefined) setDeliveryPoc(patch.deliveryPoc);
+              if (patch.deliveryPocEmail !== undefined) setDeliveryPocEmail(patch.deliveryPocEmail);
+              if (patch.deliveryPocPhone !== undefined) setDeliveryPocPhone(patch.deliveryPocPhone);
+              if (patch.projectManagerHo !== undefined) setProjectManagerHo(patch.projectManagerHo);
+              if (patch.projectManagerContact !== undefined) setProjectManagerContact(patch.projectManagerContact);
+              if (patch.projectManagerEmail !== undefined) setProjectManagerEmail(patch.projectManagerEmail);
               if (patch.placeOfDelivery !== undefined) setPlaceOfDelivery(patch.placeOfDelivery);
               if (patch.expectedDeliveryTimeline !== undefined) {
                 setExpectedDeliveryTimeline(patch.expectedDeliveryTimeline);
