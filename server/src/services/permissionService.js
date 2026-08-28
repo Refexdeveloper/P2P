@@ -10,8 +10,8 @@ export const NAV_ITEMS = [
   { code: 'nav.pr_manager_dashboard', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'L2 Manager', sort: 20 },
   { code: 'nav.rfq_approval', label: 'RFQ Approval', path: '/rfq-approval', icon: 'ri-bar-chart-box-line', group: 'Approvals', sort: 30 },
   { code: 'nav.tasks', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'General', sort: 40 },
-  { code: 'nav.cfo_dashboard', label: 'Dashboard', path: '/cfo/dashboard', icon: 'ri-dashboard-line', group: 'CFO', sort: 50 },
-  { code: 'nav.cfo_insights', label: 'Financial Insights', path: '/dashboard', icon: 'ri-line-chart-line', group: 'CFO', sort: 51 },
+  { code: 'nav.cfo_insights', label: 'Dashboard', path: '/dashboard', icon: 'ri-dashboard-line', group: 'CFO', sort: 50 },
+  { code: 'nav.cfo_dashboard', label: 'PR Approvals', path: '/cfo/dashboard', icon: 'ri-checkbox-circle-line', group: 'CFO', sort: 51 },
   { code: 'nav.home_dashboard', label: 'Dashboard', path: '/', icon: 'ri-dashboard-line', group: 'General', sort: 5 },
   { code: 'nav.purchase_requests', label: 'Dashboard', path: '/scm/purchase-requests', icon: 'ri-dashboard-line', group: 'SCM', sort: 60 },
   { code: 'nav.scm_rfq_entry', label: 'RFQ Entry', path: '/scm/rfq-entry', icon: 'ri-file-list-line', group: 'SCM', sort: 61 },
@@ -60,7 +60,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.department_master',
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
-  CFO: ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.rfq_approval', 'nav.tasks'],
+  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
@@ -248,7 +248,7 @@ export async function getUserPermissionCodes(userId, role) {
         }
       }
       if (role === 'CFO') {
-        for (const code of ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.rfq_approval', 'nav.tasks']) {
+        for (const code of ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks']) {
           if (!stored.includes(code) && validCodes.has(code)) {
             stored.push(code);
             await pool.query(
@@ -336,6 +336,17 @@ export async function getUserNavigation(userId, role) {
         );
       }
     }
+  }
+
+  // CFO: Dashboard (financial) → PR Approvals → RFQ Approval → My Tasks
+  if (role === 'CFO') {
+    const order = ROLE_DEFAULT_PERMISSIONS.CFO || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    nav.sort((a, b) => {
+      const ai = rank.has(a.code) ? rank.get(a.code) : 1000 + a.sort;
+      const bi = rank.has(b.code) ? rank.get(b.code) : 1000 + b.sort;
+      return ai - bi;
+    });
   }
 
   // SCM Manager: Dashboard → PO Approval → RFQ Approval → …

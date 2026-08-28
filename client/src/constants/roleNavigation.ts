@@ -51,18 +51,18 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-task-line',
     group: 'General',
   },
-  'nav.cfo_dashboard': {
-    code: 'nav.cfo_dashboard',
+  'nav.cfo_insights': {
+    code: 'nav.cfo_insights',
     label: 'Dashboard',
-    path: '/cfo/dashboard',
+    path: '/dashboard',
     icon: 'ri-dashboard-line',
     group: 'CFO',
   },
-  'nav.cfo_insights': {
-    code: 'nav.cfo_insights',
-    label: 'Financial Insights',
-    path: '/dashboard',
-    icon: 'ri-line-chart-line',
+  'nav.cfo_dashboard': {
+    code: 'nav.cfo_dashboard',
+    label: 'PR Approvals',
+    path: '/cfo/dashboard',
+    icon: 'ri-checkbox-circle-line',
     group: 'CFO',
   },
   'nav.purchase_requests': {
@@ -312,7 +312,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     ...REQUESTER_MASTER_NAV_CODES,
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
-  CFO: ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.rfq_approval', 'nav.tasks'],
+  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
@@ -391,9 +391,9 @@ export function ensureNavigation(role: string | undefined | null, navigation?: N
         return {
           ...item,
           ...catalog,
-          label: item.label || catalog.label,
-          path: item.path || catalog.path,
-          icon: item.icon || catalog.icon,
+          label: catalog.label || item.label,
+          path: catalog.path || item.path,
+          icon: catalog.icon || item.icon,
           group: catalog.group || item.group,
         };
       })
@@ -468,6 +468,25 @@ export function ensureNavigation(role: string | undefined | null, navigation?: N
       }
     }
     const order = ROLE_DEFAULT_CODES['SCM Buyer'] || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    merged = [...merged].sort((a, b) => {
+      const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;
+      const bi = rank.has(b.code) ? (rank.get(b.code) as number) : 1000;
+      return ai - bi;
+    });
+  }
+
+  // CFO: Dashboard → PR Approvals → RFQ Approval → My Tasks
+  if (role === 'CFO') {
+    const codes = new Set(merged.map((n) => n.code));
+    merged = [...merged];
+    for (const code of ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks']) {
+      if (!codes.has(code) && NAV_BY_CODE[code]) {
+        merged.push(NAV_BY_CODE[code]);
+        codes.add(code);
+      }
+    }
+    const order = ROLE_DEFAULT_CODES.CFO || [];
     const rank = new Map(order.map((code, i) => [code, i]));
     merged = [...merged].sort((a, b) => {
       const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;

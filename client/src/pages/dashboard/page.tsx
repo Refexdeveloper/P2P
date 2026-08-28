@@ -12,6 +12,7 @@ import BudgetActualCard from './components/BudgetActualCard';
 import PoStatusCard from './components/PoStatusCard';
 import RecentApprovalsCard from './components/RecentApprovalsCard';
 import UpcomingPaymentsCard, { PaymentRow } from './components/UpcomingPaymentsCard';
+import { useAuth } from '../../contexts/AuthContext';
 import { accountsApi, masterApi, poApi, prApi } from '../../services/api';
 import { formatCompactInr, lastDayOfYm, parseLooseDate } from './cfoFormat';
 
@@ -75,6 +76,7 @@ function readHidden(): Record<string, boolean> {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [data, setData] = useState<Insights>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -415,8 +417,11 @@ export default function Dashboard() {
       <div className="-m-3 sm:-m-4 lg:-m-6 min-h-full bg-[#F8F9FC] px-4 sm:px-6 lg:px-7 py-6 font-sans">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
           <div>
-            <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">CFO Dashboard</h1>
-            <p className="text-sm text-slate-500 mt-2">Real-time procurement &amp; financial insights</p>
+            <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">Group CEO</h1>
+            <p className="text-sm text-slate-700 mt-2">
+              Welcome, <span className="font-semibold">{user?.name || 'User'}</span>
+            </p>
+            <p className="text-[13px] text-slate-500 mt-1">Real-time procurement &amp; financial insights</p>
           </div>
           <div className="flex items-center gap-2 relative" ref={customizeRef}>
             <button
