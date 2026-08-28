@@ -14,7 +14,8 @@ import RecentApprovalsCard from './components/RecentApprovalsCard';
 import UpcomingPaymentsCard, { PaymentRow } from './components/UpcomingPaymentsCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { accountsApi, masterApi, poApi, prApi } from '../../services/api';
-import { formatCompactInr, lastDayOfYm, parseLooseDate } from './cfoFormat';
+import { formatRoleDisplayName } from '../../utils/roleDisplay';
+import { formatCompactInr, parseLooseDate } from './cfoFormat';
 
 type Insights = Awaited<ReturnType<typeof poApi.cfoInsights>>['data'];
 type CfoEntity = {
@@ -75,6 +76,13 @@ function readHidden(): Record<string, boolean> {
   }
 }
 
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [data, setData] = useState<Insights>(EMPTY);
@@ -95,7 +103,6 @@ export default function Dashboard() {
   const [hidden, setHidden] = useState<Record<string, boolean>>(readHidden);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const customizeRef = useRef<HTMLDivElement>(null);
-  const datesSeeded = useRef(false);
 
   const load = async () => {
     setLoading(true);
@@ -115,19 +122,6 @@ export default function Dashboard() {
       setDepartments([...new Set((masterDept.data || []).map((d) => String(d.name || '').trim()).filter(Boolean))]);
       setCategories([...new Set((masterCat.data || []).map((c) => String(c.name || '').trim()).filter(Boolean))]);
       setUpdatedAt(new Date());
-
-      if (!datesSeeded.current && next.monthlyPOTrend.length) {
-        datesSeeded.current = true;
-        const first = String(next.monthlyPOTrend[0].ym || '');
-        const last = String(next.monthlyPOTrend[next.monthlyPOTrend.length - 1].ym || '');
-        const seeded = {
-          ...EMPTY_DASHBOARD_FILTERS,
-          dateFrom: first ? `${first}-01` : '',
-          dateTo: last ? lastDayOfYm(last) : '',
-        };
-        setFilters(seeded);
-        setResetValue(seeded);
-      }
     } catch (err) {
       setData(EMPTY);
       setError(err instanceof Error ? err.message : 'Failed to load CFO insights');
@@ -417,11 +411,12 @@ export default function Dashboard() {
       <div className="-m-3 sm:-m-4 lg:-m-6 min-h-full bg-[#F8F9FC] px-4 sm:px-6 lg:px-7 py-6 font-sans">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
           <div>
-            <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">Group CEO</h1>
-            <p className="text-sm text-slate-700 mt-2">
-              Welcome, <span className="font-semibold">{user?.name || 'User'}</span>
+            <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">
+              {greetingForNow()}, {user?.name || 'User'}
+            </h1>
+            <p className="text-sm text-slate-500 mt-2">
+              Logged in as {formatRoleDisplayName(user?.role) || 'Group CEO'}
             </p>
-            <p className="text-[13px] text-slate-500 mt-1">Real-time procurement &amp; financial insights</p>
           </div>
           <div className="flex items-center gap-2 relative" ref={customizeRef}>
             <button

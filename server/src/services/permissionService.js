@@ -60,7 +60,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.department_master',
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
-  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks'],
+  CFO: ['nav.cfo_insights', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
@@ -147,6 +147,11 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
   const stored = (storedCodes || []).map(String).filter((c) => validCodes.has(c));
 
   if (!stored.length) return [...defaults];
+
+  if (role === 'CFO') {
+    const allowed = ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.tasks'];
+    return allowed.filter((c) => validCodes.has(c));
+  }
 
   if (role === 'PR Manager') {
     if (!stored.includes('nav.pr_manager_dashboard') && validCodes.has('nav.pr_manager_dashboard')) {
@@ -248,7 +253,12 @@ export async function getUserPermissionCodes(userId, role) {
         }
       }
       if (role === 'CFO') {
-        for (const code of ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.rfq_approval', 'nav.tasks']) {
+        const allowed = ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.tasks'];
+        for (const code of stored.filter((c) => !allowed.includes(c))) {
+          await pool.query(`DELETE FROM user_permissions WHERE user_id = ? AND permission_code = ?`, [userId, code]);
+        }
+        stored.splice(0, stored.length, ...stored.filter((c) => allowed.includes(c)));
+        for (const code of allowed) {
           if (!stored.includes(code) && validCodes.has(code)) {
             stored.push(code);
             await pool.query(
@@ -338,8 +348,10 @@ export async function getUserNavigation(userId, role) {
     }
   }
 
-  // CFO: Dashboard (financial) → PR Approvals → RFQ Approval → My Tasks
+  // CFO: Dashboard + My Tasks only
   if (role === 'CFO') {
+    const allowed = new Set(ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.tasks']);
+    nav = nav.filter((n) => allowed.has(n.code));
     const order = ROLE_DEFAULT_PERMISSIONS.CFO || [];
     const rank = new Map(order.map((code, i) => [code, i]));
     nav.sort((a, b) => {

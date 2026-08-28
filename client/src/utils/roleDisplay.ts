@@ -2,6 +2,7 @@
 const ROLE_DISPLAY_NAMES: Record<string, string> = {
   'HOD Approver': 'L1 Manager',
   'PR Manager': 'L2 Manager',
+  CFO: 'Group CEO',
 };
 
 export function formatRoleDisplayName(role?: string | null): string {
