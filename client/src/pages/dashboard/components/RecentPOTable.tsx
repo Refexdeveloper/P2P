@@ -1,3 +1,5 @@
+import { CARD, formatCompactInr } from '../cfoFormat';
+
 type Order = {
   poNumber: string;
   entity: string;
@@ -7,11 +9,7 @@ type Order = {
   status: string;
 };
 
-const formatCurrency = (value: number) => {
-  if (value >= 10000000) return `₹${(value / 10000000).toFixed(1)}Cr`;
-  if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
-  return `₹${Number(value || 0).toLocaleString('en-IN')}`;
-};
+const formatCurrency = formatCompactInr;
 
 const statusConfig: Record<string, { bg: string; text: string; dot: string }> = {
   Approved: { bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-500' },
@@ -21,7 +19,7 @@ const statusConfig: Record<string, { bg: string; text: string; dot: string }> = 
 
 export default function RecentPOTable({ orders }: { orders: Order[] }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100">
+    <div className={`${CARD} overflow-hidden`}>
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-800">Recent Purchase Orders</h3>
         <span className="text-xs text-gray-400">{orders.length} records</span>

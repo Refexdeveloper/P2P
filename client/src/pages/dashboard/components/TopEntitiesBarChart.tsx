@@ -1,3 +1,5 @@
+import { CARD, formatCompactInr, formatFullInr } from '../cfoFormat';
+
 type Entity = {
   entityName: string;
   totalPOCount: number;
@@ -6,51 +8,58 @@ type Entity = {
   color: string;
 };
 
-const formatCurrency = (value: number) => {
-  if (value >= 10000000) return `₹${(value / 10000000).toFixed(1)}Cr`;
-  if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
-  return `₹${Number(value || 0).toLocaleString('en-IN')}`;
-};
+const BAR_COLORS = ['#6366F1', '#F97316', '#10B981', '#0EA5E9'];
 
-export default function TopEntitiesBarChart({ entities }: { entities: Entity[] }) {
-  const maxAmount = Math.max(...entities.map((e) => e.totalPOAmount), 1);
+export default function TopEntitiesBarChart({
+  entities,
+  onViewReport,
+}: {
+  entities: Entity[];
+  onViewReport?: () => void;
+}) {
+  const top = entities.slice(0, 4);
+  const total = entities.reduce((s, e) => s + e.totalPOAmount, 0) || 1;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-5">
-      <h3 className="text-sm font-semibold text-gray-800 mb-5">Top Entities by Spend</h3>
-      {!entities.length ? (
-        <p className="text-sm text-gray-500 py-8 text-center">No entity spend yet.</p>
+    <div className={`${CARD} p-5 h-full flex flex-col`}>
+      <h3 className="text-[15px] font-semibold text-slate-900 mb-5">Top Entities by Spend</h3>
+      {!top.length ? (
+        <p className="text-sm text-slate-500 py-10 text-center">No entity spend yet.</p>
       ) : (
-        <div className="space-y-4">
-          {entities.slice(0, 6).map((entity) => {
-            const widthPct = (entity.totalPOAmount / maxAmount) * 100;
+        <div className="space-y-5 flex-1">
+          {top.map((entity, i) => {
+            const pct = (entity.totalPOAmount / total) * 100;
             return (
               <div key={entity.entityName}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-700 font-medium truncate max-w-[160px]">
+                <div className="flex items-center justify-between gap-3 mb-1.5">
+                  <span className="text-[12px] text-slate-700 font-medium truncate" title={entity.entityName}>
                     {entity.entityName}
                   </span>
-                  <span className="text-xs font-bold text-gray-900 ml-2 whitespace-nowrap">
-                    {formatCurrency(entity.totalPOAmount)}
+                  <span className="text-[12px] font-bold text-slate-900 whitespace-nowrap" title={formatFullInr(entity.totalPOAmount)}>
+                    {formatCompactInr(entity.totalPOAmount)}
                   </span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-2.5">
+                <div className="w-full bg-slate-100 rounded-full h-2">
                   <div
-                    className="h-2.5 rounded-full transition-all duration-700"
-                    style={{ width: `${widthPct}%`, backgroundColor: entity.color }}
-                  ></div>
+                    className="h-2 rounded-full transition-all duration-700"
+                    style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: entity.color || BAR_COLORS[i % BAR_COLORS.length] }}
+                  />
                 </div>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs text-gray-400">{entity.totalPOCount} POs</span>
-                  <span className="text-xs text-gray-400">
-                    Approved: {formatCurrency(entity.approvedAmount)}
-                  </span>
-                </div>
+                <p className="text-[11px] text-slate-400 mt-1">{pct.toFixed(1)}% of total</p>
               </div>
             );
           })}
         </div>
       )}
+      {onViewReport ? (
+        <button
+          type="button"
+          onClick={onViewReport}
+          className="mt-4 w-full pt-3 border-t border-[#EEF0F5] text-[12px] font-medium text-indigo-500 hover:text-indigo-600 text-center"
+        >
+          View Full Report
+        </button>
+      ) : null}
     </div>
   );
 }

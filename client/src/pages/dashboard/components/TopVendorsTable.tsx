@@ -1,3 +1,5 @@
+import { CARD, formatCompactInr } from '../cfoFormat';
+
 type Vendor = {
   vendorName: string;
   entity: string;
@@ -5,17 +7,13 @@ type Vendor = {
   poCount: number;
 };
 
-const formatCurrency = (value: number) => {
-  if (value >= 10000000) return `₹${(value / 10000000).toFixed(1)}Cr`;
-  if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
-  return `₹${Number(value || 0).toLocaleString('en-IN')}`;
-};
+const formatCurrency = formatCompactInr;
 
 export default function TopVendorsTable({ vendors }: { vendors: Vendor[] }) {
   const maxAmount = Math.max(...vendors.map((v) => v.totalPOAmount), 1);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100">
+    <div className={`${CARD} overflow-hidden`}>
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-800">Top Vendors by PO Amount</h3>
         <span className="text-xs text-gray-400">Top {vendors.length}</span>

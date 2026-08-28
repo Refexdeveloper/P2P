@@ -1,3 +1,5 @@
+import { CARD, formatCompactInr } from '../cfoFormat';
+
 type Entity = {
   entityName: string;
   code: string;
@@ -8,15 +10,11 @@ type Entity = {
   color: string;
 };
 
-const formatCurrency = (value: number) => {
-  if (value >= 10000000) return `₹${(value / 10000000).toFixed(1)}Cr`;
-  if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
-  return `₹${Number(value || 0).toLocaleString('en-IN')}`;
-};
+const formatCurrency = formatCompactInr;
 
 export default function EntityPOSummaryTable({ entities }: { entities: Entity[] }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100">
+      <div className={`${CARD} overflow-hidden`}>
       <div className="px-5 py-4 border-b border-gray-100">
         <h3 className="text-sm font-semibold text-gray-800">Entity-wise PO Summary</h3>
       </div>
