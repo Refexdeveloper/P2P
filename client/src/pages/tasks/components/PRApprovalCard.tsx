@@ -2,6 +2,7 @@
 import React from 'react';
 import PriorityBadge from '../../../components/base/PriorityBadge';
 import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatDate';
+import { collapsePrAdminEditHistory } from '../../../components/feature/ApprovalHistoryPanel';
 
 interface LineItem {
   itemName?: string;
@@ -70,6 +71,17 @@ export default function PRApprovalCard({
 
   const formatDateTime = (dateStr: string) => formatDisplayDateTime(dateStr);
   const isOwnVendor = task.vendorSelection === 'own';
+  const approvalHistory = collapsePrAdminEditHistory(
+    (task.approvalHistory || []).map((step) => ({
+      stage: step.step,
+      step: step.step,
+      approver: step.approver,
+      role: step.role,
+      date: step.date,
+      status: step.status,
+      remarks: step.remarks,
+    }))
+  );
 
   const getSlaColor = () => {
     if (task.isOverdue) return 'text-red-600 bg-red-50 border-red-200';
@@ -382,25 +394,27 @@ export default function PRApprovalCard({
               Approval History
             </h4>
             <div className="space-y-0">
-              {task.approvalHistory.map((step, idx) => (
-                <div key={idx} className="flex items-start gap-3 relative">
-                  {idx < task.approvalHistory.length - 1 && (
+              {approvalHistory.map((step, idx) => (
+                <div key={`${step.stage}-${step.date}-${idx}`} className="flex items-start gap-3 relative">
+                  {idx < approvalHistory.length - 1 && (
                     <div className="absolute left-[11px] top-6 w-0.5 h-full bg-gray-200"></div>
                   )}
                   <div
                     className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                      step.status === 'completed'
+                      String(step.status || '').toLowerCase().includes('approv') ||
+                      String(step.status || '').toLowerCase().includes('complet')
                         ? 'bg-emerald-100'
-                        : step.status === 'rejected'
+                        : String(step.status || '').toLowerCase().includes('reject')
                         ? 'bg-red-100'
                         : 'bg-gray-100'
                     }`}
                   >
                     <i
                       className={`text-xs ${
-                        step.status === 'completed'
+                        String(step.status || '').toLowerCase().includes('approv') ||
+                        String(step.status || '').toLowerCase().includes('complet')
                           ? 'ri-check-line text-emerald-600'
-                          : step.status === 'rejected'
+                          : String(step.status || '').toLowerCase().includes('reject')
                           ? 'ri-close-line text-red-600'
                           : 'ri-time-line text-gray-400'
                       }`}
@@ -408,7 +422,7 @@ export default function PRApprovalCard({
                   </div>
                   <div className="pb-4 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-gray-900">{step.step}</p>
+                      <p className="text-sm font-medium text-gray-900">{step.stage || step.step}</p>
                       <span className="text-xs text-gray-400">{formatDateTime(step.date)}</span>
                     </div>
                     <p className="text-xs text-gray-500">

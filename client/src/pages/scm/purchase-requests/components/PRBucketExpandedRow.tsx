@@ -67,6 +67,13 @@ interface PoSummary {
   referencePoNumber: string;
 }
 
+interface AddressContactInfo {
+  siteAddress: string;
+  contactPersons: string;
+  invoicingAddress: string;
+  gstin: string;
+}
+
 interface ReferencePoInfo {
   id: number;
   poNumber: string;
@@ -83,6 +90,65 @@ interface ReferencePoInfo {
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+
+const EMPTY_ADDRESS: AddressContactInfo = {
+  siteAddress: '',
+  contactPersons: '',
+  invoicingAddress: '',
+  gstin: '',
+};
+
+function pickText(...vals: Array<unknown>): string {
+  for (const v of vals) {
+    const s = String(v ?? '').trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+function htmlToPlain(html: string): string {
+  if (!html) return '';
+  if (!/[<>]/.test(html)) return html.trim();
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function formatPoContacts(terms: Record<string, unknown>): string {
+  const name = pickText(terms.siteContactPerson);
+  const phone = pickText(terms.siteContactPhone);
+  const email = pickText(terms.siteContactEmail);
+  return [name, [phone, email].filter(Boolean).join(' · ')].filter(Boolean).join('\n');
+}
+
+function addressFromPr(d: Record<string, unknown>): AddressContactInfo {
+  return {
+    siteAddress: pickText(d.placeOfDelivery),
+    contactPersons: pickText(d.deliveryPoc),
+    invoicingAddress: htmlToPlain(pickText(d.billingAddress)),
+    gstin: pickText(d.billingGstNo).toUpperCase(),
+  };
+}
+
+function addressFromPo(po: Record<string, unknown>, fallback: AddressContactInfo = EMPTY_ADDRESS): AddressContactInfo {
+  const terms = (po.poTermsDetails as Record<string, unknown> | undefined) || {};
+  return {
+    siteAddress: pickText(terms.siteAddress, po.deliveryAddress, fallback.siteAddress),
+    contactPersons: pickText(formatPoContacts(terms), fallback.contactPersons),
+    invoicingAddress: pickText(htmlToPlain(String(terms.invoicingAddress || '')), fallback.invoicingAddress),
+    gstin: pickText(terms.buyerGstNo, fallback.gstin).toUpperCase(),
+  };
+}
 
 export default function PRBucketExpandedRow({
   prId,
@@ -103,6 +169,7 @@ export default function PRBucketExpandedRow({
   const [comparison, setComparison] = useState<VendorComparisonData | null>(null);
   const [cancellation, setCancellation] = useState<CancellationInfo | null>(null);
   const [poSummary, setPoSummary] = useState<PoSummary | null>(null);
+  const [addressInfo, setAddressInfo] = useState<AddressContactInfo>(EMPTY_ADDRESS);
   const [referencePo, setReferencePo] = useState<ReferencePoInfo | null>(null);
   const [currentPdfUrl, setCurrentPdfUrl] = useState<string | null>(null);
   const [referencePdfUrl, setReferencePdfUrl] = useState<string | null>(null);
@@ -236,6 +303,7 @@ export default function PRBucketExpandedRow({
       createdBy: String(po.createdBy || ''),
       referencePoNumber: String(po.referencePoNumber || '').trim(),
     });
+    setAddressInfo(addressFromPo(po));
     setPr({
       id: Number(po.id) || 0,
       prNumber: String(po.prNumber || '') || 'None (Manual)',
@@ -276,6 +344,7 @@ export default function PRBucketExpandedRow({
     const load = async () => {
       setLoading(true);
       setError('');
+      setAddressInfo(EMPTY_ADDRESS);
       setReferencePo(null);
       revokePdfUrl(currentPdfUrlRef);
       revokePdfUrl(referencePdfUrlRef);
@@ -311,6 +380,7 @@ export default function PRBucketExpandedRow({
               lineItems: items,
               approvalHistory: mapHistory(historyRaw),
             });
+            setAddressInfo(addressFromPr(d));
           } else {
             throw prRes.reason instanceof Error ? prRes.reason : new Error('Failed to load PR');
           }
@@ -349,6 +419,7 @@ export default function PRBucketExpandedRow({
               createdBy: String(po.createdBy || ''),
               referencePoNumber: String(po.referencePoNumber || '').trim(),
             });
+            setAddressInfo((prev) => addressFromPo(po, prev));
           } else {
             setCancellation(null);
           }
@@ -516,6 +587,32 @@ export default function PRBucketExpandedRow({
                         </p>
                       </div>
                     ))}
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    <div className="bg-gray-50 rounded-lg p-3 min-w-0 lg:col-span-2">
+                      <p className="text-xs text-gray-500 mb-0.5">Site Address</p>
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
+                        {addressInfo.siteAddress || '—'}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 min-w-0">
+                      <p className="text-xs text-gray-500 mb-0.5">Contact Persons</p>
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
+                        {addressInfo.contactPersons || '—'}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 min-w-0">
+                      <p className="text-xs text-gray-500 mb-0.5">GSTIN</p>
+                      <p className="text-sm font-medium text-gray-900 font-mono break-words">
+                        {addressInfo.gstin || '—'}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 min-w-0 lg:col-span-2">
+                      <p className="text-xs text-gray-500 mb-0.5">Invoicing Address</p>
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
+                        {addressInfo.invoicingAddress || '—'}
+                      </p>
+                    </div>
                   </div>
                   <div>
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">

@@ -2761,142 +2761,154 @@ export default function CreatePOPage() {
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50/60">
         {/* ── Top Header Bar ── */}
-        <div className="sticky top-0 z-20 px-3 sm:px-4 pt-2 pb-1 bg-gray-50/90 backdrop-blur-sm">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-2.5 py-1.5">
-          <div className="flex items-center gap-2 min-h-9 overflow-x-auto">
+        <div className="sticky top-0 z-20 bg-white border-b border-gray-200">
+          <div className="px-3 sm:px-6 lg:px-8 py-2.5">
+            <div className="flex flex-wrap items-center gap-2">
               <button
-              onClick={() => navigate(isEditMode ? editReturnPath : '/scm/create-po')}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer text-gray-500 shrink-0"
-              aria-label="Back"
+                onClick={() => navigate(isEditMode ? editReturnPath : '/scm/create-po')}
+                className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors cursor-pointer text-gray-500 shrink-0"
+                aria-label="Back"
               >
-              <i className="ri-arrow-left-line"></i>
+                <i className="ri-arrow-left-line"></i>
               </button>
-
-            <h1 className="text-sm font-bold text-gray-900 whitespace-nowrap shrink-0">
-              {isEditMode ? `Edit ${docLabel}` : `Create ${docLabel}`}
-                  </h1>
-            <span className="px-1.5 py-0.5 border rounded text-[10px] font-semibold tracking-wide bg-slate-50 text-slate-700 border-slate-200 shrink-0">
-              {docLabel === 'Work Order' ? 'WO' : 'PO'}
-            </span>
-            <span className={`px-1.5 py-0.5 border rounded text-[10px] font-semibold tracking-wide whitespace-nowrap shrink-0 ${
-              isBuyerVerifyEdit
-                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                : isEditMode
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-teal-50 text-teal-700 border-teal-200'
-                  }`}>
-              {isBuyerVerifyEdit ? 'BUYER FINAL VERIFY' : isEditMode ? 'PENDING REVIEW' : 'DRAFT'}
-                  </span>
-
-            <span className="text-[11px] text-gray-500 min-w-0 hidden md:inline-flex items-center gap-1.5">
-              {docNoLabel}:
-              <input
-                type="text"
-                value={poNumber}
-                onChange={(e) => handlePoNumberChange(e.target.value)}
-                onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
-                placeholder="Auto on save"
-                maxLength={40}
-                className="font-semibold text-teal-700 bg-white border border-teal-200 rounded px-1.5 py-0.5 w-[11.5rem] text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-500"
-              />
-              <span className="text-gray-300 mx-1">·</span>
-              Date: <span className="font-semibold text-gray-700">{formatPoDateLabel(poDate)}</span>
-              <span className="text-gray-300 mx-1">·</span>
-              PR: <span className="font-semibold text-gray-700">{isManualMode ? 'None' : pr.prNumber}</span>
-              <span className="text-gray-300 mx-1">·</span>
-              Vendor:{' '}
-              <span className="font-semibold text-gray-700">
-                {isManualMode ? manualVendorName || '—' : pr.recommendedVendor}
-                  </span>
-                  </span>
-
-            <div className="flex items-center gap-0.5 shrink-0 mx-1 border-x border-gray-200 px-1">
-              {[
-                { key: 'details', label: 'Details', step: 1 },
-                {
-                  key: 'terms',
-                  label: isWorkOrder ? 'WO Terms' : 'Terms',
-                  step: 2,
-                },
-                { key: 'preview', label: 'Preview', step: 3 },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key as typeof activeTab)}
-                  className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer whitespace-nowrap ${
-                    activeTab === tab.key
-                      ? 'bg-teal-50 text-teal-700'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className={`w-4 h-4 flex items-center justify-center rounded-full text-[10px] font-bold ${
-                    activeTab === tab.key ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-500'
-                  }`}>{tab.step}</span>
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+              <h1 className="text-lg font-bold text-slate-900 whitespace-nowrap">
+                {isEditMode ? `Edit ${docLabel}` : `Create ${docLabel}`}
+              </h1>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${
+                  isBuyerVerifyEdit
+                    ? 'bg-blue-100 text-blue-800'
+                    : isEditMode && poEditStatus && poEditStatus !== 'draft'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-orange-100 text-orange-700'
+                }`}
+              >
+                {isBuyerVerifyEdit
+                  ? 'Buyer Final Verify'
+                  : isEditMode && poEditStatus && poEditStatus !== 'draft'
+                    ? 'Pending Review'
+                    : 'Draft'}
+              </span>
               {draftSaved && (
-                <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium whitespace-nowrap">
+                <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
                   <i className="ri-checkbox-circle-fill"></i> Saved
                 </span>
               )}
-              {canSaveDraft && (
+
+              <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
+                {isEditMode && (
+                  <input
+                    type="text"
+                    value={changeSummary}
+                    onChange={(e) => setChangeSummary(e.target.value)}
+                    placeholder="Change summary"
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm w-36 bg-white"
+                  />
+                )}
                 <button
+                  type="button"
                   onClick={handleSaveDraft}
                   disabled={submitting}
-                  className="px-2.5 py-1.5 border border-gray-300 text-gray-600 rounded-md hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-xs font-medium flex items-center gap-1 disabled:opacity-50"
+                  className="px-3.5 py-1.5 border border-gray-300 bg-white text-slate-800 rounded-md hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium disabled:opacity-50"
                 >
-                  <i className="ri-save-line"></i> {submitting ? 'Saving...' : 'Draft'}
+                  {submitting ? 'Saving...' : 'Save as Draft'}
                 </button>
-              )}
-              {isEditMode && pdfPreviewUrl && (
-                <a
-                  href={pdfPreviewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-2.5 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-xs font-medium flex items-center gap-1 whitespace-nowrap"
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('preview')}
+                  className="px-3.5 py-1.5 border border-gray-300 bg-white text-slate-800 rounded-md hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium"
                 >
-                  <i className="ri-file-pdf-line"></i> PDF
-                </a>
-              )}
-              {isEditMode && (
+                  Preview {docLabel === 'Work Order' ? 'WO' : 'PO'}
+                </button>
+                {isEditMode && pdfPreviewUrl && (
+                  <a
+                    href={pdfPreviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-1.5 border border-gray-300 bg-white text-slate-800 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium inline-flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <i className="ri-file-pdf-line"></i> PDF
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSendForApproval}
+                  disabled={submitting}
+                  className="px-3.5 py-1.5 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-semibold flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
+                  {submitting
+                    ? 'Saving...'
+                    : isEditMode
+                      ? 'Save'
+                      : skipApproval
+                        ? `Create ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
+                        : 'Send for Approval'}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+              <label className="inline-flex items-center gap-1.5 min-w-0">
+                <span className="shrink-0 font-medium">{docNoLabel}</span>
                 <input
                   type="text"
-                  value={changeSummary}
-                  onChange={(e) => setChangeSummary(e.target.value)}
-                  placeholder="Summary"
-                  className="px-2 py-1.5 border border-gray-300 rounded-md text-xs w-28 xl:w-36"
+                  value={poNumber}
+                  onChange={(e) => handlePoNumberChange(e.target.value)}
+                  onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
+                  placeholder="Auto on save"
+                  maxLength={40}
+                  className="font-semibold text-teal-700 bg-white border border-gray-200 rounded-md px-2 py-1 w-[13rem] text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
-              )}
-              <button
-                onClick={handleSendForApproval}
-                disabled={submitting}
-                className="px-3 py-1.5 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-xs font-semibold flex items-center gap-1 shadow-sm disabled:opacity-60"
-              >
-                <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
-                {submitting ? 'Saving...' : isEditMode ? 'Save' : skipApproval ? 'Create PO' : 'Send'}
-              </button>
+              </label>
+              <span>
+                Date: <span className="font-semibold text-slate-700">{formatPoDateLabel(poDate)}</span>
+              </span>
+              <span className="truncate max-w-[220px]" title={isManualMode ? manualVendorName : pr.recommendedVendor}>
+                Vendor:{' '}
+                <span className="font-semibold text-slate-700">
+                  {isManualMode ? manualVendorName || '—' : pr.recommendedVendor}
+                </span>
+              </span>
             </div>
           </div>
-          <div className="md:hidden text-[11px] text-gray-500 mt-1 pl-10 flex items-center gap-1.5">
-            {docNoLabel}:
-            <input
-              type="text"
-              value={poNumber}
-              onChange={(e) => handlePoNumberChange(e.target.value)}
-              onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
-              placeholder="Auto on save"
-              maxLength={40}
-              className="font-semibold text-teal-700 bg-white border border-teal-200 rounded px-1.5 py-0.5 w-[11.5rem] text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-500"
-            />
-            <span className="text-gray-300 mx-1">·</span>
-            Date: <span className="font-semibold text-gray-700">{formatPoDateLabel(poDate)}</span>
-            <span className="text-gray-300 mx-1">·</span>
-            PR: <span className="font-semibold text-gray-700">{isManualMode ? 'None' : pr.prNumber}</span>
-          </div>
+
+          <div className="grid grid-cols-3 gap-0 px-3 sm:px-6 lg:px-8">
+            {(
+              [
+                { key: 'details' as const, n: 1, title: 'Basic Details', sub: 'PO information & delivery' },
+                { key: 'terms' as const, n: 2, title: 'Terms & Conditions', sub: 'Payment terms & notes' },
+                { key: 'preview' as const, n: 3, title: 'Preview', sub: 'Review before send' },
+              ]
+            ).map((step) => {
+              const active = activeTab === step.key;
+              return (
+                <button
+                  key={step.key}
+                  type="button"
+                  onClick={() => setActiveTab(step.key)}
+                  className={`flex items-center gap-2.5 px-2 sm:px-3 pb-2.5 pt-1 cursor-pointer border-b-[3px] transition-colors text-left ${
+                    active ? 'border-teal-600 bg-teal-50/40' : 'border-transparent hover:bg-gray-50'
+                  }`}
+                >
+                  <span
+                    className={`w-7 h-7 flex items-center justify-center rounded-full text-xs font-bold shrink-0 ${
+                      active ? 'bg-teal-600 text-white' : 'bg-gray-200 text-slate-500'
+                    }`}
+                  >
+                    {step.n}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`block text-sm font-semibold leading-tight ${active ? 'text-teal-700' : 'text-slate-600'}`}>
+                      {step.title}
+                    </span>
+                    <span className={`hidden sm:block text-[11px] mt-0.5 leading-tight ${active ? 'text-teal-600' : 'text-gray-400'}`}>
+                      {step.sub}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 

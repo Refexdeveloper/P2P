@@ -9,10 +9,48 @@ export type ApprovalHistoryEntry = {
   status?: string;
   date: string;
   remarks?: string;
+  step?: string;
 };
 
 function haystack(entry: ApprovalHistoryEntry) {
   return `${entry.stage || ''} ${entry.role || ''} ${entry.approver || ''} ${entry.user || ''}`.toLowerCase();
+}
+
+export function isPrAdminEditEntry(entry: Pick<ApprovalHistoryEntry, 'stage' | 'step' | 'status'>) {
+  const label = `${entry.stage || ''} ${entry.step || ''}`
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_')
+    .trim();
+  const status = String(entry.status || '').toLowerCase();
+  return label.includes('PR_ADMIN_EDIT') || (status === 'updated' && label.includes('ADMIN'));
+}
+
+/** Keep submit/approve/return rows visible; fold consecutive admin saves into one. */
+export function collapsePrAdminEditHistory<T extends ApprovalHistoryEntry>(history: T[]): T[] {
+  const out: Array<T & { editCount?: number }> = [];
+  for (const entry of history) {
+    const last = out[out.length - 1];
+    if (last && isPrAdminEditEntry(entry) && isPrAdminEditEntry(last)) {
+      last.editCount = (last.editCount || 1) + 1;
+      last.date = entry.date;
+      if (entry.approver) last.approver = entry.approver;
+      if (entry.user) last.user = entry.user;
+      if (entry.role) last.role = entry.role;
+      if (entry.status) last.status = entry.status;
+      if (entry.action) last.action = entry.action;
+      last.remarks = entry.remarks;
+      continue;
+    }
+    out.push({ ...entry, editCount: isPrAdminEditEntry(entry) ? 1 : 0 });
+  }
+  return out.map((entry) => {
+    const { editCount, ...rest } = entry;
+    if (editCount && editCount > 1) {
+      const base = String(rest.remarks || '').trim();
+      rest.remarks = base ? `${base} (${editCount} saves)` : `${editCount} admin saves`;
+    }
+    return rest as T;
+  });
 }
 
 export function isL2ManagerEntry(entry: ApprovalHistoryEntry) {
@@ -114,13 +152,14 @@ export default function ApprovalHistoryPanel({
 }: {
   history: ApprovalHistoryEntry[];
 }) {
-  if (!history.length) {
+  const items = collapsePrAdminEditHistory(history);
+  if (!items.length) {
     return <p className="text-sm text-gray-500 italic py-4">No approval history available.</p>;
   }
 
   return (
     <div className="space-y-0">
-      {history.map((item, idx) => {
+      {items.map((item, idx) => {
         const action = item.action || item.status || 'Updated';
         const who = item.approver || item.user || 'System';
         const isL2 = isL2ManagerEntry(item);
@@ -137,7 +176,7 @@ export default function ApprovalHistoryPanel({
 
         return (
           <div key={`${item.stage}-${item.date}-${idx}`} className="flex gap-4 pb-6 relative">
-            {idx !== history.length - 1 && (
+            {idx !== items.length - 1 && (
               <div className="absolute left-4 top-10 w-0.5 h-full bg-gray-200"></div>
             )}
             <div

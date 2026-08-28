@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import ApprovalHistoryPanel from '../../../components/feature/ApprovalHistoryPanel';
 import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, PrAttachmentRecord, VendorRecord, rfqApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import DepartmentCombobox from './DepartmentCombobox';
@@ -200,6 +201,9 @@ export default function CreatePRPage() {
   const [loadError, setLoadError] = useState('');
   const [prStatus, setPrStatus] = useState('');
   const [returnFeedback, setReturnFeedback] = useState<ReturnFeedback | null>(null);
+  const [approvalHistory, setApprovalHistory] = useState<
+    { stage: string; user: string; role: string; date: string; status: string; remarks: string }[]
+  >([]);
   const [resubmitRemarks, setResubmitRemarks] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savedDraftId, setSavedDraftId] = useState<number | null>(null);
@@ -479,6 +483,7 @@ export default function CreatePRPage() {
         setExpectedDeliveryTimeline(pr.expectedDeliveryTimeline || '');
         setPaymentTerms(pr.paymentTerms || '');
         setPrStatus(pr.status);
+        setApprovalHistory(Array.isArray(pr.approvalHistory) ? pr.approvalHistory : []);
 
         const latestReturn = [...(pr.approvalHistory || [])]
           .reverse()
@@ -1862,7 +1867,13 @@ export default function CreatePRPage() {
 
       const finishExisting = async (id: number) => {
         if (isAdminEditFlow) {
-          await prApi.adminUpdate(id, payload);
+          const res = await prApi.adminUpdate(id, { ...payload, silent });
+          const updated = res.data as
+            | { approvalHistory?: typeof approvalHistory }
+            | undefined;
+          if (Array.isArray(updated?.approvalHistory)) {
+            setApprovalHistory(updated.approvalHistory);
+          }
           await uploadNewAttachments(id);
           await markQuoteFilesSaved(id);
           if (silent) return;
@@ -2187,6 +2198,23 @@ export default function CreatePRPage() {
             ) : null}
           </div>
         )}
+
+        {isAdminEditFlow && approvalHistory.length > 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Approval History</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Full workflow (submit, approve, return) plus admin saves
+                </p>
+              </div>
+              <span className="text-xs font-medium text-gray-500">{approvalHistory.length} events</span>
+            </div>
+            <div className="px-6 py-4 max-h-[420px] overflow-y-auto">
+              <ApprovalHistoryPanel history={approvalHistory} />
+            </div>
+          </div>
+        ) : null}
 
         {/* ── Section 1: Basic Information ── */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">

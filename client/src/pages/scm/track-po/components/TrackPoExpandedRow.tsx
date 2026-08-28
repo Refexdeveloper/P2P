@@ -57,6 +57,38 @@ type Props = {
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
+function pickText(...vals: Array<unknown>): string {
+  for (const v of vals) {
+    const s = String(v ?? '').trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+function htmlToPlain(html: string): string {
+  if (!html) return '';
+  if (!/[<>]/.test(html)) return html.trim();
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function formatPoContacts(terms: Record<string, unknown>): string {
+  const name = pickText(terms.siteContactPerson);
+  const phone = pickText(terms.siteContactPhone);
+  const email = pickText(terms.siteContactEmail);
+  return [name, [phone, email].filter(Boolean).join(' · ')].filter(Boolean).join('\n');
+}
+
 function normalizeHistory(raw: unknown): ApprovalHistoryEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
@@ -337,12 +369,20 @@ export default function TrackPoExpandedRow({ row, colSpan = 10 }: Props) {
     ['Currency', String(po?.currency || pr?.currency || 'INR')],
     ['Payment Terms', String(po?.paymentTerms || '—')],
     ['Incoterms', String(po?.incoterms || '—')],
-    ['Delivery Address', String(po?.deliveryAddress || '—')],
     ['Required / Delivery', String(po?.expectedDeliveryDate || pr?.requiredDate || row.requiredDate || '—')],
     ['Created By', String(po?.createdBy || '—')],
     ['Created / Submitted', String(po?.createdAt || pr?.submittedDate || row.createdAt || '—')],
     ['Status', String(po?.status || pr?.statusUI || row.statusLabel || '—')],
   ];
+
+  const poTerms = (po?.poTermsDetails as Record<string, unknown> | undefined) || {};
+  const siteAddress = pickText(poTerms.siteAddress, po?.deliveryAddress, pr?.placeOfDelivery);
+  const contactPersons = pickText(formatPoContacts(poTerms), pr?.deliveryPoc);
+  const invoicingAddress = pickText(
+    htmlToPlain(String(poTerms.invoicingAddress || '')),
+    htmlToPlain(String(pr?.billingAddress || ''))
+  );
+  const gstin = pickText(poTerms.buyerGstNo, pr?.billingGstNo).toUpperCase();
 
   const tabs = [
     { key: 'details' as const, label: 'PO Details', icon: 'ri-information-line' },
@@ -470,6 +510,31 @@ export default function TrackPoExpandedRow({ row, colSpan = 10 }: Props) {
                       </p>
                     </div>
                   ))}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-lg p-3 min-w-0 lg:col-span-2">
+                    <p className="text-xs text-gray-500 mb-0.5">Site Address</p>
+                    <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
+                      {siteAddress || '—'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 min-w-0">
+                    <p className="text-xs text-gray-500 mb-0.5">Contact Persons</p>
+                    <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
+                      {contactPersons || '—'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 min-w-0">
+                    <p className="text-xs text-gray-500 mb-0.5">GSTIN</p>
+                    <p className="text-sm font-medium text-gray-900 font-mono break-words">{gstin || '—'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 min-w-0 lg:col-span-2">
+                    <p className="text-xs text-gray-500 mb-0.5">Invoicing Address</p>
+                    <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
+                      {invoicingAddress || '—'}
+                    </p>
+                  </div>
                 </div>
 
                 <div>

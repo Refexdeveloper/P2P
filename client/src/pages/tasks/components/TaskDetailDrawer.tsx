@@ -2,6 +2,7 @@ import PriorityBadge from '../../../components/base/PriorityBadge';
 import StatusBadge from '../../../components/base/StatusBadge';
 import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatDate';
 import PrVendorQuotationsPanel from '../../../components/feature/PrVendorQuotationsPanel';
+import { collapsePrAdminEditHistory } from '../../../components/feature/ApprovalHistoryPanel';
 import { useState } from 'react';
 
 interface LineItem {
@@ -91,7 +92,17 @@ export default function TaskDetailDrawer({
   const status = String(task.status || '').toLowerCase();
   const showActions = canShowActions(status, canAct);
   const lineItems = Array.isArray(task.lineItems) ? task.lineItems : [];
-  const approvalHistory = Array.isArray(task.approvalHistory) ? task.approvalHistory : [];
+  const approvalHistory = collapsePrAdminEditHistory(
+    (Array.isArray(task.approvalHistory) ? task.approvalHistory : []).map((step) => ({
+      stage: step.step,
+      step: step.step,
+      approver: step.approver,
+      role: step.role,
+      date: step.date,
+      status: step.status,
+      remarks: step.remarks,
+    }))
+  );
   const [hasQuotes, setHasQuotes] = useState(false);
   const isOwnVendor = task.vendorSelection === 'own';
   /** Own Vendor / quoted PRs: show name, description, qty — hide unit cost & total */
@@ -337,16 +348,26 @@ export default function TaskDetailDrawer({
                 <div className="space-y-0">
                   {approvalHistory.map((step, idx) => {
                     const status = String(step.status || '').toLowerCase();
-                    const done = status.includes('approv') || status.includes('complet') || status.includes('submit');
+                    const done =
+                      status.includes('approv') ||
+                      status.includes('complet') ||
+                      status.includes('submit');
                     const rejected = status.includes('reject');
+                    const returned = status.includes('return') || status.includes('rework');
                     return (
-                      <div key={idx} className="flex items-start gap-3 relative">
+                      <div key={`${step.stage}-${step.date}-${idx}`} className="flex items-start gap-3 relative">
                         {idx < approvalHistory.length - 1 && (
                           <div className="absolute left-[11px] top-6 w-0.5 h-full bg-gray-200"></div>
                         )}
                         <div
                           className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                            done ? 'bg-emerald-100' : rejected ? 'bg-red-100' : 'bg-gray-100'
+                            done
+                              ? 'bg-emerald-100'
+                              : rejected
+                                ? 'bg-red-100'
+                                : returned
+                                  ? 'bg-orange-100'
+                                  : 'bg-gray-100'
                           }`}
                         >
                           <i
@@ -354,14 +375,16 @@ export default function TaskDetailDrawer({
                               done
                                 ? 'ri-check-line text-emerald-600'
                                 : rejected
-                                ? 'ri-close-line text-red-600'
-                                : 'ri-time-line text-gray-400'
+                                  ? 'ri-close-line text-red-600'
+                                  : returned
+                                    ? 'ri-arrow-go-back-line text-orange-600'
+                                    : 'ri-time-line text-gray-400'
                             }`}
                           ></i>
                         </div>
                         <div className="pb-4 flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-gray-900">{step.step}</p>
+                            <p className="text-sm font-medium text-gray-900">{step.stage || step.step}</p>
                             <span className="text-xs text-gray-400">{formatDateTime(step.date)}</span>
                           </div>
                           <p className="text-xs text-gray-500">

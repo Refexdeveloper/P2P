@@ -241,6 +241,44 @@ async function resolveDepartmentIdForSave(departmentName, userId, { requireNamed
   throw new Error('No department available — add a department in master data first');
 }
 
+function isPrAdminEditStage(stage) {
+  return (
+    String(stage || '')
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_') === 'PR_ADMIN_EDIT'
+  );
+}
+
+/** Keep every approval / return / submit row; fold back-to-back admin saves into one. */
+function collapseConsecutiveAdminEdits(history) {
+  const out = [];
+  for (const entry of history) {
+    const last = out[out.length - 1];
+    if (last && isPrAdminEditStage(entry.stage) && isPrAdminEditStage(last.stage)) {
+      last.editCount = (last.editCount || 1) + 1;
+      last.date = entry.date;
+      last.sortAt = entry.sortAt;
+      last.user = entry.user;
+      last.role = entry.role;
+      last.status = entry.status;
+      last.remarks = entry.remarks;
+      continue;
+    }
+    out.push({
+      ...entry,
+      editCount: isPrAdminEditStage(entry.stage) ? 1 : 0,
+    });
+  }
+  return out.map((entry) => {
+    const { editCount, ...rest } = entry;
+    if (editCount > 1) {
+      const base = String(rest.remarks || '').trim();
+      rest.remarks = base ? `${base} (${editCount} saves)` : `${editCount} admin saves`;
+    }
+    return rest;
+  });
+}
+
 function formatPrApprovalStage(stage, prFlow = 'standard') {
   if (prFlow === 'functional') {
     const functionalLabels = {
@@ -337,7 +375,7 @@ async function getApprovalHistory(prId, prFlow = 'functional') {
   }
 
   history.sort((a, b) => a.sortAt - b.sortAt);
-  return history.map(({ sortAt: _s, ...entry }) => entry);
+  return collapseConsecutiveAdminEdits(history).map(({ sortAt: _s, ...entry }) => entry);
 }
 
 let cachedScmBuyer = null;
@@ -2603,15 +2641,36 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
       await insertPrLineItem(conn, prId, item);
     }
 
-    await conn.query(
-      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
-       VALUES (?, 'PR_ADMIN_EDIT', ?, 'updated', ?)`,
-      [
-        prId,
-        user.id,
-        `PR details updated by ${user.name || user.role} (${user.role})`,
-      ]
-    );
+    // Leave/autosave must not spam PR_ADMIN_EDIT rows — that hides real approvals.
+    if (!body.silent) {
+      const remarks = `PR details updated by ${user.name || user.role} (${user.role})`;
+      const [lastRows] = await conn.query(
+        `SELECT id, stage, approver_id, created_at
+         FROM pr_approvals
+         WHERE pr_id = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        [prId]
+      );
+      const last = lastRows[0];
+      const sameBurst =
+        last &&
+        last.stage === 'PR_ADMIN_EDIT' &&
+        Number(last.approver_id) === Number(user.id) &&
+        Date.now() - new Date(last.created_at).getTime() < 15 * 60 * 1000;
+      if (sameBurst) {
+        await conn.query(
+          `UPDATE pr_approvals SET remarks = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?`,
+          [remarks, last.id]
+        );
+      } else {
+        await conn.query(
+          `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+           VALUES (?, 'PR_ADMIN_EDIT', ?, 'updated', ?)`,
+          [prId, user.id, remarks]
+        );
+      }
+    }
 
     await conn.commit();
   } catch (err) {

@@ -5,6 +5,7 @@ import PriorityBadge from '../../../../components/base/PriorityBadge';
 import { prApi } from '../../../../services/api';
 import { useAuth } from '../../../../contexts/AuthContext';
 import PrVendorQuotationsPanel from '../../../../components/feature/PrVendorQuotationsPanel';
+import { collapsePrAdminEditHistory } from '../../../../components/feature/ApprovalHistoryPanel';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -331,7 +332,16 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                   {pr.approvalHistory.length === 0 ? (
                     <p className="text-sm text-gray-500 text-center py-6">No approval history yet</p>
                   ) : (
-                    pr.approvalHistory.map((item, index) => (
+                    collapsePrAdminEditHistory(
+                      pr.approvalHistory.map((item) => ({
+                        stage: item.stage,
+                        user: item.user,
+                        role: item.role,
+                        date: item.date,
+                        status: item.status,
+                        remarks: item.remarks,
+                      }))
+                    ).map((item, index) => (
                       <div key={index} className="flex gap-3">
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
