@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import VendorSearchSelect from '../rfq-entry/components/VendorSearchSelect';
-import RfqVendorQuoteTable, { RfqQuoteTableRow } from '../rfq-entry/components/RfqVendorQuoteTable';
+import RfqVendorQuoteTable, { RfqQuoteTableFile, RfqQuoteTableRow } from '../rfq-entry/components/RfqVendorQuoteTable';
 import CreateVendorForm from '../../scm/vendor-master/components/CreateVendorForm';
 import RfqChatbot from '../../../components/feature/RfqChatbot';
 import { openRfqChat } from '../../../components/feature/rfqChatOpen';
@@ -43,6 +43,23 @@ export function savedQuoteFiles(q: FunctionalRfqQuote | undefined): SavedQuotati
 
 export function quoteHasQuotationFile(q: FunctionalRfqQuote | undefined): boolean {
   return localQuoteFiles(q).length > 0 || savedQuoteFiles(q).length > 0;
+}
+
+function quoteTableFiles(q: FunctionalRfqQuote | undefined): RfqQuoteTableFile[] {
+  if (!q) return [];
+  const saved = savedQuoteFiles(q).map((sf, i) => ({
+    fileName: sf.fileName,
+    extraFileId: sf.id ?? null,
+    isLocal: false,
+    isPrimary: Boolean(sf.isPrimary ?? i === 0),
+  }));
+  const locals = localQuoteFiles(q).map((f, i) => ({
+    fileName: f.name,
+    extraFileId: null,
+    isLocal: true,
+    isPrimary: saved.length === 0 && i === 0,
+  }));
+  return [...saved, ...locals].filter((f) => f.fileName);
 }
 
 export function filesFromSubmission(sub?: {
@@ -312,18 +329,23 @@ export default function FunctionalOwnRfqSection({
   const comparisonRows: RfqQuoteTableRow[] = rows.map((r, i) => {
     const quotes = r.quotes
       .filter((q) => Number.isFinite(Number(q.quotedPrice)) && String(q.quotedPrice).trim() !== '' && Number(q.quotedPrice) >= 0)
-      .map((q) => ({
-        round: q.round,
-        quotedPrice: Number(q.quotedPrice),
-        status: 'submitted' as const,
-        quotationFileName: q.file?.name || q.files?.[0]?.name || q.savedFileName || savedQuoteFiles(q)[0]?.fileName || '',
-        submissionId: q.savedSubmissionId || null,
-      }));
+      .map((q) => {
+        const files = quoteTableFiles(q);
+        return {
+          round: q.round,
+          quotedPrice: Number(q.quotedPrice),
+          status: 'submitted' as const,
+          quotationFileName: files[0]?.fileName || '',
+          quotationFiles: files,
+          submissionId: q.savedSubmissionId || null,
+        };
+      });
     const hasActive = quotes.length > 0;
     const fileQuote =
       r.quotes.find((q) => q.round === (quotes.reduce((max, q) => Math.max(max, q.round), 1))) ||
       r.quotes.find((q) => q.file || q.files?.length || q.savedFileName || q.savedFiles?.length || q.savedSubmissionId) ||
       r.quotes.find((q) => q.round === 1);
+    const rowFiles = quoteTableFiles(fileQuote);
     return {
       id: r.key,
       invitationId: i + 1,
@@ -334,14 +356,10 @@ export default function FunctionalOwnRfqSection({
       hasActiveQuote: hasActive,
       canSendBack: hasActive && quotes.reduce((max, q) => Math.max(max, q.round), 0) < 4,
       isRecommended: recommendedKey === r.key,
-      quotationFileName:
-        fileQuote?.file?.name ||
-        fileQuote?.files?.[0]?.name ||
-        fileQuote?.savedFileName ||
-        savedQuoteFiles(fileQuote)[0]?.fileName ||
-        undefined,
+      quotationFileName: rowFiles[0]?.fileName,
+      quotationFiles: rowFiles,
       quotationSubmissionId: fileQuote?.savedSubmissionId,
-      hasLocalQuotationFile: Boolean(fileQuote?.file || fileQuote?.files?.length),
+      hasLocalQuotationFile: localQuoteFiles(fileQuote).length > 0,
       quotes,
     };
   });
@@ -587,18 +605,30 @@ export default function FunctionalOwnRfqSection({
               const row = rows.find((r) => r.key === tableRow.id);
               if (!row) return;
               const sid = Number(tableRow.quotationSubmissionId || tableRow.submissionId) || 0;
+              const extraId = Number(tableRow.quotationExtraFileId) || 0;
               const named = String(tableRow.quotationFileName || '');
               const quote =
                 (sid ? row.quotes.find((q) => Number(q.savedSubmissionId) === sid) : null) ||
-                row.quotes.find((q) => q.file && q.file.name === named) ||
-                row.quotes.find((q) => q.savedFileName && q.savedFileName === named) ||
-                row.quotes.find((q) => q.file || q.savedSubmissionId || q.savedFileName) ||
+                row.quotes.find((q) => localQuoteFiles(q).some((f) => f.name === named)) ||
+                row.quotes.find((q) => savedQuoteFiles(q).some((f) => f.fileName === named || Number(f.id) === extraId)) ||
+                row.quotes.find((q) => q.file || q.files?.length || q.savedSubmissionId || q.savedFileName || q.savedFiles?.length) ||
                 row.quotes.find((q) => q.round === 1);
               if (!quote) {
                 setFileViewError('No quotation file to open');
                 return;
               }
-              void openQuotationPreview(quote);
+              if (extraId) {
+                const saved = savedQuoteFiles(quote).find((f) => Number(f.id) === extraId);
+                void openQuotationPreview(quote, { saved: saved || { id: extraId, fileName: named } });
+                return;
+              }
+              const local = localQuoteFiles(quote).find((f) => f.name === named);
+              if (local) {
+                void openQuotationPreview(quote, { file: local });
+                return;
+              }
+              const saved = savedQuoteFiles(quote).find((f) => f.fileName === named);
+              void openQuotationPreview(quote, saved ? { saved } : undefined);
             }}
             onRemove={(tableRow) => {
               onChange(rows.filter((r) => r.key !== tableRow.id));

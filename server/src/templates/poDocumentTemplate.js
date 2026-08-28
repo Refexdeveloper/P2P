@@ -143,7 +143,7 @@ function footerHtml(po = {}, pageLabel = '', opts = {}) {
   const footerLogo = resolveBrandingValue(po, 'footerLogo', 'footer_logo');
   const entity = resolveBrandingValue(po, 'entity', 'entity');
   // Section labels only on in-page footers (preview); running print footer stays clean
-  const pageNum = !running && pageLabel ? `<div class="pagenum">${escapeHtml(pageLabel)}</div>` : '';
+  const pageNum = !running && pageLabel ? `<div class="pdf-page-no">${escapeHtml(pageLabel)}</div>` : '';
 
   // Master footer set → show only master footer image/HTML (no entity brand text, no default footer)
   if (footerLogo) {
@@ -275,10 +275,12 @@ function letterheadFooterInner(po = {}) {
 }
 
 /** Footer logo band — used in HTML preview page-sheets */
-function buildRunningFooter(po = {}) {
+function buildRunningFooter(po = {}, opts = {}) {
+  const pageSlot = opts.withPageSlot ? `<div class="pdf-page-no pdf-page-no-ph"></div>` : '';
   return `
   <div class="pdf-run-footer">
     <div class="pdf-run-footer-inner">${letterheadFooterInner(po)}</div>
+    ${pageSlot}
   </div>`;
 }
 
@@ -287,6 +289,8 @@ function sanitizeChromeHtml(html) {
     .replace(/<script\b[\s\S]*?<\/script>/gi, '')
     .replace(/\{PAGENO\}(?:\s*[-–]\s*\{?nb\}?)?/gi, '')
     .replace(/\{nb\}/gi, '')
+    .replace(/Page\s+\d+\s*(?:of|\/)\s*\d+/gi, '')
+    .replace(/Page\s*[:.]?\s*\d+\s*$/gim, '')
     .replace(/<p[^>]*>\s*<\/p>/gi, '');
 }
 
@@ -338,6 +342,16 @@ export function buildPoPdfChromeTemplates(po = {}) {
   return { headerTemplate, footerTemplate };
 }
 
+function numberPreviewPages(html) {
+  const total = (String(html).match(/\bpage-sheet\b/g) || []).length;
+  if (!total) return html;
+  let n = 0;
+  return String(html).replace(/<div class="pdf-page-no pdf-page-no-ph"><\/div>/g, () => {
+    n += 1;
+    return `<div class="pdf-page-no">Page ${n} of ${total}</div>`;
+  });
+}
+
 function wrapSheet(inner, extraClass, po, forPdf) {
   const cls = ['page', 'page-sheet', extraClass].filter(Boolean).join(' ');
   if (forPdf) {
@@ -354,7 +368,7 @@ ${inner}
     <div class="page-body">
 ${inner}
     </div>
-    ${buildRunningFooter(po)}
+    ${buildRunningFooter(po, { withPageSlot: true })}
   </div>`;
 }
 
@@ -960,6 +974,8 @@ ${annexureIiPagesHtml(po, docLabel, forPdf)}
 ${specialNotesHtml(po, { ...options, forPdf })}
 ${acknowledgmentHtml(po, forPdf)}`;
 
+  const bodyHtml = forPdf ? content : numberPreviewPages(content);
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -968,7 +984,7 @@ ${acknowledgmentHtml(po, forPdf)}`;
 <style>${PO_STYLES}</style>
 </head>
 <body class="${bodyClass}">
-${content}
+${bodyHtml}
 </body>
 </html>`;
 }

@@ -214,7 +214,10 @@ function pdfPageHtml(parts, contentHtml, pageNo, totalPages) {
 <div class="pdf-page">
   <header class="pdf-header">${parts.headerHtml}</header>
   <main class="pdf-content">${contentHtml}</main>
-  <footer class="pdf-footer">${parts.footerHtml}<div class="pdf-page-no">Page ${pageNo} of ${totalPages}</div></footer>
+  <footer class="pdf-footer">
+    <div class="pdf-footer-brand">${parts.footerHtml}</div>
+    <div class="pdf-page-no">Page ${pageNo} of ${totalPages}</div>
+  </footer>
 </div>`;
 }
 
@@ -254,7 +257,10 @@ function buildMeasureHtml(parts) {
         <div data-block="notes">${parts.notesHtml}</div>
         <div data-block="ack">${parts.ackHtml}</div>
       </main>
-      <footer class="pdf-footer" data-block="footer">${parts.footerHtml}<div class="pdf-page-no">Page 1 of 1</div></footer>
+      <footer class="pdf-footer" data-block="footer">
+        <div class="pdf-footer-brand">${parts.footerHtml}</div>
+        <div class="pdf-page-no">Page 1 of 1</div>
+      </footer>
     </div>`,
     'PO measure',
     'po-document po-document-pdf-pages'

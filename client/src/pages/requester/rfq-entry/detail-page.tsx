@@ -2325,11 +2325,16 @@ export default function RfqEntryDetailPage() {
                 onSendBack={(row) => askBeforeRequote(row as TableRow)}
                 onNextRound={(nextRound) => setPreferredTab(nextRound)}
                 onViewFile={(row) => {
+                  const extraId = Number(row.quotationExtraFileId) || 0;
                   const submissionId =
                     Number(row.quotationSubmissionId) ||
                     Number(row.submissionId) ||
                     0;
                   const fileName = row.quotationFileName || 'quotation';
+                  if (extraId) {
+                    void openFilePreview(submissionId, fileName, extraId);
+                    return;
+                  }
                   if (!submissionId) {
                     failQuote('No saved quotation file to preview. Open Edit and re-upload if needed.');
                     return;

@@ -88,15 +88,40 @@ export const PO_STYLES = `
   }
   .pdf-footer {
     grid-row: 3;
-    padding: 2mm 8mm 5mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    padding: 2mm 8mm 6mm;
     background: #fff;
-  }
-  .pdf-page-no {
     text-align: center;
+  }
+  .pdf-footer-brand {
+    width: 100%;
+    text-align: center;
+  }
+  .pdf-footer-brand,
+  .pdf-footer-brand * {
+    text-align: center !important;
+  }
+  .pdf-footer-brand table {
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .pdf-page-no,
+  .pagenum {
+    display: block;
+    width: 100%;
+    text-align: center !important;
     font-size: 10px;
-    font-weight: 600;
-    color: #444;
-    margin-top: 4px;
+    font-weight: 700;
+    color: #333;
+    margin: 8px 0 0;
+    padding: 0;
+    float: none !important;
+    position: static !important;
+    left: auto !important;
   }
 
   @media print {
@@ -263,19 +288,32 @@ export const PO_STYLES = `
     margin-left: auto;
   }
   .pdf-run-footer {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
     width: 100%;
     background: #fff;
     margin: 8px 0 0;
-    padding: 4px 0 0;
+    padding: 4px 0 2px;
     border: none;
+    text-align: center;
   }
   .pdf-run-footer-inner {
+    width: 100%;
     text-align: center;
     font-size: 13px;
     line-height: 1.45;
     color: #222;
     border: none;
+  }
+  .pdf-run-footer-inner,
+  .pdf-run-footer-inner * {
+    text-align: center !important;
+  }
+  .pdf-run-footer-inner table {
+    margin-left: auto;
+    margin-right: auto;
   }
   .pdf-run-footer-inner .run-footer-img,
   .pdf-run-footer-inner img {
@@ -356,7 +394,7 @@ export const PO_STYLES = `
       flex-direction: column;
     }
     body.po-document-preview .page-sheet .page-body { flex: 1 1 auto; }
-    body.po-document-preview .page-sheet .pdf-run-footer { margin-top: auto; }
+    body.po-document-preview .page-sheet .pdf-run-footer { margin-top: auto; width: 100%; }
   }
 
   @media print {
@@ -384,7 +422,9 @@ export const PO_STYLES = `
 
     .pdf-run-header { margin: 0 0 8px; }
     .pdf-run-footer {
-      display: block !important;
+      display: flex !important;
+      flex-direction: column;
+      align-items: center;
       margin: 6px 0 0;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -472,7 +512,7 @@ export const PO_STYLES = `
       break-after: auto;
     }
     body.po-document-preview .page-sheet .page-body { flex: 1 1 auto; }
-    body.po-document-preview .page-sheet .pdf-run-footer { margin-top: auto; }
+    body.po-document-preview .page-sheet .pdf-run-footer { margin-top: auto; width: 100%; }
     body.po-document-preview .page-terms,
     body.po-document-preview .page-annexure,
     body.po-document-preview .page-annexure-ii,
