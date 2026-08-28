@@ -8,7 +8,7 @@ import {
   PeriodKind,
   rangeForKind,
   weekOptions,
-} from './fyPeriod';
+} from '../fyPeriod';
 
 const KINDS: Array<{ id: PeriodKind; label: string }> = [
   { id: 'today', label: 'Today' },
