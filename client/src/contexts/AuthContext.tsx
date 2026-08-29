@@ -48,11 +48,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** CFO / Group CEO login lands on Financial Insights dashboard */
+const EMAIL_HOME_OVERRIDES: Record<string, string> = {
+  'srivaths.varadharajan@refex.co.in': '/dashboard',
+};
+
 /** Starting page for each role after login */
 export const ROLE_HOME: Partial<Record<UserRole, string>> = {
   Requester: '/requester/dashboard',
   'PR Manager': '/tasks',
-  CFO: '/cfo/dashboard',
+  CFO: '/dashboard',
   Vendor: '/vendor/dashboard',
   'Tech Evaluator': '/tech-evaluator/rfq-evaluation',
   'HOD Approver': '/tasks',
@@ -67,7 +72,11 @@ export const ROLE_HOME: Partial<Record<UserRole, string>> = {
   'Super Admin': '/admin/user-permissions',
 };
 
-export function getRoleHomePath(role: UserRole, navigation?: NavItem[]): string {
+export function getRoleHomePath(role: UserRole, navigation?: NavItem[], email?: string): string {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (EMAIL_HOME_OVERRIDES[normalizedEmail]) {
+    return EMAIL_HOME_OVERRIDES[normalizedEmail];
+  }
   const roleHome = ROLE_HOME[role];
   if (roleHome) return roleHome;
   if (navigation?.length) return navigation[0].path;
@@ -78,9 +87,10 @@ export function getRoleHomePath(role: UserRole, navigation?: NavItem[]): string 
 export function resolvePostLoginPath(
   role: UserRole,
   navigation: NavItem[] | undefined,
-  redirectPath?: string
+  redirectPath?: string,
+  email?: string
 ): string {
-  const roleHome = getRoleHomePath(role, navigation);
+  const roleHome = getRoleHomePath(role, navigation, email);
   if (!redirectPath) return roleHome;
 
   const pathname = redirectPath.split('?')[0] || '';
@@ -134,8 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('p2p_user', JSON.stringify(mapped));
   };
 
-  const redirectByRole = useCallback((role: UserRole, navigation?: NavItem[], redirectPath?: string) => {
-    const path = resolvePostLoginPath(role, navigation, redirectPath);
+  const redirectByRole = useCallback((role: UserRole, navigation?: NavItem[], redirectPath?: string, email?: string) => {
+    const path = resolvePostLoginPath(role, navigation, redirectPath, email);
     if (typeof window.REACT_APP_NAVIGATE === 'function') {
       window.REACT_APP_NAVIGATE(path, { replace: true });
     }
@@ -216,7 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           params.delete('p2pToken');
           const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
           window.history.replaceState({}, '', clean);
-          redirectByRole(mapped.role, mapped.navigation);
+          redirectByRole(mapped.role, mapped.navigation, undefined, mapped.email);
         } catch {
           localStorage.removeItem('p2p_token');
         }
@@ -230,7 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
           window.history.replaceState({}, '', clean);
-          redirectByRole(mapped.role, mapped.navigation);
+          redirectByRole(mapped.role, mapped.navigation, undefined, mapped.email);
         } catch {
           // Login / launch page will show a clearer error
         }
@@ -245,7 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const completeLogin = (authUser: AuthUser, newToken: string, redirectPath?: string) => {
     const mapped = mapAuthUser(authUser);
     persistUser(mapped, newToken);
-    redirectByRole(mapped.role, mapped.navigation, redirectPath);
+    redirectByRole(mapped.role, mapped.navigation, redirectPath, mapped.email);
   };
 
   const login = async (email: string, password: string, redirectPath?: string) => {

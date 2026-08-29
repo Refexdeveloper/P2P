@@ -117,7 +117,7 @@ router.use(authenticate);
 
 router.get(
   '/stats/cfo',
-  requireRolesOrPermissions(['CFO', 'Super Admin'], ['nav.cfo_dashboard', 'nav.tasks', 'nav.rfq_approval']),
+  requireRolesOrPermissions(['CFO', 'Super Admin'], ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks', 'nav.rfq_approval']),
   async (_req, res) => {
     try {
       const data = await getCfoPoInsights();
