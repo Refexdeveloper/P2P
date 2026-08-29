@@ -618,8 +618,8 @@ function mapPoStatusUI(status, acceptanceStatus) {
   const map = {
     draft: 'Draft',
     imported: 'Imported',
-    pending_approval: 'Pending Approval',
-    pending_buyer_verify: 'Pending Buyer Verify',
+    pending_approval: 'Pending SCM Manager Sign',
+    pending_buyer_verify: 'SCM Manager Signed — Buyer Verify',
     approved: 'PO Approved',
     rejected: 'PO Rejected',
     sent_to_vendor: 'Pending Vendor Acceptance',
@@ -2199,8 +2199,12 @@ export async function listPurchaseOrders(
 
 function mapTrackPoStatus(statusRaw) {
   const s = String(statusRaw || '').toLowerCase();
-  if (s === 'pending_approval') return { status: 'pending', statusLabel: 'Pending Approval' };
-  if (s === 'pending_buyer_verify') return { status: 'pending', statusLabel: 'Pending Buyer Verify' };
+  if (s === 'pending_approval') {
+    return { status: 'pending', statusLabel: 'Pending SCM Manager Sign' };
+  }
+  if (s === 'pending_buyer_verify') {
+    return { status: 'approved', statusLabel: 'SCM Manager Signed — Buyer Verify' };
+  }
   if (s === 'invoice_entry') return { status: 'invoice', statusLabel: 'Invoice Entry' };
   if (s === 'pending_accounts_approval') return { status: 'invoice', statusLabel: 'Pending Accounts Approval' };
   if (s === 'approved_for_payment') return { status: 'payment', statusLabel: 'Approved for Payment' };
@@ -2397,9 +2401,9 @@ export async function listTrackPurchaseOrders(
   const filterParams = [];
 
   if (statusFilter === 'pending') {
-    whereExtra += ` AND t.status_raw IN ('pending_approval', 'pending_buyer_verify')`;
+    whereExtra += ` AND t.status_raw = 'pending_approval'`;
   } else if (statusFilter === 'approved') {
-    whereExtra += ` AND t.status_raw IN ('approved', 'sent_to_vendor')`;
+    whereExtra += ` AND t.status_raw IN ('pending_buyer_verify', 'approved', 'sent_to_vendor')`;
   } else if (statusFilter === 'rejected') {
     whereExtra += ` AND t.status_raw = 'rejected'`;
   } else if (statusFilter === 'sent') {
@@ -2524,8 +2528,8 @@ async function getTrackListStats(user) {
   let poSql = `
     SELECT
       COUNT(*) AS po_total,
-      SUM(CASE WHEN status IN ('pending_approval', 'pending_buyer_verify') THEN 1 ELSE 0 END) AS pending,
-      SUM(CASE WHEN status IN ('approved', 'sent_to_vendor') THEN 1 ELSE 0 END) AS approved,
+      SUM(CASE WHEN status = 'pending_approval' THEN 1 ELSE 0 END) AS pending,
+      SUM(CASE WHEN status IN ('pending_buyer_verify', 'approved', 'sent_to_vendor') THEN 1 ELSE 0 END) AS approved,
       SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
       SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_count,
       SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count

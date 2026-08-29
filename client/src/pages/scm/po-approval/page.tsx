@@ -14,7 +14,8 @@ const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
 /** Manager still needs to act */
-const isAwaitingManager = (status: string) => status === 'Pending Approval';
+const isAwaitingManager = (status: string) =>
+  status === 'Pending SCM Manager Sign' || status === 'Pending Approval';
 
 /** Manager already signed / final approved / sent */
 const isManagerApproved = (status: string) =>
@@ -23,20 +24,25 @@ const isManagerApproved = (status: string) =>
   status === 'Pending Vendor Acceptance' ||
   status === 'Vendor Accepted' ||
   status === 'Partially Accepted' ||
+  status === 'SCM Manager Signed — Buyer Verify' ||
   status === 'Pending Buyer Verify';
 
 const isRejected = (status: string) => status === 'PO Rejected';
 
 const StatusBadge = ({ status }: { status: string }) => {
   const map: Record<string, string> = {
+    'Pending SCM Manager Sign': 'bg-amber-100 text-amber-700 border border-amber-200',
     'Pending Approval': 'bg-amber-100 text-amber-700 border border-amber-200',
+    'SCM Manager Signed — Buyer Verify': 'bg-blue-100 text-blue-700 border border-blue-200',
     'Pending Buyer Verify': 'bg-blue-100 text-blue-700 border border-blue-200',
     'PO Approved': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     'Sent to Vendor': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     'PO Rejected': 'bg-red-100 text-red-700 border border-red-200',
   };
   const icon: Record<string, string> = {
+    'Pending SCM Manager Sign': 'ri-time-line',
     'Pending Approval': 'ri-time-line',
+    'SCM Manager Signed — Buyer Verify': 'ri-shield-check-line',
     'Pending Buyer Verify': 'ri-shield-check-line',
     'PO Approved': 'ri-check-double-line',
     'Sent to Vendor': 'ri-mail-send-line',

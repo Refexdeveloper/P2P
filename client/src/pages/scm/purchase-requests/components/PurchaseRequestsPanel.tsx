@@ -25,6 +25,8 @@ interface BucketRow {
   recommendedVendor: string;
   requiredDate: string;
   status: RowStatus;
+  statusLabel: string;
+  statusRaw: string;
 }
 
 type TrackPagination = {
@@ -50,7 +52,11 @@ function mapTrackStatusToBucket(status: string, statusRaw?: string): RowStatus {
   const s = String(status || '').toLowerCase();
   const raw = String(statusRaw || '').toLowerCase();
   if (s === 'ready') return 'Ready for PO';
-  if (s === 'pending' || raw === 'pending_approval' || raw === 'pending_buyer_verify') return 'Pending Approval';
+  if (raw === 'pending_approval' || (s === 'pending' && raw !== 'pending_buyer_verify')) {
+    return 'Pending Approval';
+  }
+  if (raw === 'pending_buyer_verify') return 'PO Approved';
+  if (s === 'pending') return 'Pending Approval';
   if (s === 'rejected' || raw === 'rejected') return 'PO Rejected';
   if (s === 'draft' || raw === 'draft') return 'Draft';
   if (s === 'cancelled' || raw === 'cancelled') return 'Cancelled';
@@ -65,8 +71,11 @@ function mapUiFilterToApi(filter: 'all' | 'ready' | 'created' | 'approved' | 're
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
-function getStatusColor(status: RowStatus) {
-  switch (status) {
+function getStatusColor(statusRaw: string, bucket: RowStatus) {
+  const raw = String(statusRaw || '').toLowerCase();
+  if (raw === 'pending_approval') return 'bg-amber-100 text-amber-700';
+  if (raw === 'pending_buyer_verify') return 'bg-blue-100 text-blue-700';
+  switch (bucket) {
     case 'Ready for PO':
       return 'bg-emerald-100 text-emerald-700';
     case 'Pending Approval':
@@ -153,6 +162,8 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
       recommendedVendor: String(r.vendorName || ''),
       requiredDate: String(r.requiredDate || ''),
       status: mapTrackStatusToBucket(String(r.status), String(r.statusRaw || '')),
+      statusLabel: String(r.statusLabel || r.status || ''),
+      statusRaw: String(r.statusRaw || ''),
     }));
 
   const load = useCallback(async () => {
@@ -434,7 +445,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
           { label: 'Total PRs', value: stats.total, color: 'text-gray-900', icon: 'ri-file-list-3-line', bg: 'bg-teal-100', ic: 'text-teal-600' },
           { label: 'Ready for PO', value: stats.readyForPO, color: 'text-emerald-600', icon: 'ri-checkbox-circle-line', bg: 'bg-emerald-100', ic: 'text-emerald-600' },
           { label: 'Draft POs', value: stats.draft, color: 'text-slate-600', icon: 'ri-draft-line', bg: 'bg-slate-100', ic: 'text-slate-600' },
-          { label: 'Pending Approval', value: stats.pendingApproval, color: 'text-amber-600', icon: 'ri-time-line', bg: 'bg-amber-100', ic: 'text-amber-600' },
+          { label: 'Pending SCM Sign', value: stats.pendingApproval, color: 'text-amber-600', icon: 'ri-time-line', bg: 'bg-amber-100', ic: 'text-amber-600' },
           { label: 'PO Approved', value: stats.poApproved, color: 'text-blue-600', icon: 'ri-file-check-line', bg: 'bg-blue-100', ic: 'text-blue-600' },
           { label: 'PO Rejected', value: stats.poRejected, color: 'text-red-600', icon: 'ri-close-circle-line', bg: 'bg-red-100', ic: 'text-red-600' },
         ].map((s) => (
@@ -574,10 +585,10 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                           </td>
                           <td className="px-2 py-3 align-middle overflow-hidden">
                             <span
-                              className={`inline-flex max-w-full px-2 py-1 rounded-full text-xs font-medium truncate ${getStatusColor(pr.status)}`}
-                              title={pr.status}
+                              className={`inline-flex max-w-full px-2 py-1 rounded-full text-xs font-medium truncate ${getStatusColor(pr.statusRaw, pr.status)}`}
+                              title={pr.statusLabel}
                             >
-                              {pr.status}
+                              {pr.statusLabel}
                             </span>
                           </td>
                           <td className="px-2 py-3 align-middle">
@@ -645,7 +656,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                           <PRBucketExpandedRow
                             prId={pr.prId}
                             colSpan={9}
-                            statusLabel={pr.status}
+                            statusLabel={pr.statusLabel}
                             poId={pr.poId}
                             poNumber={pr.poNumber}
                             title={pr.title}
