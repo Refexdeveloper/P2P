@@ -6,6 +6,10 @@ import { buildRfqInvitationEmail, buildRfqSendBackEmail } from '../templates/rfq
 import { buildRfqSubmittedNotifyRequesterEmail } from '../templates/rfqSubmittedEmail.js';
 import { buildPostRfqActionEmail } from '../templates/prPostRfqActionEmail.js';
 import { buildPrStepProgressEmail } from '../templates/prStepProgressEmail.js';
+import {
+  buildPrApproverActionConfirmationEmail,
+  normalizeApproverConfirmationAction,
+} from '../templates/prApproverActionConfirmationEmail.js';
 import { buildPoVendorEmail } from '../templates/poVendorEmail.js';
 import { buildPoWorkflowEmail } from '../templates/poWorkflowEmail.js';
 import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceRequestEmail.js';
@@ -910,6 +914,152 @@ export function queueRequesterStepProgressNotification(pr, options = {}) {
     actionUrl: wrapPortalUrlWithSso(`${getAppBaseUrl()}/requester/track-pr`),
     requesterName: options.requesterName || pr.requester || 'Requester',
     assigneeName: options.requesterName || pr.requester || 'Requester',
+  });
+}
+
+/** Confirmation to the approver who just acted (approve / reject / send back). */
+async function resolveApproverWithEmail(approver) {
+  if (!approver) return null;
+  const email = String(approver.email || '').trim();
+  if (email) return approver;
+  const id = Number(approver.id);
+  if (!Number.isFinite(id)) return approver;
+  const [rows] = await pool.query(
+    `SELECT id, name, email, role FROM users WHERE id = ? AND is_active = 1 LIMIT 1`,
+    [id]
+  );
+  if (!rows[0]?.email) return approver;
+  return {
+    ...approver,
+    id: rows[0].id,
+    name: rows[0].name || approver.name,
+    email: rows[0].email,
+    role: rows[0].role || approver.role,
+  };
+}
+
+async function loadPrSummaryForConfirmation(context) {
+  if (!context) return null;
+  if (context.prNumber || context.pr_number) {
+    return {
+      id: context.id || context.prId,
+      prId: context.prId || context.id,
+      prNumber: context.prNumber || context.pr_number,
+      title: context.title || '',
+      totalAmount: Number(context.totalAmount ?? context.total_amount ?? 0),
+      entityName: context.entityName || context.entity_name || '',
+      entityCode: context.entityCode || context.entity_code || '',
+    };
+  }
+
+  let prId =
+    typeof context === 'number'
+      ? context
+      : context.prId || context.pr_id || context.id || null;
+
+  if (!prId && (context.poNumber || context.po_number)) {
+    prId = context.prId || context.pr_id || null;
+  }
+
+  if (!prId) return null;
+
+  const [rows] = await pool.query(
+    `SELECT pr.id, pr.pr_number, pr.title, pr.total_amount,
+            e.name AS entity_name, e.code AS entity_code
+     FROM purchase_requests pr
+     LEFT JOIN entity_masters e ON e.id = pr.entity_id
+     WHERE pr.id = ? LIMIT 1`,
+    [prId]
+  );
+  if (!rows[0]) return null;
+  const r = rows[0];
+  return {
+    id: r.id,
+    prId: r.id,
+    prNumber: r.pr_number,
+    title: r.title,
+    totalAmount: Number(r.total_amount || 0),
+    entityName: r.entity_name || '',
+    entityCode: r.entity_code || '',
+  };
+}
+
+export async function sendApproverActionConfirmation(pr, approver, action, options = {}) {
+  if (!EMAIL_SEND_ENABLED) {
+    console.log('Email send skipped (approver confirmation): EMAIL_SEND_ENABLED=false');
+    return null;
+  }
+
+  const normalized = normalizeApproverConfirmationAction(action);
+  if (!normalized) return null;
+
+  const resolvedApprover = await resolveApproverWithEmail(approver);
+  const approverEmail = String(resolvedApprover?.email || '').trim();
+  const approverName = resolvedApprover?.name || resolvedApprover?.email || 'Approver';
+  const prId = pr?.id || pr?.prId || null;
+  const prNumber = pr?.prNumber || pr?.pr_number || null;
+
+  if (!approverEmail) {
+    console.warn(`Approver confirmation skipped — no email for user on ${prNumber || prId || 'PR'}`);
+    await createEmailLog({
+      emailType: 'pr_approver_action_confirmation',
+      status: 'skipped',
+      prId,
+      prNumber,
+      toAddresses: '',
+      subject: `Approver confirmation ${prNumber || prId || ''}`.trim(),
+      errorMessage: 'No approver email',
+      meta: { action: normalized },
+    });
+    return null;
+  }
+
+  const remarks =
+    typeof options.remarks === 'string'
+      ? options.remarks.replace(/\s*\[User Approval[^\]]*\]\s*/g, ' ').trim()
+      : '';
+
+  const { subject, html, text } = buildPrApproverActionConfirmationEmail({
+    pr,
+    approverName,
+    action: normalized,
+    remarks,
+    appBaseUrl: getAppBaseUrl(),
+  });
+
+  console.log(
+    `Approver confirmation → ${approverEmail} (${normalized}) for ${prNumber || prId || 'PR'}`
+  );
+
+  return sendMailToRecipients([approverEmail], subject, html, text, [], {
+    emailType: 'pr_approver_action_confirmation',
+    prId,
+    prNumber,
+    meta: {
+      action: normalized,
+      approverName,
+      approverRole: options.approverRole || approver?.role || null,
+    },
+  });
+}
+
+export function queueApproverActionConfirmation(pr, approver, action, options = {}) {
+  enqueueMail(() => sendApproverActionConfirmation(pr, approver, action, options)).catch((err) => {
+    console.error('Email send failure (approver action confirmation):', err.message);
+  });
+}
+
+/** Resolve PR + approver email, then queue confirmation — use from all approval entry points. */
+export function queueApproverActionConfirmationForUser(context, user, action, options = {}) {
+  enqueueMail(async () => {
+    const pr = await loadPrSummaryForConfirmation(context);
+    if (!pr) {
+      console.warn('Approver confirmation skipped — could not resolve PR context');
+      return null;
+    }
+    return sendApproverActionConfirmation(pr, user, action, options);
+  }).catch((err) => {
+    console.error('Email send failure (approver action confirmation):', err.message);
   });
 }
 

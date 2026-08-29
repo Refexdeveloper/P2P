@@ -4,6 +4,7 @@ import {
   queuePrApprovalPendingNotification,
   queuePostRfqActionNotification,
   queueRequesterStepProgressNotification,
+  queueApproverActionConfirmationForUser,
 } from './emailService.js';
 import {
   getL1ManagerForEmail,
@@ -2294,6 +2295,10 @@ export async function processApproval(user, prId, action, remarks, options = {})
       await conn.commit();
       const updatedPr = await getPurchaseRequestById(prId);
       queueSendBackNotifications(updatedPr, { ...applyResult, actorRole: actingRole });
+      queueApproverActionConfirmationForUser(prId, user, action, {
+        remarks: applyResult.remarksLine || remarks,
+        approverRole: actingRole,
+      });
       return updatedPr;
     } else {
       throw new Error('Invalid action');
@@ -2504,6 +2509,13 @@ export async function processApproval(user, prId, action, remarks, options = {})
       // Particular requester — return / reject
       queuePostRfqActionNotification(updatedPr, actingRole, action, remarks, {
         name: updatedPr.requester,
+      });
+    }
+
+    if (action === 'approve' || action === 'reject') {
+      queueApproverActionConfirmationForUser(prId, user, action, {
+        remarks,
+        approverRole: actingAsHod ? 'HOD Approver' : actingRole,
       });
     }
     return updatedPr;
@@ -3030,6 +3042,10 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
     await conn.commit();
     const updatedPr = await getPurchaseRequestById(prId);
     queueSendBackNotifications(updatedPr, { ...applyResult, actorRole: user.role });
+    queueApproverActionConfirmationForUser(prId, user, 'rework', {
+      remarks: remarksText,
+      approverRole: user.role,
+    });
     return updatedPr;
   } catch (err) {
     await conn.rollback();

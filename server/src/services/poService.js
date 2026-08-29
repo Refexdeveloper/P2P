@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import pool from '../config/db.js';
 import { getPurchaseRequestById } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath, ensurePoPdf } from './poPdfService.js';
-import { sendPoVendorNotification, queuePoWorkflowNotification } from './emailService.js';
+import { sendPoVendorNotification, queuePoWorkflowNotification, queueApproverActionConfirmationForUser } from './emailService.js';
 import { formatDate, formatDateTime, PR_STATUS, REQUESTER_PO_DOCUMENT_STATUSES } from '../utils/constants.js';
 import { getL1ManagerForEmail } from './refexOneService.js';
 import { getLetterheadByType, alignPoTypeWithPurchaseType, mergeQuoteNoIntoPoContent } from './poLetterheadService.js';
@@ -2776,6 +2776,11 @@ export async function signPurchaseOrder(user, poId, {
     });
   }
 
+  queueApproverActionConfirmationForUser(updated, user, 'approve', {
+    remarks: remarks.trim() || 'Signed — sent to SCM Buyer for final verify',
+    approverRole: user.role,
+  });
+
   return updated;
 }
 
@@ -2874,6 +2879,11 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     console.warn(`No requester/approver/SCM emails for final-verify ${updated.poNumber}`);
   }
 
+  queueApproverActionConfirmationForUser(updated, user, 'verified', {
+    remarks: verifyRemarks,
+    approverRole: user.role,
+  });
+
   // Vendor mail is a separate optional step — never sent from final verify
   return updated;
 }
@@ -2921,6 +2931,11 @@ export async function rejectBuyerFinalVerify(user, poId, remarks) {
     remarks: remarks.trim(),
     portalUrl: poPortalUrl('/scm/track-po'),
     ctaLabel: 'Track PO',
+  });
+
+  queueApproverActionConfirmationForUser(updated, user, 'reject', {
+    remarks: remarks.trim(),
+    approverRole: user.role,
   });
 
   return updated;
@@ -2981,6 +2996,11 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
     remarks: remarks.trim(),
     portalUrl: poPortalUrl('/scm/po-approval'),
     ctaLabel: 'Review & Re-sign PO',
+  });
+
+  queueApproverActionConfirmationForUser(updated, user, 'return', {
+    remarks: remarks.trim(),
+    approverRole: user.role,
   });
 
   return updated;
@@ -3047,6 +3067,11 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
       ctaLabel: 'Revise PO',
     });
   }
+
+  queueApproverActionConfirmationForUser(updated, user, 'return', {
+    remarks: remarks.trim(),
+    approverRole: user.role,
+  });
 
   return updated;
 }
@@ -3176,6 +3201,11 @@ export async function rejectPurchaseOrder(user, poId, remarks) {
     remarks: remarks.trim(),
     portalUrl: poPortalUrl('/scm/track-po'),
     ctaLabel: 'Track PO',
+  });
+
+  queueApproverActionConfirmationForUser(updated, user, 'reject', {
+    remarks: remarks.trim(),
+    approverRole: user.role,
   });
 
   return updated;

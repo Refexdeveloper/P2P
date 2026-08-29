@@ -8,7 +8,7 @@ import {
   completeRequesterTask,
   getRecommendedQuotedAmounts,
 } from './prService.js';
-import { queueRfqVendorEmail, queueRfqSendBackEmail, queueRfqSubmittedNotifyRequester, sendRfqVendorEmail, queuePrApprovalPendingNotification, queuePostRfqActionNotification, queueRequesterStepProgressNotification } from './emailService.js';
+import { queueRfqVendorEmail, queueRfqSendBackEmail, queueRfqSubmittedNotifyRequester, sendRfqVendorEmail, queuePrApprovalPendingNotification, queuePostRfqActionNotification, queueRequesterStepProgressNotification, queueApproverActionConfirmationForUser } from './emailService.js';
 import {
   formatDateTime,
   formatDate,
@@ -1929,6 +1929,10 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
       ]
     );
     await startOwnVendorPostRfqWorkflow(prId);
+    queueApproverActionConfirmationForUser(prId, user, 'submitted', {
+      remarks: `RFQ submitted for Vendor Final Approval. Recommended vendor: ${recommended.vendorName} (${quotePriceLabel}).${justificationNote}`,
+      approverRole: user.role,
+    });
     return {
       success: true,
       recommendedVendor: recommended.vendorName,
@@ -1976,6 +1980,11 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
     // SCM vendor: SCM RFQ → SCM Manager vendor approval → Create PO
     await startScmVendorPostRfqWorkflow(prId);
   }
+
+  queueApproverActionConfirmationForUser(prId, user, 'approved', {
+    remarks: selectionRemarks,
+    approverRole: user.role,
+  });
 
   return {
     success: true,
@@ -3037,6 +3046,10 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       await conn.commit();
       const updatedPr = await getPurchaseRequestById(prId);
       queueSendBackNotifications(updatedPr, { ...applyResult, actorRole: workflowRole });
+      queueApproverActionConfirmationForUser(prId, user, action, {
+        remarks: applyResult.remarksLine || remarks,
+        approverRole: workflowRole,
+      });
       return updatedPr;
     } else {
       throw new Error('Invalid action');
@@ -3159,6 +3172,13 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       await notifyScmBuyerForFinalRfq(prId);
     } else if (action === 'reject' || action === 'return' || action === 'rework') {
       queuePostRfqActionNotification(updatedPr, workflowRole, action, remarks, requester);
+    }
+
+    if (action === 'approve' || action === 'reject') {
+      queueApproverActionConfirmationForUser(prId, user, action, {
+        remarks,
+        approverRole: workflowRole,
+      });
     }
 
     return updatedPr;
