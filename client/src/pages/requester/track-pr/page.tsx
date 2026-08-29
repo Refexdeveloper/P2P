@@ -67,6 +67,10 @@ interface TrackPR {
   lineItems: LineItem[];
   approvalHistory: TimelineStage[];
   returnReason?: string;
+  poId?: number | null;
+  poNumber?: string;
+  poDocumentAvailable?: boolean;
+  poSentBack?: boolean;
 }
 
 const SLA_DAYS = 1;
@@ -214,6 +218,8 @@ function mapTrackStatus(rawStatus: string, statusFrontend: string): string {
   if (statusFrontend === 'draft' || rawStatus === 'DRAFT') return 'draft';
   if (statusFrontend === 'returned' || rawStatus === 'RETURNED') return 'returned';
   if (statusFrontend === 'rejected' || rawStatus === 'REJECTED') return 'rejected';
+  if (statusFrontend === 'po_issued') return 'po_issued';
+  if (rawStatus === 'APPROVED' && statusFrontend === 'approved') return 'approved';
   if (rawStatus === 'APPROVED') return 'po_issued';
   if (statusFrontend === 'approved') return 'approved';
   return 'pending_approval';
@@ -626,6 +632,10 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     returnReason: returnEntry
       ? asText(returnEntry.remarks)
       : undefined,
+    poId: pr.poId != null ? Number(pr.poId) : null,
+    poNumber: asText(pr.poNumber),
+    poDocumentAvailable: Boolean(pr.poDocumentAvailable),
+    poSentBack: Boolean(pr.poSentBack),
   };
 }
 
@@ -1201,6 +1211,17 @@ export default function TrackPRPage() {
                                     Edit RFQ
                                   </button>
                                 )}
+                                {pr.poDocumentAvailable && pr.poId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
+                                    className="px-3 py-1.5 text-xs font-medium text-indigo-700 border border-indigo-300 rounded-md hover:bg-indigo-50 transition-colors whitespace-nowrap inline-flex items-center gap-1"
+                                    title={`View PO ${pr.poNumber || ''}`.trim()}
+                                  >
+                                    <i className="ri-file-pdf-2-line" />
+                                    PO Document
+                                  </button>
+                                ) : null}
                               </div>
                             </td>
                           </tr>
@@ -1331,7 +1352,7 @@ export default function TrackPRPage() {
                                         )}
                                       </div>
 
-                                      {(pr.status === 'returned' || pr.status === 'rejected') &&
+                                      {(pr.status === 'returned' || pr.status === 'rejected' || pr.poSentBack) &&
                                         pr.returnReason && (
                                           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                                             <div className="flex items-start gap-2">

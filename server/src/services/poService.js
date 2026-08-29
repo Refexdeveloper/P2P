@@ -5,7 +5,7 @@ import pool from '../config/db.js';
 import { getPurchaseRequestById } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath, ensurePoPdf } from './poPdfService.js';
 import { sendPoVendorNotification, queuePoWorkflowNotification } from './emailService.js';
-import { formatDate, formatDateTime, PR_STATUS } from '../utils/constants.js';
+import { formatDate, formatDateTime, PR_STATUS, REQUESTER_PO_DOCUMENT_STATUSES } from '../utils/constants.js';
 import { getL1ManagerForEmail } from './refexOneService.js';
 import { getLetterheadByType, alignPoTypeWithPurchaseType, mergeQuoteNoIntoPoContent } from './poLetterheadService.js';
 import {
@@ -2567,6 +2567,31 @@ export async function getPurchaseOrderByNumber(poNumber) {
   );
   if (!rows.length) return null;
   return enrichPO(rows[0]);
+}
+
+/** Requester may view signed PO PDF only for their own PR after SCM Manager sign / release. */
+export async function assertRequesterPoDocumentAccess(user, poId) {
+  const po = await getPurchaseOrderById(Number(poId));
+  if (!po) throw new Error('PO not found');
+  if (user.role !== 'Requester') return po;
+  if (!po.prId) throw new Error('Unauthorized');
+
+  const [prRows] = await pool.query(`SELECT requester_id FROM purchase_requests WHERE id = ? LIMIT 1`, [
+    po.prId,
+  ]);
+  if (!prRows.length || Number(prRows[0].requester_id) !== Number(user.id)) {
+    throw new Error('Unauthorized');
+  }
+
+  const signed = Boolean(po.signedAt || po.signedPdfPath || po.signatureImagePath || po.signatureImageData);
+  const released =
+    signed ||
+    REQUESTER_PO_DOCUMENT_STATUSES.has(String(po.status || '')) ||
+    String(po.status || '') === 'pending_buyer_verify';
+  if (!released) {
+    throw new Error('PO document is not available until SCM Manager signs the PO');
+  }
+  return po;
 }
 
 export function resolvePoPdfPath(po) {

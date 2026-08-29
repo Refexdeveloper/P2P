@@ -16,6 +16,31 @@ function lineItemDescription(item) {
   return desc;
 }
 
+function listRoundQuotationFiles(round) {
+  const files = [];
+  const push = (name) => {
+    const n = String(name || '').trim();
+    if (n && !files.includes(n)) files.push(n);
+  };
+  push(round?.quotationFileName);
+  for (const f of round?.quotationFiles || []) {
+    push(f?.fileName || f?.quotationFileName);
+  }
+  return files;
+}
+
+function listVendorQuotationFiles(vendor) {
+  const files = [];
+  for (const round of vendor?.rounds || []) {
+    for (const name of listRoundQuotationFiles(round)) {
+      if (!files.includes(name)) files.push(name);
+    }
+  }
+  const latest = String(vendor?.quotationFileName || '').trim();
+  if (latest && !files.includes(latest)) files.push(latest);
+  return files;
+}
+
 const ROLE_PORTAL_PATH = {
   'HOD Approver': '/tasks',
   'PR Manager': '/pr-manager/dashboard',
@@ -141,9 +166,16 @@ function buildPriceNegotiationTrendBlock(rfqSummary) {
           changePct !== null
             ? `<div style="font-size:11px;font-weight:700;margin-top:2px;color:${change < 0 ? '#059669' : '#dc2626'};">${change < 0 ? '▼' : '▲'} ${Math.abs(Number(changePct))}%</div>`
             : '';
-        const fileHtml = use.quotationFileName
-          ? `<div style="font-size:10px;color:#64748b;margin-top:6px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(use.quotationFileName)}</div>`
-          : '';
+        const fileHtml = (() => {
+          const names = listRoundQuotationFiles(use);
+          if (!names.length) return '';
+          return names
+            .map(
+              (name) =>
+                `<div style="font-size:10px;color:#64748b;margin-top:4px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(name)}">${escapeHtml(name)}</div>`
+            )
+            .join('');
+        })();
         return `
           <td style="padding:12px 8px;text-align:center;border-bottom:1px solid #f1f5f9;${isLast ? 'background:#f0fdfa;' : ''}">
             <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Price</div>
@@ -253,10 +285,13 @@ function buildVendorComparisonBlock(rfqSummary) {
         <tr>
           <td style="padding:10px 10px;font-size:12px;font-weight:600;color:#475569;border-bottom:1px solid #f1f5f9;">Quotation File</td>
           ${vendors
-            .map(
-              (v) =>
-                `<td style="padding:10px 8px;font-size:11px;text-align:center;border-bottom:1px solid #f1f5f9;${v.isRecommended ? 'background:#f0fdf4;' : ''}color:#64748b;">${escapeHtml(v.quotationFileName || '—')}</td>`
-            )
+            .map((v) => {
+              const names = listVendorQuotationFiles(v);
+              const label = names.length
+                ? names.map((n) => escapeHtml(n)).join('<br/>')
+                : '—';
+              return `<td style="padding:10px 8px;font-size:11px;text-align:center;border-bottom:1px solid #f1f5f9;${v.isRecommended ? 'background:#f0fdf4;' : ''}color:#64748b;">${label}</td>`;
+            })
             .join('')}
         </tr>`;
 
@@ -353,12 +388,13 @@ function buildQuotationFilesBlock(rfqSummary) {
   const files = [];
   for (const vendor of rfqSummary?.vendors || []) {
     for (const round of vendor.rounds || []) {
-      if (!round.quotationFileName) continue;
-      files.push({
-        vendor: vendor.name,
-        round: round.round,
-        name: round.quotationFileName,
-      });
+      for (const name of listRoundQuotationFiles(round)) {
+        files.push({
+          vendor: vendor.name,
+          round: round.round,
+          name,
+        });
+      }
     }
   }
   if (!files.length) return '';

@@ -28,6 +28,7 @@ import {
   resolveVendorAcceptanceFile,
   resolveCancellationAttachment,
   getCfoPoInsights,
+  assertRequesterPoDocumentAccess,
 } from '../services/poService.js';
 import { adminDeletePurchaseOrder } from '../services/adminDeleteService.js';
 import {
@@ -477,9 +478,12 @@ router.get('/by-number/:poNumber', requireRoles('SCM Buyer', 'SCM Manager', 'CFO
   }
 });
 
-router.get('/:id/document', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin'), async (req, res) => {
+router.get('/:id/document', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin', 'Requester'), async (req, res) => {
   try {
-    const po = await getPurchaseOrderById(Number(req.params.id));
+    const po =
+      req.user.role === 'Requester'
+        ? await assertRequesterPoDocumentAccess(req.user, Number(req.params.id))
+        : await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
     const { buildSignatureRenderOptions } = await import('../services/signatureService.js');
     const html = buildPoHtml(po, {
@@ -492,9 +496,12 @@ router.get('/:id/document', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR 
   }
 });
 
-router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin'), async (req, res) => {
+router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin', 'Requester'), async (req, res) => {
   try {
-    const po = await getPurchaseOrderById(Number(req.params.id));
+    const po =
+      req.user.role === 'Requester'
+        ? await assertRequesterPoDocumentAccess(req.user, Number(req.params.id))
+        : await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
     const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || po.signedAt);
     const preferredName = isSigned
@@ -525,11 +532,14 @@ router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manag
   }
 });
 
-router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin', 'CFO', 'PR Manager'), async (req, res) => {
+router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin', 'CFO', 'PR Manager', 'Requester'), async (req, res) => {
   try {
-    const data = await getPurchaseOrderById(Number(req.params.id));
-    if (!data) return res.status(404).json({ message: 'PO not found' });
-    res.json({ data });
+    const po =
+      req.user.role === 'Requester'
+        ? await assertRequesterPoDocumentAccess(req.user, Number(req.params.id))
+        : await getPurchaseOrderById(Number(req.params.id));
+    if (!po) return res.status(404).json({ message: 'PO not found' });
+    res.json({ data: po });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

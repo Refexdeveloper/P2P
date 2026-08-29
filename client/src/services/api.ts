@@ -652,6 +652,7 @@ export interface VendorComparisonData {
       quotationFileName: string;
       hasQuotationFile?: boolean;
       submissionId: number;
+      quotationFiles?: Array<{ id?: number | null; fileName: string; isPrimary?: boolean }>;
       quoteLineItems?: Array<Record<string, unknown>>;
     }>;
   }>;

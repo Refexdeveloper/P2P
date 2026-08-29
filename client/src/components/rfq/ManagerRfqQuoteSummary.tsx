@@ -1,6 +1,11 @@
 import { useCallback, useState } from 'react';
 import { rfqApi, type VendorComparisonData } from '../../services/api';
 import { formatDisplayDateTime } from '../../utils/formatDate';
+import {
+  allQuotationFilesForRound,
+  allQuotationFilesForVendor,
+  type QuotationFileView,
+} from '../../utils/quotationFiles';
 
 type QuoteLine = {
   lineItemId?: string | number;
@@ -105,30 +110,40 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
   const roundsLabel = maxRoundsCap > 0 ? `${totalRounds} of ${maxRoundsCap}` : String(totalRounds);
 
   const openQuoteFile = useCallback(
-    async (submissionId: number, vendorName: string, fileName: string, mode: 'view' | 'download') => {
+    async (
+      file: QuotationFileView,
+      vendorName: string,
+      mode: 'view' | 'download'
+    ) => {
+      const submissionId = Number(file.submissionId) || 0;
+      const extraId = Number(file.extraFileId) || 0;
+      const busyKey = `${submissionId}-${extraId}-${mode}`;
       setFileError('');
-      setFileBusy(`${submissionId}-${mode}`);
+      setFileBusy(busyKey);
       try {
-        if (mode === 'view' && onPreviewFile) {
-          onPreviewFile(submissionId, vendorName, fileName);
+        if (mode === 'view' && onPreviewFile && submissionId && !extraId) {
+          onPreviewFile(submissionId, vendorName, file.fileName);
           return;
         }
         const token = localStorage.getItem('p2p_token');
-        const res = await fetch(rfqApi.quotationFileUrl(submissionId), {
+        const url = extraId
+          ? rfqApi.quotationExtraFileUrl(extraId)
+          : rfqApi.quotationFileUrl(submissionId);
+        const res = await fetch(url, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!res.ok) throw new Error('Could not load quotation file');
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
+        const blobUrl = URL.createObjectURL(blob);
         if (mode === 'download') {
           const a = document.createElement('a');
-          a.href = url;
-          a.download = fileName || 'quotation.pdf';
+          a.href = blobUrl;
+          a.download = file.fileName || 'quotation.pdf';
           a.click();
-          setTimeout(() => URL.revokeObjectURL(url), 15000);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
         } else {
-          window.open(url, '_blank', 'noopener,noreferrer');
-          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          window.open(blobUrl, '_blank', 'noopener,noreferrer');
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
         }
       } catch (err) {
         setFileError(err instanceof Error ? err.message : `Could not ${mode} quotation file`);
@@ -139,41 +154,42 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
     [onPreviewFile]
   );
 
-  const fileActions = (
-    submissionId: number | null | undefined,
-    vendorName: string,
-    fileName?: string | null,
-    hasFile?: boolean
-  ) => {
-    if (!submissionId || !(hasFile || fileName)) {
+  const fileActions = (files: QuotationFileView[], vendorName: string) => {
+    if (!files.length) {
       return <span className="text-slate-400 text-sm">—</span>;
     }
-    const name = fileName || 'quotation.pdf';
     return (
-      <div className="inline-flex flex-col items-center gap-1 min-w-0 max-w-[180px]">
-        <p className="text-[11px] text-slate-600 truncate w-full text-center" title={name}>
-          {name}
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-1">
-          <button
-            type="button"
-            disabled={fileBusy === `${submissionId}-view`}
-            onClick={() => void openQuoteFile(submissionId, vendorName, name, 'view')}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-teal-200 text-teal-700 text-[11px] font-semibold hover:bg-teal-50 disabled:opacity-50 cursor-pointer"
-          >
-            <i className="ri-eye-line" />
-            View
-          </button>
-          <button
-            type="button"
-            disabled={fileBusy === `${submissionId}-download`}
-            onClick={() => void openQuoteFile(submissionId, vendorName, name, 'download')}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-700 text-[11px] font-semibold hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
-          >
-            <i className="ri-download-line" />
-            Download
-          </button>
-        </div>
+      <div className="flex flex-col gap-2 min-w-0 max-w-[200px]">
+        {files.map((file, idx) => {
+          const busyBase = `${Number(file.submissionId) || 0}-${Number(file.extraFileId) || 0}`;
+          return (
+            <div key={`${file.fileName}-${idx}`} className="inline-flex flex-col items-center gap-1 min-w-0">
+              <p className="text-[11px] text-slate-600 truncate w-full text-center" title={file.fileName}>
+                {file.fileName}
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-1">
+                <button
+                  type="button"
+                  disabled={fileBusy === `${busyBase}-view`}
+                  onClick={() => void openQuoteFile(file, vendorName, 'view')}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-teal-200 text-teal-700 text-[11px] font-semibold hover:bg-teal-50 disabled:opacity-50 cursor-pointer"
+                >
+                  <i className="ri-eye-line" />
+                  View
+                </button>
+                <button
+                  type="button"
+                  disabled={fileBusy === `${busyBase}-download`}
+                  onClick={() => void openQuoteFile(file, vendorName, 'download')}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-700 text-[11px] font-semibold hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                >
+                  <i className="ri-download-line" />
+                  Download
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -371,12 +387,7 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
                               </p>
                             ) : null}
                             <div className="mt-2">
-                              {fileActions(
-                                use.submissionId,
-                                vendor.name,
-                                use.quotationFileName,
-                                Boolean(use.hasQuotationFile || use.quotationFileName)
-                              )}
+                              {fileActions(allQuotationFilesForRound(use), vendor.name)}
                             </div>
                             {use.submittedAt ? (
                               <p className="text-[10px] text-slate-400 mt-1">{formatDisplayDateTime(use.submittedAt)}</p>
@@ -446,24 +457,14 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
                 </tr>
                 <tr className="border-t border-slate-100">
                   <td className="px-3 py-2.5 text-sm font-semibold text-slate-600">Quotation File</td>
-                  {vendors.map((vendor) => {
-                    const last = [...(vendor.rounds || [])].sort((a, b) => a.round - b.round).pop();
-                    const submissionId = last?.submissionId || vendor.latestSubmissionId;
-                    const fileName = last?.quotationFileName || vendor.quotationFileName;
-                    return (
+                  {vendors.map((vendor) => (
                       <td
                         key={`cmp-file-${vendor.id}`}
                         className={`px-3 py-2.5 text-center ${vendor.isRecommended ? 'bg-emerald-50/70' : ''}`}
                       >
-                        {fileActions(
-                          submissionId,
-                          vendor.name,
-                          fileName,
-                          Boolean(last?.hasQuotationFile || vendor.hasQuotationFile || fileName)
-                        )}
+                        {fileActions(allQuotationFilesForVendor(vendor), vendor.name)}
                       </td>
-                    );
-                  })}
+                    ))}
                 </tr>
               </tbody>
             </table>
@@ -471,7 +472,9 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
         </section>
       ) : null}
 
-      {vendors.some((v) => (v.rounds || []).some((r) => r.quotationFileName || r.hasQuotationFile)) ? (
+      {vendors.some((v) =>
+        (v.rounds || []).some((r) => r.quotationFileName || r.hasQuotationFile || (r.quotationFiles?.length ?? 0) > 0)
+      ) ? (
         <section className="rounded-xl overflow-hidden border border-indigo-200">
           <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-200">
             <h2 className="text-[15px] font-extrabold text-indigo-950">Quotation Files</h2>
@@ -480,7 +483,12 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
           <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-white">
             {vendors.flatMap((vendor) =>
               (vendor.rounds || [])
-                .filter((r) => r.quotationFileName || r.hasQuotationFile)
+                .filter(
+                  (r) =>
+                    r.quotationFileName ||
+                    r.hasQuotationFile ||
+                    (r.quotationFiles?.length ?? 0) > 0
+                )
                 .map((round) => (
                   <div
                     key={`file-${vendor.id}-${round.round}`}
@@ -495,12 +503,7 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
                       ) : null}
                     </p>
                     <p className="text-[11px] text-slate-500 mb-2">Quote {round.round}</p>
-                    {fileActions(
-                      round.submissionId,
-                      vendor.name,
-                      round.quotationFileName,
-                      Boolean(round.hasQuotationFile || round.quotationFileName)
-                    )}
+                    {fileActions(allQuotationFilesForRound(round), vendor.name)}
                   </div>
                 ))
             )}

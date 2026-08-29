@@ -1,5 +1,9 @@
 import { Fragment, useCallback, useState } from 'react';
 import { rfqApi, type VendorComparisonData } from '../../services/api';
+import {
+  allQuotationFilesForRound,
+  type QuotationFileView,
+} from '../../utils/quotationFiles';
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', {
@@ -73,6 +77,7 @@ type RevColumn = {
   submissionId?: number;
   quotationFileName?: string;
   hasQuotationFile?: boolean;
+  quotationFiles?: Array<{ id?: number | null; fileName: string; isPrimary?: boolean }>;
 };
 
 interface Props {
@@ -184,9 +189,12 @@ const stOtherLabel = `sticky left-0 z-20 w-[324px] min-w-[324px] md:w-[380px] md
 /** Match Unit+Amount pair width so Other terms lines up under price columns */
 const colRev = 'w-[240px] min-w-[240px] max-w-[276px] align-middle';
 
-async function fetchQuoteBlob(submissionId: number) {
+async function fetchQuoteBlob(submissionId: number, extraFileId?: number | null) {
   const token = localStorage.getItem('p2p_token');
-  const res = await fetch(rfqApi.quotationFileUrl(submissionId), {
+  const url = extraFileId
+    ? rfqApi.quotationExtraFileUrl(extraFileId)
+    : rfqApi.quotationFileUrl(submissionId);
+  const res = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {
@@ -202,22 +210,9 @@ async function fetchQuoteBlob(submissionId: number) {
   return res.blob();
 }
 
-function resolveQuoteFile(
-  col: RevColumn | undefined,
-  vendor: VendorComparisonData['vendors'][number]
-) {
-  const submissionId =
-    Number(col?.submissionId || (col?.isLatest ? vendor.latestSubmissionId : 0)) || 0;
-  const fileName = String(
-    col?.quotationFileName || (col?.isLatest ? vendor.quotationFileName : '') || ''
-  ).trim();
-  const hasFile = Boolean(
-    submissionId &&
-      (fileName ||
-        col?.hasQuotationFile ||
-        (col?.isLatest && (vendor.hasQuotationFile || vendor.quotationFileName)))
-  );
-  return { submissionId, fileName: fileName || 'quotation.pdf', hasFile };
+function filesForColumn(col: RevColumn | undefined): QuotationFileView[] {
+  if (!col) return [];
+  return allQuotationFilesForRound(col);
 }
 
 export default function VendorComparisonMatrix({
@@ -235,20 +230,23 @@ export default function VendorComparisonMatrix({
   const [fileError, setFileError] = useState('');
 
   const openQuoteFile = useCallback(
-    async (submissionId: number, vendorName: string, fileName: string, mode: 'view' | 'download') => {
+    async (file: QuotationFileView, vendorName: string, mode: 'view' | 'download') => {
+      const submissionId = Number(file.submissionId) || 0;
+      const extraId = Number(file.extraFileId) || 0;
+      const busyKey = `${submissionId}-${extraId}-${mode}`;
       setFileError('');
-      setFileBusy(`${submissionId}-${mode}`);
+      setFileBusy(busyKey);
       try {
-        if (mode === 'view' && onPreviewFile) {
-          onPreviewFile(submissionId, vendorName, fileName);
+        if (mode === 'view' && onPreviewFile && submissionId && !extraId) {
+          onPreviewFile(submissionId, vendorName, file.fileName);
           return;
         }
-        const blob = await fetchQuoteBlob(submissionId);
+        const blob = await fetchQuoteBlob(submissionId, extraId || null);
         const url = URL.createObjectURL(blob);
         if (mode === 'download') {
           const a = document.createElement('a');
           a.href = url;
-          a.download = fileName || 'quotation.pdf';
+          a.download = file.fileName || 'quotation.pdf';
           a.click();
           setTimeout(() => URL.revokeObjectURL(url), 15000);
         } else {
@@ -285,6 +283,7 @@ export default function VendorComparisonMatrix({
         submissionId: vendor.latestSubmissionId,
         quotationFileName: vendor.quotationFileName || '',
         hasQuotationFile: Boolean(vendor.hasQuotationFile || vendor.quotationFileName),
+        quotationFiles: vendor.rounds?.[0]?.quotationFiles,
         submittedAt: '',
       });
     }
@@ -311,8 +310,10 @@ export default function VendorComparisonMatrix({
         hasQuotationFile: Boolean(
           r.hasQuotationFile ||
             r.quotationFileName ||
+            (r.quotationFiles?.length ?? 0) > 0 ||
             (roundNum === latestRound && (vendor.hasQuotationFile || vendor.quotationFileName))
         ),
+        quotationFiles: r.quotationFiles,
       });
     }
   });
@@ -451,8 +452,8 @@ export default function VendorComparisonMatrix({
     vendor: VendorComparisonData['vendors'][number],
     size: 'sm' | 'md' = 'sm'
   ) => {
-    const file = resolveQuoteFile(col, vendor);
-    if (!file.hasFile) {
+    const files = filesForColumn(col);
+    if (!files.length) {
       return <span className="text-slate-300">—</span>;
     }
     const btn =
@@ -460,30 +461,37 @@ export default function VendorComparisonMatrix({
         ? 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer'
         : 'inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-semibold cursor-pointer';
     return (
-      <div className="flex flex-col items-center gap-1 min-w-0">
-        <p className="text-[11px] text-slate-600 truncate max-w-[160px]" title={file.fileName}>
-          {file.fileName}
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-1 print:hidden">
-          <button
-            type="button"
-            disabled={fileBusy === `${file.submissionId}-view`}
-            onClick={() => void openQuoteFile(file.submissionId, vendor.name, file.fileName, 'view')}
-            className={`${btn} border-teal-200 text-teal-700 hover:bg-teal-50 disabled:opacity-50`}
-          >
-            <i className="ri-eye-line"></i>
-            View
-          </button>
-          <button
-            type="button"
-            disabled={fileBusy === `${file.submissionId}-download`}
-            onClick={() => void openQuoteFile(file.submissionId, vendor.name, file.fileName, 'download')}
-            className={`${btn} border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50`}
-          >
-            <i className="ri-download-line"></i>
-            Download
-          </button>
-        </div>
+      <div className="flex flex-col items-center gap-2 min-w-0">
+        {files.map((file, idx) => {
+          const busyBase = `${Number(file.submissionId) || 0}-${Number(file.extraFileId) || 0}`;
+          return (
+            <div key={`${file.fileName}-${idx}`} className="flex flex-col items-center gap-1 min-w-0">
+              <p className="text-[11px] text-slate-600 truncate max-w-[160px]" title={file.fileName}>
+                {file.fileName}
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-1 print:hidden">
+                <button
+                  type="button"
+                  disabled={fileBusy === `${busyBase}-view`}
+                  onClick={() => void openQuoteFile(file, vendor.name, 'view')}
+                  className={`${btn} border-teal-200 text-teal-700 hover:bg-teal-50 disabled:opacity-50`}
+                >
+                  <i className="ri-eye-line"></i>
+                  View
+                </button>
+                <button
+                  type="button"
+                  disabled={fileBusy === `${busyBase}-download`}
+                  onClick={() => void openQuoteFile(file, vendor.name, 'download')}
+                  className={`${btn} border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50`}
+                >
+                  <i className="ri-download-line"></i>
+                  Download
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };

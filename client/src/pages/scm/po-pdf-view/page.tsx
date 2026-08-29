@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { poApi } from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
 
 export default function POPDFViewPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const poIdParam = searchParams.get('poId');
   const poNumber = searchParams.get('poNumber');
   const [po, setPO] = useState<Record<string, unknown> | null>(null);
@@ -73,6 +75,10 @@ export default function POPDFViewPage() {
   }
 
   const goBack = () => {
+    if (user?.role === 'Requester') {
+      navigate('/requester/track-pr');
+      return;
+    }
     if (window.history.length > 1) {
       navigate(-1);
     } else {

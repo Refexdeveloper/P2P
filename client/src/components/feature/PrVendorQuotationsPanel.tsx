@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { rfqApi } from '../../services/api';
+import { allQuotationFilesForQuote, type QuotationFileView } from '../../utils/quotationFiles';
 
 type QuoteLineItem = {
   lineItemId?: string | number;
@@ -17,6 +18,7 @@ type QuoteRound = {
   leadTime?: number;
   paymentTerms?: string;
   quotationFileName?: string;
+  quotationFiles?: Array<{ id?: number | null; fileName: string; isPrimary?: boolean }>;
   status?: string;
   quoteLineItems?: QuoteLineItem[];
   fieldValues?: Record<string, unknown>;
@@ -107,9 +109,20 @@ export default function PrVendorQuotationsPanel({ prId, onPresenceChange }: Prop
     return Math.min(4, Math.max(1, ...rounds, 1));
   }, [rows]);
 
-  const openFile = async (submissionId: number, fileName: string) => {
+  const openFile = async (file: QuotationFileView) => {
     const token = localStorage.getItem('p2p_token');
-    const res = await fetch(rfqApi.quotationFileUrl(submissionId), {
+    const submissionId = Number(file.submissionId) || 0;
+    const extraId = Number(file.extraFileId) || 0;
+    const url = extraId
+      ? rfqApi.quotationExtraFileUrl(extraId)
+      : submissionId
+        ? rfqApi.quotationFileUrl(submissionId)
+        : '';
+    if (!url) {
+      setError('Could not open quotation file');
+      return;
+    }
+    const res = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) {
@@ -118,7 +131,7 @@ export default function PrVendorQuotationsPanel({ prId, onPresenceChange }: Prop
     }
     const blob = await res.blob();
     if (preview?.url) URL.revokeObjectURL(preview.url);
-    setPreview({ url: URL.createObjectURL(blob), fileName });
+    setPreview({ url: URL.createObjectURL(blob), fileName: file.fileName });
   };
 
   if (loading) {
@@ -227,22 +240,36 @@ export default function PrVendorQuotationsPanel({ prId, onPresenceChange }: Prop
                           {open ? 'Hide lines' : 'Line items'}
                         </button>
                       )}
-                      {quote.quotationFileName && quote.submissionId ? (
-                        <button
-                          type="button"
-                          onClick={() => void openFile(quote.submissionId!, quote.quotationFileName || 'quotation')}
-                          className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg ${
-                            isRecommended
-                              ? 'text-emerald-800 bg-emerald-100 border border-emerald-300 hover:bg-emerald-200'
-                              : 'text-teal-700 bg-teal-50 border border-teal-100 hover:bg-teal-100'
-                          }`}
-                        >
-                          <i className="ri-eye-line" />
-                          View file
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-gray-400">No file</span>
-                      )}
+                      {(() => {
+                        const files = allQuotationFilesForQuote(quote);
+                        if (!files.length) {
+                          return <span className="text-[11px] text-gray-400">No file</span>;
+                        }
+                        return (
+                          <div className="flex flex-col gap-1.5 shrink-0 max-w-[180px]">
+                            {files.map((file, idx) => (
+                              <div key={`${file.fileName}-${idx}`} className="flex flex-col gap-0.5">
+                                <p className="text-[10px] text-slate-600 truncate" title={file.fileName}>
+                                  <i className="ri-attachment-2 mr-0.5" />
+                                  {file.fileName}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => void openFile(file)}
+                                  className={`inline-flex items-center gap-1 self-start px-2 py-1 text-[10px] font-semibold rounded-md ${
+                                    isRecommended
+                                      ? 'text-emerald-800 bg-emerald-100 border border-emerald-300 hover:bg-emerald-200'
+                                      : 'text-teal-700 bg-teal-50 border border-teal-100 hover:bg-teal-100'
+                                  }`}
+                                >
+                                  <i className="ri-eye-line" />
+                                  Preview
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {open && lines.length > 0 && (

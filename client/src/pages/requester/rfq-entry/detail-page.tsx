@@ -17,7 +17,7 @@ import {
 } from '../../../services/api';
 import RfqChatbot from '../../../components/feature/RfqChatbot';
 import { openRfqChat } from '../../../components/feature/rfqChatOpen';
-import RfqVendorQuoteTable from './components/RfqVendorQuoteTable';
+import RfqVendorQuoteTable, { type RfqQuoteTableRow } from './components/RfqVendorQuoteTable';
 import VendorSearchSelect from './components/VendorSearchSelect';
 import RfqExtraQuestionsPanel from './components/RfqExtraQuestionsPanel';
 import PrBillingDeliverySection, {
@@ -355,6 +355,47 @@ export default function RfqEntryDetailPage() {
     }
     return out;
   };
+
+  const displayTableRows = useMemo((): RfqQuoteTableRow[] => {
+    return tableRows.map((row) => {
+      const quotes = (row.quotes || []).map((q) => {
+        const files = savedQuoteFilesFor(row, q).map((f) => ({
+          fileName: f.fileName,
+          extraFileId: f.id ?? null,
+          isPrimary: Boolean(f.isPrimary),
+          isLocal: false,
+        }));
+        return {
+          ...q,
+          quotationFileName: files[0]?.fileName || q.quotationFileName || '',
+          quotationFiles: files.length ? files : undefined,
+        };
+      });
+      const latestRound = Math.max(Number(row.round) || 1, ...quotes.map((q) => Number(q.round) || 0), 1);
+      const focusQuote = quotes.find((q) => q.round === latestRound) || quotes[quotes.length - 1];
+      const saved = savedQuoteFilesFor(row, focusQuote).map((f) => ({
+        fileName: f.fileName,
+        extraFileId: f.id ?? null,
+        isPrimary: Boolean(f.isPrimary),
+        isLocal: false,
+      }));
+      const locals = localFilesFor(row.invitationId).map((f, i) => ({
+        fileName: f.name,
+        extraFileId: null,
+        isLocal: true,
+        isPrimary: saved.length === 0 && i === 0,
+      }));
+      const rowFiles = [...saved, ...locals].filter((f) => f.fileName);
+      return {
+        ...row,
+        quotes,
+        quotationFileName: rowFiles[0]?.fileName || row.quotationFileName,
+        quotationFiles: rowFiles,
+        quotationSubmissionId: focusQuote?.submissionId ?? row.submissionId,
+        hasLocalQuotationFile: locals.length > 0,
+      };
+    });
+  }, [tableRows, manualFiles, removedQuoteFileKeys]);
 
   const getManualValue = (invitationId: number, fieldId: string, fallback: unknown = '') => {
     const draft = manualDrafts[invitationId];
@@ -2309,7 +2350,7 @@ export default function RfqEntryDetailPage() {
               </div>
 
               <RfqVendorQuoteTable
-                rows={tableRows}
+                rows={displayTableRows}
                 recommendedId={recommendedId}
                 quotedCount={quotedCount}
                 isFinalized={isFinalized}
@@ -2409,9 +2450,9 @@ export default function RfqEntryDetailPage() {
                               )}
                             </div>
                             <p className="text-xs text-gray-500 mt-1">
-                              {quote?.quotationFileName
-                                ? 'Update line items and quoted price. Replace the file only if needed.'
-                                : 'Upload the quotation file, then fill line items and quoted price. Those three are required.'}
+                              {savedQuoteFilesFor(row, quote).length || localFilesFor(row.invitationId).length
+                                ? 'Update line items and quoted price. Add or remove quotation files if needed.'
+                                : 'Upload one or more quotation files, then fill line items and quoted price. Those are required.'}
                             </p>
                           </div>
                         </div>

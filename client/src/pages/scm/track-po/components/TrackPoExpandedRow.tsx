@@ -5,6 +5,7 @@ import ApprovalHistoryPanel, {
   type ApprovalHistoryEntry,
 } from '../../../../components/feature/ApprovalHistoryPanel';
 import { poApi, prApi, rfqApi, type VendorComparisonData } from '../../../../services/api';
+import { allQuotationFilesForRound } from '../../../../utils/quotationFiles';
 
 type TrackRowLite = {
   prId: number;
@@ -316,16 +317,31 @@ export default function TrackPoExpandedRow({ row, colSpan = 10 }: Props) {
 
     (comparison?.vendors || []).forEach((vendor) => {
       vendor.rounds.forEach((round) => {
-        if (!round.hasQuotationFile && !round.quotationFileName) return;
-        const fileName = round.quotationFileName || `quotation-r${round.round}.pdf`;
-        docs.push({
-          key: `quote-${round.submissionId}`,
-          kind: 'Vendor Quotation',
-          name: fileName,
-          vendor: vendor.name,
-          extra: `Round ${round.round}${vendor.isRecommended ? ' · Recommended' : ''}`,
-          fileName,
-          url: rfqApi.quotationFileUrl(round.submissionId),
+        const files = allQuotationFilesForRound(round);
+        const list =
+          files.length > 0
+            ? files
+            : round.hasQuotationFile || round.quotationFileName
+              ? [
+                  {
+                    fileName: round.quotationFileName || `quotation-r${round.round}.pdf`,
+                    extraFileId: null,
+                    submissionId: round.submissionId,
+                  },
+                ]
+              : [];
+        list.forEach((file, fileIdx) => {
+          docs.push({
+            key: `quote-${round.submissionId}-${file.extraFileId || 'primary'}-${fileIdx}`,
+            kind: 'Vendor Quotation',
+            name: file.fileName,
+            vendor: vendor.name,
+            extra: `Round ${round.round}${vendor.isRecommended ? ' · Recommended' : ''}`,
+            fileName: file.fileName,
+            url: file.extraFileId
+              ? rfqApi.quotationExtraFileUrl(file.extraFileId)
+              : rfqApi.quotationFileUrl(round.submissionId),
+          });
         });
       });
     });

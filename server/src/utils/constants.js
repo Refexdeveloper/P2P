@@ -116,6 +116,140 @@ export function mapStatusToFrontend(status) {
   return map[status] || status.toLowerCase();
 }
 
+/** PO statuses where the signed document may be viewed by the PR requester. */
+export const REQUESTER_PO_DOCUMENT_STATUSES = new Set([
+  'pending_buyer_verify',
+  'approved',
+  'sent_to_vendor',
+  'awaiting_grn',
+  'grn_completed',
+  'invoice_entry',
+  'pending_accounts_approval',
+  'approved_for_payment',
+  'paid',
+]);
+
+/**
+ * Requester-facing status labels — accounts for PO send-back and signed/released POs
+ * while the PR row may still be APPROVED.
+ */
+export function resolveRequesterPrDisplay(prStatus, prFlow = 'standard', vendorSelection = 'scm', poMeta = null) {
+  const po = poMeta && typeof poMeta === 'object' ? poMeta : {};
+  const poId = po.id ? Number(po.id) : null;
+  const poNumber = po.poNumber || po.po_number || '';
+  const poStatus = String(po.status || '');
+  const poSentBack = Boolean(po.poSentBack);
+  const poSigned = Boolean(po.signedAt || po.signed_at || po.signedPdfPath || po.signed_pdf_path);
+
+  let statusFrontend = mapStatusToFrontend(prStatus);
+  let statusUI = mapStatusToManagerUI(prStatus, prFlow, vendorSelection);
+  let poDocumentAvailable = false;
+
+  if (prStatus === PR_STATUS.RETURNED) {
+    return {
+      statusFrontend: 'returned',
+      statusUI: 'Returned for Rework',
+      poId,
+      poNumber,
+      poStatus,
+      poDocumentAvailable: false,
+      poSentBack: false,
+    };
+  }
+
+  if (prStatus === PR_STATUS.REJECTED) {
+    return {
+      statusFrontend: 'rejected',
+      statusUI: 'Rejected',
+      poId,
+      poNumber,
+      poStatus,
+      poDocumentAvailable: false,
+      poSentBack: false,
+    };
+  }
+
+  if (poId && poSentBack && poStatus === 'draft') {
+    return {
+      statusFrontend: 'returned',
+      statusUI: 'Sent Back — Revise PO',
+      poId,
+      poNumber,
+      poStatus,
+      poDocumentAvailable: false,
+      poSentBack: true,
+    };
+  }
+
+  if (poId) {
+    if (poStatus === 'pending_buyer_verify' && poSigned) {
+      return {
+        statusFrontend: 'approved',
+        statusUI: 'PO Signed — Pending Release',
+        poId,
+        poNumber,
+        poStatus,
+        poDocumentAvailable: true,
+        poSentBack: false,
+      };
+    }
+    if (REQUESTER_PO_DOCUMENT_STATUSES.has(poStatus)) {
+      const releasedLabel =
+        poStatus === 'sent_to_vendor'
+          ? 'PO Released to Vendor'
+          : poStatus === 'approved'
+            ? 'PO Released'
+            : 'PO Released';
+      return {
+        statusFrontend: 'po_issued',
+        statusUI: releasedLabel,
+        poId,
+        poNumber,
+        poStatus,
+        poDocumentAvailable: true,
+        poSentBack: false,
+      };
+    }
+    if (poStatus === 'pending_approval') {
+      return {
+        statusFrontend: 'pending_approval',
+        statusUI: 'Pending SCM Manager PO Sign',
+        poId,
+        poNumber,
+        poStatus,
+        poDocumentAvailable: false,
+        poSentBack: false,
+      };
+    }
+    if (poStatus === 'draft') {
+      return {
+        statusFrontend: 'pending_approval',
+        statusUI: 'PO Creation In Progress',
+        poId,
+        poNumber,
+        poStatus,
+        poDocumentAvailable: false,
+        poSentBack: false,
+      };
+    }
+  }
+
+  if (prStatus === PR_STATUS.APPROVED && !poId) {
+    statusFrontend = 'approved';
+    statusUI = 'Approved — Awaiting PO';
+  }
+
+  return {
+    statusFrontend,
+    statusUI,
+    poId,
+    poNumber,
+    poStatus,
+    poDocumentAvailable,
+    poSentBack: false,
+  };
+}
+
 export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelection = 'scm') {
   if (prFlow === 'functional') {
     const functionalMap = {

@@ -18,11 +18,65 @@ import {
   mapStatusToFrontend,
   mapStatusToManagerUI,
   mapPriorityToFrontend,
+  resolveRequesterPrDisplay,
   formatDate,
   formatDateTime,
 } from '../utils/constants.js';
 import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './documentNumberService.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
+
+async function fetchLatestPoMetaByPrIds(prIds) {
+  if (!Array.isArray(prIds) || !prIds.length) return new Map();
+  const [poRows] = await pool.query(
+    `SELECT po.id, po.pr_id, po.po_number, po.status, po.signed_at, po.signed_pdf_path, po.pdf_path
+     FROM purchase_orders po
+     INNER JOIN (
+       SELECT pr_id, MAX(id) AS max_id FROM purchase_orders GROUP BY pr_id
+     ) latest ON latest.max_id = po.id
+     WHERE po.pr_id IN (?)`,
+    [prIds]
+  );
+  const [reviseRows] = await pool.query(
+    `SELECT DISTINCT pr_id FROM workflow_tasks
+     WHERE pr_id IN (?) AND task_type = 'PO_REVISION' AND status = 'pending'`,
+    [prIds]
+  );
+  const reviseSet = new Set(reviseRows.map((r) => Number(r.pr_id)));
+  const map = new Map();
+  for (const po of poRows) {
+    const prId = Number(po.pr_id);
+    map.set(prId, {
+      id: po.id,
+      poNumber: po.po_number,
+      status: po.status,
+      signedAt: po.signed_at,
+      signedPdfPath: po.signed_pdf_path,
+      pdfPath: po.pdf_path,
+      poSentBack: reviseSet.has(prId) && po.status === 'draft',
+    });
+  }
+  return map;
+}
+
+function applyRequesterDisplay(pr, poMeta = null) {
+  const display = resolveRequesterPrDisplay(
+    pr.status,
+    pr.prFlow === 'functional' ? 'functional' : 'standard',
+    pr.vendorSelection === 'own' ? 'own' : 'scm',
+    poMeta
+  );
+  return {
+    ...pr,
+    statusFrontend: display.statusFrontend,
+    statusUI: display.statusUI,
+    poId: display.poId,
+    poNumber: display.poNumber,
+    poStatus: display.poStatus || '',
+    poDocumentAvailable: Boolean(display.poDocumentAvailable),
+    poSentBack: Boolean(display.poSentBack),
+    hasPurchaseOrder: Boolean(display.poId || pr.hasPurchaseOrder),
+  };
+}
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 import { listPrAttachments, savePrAttachments } from './prAttachmentService.js';
 import { getUserPermissionCodes, isSuperAdmin } from './permissionService.js';
@@ -538,7 +592,26 @@ async function enrichPR(row) {
     listPrAttachments(row.id),
   ]);
   const po = poRows[0] || null;
-  return {
+  const poMeta = po
+    ? {
+        id: po.id,
+        poNumber: po.po_number,
+        status: po.status,
+        signedAt: po.signed_at,
+        signedPdfPath: po.signed_pdf_path,
+        pdfPath: po.pdf_path,
+        poSentBack: false,
+      }
+    : null;
+  if (poMeta) {
+    const [reviseRows] = await pool.query(
+      `SELECT id FROM workflow_tasks
+       WHERE pr_id = ? AND task_type = 'PO_REVISION' AND status = 'pending' LIMIT 1`,
+      [row.id]
+    );
+    poMeta.poSentBack = Boolean(reviseRows.length) && po.status === 'draft';
+  }
+  const base = {
     id: row.id,
     prNumber: row.pr_number,
     title: row.title,
@@ -591,6 +664,8 @@ async function enrichPR(row) {
     scmManager: assignees.scmManager,
     hasPurchaseOrder: Boolean(po),
     poNumber: po?.po_number || '',
+    poId: po?.id || null,
+    poStatus: po?.status || '',
     rfqFinalized: Boolean(rfqMetaRows[0]?.finalized_at),
     submittedDate: formatDate(row.submitted_at || row.created_at),
     createdAt: formatDate(row.created_at),
@@ -611,6 +686,7 @@ async function enrichPR(row) {
     attachments,
     items: lineItems.length,
   };
+  return applyRequesterDisplay(base, poMeta);
 }
 
 export async function previewL1Manager(user, departmentName) {
@@ -1310,7 +1386,13 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
     where += ' AND pr.status = ?';
     params.push(PR_STATUS.DRAFT);
   } else if (statusGroup === 'returned') {
-    where += ' AND pr.status = ?';
+    where += ` AND (
+      pr.status = ?
+      OR EXISTS (
+        SELECT 1 FROM workflow_tasks wt
+        WHERE wt.pr_id = pr.id AND wt.task_type = 'PO_REVISION' AND wt.status = 'pending'
+      )
+    )`;
     params.push(PR_STATUS.RETURNED);
   } else if (statusGroup === 'approved' || statusGroup === 'po_issued') {
     where += ' AND pr.status = ?';
@@ -1371,38 +1453,45 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
     [...params, pageSize, offset]
   );
 
-  const data = rows.map((row) =>
-    toRequesterDashboardFormat({
-      id: row.id,
-      prNumber: row.pr_number,
-      title: row.title,
-      department: row.department_name,
-      entityId: row.entity_id || null,
-      entityName: row.entity_name || '',
-      entityCode: row.entity_code || '',
-      entityCostCenter: row.entity_cost_center || '',
-      totalAmount: Number(row.total_amount || 0),
-      status: row.status,
-      statusFrontend: mapStatusToFrontend(row.status),
-      statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection),
-      priorityLower: mapPriorityToFrontend(row.priority),
-      submittedDate: formatDate(row.submitted_at || row.created_at),
-      createdAt: formatDate(row.created_at),
-      requiredDate: formatDate(row.required_date),
-      justification: row.justification || '',
-      lineItems: [],
-      approvalHistory: [],
-      requester: row.requester_name,
-      vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
-      prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
-      currentStage: row.current_stage,
-      items: Number(row.item_count || 0),
-      requestType: row.request_type,
-      currentApprover: null,
-      l1Manager: null,
-      scmBuyer: null,
-    })
-  );
+  const poMetaByPrId = await fetchLatestPoMetaByPrIds(rows.map((row) => row.id));
+
+  const data = rows.map((row) => {
+    const poMeta = poMetaByPrId.get(row.id) || null;
+    const enriched = applyRequesterDisplay(
+      {
+        id: row.id,
+        prNumber: row.pr_number,
+        title: row.title,
+        department: row.department_name,
+        entityId: row.entity_id || null,
+        entityName: row.entity_name || '',
+        entityCode: row.entity_code || '',
+        entityCostCenter: row.entity_cost_center || '',
+        totalAmount: Number(row.total_amount || 0),
+        status: row.status,
+        statusFrontend: mapStatusToFrontend(row.status),
+        statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection),
+        priorityLower: mapPriorityToFrontend(row.priority),
+        submittedDate: formatDate(row.submitted_at || row.created_at),
+        createdAt: formatDate(row.created_at),
+        requiredDate: formatDate(row.required_date),
+        justification: row.justification || '',
+        lineItems: [],
+        approvalHistory: [],
+        requester: row.requester_name,
+        vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+        prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
+        currentStage: row.current_stage,
+        items: Number(row.item_count || 0),
+        requestType: row.request_type,
+        currentApprover: null,
+        l1Manager: null,
+        scmBuyer: null,
+      },
+      poMeta
+    );
+    return toRequesterDashboardFormat(enriched);
+  });
 
   return {
     data,
@@ -3526,6 +3615,12 @@ export function toRequesterDashboardFormat(pr) {
     currentApprover: pr.currentApprover || null,
     l1Manager: pr.l1Manager || null,
     scmBuyer: pr.scmBuyer || null,
+    poId: pr.poId || null,
+    poNumber: pr.poNumber || '',
+    poStatus: pr.poStatus || '',
+    poDocumentAvailable: Boolean(pr.poDocumentAvailable),
+    poSentBack: Boolean(pr.poSentBack),
+    hasPurchaseOrder: Boolean(pr.hasPurchaseOrder || pr.poId),
   };
 }
 

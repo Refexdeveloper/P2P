@@ -15,10 +15,14 @@ interface RequesterPR {
   entityCode?: string;
   amount: number;
   status: string;
+  statusUI?: string;
   statusRaw?: string;
   date: string;
   items: number;
   requestType: string;
+  poId?: number | null;
+  poNumber?: string;
+  poDocumentAvailable?: boolean;
 }
 
 const ADMIN_EDIT_ROLES = [
@@ -358,7 +362,7 @@ export default function RequesterDashboard() {
                   </td>
                   <td className="px-5 py-4 whitespace-nowrap text-sm text-gray-700">{request.department}</td>
                   <td className="px-5 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">₹{request.amount.toLocaleString('en-IN')}</td>
-                  <td className="px-5 py-4 whitespace-nowrap"><StatusBadge status={request.status} /></td>
+                  <td className="px-5 py-4 whitespace-nowrap"><StatusBadge status={request.statusUI || request.status} /></td>
                   <td className="px-5 py-4 whitespace-nowrap text-sm text-gray-700">{request.date}</td>
                   <td className="px-5 py-4 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
@@ -369,8 +373,18 @@ export default function RequesterDashboard() {
                       >
                         <i className="ri-eye-line"></i>
                       </button>
+                      {request.poDocumentAvailable && request.poId ? (
+                        <button
+                          onClick={() => navigate(`/requester/po-document?poId=${request.poId}`)}
+                          className="p-1.5 text-indigo-700 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
+                          title={`View PO ${request.poNumber || ''}`.trim()}
+                        >
+                          <i className="ri-file-pdf-2-line"></i>
+                        </button>
+                      ) : null}
                       {(canEditRequesterPr(request, isAdminEditor) ||
-                        String(request.status || '').toLowerCase() === 'draft') && (
+                        String(request.status || '').toLowerCase() === 'draft' ||
+                        String(request.statusUI || '').toLowerCase().includes('return')) && (
                         <button
                           onClick={() => navigate(`/requester/edit-pr/${request.prId}`)}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"

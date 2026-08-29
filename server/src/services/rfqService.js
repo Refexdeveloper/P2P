@@ -458,6 +458,25 @@ function withQuotationFiles(submission, extras = []) {
   };
 }
 
+/** Primary + extra quotation files for a submission (mail, summary, UI). */
+export function listQuotationFilesFromSubmission(submission) {
+  if (!submission) return [];
+  const fromArray = Array.isArray(submission.quotationFiles) ? submission.quotationFiles : [];
+  if (fromArray.length) {
+    return fromArray
+      .map((f) => ({
+        fileName: String(f.fileName || '').trim(),
+        id: f.id ?? null,
+        isPrimary: Boolean(f.isPrimary),
+        submissionId: submission.id,
+      }))
+      .filter((f) => f.fileName);
+  }
+  const primary = String(submission.quotationFileName || '').trim();
+  if (!primary) return [];
+  return [{ fileName: primary, id: null, isPrimary: true, submissionId: submission.id }];
+}
+
 async function attachQuotationFilesToSubmissions(submissions) {
   const extras = await listExtraFilesBySubmissionIds((submissions || []).map((s) => s.id));
   return (submissions || []).map((s) => withQuotationFiles(s, extras.get(s.id) || []));
@@ -2059,19 +2078,23 @@ async function buildRfqSummary(prId) {
     const rounds = (inv.submissions || [])
       .filter((s) => s.status === 'submitted' || s.status === 'sent_back')
       .sort((a, b) => Number(a.round) - Number(b.round))
-      .map((s) => ({
+      .map((s) => {
+        const files = listQuotationFilesFromSubmission(s);
+        return {
         round: s.round,
         quotedPrice: s.quotedPrice,
         leadTime: s.leadTime,
         paymentTerms: s.paymentTerms || '',
         warranty: s.warranty || '',
-        quotationFileName: s.quotationFileName || '',
+        quotationFileName: s.quotationFileName || files[0]?.fileName || '',
+        quotationFiles: files.map(({ fileName, id, isPrimary }) => ({ fileName, id, isPrimary })),
         quotationFilePath: s.quotationFilePath || '',
         submissionId: s.id,
         submittedAt: s.submittedAt,
         quoteLineItems: s.quoteLineItems || s.customFields?.quoteLineItems || [],
         values: submissionToFieldValues(s),
-      }));
+      };
+      });
 
     const active = findActiveSubmission(inv);
     return {
@@ -2238,6 +2261,9 @@ export async function queuePostQuotationApprovalMail(pr, assignedRole, options =
   for (const vendor of pack.rfqSummary?.vendors || []) {
     for (const round of vendor.rounds || []) {
       if (round.quotationFileName) namedFiles.push(round.quotationFileName);
+      for (const f of round.quotationFiles || []) {
+        if (f?.fileName) namedFiles.push(f.fileName);
+      }
     }
   }
   if (namedFiles.length && !(pack.attachments || []).length) {
@@ -2550,17 +2576,21 @@ export async function getVendorComparisonMatrix(user, prId) {
     // Include sent_back — Round 1 stays visible after Send Back creates Round 2
     const allRounds = inv.submissions
       .filter((s) => s.status === 'submitted' || s.status === 'sent_back')
-      .map((s) => ({
+      .map((s) => {
+        const files = listQuotationFilesFromSubmission(s);
+        return {
         round: s.round,
         values: submissionToFieldValues(s),
         submittedAt: s.submittedAt,
-        quotationFileName: s.quotationFileName,
-        hasQuotationFile: Boolean(s.hasQuotationFile || s.quotationFileName),
+        quotationFileName: s.quotationFileName || files[0]?.fileName || '',
+        quotationFiles: files.map(({ fileName, id, isPrimary }) => ({ fileName, id, isPrimary })),
+        hasQuotationFile: Boolean(s.hasQuotationFile || files.length),
         submissionId: s.id,
         sendBackReason: inv.sendBackReason,
         status: s.status,
         quoteLineItems: s.quoteLineItems || s.customFields?.quoteLineItems || [],
-      }));
+      };
+      });
 
     return {
       id: inv.id,

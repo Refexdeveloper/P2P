@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import StatusBadge from '../../../../components/base/StatusBadge';
 import PriorityBadge from '../../../../components/base/PriorityBadge';
 import { prApi } from '../../../../services/api';
@@ -80,10 +80,14 @@ export interface PRDetail {
   totalAmount: number;
   status: string;
   statusFrontend: string;
+  statusUI?: string;
   submittedDate: string;
   lineItems: LineItem[];
   approvalHistory: ApprovalHistoryItem[];
   attachments?: { id: number; fileName: string; size: number }[];
+  poId?: number | null;
+  poNumber?: string;
+  poDocumentAvailable?: boolean;
 }
 
 interface PRDetailDrawerProps {
@@ -93,6 +97,7 @@ interface PRDetailDrawerProps {
 }
 
 export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerProps) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'quotes' | 'history'>('details');
   const [hasQuotes, setHasQuotes] = useState(false);
@@ -106,7 +111,10 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
 
   const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
   const canEdit = Boolean(pr && (isAdminEditor || canRequesterEditPr(pr)));
-  const isReturned = pr?.status === 'RETURNED' || pr?.statusFrontend === 'returned';
+  const isReturned =
+    pr?.status === 'RETURNED' ||
+    pr?.statusFrontend === 'returned' ||
+    String(pr?.statusUI || '').toLowerCase().includes('return');
   const isDraft = pr?.status === 'DRAFT' || pr?.statusFrontend === 'draft';
 
   return (
@@ -120,7 +128,7 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                 <>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-bold text-gray-500">{pr.prNumber}</span>
-                    <StatusBadge status={pr.statusFrontend} size="sm" />
+                    <StatusBadge status={pr.statusUI || pr.statusFrontend} size="sm" />
                     <PriorityBadge priority={pr.priority} size="sm" />
                   </div>
                   <h3 className="text-base font-semibold text-gray-900">{pr.title}</h3>
@@ -235,6 +243,27 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                       <p className="text-xs text-gray-500 mb-0.5">Total Amount</p>
                       <p className="text-sm font-bold text-gray-900">₹{pr.totalAmount.toLocaleString('en-IN')}</p>
                     </div>
+                    {pr.poDocumentAvailable && pr.poId ? (
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 col-span-2">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-indigo-900">Purchase Order</p>
+                            <p className="text-xs text-indigo-700 mt-0.5">
+                              {pr.poNumber || `PO #${pr.poId}`}
+                              {pr.statusUI ? ` · ${pr.statusUI}` : ''}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700"
+                          >
+                            <i className="ri-file-pdf-2-line" />
+                            View PO Document
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="bg-gray-50 rounded-lg p-3 col-span-2">
                       <p className="text-xs text-gray-500 mb-0.5">Billing Region / GST</p>
                       <p className="text-sm font-medium text-gray-900">

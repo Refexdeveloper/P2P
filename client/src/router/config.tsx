@@ -119,6 +119,10 @@ const routes: RouteObject[] = [
     element: <ProtectedRoute><TrackPRPage /></ProtectedRoute>,
   },
   {
+    path: '/requester/po-document',
+    element: <ProtectedRoute><POPDFViewPage /></ProtectedRoute>,
+  },
+  {
     path: '/requester/rfq-entry',
     element: <ProtectedRoute><RequesterRfqTaskListPage /></ProtectedRoute>,
   },
