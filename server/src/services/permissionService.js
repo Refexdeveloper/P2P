@@ -7,9 +7,9 @@ const EMAIL_ROLE_OVERRIDES = {
   'srivaths.varadharajan@refex.co.in': 'CFO',
 };
 
-/** Per-user nav override — Financial Insights only (no PR Approvals / My Tasks). */
+/** Per-user nav override — Financial Insights + My Tasks (no PR Approvals). */
 const EMAIL_NAV_PERMISSIONS = {
-  'srivaths.varadharajan@refex.co.in': ['nav.cfo_insights'],
+  'srivaths.varadharajan@refex.co.in': ['nav.cfo_insights', 'nav.tasks'],
 };
 
 export function getEmailNavPermissionOverride(email) {
