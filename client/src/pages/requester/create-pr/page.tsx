@@ -194,10 +194,6 @@ export default function CreatePRPage() {
   const [expectedDeliveryTimeline, setExpectedDeliveryTimeline] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
   const moneySymbol = currencySymbol(currency);
-  const displayPrNumber = useMemo(
-    () => formatPrNumberDisplay(prNumber, prStatus),
-    [prNumber, prStatus]
-  );
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [lineEditor, setLineEditor] = useState<{ mode: 'add' | 'edit'; item: LineItem } | null>(null);
   const [deleteLineItemId, setDeleteLineItemId] = useState<string | null>(null);
@@ -218,6 +214,10 @@ export default function CreatePRPage() {
   const [isLoadingPr, setIsLoadingPr] = useState(isEditMode);
   const [loadError, setLoadError] = useState('');
   const [prStatus, setPrStatus] = useState('');
+  const displayPrNumber = useMemo(
+    () => formatPrNumberDisplay(prNumber, prStatus),
+    [prNumber, prStatus]
+  );
   const [returnFeedback, setReturnFeedback] = useState<ReturnFeedback | null>(null);
   const [approvalHistory, setApprovalHistory] = useState<
     { stage: string; user: string; role: string; date: string; status: string; remarks: string }[]
