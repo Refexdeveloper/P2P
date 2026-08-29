@@ -118,8 +118,6 @@ export function mapStatusToFrontend(status) {
 
 /** PO statuses where the signed document may be viewed by the PR requester. */
 export const REQUESTER_PO_DOCUMENT_STATUSES = new Set([
-  'pending_buyer_verify',
-  'approved',
   'sent_to_vendor',
   'awaiting_grn',
   'grn_completed',
@@ -185,11 +183,22 @@ export function resolveRequesterPrDisplay(prStatus, prFlow = 'standard', vendorS
     if (poStatus === 'pending_buyer_verify' && poSigned) {
       return {
         statusFrontend: 'approved',
-        statusUI: 'PO Signed — Pending Release',
+        statusUI: 'PO Signed — Pending Buyer Verify',
         poId,
         poNumber,
         poStatus,
-        poDocumentAvailable: true,
+        poDocumentAvailable: false,
+        poSentBack: false,
+      };
+    }
+    if (poStatus === 'approved') {
+      return {
+        statusFrontend: 'approved',
+        statusUI: 'PO Approved — Pending Release',
+        poId,
+        poNumber,
+        poStatus,
+        poDocumentAvailable: false,
         poSentBack: false,
       };
     }
@@ -197,9 +206,7 @@ export function resolveRequesterPrDisplay(prStatus, prFlow = 'standard', vendorS
       const releasedLabel =
         poStatus === 'sent_to_vendor'
           ? 'PO Released to Vendor'
-          : poStatus === 'approved'
-            ? 'PO Released'
-            : 'PO Released';
+          : 'PO Released';
       return {
         statusFrontend: 'po_issued',
         statusUI: releasedLabel,

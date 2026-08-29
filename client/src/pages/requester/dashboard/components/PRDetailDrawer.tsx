@@ -263,6 +263,17 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
                           </button>
                         </div>
                       </div>
+                    ) : pr.poId ? (
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 col-span-2">
+                        <p className="text-sm font-semibold text-slate-800">Purchase Order</p>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          {pr.poNumber || `PO #${pr.poId}`}
+                          {pr.statusUI ? ` · ${pr.statusUI}` : ''}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          PO document will be available after SCM Buyer final verification.
+                        </p>
+                      </div>
                     ) : null}
                     <div className="bg-gray-50 rounded-lg p-3 col-span-2">
                       <p className="text-xs text-gray-500 mb-0.5">Billing Region / GST</p>

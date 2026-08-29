@@ -381,6 +381,13 @@ export default function RequesterDashboard() {
                         >
                           <i className="ri-file-pdf-2-line"></i>
                         </button>
+                      ) : request.poId ? (
+                        <span
+                          className="px-2 py-1 text-[10px] font-medium text-slate-600 border border-slate-200 rounded-md whitespace-nowrap"
+                          title="PO document available after SCM Buyer final verification"
+                        >
+                          {request.statusUI || 'PO in progress'}
+                        </span>
                       ) : null}
                       {(canEditRequesterPr(request, isAdminEditor) ||
                         String(request.status || '').toLowerCase() === 'draft' ||

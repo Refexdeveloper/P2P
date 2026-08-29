@@ -1222,6 +1222,13 @@ export default function TrackPRPage() {
                                     <i className="ri-file-pdf-2-line" />
                                     PO Document
                                   </button>
+                                ) : pr.poId ? (
+                                  <span
+                                    className="px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-md whitespace-nowrap"
+                                    title="PO document available after SCM Buyer final verification"
+                                  >
+                                    {pr.statusUI || 'PO in progress'}
+                                  </span>
                                 ) : null}
                               </div>
                             </td>

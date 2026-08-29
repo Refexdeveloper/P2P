@@ -2587,13 +2587,9 @@ export async function assertRequesterPoDocumentAccess(user, poId) {
     throw new Error('Unauthorized');
   }
 
-  const signed = Boolean(po.signedAt || po.signedPdfPath || po.signatureImagePath || po.signatureImageData);
-  const released =
-    signed ||
-    REQUESTER_PO_DOCUMENT_STATUSES.has(String(po.status || '')) ||
-    String(po.status || '') === 'pending_buyer_verify';
-  if (!released) {
-    throw new Error('PO document is not available until SCM Manager signs the PO');
+  const status = String(po.status || '');
+  if (!REQUESTER_PO_DOCUMENT_STATUSES.has(status)) {
+    throw new Error('PO document is available only after SCM Buyer final verification');
   }
   return po;
 }
