@@ -360,12 +360,6 @@ export default function BuyerFinalVerifyPage() {
                                       </div>
                                     ))}
                                   </div>
-                                  {po.signerComments && (
-                                    <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
-                                      <p className="text-xs font-semibold text-amber-700 mb-1">Manager comments</p>
-                                      <p className="text-sm text-gray-700">{po.signerComments}</p>
-                                    </div>
-                                  )}
                                   <div>
                                     <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Line Items</p>
                                     <div className="border border-gray-200 rounded-lg overflow-hidden">

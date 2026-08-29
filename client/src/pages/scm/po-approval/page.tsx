@@ -767,7 +767,7 @@ export default function POApprovalPage() {
                           onSendBack={() => openModal(po.poNumber, 'sendback')}
                           onEdit={() => {
                             const id = poIdMap[po.poNumber];
-                            if (id) navigate(`/scm/create-po?poId=${id}`);
+                            if (id) navigate(`/scm/create-po?poId=${id}&from=po-approval`);
                           }}
                           onViewPdf={() => {
                             const id = poIdMap[po.poNumber];
@@ -889,7 +889,7 @@ export default function POApprovalPage() {
                               <button
                                 onClick={() => {
                                   const id = poIdMap[po.poNumber];
-                                  if (id) navigate(`/scm/create-po?poId=${id}`);
+                                  if (id) navigate(`/scm/create-po?poId=${id}&from=po-approval`);
                                 }}
                                 className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                                 title="Edit PO"
@@ -934,7 +934,7 @@ export default function POApprovalPage() {
                         onSendBack={() => openModal(po.poNumber, 'sendback')}
                         onEdit={() => {
                           const id = poIdMap[po.poNumber];
-                          if (id) navigate(`/scm/create-po?poId=${id}`);
+                          if (id) navigate(`/scm/create-po?poId=${id}&from=po-approval`);
                         }}
                         onViewPdf={() => {
                           const id = poIdMap[po.poNumber];

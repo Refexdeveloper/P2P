@@ -6,6 +6,7 @@ import RichTextEditor from '../../../components/base/RichTextEditor';
 import AddableSelect from '../../../components/base/AddableSelect';
 import {
   poApi,
+  prApi,
   poLetterheadApi,
   letterheadMasterApi,
   masterApi,
@@ -24,6 +25,8 @@ import {
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
 import PurchaseRequestsPanel from '../purchase-requests/components/PurchaseRequestsPanel';
+import POApprovalModal from '../po-approval/components/POApprovalModal';
+import PostRfqApprovalModal from '../../rfq-approval/components/PostRfqApprovalModal';
 import { numberToIndianWords } from '../../../utils/amountInWords';
 import {
   AnnexureIiRow,
@@ -862,7 +865,9 @@ export default function CreatePOPage() {
         ? '/tasks'
         : fromParam === 'purchase-requests' || fromParam === 'create-po' || fromParam === 'csv'
           ? '/scm/create-po'
-          : '/scm/po-approval';
+          : fromParam === 'po-approval'
+            ? '/scm/po-approval'
+            : '/scm/po-approval';
   const isBuyerVerifyEdit = searchParams.get('from') === 'buyer-verify';
 
   const [loading, setLoading] = useState(true);
@@ -961,6 +966,8 @@ export default function CreatePOPage() {
   } | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showScmConfirm, setShowScmConfirm] = useState(false);
+  const [managerModal, setManagerModal] = useState<'sendback' | 'reject' | null>(null);
+  const [showBuyerSendBack, setShowBuyerSendBack] = useState(false);
   const [scmManager, setScmManager] = useState<{ name: string; email: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'lineItems' | 'terms' | 'preview'>('details');
   const [draftSaved, setDraftSaved] = useState(false);
@@ -2765,6 +2772,52 @@ export default function CreatePOPage() {
   }
 
   const canSaveDraft = !isEditMode || poEditStatus === 'draft';
+  const isPendingManagerApproval =
+    poEditStatus === 'pending_approval' || poEditStatus === 'pendingapproval';
+  const isManagerPoReview =
+    user?.role === 'SCM Manager' && isEditMode && isPendingManagerApproval;
+  const activePrId = pr?.id || numericPrId || null;
+  const isBuyerCreatePoSendBack =
+    (user?.role === 'SCM Buyer' || user?.role === 'Super Admin') &&
+    Boolean(activePrId) &&
+    !isManualMode &&
+    !isBuyerVerifyEdit &&
+    !isManagerPoReview &&
+    poEditStatus !== 'pending_approval' &&
+    poEditStatus !== 'pendingapproval' &&
+    poEditStatus !== 'pending_buyer_verify' &&
+    poEditStatus !== 'pending_buyerverify';
+
+  const handleManagerPoAction = async (remarks: string) => {
+    if (!editPoId || !managerModal) return;
+    try {
+      if (managerModal === 'sendback') {
+        const res = await poApi.sendBack(editPoId, remarks);
+        alert(res.message || `${poNumber || 'PO'} sent back to SCM Buyer for revision`);
+      } else {
+        await poApi.reject(editPoId, remarks);
+        alert(`${poNumber || 'PO'} has been rejected`);
+      }
+      setManagerModal(null);
+      navigate(editReturnPath);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Action failed');
+      throw err;
+    }
+  };
+
+  const handleBuyerSendBack = async (remarks: string, options?: { returnTo?: string }) => {
+    if (!activePrId || !options?.returnTo) {
+      throw new Error('Select a previous stage to send back to');
+    }
+    const res = await prApi.adminSendBack(activePrId, {
+      returnTo: options.returnTo,
+      remarks: remarks.trim(),
+    });
+    setShowBuyerSendBack(false);
+    alert(res.message || 'PR sent back successfully');
+    navigate('/scm/create-po');
+  };
 
   return (
     <DashboardLayout>
@@ -2814,14 +2867,49 @@ export default function CreatePOPage() {
                     className="px-3 py-1.5 border border-gray-300 rounded-md text-sm w-36 bg-white"
                   />
                 )}
-                <button
-                  type="button"
-                  onClick={handleSaveDraft}
-                  disabled={submitting}
-                  className="px-3.5 py-1.5 border border-gray-300 bg-white text-slate-800 rounded-md hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium disabled:opacity-50"
-                >
-                  {submitting ? 'Saving...' : 'Save as Draft'}
-                </button>
+                {isManagerPoReview && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setManagerModal('reject')}
+                      disabled={submitting}
+                      className="px-3.5 py-1.5 border border-red-200 bg-white text-red-700 rounded-md hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium disabled:opacity-50"
+                    >
+                      <i className="ri-close-circle-line mr-1"></i>
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManagerModal('sendback')}
+                      disabled={submitting}
+                      className="px-3.5 py-1.5 border border-orange-200 bg-white text-orange-700 rounded-md hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium disabled:opacity-50"
+                    >
+                      <i className="ri-arrow-go-back-line mr-1"></i>
+                      Send Back
+                    </button>
+                  </>
+                )}
+                {isBuyerCreatePoSendBack && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBuyerSendBack(true)}
+                    disabled={submitting}
+                    className="px-3.5 py-1.5 border border-orange-200 bg-white text-orange-700 rounded-md hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium disabled:opacity-50"
+                  >
+                    <i className="ri-arrow-go-back-line mr-1"></i>
+                    Send Back
+                  </button>
+                )}
+                {canSaveDraft && (
+                  <button
+                    type="button"
+                    onClick={handleSaveDraft}
+                    disabled={submitting}
+                    className="px-3.5 py-1.5 border border-gray-300 bg-white text-slate-800 rounded-md hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium disabled:opacity-50"
+                  >
+                    {submitting ? 'Saving...' : 'Save as Draft'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setActiveTab('preview')}
@@ -4243,6 +4331,32 @@ export default function CreatePOPage() {
           )}
         </div>
       </div>
+
+      {managerModal && editPoId && (
+        <POApprovalModal
+          isOpen
+          type={managerModal}
+          poNumber={poNumber || `PO #${editPoId}`}
+          prTitle={pr?.title || ''}
+          grandTotal={grandTotal}
+          onConfirm={handleManagerPoAction}
+          onClose={() => setManagerModal(null)}
+        />
+      )}
+
+      {showBuyerSendBack && activePrId && pr && (
+        <PostRfqApprovalModal
+          isOpen
+          action="rework"
+          prNumber={pr.prNumber}
+          title={pr.title}
+          stageLabel="Create PO — Send Back"
+          prId={activePrId}
+          useAdminTargets
+          onClose={() => setShowBuyerSendBack(false)}
+          onConfirm={handleBuyerSendBack}
+        />
+      )}
 
       {/* ── Confirm: send to SCM Manager ── */}
       {showScmConfirm && (

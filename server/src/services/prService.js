@@ -3029,6 +3029,17 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
     });
 
     await conn.query(
+      `UPDATE purchase_orders
+       SET status = 'cancelled',
+           cancellation_reason = ?,
+           cancelled_by = ?,
+           cancelled_at = NOW(),
+           updated_at = NOW()
+       WHERE pr_id = ? AND status IN ('draft', 'pending_approval')`,
+      [`Send-back from workflow: ${remarksText.slice(0, 450)}`, user.id, prId]
+    );
+
+    await conn.query(
       `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
       [
         prId,

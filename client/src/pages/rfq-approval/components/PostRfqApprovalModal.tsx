@@ -8,6 +8,8 @@ interface Props {
   title: string;
   stageLabel: string;
   prId?: number;
+  /** Load full prior-stage list (Track PR / admin send-back catalog) */
+  useAdminTargets?: boolean;
   /** Own-vendor HOD final: require Yes/No for Business/CFO path */
   askBusinessApproval?: boolean;
   onClose: () => void;
@@ -24,6 +26,7 @@ export default function PostRfqApprovalModal({
   title,
   stageLabel,
   prId,
+  useAdminTargets = false,
   askBusinessApproval = false,
   onClose,
   onConfirm,
@@ -51,7 +54,7 @@ export default function PostRfqApprovalModal({
     let cancelled = false;
     setTargetsLoading(true);
     prApi
-      .sendBackTargets(prId)
+      .sendBackTargets(prId, useAdminTargets ? { admin: true } : undefined)
       .then((res) => {
         if (cancelled) return;
         const list = res.data || [];
@@ -70,7 +73,7 @@ export default function PostRfqApprovalModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, action, prId]);
+  }, [isOpen, action, prId, useAdminTargets]);
 
   if (!isOpen) return null;
 

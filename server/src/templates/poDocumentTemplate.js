@@ -842,12 +842,12 @@ function specialNotesInnerHtml(po, options = {}) {
       <p>${escapeHtml(signature.date)}<br>
       <strong>Authorized Signatory${signature.dsc ? ' (DSC)' : ''}</strong><br>
       Name: ${escapeHtml(signature.name)}<br>
-      Designation: SCM Manager${signature.comments ? `<br>Comments: ${escapeHtml(signature.comments)}` : ''}</p>` : `
+      Designation: SCM - Head</p>` : `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>
       <p><strong>Authorized Signatory</strong><br>
       Name: ____________________<br>
-      Designation: Head – SCM</p>`}
+      Designation: SCM - Head</p>`}
     </div>`;
 }
 
