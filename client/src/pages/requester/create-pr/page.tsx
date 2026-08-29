@@ -44,6 +44,7 @@ import {
   PR_REQUEST_CATEGORY_OPTIONS,
   normalizeRequestCategory,
 } from '../../../constants/prRequisition';
+import { formatPrNumberDisplay } from '../../../utils/prNumberDisplay';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -193,6 +194,10 @@ export default function CreatePRPage() {
   const [expectedDeliveryTimeline, setExpectedDeliveryTimeline] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
   const moneySymbol = currencySymbol(currency);
+  const displayPrNumber = useMemo(
+    () => formatPrNumberDisplay(prNumber, prStatus),
+    [prNumber, prStatus]
+  );
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [lineEditor, setLineEditor] = useState<{ mode: 'add' | 'edit'; item: LineItem } | null>(null);
   const [deleteLineItemId, setDeleteLineItemId] = useState<string | null>(null);
@@ -2178,7 +2183,7 @@ export default function CreatePRPage() {
               </div>
               <div>
                 <p className="text-slate-400 text-xs leading-none mb-0.5">PR Number</p>
-                <p className="text-white font-bold text-base tracking-wide">{prNumber}</p>
+                <p className="text-white font-bold text-base tracking-wide">{displayPrNumber}</p>
               </div>
             </div>
 
@@ -2330,10 +2335,10 @@ export default function CreatePRPage() {
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">PR Number</label>
               <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
                 <i className="ri-lock-line text-slate-400 text-sm"></i>
-                <span className="text-sm font-bold text-slate-700 tracking-wide">{prNumber}</span>
-                <span className="ml-auto text-xs bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">Auto</span>
+                <span className="text-sm font-bold text-slate-700 tracking-wide">{displayPrNumber}</span>
+                <span className="ml-auto text-xs bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">On submit</span>
               </div>
-              <p className="text-[11px] text-gray-400 mt-1">Format: PR-EntityCode-FY-####</p>
+              <p className="text-[11px] text-gray-400 mt-1">Official number: PR-EntityCode-FY-#### (assigned when you submit)</p>
             </div>
 
             {/* PR Title */}
@@ -3209,7 +3214,7 @@ export default function CreatePRPage() {
                 <h3 className="text-base font-bold text-gray-900">
                   {isResubmitFlow ? 'Resubmit Purchase Requisition' : 'Submit Purchase Requisition'}
                 </h3>
-                <p className="text-xs text-gray-500">{prNumber}</p>
+                <p className="text-xs text-gray-500">{displayPrNumber}</p>
               </div>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 space-y-2">

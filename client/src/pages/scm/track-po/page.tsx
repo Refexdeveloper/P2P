@@ -606,19 +606,19 @@ export default function TrackPoPage() {
           {loading ? (
             <p className="p-8 text-sm text-gray-500">Loading purchase orders...</p>
           ) : (
-            <table className="w-full min-w-[1280px] table-fixed">
+            <table className="w-full min-w-[1280px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-2 py-3 w-11"></th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PR Number</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PO / WO Number</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[90px]">Type</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Title / Vendor</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase min-w-[160px]">Title / Vendor</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Entity</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Department</th>
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Status</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[140px]">Actions</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[200px]">Status</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[160px]">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -678,13 +678,13 @@ export default function TrackPoPage() {
                           <td className="px-3 py-3 text-sm font-semibold text-gray-900 text-right tabular-nums whitespace-nowrap">
                             {formatCurrency(row.amount)}
                           </td>
-                          <td className="px-3 py-3">
-                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${statusColor(row.status)}`}>
+                          <td className="px-3 py-3 align-middle">
+                            <span className={`inline-flex whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium ${statusColor(row.status)}`}>
                               {row.statusLabel}
                             </span>
                           </td>
-                          <td className="px-3 py-3">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="px-3 py-3 align-middle">
+                            <div className="flex items-center justify-end gap-2 flex-nowrap">
                               {row.kind === 'ready' && (
                                 <>
                                   <button

@@ -66,6 +66,34 @@ export function purchaseTypeLabel(purchaseType) {
   return normalizePurchaseType(purchaseType) === 'work_order' ? 'Work Order' : 'Purchase Order';
 }
 
+/** Temporary / draft PR numbers must not consume the official FY sequence. */
+export function isDraftPlaceholderPrNumber(prNumber) {
+  const n = String(prNumber || '').trim().toUpperCase();
+  return n.startsWith('DRAFT-');
+}
+
+export function stableDraftPrNumber(prId) {
+  return `DRAFT-${Number(prId)}`;
+}
+
+/** Unique value for INSERT before id is known (replaced with DRAFT-{id} after insert). */
+export function tempDraftPrNumber(userId) {
+  return `DRAFT-TMP-${Number(userId) || 0}-${Date.now()}`;
+}
+
+/**
+ * Assign official PR-{ENTITY}-{FY}-{seq} when a draft is submitted.
+ * No-op if the PR already has a real number (e.g. returned for rework).
+ */
+export async function assignOfficialPrNumberIfNeeded(prId, entityId, currentPrNumber, connection = pool) {
+  if (!isDraftPlaceholderPrNumber(currentPrNumber)) {
+    return String(currentPrNumber || '');
+  }
+  const prNumber = await nextDocumentNumber('PR', Number(entityId), connection);
+  await connection.query(`UPDATE purchase_requests SET pr_number = ? WHERE id = ?`, [prNumber, prId]);
+  return prNumber;
+}
+
 /**
  * Atomically increments and returns next number:
  * PR-RGML-2025-26-0001 / PO-RGML-2025-26-0001 / WO-RGML-2025-26-0001

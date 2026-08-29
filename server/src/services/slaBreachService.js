@@ -5,26 +5,30 @@ import {
 } from './emailService.js';
 import { getRecommendedQuotedAmounts, getPurchaseRequestById } from './prService.js';
 import { getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
+import { APPROVAL_SLA_HOURS, taskSlaBreachedSql, taskSlaBreachedBeforeCompleteSql } from '../utils/sla.js';
 
 const SLA_CHECK_INTERVAL_MS = Number(process.env.SLA_CHECK_INTERVAL_MS) || 15 * 60 * 1000;
-const SLA_HOURS = Number(process.env.APPROVAL_SLA_HOURS) || 24;
 
 let started = false;
 let running = false;
 
 /**
- * Pending approval tasks past SLA (default 24h from PR submit / task due_date).
- * Notifies assignee once via email + WhatsApp.
+ * Pending approval tasks past SLA for the current stage only.
+ * SLA clock starts at workflow_tasks.created_at (new task = new SLA on stage change).
+ * Also notifies completed/cancelled tasks that breached while pending but were never emailed.
+ * Notifies assignee once per task via email + WhatsApp (sla_notified_at).
  */
 export async function processSlaBreaches() {
   if (running) return { skipped: true };
   running = true;
   try {
+    const breachSql = taskSlaBreachedSql('wt', APPROVAL_SLA_HOURS);
+    const breachedBeforeCompleteSql = taskSlaBreachedBeforeCompleteSql('wt', APPROVAL_SLA_HOURS);
     const [rows] = await pool.query(
       `SELECT wt.id AS task_id, wt.pr_id, wt.task_type, wt.assigned_role, wt.assigned_user_id,
               wt.due_date, wt.created_at AS task_created_at,
               pr.pr_number, pr.title, pr.total_amount, pr.priority, pr.status AS pr_status,
-              pr.submitted_at, pr.created_at AS pr_created_at, pr.department_id,
+              pr.department_id,
               d.name AS department_name,
               req.name AS requester_name, req.email AS requester_email,
               asg.name AS assignee_name, asg.email AS assignee_email
@@ -33,19 +37,18 @@ export async function processSlaBreaches() {
        JOIN departments d ON d.id = pr.department_id
        JOIN users req ON req.id = pr.requester_id
        LEFT JOIN users asg ON asg.id = wt.assigned_user_id
-       WHERE wt.status = 'pending'
-         AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL', 'PO_APPROVAL', 'PO_BUYER_VERIFY', 'PO_REVISION')
+       WHERE wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL', 'PO_APPROVAL', 'PO_BUYER_VERIFY', 'PO_REVISION')
          AND wt.sla_notified_at IS NULL
          AND (
-           (wt.due_date IS NOT NULL AND wt.due_date < CURDATE())
-           OR DATE_ADD(
-                COALESCE(pr.submitted_at, pr.created_at, wt.created_at),
-                INTERVAL ? HOUR
-              ) < NOW()
+           (wt.status = 'pending' AND ${breachSql})
+           OR (
+             wt.status IN ('completed', 'cancelled')
+             AND wt.completed_at IS NOT NULL
+             AND ${breachedBeforeCompleteSql}
+           )
          )
        ORDER BY wt.id ASC
-       LIMIT 50`,
-      [SLA_HOURS]
+       LIMIT 50`
     );
 
     if (!rows.length) return { checked: 0, notified: 0 };
@@ -131,7 +134,6 @@ export async function processSlaBreaches() {
           console.warn(
             `SLA breach skip: no recipient for task ${row.task_id} (${row.pr_number}) role=${row.assigned_role}`
           );
-          // Mark notified so we don't retry endlessly without recipients
           await pool.query(
             `UPDATE workflow_tasks SET sla_notified_at = NOW() WHERE id = ? AND sla_notified_at IS NULL`,
             [row.task_id]
@@ -156,7 +158,7 @@ export async function processSlaBreaches() {
         );
         notified += 1;
         console.log(
-          `SLA breach notified: ${row.pr_number} task=${row.task_id} → ${approverEmails.join(', ')}`
+          `SLA breach notified: ${row.pr_number} task=${row.task_id} stage=${row.assigned_role} → ${approverEmails.join(', ')}`
         );
       } catch (err) {
         console.error(`SLA breach notify failed for task ${row.task_id}:`, err.message);
@@ -179,10 +181,9 @@ export function startSlaBreachScheduler() {
     });
   };
 
-  // Initial delay so migrations finish first
   setTimeout(run, 20_000);
   setInterval(run, SLA_CHECK_INTERVAL_MS);
   console.log(
-    `SLA breach scheduler started (every ${Math.round(SLA_CHECK_INTERVAL_MS / 60000)} min, SLA=${SLA_HOURS}h)`
+    `SLA breach scheduler started (every ${Math.round(SLA_CHECK_INTERVAL_MS / 60000)} min, per-stage SLA=${APPROVAL_SLA_HOURS}h from task start)`
   );
 }

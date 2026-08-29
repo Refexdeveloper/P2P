@@ -505,33 +505,38 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="w-full overflow-x-hidden">
+        <div className="w-full overflow-x-auto">
           {loading ? (
             <p className="p-8 text-sm text-gray-500">Loading...</p>
           ) : (
-            <table className="w-full table-fixed">
-              <colgroup>
-                <col className="w-10" />
-                <col className="w-[14%]" />
-                <col className="w-[14%]" />
-                <col className="w-[18%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[10%]" />
-                <col className="w-[10%]" />
-                <col className="w-[10%]" />
-              </colgroup>
+            <table className="w-full min-w-[1180px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-1.5 py-3"></th>
-                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">PR Number</th>
-                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">PO Number</th>
-                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Title</th>
-                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Department</th>
-                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Requester</th>
-                  <th className="px-2 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
-                  <th className="px-2 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="px-2 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+                  <th className="w-11 px-2 py-3"></th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[148px]">
+                    PR Number
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[148px]">
+                    PO Number
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[160px]">
+                    Title
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[120px]">
+                    Department
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[110px]">
+                    Requester
+                  </th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[100px]">
+                    Amount
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[200px]">
+                    Status
+                  </th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[190px]">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -547,7 +552,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                     return (
                       <Fragment key={pr.key}>
                         <tr className="border-b hover:bg-gray-50 group">
-                          <td className="px-1.5 py-3 align-middle">
+                          <td className="px-2 py-3 align-middle">
                             <button
                               type="button"
                               onClick={() => toggleExpand(pr.key)}
@@ -558,41 +563,41 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                               <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-base`}></i>
                             </button>
                           </td>
-                          <td className="px-2 py-3 align-middle overflow-hidden">
+                          <td className="px-3 py-3 align-middle">
                             <button
                               type="button"
                               onClick={() => toggleExpand(pr.key)}
-                              className="block w-full max-w-full font-semibold text-teal-600 hover:text-teal-800 cursor-pointer text-left text-sm truncate"
+                              className="block max-w-[148px] font-semibold text-teal-600 hover:text-teal-800 cursor-pointer text-left text-sm truncate"
                               title={pr.prNumber}
                             >
                               {pr.prNumber || '—'}
                             </button>
                           </td>
-                          <td className="px-2 py-3 align-middle overflow-hidden text-gray-900 text-sm font-bold truncate" title={pr.poNumber || undefined}>
+                          <td className="px-3 py-3 align-middle text-gray-900 text-sm font-bold truncate max-w-[148px]" title={pr.poNumber || undefined}>
                             {pr.poNumber || '—'}
                           </td>
-                          <td className="px-2 py-3 align-middle overflow-hidden text-gray-900 font-medium text-sm truncate" title={pr.title}>
+                          <td className="px-3 py-3 align-middle text-gray-900 font-medium text-sm truncate min-w-0" title={pr.title}>
                             {pr.title}
                           </td>
-                          <td className="px-2 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.department}>
+                          <td className="px-3 py-3 align-middle text-gray-700 text-sm truncate max-w-[120px]" title={pr.department}>
                             {pr.department}
                           </td>
-                          <td className="px-2 py-3 align-middle overflow-hidden text-gray-700 text-sm truncate" title={pr.requester}>
+                          <td className="px-3 py-3 align-middle text-gray-700 text-sm truncate max-w-[110px]" title={pr.requester}>
                             {pr.requester}
                           </td>
-                          <td className="px-2 py-3 align-middle overflow-hidden text-right font-semibold text-gray-900 text-sm tabular-nums truncate" title={formatCurrency(pr.amount)}>
+                          <td className="px-3 py-3 align-middle text-right font-semibold text-gray-900 text-sm tabular-nums whitespace-nowrap">
                             {formatCurrency(pr.amount)}
                           </td>
-                          <td className="px-2 py-3 align-middle overflow-hidden">
+                          <td className="px-3 py-3 align-middle">
                             <span
-                              className={`inline-flex max-w-full px-2 py-1 rounded-full text-xs font-medium truncate ${getStatusColor(pr.statusRaw, pr.status)}`}
+                              className={`inline-flex whitespace-nowrap px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pr.statusRaw, pr.status)}`}
                               title={pr.statusLabel}
                             >
                               {pr.statusLabel}
                             </span>
                           </td>
-                          <td className="px-2 py-3 align-middle">
-                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          <td className="px-3 py-3 align-middle">
+                            <div className="flex items-center justify-end gap-1.5 flex-nowrap">
                               {pr.status === 'Ready for PO' && (
                                 <button
                                   type="button"

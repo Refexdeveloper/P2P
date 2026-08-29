@@ -12,6 +12,12 @@ import {
   ensureApproverUser,
 } from './refexOneService.js';
 import {
+  getTaskSlaHoursRemaining,
+  isTaskSlaBreached,
+  getTaskSlaDeadlineMs,
+  APPROVAL_SLA_HOURS,
+} from '../utils/sla.js';
+import {
   PR_STATUS,
   STAGE,
   ROLE_STAGE_MAP,
@@ -23,7 +29,14 @@ import {
   formatDate,
   formatDateTime,
 } from '../utils/constants.js';
-import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './documentNumberService.js';
+import {
+  nextDocumentNumber,
+  normalizePurchaseType,
+  purchaseTypeLabel,
+  tempDraftPrNumber,
+  stableDraftPrNumber,
+  assignOfficialPrNumberIfNeeded,
+} from './documentNumberService.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 
 async function fetchLatestPoMetaByPrIds(prIds) {
@@ -1136,7 +1149,12 @@ export async function createPurchaseRequest(user, body) {
   try {
     await conn.beginTransaction();
 
-    const prNumber = await nextDocumentNumber('PR', Number(entityId), conn);
+    let prNumber;
+    if (submit) {
+      prNumber = await nextDocumentNumber('PR', Number(entityId), conn);
+    } else {
+      prNumber = tempDraftPrNumber(user.id);
+    }
 
     let result;
     try {
@@ -1225,6 +1243,11 @@ export async function createPurchaseRequest(user, body) {
     }
 
     const prId = result.insertId;
+
+    if (!submit) {
+      prNumber = stableDraftPrNumber(prId);
+      await conn.query(`UPDATE purchase_requests SET pr_number = ? WHERE id = ?`, [prNumber, prId]);
+    }
 
     for (const item of lineItems) {
       await insertPrLineItem(conn, prId, item);
@@ -3097,6 +3120,18 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
       await updatePurchaseRequest(user, prId, updateFields, conn, { skipRfqPersist: true });
     }
 
+    const [numberRows] = await conn.query(
+      `SELECT entity_id, pr_number FROM purchase_requests WHERE id = ?`,
+      [prId]
+    );
+    const numberRow = numberRows[0] || pr;
+    await assignOfficialPrNumberIfNeeded(
+      prId,
+      numberRow.entity_id,
+      numberRow.pr_number,
+      conn
+    );
+
     await conn.query(
       `UPDATE purchase_requests
        SET status = ?, current_stage = ?, submitted_at = NOW(), updated_at = NOW()
@@ -3292,11 +3327,58 @@ export async function getRecommendedQuotedAmounts(prIds = []) {
   return map;
 }
 
-function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, displayAmount = null }) {
-  const due = new Date(pr.submittedDate || Date.now());
-  due.setDate(due.getDate() + 1);
-  const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
+async function getPendingTaskSlaByPrIds(prIds = []) {
+  const ids = [...new Set((prIds || []).map((id) => Number(id)).filter((id) => id > 0))];
+  const map = new Map();
+  if (!ids.length) return map;
+  const placeholders = ids.map(() => '?').join(',');
+  const [rows] = await pool.query(
+    `SELECT wt.pr_id, wt.created_at, wt.due_date
+     FROM workflow_tasks wt
+     INNER JOIN (
+       SELECT pr_id, MAX(id) AS max_id
+       FROM workflow_tasks
+       WHERE pr_id IN (${placeholders}) AND status = 'pending'
+       GROUP BY pr_id
+     ) latest ON latest.max_id = wt.id`,
+    ids
+  );
+  for (const row of rows) {
+    map.set(Number(row.pr_id), { createdAt: row.created_at, dueDate: row.due_date });
+  }
+  return map;
+}
+
+function buildPoTaskSlaFields(createdAt, dueDate, fallbackHours = APPROVAL_SLA_HOURS) {
+  const started = createdAt || new Date();
+  const deadlineMs = getTaskSlaDeadlineMs(started, dueDate);
+  const hoursLeft = getTaskSlaHoursRemaining(started, dueDate);
+  return {
+    submittedDate: formatDate(started),
+    dueDate: formatDate(new Date(deadlineMs)),
+    slaRemaining: hoursLeft || fallbackHours,
+    isOverdue: isTaskSlaBreached(started, dueDate),
+  };
+}
+
+function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, displayAmount = null, taskSla = null }) {
   const pending = status === 'pending_approval';
+  let hoursLeft = 0;
+  let due = new Date();
+  let isOverdue = false;
+  let stageStartedDate = pr.submittedDate;
+
+  if (pending && taskSla?.createdAt) {
+    hoursLeft = getTaskSlaHoursRemaining(taskSla.createdAt, taskSla.dueDate);
+    due = new Date(getTaskSlaDeadlineMs(taskSla.createdAt, taskSla.dueDate));
+    isOverdue = isTaskSlaBreached(taskSla.createdAt, taskSla.dueDate);
+    stageStartedDate = formatDate(taskSla.createdAt);
+  } else if (pending) {
+    due = new Date(pr.submittedDate || Date.now());
+    due.setDate(due.getDate() + 1);
+    hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
+    isOverdue = hoursLeft <= 0;
+  }
   const amount =
     displayAmount != null && Number.isFinite(Number(displayAmount))
       ? Number(displayAmount)
@@ -3317,10 +3399,10 @@ function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, display
     priority: pr.priorityLower || mapPriorityToFrontend(pr.priority),
     status,
     statusUI: pr.statusUI,
-    submittedDate: decidedAt ? formatDate(decidedAt) : pr.submittedDate,
+    submittedDate: decidedAt ? formatDate(decidedAt) : pending && taskSla?.createdAt ? stageStartedDate : pr.submittedDate,
     dueDate: formatDate(due),
-    slaRemaining: pending ? hoursLeft || 24 : 0,
-    isOverdue: pending && hoursLeft <= 0,
+    slaRemaining: pending ? hoursLeft || APPROVAL_SLA_HOURS : 0,
+    isOverdue: pending && isOverdue,
     lineItems: Array.isArray(pr.lineItems) ? pr.lineItems.length : (pr.items || 0),
     requestType: pr.requestType,
     requesterRole: 'Requester',
@@ -3481,6 +3563,7 @@ export async function listTasks(user) {
 
   // Prefetch recommended vendor quote amounts for vendor-final / post-RFQ rows
   const quoteAmountByPr = await getRecommendedQuotedAmounts(prs.map((p) => p.id));
+  const taskSlaByPr = await getPendingTaskSlaByPrIds([...pendingIds]);
 
   const tasks = prs.map((pr) => {
     const isPending = pendingIds.has(pr.id);
@@ -3506,6 +3589,7 @@ export async function listTasks(user) {
       isPostRfq,
       decidedAt: !isPending ? decision?.decidedAt : null,
       displayAmount,
+      taskSla: isPending ? taskSlaByPr.get(Number(pr.id)) : null,
     });
   });
 
@@ -3513,7 +3597,7 @@ export async function listTasks(user) {
   if (user.role === 'SCM Buyer') {
     const [buyerVerifyRows] = await pool.query(
       `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, pr.title, pr.priority,
-              d.name AS department_name, u.name AS requester_name, wt.due_date,
+              d.name AS department_name, u.name AS requester_name, wt.created_at AS task_created_at, wt.due_date,
               e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
        FROM purchase_orders po
        JOIN purchase_requests pr ON pr.id = po.pr_id
@@ -3526,9 +3610,7 @@ export async function listTasks(user) {
        ORDER BY po.signed_at DESC, po.updated_at DESC`
     );
     for (const row of buyerVerifyRows) {
-      const due = row.due_date ? new Date(row.due_date) : new Date();
-      if (!row.due_date) due.setDate(due.getDate() + 1);
-      const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
+      const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date);
       tasks.push({
         id: `po-verify-${row.po_id}`,
         taskId: row.po_id,
@@ -3544,10 +3626,10 @@ export async function listTasks(user) {
         priority: mapPriorityToFrontend(row.priority),
         status: 'pending_approval',
         statusUI: 'Pending Buyer Verify',
-        submittedDate: formatDate(due),
-        dueDate: formatDate(due),
-        slaRemaining: hoursLeft || 24,
-        isOverdue: hoursLeft <= 0,
+        submittedDate: sla.submittedDate,
+        dueDate: sla.dueDate,
+        slaRemaining: sla.slaRemaining,
+        isOverdue: sla.isOverdue,
         lineItems: 0,
         requestType: 'PO',
         requesterRole: 'SCM Manager',
@@ -3560,7 +3642,7 @@ export async function listTasks(user) {
 
     const [buyerReviseRows] = await pool.query(
       `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, pr.title, pr.priority,
-              d.name AS department_name, u.name AS requester_name, wt.due_date,
+              d.name AS department_name, u.name AS requester_name, wt.created_at AS task_created_at, wt.due_date,
               e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
        FROM purchase_orders po
        JOIN purchase_requests pr ON pr.id = po.pr_id
@@ -3577,9 +3659,7 @@ export async function listTasks(user) {
        ORDER BY po.updated_at DESC`
     );
     for (const row of buyerReviseRows) {
-      const due = row.due_date ? new Date(row.due_date) : new Date();
-      if (!row.due_date) due.setDate(due.getDate() + 2);
-      const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
+      const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS * 2);
       tasks.push({
         id: `po-revise-${row.po_id}`,
         taskId: row.po_id,
@@ -3596,10 +3676,10 @@ export async function listTasks(user) {
         priority: mapPriorityToFrontend(row.priority),
         status: 'pending_approval',
         statusUI: 'Sent Back — Revise PO',
-        submittedDate: formatDate(due),
-        dueDate: formatDate(due),
-        slaRemaining: hoursLeft || 48,
-        isOverdue: hoursLeft <= 0,
+        submittedDate: sla.submittedDate,
+        dueDate: sla.dueDate,
+        slaRemaining: sla.slaRemaining,
+        isOverdue: sla.isOverdue,
         lineItems: 0,
         requestType: 'PO',
         requesterRole: 'SCM Manager',
@@ -3615,7 +3695,7 @@ export async function listTasks(user) {
   if (user.role === 'SCM Manager') {
     const [poSignRows] = await pool.query(
       `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, pr.title, pr.priority,
-              d.name AS department_name, u.name AS requester_name, wt.due_date,
+              d.name AS department_name, u.name AS requester_name, wt.created_at AS task_created_at, wt.due_date,
               e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
        FROM purchase_orders po
        JOIN purchase_requests pr ON pr.id = po.pr_id
@@ -3628,9 +3708,7 @@ export async function listTasks(user) {
        ORDER BY po.updated_at DESC`
     );
     for (const row of poSignRows) {
-      const due = row.due_date ? new Date(row.due_date) : new Date();
-      if (!row.due_date) due.setDate(due.getDate() + 2);
-      const hoursLeft = Math.max(0, Math.round((due.getTime() - Date.now()) / 3600000));
+      const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS * 2);
       tasks.push({
         id: `po-sign-${row.po_id}`,
         taskId: row.po_id,
@@ -3647,10 +3725,10 @@ export async function listTasks(user) {
         priority: mapPriorityToFrontend(row.priority),
         status: 'pending_approval',
         statusUI: 'Pending PO Sign',
-        submittedDate: formatDate(due),
-        dueDate: formatDate(due),
-        slaRemaining: hoursLeft || 48,
-        isOverdue: hoursLeft <= 0,
+        submittedDate: sla.submittedDate,
+        dueDate: sla.dueDate,
+        slaRemaining: sla.slaRemaining,
+        isOverdue: sla.isOverdue,
         lineItems: 0,
         requestType: 'PO',
         requesterRole: 'SCM Buyer',
