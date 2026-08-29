@@ -126,7 +126,7 @@ function mapAuthUser(u: AuthUser): User {
     departmentName: u.departmentName,
     isSuperAdmin: Boolean(u.isSuperAdmin),
     permissions: u.permissions || [],
-    navigation: ensureNavigation(role, u.navigation),
+    navigation: ensureNavigation(role, u.navigation, u.email),
   };
 }
 

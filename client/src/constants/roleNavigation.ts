@@ -382,7 +382,15 @@ function isMastersNavCode(code?: string) {
   return Boolean(code && (MASTER_NAV_CODES as readonly string[]).includes(code));
 }
 
-export function ensureNavigation(role: string | undefined | null, navigation?: NavItem[] | null): NavItem[] {
+const EMAIL_NAV_CODES: Record<string, string[]> = {
+  'srivaths.varadharajan@refex.co.in': ['nav.cfo_insights'],
+};
+
+export function ensureNavigation(
+  role: string | undefined | null,
+  navigation?: NavItem[] | null,
+  email?: string | null
+): NavItem[] {
   const base = navigation?.length
     ? navigation.map((item) => {
         const catalog = NAV_BY_CODE[item.code];
@@ -476,9 +484,20 @@ export function ensureNavigation(role: string | undefined | null, navigation?: N
     });
   }
 
-  // CFO: Dashboard + My Tasks only
-  if (role === 'CFO') {
+  // CFO: use server nav when present; otherwise role defaults
+  if (role === 'CFO' && !navigation?.length) {
     merged = getDefaultNavigationForRole('CFO');
+  }
+
+  const emailOverride = EMAIL_NAV_CODES[String(email || '').trim().toLowerCase()];
+  if (emailOverride?.length) {
+    const allowed = new Set(emailOverride);
+    merged = merged.filter((n) => allowed.has(n.code));
+    for (const code of emailOverride) {
+      if (!merged.some((n) => n.code === code) && NAV_BY_CODE[code]) {
+        merged.push(NAV_BY_CODE[code]);
+      }
+    }
   }
 
   // L2 Manager: one My Tasks entry (nav.pr_manager_dashboard), never also nav.tasks

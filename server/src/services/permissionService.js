@@ -7,6 +7,27 @@ const EMAIL_ROLE_OVERRIDES = {
   'srivaths.varadharajan@refex.co.in': 'CFO',
 };
 
+/** Per-user nav override — Financial Insights only (no PR Approvals / My Tasks). */
+const EMAIL_NAV_PERMISSIONS = {
+  'srivaths.varadharajan@refex.co.in': ['nav.cfo_insights'],
+};
+
+export function getEmailNavPermissionOverride(email) {
+  return EMAIL_NAV_PERMISSIONS[String(email || '').trim().toLowerCase()] || null;
+}
+
+export async function syncEmailNavPermissions(userId, email) {
+  const override = getEmailNavPermissionOverride(email);
+  if (!override) return;
+  await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [userId]);
+  for (const code of override) {
+    await pool.query(
+      `INSERT INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
+      [userId, code]
+    );
+  }
+}
+
 export async function applyEmailRoleOverride(userRow) {
   const email = String(userRow.email || '').trim().toLowerCase();
   const targetRole = EMAIL_ROLE_OVERRIDES[email];
@@ -225,9 +246,15 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
   return stored;
 }
 
-export async function getUserPermissionCodes(userId, role) {
+export async function getUserPermissionCodes(userId, role, email = null) {
   if (isSuperAdmin(role)) {
     return NAV_ITEMS.map((n) => n.code);
+  }
+
+  const emailOverride = getEmailNavPermissionOverride(email);
+  if (emailOverride) {
+    await syncEmailNavPermissions(userId, email);
+    return emailOverride.filter((c) => NAV_ITEMS.some((n) => n.code === c));
   }
 
   const defaults = ROLE_DEFAULT_PERMISSIONS[role] || ['nav.home_dashboard', 'nav.tasks'];
@@ -342,8 +369,8 @@ export async function getUserPermissionCodes(userId, role) {
   return defaults;
 }
 
-export async function getUserNavigation(userId, role) {
-  let codes = await getUserPermissionCodes(userId, role);
+export async function getUserNavigation(userId, role, email = null) {
+  let codes = await getUserPermissionCodes(userId, role, email);
   let codeSet = new Set(codes);
   let nav = NAV_ITEMS.filter((n) => codeSet.has(n.code)).sort((a, b) => a.sort - b.sort);
 
@@ -364,8 +391,8 @@ export async function getUserNavigation(userId, role) {
     }
   }
 
-  // CFO: Dashboard + My Tasks only
-  if (role === 'CFO') {
+  // CFO: Dashboard + My Tasks only (unless email-specific override)
+  if (role === 'CFO' && !getEmailNavPermissionOverride(email)) {
     const allowed = new Set(ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks']);
     nav = nav.filter((n) => allowed.has(n.code));
     const order = ROLE_DEFAULT_PERMISSIONS.CFO || [];
@@ -438,8 +465,9 @@ export async function seedUserPermissionsForRole(userId, role) {
 
 export async function enrichAuthUser(userRow) {
   const effectiveUser = await applyEmailRoleOverride(userRow);
-  const permissions = await getUserPermissionCodes(effectiveUser.id, effectiveUser.role);
-  const navigation = await getUserNavigation(effectiveUser.id, effectiveUser.role);
+  await syncEmailNavPermissions(effectiveUser.id, effectiveUser.email);
+  const permissions = await getUserPermissionCodes(effectiveUser.id, effectiveUser.role, effectiveUser.email);
+  const navigation = await getUserNavigation(effectiveUser.id, effectiveUser.role, effectiveUser.email);
   return {
     id: effectiveUser.id,
     email: effectiveUser.email,

@@ -56,7 +56,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const collapsed = !mobileOpen && !hovered;
 
   const menuItems = useMemo<MenuNode[]>(() => {
-    const nav = ensureNavigation(user?.role, user?.navigation);
+    const nav = ensureNavigation(user?.role, user?.navigation, user?.email);
     const masters: MenuLeaf[] = nav.filter(isMastersNavItem).map((item) => ({
       kind: 'link',
       icon: item.icon,
@@ -95,7 +95,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
     }
     if (group && !mastersInserted) nodes.push(group);
     return nodes;
-  }, [user?.role, user?.navigation]);
+  }, [user?.role, user?.navigation, user?.email]);
 
   useEffect(() => {
     const onMastersPath =
@@ -112,7 +112,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
 
   useEffect(() => {
     if (!user) return;
-    const nav = ensureNavigation(user.role, user.navigation);
+    const nav = ensureNavigation(user.role, user.navigation, user.email);
     const hasMasters = nav.some(isMastersNavItem);
     const needsHeal =
       !user.navigation?.length ||
