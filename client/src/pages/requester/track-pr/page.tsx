@@ -858,6 +858,7 @@ export default function TrackPRPage() {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         scope: 'requester',
+        involvedOnly: true,
       });
       const list = (res.data as Array<Record<string, unknown>>) || [];
       setRows(list.map(mapApiPr));
@@ -926,7 +927,7 @@ export default function TrackPRPage() {
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">Track Purchase Requisitions</h1>
             <p className="text-sm text-gray-600 mt-1">
-              Monitor your PR submissions with SLA tracking — 1 day per approval stage
+              PRs you requested, approved, or were involved in — with SLA tracking (1 day per stage)
             </p>
           </div>
           <button
@@ -1620,10 +1621,10 @@ export default function TrackPRPage() {
                 <div className="px-6 py-12 text-center">
                   <i className="ri-file-list-3-line text-5xl text-gray-300 mb-4"></i>
                   <h3 className="text-sm font-medium text-gray-900 mb-1">
-                    No purchase requisitions found
+                    No purchase requisitions found for you
                   </h3>
                   <p className="text-sm text-gray-500">
-                    Try adjusting your filters or create a new PR
+                    Only PRs you requested, approved, or were involved in are shown here
                   </p>
                 </div>
               )}

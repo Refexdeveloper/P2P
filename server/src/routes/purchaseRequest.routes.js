@@ -73,6 +73,10 @@ router.get('/', async (req, res) => {
         requestType: req.query.requestType,
         dateFrom: req.query.dateFrom,
         dateTo: req.query.dateTo,
+        involvedOnly:
+          req.query.involvedOnly === 'true' ||
+          req.query.involvedOnly === '1' ||
+          req.query.scope === 'involved',
       });
       return res.json(result);
     }

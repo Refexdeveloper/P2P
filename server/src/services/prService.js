@@ -1352,6 +1352,62 @@ function hodAssignedTaskSql(user) {
   };
 }
 
+/** Track PR / my PRs: user submitted, approved, or appears in workflow / approval chain. */
+function buildPrInvolvementFilterSql(user) {
+  const userId = user.id;
+  const userEmail = String(user.email || '').toLowerCase().trim();
+  const userIdJson = JSON.stringify(Number(userId));
+
+  return {
+    clause: ` AND (
+      pr.requester_id = ?
+      OR pr.approval_user_id = ?
+      OR (
+        pr.approval_user_ids IS NOT NULL
+        AND JSON_CONTAINS(pr.approval_user_ids, ?, '$')
+      )
+      OR EXISTS (
+        SELECT 1 FROM pr_approvals pa
+        LEFT JOIN users pau ON pau.id = pa.approver_id
+        WHERE pa.pr_id = pr.id
+          AND (
+            pa.approver_id = ?
+            OR (? <> '' AND LOWER(TRIM(pau.email)) = ?)
+          )
+      )
+      OR EXISTS (
+        SELECT 1 FROM workflow_tasks wt
+        LEFT JOIN users wau ON wau.id = wt.assigned_user_id
+        WHERE wt.pr_id = pr.id
+          AND (
+            wt.assigned_user_id = ?
+            OR (? <> '' AND LOWER(TRIM(wau.email)) = ?)
+          )
+      )
+      OR EXISTS (
+        SELECT 1 FROM users ru
+        WHERE ru.id = pr.requester_id
+          AND ru.supervisor_email IS NOT NULL
+          AND ? <> ''
+          AND LOWER(TRIM(ru.supervisor_email)) = ?
+      )
+    )`,
+    params: [
+      userId,
+      userId,
+      userIdJson,
+      userId,
+      userEmail,
+      userEmail,
+      userId,
+      userEmail,
+      userEmail,
+      userEmail,
+      userEmail,
+    ],
+  };
+}
+
 const REQUESTER_PENDING_STATUSES = [
   PR_STATUS.PENDING_HOD_APPROVAL,
   PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
@@ -1373,11 +1429,19 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
   const requestType = String(filters.requestType || 'all');
   const dateFrom = String(filters.dateFrom || '').trim();
   const dateTo = String(filters.dateTo || '').trim();
+  const involvedOnly =
+    filters.involvedOnly === true ||
+    filters.involvedOnly === 'true' ||
+    String(filters.involvedOnly || '').toLowerCase() === '1';
 
   let where = 'WHERE 1=1';
   const params = [];
 
-  if (user.role === 'Requester') {
+  if (involvedOnly && !isSuperAdmin(user.role)) {
+    const inv = buildPrInvolvementFilterSql(user);
+    where += inv.clause;
+    params.push(...inv.params);
+  } else if (user.role === 'Requester') {
     where += ' AND pr.requester_id = ?';
     params.push(user.id);
   }

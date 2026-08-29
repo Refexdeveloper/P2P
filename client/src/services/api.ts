@@ -184,6 +184,7 @@ export type RequesterPrListParams = {
   dateFrom?: string;
   dateTo?: string;
   scope?: 'requester';
+  involvedOnly?: boolean;
 };
 
 export type RequesterPrListMeta = {
@@ -223,6 +224,7 @@ export const prApi = {
     if (params?.dateFrom) qs.set('dateFrom', params.dateFrom);
     if (params?.dateTo) qs.set('dateTo', params.dateTo);
     if (params?.scope) qs.set('scope', params.scope);
+    if (params?.involvedOnly) qs.set('involvedOnly', 'true');
     // Default requester-fast path when any list params are used
     if (params && !params.scope && (params.page != null || params.search || params.status)) {
       qs.set('scope', 'requester');
