@@ -52,7 +52,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const ROLE_HOME: Partial<Record<UserRole, string>> = {
   Requester: '/requester/dashboard',
   'PR Manager': '/tasks',
-  CFO: '/dashboard',
+  CFO: '/cfo/dashboard',
   Vendor: '/vendor/dashboard',
   'Tech Evaluator': '/tech-evaluator/rfq-evaluation',
   'HOD Approver': '/tasks',

@@ -2,6 +2,22 @@ import pool from '../config/db.js';
 
 export const SUPER_ADMIN_ROLE = 'Super Admin';
 
+/** Known users who must always resolve to a specific P2P role (e.g. Group CEO / CFO). */
+const EMAIL_ROLE_OVERRIDES = {
+  'srivaths.varadharajan@refex.co.in': 'CFO',
+};
+
+export async function applyEmailRoleOverride(userRow) {
+  const email = String(userRow.email || '').trim().toLowerCase();
+  const targetRole = EMAIL_ROLE_OVERRIDES[email];
+  if (!targetRole || userRow.role === targetRole) return userRow;
+
+  await pool.query(`UPDATE users SET role = ? WHERE id = ?`, [targetRole, userRow.id]);
+  await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [userRow.id]);
+  await seedUserPermissionsForRole(userRow.id, targetRole);
+  return { ...userRow, role: targetRole };
+}
+
 export const NAV_ITEMS = [
   { code: 'nav.requester_dashboard', label: 'Dashboard', path: '/requester/dashboard', icon: 'ri-dashboard-line', group: 'Requester', sort: 10 },
   { code: 'nav.create_pr', label: 'Create PR', path: '/requester/create-pr', icon: 'ri-add-circle-line', group: 'Requester', sort: 11 },
@@ -10,8 +26,8 @@ export const NAV_ITEMS = [
   { code: 'nav.pr_manager_dashboard', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'L2 Manager', sort: 20 },
   { code: 'nav.rfq_approval', label: 'RFQ Approval', path: '/rfq-approval', icon: 'ri-bar-chart-box-line', group: 'Approvals', sort: 30 },
   { code: 'nav.tasks', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'General', sort: 40 },
-  { code: 'nav.cfo_insights', label: 'Dashboard', path: '/dashboard', icon: 'ri-dashboard-line', group: 'CFO', sort: 50 },
-  { code: 'nav.cfo_dashboard', label: 'PR Approvals', path: '/cfo/dashboard', icon: 'ri-checkbox-circle-line', group: 'CFO', sort: 51 },
+  { code: 'nav.cfo_dashboard', label: 'Dashboard', path: '/cfo/dashboard', icon: 'ri-dashboard-line', group: 'CFO', sort: 50 },
+  { code: 'nav.cfo_insights', label: 'Financial Insights', path: '/dashboard', icon: 'ri-line-chart-line', group: 'CFO', sort: 51 },
   { code: 'nav.home_dashboard', label: 'Dashboard', path: '/', icon: 'ri-dashboard-line', group: 'General', sort: 5 },
   { code: 'nav.purchase_requests', label: 'Dashboard', path: '/scm/purchase-requests', icon: 'ri-dashboard-line', group: 'SCM', sort: 60 },
   { code: 'nav.scm_rfq_entry', label: 'RFQ Entry', path: '/scm/rfq-entry', icon: 'ri-file-list-line', group: 'SCM', sort: 61 },
@@ -60,7 +76,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.department_master',
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
-  CFO: ['nav.cfo_insights', 'nav.tasks'],
+  CFO: ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
@@ -149,7 +165,7 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
   if (!stored.length) return [...defaults];
 
   if (role === 'CFO') {
-    const allowed = ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.tasks'];
+    const allowed = ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.tasks'];
     return allowed.filter((c) => validCodes.has(c));
   }
 
@@ -253,7 +269,7 @@ export async function getUserPermissionCodes(userId, role) {
         }
       }
       if (role === 'CFO') {
-        const allowed = ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.tasks'];
+        const allowed = ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.tasks'];
         for (const code of stored.filter((c) => !allowed.includes(c))) {
           await pool.query(`DELETE FROM user_permissions WHERE user_id = ? AND permission_code = ?`, [userId, code]);
         }
@@ -350,7 +366,7 @@ export async function getUserNavigation(userId, role) {
 
   // CFO: Dashboard + My Tasks only
   if (role === 'CFO') {
-    const allowed = new Set(ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.tasks']);
+    const allowed = new Set(ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.tasks']);
     nav = nav.filter((n) => allowed.has(n.code));
     const order = ROLE_DEFAULT_PERMISSIONS.CFO || [];
     const rank = new Map(order.map((code, i) => [code, i]));
@@ -421,16 +437,17 @@ export async function seedUserPermissionsForRole(userId, role) {
 }
 
 export async function enrichAuthUser(userRow) {
-  const permissions = await getUserPermissionCodes(userRow.id, userRow.role);
-  const navigation = await getUserNavigation(userRow.id, userRow.role);
+  const effectiveUser = await applyEmailRoleOverride(userRow);
+  const permissions = await getUserPermissionCodes(effectiveUser.id, effectiveUser.role);
+  const navigation = await getUserNavigation(effectiveUser.id, effectiveUser.role);
   return {
-    id: userRow.id,
-    email: userRow.email,
-    name: userRow.name,
-    role: userRow.role,
-    departmentId: userRow.department_id ?? userRow.departmentId ?? null,
-    departmentName: userRow.department_name ?? userRow.departmentName ?? null,
-    isSuperAdmin: isSuperAdmin(userRow.role),
+    id: effectiveUser.id,
+    email: effectiveUser.email,
+    name: effectiveUser.name,
+    role: effectiveUser.role,
+    departmentId: effectiveUser.department_id ?? effectiveUser.departmentId ?? null,
+    departmentName: effectiveUser.department_name ?? effectiveUser.departmentName ?? null,
+    isSuperAdmin: isSuperAdmin(effectiveUser.role),
     permissions,
     navigation: navigation.map((n) => ({
       code: n.code,

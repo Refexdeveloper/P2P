@@ -51,18 +51,18 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-task-line',
     group: 'General',
   },
-  'nav.cfo_insights': {
-    code: 'nav.cfo_insights',
+  'nav.cfo_dashboard': {
+    code: 'nav.cfo_dashboard',
     label: 'Dashboard',
-    path: '/dashboard',
+    path: '/cfo/dashboard',
     icon: 'ri-dashboard-line',
     group: 'CFO',
   },
-  'nav.cfo_dashboard': {
-    code: 'nav.cfo_dashboard',
-    label: 'PR Approvals',
-    path: '/cfo/dashboard',
-    icon: 'ri-checkbox-circle-line',
+  'nav.cfo_insights': {
+    code: 'nav.cfo_insights',
+    label: 'Financial Insights',
+    path: '/dashboard',
+    icon: 'ri-line-chart-line',
     group: 'CFO',
   },
   'nav.purchase_requests': {
@@ -312,7 +312,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     ...REQUESTER_MASTER_NAV_CODES,
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
-  CFO: ['nav.cfo_insights', 'nav.tasks'],
+  CFO: ['nav.cfo_dashboard', 'nav.cfo_insights', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
