@@ -324,7 +324,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
-    'nav.rfq_approval',
+    'nav.scm_rfq_entry',
     'nav.create_po',
     'nav.buyer_final_verify',
     'nav.vendor_po_acceptance',
@@ -336,7 +336,6 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.department_master',
     'nav.po_letterhead_master',
     'nav.letterhead_master',
-    'nav.scm_rfq_entry',
     'nav.po_excel_import',
     'nav.vendor_quotation',
     'nav.vendor_comparison',
@@ -467,13 +466,13 @@ export function ensureNavigation(
     });
   }
 
-  // SCM Buyer: Dashboard → RFQ Approval → Create PO → Buyer Final Verify → Vendor Acceptance → Track PO → Masters
+  // SCM Buyer: Dashboard → RFQ Entry → Create PO → Buyer Final Verify → Vendor Acceptance → Track PO → Masters
   if (role === 'SCM Buyer') {
-    merged = merged.filter((n) => n.code !== 'nav.tasks');
+    merged = merged.filter((n) => n.code !== 'nav.tasks' && n.code !== 'nav.rfq_approval');
     const codes = new Set(merged.map((n) => n.code));
     for (const code of [
       'nav.purchase_requests',
-      'nav.rfq_approval',
+      'nav.scm_rfq_entry',
       'nav.create_po',
       'nav.buyer_final_verify',
       'nav.vendor_po_acceptance',

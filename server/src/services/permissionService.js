@@ -103,7 +103,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
   'SCM Buyer': [
     'nav.purchase_requests',
-    'nav.rfq_approval',
+    'nav.scm_rfq_entry',
     'nav.create_po',
     'nav.buyer_final_verify',
     'nav.vendor_po_acceptance',
@@ -115,7 +115,6 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.department_master',
     'nav.po_letterhead_master',
     'nav.letterhead_master',
-    'nav.scm_rfq_entry',
     'nav.po_excel_import',
     'nav.vendor_quotation',
     'nav.vendor_comparison',
@@ -227,16 +226,17 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
     if (role === 'SCM Buyer') {
       healCodes.push(
         'nav.purchase_requests',
-        'nav.rfq_approval',
+        'nav.scm_rfq_entry',
         'nav.create_po',
         'nav.buyer_final_verify',
         'nav.vendor_po_acceptance',
         'nav.track_po',
-        'nav.scm_rfq_entry',
         'nav.po_excel_import'
       );
       const tasksIdx = stored.indexOf('nav.tasks');
       if (tasksIdx >= 0) stored.splice(tasksIdx, 1);
+      const rfqIdx = stored.indexOf('nav.rfq_approval');
+      if (rfqIdx >= 0) stored.splice(rfqIdx, 1);
     }
     if (role === 'SCM Manager') {
       healCodes.push('nav.scm_manager_dashboard', 'nav.po_approval', 'nav.rfq_approval', 'nav.track_po');
@@ -336,12 +336,11 @@ export async function getUserPermissionCodes(userId, role, email = null) {
         if (role === 'SCM Buyer') {
           healCodes.push(
             'nav.purchase_requests',
-            'nav.rfq_approval',
+            'nav.scm_rfq_entry',
             'nav.create_po',
             'nav.buyer_final_verify',
             'nav.vendor_po_acceptance',
             'nav.track_po',
-            'nav.scm_rfq_entry',
             'nav.po_excel_import'
           );
           if (stored.includes('nav.tasks')) {
@@ -349,6 +348,14 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             if (idx >= 0) stored.splice(idx, 1);
             await pool.query(
               `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.tasks'`,
+              [userId]
+            );
+          }
+          if (stored.includes('nav.rfq_approval')) {
+            const idx = stored.indexOf('nav.rfq_approval');
+            if (idx >= 0) stored.splice(idx, 1);
+            await pool.query(
+              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.rfq_approval'`,
               [userId]
             );
           }
