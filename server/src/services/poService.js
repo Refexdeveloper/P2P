@@ -2808,7 +2808,7 @@ export async function assertRequesterPoDocumentAccess(user, poId) {
     throw new Error('Unauthorized');
   }
 
-  const status = String(po.status || '');
+  const status = String(po.statusRaw || '').trim().toLowerCase();
   if (!REQUESTER_PO_DOCUMENT_STATUSES.has(status)) {
     throw new Error('PO document is available only after SCM Buyer final verification');
   }

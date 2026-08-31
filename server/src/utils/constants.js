@@ -206,7 +206,13 @@ export function resolveRequesterPrDisplay(prStatus, prFlow = 'standard', vendorS
       const releasedLabel =
         poStatus === 'sent_to_vendor'
           ? 'PO Released to Vendor'
-          : 'PO Released';
+          : poStatus === 'awaiting_grn'
+            ? 'Awaiting GRN'
+            : poStatus === 'grn_completed'
+              ? 'GRN Completed'
+              : poStatus === 'invoice_entry'
+                ? 'Invoice Entry'
+                : 'PO Released';
       return {
         statusFrontend: 'po_issued',
         statusUI: releasedLabel,
