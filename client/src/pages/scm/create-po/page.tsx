@@ -12,19 +12,29 @@ import {
   masterApi,
   vendorApi,
   triggerBlobDownload,
+  fileToAttachmentPayload,
   PoType,
   PoLetterheadClause,
   LetterheadMasterRecord,
   LetterheadLocationRecord,
   PoSiteLookupRecord,
   VendorRecord,
+  EntityRecord,
 } from '../../../services/api';
-import VendorSearchSelect from '../../requester/rfq-entry/components/VendorSearchSelect';
+import ManualPoContextSection, {
+  emptyComparisonRound,
+  findRecommendedManualQuote,
+  hydrateComparisonRoundsFromStored,
+  hydrateManualPrDetailsFromStored,
+  type ManualPrDetails,
+  type ManualComparisonRound,
+} from './ManualPoContextSection';
 import {
   consumePoCsvImport,
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
 import PurchaseRequestsPanel from '../purchase-requests/components/PurchaseRequestsPanel';
+import SearchCreateField from '../../requester/create-pr/SearchCreateField';
 import POApprovalModal from '../po-approval/components/POApprovalModal';
 import PostRfqApprovalModal from '../../rfq-approval/components/PostRfqApprovalModal';
 import { numberToIndianWords } from '../../../utils/amountInWords';
@@ -394,6 +404,24 @@ function coercePoType(raw: unknown, documentType: 'purchase_order' | 'work_order
   const allowed: PoType[] = ['short_po', 'long_po', 'short_wo', 'long_wo'];
   const asType = (allowed.includes(v as PoType) ? v : defaultTemplateForDocument(documentType)) as PoType;
   return alignTemplateWithDocument(asType, documentType);
+}
+
+function formatEntityLabel(ent: EntityRecord | { id: number; name: string; code: string; costCenter?: string }) {
+  const base = ent.code ? `${ent.code} — ${ent.name}` : ent.name;
+  const costCenter = 'costCenter' in ent ? ent.costCenter : '';
+  return costCenter ? `${base} (${costCenter})` : base;
+}
+
+function manualEntityPayload(
+  manualEntityId: number | '',
+  selected: EntityRecord | null
+): { selectedEntityId: number | null; entityId: number | null; entity: string } {
+  const id = manualEntityId === '' ? null : Number(manualEntityId);
+  return {
+    selectedEntityId: id,
+    entityId: id,
+    entity: id && selected ? String(selected.name || selected.code || '') : '',
+  };
 }
 
 function matchEntityFromLetterhead(
@@ -857,6 +885,10 @@ export default function CreatePOPage() {
     !isEditMode &&
     !numericPrId &&
     (searchParams.get('manual') === '1' || searchParams.get('mode') === 'manual-no-pr');
+  const [manualPoNoPr, setManualPoNoPr] = useState(
+    searchParams.get('manual') === '1' || searchParams.get('mode') === 'manual-no-pr'
+  );
+  const isManualPoFlow = isManualMode || manualPoNoPr;
   const fromParam = searchParams.get('from');
   const editReturnPath =
     fromParam === 'buyer-verify'
@@ -981,17 +1013,31 @@ export default function CreatePOPage() {
   const [pdfDownloading, setPdfDownloading] = useState(false);
   const [changeSummary, setChangeSummary] = useState('');
   const [letterheadLocked, setLetterheadLocked] = useState(false);
+  const manualEntryParam =
+    searchParams.get('manual') === '1' || searchParams.get('mode') === 'manual-no-pr';
   const [skipApproval, setSkipApproval] = useState(
-    searchParams.get('legacy') === '1' || searchParams.get('skipApproval') === '1'
+    manualEntryParam || searchParams.get('legacy') === '1' || searchParams.get('skipApproval') === '1'
   );
   const [importedPoNumber, setImportedPoNumber] = useState('');
   const [importedVendorName, setImportedVendorName] = useState('');
   const [importedVendorEmail, setImportedVendorEmail] = useState('');
   const [manualEntityId, setManualEntityId] = useState<number | ''>('');
-  const [entityOptions, setEntityOptions] = useState<Array<{ id: number; name: string; code: string }>>([]);
+  const [entityOptions, setEntityOptions] = useState<EntityRecord[]>([]);
   const [manualVendorName, setManualVendorName] = useState('');
   const [manualVendorEmail, setManualVendorEmail] = useState('');
   const [manualVendorId, setManualVendorId] = useState('');
+  const [manualPrDetails, setManualPrDetails] = useState<ManualPrDetails>({
+    prNumber: '',
+    title: '',
+    department: '',
+    requester: '',
+    justification: '',
+    requestType: 'Opex',
+    priority: 'Medium',
+  });
+  const [manualComparisonRounds, setManualComparisonRounds] = useState<ManualComparisonRound[]>([
+    emptyComparisonRound(1),
+  ]);
   const [masterVendors, setMasterVendors] = useState<VendorRecord[]>([]);
   const csvAppliedRef = useRef(false);
   const brandingAutoApplied = useRef(false);
@@ -1267,7 +1313,7 @@ export default function CreatePOPage() {
         if (cancelled) return;
         const options = res.data || [];
         setLetterheadOptions(options);
-        if (!isEditMode && options.length && !brandingAutoApplied.current) {
+        if (!isEditMode && !isManualMode && options.length && !brandingAutoApplied.current) {
           brandingAutoApplied.current = true;
           applyLetterheadBranding(options[0]);
         }
@@ -1278,7 +1324,7 @@ export default function CreatePOPage() {
     return () => {
       cancelled = true;
     };
-  }, [isEditMode, applyLetterheadBranding]);
+  }, [isEditMode, isManualMode, applyLetterheadBranding]);
 
   /** Keep logos/entity in sync with Letterhead Master when id is set (do not reset location pick). */
   useEffect(() => {
@@ -1335,16 +1381,71 @@ export default function CreatePOPage() {
   }, [poType, documentType, loadLetterhead, letterheadLocked, isEditMode, numericPrId, pr]);
 
   useEffect(() => {
-    if (!isManualMode) return;
-    const matched = matchEntityFromLetterhead(selectedLetterhead, entityOptions);
-    if (!matched) return;
-    setManualEntityId(matched.id);
+    if (!isManualPoFlow) return;
     setPr((prev) =>
       prev
-        ? { ...prev, entityId: matched.id, entityName: matched.name, entityCode: matched.code }
+        ? {
+            ...prev,
+            prNumber: manualPrDetails.prNumber || '—',
+            title: manualPrDetails.title,
+            department: manualPrDetails.department,
+            requester: manualPrDetails.requester,
+            requestType: manualPrDetails.requestType,
+            priority: manualPrDetails.priority,
+          }
         : prev
     );
-  }, [isManualMode, selectedLetterhead, entityOptions]);
+    if (manualPrDetails.title.trim()) {
+      setPoTermsDetails((prev) =>
+        prev.subject?.trim() ? prev : { ...prev, subject: manualPrDetails.title.trim() }
+      );
+    }
+    if (manualPrDetails.justification.trim()) {
+      setSpecialInstructions((prev) => (prev.trim() ? prev : manualPrDetails.justification.trim()));
+    }
+  }, [isManualPoFlow, manualPrDetails]);
+
+  useEffect(() => {
+    if (!isManualPoFlow) return;
+    const recommended = findRecommendedManualQuote(manualComparisonRounds);
+    if (!recommended) return;
+    if (recommended.vendorName.trim()) setManualVendorName(recommended.vendorName.trim());
+    if (recommended.vendorEmail.trim()) setManualVendorEmail(recommended.vendorEmail.trim());
+    if (recommended.vendorId) setManualVendorId(recommended.vendorId);
+    if (recommended.paymentTerms) setPaymentTerms(recommended.paymentTerms);
+    setVendorMeta((prev) => ({
+      ...prev,
+      name: recommended.vendorName.trim() || prev.name,
+      email: recommended.vendorEmail.trim() || prev.email,
+      paymentTerms: recommended.paymentTerms || prev.paymentTerms,
+      quotedPrice: Number(recommended.quotedPrice) || prev.quotedPrice,
+      leadTime: Number(recommended.leadTime) || prev.leadTime,
+    }));
+  }, [isManualPoFlow, manualComparisonRounds]);
+
+  const selectedManualEntity = useMemo(
+    () =>
+      manualEntityId === ''
+        ? null
+        : entityOptions.find((e) => Number(e.id) === Number(manualEntityId)) || null,
+    [manualEntityId, entityOptions]
+  );
+
+  useEffect(() => {
+    if (!isManualPoFlow) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await masterApi.listEntities({ status: 'active' });
+        if (!cancelled) setEntityOptions(res.data || []);
+      } catch {
+        if (!cancelled) setEntityOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isManualPoFlow]);
 
   const reloadClausesFromMaster = useCallback(async () => {
     skipNextLetterheadLoad.current = false;
@@ -1532,9 +1633,32 @@ export default function CreatePOPage() {
       });
       setDocumentType(po.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
       if (!prDbId) {
+        setManualPoNoPr(true);
         setManualVendorName(String(po.vendorName || ''));
         setManualVendorEmail(String(po.vendorEmail || ''));
-        setManualEntityId(Number(po.entityId) || '');
+        const manualContext = (po.manualContext || {}) as {
+          prDetails?: Partial<ManualPrDetails>;
+          comparisonRounds?: Array<Record<string, unknown>>;
+          vendorQuotes?: Array<Record<string, unknown>>;
+          selectedEntityId?: number | null;
+        };
+        const ctxEntityId = manualContext.selectedEntityId;
+        setManualEntityId(
+          ctxEntityId != null && ctxEntityId !== '' ? Number(ctxEntityId) || '' : ''
+        );
+        setManualPrDetails(
+          hydrateManualPrDetailsFromStored(manualContext.prDetails, {
+            title: String(po.prTitle || ''),
+            department: String(po.department || ''),
+            requester: String(po.requester || ''),
+            prNumber: String(po.prNumber || ''),
+          })
+        );
+        const hydratedRounds = hydrateComparisonRoundsFromStored(
+          (manualContext.comparisonRounds || []) as Parameters<typeof hydrateComparisonRoundsFromStored>[0],
+          (manualContext.vendorQuotes || []) as Parameters<typeof hydrateComparisonRoundsFromStored>[1]
+        );
+        if (hydratedRounds.length) setManualComparisonRounds(hydratedRounds);
       }
       setVendorMeta({
         name: String(po.vendorName || ''),
@@ -1581,14 +1705,18 @@ export default function CreatePOPage() {
     if (isManualMode) {
       setLoading(true);
       try {
-        const entRes = await masterApi.listEntities({ status: 'active', pageSize: 200 }).catch(() => ({ data: [] }));
-        const ents = ((entRes.data || []) as Array<{ id: number; name: string; code: string }>).map((e) => ({
-          id: Number(e.id),
-          name: String(e.name || ''),
-          code: String(e.code || ''),
-        }));
+        const entRes = await masterApi.listEntities({ status: 'active' }).catch(() => ({ data: [] }));
+        const ents = (entRes.data || []) as EntityRecord[];
         if (!shouldApplyContext()) return;
-        setEntityOptions(ents);
+        if (ents.length) setEntityOptions(ents);
+        setManualPoNoPr(true);
+        setLetterheadId('');
+        setEntity('');
+        setHeaderLogo('');
+        setFooterLogo('');
+        setLetterheadLocationKey('');
+        letterheadLockedRef.current = false;
+        setLetterheadLocked(false);
         setPr({
           id: 0,
           prNumber: '—',
@@ -1621,6 +1749,17 @@ export default function CreatePOPage() {
         setManualVendorEmail('');
         setManualVendorId('');
         setManualEntityId('');
+        setManualPrDetails({
+          prNumber: '',
+          title: '',
+          department: '',
+          requester: '',
+          justification: '',
+          requestType: 'Opex',
+          priority: 'Medium',
+        });
+        setManualComparisonRounds([emptyComparisonRound(1)]);
+        setSkipApproval(true);
         setDocumentType('purchase_order');
         setLoadError('');
       } catch (err) {
@@ -1914,19 +2053,22 @@ export default function CreatePOPage() {
       paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
     });
 
-    const vendorNameForPo = isManualMode
+    const vendorNameForPo = isManualPoFlow
       ? manualVendorName.trim() || importedVendorName.trim() || vendorMeta.name.trim() || undefined
       : importedVendorName.trim() || pr?.recommendedVendor || vendorMeta.name.trim() || undefined;
-    const vendorEmailFromForm = isManualMode
+    const vendorEmailFromForm = isManualPoFlow
       ? manualVendorEmail.trim() || importedVendorEmail.trim() || vendorMeta.email.trim() || undefined
       : importedVendorEmail.trim() || pr?.vendorEmail || vendorMeta.email.trim() || undefined;
     const masterVendor = matchVendorFromMaster(masterVendors, {
       name: vendorNameForPo,
       email: vendorEmailFromForm,
     });
+    const manualEntityFields = isManualPoFlow
+      ? manualEntityPayload(manualEntityId, selectedManualEntity)
+      : null;
     return {
     poNumber: poNumber || undefined,
-    prNumber: isManualMode ? undefined : pr?.prNumber || undefined,
+    prNumber: isManualPoFlow ? manualPrDetails.prNumber || undefined : pr?.prNumber || undefined,
     quoteNo: synced.quoteNo || undefined,
     quoteDate: synced.poTermsDetails.quoteDate || undefined,
     lineItems: lineItems.map((i) => ({
@@ -1951,8 +2093,10 @@ export default function CreatePOPage() {
     letterheadLocationId: poTermsDetails.letterheadLocationId || letterheadLocationKey || undefined,
     locationName: poTermsDetails.locationName || undefined,
     currency,
-    entity,
-    entityId: isManualMode ? manualEntityId || undefined : pr?.entityId || undefined,
+    entity: manualEntityFields ? manualEntityFields.entity : entity,
+    entityId: manualEntityFields
+      ? manualEntityFields.entityId || undefined
+      : pr?.entityId || undefined,
     headerLogo,
     footerLogo,
     terms: synced.terms,
@@ -1964,9 +2108,11 @@ export default function CreatePOPage() {
     purchaseType: documentType,
     vendorName: masterVendor?.name || vendorNameForPo,
     vendorEmail: masterVendor?.email || vendorEmailFromForm,
-    title: poTermsDetails.subject || pr?.title || undefined,
-    department: pr?.department || undefined,
-    requester: pr?.requester || undefined,
+    title: isManualPoFlow
+      ? manualPrDetails.title || poTermsDetails.subject || undefined
+      : poTermsDetails.subject || pr?.title || undefined,
+    department: isManualPoFlow ? manualPrDetails.department || undefined : pr?.department || undefined,
+    requester: isManualPoFlow ? manualPrDetails.requester || undefined : pr?.requester || undefined,
   };
   }, [
     poNumber,
@@ -1991,10 +2137,12 @@ export default function CreatePOPage() {
     annexureIiRows,
     poTermsDetails,
     documentType,
-    isManualMode,
+    isManualPoFlow,
     manualEntityId,
+    selectedManualEntity,
     manualVendorName,
     manualVendorEmail,
+    manualPrDetails,
     importedVendorName,
     importedVendorEmail,
     pr,
@@ -2033,8 +2181,61 @@ export default function CreatePOPage() {
     [masterVendors, vendorMeta.name, vendorMeta.email, pr?.recommendedVendor]
   );
 
+  const handleOpenLivePdf = useCallback(async () => {
+    try {
+      setPdfDownloading(true);
+      const payload = await applyMasterVendorToPayload(buildPreviewPayload());
+      if (!payload.vendorEmail && isManualPoFlow) {
+        payload.vendorName =
+          String(payload.vendorName || '').trim() ||
+          manualVendorName.trim() ||
+          vendorMeta.name.trim() ||
+          'Vendor Name';
+        payload.vendorEmail =
+          String(payload.vendorEmail || '').trim() ||
+          manualVendorEmail.trim() ||
+          vendorMeta.email.trim() ||
+          'vendor@example.com';
+      }
+      let blob: Blob;
+      if (isEditMode && editPoId) {
+        blob = await poApi.previewPdfBlobByPoId(editPoId, payload);
+      } else if (isManualMode || isManualPoFlow) {
+        blob = await poApi.previewManualPdfBlob(payload);
+      } else if (numericPrId) {
+        blob = await poApi.previewPdfBlob(numericPrId, payload);
+      } else {
+        throw new Error('Save draft first to generate PDF');
+      }
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (!win) {
+        triggerBlobDownload(blob, `${poNumber || pr?.prNumber || 'PO'}_preview.pdf`);
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not open PDF');
+    } finally {
+      setPdfDownloading(false);
+    }
+  }, [
+    applyMasterVendorToPayload,
+    buildPreviewPayload,
+    isManualPoFlow,
+    manualVendorName,
+    manualVendorEmail,
+    vendorMeta.name,
+    vendorMeta.email,
+    isEditMode,
+    editPoId,
+    isManualMode,
+    numericPrId,
+    poNumber,
+    pr?.prNumber,
+  ]);
+
   useEffect(() => {
-    if (activeTab !== 'preview' || (!numericPrId && !editPoId && !isManualMode)) return;
+    if (activeTab !== 'preview' || (!numericPrId && !editPoId && !isManualPoFlow)) return;
 
     let objectUrl: string | null = null;
     let cancelled = false;
@@ -2044,7 +2245,7 @@ export default function CreatePOPage() {
       setPreviewError('');
       try {
         const payload = await applyMasterVendorToPayload(buildPreviewPayload());
-        if (!payload.vendorEmail && isManualMode) {
+        if (!payload.vendorEmail && isManualPoFlow) {
           payload.vendorName =
             String(payload.vendorName || '').trim() ||
             manualVendorName.trim() ||
@@ -2064,7 +2265,7 @@ export default function CreatePOPage() {
             ? await poApi.previewDocumentHtml(previewPrId, payload)
             : isEditMode && editPoId
               ? await poApi.previewDocumentHtmlByPoId(editPoId, payload)
-              : isManualMode
+              : isManualPoFlow
                 ? await poApi.previewManualDocumentHtml(payload)
                 : await poApi.previewDocumentHtml(numericPrId!, payload);
         if (cancelled) return;
@@ -2100,7 +2301,7 @@ export default function CreatePOPage() {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [activeTab, numericPrId, editPoId, isEditMode, isManualMode, buildPreviewPayload, applyMasterVendorToPayload, manualVendorName, manualVendorEmail, vendorMeta.name, vendorMeta.email, masterVendors, pr?.id, user?.role]);
+  }, [activeTab, numericPrId, editPoId, isEditMode, isManualPoFlow, buildPreviewPayload, applyMasterVendorToPayload, manualVendorName, manualVendorEmail, vendorMeta.name, vendorMeta.email, masterVendors, pr?.id, user?.role]);
 
   useEffect(() => {
     return () => {
@@ -2184,9 +2385,14 @@ export default function CreatePOPage() {
     patchLineItems((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const resolvedManualEntityId =
-    Number(manualEntityId || pr?.entityId || matchEntityFromLetterhead(selectedLetterhead, entityOptions)?.id || 0) ||
-    '';
+  const resolvedManualEntityId = isManualPoFlow
+    ? Number(manualEntityId || 0) || ''
+    : Number(
+        manualEntityId ||
+          pr?.entityId ||
+          matchEntityFromLetterhead(selectedLetterhead, entityOptions)?.id ||
+          0
+      ) || '';
 
   const flushLiveEditors = () => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -2207,10 +2413,10 @@ export default function CreatePOPage() {
   };
 
   const handleSaveDraft = async () => {
-    if ((!numericPrId && !editPoId && !isManualMode) || !pr) return;
-    if (isManualMode && !resolvedManualEntityId && !letterheadId) {
-      alert('Select a letterhead entity on the Terms & Conditions tab before saving draft');
-      setActiveTab('terms');
+    if ((!numericPrId && !editPoId && !isManualPoFlow) || !pr) return;
+    if (isManualPoFlow && manualEntityId === '') {
+      alert('Please select an entity for PO / WO numbering');
+      setActiveTab('details');
       return;
     }
     setSubmitting(true);
@@ -2270,13 +2476,46 @@ export default function CreatePOPage() {
         poNumber: poNumber.trim() || undefined,
       };
 
-      if (isManualMode) {
-        payload.vendorName = manualVendorName.trim() || undefined;
-        payload.vendorEmail = manualVendorEmail.trim() || undefined;
-        payload.entityId = resolvedManualEntityId;
-        payload.title = details.subject || '';
-        payload.department = pr.department || '';
-        payload.requester = pr.requester || '';
+      if (isManualPoFlow) {
+        const recommended = findRecommendedManualQuote(manualComparisonRounds);
+        payload.vendorName = (recommended?.vendorName || manualVendorName).trim() || undefined;
+        payload.vendorEmail = (recommended?.vendorEmail || manualVendorEmail).trim() || undefined;
+        const entityFields = manualEntityPayload(manualEntityId, selectedManualEntity);
+        payload.selectedEntityId = entityFields.selectedEntityId;
+        payload.entityId = entityFields.entityId;
+        payload.entity = entityFields.entity;
+        payload.title = manualPrDetails.title.trim() || details.subject || '';
+        payload.department = manualPrDetails.department.trim();
+        payload.requester = manualPrDetails.requester.trim();
+        payload.manualPrDetails = manualPrDetails;
+        payload.comparisonRounds = await Promise.all(
+          manualComparisonRounds.map(async (round) => ({
+            round: round.round,
+            label: round.label.trim() || `Round ${round.round}`,
+            notes: round.notes.trim(),
+            vendorQuotes: await Promise.all(
+              round.vendorQuotes.map(async (row, idx) => ({
+                vendorId: row.vendorId,
+                vendorName: row.vendorName.trim(),
+                vendorEmail: row.vendorEmail.trim(),
+                quotedPrice: Number(row.quotedPrice) || 0,
+                leadTime: row.leadTime.trim(),
+                paymentTerms: row.paymentTerms,
+                recommended: row.recommended,
+                round: round.round,
+                sortOrder: idx,
+                files: [
+                  ...(row.storedFiles || []).map((f) => ({
+                    fileName: f.fileName,
+                    mimeType: f.mimeType || null,
+                    storedName: f.storedName,
+                  })),
+                  ...(await Promise.all(row.files.map((file) => fileToAttachmentPayload(file)))),
+                ],
+              }))
+            ),
+          }))
+        );
       }
 
       if (editPoId || createdPoId) payload.poId = editPoId || createdPoId;
@@ -2299,7 +2538,20 @@ export default function CreatePOPage() {
       setTimeout(() => setDraftSaved(false), 3000);
       if (!editPoId && savedId) {
         keepLocalDraftAfterSaveRef.current = true;
-        navigate(`/scm/create-po?poId=${savedId}&from=create-po`, { replace: true });
+        navigate(`/scm/create-po?poId=${savedId}&manual=1&from=create-po`, { replace: true });
+      }
+      const refreshPoId = savedId || editPoId || createdPoId;
+      if (refreshPoId) {
+        try {
+          const payload = await applyMasterVendorToPayload(buildPreviewPayload());
+          const blob = await poApi.previewPdfBlobByPoId(refreshPoId, payload);
+          setPdfPreviewUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return URL.createObjectURL(blob);
+          });
+        } catch {
+          /* preview PDF optional */
+        }
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Could not save draft');
@@ -2502,26 +2754,29 @@ export default function CreatePOPage() {
   }, [isEditMode, pr, refPoParam, referencePoLoaded, loadPoDetailsByNumber]);
 
   const validateBeforeSend = (): boolean => {
-    if ((!numericPrId && !editPoId && !isManualMode) || !pr) return false;
+    if ((!numericPrId && !editPoId && !isManualPoFlow) || !pr) return false;
     if (!String(poTermsDetails.subject || '').trim()) {
       alert(`Please enter ${documentType === 'work_order' ? 'Work Order' : 'Purchase Order'} Subject`);
       setActiveTab('details');
       return false;
     }
-    if (isManualMode) {
-      if (!manualVendorName.trim()) {
-        alert('Please enter vendor name');
+    if (isManualPoFlow) {
+      const recommended = findRecommendedManualQuote(manualComparisonRounds);
+      const vendorName = (recommended?.vendorName || manualVendorName).trim();
+      const vendorEmail = (recommended?.vendorEmail || manualVendorEmail).trim();
+      if (!vendorName) {
+        alert('Please select or enter a vendor (mark recommended in vendor comparison)');
         setActiveTab('details');
         return false;
       }
-      if (!manualVendorEmail.trim()) {
+      if (!vendorEmail) {
         alert('Please enter vendor email');
         setActiveTab('details');
         return false;
       }
-      if (!resolvedManualEntityId && !letterheadId) {
-        alert('Please select a letterhead entity for PO / WO numbering');
-        setActiveTab('terms');
+      if (!resolvedManualEntityId) {
+        alert('Please select an entity for PO / WO numbering');
+        setActiveTab('details');
         return false;
       }
     }
@@ -2569,7 +2824,7 @@ export default function CreatePOPage() {
   };
 
   const executeSendForApproval = async () => {
-    if ((!numericPrId && !editPoId && !isManualMode) || !pr) return;
+    if ((!numericPrId && !editPoId && !isManualPoFlow) || !pr) return;
     setShowScmConfirm(false);
     setSubmitting(true);
     try {
@@ -2629,16 +2884,42 @@ export default function CreatePOPage() {
         poNumber: poNumber.trim() || undefined,
       };
 
-      if (isManualMode) {
-        payload.vendorName = manualVendorName.trim();
-        payload.vendorEmail = manualVendorEmail.trim();
-        payload.entityId = resolvedManualEntityId;
-        payload.title = details.subject || '';
-        payload.department = pr.department || '';
-        payload.requester = pr.requester || '';
+      if (isManualPoFlow) {
+        const recommended = findRecommendedManualQuote(manualComparisonRounds);
+        payload.vendorName = (recommended?.vendorName || manualVendorName).trim();
+        payload.vendorEmail = (recommended?.vendorEmail || manualVendorEmail).trim();
+        const entityFields = manualEntityPayload(manualEntityId, selectedManualEntity);
+        payload.selectedEntityId = entityFields.selectedEntityId;
+        payload.entityId = entityFields.entityId;
+        payload.entity = entityFields.entity;
+        payload.title = manualPrDetails.title.trim() || details.subject || '';
+        payload.department = manualPrDetails.department.trim();
+        payload.requester = manualPrDetails.requester.trim();
+        payload.manualPrDetails = manualPrDetails;
+        payload.comparisonRounds = await Promise.all(
+          manualComparisonRounds.map(async (round) => ({
+            round: round.round,
+            label: round.label.trim() || `Round ${round.round}`,
+            notes: round.notes.trim(),
+            vendorQuotes: await Promise.all(
+              round.vendorQuotes.map(async (row, idx) => ({
+                vendorId: row.vendorId,
+                vendorName: row.vendorName.trim(),
+                vendorEmail: row.vendorEmail.trim(),
+                quotedPrice: Number(row.quotedPrice) || 0,
+                leadTime: row.leadTime.trim(),
+                paymentTerms: row.paymentTerms,
+                recommended: row.recommended,
+                round: round.round,
+                sortOrder: idx,
+                files: await Promise.all(row.files.map((file) => fileToAttachmentPayload(file))),
+              }))
+            ),
+          }))
+        );
       }
 
-      if (skipApproval) {
+      if (skipApproval && !isManualMode) {
         payload.skipApproval = true;
         payload.legacyImport = true;
         if (importedPoNumber.trim()) payload.poNumber = importedPoNumber.trim();
@@ -2652,7 +2933,7 @@ export default function CreatePOPage() {
         return;
       }
 
-      const res = isManualMode
+      const res = isManualPoFlow && !isEditMode
         ? await poApi.createManual(payload)
         : await poApi.create(numericPrId!, payload);
       const data = res.data as { poNumber: string; id: number };
@@ -2917,15 +3198,16 @@ export default function CreatePOPage() {
                 >
                   Preview {docLabel === 'Work Order' ? 'WO' : 'PO'}
                 </button>
-                {isEditMode && pdfPreviewUrl && (
-                  <a
-                    href={pdfPreviewUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3.5 py-1.5 border border-gray-300 bg-white text-slate-800 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium inline-flex items-center gap-1.5 whitespace-nowrap"
+                {(editPoId || numericPrId || isManualPoFlow) && (
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenLivePdf()}
+                    disabled={pdfDownloading || submitting}
+                    className="px-3.5 py-1.5 border border-gray-300 bg-white text-slate-800 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium inline-flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50"
                   >
-                    <i className="ri-file-pdf-line"></i> PDF
-                  </a>
+                    <i className="ri-file-pdf-line"></i>
+                    {pdfDownloading ? 'PDF…' : 'PDF'}
+                  </button>
                 )}
                 <button
                   type="button"
@@ -2938,9 +3220,11 @@ export default function CreatePOPage() {
                     ? 'Saving...'
                     : isEditMode
                       ? 'Save'
-                      : skipApproval
-                        ? `Create ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
-                        : 'Send for Approval'}
+                      : isManualMode
+                        ? `Save ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
+                        : skipApproval
+                          ? `Create ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
+                          : 'Send for Approval'}
                 </button>
               </div>
             </div>
@@ -2961,10 +3245,10 @@ export default function CreatePOPage() {
               <span>
                 Date: <span className="font-semibold text-slate-700">{formatPoDateLabel(poDate)}</span>
               </span>
-              <span className="truncate max-w-[220px]" title={isManualMode ? manualVendorName : pr.recommendedVendor}>
+              <span className="truncate max-w-[220px]" title={isManualPoFlow ? manualVendorName : pr.recommendedVendor}>
                 Vendor:{' '}
                 <span className="font-semibold text-slate-700">
-                  {isManualMode ? manualVendorName || '—' : pr.recommendedVendor}
+                  {isManualPoFlow ? manualVendorName || '—' : pr.recommendedVendor}
                 </span>
               </span>
             </div>
@@ -3031,7 +3315,78 @@ export default function CreatePOPage() {
                     </div>
                   </div>
 
-                  {!isManualMode && (
+                  {isManualPoFlow && (
+                    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900">Entity for document number</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Select entity first for PO / WO numbering — no manager approval; data entry only
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                          Entity <span className="text-red-500">*</span>
+                        </label>
+                        <SearchCreateField
+                          options={entityOptions.map((ent) => ({
+                            id: ent.id,
+                            label: formatEntityLabel(ent),
+                            subLabel: ent.costCenter || undefined,
+                          }))}
+                          displayValue={
+                            selectedManualEntity ? formatEntityLabel(selectedManualEntity) : ''
+                          }
+                          selectedId={manualEntityId || null}
+                          placeholder="Search entity by code, name, cost center…"
+                          addNoun="entity"
+                          onSelect={(opt) => {
+                            const id = Number(opt.id);
+                            setManualEntityId(id);
+                            const selected = entityOptions.find((x) => x.id === id);
+                            if (selected) {
+                              setPr((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      entityId: selected.id,
+                                      entityName: selected.name,
+                                      entityCode: selected.code,
+                                    }
+                                  : prev
+                              );
+                              if (!entity) setEntity(selected.name);
+                            }
+                          }}
+                          onClear={() => {
+                            setManualEntityId('');
+                            setPr((prev) =>
+                              prev
+                                ? { ...prev, entityId: null, entityName: '', entityCode: '' }
+                                : prev
+                            );
+                          }}
+                        />
+                        {entityOptions.length === 0 ? (
+                          <p className="text-xs text-amber-600 mt-1.5">
+                            No entities loaded. Check Entity Master or refresh the page.
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+
+                  {isManualPoFlow && (
+                    <ManualPoContextSection
+                      prDetails={manualPrDetails}
+                      onPrDetailsChange={setManualPrDetails}
+                      comparisonRounds={manualComparisonRounds}
+                      onComparisonRoundsChange={setManualComparisonRounds}
+                      vendors={masterVendors}
+                      currencySymbol={moneySymbol}
+                    />
+                  )}
+
+                  {!isManualPoFlow && (
                     <div className="rounded-xl bg-gradient-to-r from-teal-600 to-teal-700 p-4 sm:p-5 text-white">
                       <div className="flex items-start justify-between gap-4 flex-wrap">
                         <div>
@@ -3577,100 +3932,6 @@ export default function CreatePOPage() {
                   </div>
                 </div>
 
-                {isManualMode && (
-                  <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900">Manual PO details</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">No PR reference — enter vendor and entity to continue</p>
-                    </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                          Vendor Name <span className="text-red-500">*</span>
-                        </label>
-                        <VendorSearchSelect
-                          vendors={masterVendors}
-                          value={manualVendorId}
-                          onChange={(id) => {
-                            setManualVendorId(id);
-                            if (!id) {
-                              setManualVendorName('');
-                              setManualVendorEmail('');
-                              setVendorMeta((prev) => ({ ...prev, name: '', email: '' }));
-                              return;
-                            }
-                            const v = masterVendors.find((x) => String(x.id) === String(id));
-                            if (!v) return;
-                            setManualVendorName(v.name);
-                            setManualVendorEmail((v.email || '').trim());
-                            setVendorMeta((prev) => ({
-                              ...prev,
-                              name: v.name,
-                              email: (v.email || '').trim(),
-                            }));
-                          }}
-                          placeholder="Search vendor master"
-                          emptyHint="Try another spelling, or add the vendor in Vendor Master first."
-                        />
-                        <p className="text-xs text-gray-500 mt-1.5">Select from vendor master — email fills automatically</p>
-                        {masterVendors.length === 0 && (
-                          <p className="text-xs text-amber-600 mt-1">Vendor master is empty or failed to load. Add a vendor there, then refresh this page.</p>
-                        )}
-                        </div>
-                          <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                          Vendor Email <span className="text-red-500">*</span>
-                        </label>
-                            <input
-                          type="email"
-                          value={manualVendorEmail}
-                          onChange={(e) => {
-                            setManualVendorEmail(e.target.value);
-                            setVendorMeta((prev) => ({ ...prev, email: e.target.value }));
-                          }}
-                          className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          placeholder="vendor@example.com"
-                        />
-                        <p className="text-xs text-gray-500 mt-1.5">From vendor master (you can edit if needed)</p>
-                      </div>
-                          </div>
-                          <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                        Entity (for document number) <span className="text-red-500">*</span>
-                      </label>
-                            <select
-                        value={manualEntityId}
-                        onChange={(e) => {
-                          const id = e.target.value ? Number(e.target.value) : '';
-                          setManualEntityId(id);
-                          const selected = entityOptions.find((x) => x.id === id);
-                          if (selected) {
-                            setPr((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    entityId: selected.id,
-                                    entityName: selected.name,
-                                    entityCode: selected.code,
-                                  }
-                                : prev
-                            );
-                            if (!entity) setEntity(selected.name);
-                          }
-                        }}
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                      >
-                        <option value="">Select entity...</option>
-                        {entityOptions.map((ent) => (
-                          <option key={ent.id} value={ent.id}>
-                            {ent.name}{ent.code ? ` (${ent.code})` : ''}
-                          </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                )}
-
             </div>
                   )}
 
@@ -4192,7 +4453,7 @@ export default function CreatePOPage() {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      disabled={pdfDownloading || previewLoading || (!numericPrId && !editPoId && !isManualMode)}
+                      disabled={pdfDownloading || previewLoading || (!numericPrId && !editPoId && !isManualPoFlow)}
                       onClick={async () => {
                         try {
                           setPdfDownloading(true);
@@ -4275,7 +4536,7 @@ export default function CreatePOPage() {
                     {previewError && <p className="text-xs text-red-500 mt-2">{previewError}</p>}
                     {isManualMode && (
                       <p className="text-xs text-gray-400 mt-3 max-w-sm mx-auto">
-                        Preview can use placeholders. For submit, fill Vendor Name, Vendor Email, Entity and line items on PO Details.
+                        Enter entity, vendor comparison, and line items on PO Details. PR reference fields are optional — expand <strong>PR details</strong> if needed.
                       </p>
                     )}
                   </div>
@@ -4299,9 +4560,11 @@ export default function CreatePOPage() {
                           : poEditStatus === 'draft'
                             ? `Saving will send this draft to SCM Manager${scmManager?.name ? ` (${scmManager.name})` : ''} for approval`
                             : 'Updated PO stays pending until you sign from PO Approval'
-                        : skipApproval
-                          ? 'Create PO without manager approval (legacy import)'
-                          : `PO will be sent to SCM Manager${scmManager?.name ? ` — ${scmManager.name}` : ''} for approval`}
+                        : isManualMode
+                          ? 'Manual entry — PR details and vendor quotations are stored; PO is saved without manager approval'
+                          : skipApproval
+                            ? 'Create PO without manager approval (legacy import)'
+                            : `PO will be sent to SCM Manager${scmManager?.name ? ` — ${scmManager.name}` : ''} for approval`}
                     </p>
                   </div>
                 </div>
@@ -4323,7 +4586,13 @@ export default function CreatePOPage() {
                     <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
                     {submitting
                       ? isEditMode ? 'Saving...' : 'Creating PO...'
-                      : isEditMode ? 'Save Changes' : skipApproval ? 'Create PO Only' : 'Send for Approval'}
+                      : isEditMode
+                        ? 'Save Changes'
+                        : isManualMode
+                          ? `Save ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
+                          : skipApproval
+                            ? 'Create PO Only'
+                            : 'Send for Approval'}
                   </button>
                 </div>
               </div>

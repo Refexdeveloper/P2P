@@ -11,6 +11,7 @@ import {
   resetAllData,
 } from '../services/adminService.js';
 import { listEmailLogs } from '../services/emailLogService.js';
+import { listUserActivityLogs } from '../services/userActivityLogService.js';
 import { retriggerEmailLog } from '../services/emailService.js';
 import { listWhatsAppLogs } from '../services/whatsappLogService.js';
 
@@ -122,6 +123,21 @@ router.get('/whatsapp-logs', async (req, res) => {
       status: req.query.status,
       notifyType: req.query.notifyType,
       prId: req.query.prId,
+      search: req.query.search,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/user-activity-logs', async (req, res) => {
+  try {
+    const data = await listUserActivityLogs({
+      action: req.query.action,
+      userId: req.query.userId,
       search: req.query.search,
       page: req.query.page,
       limit: req.query.limit,

@@ -199,6 +199,7 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_orders ADD COLUMN po_date DATE NULL`,
   // Cloud Run disk is ephemeral — keep SCM Manager signature bytes on the PO
   `ALTER TABLE purchase_orders ADD COLUMN signature_image_data LONGBLOB NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN manual_context_json JSON NULL`,
   `CREATE TABLE IF NOT EXISTS po_site_lookups (
     id INT AUTO_INCREMENT PRIMARY KEY,
     lookup_type ENUM('site_address', 'site_contact', 'project_manager') NOT NULL,
@@ -284,6 +285,28 @@ const MIGRATIONS = [
     INDEX idx_wa_logs_pr (pr_id),
     INDEX idx_wa_logs_type (notify_type),
     INDEX idx_wa_logs_phone (to_phone)
+  )`,
+  `CREATE TABLE IF NOT EXISTS user_activity_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NULL,
+    user_email VARCHAR(255) NULL,
+    user_name VARCHAR(200) NULL,
+    user_role VARCHAR(80) NULL,
+    action VARCHAR(64) NOT NULL,
+    resource VARCHAR(255) NULL,
+    description VARCHAR(500) NULL,
+    ip_address VARCHAR(64) NULL,
+    user_agent VARCHAR(500) NULL,
+    entity_type VARCHAR(64) NULL,
+    entity_id INT NULL,
+    entity_label VARCHAR(120) NULL,
+    status_code SMALLINT NULL,
+    meta_json JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_activity_created (created_at),
+    INDEX idx_user_activity_user (user_id),
+    INDEX idx_user_activity_action (action),
+    INDEX idx_user_activity_email (user_email)
   )`,
   // Post-vendor-acceptance fulfillment: GRN → Invoice → Accounts Manager → Payment
   `ALTER TABLE purchase_orders MODIFY COLUMN status ENUM(

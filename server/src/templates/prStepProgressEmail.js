@@ -19,29 +19,66 @@ export function buildPrStepProgressEmail({
   nextStepLabel = '',
   remarks = '',
   appBaseUrl = null,
+  recipientPerspective = 'requester',
+  actionUrl = null,
 }) {
   const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const trackUrl = wrapPortalUrlWithSso(`${base}/requester/track-pr`);
+  const ctaUrl = actionUrl ? wrapPortalUrlWithSso(actionUrl) : trackUrl;
   const entityLabel = formatEntity(pr);
   const roleDisplay = formatRoleDisplayName(actorRole) || actorRole || 'Approver';
   const actorLine = actorName ? `${actorName} (${roleDisplay})` : roleDisplay;
+  const recipientName = requesterName || 'Requester';
+  const perspective = recipientPerspective || 'requester';
 
   const isSubmit = action === 'submit' || action === 'submitted' || action === 'raised';
   const isApprove = action === 'approve' || action === 'approved';
 
-  const headline = isSubmit
-    ? 'Your PR was submitted'
-    : isApprove
-      ? 'Step approved — workflow moved'
-      : 'PR workflow update';
+  const headline =
+    perspective === 'next_approver'
+      ? isSubmit
+        ? 'New PR — pending your approval'
+        : 'PR approved — pending your action'
+      : perspective === 'actor'
+        ? 'Your approval — workflow moved'
+        : perspective === 'fyi'
+          ? 'Step approved — workflow moved'
+          : isSubmit
+            ? 'Your PR was submitted'
+            : isApprove
+              ? 'Step approved — workflow moved'
+              : 'PR workflow update';
 
-  const subject = nextStepLabel
-    ? `${pr.prNumber}: ${isSubmit ? 'Submitted' : 'Approved'} → next: ${nextStepLabel}`
-    : `${pr.prNumber}: ${isSubmit ? 'Submitted' : 'Approved'} — ${pr.title}`;
+  const subject =
+    perspective === 'next_approver'
+      ? isSubmit
+        ? `${pr.prNumber}: New PR → pending: ${nextStepLabel || 'your approval'}`
+        : `${pr.prNumber}: ${actorLine} approved → pending: ${nextStepLabel || 'your approval'}`
+      : nextStepLabel
+        ? `${pr.prNumber}: ${isSubmit ? 'Submitted' : 'Approved'} → next: ${nextStepLabel}`
+        : `${pr.prNumber}: ${isSubmit ? 'Submitted' : 'Approved'} — ${pr.title}`;
 
-  const intro = isSubmit
-    ? `Hello ${escapeHtml(requesterName || 'Requester')}, your purchase request was raised successfully and moved to the next step.`
-    : `Hello ${escapeHtml(requesterName || 'Requester')}, <strong>${escapeHtml(actorLine)}</strong> approved your request. The workflow has moved to the next step.`;
+  let intro;
+  if (perspective === 'next_approver') {
+    intro = isSubmit
+      ? `Hello ${escapeHtml(recipientName)}, <strong>${escapeHtml(actorLine)}</strong> raised a purchase request. It is now on your queue for <strong>${escapeHtml(nextStepLabel || 'the next step')}</strong>.`
+      : `Hello ${escapeHtml(recipientName)}, <strong>${escapeHtml(actorLine)}</strong> approved this purchase request. It is now on your queue for <strong>${escapeHtml(nextStepLabel || 'the next step')}</strong>.`;
+  } else if (perspective === 'actor') {
+    intro = `Hello ${escapeHtml(recipientName)}, your approval was recorded. This request has moved to the next step: <strong>${escapeHtml(nextStepLabel || 'In progress')}</strong>.`;
+  } else if (perspective === 'fyi') {
+    intro = `Hello ${escapeHtml(recipientName)}, <strong>${escapeHtml(actorLine)}</strong> approved this purchase request. The workflow has moved to: <strong>${escapeHtml(nextStepLabel || 'the next step')}</strong>.`;
+  } else if (isSubmit) {
+    intro = `Hello ${escapeHtml(recipientName)}, your purchase request was raised successfully and moved to the next step.`;
+  } else {
+    intro = `Hello ${escapeHtml(recipientName)}, <strong>${escapeHtml(actorLine)}</strong> approved your request. The workflow has moved to the next step.`;
+  }
+
+  const ctaLabel =
+    perspective === 'next_approver'
+      ? 'Review & approve →'
+      : perspective === 'fyi'
+        ? 'View in portal →'
+        : 'Track PR status →';
 
   const completedBlock = completedStepLabel
     ? `
@@ -101,12 +138,14 @@ export function buildPrStepProgressEmail({
         </table>
         ${remarksHtml}
         <p style="margin:22px 0 0;text-align:center;">
-          <a href="${trackUrl}" style="display:inline-block;padding:12px 24px;background:#0f766e;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
-            Track PR status →
+          <a href="${ctaUrl}" style="display:inline-block;padding:12px 24px;background:#0f766e;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
+            ${escapeHtml(ctaLabel)}
           </a>
         </p>
         <p style="margin:14px 0 0;font-size:12px;color:#94a3b8;text-align:center;">
-          You will get another update whenever this PR moves to the next step.
+          ${perspective === 'requester'
+            ? 'You will get another update whenever this PR moves to the next step.'
+            : 'This is a workflow update for your records.'}
         </p>
       </td>
     </tr>
@@ -120,7 +159,7 @@ export function buildPrStepProgressEmail({
     completedStepLabel ? `Completed: ${completedStepLabel} by ${actorLine}` : '',
     nextStepLabel ? `Next step: ${nextStepLabel}` : '',
     remarks ? `Remarks: ${remarks}` : '',
-    `Track: ${trackUrl}`,
+    `${ctaLabel}: ${ctaUrl}`,
   ]
     .filter(Boolean)
     .join('\n');

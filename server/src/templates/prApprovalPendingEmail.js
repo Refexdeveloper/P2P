@@ -63,7 +63,7 @@ function getPortalPath(role, postRfq) {
   return ROLE_PORTAL_PATH[role] || '/tasks';
 }
 
-function buildActionUrl(prId, action, role, postRfq = false, rfqEntry = false, createPo = false, baseUrl = null) {
+export function buildActionUrl(prId, action, role, postRfq = false, rfqEntry = false, createPo = false, baseUrl = null) {
   const base = (baseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   if (createPo || (postRfq && role === 'SCM Buyer')) {
     return `${base}/scm/create-po?prId=${prId}`;

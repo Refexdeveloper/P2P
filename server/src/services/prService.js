@@ -4,6 +4,7 @@ import {
   queuePrApprovalPendingNotification,
   queuePostRfqActionNotification,
   queueRequesterStepProgressNotification,
+  queueStakeholderStepProgressNotifications,
   queueApproverActionConfirmationForUser,
 } from './emailService.js';
 import {
@@ -11,6 +12,7 @@ import {
   getL2ManagerForEmail,
   ensureApproverUser,
 } from './refexOneService.js';
+import { buildActionUrl } from '../templates/prApprovalPendingEmail.js';
 import {
   getTaskSlaHoursRemaining,
   isTaskSlaBreached,
@@ -960,6 +962,14 @@ async function loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId) {
 }
 
 /** Never block HTTP save/submit on SMTP / WhatsApp / large quotation attachment reads. */
+function approvalStepDisplayLabel(actingAsHod, actingRole, isFunctional = false) {
+  if (isFunctional) return 'User Approval';
+  if (actingAsHod) return 'L1 Manager Approval';
+  if (actingRole === 'PR Manager') return 'L2 Manager Approval';
+  if (actingRole === 'CFO') return 'CFO Approval';
+  return `${actingRole} Approval`;
+}
+
 function queuePrSubmitNotifications({
   pr,
   user,
@@ -1003,6 +1013,24 @@ function queuePrSubmitNotifications({
         requesterEmail: user.email,
         requesterName: user.name,
       });
+      if (hodAssignment?.hodEmail) {
+        queueStakeholderStepProgressNotifications(pr, {
+          action: isResubmit ? 'submitted' : 'raised',
+          actorRole: 'Requester',
+          actorName: user.name,
+          completedStepLabel: isResubmit ? 'PR Resubmitted' : 'PR Raised',
+          nextStepLabel:
+            nextStep || (prFlow === 'functional' ? 'Selected Approver' : 'L1 Manager Approval'),
+          fyiRecipients: [
+            {
+              email: hodAssignment.hodEmail,
+              name: hodAssignment.hodName || (prFlow === 'functional' ? 'Approver' : 'L1 Manager'),
+              perspective: 'next_approver',
+              actionUrl: buildActionUrl(prId, 'approve', 'HOD Approver', false, false, false),
+            },
+          ],
+        });
+      }
     })().catch((err) => {
       console.error('PR submit notification failed (save already committed):', err.message);
     });
@@ -2429,19 +2457,93 @@ export async function processApproval(user, prId, action, remarks, options = {})
     await conn.commit();
     const updatedPr = await getPurchaseRequestById(prId);
 
-    const notifyRequesterStepMoved = (nextStepLabel, completedStepLabel) => {
+    const notifyWorkflowStepProgress = (nextStepLabel, completedStepLabel) => {
       if (action !== 'approve') return;
-      queueRequesterStepProgressNotification(updatedPr, {
+
+      const completed =
+        completedStepLabel ||
+        approvalStepDisplayLabel(actingAsHod, actingRole, isFunctional);
+
+      const remarksClean =
+        typeof remarks === 'string' ? remarks.replace(/\s*\[User Approval[^\]]*\]\s*/g, ' ').trim() : '';
+
+      const progressOptions = {
         action: 'approve',
         actorRole: actingAsHod ? 'HOD Approver' : actingRole,
         actorName: user.name,
-        completedStepLabel:
-          completedStepLabel ||
-          (isFunctional ? 'User Approval' : `${actingAsHod ? 'L1 Manager' : actingRole} Approval`),
+        completedStepLabel: completed,
         nextStepLabel,
-        remarks: typeof remarks === 'string' ? remarks.replace(/\s*\[User Approval[^\]]*\]\s*/g, ' ').trim() : '',
+        remarks: remarksClean,
+      };
+
+      queueRequesterStepProgressNotification(updatedPr, {
+        ...progressOptions,
         requesterName: updatedPr.requester,
       });
+
+      const fyiRecipients = [];
+      const prIdNum = updatedPr.id || prId;
+      const postRfq = String(updatedPr.status || '').toUpperCase().includes('RFQ');
+
+      if (nextRole === 'PR Manager' && nextAssignee?.email) {
+        fyiRecipients.push({
+          email: nextAssignee.email,
+          name: nextAssignee.name || 'L2 Manager',
+          perspective: 'next_approver',
+          actionUrl: buildActionUrl(prIdNum, 'approve', 'PR Manager', postRfq, false, false),
+        });
+      }
+
+      if (actingAsHod && user.email) {
+        fyiRecipients.push({
+          email: user.email,
+          name: user.name || 'L1 Manager',
+          perspective: 'actor',
+        });
+      }
+
+      if (actingRole === 'PR Manager' && user.email) {
+        fyiRecipients.push({
+          email: user.email,
+          name: user.name || 'L2 Manager',
+          perspective: 'actor',
+        });
+      }
+
+      if (fyiRecipients.length) {
+        queueStakeholderStepProgressNotifications(updatedPr, {
+          ...progressOptions,
+          fyiRecipients,
+        });
+      }
+
+      if (actingRole === 'PR Manager' && action === 'approve') {
+        const l1Progress = { ...progressOptions };
+        const requesterId = updatedPr.requesterId;
+        const departmentId = updatedPr.departmentId;
+        setImmediate(() => {
+          (async () => {
+            try {
+              const [reqRows] = await pool.query(`SELECT email FROM users WHERE id = ?`, [requesterId]);
+              const hod = await resolveHodAssignment(reqRows[0]?.email, departmentId);
+              if (!hod.hodEmail) return;
+              queueStakeholderStepProgressNotifications(updatedPr, {
+                ...l1Progress,
+                fyiRecipients: [
+                  {
+                    email: hod.hodEmail,
+                    name: hod.hodName || 'L1 Manager',
+                    perspective: 'fyi',
+                    actionUrl: buildActionUrl(prIdNum, 'approve', 'HOD Approver', postRfq, false, false),
+                  },
+                ],
+              });
+            } catch (err) {
+              console.error('L1 step progress FYI failed:', err.message);
+            }
+          })();
+        });
+      }
     };
 
     if (nextFunctionalApprover && action === 'approve') {
@@ -2465,7 +2567,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
         }
       );
       const { step: doneStep, total: doneTotal } = approvalStepIndex(pr, user.id);
-      notifyRequesterStepMoved(
+      notifyWorkflowStepProgress(
         nextLabel,
         doneTotal > 1 ? `User Approval ${doneStep} of ${doneTotal}` : 'User Approval'
       );
@@ -2482,7 +2584,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           stageLabel: nextLabel,
         }
       );
-      notifyRequesterStepMoved(nextLabel);
+      notifyWorkflowStepProgress(nextLabel);
     } else if (rfqEntryRequester?.email) {
       // Particular requester — RFQ entry step
       queuePrApprovalPendingNotification(
@@ -2496,7 +2598,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           stageLabel: 'RFQ Entry Required',
         }
       );
-      notifyRequesterStepMoved('RFQ Entry (Own Vendor)', 'L1 Manager Approval');
+      notifyWorkflowStepProgress('RFQ Entry (Own Vendor)', 'L1 Manager Approval');
     } else if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve') {
       // Functional Own (and any PR that already has quotation rounds) → SCM Buyer with files attached
       const scmLabel =
@@ -2524,7 +2626,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           }
         );
       }
-      notifyRequesterStepMoved(
+      notifyWorkflowStepProgress(
         scmLabel,
         isFunctional ? 'User Approval (chain complete)' : `${actingRole} Approval`
       );

@@ -16,6 +16,7 @@ import {
   parseRefexOneSamlResponse,
   resolveSamlRelayState,
 } from '../services/refexOneSamlService.js';
+import { createUserActivityLog } from '../services/userActivityLogService.js';
 
 const router = Router();
 
@@ -39,9 +40,21 @@ function signUserToken(authUser) {
   );
 }
 
-async function issueAuthResponse(res, userRow) {
+async function issueAuthResponse(res, userRow, req, loginMethod = 'password') {
   const authUser = await enrichAuthUser(userRow);
   const token = signUserToken(authUser);
+  void createUserActivityLog({
+    userId: authUser.id,
+    userEmail: authUser.email,
+    userName: authUser.name,
+    userRole: authUser.role,
+    action: 'login',
+    resource: '/api/auth/login',
+    description: `User logged in (${loginMethod})`,
+    ipAddress: req?.ip || req?.socket?.remoteAddress,
+    userAgent: req?.get?.('user-agent'),
+    meta: { loginMethod },
+  });
   res.json({ token, user: authUser });
 }
 
@@ -72,9 +85,21 @@ function htmlSsoRedirect(targetUrl, p2pToken) {
 </html>`;
 }
 
-async function completeSamlLoginAndRedirect(res, userRow, relayState) {
+async function completeSamlLoginAndRedirect(res, userRow, relayState, req) {
   const authUser = await enrichAuthUser(userRow);
   const token = signUserToken(authUser);
+  void createUserActivityLog({
+    userId: authUser.id,
+    userEmail: authUser.email,
+    userName: authUser.name,
+    userRole: authUser.role,
+    action: 'login',
+    resource: '/api/auth/refexone/saml/acs',
+    description: 'User logged in (SAML SSO)',
+    ipAddress: req?.ip || req?.socket?.remoteAddress,
+    userAgent: req?.get?.('user-agent'),
+    meta: { loginMethod: 'saml' },
+  });
   const { launchUrl, appUrl } = getRefexOneSamlConfig();
   const resolved = resolveSamlRelayState(relayState, appUrl);
 
@@ -122,14 +147,14 @@ router.post('/login', async (req, res) => {
       const user = rows[0];
       const valid = await bcrypt.compare(password, user.password_hash);
       if (valid) {
-        return issueAuthResponse(res, user);
+        return issueAuthResponse(res, user, req, 'password');
       }
 
       if (shouldTryRefexOneLogin(user, normalizedEmail)) {
         try {
           const localUser = await loginViaRefexOne(normalizedEmail, password);
           if (localUser) {
-            return issueAuthResponse(res, localUser);
+            return issueAuthResponse(res, localUser, req, 'refexone_password');
           }
         } catch {
           // fall through to invalid credentials
@@ -142,7 +167,7 @@ router.post('/login', async (req, res) => {
     try {
       const localUser = await loginViaRefexOne(normalizedEmail, password);
       if (localUser) {
-        return issueAuthResponse(res, localUser);
+        return issueAuthResponse(res, localUser, req, 'refexone_password');
       }
     } catch {
       // fall through
@@ -184,7 +209,7 @@ router.post('/refexone', async (req, res) => {
       return res.status(401).json({ message: 'Unable to map RefexOne user to P2P' });
     }
 
-    return issueAuthResponse(res, localUser);
+    return issueAuthResponse(res, localUser, req, 'refexone_token');
   } catch (err) {
     console.error('RefexOne SSO error:', err);
     res.status(401).json({ message: err.message || 'RefexOne sign-in failed' });
@@ -209,7 +234,7 @@ router.post('/refexone/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid RefexOne email or password' });
     }
 
-    return issueAuthResponse(res, localUser);
+    return issueAuthResponse(res, localUser, req, 'refexone_password');
   } catch (err) {
     console.error('RefexOne password SSO error:', err);
     res.status(401).json({
@@ -285,7 +310,7 @@ router.post('/refexone/saml/acs', async (req, res) => {
       return res.status(401).type('html').send('<h1>Unable to map RefexOne SAML user to P2P</h1>');
     }
 
-    return completeSamlLoginAndRedirect(res, localUser, relayState);
+    return completeSamlLoginAndRedirect(res, localUser, relayState, req);
   } catch (err) {
     console.error('RefexOne SAML ACS error:', err);
     const { appUrl, launchUrl } = getRefexOneSamlConfig();

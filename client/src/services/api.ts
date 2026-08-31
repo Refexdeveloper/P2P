@@ -1622,6 +1622,25 @@ export interface WhatsAppLogRecord {
   sentAt?: string | null;
 }
 
+export interface UserActivityLogRecord {
+  id: number;
+  userId?: number | null;
+  userEmail?: string;
+  userName?: string;
+  userRole?: string;
+  action: string;
+  resource?: string;
+  description?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  entityType?: string;
+  entityId?: number | null;
+  entityLabel?: string;
+  statusCode?: number | null;
+  meta?: Record<string, unknown> | null;
+  createdAt?: string;
+}
+
 export const adminApi = {
   listUsers: () => request<{ data: AdminUserRecord[] }>('/api/admin/users'),
   syncUsers: () =>
@@ -1687,6 +1706,24 @@ export const adminApi = {
     return request<{
       data: { items: WhatsAppLogRecord[]; total: number; page: number; limit: number };
     }>(`/api/admin/whatsapp-logs${qs ? `?${qs}` : ''}`);
+  },
+  listUserActivityLogs: (params?: {
+    action?: string;
+    userId?: number | string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.action) q.set('action', params.action);
+    if (params?.userId != null && params.userId !== '') q.set('userId', String(params.userId));
+    if (params?.search) q.set('search', params.search);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
+    const qs = q.toString();
+    return request<{
+      data: { items: UserActivityLogRecord[]; total: number; page: number; limit: number };
+    }>(`/api/admin/user-activity-logs${qs ? `?${qs}` : ''}`);
   },
   resetData: (confirm: string) =>
     request<{

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { adminApi, EmailLogRecord, WhatsAppLogRecord } from '../../../services/api';
+import { adminApi, EmailLogRecord, UserActivityLogRecord, WhatsAppLogRecord } from '../../../services/api';
 
 const STATUS_COLORS: Record<string, string> = {
   sent: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -27,6 +27,13 @@ const WA_TYPE_LABELS: Record<string, string> = {
   whatsapp_test: 'WhatsApp Test',
 };
 
+const ACTIVITY_ACTION_LABELS: Record<string, string> = {
+  login: 'Login',
+  create: 'Create / Submit',
+  update: 'Update',
+  delete: 'Delete',
+};
+
 function formatWhen(value?: string | null) {
   if (!value) return '—';
   try {
@@ -36,12 +43,13 @@ function formatWhen(value?: string | null) {
   }
 }
 
-type Channel = 'email' | 'whatsapp';
+type Channel = 'email' | 'whatsapp' | 'activity';
 
 export default function AdminEmailLogsPage() {
   const [channel, setChannel] = useState<Channel>('email');
   const [emailItems, setEmailItems] = useState<EmailLogRecord[]>([]);
   const [waItems, setWaItems] = useState<WhatsAppLogRecord[]>([]);
+  const [activityItems, setActivityItems] = useState<UserActivityLogRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -69,8 +77,9 @@ export default function AdminEmailLogsPage() {
         });
         setEmailItems(res.data.items);
         setWaItems([]);
+        setActivityItems([]);
         setTotal(res.data.total);
-      } else {
+      } else if (channel === 'whatsapp') {
         const res = await adminApi.listWhatsAppLogs({
           status: status || undefined,
           notifyType: typeFilter || undefined,
@@ -80,11 +89,24 @@ export default function AdminEmailLogsPage() {
         });
         setWaItems(res.data.items);
         setEmailItems([]);
+        setActivityItems([]);
+        setTotal(res.data.total);
+      } else {
+        const res = await adminApi.listUserActivityLogs({
+          action: typeFilter || undefined,
+          search: search || undefined,
+          page,
+          limit,
+        });
+        setActivityItems(res.data.items);
+        setEmailItems([]);
+        setWaItems([]);
         setTotal(res.data.total);
       }
     } catch {
       setEmailItems([]);
       setWaItems([]);
+      setActivityItems([]);
       setTotal(0);
     } finally {
       setLoading(false);
@@ -96,7 +118,12 @@ export default function AdminEmailLogsPage() {
   }, [load]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
-  const typeOptions = channel === 'email' ? EMAIL_TYPE_LABELS : WA_TYPE_LABELS;
+  const typeOptions =
+    channel === 'email'
+      ? EMAIL_TYPE_LABELS
+      : channel === 'whatsapp'
+        ? WA_TYPE_LABELS
+        : ACTIVITY_ACTION_LABELS;
 
   const switchChannel = (next: Channel) => {
     setChannel(next);
@@ -135,7 +162,7 @@ export default function AdminEmailLogsPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-slate-900">Notification Logs</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Check whether PR / L1 manager and later workflow emails and WhatsApp messages were sent.
+            Email, WhatsApp notifications, and user activity (logins and updates).
           </p>
         </div>
 
@@ -162,6 +189,17 @@ export default function AdminEmailLogsPage() {
           >
             WhatsApp
           </button>
+          <button
+            type="button"
+            onClick={() => switchChannel('activity')}
+            className={`rounded-lg px-4 py-2 text-sm border ${
+              channel === 'activity'
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-slate-700 border-slate-200'
+            }`}
+          >
+            User activity
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-3 mb-4 items-end">
@@ -179,7 +217,9 @@ export default function AdminEmailLogsPage() {
               placeholder={
                 channel === 'email'
                   ? 'PR number, subject, recipient…'
-                  : 'PR number, phone, stage, wamid…'
+                  : channel === 'whatsapp'
+                    ? 'PR number, phone, stage, wamid…'
+                    : 'User email, name, action, API path…'
               }
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
@@ -192,7 +232,8 @@ export default function AdminEmailLogsPage() {
                 setPage(1);
                 setStatus(e.target.value);
               }}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              disabled={channel === 'activity'}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
             >
               <option value="">All</option>
               <option value="sent">Sent</option>
@@ -202,7 +243,9 @@ export default function AdminEmailLogsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Type</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1">
+              {channel === 'activity' ? 'Action' : 'Type'}
+            </label>
             <select
               value={typeFilter}
               onChange={(e) => {
@@ -386,7 +429,7 @@ export default function AdminEmailLogsPage() {
                   )}
                 </tbody>
               </table>
-            ) : (
+            ) : channel === 'whatsapp' ? (
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -479,6 +522,102 @@ export default function AdminEmailLogsPage() {
                                 {row.errorMessage ? (
                                   <div className="text-red-600">
                                     <span className="font-medium">Error:</span> {row.errorMessage}
+                                  </div>
+                                ) : null}
+                                {row.meta ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">Meta:</span>{' '}
+                                    <code className="text-[11px] bg-white border border-slate-200 rounded px-1 py-0.5">
+                                      {JSON.stringify(row.meta)}
+                                    </code>
+                                  </div>
+                                ) : null}
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">When</th>
+                    <th className="px-4 py-3">User</th>
+                    <th className="px-4 py-3">Action</th>
+                    <th className="px-4 py-3">Description</th>
+                    <th className="px-4 py-3">Resource</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
+                        Loading…
+                      </td>
+                    </tr>
+                  ) : activityItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
+                        No user activity yet. Logins and API updates will appear here.
+                      </td>
+                    </tr>
+                  ) : (
+                    activityItems.map((row) => {
+                      const open = expandedId === row.id;
+                      return (
+                        <Fragment key={row.id}>
+                          <tr
+                            className="border-t border-slate-100 hover:bg-slate-50/80 cursor-pointer"
+                            onClick={() => setExpandedId(open ? null : row.id)}
+                          >
+                            <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                              {formatWhen(row.createdAt)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-slate-800">
+                                {row.userName || row.userEmail || '—'}
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                {row.userEmail || '—'}
+                                {row.userRole ? ` · ${row.userRole}` : ''}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 capitalize">
+                                {ACTIVITY_ACTION_LABELS[row.action] || row.action}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-700 max-w-xs truncate">
+                              {row.description || '—'}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 text-xs max-w-[200px] truncate">
+                              {row.resource || '—'}
+                            </td>
+                          </tr>
+                          {open ? (
+                            <tr className="border-t border-slate-100 bg-slate-50/60">
+                              <td colSpan={5} className="px-4 py-3 text-xs text-slate-600 space-y-1">
+                                {row.ipAddress ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">IP:</span> {row.ipAddress}
+                                  </div>
+                                ) : null}
+                                {row.userAgent ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">User agent:</span>{' '}
+                                    {row.userAgent}
+                                  </div>
+                                ) : null}
+                                {row.entityType ? (
+                                  <div>
+                                    <span className="font-medium text-slate-700">Entity:</span>{' '}
+                                    {row.entityType}
+                                    {row.entityId ? ` #${row.entityId}` : ''}
+                                    {row.entityLabel ? ` (${row.entityLabel})` : ''}
                                   </div>
                                 ) : null}
                                 {row.meta ? (

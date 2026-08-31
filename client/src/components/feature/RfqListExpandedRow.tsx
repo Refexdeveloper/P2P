@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import VendorComparisonMatrix from '../rfq/VendorComparisonMatrix';
 import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
   type ApprovalHistoryEntry,
 } from './ApprovalHistoryPanel';
-import { prApi } from '../../services/api';
+import { prApi, rfqApi, type VendorComparisonData } from '../../services/api';
 
 interface LineItem {
   id?: number;
@@ -22,6 +23,8 @@ interface PRDetail {
   department: string;
   requester: string;
   requestType: string;
+  requestCategory?: string;
+  projectDetail?: string;
   priority: string;
   requiredDate: string;
   expectedDeliveryTimeline?: string;
@@ -34,6 +37,7 @@ interface PRDetail {
   submittedDate: string;
   totalAmount: number;
   justification: string;
+  specialNotes?: string;
   statusUI: string;
   vendorSelection?: string;
   lineItems: LineItem[];
@@ -68,51 +72,132 @@ function normalizeHistory(raw: unknown): ApprovalHistoryEntry[] {
   });
 }
 
+function HighlightInfoCard({
+  label,
+  value,
+  icon,
+  tone,
+  className = '',
+}: {
+  label: string;
+  value?: string | null;
+  icon: string;
+  tone: 'address' | 'notes';
+  className?: string;
+}) {
+  const styles = {
+    address: {
+      box: 'bg-gradient-to-br from-teal-50 via-cyan-50 to-emerald-50 border-teal-200',
+      icon: 'bg-teal-600 text-white',
+      label: 'text-teal-700',
+      value: 'text-teal-950',
+    },
+    notes: {
+      box: 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 border-amber-200',
+      icon: 'bg-amber-500 text-white',
+      label: 'text-amber-800',
+      value: 'text-amber-950',
+    },
+  }[tone];
+
+  return (
+    <div className={`rounded-xl border p-4 min-h-[120px] flex gap-3 ${styles.box} ${className}`}>
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${styles.icon}`}>
+        <i className={`${icon} text-lg`}></i>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={`text-[11px] font-semibold uppercase tracking-wider mb-1.5 ${styles.label}`}>{label}</p>
+        <p className={`text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words ${styles.value}`}>
+          {value?.trim() ? value : '—'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function RfqListExpandedRow({
   prId,
   colSpan,
   statusLabel = '',
   actionSlot,
 }: Props) {
-  const [tab, setTab] = useState<'details' | 'items' | 'history'>('details');
+  const [tab, setTab] = useState<'details' | 'items' | 'vendors' | 'history'>('details');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pr, setPr] = useState<PRDetail | null>(null);
+  const [comparison, setComparison] = useState<VendorComparisonData | null>(null);
+
+  const handlePreviewFile = useCallback(async (submissionId: number, _vendorName: string, fileName: string) => {
+    try {
+      const token = localStorage.getItem('p2p_token');
+      const res = await fetch(rfqApi.quotationFileUrl(submissionId), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Could not load file');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (!win) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName || 'quotation';
+        a.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      alert(`Could not preview ${fileName}`);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       setError('');
+      setComparison(null);
       try {
-        const res = await prApi.get(prId);
+        const [prRes, cmpRes] = await Promise.allSettled([prApi.get(prId), rfqApi.getComparison(prId)]);
         if (cancelled) return;
-        const d = res.data as Record<string, unknown>;
-        const items = Array.isArray(d.lineItems) ? (d.lineItems as LineItem[]) : [];
-        setPr({
-          id: Number(d.id),
-          prNumber: String(d.prNumber || ''),
-          title: String(d.title || ''),
-          department: String(d.department || ''),
-          requester: String(d.requester || ''),
-          requestType: String(d.requestType || ''),
-          priority: String(d.priority || d.priorityLower || ''),
-          requiredDate: String(d.requiredDate || ''),
-          expectedDeliveryTimeline: String(d.expectedDeliveryTimeline || ''),
-          paymentTerms: String(d.paymentTerms || ''),
-          billingLocation: String(d.billingLocation || ''),
-          billingGstNo: String(d.billingGstNo || ''),
-          billingAddress: String(d.billingAddress || ''),
-          deliveryPoc: String(d.deliveryPoc || ''),
-          placeOfDelivery: String(d.placeOfDelivery || ''),
-          submittedDate: String(d.submittedDate || ''),
-          totalAmount: Number(d.totalAmount || 0),
-          justification: String(d.justification || ''),
-          statusUI: String(d.statusUI || statusLabel || ''),
-          vendorSelection: d.vendorSelection ? String(d.vendorSelection) : undefined,
-          lineItems: items,
-          approvalHistory: normalizeHistory(d.approvalHistory),
-        });
+
+        if (prRes.status === 'fulfilled') {
+          const d = prRes.value.data as Record<string, unknown>;
+          const items = Array.isArray(d.lineItems) ? (d.lineItems as LineItem[]) : [];
+          setPr({
+            id: Number(d.id),
+            prNumber: String(d.prNumber || ''),
+            title: String(d.title || ''),
+            department: String(d.department || ''),
+            requester: String(d.requester || ''),
+            requestType: String(d.requestType || ''),
+            requestCategory: String(d.requestCategory || ''),
+            projectDetail: String(d.projectDetail || ''),
+            priority: String(d.priority || d.priorityLower || ''),
+            requiredDate: String(d.requiredDate || ''),
+            expectedDeliveryTimeline: String(d.expectedDeliveryTimeline || ''),
+            paymentTerms: String(d.paymentTerms || ''),
+            billingLocation: String(d.billingLocation || ''),
+            billingGstNo: String(d.billingGstNo || ''),
+            billingAddress: String(d.billingAddress || ''),
+            deliveryPoc: String(d.deliveryPoc || ''),
+            placeOfDelivery: String(d.placeOfDelivery || ''),
+            submittedDate: String(d.submittedDate || ''),
+            totalAmount: Number(d.totalAmount || 0),
+            justification: String(d.justification || ''),
+            specialNotes: String(d.specialNotes || ''),
+            statusUI: String(d.statusUI || statusLabel || ''),
+            vendorSelection: d.vendorSelection ? String(d.vendorSelection) : undefined,
+            lineItems: items,
+            approvalHistory: normalizeHistory(d.approvalHistory),
+          });
+        } else {
+          throw prRes.reason instanceof Error ? prRes.reason : new Error('Failed to load PR details');
+        }
+
+        if (cmpRes.status === 'fulfilled') {
+          setComparison(cmpRes.value.data);
+        } else {
+          setComparison(null);
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load PR details');
       } finally {
@@ -133,6 +218,11 @@ export default function RfqListExpandedRow({
       icon: 'ri-list-check-2',
     },
     {
+      key: 'vendors' as const,
+      label: `Vendor Comparison${comparison?.vendorCount ? ` (${comparison.vendorCount})` : ''}`,
+      icon: 'ri-table-line',
+    },
+    {
       key: 'history' as const,
       label: `Approval History${pr?.approvalHistory?.length ? ` (${pr.approvalHistory.length})` : ''}`,
       icon: 'ri-history-line',
@@ -149,7 +239,7 @@ export default function RfqListExpandedRow({
                 {pr?.prNumber || `PR #${prId}`}
                 {pr?.title ? ` — ${pr.title}` : ''}
               </p>
-              <p className="text-xs text-gray-500">Full PR details · Line items · Approval history</p>
+              <p className="text-xs text-gray-500">PR details · Line items · Vendor comparison · Approval history</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
               {actionSlot}
@@ -199,15 +289,15 @@ export default function RfqListExpandedRow({
                     ['Department', pr.department],
                     ['Requester', pr.requester],
                     ['Request Type', pr.requestType],
+                    ['Request Category', pr.requestCategory || '—'],
+                    ['Project Detail', pr.projectDetail || '—'],
                     ['Priority', pr.priority],
                     ['Required Date', pr.requiredDate || '—'],
                     ['Expected Timeline', pr.expectedDeliveryTimeline || '—'],
                     ['Payment Terms', pr.paymentTerms || '—'],
                     ['Billing Region', pr.billingLocation || '—'],
                     ['Billing GSTIN', pr.billingGstNo || '—'],
-                    ['Billing Address', pr.billingAddress || '—'],
                     ['POC for Delivery', pr.deliveryPoc || '—'],
-                    ['Place of Delivery', pr.placeOfDelivery || '—'],
                     ['Submitted', pr.submittedDate || '—'],
                     ['Total Amount', formatCurrency(pr.totalAmount)],
                     [
@@ -229,11 +319,36 @@ export default function RfqListExpandedRow({
                   ))}
                 </div>
 
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <HighlightInfoCard
+                    label="Place of Delivery"
+                    value={pr.placeOfDelivery}
+                    icon="ri-map-pin-line"
+                    tone="address"
+                    className="lg:col-span-2 min-h-[120px]"
+                  />
+                  <HighlightInfoCard
+                    label="Billing Address"
+                    value={pr.billingAddress}
+                    icon="ri-building-line"
+                    tone="address"
+                    className="lg:col-span-2 min-h-[120px]"
+                  />
+                </div>
+
+                <HighlightInfoCard
+                  label="Special Notes"
+                  value={pr.specialNotes}
+                  icon="ri-sticky-note-line"
+                  tone="notes"
+                  className="min-h-[120px]"
+                />
+
                 <div>
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                     Business Justification
                   </h4>
-                  <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words">
+                  <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words whitespace-pre-wrap min-h-[80px]">
                     {pr.justification || 'No justification provided.'}
                   </p>
                 </div>
@@ -302,6 +417,25 @@ export default function RfqListExpandedRow({
                   </table>
                 )}
               </div>
+            )}
+
+            {!loading && !error && pr && tab === 'vendors' && (
+              comparison ? (
+                <div className="min-w-0 w-full max-w-full">
+                  <VendorComparisonMatrix
+                    data={comparison}
+                    compact
+                    onPreviewFile={(submissionId, vendorName, fileName) => {
+                      void handlePreviewFile(submissionId, vendorName, fileName);
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="py-8 text-center text-sm text-gray-500">
+                  <i className="ri-store-2-line text-2xl text-gray-300 mb-2 block"></i>
+                  No vendor comparison data yet — open RFQ entry to add vendors and quotes
+                </div>
+              )
             )}
 
             {!loading && !error && pr && tab === 'history' && (

@@ -44,7 +44,28 @@ function resolvePoDate(value, fallback) {
   return todayYmd();
 }
 
+function isManualPoBody(body = {}, existing = null) {
+  return Boolean(
+    body.manualPrDetails != null ||
+    (Array.isArray(body.comparisonRounds) && body.comparisonRounds.length) ||
+    body.selectedEntityId !== undefined ||
+    (existing && !existing.pr_id)
+  );
+}
+
 async function resolveEntityIdFromPoBody(body = {}, existing = null) {
+  if (isManualPoBody(body, existing)) {
+    if (body.selectedEntityId !== undefined) {
+      const fromSelected = Number(body.selectedEntityId);
+      return fromSelected > 0 ? fromSelected : 0;
+    }
+    if (body.entityId !== undefined) {
+      const fromBody = Number(body.entityId);
+      return fromBody > 0 ? fromBody : 0;
+    }
+    return Number(existing?.entity_id || 0);
+  }
+
   const direct = Number(body.entityId || existing?.entity_id || 0);
   if (direct) return direct;
 
@@ -263,6 +284,148 @@ function savePoAttachment(poId, prefix, fileName, base64Data) {
   const raw = String(base64Data).includes(',') ? String(base64Data).split(',').pop() : String(base64Data);
   fs.writeFileSync(fullPath, Buffer.from(raw, 'base64'));
   return { fileName: safeName, filePath: storedName };
+}
+
+function parseManualContextJson(value) {
+  if (!value) return { prDetails: null, vendorQuotes: [], comparisonRounds: [] };
+  try {
+    const raw = typeof value === 'string' ? JSON.parse(value) : value;
+    if (!raw || typeof raw !== 'object') {
+      return { prDetails: null, vendorQuotes: [], comparisonRounds: [] };
+    }
+    const vendorQuotes = Array.isArray(raw.vendorQuotes) ? raw.vendorQuotes : [];
+    const comparisonRounds = Array.isArray(raw.comparisonRounds) ? raw.comparisonRounds : [];
+    return {
+      prDetails: raw.prDetails && typeof raw.prDetails === 'object' ? raw.prDetails : null,
+      vendorQuotes,
+      comparisonRounds: comparisonRounds.length
+        ? comparisonRounds
+        : vendorQuotes.length
+          ? [{ round: 1, label: 'Round 1', notes: '', vendorQuotes }]
+          : [],
+    };
+  } catch {
+    return { prDetails: null, vendorQuotes: [], comparisonRounds: [] };
+  }
+}
+
+function normalizeVendorQuoteRow(row = {}, idx = 0, defaultRound = 1) {
+  return {
+    round: Number(row.round) || defaultRound,
+    vendorId: String(row.vendorId || row.vendor_id || '').trim(),
+    vendorName: String(row.vendorName || row.vendor_name || '').trim(),
+    vendorEmail: String(row.vendorEmail || row.vendor_email || '').trim(),
+    quotedPrice: Number(row.quotedPrice ?? row.quoted_price) || 0,
+    leadTime: String(row.leadTime || row.lead_time || '').trim(),
+    paymentTerms: String(row.paymentTerms || row.payment_terms || '').trim(),
+    recommended: Boolean(row.recommended),
+    files: Array.isArray(row.files) ? row.files : [],
+    sortOrder: Number(row.sortOrder ?? row.sort_order) || idx,
+  };
+}
+
+function normalizeManualContextInput(body = {}) {
+  const prRaw = body.manualPrDetails || body.prDetails || {};
+  const prDetails = {
+    prNumber: String(prRaw.prNumber || body.prNumber || body.pr_number || '').trim(),
+    title: String(prRaw.title || body.title || '').trim(),
+    department: String(prRaw.department || body.department || '').trim(),
+    requester: String(prRaw.requester || body.requester || '').trim(),
+    justification: String(prRaw.justification || '').trim(),
+    requestType: String(prRaw.requestType || body.requestType || 'Opex').trim(),
+    priority: String(prRaw.priority || body.priority || 'Medium').trim(),
+  };
+
+  let comparisonRounds = [];
+  if (Array.isArray(body.comparisonRounds) && body.comparisonRounds.length) {
+    comparisonRounds = body.comparisonRounds.map((roundRow, roundIdx) => {
+      const roundNum = Number(roundRow.round) || roundIdx + 1;
+      const vendorQuotes = (Array.isArray(roundRow.vendorQuotes) ? roundRow.vendorQuotes : []).map(
+        (row, idx) => normalizeVendorQuoteRow(row, idx, roundNum)
+      );
+      return {
+        round: roundNum,
+        label: String(roundRow.label || `Round ${roundNum}`).trim(),
+        notes: String(roundRow.notes || '').trim(),
+        vendorQuotes,
+      };
+    });
+  }
+
+  let vendorQuotes = comparisonRounds.length
+    ? comparisonRounds.flatMap((roundRow) => roundRow.vendorQuotes)
+    : (Array.isArray(body.vendorQuotes) ? body.vendorQuotes : []).map((row, idx) =>
+        normalizeVendorQuoteRow(row, idx, 1)
+      );
+
+  if (!comparisonRounds.length && vendorQuotes.length) {
+    comparisonRounds = [
+      {
+        round: 1,
+        label: 'Round 1',
+        notes: '',
+        vendorQuotes,
+      },
+    ];
+  }
+
+  const selectedEntityId =
+    body.selectedEntityId !== undefined && body.selectedEntityId !== null && body.selectedEntityId !== ''
+      ? Number(body.selectedEntityId) || null
+      : null;
+
+  return { prDetails, vendorQuotes, comparisonRounds, selectedEntityId };
+}
+
+function persistManualVendorQuoteFiles(poId, vendorQuotes = []) {
+  const storedQuotes = [];
+  for (const row of vendorQuotes) {
+    const fileRows = [];
+    for (const file of row.files || []) {
+      if (!file?.fileName) continue;
+      if (file.storedName && !file.data && !file.dataBase64) {
+        fileRows.push({
+          fileName: file.fileName,
+          storedName: file.storedName,
+          mimeType: file.mimeType || null,
+        });
+        continue;
+      }
+      const saved = savePoAttachment(poId, 'manual-quote', file.fileName, file.data || file.dataBase64);
+      if (saved.fileName) {
+        fileRows.push({
+          fileName: saved.fileName,
+          storedName: saved.filePath,
+          mimeType: file.mimeType || null,
+        });
+      }
+    }
+    storedQuotes.push({
+      round: Number(row.round) || 1,
+      vendorId: row.vendorId || '',
+      vendorName: row.vendorName || '',
+      vendorEmail: row.vendorEmail || '',
+      quotedPrice: row.quotedPrice || 0,
+      leadTime: row.leadTime || '',
+      paymentTerms: row.paymentTerms || '',
+      recommended: Boolean(row.recommended),
+      files: fileRows,
+      sortOrder: row.sortOrder ?? 0,
+    });
+  }
+  return storedQuotes;
+}
+
+function persistManualComparisonRounds(poId, comparisonRounds = []) {
+  return comparisonRounds.map((roundRow) => {
+    const storedQuotes = persistManualVendorQuoteFiles(poId, roundRow.vendorQuotes || []);
+    return {
+      round: Number(roundRow.round) || 1,
+      label: String(roundRow.label || `Round ${roundRow.round || 1}`).trim(),
+      notes: String(roundRow.notes || '').trim(),
+      vendorQuotes: storedQuotes,
+    };
+  });
 }
 
 function parseJsonArray(value) {
@@ -579,6 +742,7 @@ async function enrichPO(row) {
     cancelledAt: row.cancelled_at ? formatDateTime(row.cancelled_at) : null,
     cancelledBy: row.cancelled_by || null,
     cancelledByName: cancelledBy.name || '',
+    manualContext: parseManualContextJson(row.manual_context_json),
     vendorAcceptanceToken: row.vendor_acceptance_token || null,
     pdfPath: row.pdf_path,
     signedPdfPath: row.signed_pdf_path,
@@ -1548,8 +1712,21 @@ export async function createManualPurchaseOrder(user, body = {}) {
     throw new Error('Only SCM Buyer can create purchase orders');
   }
 
-  const skipApproval = Boolean(body?.skipApproval || body?.legacyImport || body?.oldPoImport);
-  const draft = await resolveManualPoDraftContent(body);
+  const manualContextInput = normalizeManualContextInput(body);
+  const recommendedQuote =
+    manualContextInput.vendorQuotes.find((v) => v.recommended) ||
+    manualContextInput.vendorQuotes[manualContextInput.vendorQuotes.length - 1];
+  const bodyForDraft = {
+    ...body,
+    title: manualContextInput.prDetails.title || body.title,
+    department: manualContextInput.prDetails.department || body.department,
+    requester: manualContextInput.prDetails.requester || body.requester,
+    prNumber: manualContextInput.prDetails.prNumber || body.prNumber,
+    vendorName: body.vendorName || recommendedQuote?.vendorName,
+    vendorEmail: body.vendorEmail || recommendedQuote?.vendorEmail,
+    paymentTerms: body.paymentTerms || recommendedQuote?.paymentTerms,
+  };
+  const draft = await resolveManualPoDraftContent(bodyForDraft);
   const {
     lineItems,
     deliveryAddress,
@@ -1583,14 +1760,14 @@ export async function createManualPurchaseOrder(user, body = {}) {
 
   const entityIdForNumber = await resolveEntityIdFromPoBody(body);
   if (!entityIdForNumber) {
-    throw new Error('Select a letterhead entity to generate the PO / WO number');
+    throw new Error('Select an entity to generate the PO / WO number');
   }
 
   const purchaseType = normalizePurchaseType(body.purchaseType || 'purchase_order');
   const docLabel = purchaseTypeLabel(purchaseType);
   const referencePoNumber = body.referencePoNumber?.trim() || null;
   const requestedPoNumber = normalizeRequestedPoNumber(body?.poNumber || body?.existingPoNumber);
-  const initialStatus = skipApproval ? 'approved' : 'pending_approval';
+  const initialStatus = 'approved';
 
   const conn = await pool.getConnection();
   try {
@@ -1611,8 +1788,8 @@ export async function createManualPurchaseOrder(user, body = {}) {
        (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
         delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
         po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
-        annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
-       VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status, manual_context_json)
+       VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         poNumber,
         referencePoNumber,
@@ -1643,10 +1820,33 @@ export async function createManualPurchaseOrder(user, body = {}) {
         taxAmount,
         grandTotal,
         initialStatus,
+        null,
       ]
     );
 
     const poId = result.insertId;
+    const storedComparisonRounds = persistManualComparisonRounds(
+      poId,
+      manualContextInput.comparisonRounds
+    );
+    const storedVendorQuotes = storedComparisonRounds.flatMap((roundRow) => roundRow.vendorQuotes);
+    const manualContextJson = JSON.stringify({
+      prDetails: manualContextInput.prDetails,
+      comparisonRounds: storedComparisonRounds,
+      vendorQuotes: storedVendorQuotes,
+      selectedEntityId: manualContextInput.selectedEntityId,
+    });
+    await conn.query(`UPDATE purchase_orders SET manual_context_json = ? WHERE id = ?`, [
+      manualContextJson,
+      poId,
+    ]);
+    const justification = manualContextInput.prDetails.justification;
+    if (justification) {
+      await conn.query(`UPDATE purchase_orders SET special_instructions = ? WHERE id = ?`, [
+        justification,
+        poId,
+      ]);
+    }
     for (const item of lineItems) {
       const total = lineItemTotal(item.quantity, item.unitPrice);
       const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage) || 0));
@@ -1677,21 +1877,6 @@ export async function createManualPurchaseOrder(user, body = {}) {
     const { fileName } = await generatePoPdf(po, { fileName: `${poNumber}_draft.pdf` });
     await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
     po.pdfPath = fileName;
-
-    if (!skipApproval) {
-      const managers = await resolveRoleEmails('SCM Manager');
-      queuePoWorkflowNotification(po, {
-        action: 'assign',
-        stageLabel: 'SCM Manager PO Approval',
-        recipientEmails: managers.map((m) => m.email),
-        recipientName: managers[0]?.name || 'SCM Manager',
-        actorName: user.name,
-        actorRole: user.role,
-        remarks: `Manual ${docLabel} ${poNumber} created (no PR) and sent for approval`,
-        portalUrl: poPortalUrl('/scm/po-approval'),
-        ctaLabel: 'Open PO Approval',
-      });
-    }
 
     return po;
   } catch (err) {
@@ -1927,7 +2112,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
   const isManual = !existing?.pr_id && !prId;
   const entityIdForNumber = await resolveEntityIdFromPoBody(body, existing);
   if (isManual && !entityIdForNumber) {
-    throw new Error('Select a letterhead entity before saving a manual PO draft');
+    throw new Error('Select an entity before saving a manual PO draft');
   }
 
   const resolved = await resolveDraftSaveContent({ prId, existing, body });
@@ -2138,6 +2323,41 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     }
 
     await conn.commit();
+
+    const manualContextInput = normalizeManualContextInput(body);
+    const shouldPersistManualContext =
+      isManual ||
+      !existing?.pr_id ||
+      manualContextInput.prDetails.title ||
+      manualContextInput.comparisonRounds.length ||
+      manualContextInput.vendorQuotes.length;
+    if (shouldPersistManualContext && savedPoId) {
+      const roundsToStore = manualContextInput.comparisonRounds.length
+        ? manualContextInput.comparisonRounds
+        : manualContextInput.vendorQuotes.length
+          ? [{ round: 1, label: 'Round 1', notes: '', vendorQuotes: manualContextInput.vendorQuotes }]
+          : [];
+      const storedComparisonRounds = roundsToStore.length
+        ? persistManualComparisonRounds(savedPoId, roundsToStore)
+        : [];
+      const storedVendorQuotes = storedComparisonRounds.flatMap((roundRow) => roundRow.vendorQuotes);
+      const manualContextJson = JSON.stringify({
+        prDetails: manualContextInput.prDetails,
+        comparisonRounds: storedComparisonRounds,
+        vendorQuotes: storedVendorQuotes,
+        selectedEntityId: manualContextInput.selectedEntityId,
+      });
+      await pool.query(`UPDATE purchase_orders SET manual_context_json = ? WHERE id = ?`, [
+        manualContextJson,
+        savedPoId,
+      ]);
+      if (manualContextInput.prDetails.justification) {
+        await pool.query(`UPDATE purchase_orders SET special_instructions = ? WHERE id = ?`, [
+          manualContextInput.prDetails.justification,
+          savedPoId,
+        ]);
+      }
+    }
   } catch (err) {
     await conn.rollback();
     throw err;

@@ -19,6 +19,7 @@ import { sendWhatsAppHsm, buildWorkflowWhatsAppParams, normalizeWhatsAppTo, getW
 import { startSlaBreachScheduler } from './services/slaBreachService.js';
 import { pingDatabase } from './config/db.js';
 import { authenticate } from './middleware/auth.js';
+import { attachUserFromToken, auditUserActivity } from './middleware/activityAudit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -164,6 +165,8 @@ app.post('/api/health/whatsapp/send-test', authenticate, async (req, res) => {
     });
   }
 });
+
+app.use('/api', attachUserFromToken, auditUserActivity);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/purchase-requests', purchaseRequestRoutes);

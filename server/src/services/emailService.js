@@ -917,6 +917,57 @@ export function queueRequesterStepProgressNotification(pr, options = {}) {
   });
 }
 
+/** FYI step-progress mail to approvers (e.g. L2 when L1 approves, or L2 after they approve). */
+export async function sendStakeholderStepProgressNotification(pr, recipient, options = {}) {
+  const email = String(recipient?.email || '').trim();
+  if (!email) return null;
+
+  const { subject, html, text } = buildPrStepProgressEmail({
+    pr,
+    requesterName: recipient.name || email.split('@')[0] || 'Approver',
+    action: options.action || 'approve',
+    actorRole: options.actorRole || '',
+    actorName: options.actorName || '',
+    completedStepLabel: options.completedStepLabel || '',
+    nextStepLabel: options.nextStepLabel || '',
+    remarks: options.remarks || '',
+    appBaseUrl: getAppBaseUrl(),
+    recipientPerspective: recipient.perspective || 'actor',
+    actionUrl: recipient.actionUrl || options.actionUrl || null,
+  });
+
+  console.log(
+    `Step progress → ${recipient.perspective || 'stakeholder'} (${recipient.name || email}): ${email} for ${pr.prNumber || pr.id} → ${options.nextStepLabel || 'next'}`
+  );
+
+  return sendMailToRecipients([email], subject, html, text, [], {
+    emailType: 'pr_step_progress',
+    prId: pr.id || pr.prId || null,
+    prNumber: pr.prNumber || pr.pr_number || null,
+    meta: {
+      action: options.action || 'approve',
+      actorRole: options.actorRole || null,
+      actorName: options.actorName || null,
+      completedStepLabel: options.completedStepLabel || null,
+      nextStepLabel: options.nextStepLabel || null,
+      recipientPerspective: recipient.perspective || null,
+    },
+  });
+}
+
+export function queueStakeholderStepProgressNotifications(pr, options = {}) {
+  const recipients = options.fyiRecipients || [];
+  for (const recipient of recipients) {
+    if (!recipient?.email) continue;
+    enqueueMail(() => sendStakeholderStepProgressNotification(pr, recipient, options)).catch((err) => {
+      console.error(
+        `Email send failure (stakeholder step progress ${recipient.email}):`,
+        err.message
+      );
+    });
+  }
+}
+
 /** Confirmation to the approver who just acted (approve / reject / send back). */
 async function resolveApproverWithEmail(approver) {
   if (!approver) return null;

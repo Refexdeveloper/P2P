@@ -354,7 +354,7 @@ router.post('/manual', requireRoles('SCM Buyer', 'Super Admin'), async (req, res
     const data = await createManualPurchaseOrder(req.user, req.body || {});
     res.json({
       data,
-      message: `PO ${data.poNumber} created${data.statusRaw === 'approved' ? '' : ' and sent for SCM Manager approval'} (no PR)`,
+      message: `PO ${data.poNumber} created (manual entry — no approval)`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });
