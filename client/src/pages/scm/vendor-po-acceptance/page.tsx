@@ -168,10 +168,12 @@ export default function VendorPOAcceptancePage() {
       setManualFor(null);
       await load();
       if (manualAction === 'accept' || manualAction === 'partial') {
-        // Prepare GRN basic data on GRN page (awaiting row) — do NOT open GRN popup here.
-        // User opens enter-fields popup later via Mark as Received on GRN.
+        const isWo = manualFor.purchaseType === 'work_order';
         showToast(
-          res.message || 'Vendor acceptance saved. GRN is ready — open GRN and click Mark as Received.',
+          res.message ||
+            (isWo
+              ? 'Vendor acceptance saved — upload vendor invoice next.'
+              : 'Vendor acceptance saved — invoice proceeds to Accounts verification.'),
           'success'
         );
       } else {
@@ -190,8 +192,8 @@ export default function VendorPOAcceptancePage() {
         <h1 className="text-2xl font-bold text-gray-900">Vendor PO Acceptance</h1>
         <p className="text-sm text-gray-500 mt-1">
           {isRequesterView
-            ? 'Your POs awaiting vendor acceptance — send mail to vendor or record manual acceptance.'
-            : 'Expand a row for full details. After accept → next step is GRN.'}
+            ? 'Record vendor acceptance after GRN and invoice upload (Work Orders appear right after final verify).'
+            : 'POs awaiting vendor acceptance — send mail to vendor or record manual acceptance.'}
         </p>
       </div>
 
@@ -241,7 +243,7 @@ export default function VendorPOAcceptancePage() {
           <p className="p-8 text-sm text-gray-500">Loading…</p>
         ) : filtered.length === 0 ? (
           <p className="p-8 text-sm text-gray-400 text-center">
-            No POs in this queue. Final-verify a PO first, then it appears here.
+            No POs in this queue. Purchase Orders appear after GRN and invoice upload; Work Orders after final verify.
           </p>
         ) : (
         <div className="overflow-x-auto">
@@ -321,13 +323,17 @@ export default function VendorPOAcceptancePage() {
                               </button>
                             </div>
                           ) : accepted ? (
+                            po.purchaseType === 'work_order' ? (
                               <button
-                              type="button"
-                              onClick={() => navigate('/grn')}
-                              className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg"
-                            >
-                              Go to GRN
+                                type="button"
+                                onClick={() => navigate('/requester/vendor-invoice')}
+                                className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg"
+                              >
+                                Upload invoice
                               </button>
+                            ) : (
+                              <span className="text-xs text-emerald-700 font-medium">Accepted</span>
+                            )
                           ) : (
                             <span className="text-xs text-gray-500">Completed</span>
                           )}

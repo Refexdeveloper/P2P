@@ -255,6 +255,10 @@ const routes: RouteObject[] = [
     element: <ProtectedRoute><VendorPOAcceptancePage /></ProtectedRoute>
   },
   {
+    path: '/requester/vendor-invoice',
+    element: <ProtectedRoute><VendorInvoicePage /></ProtectedRoute>
+  },
+  {
     path: '/scm/vendor-invoice',
     element: <ProtectedRoute><VendorInvoicePage /></ProtectedRoute>
   },

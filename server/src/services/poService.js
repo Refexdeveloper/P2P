@@ -3016,19 +3016,34 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
 
   const verifyRemarks =
     remarks?.trim() || 'Final verified by SCM Buyer';
+  const isWo = isWorkOrderPo(rows[0]);
   const token = rows[0].vendor_acceptance_token || newVendorAcceptanceToken();
 
-  await pool.query(
-    `UPDATE purchase_orders SET
-       status = 'sent_to_vendor',
-       vendor_acceptance_status = 'pending',
-       vendor_acceptance_token = ?,
-       vendor_acceptance_mode = NULL,
-       vendor_notified_at = NULL,
-       updated_at = NOW()
-     WHERE id = ?`,
-    [token, poId]
-  );
+  if (isWo) {
+    await pool.query(
+      `UPDATE purchase_orders SET
+         status = 'sent_to_vendor',
+         vendor_acceptance_status = 'pending',
+         vendor_acceptance_token = ?,
+         vendor_acceptance_mode = NULL,
+         vendor_notified_at = NULL,
+         updated_at = NOW()
+       WHERE id = ?`,
+      [token, poId]
+    );
+  } else {
+    await pool.query(
+      `UPDATE purchase_orders SET
+         status = 'awaiting_grn',
+         vendor_acceptance_status = NULL,
+         vendor_acceptance_token = ?,
+         vendor_acceptance_mode = NULL,
+         vendor_notified_at = NULL,
+         updated_at = NOW()
+       WHERE id = ?`,
+      [token, poId]
+    );
+  }
 
   await pool.query(
     `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
@@ -3108,7 +3123,9 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   if (rows[0].pr_id) {
     const requesterId = await getPoRequesterId(rows[0]);
     if (requesterId) {
-      await upsertVendorAcceptanceTask(rows[0].pr_id, requesterId);
+      if (isWo) {
+        await upsertVendorAcceptanceTask(rows[0].pr_id, requesterId);
+      }
       try {
         const [reqRows] = await pool.query(
           `SELECT u.email, u.name FROM users u WHERE u.id = ? LIMIT 1`,
@@ -3118,21 +3135,21 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
         if (reqUser?.email) {
           queuePoWorkflowNotification(updated, {
             action: 'assign',
-            stageLabel: 'Vendor PO Acceptance',
+            stageLabel: isWo ? 'Vendor PO Acceptance' : 'GRN — Goods Receipt',
             recipientEmails: [reqUser.email],
             recipientName: reqUser.name || updated.requester || 'Requester',
             actorName: user.name,
             actorRole: user.role,
             remarks: verifyRemarks,
-            portalUrl: poPortalUrl('/requester/vendor-po-acceptance'),
-            ctaLabel: 'Open Vendor Acceptance',
+            portalUrl: poPortalUrl(isWo ? '/requester/vendor-po-acceptance' : '/grn'),
+            ctaLabel: isWo ? 'Open Vendor Acceptance' : 'Open GRN',
             bccOps: false,
             notifyWhatsApp: false,
-            attachments,
+            attachments: isWo ? attachments : undefined,
           });
         }
       } catch (err) {
-        console.warn('Vendor acceptance requester notify failed:', err.message);
+        console.warn('Post final-verify requester notify failed:', err.message);
       }
     }
   }
@@ -3757,6 +3774,79 @@ async function completeVendorAcceptanceTask(prId) {
   );
 }
 
+function isWorkOrderPo(row) {
+  return String(row?.purchase_type || row?.purchaseType || 'purchase_order') === 'work_order';
+}
+
+function resolveStatusAfterVendorAcceptance(poRow, acceptanceStatus) {
+  if (!['accepted', 'partial'].includes(acceptanceStatus)) return poRow.status;
+  if (isWorkOrderPo(poRow)) return 'invoice_entry';
+  if (
+    ['invoice_entry', 'pending_accounts_approval', 'approved_for_payment', 'paid'].includes(
+      poRow.status
+    )
+  ) {
+    return poRow.status;
+  }
+  return 'awaiting_grn';
+}
+
+/** After GRN + invoice upload on a PO, open vendor acceptance for the requester. */
+export async function openVendorAcceptanceStageForPo(poId) {
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) return null;
+  const row = rows[0];
+  if (isWorkOrderPo(row)) return null;
+  const vaStatus = row.vendor_acceptance_status;
+  if (vaStatus && vaStatus !== 'pending') return null;
+
+  const token = row.vendor_acceptance_token || newVendorAcceptanceToken();
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'sent_to_vendor',
+       vendor_acceptance_status = 'pending',
+       vendor_acceptance_token = ?,
+       vendor_notified_at = NULL,
+       updated_at = NOW()
+     WHERE id = ?`,
+    [token, poId]
+  );
+
+  if (row.pr_id) {
+    const requesterId = await getPoRequesterId(row);
+    if (requesterId) {
+      await upsertVendorAcceptanceTask(row.pr_id, requesterId);
+      try {
+        const updated = await getPurchaseOrderById(poId);
+        const [reqRows] = await pool.query(
+          `SELECT u.email, u.name FROM users u WHERE u.id = ? LIMIT 1`,
+          [requesterId]
+        );
+        const reqUser = reqRows[0];
+        if (reqUser?.email) {
+          queuePoWorkflowNotification(updated, {
+            action: 'assign',
+            stageLabel: 'Vendor PO Acceptance',
+            recipientEmails: [reqUser.email],
+            recipientName: reqUser.name || updated.requester || 'Requester',
+            actorName: 'System',
+            actorRole: 'System',
+            remarks: 'Invoice uploaded — record vendor PO acceptance',
+            portalUrl: poPortalUrl('/requester/vendor-po-acceptance'),
+            ctaLabel: 'Open Vendor Acceptance',
+            bccOps: false,
+            notifyWhatsApp: false,
+          });
+        }
+      } catch (err) {
+        console.warn('Vendor acceptance open notify failed:', err.message);
+      }
+    }
+  }
+
+  return getPurchaseOrderById(poId);
+}
+
 /** Backfill / reassign pending vendor acceptance tasks to PR requesters. */
 export async function reassignVendorAcceptanceTasksToRequesters() {
   const [rows] = await pool.query(
@@ -3904,6 +3994,7 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
   }
 
   const deliveryDate = body.deliveryDate || body.deliveryConfirmedDate || null;
+  const nextStatus = resolveStatusAfterVendorAcceptance(row, acceptanceStatus);
 
   await pool.query(
     `UPDATE purchase_orders SET
@@ -3914,10 +4005,7 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
        vendor_acceptance_file_path = COALESCE(?, vendor_acceptance_file_path),
        vendor_delivery_confirmed_date = ?,
        vendor_accepted_at = NOW(),
-       status = CASE
-         WHEN ? IN ('accepted', 'partial') THEN 'awaiting_grn'
-         ELSE status
-       END,
+       status = ?,
        updated_at = NOW()
      WHERE id = ?`,
     [
@@ -3926,7 +4014,7 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
       fileInfo.fileName,
       fileInfo.filePath,
       deliveryDate || null,
-      acceptanceStatus,
+      nextStatus,
       poId,
     ]
   );
@@ -4010,6 +4098,7 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
   }
 
   const deliveryDate = body.deliveryDate || body.deliveryConfirmedDate || null;
+  const nextStatus = resolveStatusAfterVendorAcceptance(row, acceptanceStatus);
 
   await pool.query(
     `UPDATE purchase_orders SET
@@ -4020,10 +4109,7 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
        vendor_acceptance_file_path = COALESCE(?, vendor_acceptance_file_path),
        vendor_delivery_confirmed_date = ?,
        vendor_accepted_at = NOW(),
-       status = CASE
-         WHEN ? IN ('accepted', 'partial') THEN 'awaiting_grn'
-         ELSE status
-       END,
+       status = ?,
        updated_at = NOW()
      WHERE id = ?`,
     [
@@ -4032,7 +4118,7 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
       fileInfo.fileName,
       fileInfo.filePath,
       deliveryDate || null,
-      acceptanceStatus,
+      nextStatus,
       row.id,
     ]
   );

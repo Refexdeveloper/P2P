@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { accountsApi } from '../../../services/api';
 import type { VendorInvoiceStatus } from '../../../mocks/vendor-invoice-data';
@@ -90,6 +90,8 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export default function VendorInvoicePage() {
+  const location = useLocation();
+  const isRequesterView = location.pathname.startsWith('/requester/');
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -219,8 +221,9 @@ export default function VendorInvoicePage() {
             <div>
             <h1 className="text-2xl font-bold text-gray-900">Vendor Invoice</h1>
             <p className="text-sm text-gray-500 mt-1">
-              After GRN, <strong>Send Mail</strong> so the vendor uploads the invoice, or use{' '}
-              <strong>Manual Entry</strong> to record it yourself
+              {isRequesterView
+                ? 'After GRN, send mail so the vendor uploads the invoice, or use Manual Entry — then record vendor acceptance.'
+                : 'After GRN, Send Mail so the vendor uploads the invoice, or use Manual Entry to record it yourself'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -229,12 +232,14 @@ export default function VendorInvoicePage() {
                 {draftCount} awaiting invoice
               </span>
             )}
-            <Link
-              to="/accounts/invoice-verification"
-              className="px-3 py-2 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
-            >
-              Accounts verification →
-            </Link>
+            {!isRequesterView && (
+              <Link
+                to="/accounts/invoice-verification"
+                className="px-3 py-2 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
+              >
+                Accounts verification →
+              </Link>
+            )}
             <button
               type="button"
               onClick={load}

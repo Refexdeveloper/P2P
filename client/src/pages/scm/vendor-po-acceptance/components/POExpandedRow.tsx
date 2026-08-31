@@ -36,6 +36,8 @@ export type AcceptancePo = {
   vendorAcceptanceFileName?: string;
   vendorDeliveryConfirmedDate?: string;
   vendorAcceptedAt?: string;
+  purchaseType?: string;
+  purchaseTypeLabel?: string;
   lineItems?: Array<{
     id?: string | number;
     itemName?: string;
@@ -73,8 +75,9 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'response' | 'history'>('details');
   const pending = !po.vendorAcceptanceStatus || po.vendorAcceptanceStatus === 'pending';
-  const canGoGrn =
+  const accepted =
     po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
+  const isWorkOrder = po.purchaseType === 'work_order';
 
   return (
     <tr>
@@ -119,13 +122,13 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                   </button>
                 </>
               )}
-              {canGoGrn && (
+              {accepted && isWorkOrder && (
                 <button
                   type="button"
-                  onClick={() => navigate('/grn')}
+                  onClick={() => navigate('/requester/vendor-invoice')}
                   className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg"
                 >
-                  Go to GRN <i className="ri-arrow-right-line ml-1"></i>
+                  Upload invoice <i className="ri-arrow-right-line ml-1"></i>
                 </button>
               )}
             </div>
@@ -256,14 +259,19 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                       <p className="text-xs text-gray-600 mt-2">{po.signerComments}</p>
                     ) : null}
                   </div>
-                  {canGoGrn && (
+                  {accepted && isWorkOrder && (
                     <button
                       type="button"
-                      onClick={() => navigate('/grn')}
+                      onClick={() => navigate('/requester/vendor-invoice')}
                       className="mt-4 w-full py-2 text-xs font-semibold text-white bg-emerald-600 rounded-lg"
                     >
-                      Go to GRN — then Mark as Received
+                      Next: upload vendor invoice
                     </button>
+                  )}
+                  {accepted && !isWorkOrder && (
+                    <p className="mt-4 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+                      GRN and invoice are complete — acceptance recorded for Accounts verification.
+                    </p>
                   )}
                 </div>
               </div>

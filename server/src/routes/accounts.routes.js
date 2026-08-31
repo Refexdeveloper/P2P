@@ -19,9 +19,9 @@ import {
 
 const router = Router();
 
-const GRN_ROLES = ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Functional Team'];
+const GRN_ROLES = ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Functional Team', 'Requester'];
 const ACCOUNTS_ROLES = ['Accounts Payable', 'Accounts Manager', 'Super Admin', 'SCM Manager'];
-const INVOICE_ENTRY_ROLES = ['SCM Buyer', 'Super Admin', 'Accounts Payable', 'Accounts Manager'];
+const INVOICE_ENTRY_ROLES = ['SCM Buyer', 'Super Admin', 'Accounts Payable', 'Accounts Manager', 'Requester'];
 
 /** Public vendor invoice submit (token link from email) */
 router.get('/vendor-invoice/:token', async (req, res) => {
@@ -55,7 +55,7 @@ router.get('/dashboard', requireRoles(...ACCOUNTS_ROLES), async (req, res) => {
 
 router.get('/grn/pending-pos', requireRoles(...GRN_ROLES), async (req, res) => {
   try {
-    const data = await listPendingGrnPos();
+    const data = await listPendingGrnPos(req.user);
     res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -64,7 +64,7 @@ router.get('/grn/pending-pos', requireRoles(...GRN_ROLES), async (req, res) => {
 
 router.get('/grn', requireRoles(...GRN_ROLES, ...ACCOUNTS_ROLES), async (req, res) => {
   try {
-    const data = await listGrns();
+    const data = await listGrns(req.user);
     res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -80,7 +80,7 @@ router.post('/grn', requireRoles(...GRN_ROLES), async (req, res) => {
   }
 });
 
-router.get('/invoices', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer'), async (req, res) => {
+router.get('/invoices', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer', 'Requester'), async (req, res) => {
   try {
     const forPayment = req.query.forPayment === 'true';
     const data = await listInvoices(req.user, { forPayment });
@@ -90,7 +90,7 @@ router.get('/invoices', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer'), async (req
   }
 });
 
-router.get('/invoices/:id', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer'), async (req, res) => {
+router.get('/invoices/:id', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer', 'Requester'), async (req, res) => {
   try {
     const data = await getInvoiceById(Number(req.params.id));
     res.json({ data });

@@ -37,6 +37,13 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-shake-hands-line',
     group: 'Requester',
   },
+  'nav.requester_vendor_invoice': {
+    code: 'nav.requester_vendor_invoice',
+    label: 'Vendor Invoice',
+    path: '/requester/vendor-invoice',
+    icon: 'ri-file-invoice-line',
+    group: 'Requester',
+  },
   'nav.pr_manager_dashboard': {
     code: 'nav.pr_manager_dashboard',
     label: 'My Tasks',
@@ -315,8 +322,9 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.create_pr',
     'nav.rfq_entry',
     'nav.track_pr',
+    'nav.grn',
+    'nav.requester_vendor_invoice',
     'nav.requester_vendor_po_acceptance',
-    'nav.tasks',
     ...REQUESTER_MASTER_NAV_CODES,
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
@@ -327,7 +335,6 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.scm_rfq_entry',
     'nav.create_po',
     'nav.buyer_final_verify',
-    'nav.vendor_po_acceptance',
     'nav.track_po',
     'nav.item_master',
     'nav.vendor_master',
@@ -416,8 +423,9 @@ export function ensureNavigation(
 
   let merged = base;
 
-  // Requester always gets core menus + Masters (Item / Vendor / Category / Entity / Department)
+  // Requester always gets core menus + fulfillment (GRN, invoice, vendor acceptance) + Masters
   if (role === 'Requester') {
+    merged = merged.filter((n) => n.code !== 'nav.tasks');
     const codes = new Set(merged.map((n) => n.code));
     merged = [...merged];
     for (const code of [
@@ -425,6 +433,8 @@ export function ensureNavigation(
       'nav.create_pr',
       'nav.rfq_entry',
       'nav.track_pr',
+      'nav.grn',
+      'nav.requester_vendor_invoice',
       'nav.requester_vendor_po_acceptance',
       ...REQUESTER_MASTER_NAV_CODES,
     ]) {
@@ -466,16 +476,17 @@ export function ensureNavigation(
     });
   }
 
-  // SCM Buyer: Dashboard → RFQ Entry → Create PO → Buyer Final Verify → Vendor Acceptance → Track PO → Masters
+  // SCM Buyer: Dashboard → RFQ Entry → Create PO → Buyer Final Verify → Track PO → Masters
   if (role === 'SCM Buyer') {
-    merged = merged.filter((n) => n.code !== 'nav.tasks' && n.code !== 'nav.rfq_approval');
+    merged = merged.filter(
+      (n) => n.code !== 'nav.tasks' && n.code !== 'nav.rfq_approval' && n.code !== 'nav.vendor_po_acceptance'
+    );
     const codes = new Set(merged.map((n) => n.code));
     for (const code of [
       'nav.purchase_requests',
       'nav.scm_rfq_entry',
       'nav.create_po',
       'nav.buyer_final_verify',
-      'nav.vendor_po_acceptance',
       'nav.track_po',
     ]) {
       if (!codes.has(code) && NAV_BY_CODE[code]) {

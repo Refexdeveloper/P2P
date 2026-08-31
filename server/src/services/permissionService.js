@@ -45,6 +45,7 @@ export const NAV_ITEMS = [
   { code: 'nav.rfq_entry', label: 'RFQ Entry', path: '/requester/rfq-entry', icon: 'ri-file-edit-line', group: 'Requester', sort: 12 },
   { code: 'nav.track_pr', label: 'Track PR', path: '/requester/track-pr', icon: 'ri-search-line', group: 'Requester', sort: 13 },
   { code: 'nav.requester_vendor_po_acceptance', label: 'Vendor PO Acceptance', path: '/requester/vendor-po-acceptance', icon: 'ri-shake-hands-line', group: 'Requester', sort: 14 },
+  { code: 'nav.requester_vendor_invoice', label: 'Vendor Invoice', path: '/requester/vendor-invoice', icon: 'ri-file-invoice-line', group: 'Requester', sort: 15 },
   { code: 'nav.pr_manager_dashboard', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'L2 Manager', sort: 20 },
   { code: 'nav.rfq_approval', label: 'RFQ Approval', path: '/rfq-approval', icon: 'ri-bar-chart-box-line', group: 'Approvals', sort: 30 },
   { code: 'nav.tasks', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'General', sort: 40 },
@@ -90,8 +91,9 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.create_pr',
     'nav.rfq_entry',
     'nav.track_pr',
+    'nav.grn',
+    'nav.requester_vendor_invoice',
     'nav.requester_vendor_po_acceptance',
-    'nav.tasks',
     'nav.item_master',
     'nav.vendor_master',
     'nav.category_master',
@@ -106,7 +108,6 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.scm_rfq_entry',
     'nav.create_po',
     'nav.buyer_final_verify',
-    'nav.vendor_po_acceptance',
     'nav.track_po',
     'nav.item_master',
     'nav.vendor_master',
@@ -216,9 +217,12 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
         'nav.create_pr',
         'nav.rfq_entry',
         'nav.track_pr',
-        'nav.requester_vendor_po_acceptance',
-        'nav.tasks'
+        'nav.grn',
+        'nav.requester_vendor_invoice',
+        'nav.requester_vendor_po_acceptance'
       );
+      const tasksIdx = stored.indexOf('nav.tasks');
+      if (tasksIdx >= 0) stored.splice(tasksIdx, 1);
     }
     if (role === 'SCM Buyer' || role === 'SCM Manager') {
       healCodes.push('nav.po_letterhead_master', 'nav.letterhead_master');
@@ -229,7 +233,6 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
         'nav.scm_rfq_entry',
         'nav.create_po',
         'nav.buyer_final_verify',
-        'nav.vendor_po_acceptance',
         'nav.track_po',
         'nav.po_excel_import'
       );
@@ -237,6 +240,8 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
       if (tasksIdx >= 0) stored.splice(tasksIdx, 1);
       const rfqIdx = stored.indexOf('nav.rfq_approval');
       if (rfqIdx >= 0) stored.splice(rfqIdx, 1);
+      const vaIdx = stored.indexOf('nav.vendor_po_acceptance');
+      if (vaIdx >= 0) stored.splice(vaIdx, 1);
     }
     if (role === 'SCM Manager') {
       healCodes.push('nav.scm_manager_dashboard', 'nav.po_approval', 'nav.rfq_approval', 'nav.track_po');
@@ -326,9 +331,18 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.create_pr',
             'nav.rfq_entry',
             'nav.track_pr',
-            'nav.requester_vendor_po_acceptance',
-            'nav.tasks'
+            'nav.grn',
+            'nav.requester_vendor_invoice',
+            'nav.requester_vendor_po_acceptance'
           );
+          if (stored.includes('nav.tasks')) {
+            const idx = stored.indexOf('nav.tasks');
+            if (idx >= 0) stored.splice(idx, 1);
+            await pool.query(
+              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.tasks'`,
+              [userId]
+            );
+          }
         }
         if (role === 'SCM Buyer' || role === 'SCM Manager') {
           healCodes.push('nav.po_letterhead_master', 'nav.letterhead_master');
@@ -339,7 +353,6 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.scm_rfq_entry',
             'nav.create_po',
             'nav.buyer_final_verify',
-            'nav.vendor_po_acceptance',
             'nav.track_po',
             'nav.po_excel_import'
           );
@@ -356,6 +369,14 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             if (idx >= 0) stored.splice(idx, 1);
             await pool.query(
               `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.rfq_approval'`,
+              [userId]
+            );
+          }
+          if (stored.includes('nav.vendor_po_acceptance')) {
+            const idx = stored.indexOf('nav.vendor_po_acceptance');
+            if (idx >= 0) stored.splice(idx, 1);
+            await pool.query(
+              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.vendor_po_acceptance'`,
               [userId]
             );
           }

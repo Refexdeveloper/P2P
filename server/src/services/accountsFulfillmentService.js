@@ -175,24 +175,32 @@ function mapInvoiceRow(row, lineItems = [], payment = null) {
   };
 }
 
-export async function listPendingGrnPos() {
-  const [rows] = await pool.query(
-    `SELECT po.id, po.po_number, po.pr_id, po.vendor_name, po.vendor_acceptance_status,
+export async function listPendingGrnPos(user = null) {
+  const params = [];
+  let sql = `
+    SELECT po.id, po.po_number, po.pr_id, po.vendor_name, po.vendor_acceptance_status,
             po.vendor_accepted_at, po.vendor_acceptance_remarks, po.expected_delivery_date,
             po.delivery_address, po.payment_terms, po.gst_percentage, po.subtotal,
-            po.tax_amount, po.grand_total, po.created_at, po.status,
-            pr.pr_number, pr.title AS pr_title,
+            po.tax_amount, po.grand_total, po.created_at, po.status, po.purchase_type,
+            pr.pr_number, pr.title AS pr_title, pr.requester_id,
             d.name AS department_name, u.name AS requester_name
      FROM purchase_orders po
      LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
      LEFT JOIN departments d ON d.id = pr.department_id
      LEFT JOIN users u ON u.id = pr.requester_id
      LEFT JOIN grn_headers g ON g.po_id = po.id
-     WHERE po.vendor_acceptance_status IN ('accepted', 'partial')
-       AND g.id IS NULL
-       AND po.status IN ('sent_to_vendor', 'awaiting_grn', 'approved')
-     ORDER BY po.vendor_accepted_at DESC, po.id DESC`
-  );
+     WHERE po.purchase_type = 'purchase_order'
+       AND po.status = 'awaiting_grn'
+       AND g.id IS NULL`;
+
+  if (user?.role === 'Requester') {
+    sql += ` AND pr.requester_id = ?`;
+    params.push(user.id);
+  }
+
+  sql += ` ORDER BY po.updated_at DESC, po.id DESC`;
+
+  const [rows] = await pool.query(sql, params);
 
   const result = [];
   for (const row of rows) {
@@ -242,9 +250,10 @@ export async function listPendingGrnPos() {
   return result;
 }
 
-export async function listGrns() {
-  const [rows] = await pool.query(
-    `SELECT g.*, po.po_number, po.vendor_name, po.grand_total, po.payment_terms,
+export async function listGrns(user = null) {
+  const params = [];
+  let sql = `
+    SELECT g.*, po.po_number, po.vendor_name, po.grand_total, po.payment_terms,
             po.gst_percentage, po.subtotal, po.tax_amount, po.delivery_address,
             po.expected_delivery_date, pr.pr_number, pr.title AS pr_title,
             d.name AS department_name, u.name AS requester_name
@@ -253,8 +262,16 @@ export async function listGrns() {
      LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
      LEFT JOIN departments d ON d.id = pr.department_id
      LEFT JOIN users u ON u.id = pr.requester_id
-     ORDER BY g.id DESC`
-  );
+     WHERE 1=1`;
+
+  if (user?.role === 'Requester') {
+    sql += ` AND pr.requester_id = ?`;
+    params.push(user.id);
+  }
+
+  sql += ` ORDER BY g.id DESC`;
+
+  const [rows] = await pool.query(sql, params);
 
   const result = [];
   for (const row of rows) {
@@ -319,8 +336,11 @@ export async function submitGrn(user, body) {
   if (!poId) throw new Error('poId is required');
 
   const { po, lineItems } = await loadPoBundle(poId);
-  if (!['accepted', 'partial'].includes(po.vendor_acceptance_status)) {
-    throw new Error('PO must be vendor-accepted before GRN');
+  if (po.purchase_type === 'work_order') {
+    throw new Error('GRN applies to Purchase Orders only — Work Orders skip GRN');
+  }
+  if (po.status !== 'awaiting_grn') {
+    throw new Error('PO is not awaiting GRN');
   }
 
   const [existing] = await pool.query(`SELECT id FROM grn_headers WHERE po_id = ? LIMIT 1`, [poId]);
@@ -465,10 +485,17 @@ export async function submitGrn(user, body) {
 
 export async function listInvoices(user, { forPayment = false } = {}) {
   let statusFilter = '';
+  const params = [];
   if (forPayment) {
     statusFilter = `AND i.status IN ('approved_for_payment', 'paid')`;
   } else if (user.role === 'Accounts Manager') {
     statusFilter = `AND i.status IN ('awaiting_upload', 'pending_verification', 'pending_manager_approval', 'approved_for_payment', 'on_hold', 'discrepancy', 'paid')`;
+  }
+
+  let requesterFilter = '';
+  if (user.role === 'Requester') {
+    requesterFilter = ` AND pr.requester_id = ?`;
+    params.push(user.id);
   }
 
   const [rows] = await pool.query(
@@ -481,8 +508,9 @@ export async function listInvoices(user, { forPayment = false } = {}) {
      LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
      LEFT JOIN departments d ON d.id = pr.department_id
      LEFT JOIN users u ON u.id = pr.requester_id
-     WHERE 1=1 ${statusFilter}
-     ORDER BY i.id DESC`
+     WHERE 1=1 ${statusFilter}${requesterFilter}
+     ORDER BY i.id DESC`,
+    params
   );
 
   const result = [];
@@ -544,6 +572,17 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
   const [rows] = await pool.query(`SELECT * FROM invoices WHERE id = ?`, [invoiceId]);
   if (!rows.length) throw new Error('Invoice not found');
   const inv = rows[0];
+  if (user?.role === 'Requester') {
+    const [own] = await pool.query(
+      `SELECT pr.requester_id FROM purchase_orders po
+       JOIN purchase_requests pr ON pr.id = po.pr_id
+       WHERE po.id = ? LIMIT 1`,
+      [inv.po_id]
+    );
+    if (Number(own[0]?.requester_id) !== Number(user.id)) {
+      throw new Error('This invoice is assigned to another requester');
+    }
+  }
   if (!['awaiting_upload', 'pending_verification', 'on_hold', 'discrepancy'].includes(inv.status)) {
     throw new Error('Invoice cannot be updated in current status');
   }
@@ -604,6 +643,13 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
     `UPDATE purchase_orders SET status = 'invoice_entry', updated_at = NOW() WHERE id = ?`,
     [inv.po_id]
   );
+
+  try {
+    const { openVendorAcceptanceStageForPo } = await import('./poService.js');
+    await openVendorAcceptanceStageForPo(inv.po_id);
+  } catch (err) {
+    console.warn('Open vendor acceptance after invoice upload failed:', err.message);
+  }
 
   return getInvoiceById(invoiceId);
 }
