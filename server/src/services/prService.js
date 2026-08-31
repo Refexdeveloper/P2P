@@ -3327,29 +3327,36 @@ export async function listRequesterTasks(userId) {
   const [rows] = await pool.query(
     `SELECT wt.id, wt.pr_id, wt.task_type, wt.due_date, wt.created_at,
             pr.pr_number, pr.title, pr.total_amount, pr.status AS pr_status, pr.request_type,
-            d.name AS department_name
+            d.name AS department_name,
+            po.id AS po_id, po.po_number
      FROM workflow_tasks wt
      JOIN purchase_requests pr ON pr.id = wt.pr_id
      JOIN departments d ON d.id = pr.department_id
+     LEFT JOIN purchase_orders po ON po.pr_id = pr.id AND po.status = 'sent_to_vendor'
      WHERE wt.status = 'pending'
        AND (
          (wt.assigned_role = 'Requester' AND pr.requester_id = ?
            AND NOT (wt.task_type = 'RFQ_ENTRY' AND pr.pr_flow = 'functional'))
          OR (wt.task_type = 'PR_APPROVAL' AND wt.assigned_user_id = ?)
+         OR (wt.task_type = 'PO_VENDOR_ACCEPTANCE' AND wt.assigned_user_id = ?)
        )
      ORDER BY wt.created_at DESC`,
-    [userId, userId]
+    [userId, userId, userId]
   );
 
   return rows.map((r) => {
     const isUserApproval = r.task_type === 'PR_APPROVAL';
+    const isVendorAcceptance = r.task_type === 'PO_VENDOR_ACCEPTANCE';
     return {
       id: String(r.id),
       taskId: r.id,
       prId: r.pr_id,
+      poId: r.po_id || null,
       taskType: r.task_type,
-      prNumber: r.pr_number,
-      title: r.title,
+      prNumber: isVendorAcceptance && r.po_number ? r.po_number : r.pr_number,
+      title: isVendorAcceptance
+        ? `${r.title} — Vendor PO Acceptance`
+        : r.title,
       department: r.department_name,
       totalAmount: Number(r.total_amount),
       requestType: r.request_type,
@@ -3357,13 +3364,21 @@ export async function listRequesterTasks(userId) {
       dueDate: formatDate(r.due_date),
       label: isUserApproval
         ? 'User Approval'
-        : r.task_type === 'RFQ_ENTRY'
-          ? 'RFQ Entry'
-          : r.task_type.replace(/_/g, ' '),
+        : isVendorAcceptance
+          ? 'Vendor PO Acceptance'
+          : r.task_type === 'RFQ_ENTRY'
+            ? 'RFQ Entry'
+            : r.task_type.replace(/_/g, ' '),
       actionPath: isUserApproval
         ? `/tasks?prId=${r.pr_id}`
-        : `/requester/rfq-entry/${r.pr_id}?taskId=${r.id}`,
-      cta: isUserApproval ? 'Review & Approve' : 'Start RFQ Entry',
+        : isVendorAcceptance
+          ? '/requester/vendor-po-acceptance'
+          : `/requester/rfq-entry/${r.pr_id}?taskId=${r.id}`,
+      cta: isUserApproval
+        ? 'Review & Approve'
+        : isVendorAcceptance
+          ? 'Open Vendor Acceptance'
+          : 'Start RFQ Entry',
     };
   });
 }

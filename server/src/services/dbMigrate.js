@@ -603,6 +603,14 @@ export async function runStartupMigrations() {
   }
 
   try {
+    const { reassignVendorAcceptanceTasksToRequesters } = await import('./poService.js');
+    const va = await reassignVendorAcceptanceTasksToRequesters();
+    console.log(`Vendor acceptance tasks assigned to requesters: ${va.updated}`);
+  } catch (err) {
+    console.warn('Vendor acceptance task migration skipped:', err.message);
+  }
+
+  try {
     const { ensureDefaultScmManagerSignature } = await import('./signatureService.js');
     const sig = await ensureDefaultScmManagerSignature({ backfill: true });
     if (sig?.ok) {

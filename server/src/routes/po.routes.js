@@ -27,6 +27,7 @@ import {
   submitVendorAcceptanceByToken,
   resolveVendorAcceptanceFile,
   resolveCancellationAttachment,
+  assertVendorAcceptanceActor,
   getCfoPoInsights,
   assertRequesterPoDocumentAccess,
 } from '../services/poService.js';
@@ -412,7 +413,7 @@ router.get('/pending-buyer-verify', requireRoles('SCM Buyer'), async (req, res) 
   }
 });
 
-router.get('/vendor-acceptance', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/vendor-acceptance', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const data = await listVendorAcceptancePOs(req.user);
     res.json({ data });
@@ -674,7 +675,7 @@ router.post('/:id/final-verify/send-back', requireRoles('SCM Buyer'), async (req
   }
 });
 
-router.post('/:id/vendor-acceptance/send-mail', requireRoles('SCM Buyer'), async (req, res) => {
+router.post('/:id/vendor-acceptance/send-mail', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const data = await sendVendorAcceptanceMail(req.user, Number(req.params.id));
     res.json({
@@ -686,7 +687,7 @@ router.post('/:id/vendor-acceptance/send-mail', requireRoles('SCM Buyer'), async
   }
 });
 
-router.post('/:id/vendor-acceptance/manual', requireRoles('SCM Buyer'), async (req, res) => {
+router.post('/:id/vendor-acceptance/manual', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const data = await submitManualVendorAcceptance(req.user, Number(req.params.id), req.body || {});
     res.json({ data, message: 'Vendor acceptance recorded manually' });
@@ -695,10 +696,11 @@ router.post('/:id/vendor-acceptance/manual', requireRoles('SCM Buyer'), async (r
   }
 });
 
-router.get('/:id/vendor-acceptance/file', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) => {
+router.get('/:id/vendor-acceptance/file', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
+    await assertVendorAcceptanceActor(req.user, { pr_id: po.prId, prId: po.prId, created_by: po.createdByUserId });
     const fullPath = resolveVendorAcceptanceFile(po);
     res.download(fullPath, po.vendorAcceptanceFileName || 'vendor-acceptance.pdf');
   } catch (err) {

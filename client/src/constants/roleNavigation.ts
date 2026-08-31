@@ -30,6 +30,13 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-search-line',
     group: 'Requester',
   },
+  'nav.requester_vendor_po_acceptance': {
+    code: 'nav.requester_vendor_po_acceptance',
+    label: 'Vendor PO Acceptance',
+    path: '/requester/vendor-po-acceptance',
+    icon: 'ri-shake-hands-line',
+    group: 'Requester',
+  },
   'nav.pr_manager_dashboard': {
     code: 'nav.pr_manager_dashboard',
     label: 'My Tasks',
@@ -308,6 +315,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.create_pr',
     'nav.rfq_entry',
     'nav.track_pr',
+    'nav.requester_vendor_po_acceptance',
     'nav.tasks',
     ...REQUESTER_MASTER_NAV_CODES,
   ],
@@ -418,6 +426,7 @@ export function ensureNavigation(
       'nav.create_pr',
       'nav.rfq_entry',
       'nav.track_pr',
+      'nav.requester_vendor_po_acceptance',
       ...REQUESTER_MASTER_NAV_CODES,
     ]) {
       if (!codes.has(code) && NAV_BY_CODE[code]) {

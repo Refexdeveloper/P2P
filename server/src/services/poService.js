@@ -764,6 +764,7 @@ async function enrichPO(row) {
     signerComments: row.signer_comments,
     signedAt: row.signed_at ? formatDateTime(row.signed_at) : null,
     createdAt: formatDate(row.created_at),
+    createdByUserId: row.created_by || null,
     createdBy: creator.name || 'SCM Buyer',
     createdByRole: creator.role || 'SCM Buyer',
     approvalHistory,
@@ -3104,6 +3105,38 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     approverRole: user.role,
   });
 
+  if (rows[0].pr_id) {
+    const requesterId = await getPoRequesterId(rows[0]);
+    if (requesterId) {
+      await upsertVendorAcceptanceTask(rows[0].pr_id, requesterId);
+      try {
+        const [reqRows] = await pool.query(
+          `SELECT u.email, u.name FROM users u WHERE u.id = ? LIMIT 1`,
+          [requesterId]
+        );
+        const reqUser = reqRows[0];
+        if (reqUser?.email) {
+          queuePoWorkflowNotification(updated, {
+            action: 'assign',
+            stageLabel: 'Vendor PO Acceptance',
+            recipientEmails: [reqUser.email],
+            recipientName: reqUser.name || updated.requester || 'Requester',
+            actorName: user.name,
+            actorRole: user.role,
+            remarks: verifyRemarks,
+            portalUrl: poPortalUrl('/requester/vendor-po-acceptance'),
+            ctaLabel: 'Open Vendor Acceptance',
+            bccOps: false,
+            notifyWhatsApp: false,
+            attachments,
+          });
+        }
+      } catch (err) {
+        console.warn('Vendor acceptance requester notify failed:', err.message);
+      }
+    }
+  }
+
   // Vendor mail is a separate optional step — never sent from final verify
   return updated;
 }
@@ -3658,18 +3691,111 @@ export async function updatePurchaseOrder(user, poId, body) {
   return updatedPo;
 }
 
+async function getPoRequesterId(poRow) {
+  const prId = Number(poRow?.pr_id ?? poRow?.prId ?? 0);
+  if (!prId) return null;
+  const [rows] = await pool.query(`SELECT requester_id FROM purchase_requests WHERE id = ? LIMIT 1`, [prId]);
+  return rows[0]?.requester_id ? Number(rows[0].requester_id) : null;
+}
+
+export async function assertVendorAcceptanceActor(user, poRow) {
+  if (!user?.id) throw new Error('Unauthorized');
+  if (user.role === 'Super Admin' || user.role === 'SCM Manager') return;
+  if (user.role === 'SCM Buyer' && canEditAnyScmPurchaseOrder(user)) return;
+
+  const requesterId = await getPoRequesterId(poRow);
+  if (requesterId && user.role === 'Requester') {
+    if (requesterId === user.id) return;
+    throw new Error('This vendor acceptance task is assigned to another requester');
+  }
+
+  if (user.role === 'SCM Buyer') {
+    const prId = Number(poRow?.pr_id ?? poRow?.prId ?? 0);
+    if (!prId && Number(poRow?.created_by) === user.id) return;
+    throw new Error('Vendor acceptance is assigned to the PR requester');
+  }
+
+  throw new Error('Unauthorized');
+}
+
+async function upsertVendorAcceptanceTask(prId, requesterId) {
+  if (!prId || !requesterId) return;
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 2);
+  const dueStr = dueDate.toISOString().split('T')[0];
+
+  const [existing] = await pool.query(
+    `SELECT id FROM workflow_tasks
+     WHERE pr_id = ? AND task_type = 'PO_VENDOR_ACCEPTANCE' AND status = 'pending'
+     ORDER BY id DESC LIMIT 1`,
+    [prId]
+  );
+
+  if (existing.length) {
+    await pool.query(
+      `UPDATE workflow_tasks
+       SET assigned_role = 'Requester', assigned_user_id = ?, due_date = ?
+       WHERE id = ?`,
+      [requesterId, dueStr, existing[0].id]
+    );
+    return;
+  }
+
+  await pool.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+     VALUES (?, 'PO_VENDOR_ACCEPTANCE', 'Requester', ?, 'pending', ?)`,
+    [prId, requesterId, dueStr]
+  );
+}
+
+async function completeVendorAcceptanceTask(prId) {
+  if (!prId) return;
+  await pool.query(
+    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND task_type = 'PO_VENDOR_ACCEPTANCE' AND status = 'pending'`,
+    [prId]
+  );
+}
+
+/** Backfill / reassign pending vendor acceptance tasks to PR requesters. */
+export async function reassignVendorAcceptanceTasksToRequesters() {
+  const [rows] = await pool.query(
+    `SELECT po.id AS po_id, po.pr_id, pr.requester_id
+     FROM purchase_orders po
+     JOIN purchase_requests pr ON pr.id = po.pr_id
+     WHERE po.status = 'sent_to_vendor'
+       AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending'
+       AND pr.requester_id IS NOT NULL`
+  );
+  let updated = 0;
+  for (const row of rows) {
+    await upsertVendorAcceptanceTask(row.pr_id, row.requester_id);
+    updated += 1;
+  }
+  return { updated };
+}
+
 export async function listVendorAcceptancePOs(user) {
-  if (user.role !== 'SCM Buyer' && user.role !== 'SCM Manager' && user.role !== 'Super Admin') {
+  if (
+    user.role !== 'Requester' &&
+    user.role !== 'SCM Buyer' &&
+    user.role !== 'SCM Manager' &&
+    user.role !== 'Super Admin'
+  ) {
     throw new Error('Unauthorized');
   }
 
   let sql = `
     SELECT po.* FROM purchase_orders po
+    LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
     WHERE po.status = 'sent_to_vendor'
   `;
   const params = [];
-  if (user.role === 'SCM Buyer' && !canEditAnyScmPurchaseOrder(user)) {
-    sql += ` AND po.created_by = ?`;
+  if (user.role === 'Requester') {
+    sql += ` AND pr.requester_id = ?`;
+    params.push(user.id);
+  } else if (user.role === 'SCM Buyer' && !canEditAnyScmPurchaseOrder(user)) {
+    sql += ` AND (pr.requester_id IS NOT NULL OR po.created_by = ?)`;
     params.push(user.id);
   }
   sql += ` ORDER BY
@@ -3700,9 +3826,12 @@ async function assertVendorAcceptancePending(poId) {
 }
 
 export async function sendVendorAcceptanceMail(user, poId) {
-  if (user.role !== 'SCM Buyer') throw new Error('Only SCM Buyer can send vendor acceptance mail');
+  if (!['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+    throw new Error('Unauthorized');
+  }
 
   const row = await assertVendorAcceptancePending(poId);
+  await assertVendorAcceptanceActor(user, row);
   const token = row.vendor_acceptance_token || newVendorAcceptanceToken();
 
   await pool.query(
@@ -3749,9 +3878,12 @@ export async function sendVendorAcceptanceMail(user, poId) {
 }
 
 export async function submitManualVendorAcceptance(user, poId, body = {}) {
-  if (user.role !== 'SCM Buyer') throw new Error('Only SCM Buyer can submit manual vendor acceptance');
+  if (!['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+    throw new Error('Unauthorized');
+  }
 
   const row = await assertVendorAcceptancePending(poId);
+  await assertVendorAcceptanceActor(user, row);
   const action = String(body.action || 'accept').toLowerCase();
   const statusMap = {
     accept: 'accepted',
@@ -3807,9 +3939,10 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
         row.pr_id,
         user.id,
         acceptanceStatus,
-        `Manual vendor acceptance (${acceptanceStatus}) by ${user.name || 'SCM Buyer'}: ${remarks}`,
+        `Manual vendor acceptance (${acceptanceStatus}) by ${user.name || user.role}: ${remarks}`,
       ]
     );
+    await completeVendorAcceptanceTask(row.pr_id);
   }
 
   return getPurchaseOrderById(poId);
@@ -3910,6 +4043,7 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
        VALUES (?, 'PO_VENDOR_ACCEPTANCE', NULL, ?, ?)`,
       [row.pr_id, acceptanceStatus, `Vendor response via email link: ${remarks}`]
     );
+    await completeVendorAcceptanceTask(row.pr_id);
   }
 
   return getVendorAcceptanceByToken(clean);

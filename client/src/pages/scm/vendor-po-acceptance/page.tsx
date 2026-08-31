@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { poApi } from '../../../services/api';
 import POExpandedRow, { AcceptancePo } from './components/POExpandedRow';
@@ -50,6 +50,8 @@ const StatusBadge = ({ status }: { status?: string | null }) => {
 
 export default function VendorPOAcceptancePage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isRequesterView = location.pathname.startsWith('/requester/');
   const [rows, setRows] = useState<AcceptancePo[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('pending');
@@ -187,7 +189,9 @@ export default function VendorPOAcceptancePage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Vendor PO Acceptance</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Expand a row for full details. After accept → next step is GRN.
+          {isRequesterView
+            ? 'Your POs awaiting vendor acceptance — send mail to vendor or record manual acceptance.'
+            : 'Expand a row for full details. After accept → next step is GRN.'}
         </p>
       </div>
 

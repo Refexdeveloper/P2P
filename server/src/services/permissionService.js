@@ -44,6 +44,7 @@ export const NAV_ITEMS = [
   { code: 'nav.create_pr', label: 'Create PR', path: '/requester/create-pr', icon: 'ri-add-circle-line', group: 'Requester', sort: 11 },
   { code: 'nav.rfq_entry', label: 'RFQ Entry', path: '/requester/rfq-entry', icon: 'ri-file-edit-line', group: 'Requester', sort: 12 },
   { code: 'nav.track_pr', label: 'Track PR', path: '/requester/track-pr', icon: 'ri-search-line', group: 'Requester', sort: 13 },
+  { code: 'nav.requester_vendor_po_acceptance', label: 'Vendor PO Acceptance', path: '/requester/vendor-po-acceptance', icon: 'ri-shake-hands-line', group: 'Requester', sort: 14 },
   { code: 'nav.pr_manager_dashboard', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'L2 Manager', sort: 20 },
   { code: 'nav.rfq_approval', label: 'RFQ Approval', path: '/rfq-approval', icon: 'ri-bar-chart-box-line', group: 'Approvals', sort: 30 },
   { code: 'nav.tasks', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'General', sort: 40 },
@@ -89,6 +90,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.create_pr',
     'nav.rfq_entry',
     'nav.track_pr',
+    'nav.requester_vendor_po_acceptance',
     'nav.tasks',
     'nav.item_master',
     'nav.vendor_master',
@@ -215,6 +217,7 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
         'nav.create_pr',
         'nav.rfq_entry',
         'nav.track_pr',
+        'nav.requester_vendor_po_acceptance',
         'nav.tasks'
       );
     }
@@ -323,6 +326,7 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.create_pr',
             'nav.rfq_entry',
             'nav.track_pr',
+            'nav.requester_vendor_po_acceptance',
             'nav.tasks'
           );
         }
