@@ -12,6 +12,38 @@ const INSERT_BATCH_SIZE = 100;
 const USERS_CACHE_TTL_MS = 30 * 60 * 1000;
 let usersCache = { fetchedAt: 0, users: [] };
 
+function isRefexOneTokenExpiredError(status, text = '') {
+  return status === 401 && /token expired/i.test(String(text || ''));
+}
+
+async function getLocalUserRecord(email) {
+  const normalizedEmail = String(email || '').toLowerCase().trim();
+  if (!normalizedEmail) return null;
+  const [rows] = await pool.query(
+    `SELECT refexone_user_id, email, name, supervisor_email, supervisor_name,
+            l2_manager_email, phone
+     FROM users WHERE email = ? LIMIT 1`,
+    [normalizedEmail]
+  );
+  return rows[0] || null;
+}
+
+function localUserAsRefexShape(row) {
+  if (!row) return null;
+  return {
+    id: row.refexone_user_id,
+    user_id: row.refexone_user_id,
+    email: row.email,
+    name: row.name,
+    supervisor_email: row.supervisor_email,
+    supervisor_name: row.supervisor_name,
+    l2_manager_email: row.l2_manager_email,
+    work_mobile: row.phone,
+    mobile: row.phone,
+    phone: row.phone,
+  };
+}
+
 function getBaseUrl() {
   return (process.env.REFEXONE_API_URL || 'https://refexone.com/api').replace(/\/$/, '');
 }
@@ -22,7 +54,7 @@ function isRefexOneLoginEnabled() {
 
 function getApiConfig() {
   const baseUrl = getBaseUrl();
-  const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYTM2MmY4YWQtNzBkZC00OTYyLWE0Y2EtMTRmNDg4NmYzNDVhIiwiZW1haWwiOiJnb3d0aGFtLnNAcmVmZXguY28uaW4iLCJvcmdfaWQiOiIxNWY2ODhhZC1hZTBhLTQ5NDctYjMyOS03YTIzMTg1OWYyMjYiLCJyb2xlIjoib3JnX2FkbWluIiwiZXhwIjoxNzg4MDg0NzQ4LCJpYXQiOjE3ODU0OTI3NDh9.ZmtJBlIq4etgBw-wQ39uhtYx7he5hYzaPBiiSO1DgO8";
+  const token = String( 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYTM2MmY4YWQtNzBkZC00OTYyLWE0Y2EtMTRmNDg4NmYzNDVhIiwiZW1haWwiOiJnb3d0aGFtLnNAcmVmZXguY28uaW4iLCJvcmdfaWQiOiIxNWY2ODhhZC1hZTBhLTQ5NDctYjMyOS03YTIzMTg1OWYyMjYiLCJyb2xlIjoib3JnX2FkbWluIiwiZXhwIjoxNzkwNzUzMDc5LCJpYXQiOjE3ODgxNjEwNzl9.IhR02vBDEILb2eO7Y2iqQqeANEFIsBLDePnajca_5Qs').trim();
   if (!token) {
     throw new Error('REFEXONE_API_TOKEN is not configured in server/.env');
   }
@@ -270,13 +302,22 @@ function normalizeRefexOneUser(raw) {
   };
 }
 
-async function fetchRefexOneUsersRaw(force = false) {
+async function fetchRefexOneUsersRaw(force = false, { strict = false } = {}) {
   const now = Date.now();
   if (!force && usersCache.users.length && now - usersCache.fetchedAt < USERS_CACHE_TTL_MS) {
     return usersCache.users;
   }
 
-  const { baseUrl, token } = getApiConfig();
+  let baseUrl;
+  let token;
+  try {
+    ({ baseUrl, token } = getApiConfig());
+  } catch (err) {
+    if (strict) throw err;
+    console.warn(`RefexOne users API skipped: ${err.message}`);
+    return usersCache.users.length ? usersCache.users : [];
+  }
+
   const response = await fetch(`${baseUrl}/users`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -286,7 +327,21 @@ async function fetchRefexOneUsersRaw(force = false) {
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(`RefexOne API error (${response.status}): ${text || response.statusText}`);
+    if (isRefexOneTokenExpiredError(response.status, text)) {
+      const hint =
+        'RefexOne API token expired — generate a new token in RefexOne and set REFEXONE_API_TOKEN in server/.env, then restart the server.';
+      if (usersCache.users.length) {
+        console.warn(`${hint} Using cached user directory until token is refreshed.`);
+        return usersCache.users;
+      }
+      if (!strict) {
+        console.warn(`${hint} Continuing with local DB manager data only.`);
+        return [];
+      }
+      throw new Error(hint);
+    }
+    const detail = text || response.statusText;
+    throw new Error(`RefexOne API error (${response.status}): ${detail}`);
   }
 
   const body = await response.json();
@@ -297,51 +352,92 @@ async function fetchRefexOneUsersRaw(force = false) {
   return usersCache.users;
 }
 
+async function findRefexOneUserInDirectory(email) {
+  const normalizedEmail = String(email || '').toLowerCase().trim();
+  if (!normalizedEmail) return null;
+  try {
+    const users = await fetchRefexOneUsersRaw();
+    return users.find((u) => (u.email || '').toLowerCase() === normalizedEmail) || null;
+  } catch (err) {
+    console.warn(`RefexOne directory lookup failed for ${normalizedEmail}:`, err.message);
+    return null;
+  }
+}
+
 export async function getRefexOneUserByEmail(email) {
   const normalizedEmail = email.toLowerCase().trim();
-  const users = await fetchRefexOneUsersRaw();
-  return users.find((u) => (u.email || '').toLowerCase() === normalizedEmail) || null;
+  const local = localUserAsRefexShape(await getLocalUserRecord(normalizedEmail));
+  if (local) return local;
+  return findRefexOneUserInDirectory(normalizedEmail);
 }
 
 export async function getL1ManagerForEmail(email) {
-  const refexUser = await getRefexOneUserByEmail(email);
-  if (!refexUser) return null;
+  const normalizedEmail = String(email || '').toLowerCase().trim();
+  if (!normalizedEmail) return null;
 
-  const managerEmail = (refexUser.supervisor_email || '').trim().toLowerCase();
-  if (!managerEmail) return null;
+  const local = await getLocalUserRecord(normalizedEmail);
+  const localSupervisor = (local?.supervisor_email || '').trim().toLowerCase();
+  if (localSupervisor) {
+    return {
+      email: localSupervisor,
+      name: (local.supervisor_name || localSupervisor.split('@')[0] || 'L1 Manager').trim(),
+      employeeCode: null,
+    };
+  }
 
-  return {
-    email: managerEmail,
-    name: (refexUser.supervisor_name || managerEmail.split('@')[0] || 'L1 Manager').trim(),
-    employeeCode: refexUser.supervisor_employee_code || null,
-  };
+  try {
+    const refexUser =
+      (await findRefexOneUserInDirectory(normalizedEmail)) ||
+      localUserAsRefexShape(local);
+    if (!refexUser) return null;
+
+    const managerEmail = (refexUser.supervisor_email || '').trim().toLowerCase();
+    if (!managerEmail) return null;
+
+    return {
+      email: managerEmail,
+      name: (refexUser.supervisor_name || managerEmail.split('@')[0] || 'L1 Manager').trim(),
+      employeeCode: refexUser.supervisor_employee_code || null,
+    };
+  } catch (err) {
+    console.warn('RefexOne L1 manager lookup failed:', err.message);
+    return null;
+  }
 }
 
 export async function getL2ManagerForEmail(email) {
-  const refexUser = await getRefexOneUserByEmail(email);
-  if (refexUser) {
-    const managerEmail = (refexUser.l2_manager_email || '').trim().toLowerCase();
-    if (managerEmail) {
-      return {
-        email: managerEmail,
-        name: (refexUser.l2_manager_name || managerEmail.split('@')[0] || 'L2 Manager').trim(),
-        employeeCode: refexUser.l2_manager_employee_code || null,
-      };
-    }
+  const normalizedEmail = String(email || '').toLowerCase().trim();
+  if (!normalizedEmail) return null;
+
+  const local = await getLocalUserRecord(normalizedEmail);
+  const localL2 = (local?.l2_manager_email || '').trim().toLowerCase();
+  if (localL2) {
+    return {
+      email: localL2,
+      name: localL2.split('@')[0] || 'L2 Manager',
+      employeeCode: null,
+    };
   }
 
-  const [localRows] = await pool.query(
-    `SELECT l2_manager_email FROM users WHERE email = ? LIMIT 1`,
-    [email.toLowerCase().trim()]
-  );
-  const managerEmail = (localRows[0]?.l2_manager_email || '').trim().toLowerCase();
-  if (!managerEmail) return null;
+  try {
+    const refexUser =
+      (await findRefexOneUserInDirectory(normalizedEmail)) ||
+      localUserAsRefexShape(local);
+    if (refexUser) {
+      const managerEmail = (refexUser.l2_manager_email || '').trim().toLowerCase();
+      if (managerEmail) {
+        return {
+          email: managerEmail,
+          name: (refexUser.l2_manager_name || managerEmail.split('@')[0] || 'L2 Manager').trim(),
+          employeeCode: refexUser.l2_manager_employee_code || null,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('RefexOne L2 manager lookup failed:', err.message);
+  }
 
-  return {
-    email: managerEmail,
-    name: managerEmail.split('@')[0],
-    employeeCode: null,
-  };
+  return null;
 }
 
 export async function ensureApproverUser({ email, name }, role, departmentId = null) {
@@ -399,12 +495,14 @@ export async function ensureHodApproverUser({ email, name }, departmentId = null
 }
 
 export async function fetchRefexOneUsers() {
-  const users = await fetchRefexOneUsersRaw();
+  const users = await fetchRefexOneUsersRaw(false, { strict: true });
   return users.map(normalizeRefexOneUser).filter(Boolean);
 }
 
 export async function syncRefexOneUsers() {
-  const remoteUsers = await fetchRefexOneUsers();
+  const remoteUsers = await fetchRefexOneUsersRaw(true, { strict: true }).then((raw) =>
+    raw.map(normalizeRefexOneUser).filter(Boolean)
+  );
   if (!remoteUsers.length) {
     return { total: 0, created: 0, updated: 0, syncedAt: new Date().toISOString() };
   }
