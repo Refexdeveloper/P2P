@@ -1942,6 +1942,13 @@ export default function CreatePOPage() {
     );
   };
 
+  const handleAnnexureClausesChange = (next: PoLetterheadClause[]) => {
+    markDraftEdited();
+    const adapted = adaptClausesForDocumentType(next, documentType);
+    annexureDraftRef.current = adapted;
+    setAnnexureClauses(adapted);
+  };
+
   const saveSiteAddressLookup = async () => {
     const label = newSiteAddress.trim();
     if (!label) {
@@ -4412,7 +4419,22 @@ export default function CreatePOPage() {
                 onReloadFromMaster={reloadClausesFromMaster}
                 reloadDisabled={letterheadLoading}
                 docLabel={docLabel}
-                editorRevision={`${documentType}-${poType}`}
+                editorRevision={`${documentType}-${poType}-terms`}
+              />
+
+              <ClauseTableEditor
+                title={`${docLabel} — Annexure I (Commercial terms & conditions)`}
+                headerColumnLabel="Annexure Header"
+                descriptionColumnLabel="Annexure Description"
+                headerPlaceholder="e.g. Parties, Delivery, Payment"
+                descriptionPlaceholder={`Annexure I clause details (shown on ${docLabel} PDF)`}
+                emptyHint={`No annexure rows yet — reload from master or add rows. Commercial terms load from PO Type Master.`}
+                clauses={annexureClauses}
+                onChange={handleAnnexureClausesChange}
+                onReloadFromMaster={reloadClausesFromMaster}
+                reloadDisabled={letterheadLoading}
+                docLabel={docLabel}
+                editorRevision={`${documentType}-${poType}-annexure-i`}
               />
 
               <AnnexureIiTableEditor
