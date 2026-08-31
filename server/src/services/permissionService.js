@@ -45,7 +45,7 @@ export const NAV_ITEMS = [
   { code: 'nav.rfq_entry', label: 'RFQ Entry', path: '/requester/rfq-entry', icon: 'ri-file-edit-line', group: 'Requester', sort: 12 },
   { code: 'nav.track_pr', label: 'Track PR', path: '/requester/track-pr', icon: 'ri-search-line', group: 'Requester', sort: 13 },
   { code: 'nav.requester_vendor_po_acceptance', label: 'Vendor PO Acceptance', path: '/requester/vendor-po-acceptance', icon: 'ri-shake-hands-line', group: 'Requester', sort: 14 },
-  { code: 'nav.requester_vendor_invoice', label: 'Vendor Invoice', path: '/requester/vendor-invoice', icon: 'ri-file-invoice-line', group: 'Requester', sort: 15 },
+  { code: 'nav.requester_vendor_invoice', label: 'Vendor Invoice', path: '/requester/vendor-invoice', icon: 'ri-file-invoice-line', group: 'Requester', sort: 16 },
   { code: 'nav.pr_manager_dashboard', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'L2 Manager', sort: 20 },
   { code: 'nav.rfq_approval', label: 'RFQ Approval', path: '/rfq-approval', icon: 'ri-bar-chart-box-line', group: 'Approvals', sort: 30 },
   { code: 'nav.tasks', label: 'My Tasks', path: '/tasks', icon: 'ri-task-line', group: 'General', sort: 40 },
@@ -91,9 +91,9 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.create_pr',
     'nav.rfq_entry',
     'nav.track_pr',
+    'nav.requester_vendor_po_acceptance',
     'nav.grn',
     'nav.requester_vendor_invoice',
-    'nav.requester_vendor_po_acceptance',
     'nav.item_master',
     'nav.vendor_master',
     'nav.category_master',
@@ -217,9 +217,9 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
         'nav.create_pr',
         'nav.rfq_entry',
         'nav.track_pr',
+        'nav.requester_vendor_po_acceptance',
         'nav.grn',
-        'nav.requester_vendor_invoice',
-        'nav.requester_vendor_po_acceptance'
+        'nav.requester_vendor_invoice'
       );
       const tasksIdx = stored.indexOf('nav.tasks');
       if (tasksIdx >= 0) stored.splice(tasksIdx, 1);
@@ -331,9 +331,9 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.create_pr',
             'nav.rfq_entry',
             'nav.track_pr',
+            'nav.requester_vendor_po_acceptance',
             'nav.grn',
-            'nav.requester_vendor_invoice',
-            'nav.requester_vendor_po_acceptance'
+            'nav.requester_vendor_invoice'
           );
           if (stored.includes('nav.tasks')) {
             const idx = stored.indexOf('nav.tasks');
@@ -440,6 +440,17 @@ export async function getUserNavigation(userId, role, email = null) {
   // SCM Buyer: Dashboard → RFQ Entry → …
   if (role === 'SCM Manager' || role === 'SCM Buyer') {
     const order = ROLE_DEFAULT_PERMISSIONS[role] || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    nav.sort((a, b) => {
+      const ai = rank.has(a.code) ? rank.get(a.code) : 1000 + a.sort;
+      const bi = rank.has(b.code) ? rank.get(b.code) : 1000 + b.sort;
+      return ai - bi;
+    });
+  }
+
+  // Requester: Vendor PO Acceptance → GRN → Vendor Invoice
+  if (role === 'Requester') {
+    const order = ROLE_DEFAULT_PERMISSIONS.Requester || [];
     const rank = new Map(order.map((code, i) => [code, i]));
     nav.sort((a, b) => {
       const ai = rank.has(a.code) ? rank.get(a.code) : 1000 + a.sort;

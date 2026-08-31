@@ -322,9 +322,9 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.create_pr',
     'nav.rfq_entry',
     'nav.track_pr',
+    'nav.requester_vendor_po_acceptance',
     'nav.grn',
     'nav.requester_vendor_invoice',
-    'nav.requester_vendor_po_acceptance',
     ...REQUESTER_MASTER_NAV_CODES,
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
@@ -433,9 +433,9 @@ export function ensureNavigation(
       'nav.create_pr',
       'nav.rfq_entry',
       'nav.track_pr',
+      'nav.requester_vendor_po_acceptance',
       'nav.grn',
       'nav.requester_vendor_invoice',
-      'nav.requester_vendor_po_acceptance',
       ...REQUESTER_MASTER_NAV_CODES,
     ]) {
       if (!codes.has(code) && NAV_BY_CODE[code]) {
