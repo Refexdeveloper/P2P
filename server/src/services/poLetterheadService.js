@@ -6,32 +6,64 @@ import {
   LONG_WO_LETTERHEAD_DEFAULTS,
 } from './woLetterheadDefaults.js';
 
-export const PO_TYPES = ['short_po', 'long_po', 'short_wo', 'long_wo'];
+export const PO_TYPES = [
+  'short_po',
+  'long_po',
+  'short_wo',
+  'long_wo',
+  'custom_short_po',
+  'custom_long_po',
+  'custom_short_wo',
+  'custom_long_wo',
+];
 
 export const PO_TYPE_LABELS = {
   short_po: 'Short PO',
   long_po: 'Long PO',
   short_wo: 'Short WO',
   long_wo: 'Long WO',
+  custom_short_po: 'Custom PO — Short',
+  custom_long_po: 'Custom PO — Long',
+  custom_short_wo: 'Custom WO — Short',
+  custom_long_wo: 'Custom WO — Long',
 };
+
+export function isLongPoType(poType) {
+  return String(poType || '')
+    .trim()
+    .toLowerCase()
+    .includes('long');
+}
+
+export function isCustomPoType(poType) {
+  return String(poType || '')
+    .trim()
+    .toLowerCase()
+    .includes('custom');
+}
 
 export function normalizePoType(poType) {
   const normalized = String(poType || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (!PO_TYPES.includes(normalized)) {
-    throw new Error('Invalid PO type. Use short_po, long_po, short_wo, or long_wo.');
+    throw new Error(`Invalid PO type. Use one of: ${PO_TYPES.join(', ')}.`);
   }
   return normalized;
 }
 
-/** Align template family with document kind (PO ↔ WO). */
+/** Align template family with document kind (PO ↔ WO). Preserves custom vs standard and long vs short. */
 export function alignPoTypeWithPurchaseType(poType, purchaseType) {
   const raw = String(poType || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  const isLong = raw === 'long_po' || raw === 'long_wo' || raw === 'long';
+  const isLong = isLongPoType(raw);
+  const isCustom = isCustomPoType(raw);
   const isWo =
     String(purchaseType || '')
       .trim()
       .toLowerCase()
       .replace(/[\s-]+/g, '_') === 'work_order';
+  if (isCustom) {
+    if (isWo) return isLong ? 'custom_long_wo' : 'custom_short_wo';
+    return isLong ? 'custom_long_po' : 'custom_short_po';
+  }
   if (isWo) return isLong ? 'long_wo' : 'short_wo';
   return isLong ? 'long_po' : 'short_po';
 }
@@ -327,5 +359,10 @@ export async function seedLetterheadDefaults() {
   const longWoClauses = await clauseHeadersForType('long_wo');
   if (!longWoClauses.length) {
     await saveLetterhead('long_wo', LONG_WO_LETTERHEAD_DEFAULTS);
+  }
+
+  // Custom PO/WO types — ensure empty master rows exist for admin configuration
+  for (const customType of ['custom_short_po', 'custom_long_po', 'custom_short_wo', 'custom_long_wo']) {
+    await ensureMaster(customType);
   }
 }

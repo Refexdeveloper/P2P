@@ -442,6 +442,8 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_requests ADD COLUMN project_manager_ho VARCHAR(255) NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN project_manager_contact VARCHAR(50) NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN project_manager_email VARCHAR(255) NULL`,
+  `ALTER TABLE po_letterhead_masters MODIFY COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo', 'custom_short_po', 'custom_long_po', 'custom_short_wo', 'custom_long_wo') NOT NULL`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo', 'custom_short_po', 'custom_long_po', 'custom_short_wo', 'custom_long_wo') NOT NULL DEFAULT 'short_po'`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

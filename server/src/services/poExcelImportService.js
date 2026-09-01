@@ -3,6 +3,7 @@
  * No approval workflow, no approval history, no emails, no workflow tasks.
  */
 import pool from '../config/db.js';
+import { PO_TYPES } from './poLetterheadService.js';
 
 function todayYmd() {
   const d = new Date();
@@ -187,6 +188,13 @@ function parseDate(value) {
 
 function normalizePoType(raw) {
   const v = String(raw || '').trim().toLowerCase().replace(/[\s\-]+/g, '_');
+  if (PO_TYPES.includes(v)) return v;
+  if (v.includes('custom')) {
+    if (v.includes('wo') || v.includes('work')) {
+      return v.includes('long') ? 'custom_long_wo' : 'custom_short_wo';
+    }
+    return v.includes('long') ? 'custom_long_po' : 'custom_short_po';
+  }
   if (v === 'long_wo' || v === 'longwo') return 'long_wo';
   if (v === 'short_wo' || v === 'shortwo') return 'short_wo';
   if (v === 'long' || v === 'long_po' || v === 'longpo') return 'long_po';

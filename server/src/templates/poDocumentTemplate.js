@@ -1,5 +1,6 @@
 import { PO_STYLES, PO_PDF_LAYOUT } from './poDocumentTemplate.styles.js';
 import { parseAnnexureIi, annexureIiRowIsEmpty } from '../utils/annexureIi.js';
+import { PO_TYPE_LABELS } from '../services/poLetterheadService.js';
 
 export { PO_PDF_LAYOUT };
 
@@ -944,15 +945,8 @@ export function buildPoDocumentHtml(poInput, options = {}) {
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
   const poTypeLabel =
-    po.poType === 'long_wo'
-      ? 'Long WO'
-      : po.poType === 'short_wo'
-        ? 'Short WO'
-        : po.poType === 'long_po'
-          ? 'Long PO'
-          : isWorkOrder
-            ? 'Short WO'
-            : 'Short PO';
+    PO_TYPE_LABELS[po.poType] ||
+    (isWorkOrder ? PO_TYPE_LABELS.short_wo : PO_TYPE_LABELS.short_po);
   const forPdf = options.forPdf === true;
   const bodyClass = forPdf ? 'po-document po-document-pdf' : 'po-document po-document-preview';
 

@@ -1120,14 +1120,81 @@ export interface UserSignatureItem {
   isDefault?: boolean;
 }
 
-export type PoType = 'short_po' | 'long_po' | 'short_wo' | 'long_wo';
+export type PoType =
+  | 'short_po'
+  | 'long_po'
+  | 'short_wo'
+  | 'long_wo'
+  | 'custom_short_po'
+  | 'custom_long_po'
+  | 'custom_short_wo'
+  | 'custom_long_wo';
 
 export const PO_TYPE_LABELS: Record<PoType, string> = {
   short_po: 'Short PO',
   long_po: 'Long PO',
   short_wo: 'Short WO',
   long_wo: 'Long WO',
+  custom_short_po: 'Custom PO — Short',
+  custom_long_po: 'Custom PO — Long',
+  custom_short_wo: 'Custom WO — Short',
+  custom_long_wo: 'Custom WO — Long',
 };
+
+export const ALL_PO_TYPES: PoType[] = [
+  'short_po',
+  'long_po',
+  'short_wo',
+  'long_wo',
+  'custom_short_po',
+  'custom_long_po',
+  'custom_short_wo',
+  'custom_long_wo',
+];
+
+export function isLongPoType(poType: PoType | string): boolean {
+  return String(poType || '')
+    .trim()
+    .toLowerCase()
+    .includes('long');
+}
+
+export function isCustomPoType(poType: PoType | string): boolean {
+  return String(poType || '')
+    .trim()
+    .toLowerCase()
+    .includes('custom');
+}
+
+export function alignPoTypeWithDocument(
+  poType: PoType,
+  documentType: 'purchase_order' | 'work_order'
+): PoType {
+  const isLong = isLongPoType(poType);
+  const isCustom = isCustomPoType(poType);
+  if (documentType === 'work_order') {
+    if (isCustom) return isLong ? 'custom_long_wo' : 'custom_short_wo';
+    return isLong ? 'long_wo' : 'short_wo';
+  }
+  if (isCustom) return isLong ? 'custom_long_po' : 'custom_short_po';
+  return isLong ? 'long_po' : 'short_po';
+}
+
+export function coercePoType(
+  raw: unknown,
+  documentType: 'purchase_order' | 'work_order'
+): PoType {
+  const v = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  const asType = (ALL_PO_TYPES.includes(v as PoType) ? v : defaultPoTypeForDocument(documentType)) as PoType;
+  return alignPoTypeWithDocument(asType, documentType);
+}
+
+export function defaultPoTypeForDocument(documentType: 'purchase_order' | 'work_order'): PoType {
+  return documentType === 'work_order' ? 'short_wo' : 'short_po';
+}
 
 export interface PoLetterheadClause {
   id?: number;

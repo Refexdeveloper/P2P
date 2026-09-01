@@ -7,6 +7,7 @@ import {
   PoLetterheadConfig,
   PoType,
   PO_TYPE_LABELS,
+  ALL_PO_TYPES,
 } from '../../../services/api';
 
 type DocGroup = 'purchase_order' | 'work_order';
@@ -18,23 +19,28 @@ const DOC_GROUPS: { id: DocGroup; label: string }[] = [
 
 const TEMPLATES_BY_GROUP: Record<DocGroup, { id: PoType; label: string }[]> = {
   purchase_order: [
-    { id: 'short_po', label: 'Short PO' },
-    { id: 'long_po', label: 'Long PO' },
+    { id: 'short_po', label: PO_TYPE_LABELS.short_po },
+    { id: 'long_po', label: PO_TYPE_LABELS.long_po },
+    { id: 'custom_short_po', label: PO_TYPE_LABELS.custom_short_po },
+    { id: 'custom_long_po', label: PO_TYPE_LABELS.custom_long_po },
   ],
   work_order: [
-    { id: 'short_wo', label: 'Short WO' },
-    { id: 'long_wo', label: 'Long WO' },
+    { id: 'short_wo', label: PO_TYPE_LABELS.short_wo },
+    { id: 'long_wo', label: PO_TYPE_LABELS.long_wo },
+    { id: 'custom_short_wo', label: PO_TYPE_LABELS.custom_short_wo },
+    { id: 'custom_long_wo', label: PO_TYPE_LABELS.custom_long_wo },
   ],
 };
 
-const ALL_PO_TYPES: PoType[] = ['short_po', 'long_po', 'short_wo', 'long_wo'];
-
 function emptyConfigs(): Record<PoType, PoLetterheadConfig | null> {
-  return { short_po: null, long_po: null, short_wo: null, long_wo: null };
+  return ALL_PO_TYPES.reduce(
+    (acc, type) => ({ ...acc, [type]: null }),
+    {} as Record<PoType, PoLetterheadConfig | null>
+  );
 }
 
 function emptySnapshots(): Record<PoType, string> {
-  return { short_po: '', long_po: '', short_wo: '', long_wo: '' };
+  return ALL_PO_TYPES.reduce((acc, type) => ({ ...acc, [type]: '' }), {} as Record<PoType, string>);
 }
 
 type EditableClause = PoLetterheadClause & { clientKey: string };
@@ -432,7 +438,7 @@ export default function PoTypeMasterPage() {
             ))}
           </div>
 
-          <div className="flex gap-2 p-1 bg-gray-100 rounded-xl w-fit">
+          <div className="flex flex-wrap gap-2 p-1 bg-gray-100 rounded-xl w-fit max-w-full">
             {groupTemplates.map((type) => {
               const typeDirty =
                 configs[type.id] && serializeConfig(configs[type.id]!) !== savedSnapshots[type.id];

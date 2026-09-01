@@ -15,6 +15,10 @@ import {
   fileToAttachmentPayload,
   PoType,
   PoLetterheadClause,
+  PO_TYPE_LABELS,
+  alignPoTypeWithDocument,
+  coercePoType,
+  defaultPoTypeForDocument,
   LetterheadMasterRecord,
   LetterheadLocationRecord,
   PoSiteLookupRecord,
@@ -377,34 +381,18 @@ const PO_TYPE_OPTIONS_BY_DOC: Record<
   { id: PoType; label: string }[]
 > = {
   purchase_order: [
-  { id: 'short_po', label: 'Short PO' },
-  { id: 'long_po', label: 'Long PO' },
+    { id: 'short_po', label: PO_TYPE_LABELS.short_po },
+    { id: 'long_po', label: PO_TYPE_LABELS.long_po },
+    { id: 'custom_short_po', label: PO_TYPE_LABELS.custom_short_po },
+    { id: 'custom_long_po', label: PO_TYPE_LABELS.custom_long_po },
   ],
   work_order: [
-    { id: 'short_wo', label: 'Short WO' },
-    { id: 'long_wo', label: 'Long WO' },
+    { id: 'short_wo', label: PO_TYPE_LABELS.short_wo },
+    { id: 'long_wo', label: PO_TYPE_LABELS.long_wo },
+    { id: 'custom_short_wo', label: PO_TYPE_LABELS.custom_short_wo },
+    { id: 'custom_long_wo', label: PO_TYPE_LABELS.custom_long_wo },
   ],
 };
-
-function defaultTemplateForDocument(documentType: 'purchase_order' | 'work_order'): PoType {
-  return documentType === 'work_order' ? 'short_wo' : 'short_po';
-}
-
-function alignTemplateWithDocument(
-  poType: PoType,
-  documentType: 'purchase_order' | 'work_order'
-): PoType {
-  const isLong = poType === 'long_po' || poType === 'long_wo';
-  if (documentType === 'work_order') return isLong ? 'long_wo' : 'short_wo';
-  return isLong ? 'long_po' : 'short_po';
-}
-
-function coercePoType(raw: unknown, documentType: 'purchase_order' | 'work_order'): PoType {
-  const v = String(raw || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  const allowed: PoType[] = ['short_po', 'long_po', 'short_wo', 'long_wo'];
-  const asType = (allowed.includes(v as PoType) ? v : defaultTemplateForDocument(documentType)) as PoType;
-  return alignTemplateWithDocument(asType, documentType);
-}
 
 function formatEntityLabel(ent: EntityRecord | { id: number; name: string; code: string; costCenter?: string }) {
   const base = ent.code ? `${ent.code} — ${ent.name}` : ent.name;
@@ -1071,7 +1059,7 @@ export default function CreatePOPage() {
 
   const loadLetterhead = useCallback(async (type: PoType, docType?: 'purchase_order' | 'work_order', force = false) => {
     const targetDoc = docType || documentTypeRef.current;
-    const alignedType = alignTemplateWithDocument(type, targetDoc);
+    const alignedType = alignPoTypeWithDocument(type, targetDoc);
     const seq = ++letterheadLoadSeq.current;
     setLetterheadLoading(true);
     setTemplateLoadError('');
@@ -1460,7 +1448,7 @@ export default function CreatePOPage() {
   useEffect(() => {
     if (prevDocumentTypeRef.current === documentType) return;
     prevDocumentTypeRef.current = documentType;
-    const nextType = alignTemplateWithDocument(poType, documentType);
+    const nextType = alignPoTypeWithDocument(poType, documentType);
     if (nextType !== poType) setPoType(nextType);
   }, [documentType, poType]);
 
@@ -1855,7 +1843,7 @@ export default function CreatePOPage() {
       setDocumentType(prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
       if (!userEditedDraftRef.current) {
         setPoType(
-          defaultTemplateForDocument(
+          defaultPoTypeForDocument(
             prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order'
           )
         );
@@ -4207,7 +4195,7 @@ export default function CreatePOPage() {
                         type="button"
                     onClick={() => {
                       const nextDoc = opt.id;
-                      const nextType = alignTemplateWithDocument(poType, nextDoc);
+                      const nextType = alignPoTypeWithDocument(poType, nextDoc);
                       setDocumentType(nextDoc);
                       prevDocumentTypeRef.current = nextDoc;
                       applyPoTypeTemplate(nextType, nextDoc);
@@ -4251,7 +4239,7 @@ export default function CreatePOPage() {
                       Terms and annexure load from {docLabel} Type Master
                       </p>
                     </div>
-                    <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+                    <div className="flex flex-wrap gap-2 p-1 bg-gray-100 rounded-xl">
                     {PO_TYPE_OPTIONS_BY_DOC[documentType].map((option) => (
                         <button
                           key={option.id}
