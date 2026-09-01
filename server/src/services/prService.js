@@ -40,6 +40,7 @@ import {
   assignOfficialPrNumberIfNeeded,
 } from './documentNumberService.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
+import { resolveUserEntityScope, poEntityScopeSql } from '../utils/entityScope.js';
 
 async function fetchLatestPoMetaByPrIds(prIds) {
   if (!Array.isArray(prIds) || !prIds.length) return new Map();
@@ -1912,7 +1913,8 @@ function relativeTimeLabel(dateValue) {
 /**
  * Live CFO dashboard: PO KPIs, entity PO spend, PO list, high-value POs, recent PO activity.
  */
-export async function getCfoDashboard() {
+export async function getCfoDashboard(user = null) {
+  const poScope = { join: '', where: '', params: [] };
   const excludedSql = sqlInList(CFO_PO_EXCLUDED);
   const pendingSql = sqlInList(CFO_PO_PENDING);
   const approvedSql = sqlInList(CFO_PO_APPROVED);
@@ -1921,28 +1923,33 @@ export async function getCfoDashboard() {
   const [[pendingAgg]] = await pool.query(
     `SELECT
        COUNT(*) AS pending_count,
-       COALESCE(SUM(CASE WHEN grand_total >= ? THEN 1 ELSE 0 END), 0) AS high_value_count,
-       COALESCE(SUM(grand_total), 0) AS pending_amount
-     FROM purchase_orders
-     WHERE status IN (${pendingSql})`,
-    [CFO_HIGH_VALUE_THRESHOLD]
+       COALESCE(SUM(CASE WHEN po.grand_total >= ? THEN 1 ELSE 0 END), 0) AS high_value_count,
+       COALESCE(SUM(po.grand_total), 0) AS pending_amount
+     FROM purchase_orders po
+     ${poScope.join}
+     WHERE po.status IN (${pendingSql})${poScope.where}`,
+    [CFO_HIGH_VALUE_THRESHOLD, ...poScope.params]
   );
 
   const [[monthActions]] = await pool.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN status IN (${approvedSql}) THEN 1 ELSE 0 END), 0) AS approved_cnt,
-       COALESCE(SUM(CASE WHEN status IN (${rejectedSql}) THEN 1 ELSE 0 END), 0) AS rejected_cnt,
-       COALESCE(SUM(CASE WHEN status IN (${approvedSql}) THEN grand_total ELSE 0 END), 0) AS approved_amount
-     FROM purchase_orders
-     WHERE YEAR(COALESCE(signed_at, po_date, updated_at, created_at)) = YEAR(CURDATE())
-       AND MONTH(COALESCE(signed_at, po_date, updated_at, created_at)) = MONTH(CURDATE())
-       AND status NOT IN ('draft')`
+       COALESCE(SUM(CASE WHEN po.status IN (${approvedSql}) THEN 1 ELSE 0 END), 0) AS approved_cnt,
+       COALESCE(SUM(CASE WHEN po.status IN (${rejectedSql}) THEN 1 ELSE 0 END), 0) AS rejected_cnt,
+       COALESCE(SUM(CASE WHEN po.status IN (${approvedSql}) THEN po.grand_total ELSE 0 END), 0) AS approved_amount
+     FROM purchase_orders po
+     ${poScope.join}
+     WHERE YEAR(COALESCE(po.signed_at, po.po_date, po.updated_at, po.created_at)) = YEAR(CURDATE())
+       AND MONTH(COALESCE(po.signed_at, po.po_date, po.updated_at, po.created_at)) = MONTH(CURDATE())
+       AND po.status NOT IN ('draft')${poScope.where}`,
+    poScope.params
   );
 
   const [[spendRow]] = await pool.query(
-    `SELECT COALESCE(SUM(grand_total), 0) AS total_spend
-     FROM purchase_orders
-     WHERE status NOT IN (${excludedSql})`
+    `SELECT COALESCE(SUM(po.grand_total), 0) AS total_spend
+     FROM purchase_orders po
+     ${poScope.join}
+     WHERE po.status NOT IN (${excludedSql})${poScope.where}`,
+    poScope.params
   );
 
   const [entityRows] = await pool.query(
@@ -1956,11 +1963,13 @@ export async function getCfoDashboard() {
        COALESCE(SUM(po.grand_total), 0) AS utilized_amount
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     WHERE po.status NOT IN (${excludedSql})
+     ${poScope.join}
+     WHERE po.status NOT IN (${excludedSql})${poScope.where}
      GROUP BY COALESCE(e.id, 0),
               COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned'),
               COALESCE(NULLIF(TRIM(e.code), ''), 'N/A')
-     ORDER BY utilized_amount DESC`
+     ORDER BY utilized_amount DESC`,
+    poScope.params
   );
 
   const entities = entityRows.map((row, idx) => {
@@ -1993,11 +2002,12 @@ export async function getCfoDashboard() {
             COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), '—') AS entity_name
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
+     ${poScope.join}
      WHERE po.status IN (${pendingSql})
-       AND po.grand_total >= ?
+       AND po.grand_total >= ?${poScope.where}
      ORDER BY po.grand_total DESC, COALESCE(po.po_date, po.created_at) ASC
      LIMIT 10`,
-    [CFO_HIGH_VALUE_THRESHOLD]
+    [CFO_HIGH_VALUE_THRESHOLD, ...poScope.params]
   );
 
   const highValueAlerts = alertRows.map((row) => {
@@ -2023,9 +2033,11 @@ export async function getCfoDashboard() {
             COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), '—') AS entity_name
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     WHERE po.status NOT IN ('draft')
+     ${poScope.join}
+     WHERE po.status NOT IN ('draft')${poScope.where}
      ORDER BY COALESCE(po.signed_at, po.updated_at, po.created_at) DESC, po.id DESC
-     LIMIT 12`
+     LIMIT 12`,
+    poScope.params
   );
 
   const recentActivity = activityRows.map((row) => {
@@ -2053,9 +2065,11 @@ export async function getCfoDashboard() {
             COALESCE(NULLIF(TRIM(e.code), ''), 'N/A') AS entity_code
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     WHERE po.status NOT IN ('draft')
+     ${poScope.join}
+     WHERE po.status NOT IN ('draft')${poScope.where}
      ORDER BY COALESCE(po.po_date, po.created_at) DESC, po.id DESC
-     LIMIT 200`
+     LIMIT 200`,
+    poScope.params
   );
 
   const purchaseOrders = poRows.map((row) => ({

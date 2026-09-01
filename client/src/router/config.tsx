@@ -9,6 +9,7 @@ const RefexOneSsoPage = lazy(() => import('../pages/auth/refexone/page'));
 const RefexOneCallbackPage = lazy(() => import('../pages/auth/refexone/callback'));
 const RefexOneLaunchPage = lazy(() => import('../pages/auth/refexone/launch'));
 const DashboardPage = lazy(() => import('../pages/dashboard/page'));
+const FinancialPoDetailPage = lazy(() => import('../pages/dashboard/po-detail/page'));
 const RequesterDashboardPage = lazy(() => import('../pages/requester/dashboard/page'));
 const CreatePRPage = lazy(() => import('../pages/requester/create-pr/page'));
 const TrackPRPage = lazy(() => import('../pages/requester/track-pr/page'));
@@ -101,6 +102,14 @@ const routes: RouteObject[] = [
   {
     path: '/dashboard',
     element: <ProtectedRoute><DashboardPage /></ProtectedRoute>,
+  },
+  {
+    path: '/dashboard/po/:poId',
+    element: <ProtectedRoute><FinancialPoDetailPage /></ProtectedRoute>,
+  },
+  {
+    path: '/dashboard/po',
+    element: <ProtectedRoute><FinancialPoDetailPage /></ProtectedRoute>,
   },
   {
     path: '/requester/dashboard',

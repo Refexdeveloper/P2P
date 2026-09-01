@@ -14,7 +14,7 @@ import { buildPoVendorEmail } from '../templates/poVendorEmail.js';
 import { buildPoWorkflowEmail } from '../templates/poWorkflowEmail.js';
 import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceRequestEmail.js';
 import { resolveScmBuyerUsers, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
-import { formatRoleDisplayName } from '../templates/emailUtils.js';
+import { formatRoleDisplayName, withEmailLogo } from '../templates/emailUtils.js';
 import {
   buildWorkflowWhatsAppParams,
   queueWorkflowWhatsApp,
@@ -309,7 +309,7 @@ export async function sendTestEmail(to) {
       to: recipient,
       subject,
       text: `P2P SMTP test message sent at ${new Date().toISOString()}`,
-      html: `<p>P2P SMTP test message sent at <strong>${new Date().toISOString()}</strong></p>`,
+      html: withEmailLogo(`<p>P2P SMTP test message sent at <strong>${new Date().toISOString()}</strong></p>`),
     });
 
     await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
@@ -385,7 +385,7 @@ export async function sendPrRaisedNotification(pr, requester, options = {}) {
       to: recipients.join(', '),
       subject,
       text,
-      html,
+      html: withEmailLogo(html),
     });
 
     await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
@@ -436,6 +436,8 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
     console.log('Email send skipped (EMAIL_SEND_ENABLED=false):', subject);
     return null;
   }
+
+  html = withEmailLogo(html);
 
   const toList = (recipients || []).filter(Boolean);
   const logCtx = {
@@ -1385,7 +1387,7 @@ export async function sendPoVendorNotification(po, { signerName, signerComments,
       cc: cc.length ? cc.join(', ') : undefined,
       subject,
       text,
-      html,
+      html: withEmailLogo(html),
       attachments: pdfPath
         ? [{ filename: `${po.poNumber}_signed.pdf`, path: pdfPath, contentType: 'application/pdf' }]
         : [],
@@ -1687,7 +1689,7 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       bcc: bcc.length ? bcc.join(', ') : undefined,
       subject,
       text,
-      html,
+      html: withEmailLogo(html),
       attachments: attachments.length ? attachments : undefined,
     });
     await updateEmailLog(log.id, {

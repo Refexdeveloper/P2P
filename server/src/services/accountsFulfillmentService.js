@@ -250,6 +250,25 @@ export async function listPendingGrnPos(user = null) {
   return result;
 }
 
+/** Active users for GRN "Received By" dropdown */
+export async function listGrnReceiverUsers() {
+  const [rows] = await pool.query(
+    `SELECT u.id, u.name, u.email, u.role, d.name AS department
+     FROM users u
+     LEFT JOIN departments d ON d.id = u.department_id
+     WHERE u.is_active = 1
+       AND u.role <> 'Super Admin'
+     ORDER BY u.name ASC, u.email ASC`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    role: r.role,
+    department: r.department || '',
+  }));
+}
+
 export async function listGrns(user = null) {
   const params = [];
   let sql = `
@@ -572,17 +591,7 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
   const [rows] = await pool.query(`SELECT * FROM invoices WHERE id = ?`, [invoiceId]);
   if (!rows.length) throw new Error('Invoice not found');
   const inv = rows[0];
-  if (user?.role === 'Requester') {
-    const [own] = await pool.query(
-      `SELECT pr.requester_id FROM purchase_orders po
-       JOIN purchase_requests pr ON pr.id = po.pr_id
-       WHERE po.id = ? LIMIT 1`,
-      [inv.po_id]
-    );
-    if (Number(own[0]?.requester_id) !== Number(user.id)) {
-      throw new Error('This invoice is assigned to another requester');
-    }
-  }
+  await assertInvoiceEntryAccess(user, inv.po_id);
   if (!['awaiting_upload', 'pending_verification', 'on_hold', 'discrepancy'].includes(inv.status)) {
     throw new Error('Invoice cannot be updated in current status');
   }
@@ -910,12 +919,33 @@ function newVendorInvoiceToken() {
   return crypto.randomBytes(24).toString('hex');
 }
 
-/** SCM Buyer: email vendor a public invoice-submit link */
-export async function sendVendorInvoiceMail(user, invoiceId) {
-  if (!['SCM Buyer', 'Super Admin', 'Accounts Payable', 'Accounts Manager'].includes(user.role)) {
-    throw new Error('Not allowed to send vendor invoice mail');
-  }
+const INVOICE_ENTRY_PRIVILEGED_ROLES = [
+  'SCM Buyer',
+  'Super Admin',
+  'Accounts Payable',
+  'Accounts Manager',
+];
 
+async function assertInvoiceEntryAccess(user, poId) {
+  if (!user?.id) throw new Error('Unauthorized');
+  if (INVOICE_ENTRY_PRIVILEGED_ROLES.includes(user.role)) return;
+  if (user.role === 'Requester') {
+    const [own] = await pool.query(
+      `SELECT pr.requester_id FROM purchase_orders po
+       JOIN purchase_requests pr ON pr.id = po.pr_id
+       WHERE po.id = ? LIMIT 1`,
+      [poId]
+    );
+    if (Number(own[0]?.requester_id) !== Number(user.id)) {
+      throw new Error('This invoice is assigned to another requester');
+    }
+    return;
+  }
+  throw new Error('Not allowed');
+}
+
+/** Email vendor a public invoice-submit link (Requester for own POs, or SCM/Accounts). */
+export async function sendVendorInvoiceMail(user, invoiceId) {
   const [rows] = await pool.query(
     `SELECT i.*, po.po_number, po.vendor_name, po.vendor_email, po.payment_terms,
             po.grand_total, po.pr_id, po.entity, g.grn_number,
@@ -929,6 +959,7 @@ export async function sendVendorInvoiceMail(user, invoiceId) {
   );
   if (!rows.length) throw new Error('Invoice not found');
   const inv = rows[0];
+  await assertInvoiceEntryAccess(user, inv.po_id);
   if (!['awaiting_upload', 'on_hold', 'discrepancy'].includes(inv.status)) {
     throw new Error('Invoice mail can only be sent while awaiting vendor upload');
   }

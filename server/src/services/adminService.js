@@ -66,6 +66,9 @@ async function mapUserRow(u, permissionCodes) {
     role: u.role,
     isActive: Boolean(u.is_active),
     departmentName: u.department_name || '',
+    entityId: u.entity_id ? Number(u.entity_id) : null,
+    entityName: u.entity_name || '',
+    entityCode: u.entity_code || '',
     permissions,
     isSuperAdmin: isSuperAdmin(u.role),
     refexoneUserId: u.refexone_user_id || null,
@@ -75,9 +78,11 @@ async function mapUserRow(u, permissionCodes) {
 
 export async function listUsersForAdmin() {
   const [rows] = await pool.query(
-    `SELECT u.id, u.name, u.email, u.role, u.is_active, u.refexone_user_id, d.name AS department_name
+    `SELECT u.id, u.name, u.email, u.role, u.is_active, u.refexone_user_id, u.entity_id,
+            d.name AS department_name, e.name AS entity_name, e.code AS entity_code
      FROM users u
      LEFT JOIN departments d ON d.id = u.department_id
+     LEFT JOIN entity_masters e ON e.id = u.entity_id
      ORDER BY u.name`
   );
 
@@ -133,7 +138,7 @@ export async function updateUserPermissions(adminUser, userId, permissionCodes) 
   return setUserPermissions(userId, permissionCodes);
 }
 
-export async function updateUser(adminUser, userId, { role, permissions }) {
+export async function updateUser(adminUser, userId, { role, permissions, entityId }) {
   if (!isSuperAdmin(adminUser.role)) {
     throw new Error('Only Super Admin can manage users');
   }
@@ -158,6 +163,23 @@ export async function updateUser(adminUser, userId, { role, permissions }) {
     await pool.query(`UPDATE users SET role = ? WHERE id = ?`, [role, userId]);
   }
 
+  if (entityId !== undefined) {
+    if (entityId === null || entityId === '' || entityId === 0) {
+      await pool.query(`UPDATE users SET entity_id = NULL WHERE id = ?`, [userId]);
+    } else {
+      const nextId = Number(entityId);
+      if (!Number.isFinite(nextId) || nextId <= 0) {
+        throw new Error('Invalid entity');
+      }
+      const [entityRows] = await pool.query(
+        `SELECT id FROM entity_masters WHERE id = ? AND status = 'active' LIMIT 1`,
+        [nextId]
+      );
+      if (!entityRows.length) throw new Error('Entity not found or inactive');
+      await pool.query(`UPDATE users SET entity_id = ? WHERE id = ?`, [nextId, userId]);
+    }
+  }
+
   let updatedPermissions;
   if (permissions !== undefined) {
     updatedPermissions = await setUserPermissions(userId, permissions);
@@ -171,9 +193,11 @@ export async function updateUser(adminUser, userId, { role, permissions }) {
   }
 
   const [final] = await pool.query(
-    `SELECT u.id, u.name, u.email, u.role, u.is_active, u.refexone_user_id, d.name AS department_name
+    `SELECT u.id, u.name, u.email, u.role, u.is_active, u.refexone_user_id, u.entity_id,
+            d.name AS department_name, e.name AS entity_name, e.code AS entity_code
      FROM users u
      LEFT JOIN departments d ON d.id = u.department_id
+     LEFT JOIN entity_masters e ON e.id = u.entity_id
      WHERE u.id = ?`,
     [userId]
   );

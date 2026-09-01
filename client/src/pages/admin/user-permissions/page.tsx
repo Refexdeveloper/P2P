@@ -1,8 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { adminApi, AdminUserRecord, AdminRoleRecord, NavItem } from '../../../services/api';
+import { adminApi, AdminUserRecord, AdminRoleRecord, NavItem, masterApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import { formatRoleDisplayName } from '../../../utils/roleDisplay';
+
+const ROLE_NAV_WHITELIST: Record<string, string[]> = {
+  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
+  'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
+  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
+};
 
 export default function UserPermissionsPage() {
   const { refreshUser } = useAuth();
@@ -12,6 +18,8 @@ export default function UserPermissionsPage() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedPerms, setSelectedPerms] = useState<string[]>([]);
+  const [selectedEntityId, setSelectedEntityId] = useState<number | ''>('');
+  const [entityOptions, setEntityOptions] = useState<Array<{ id: number; name: string; code: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -26,14 +34,22 @@ export default function UserPermissionsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [usersRes, permRes, rolesRes] = await Promise.all([
+      const [usersRes, permRes, rolesRes, entitiesRes] = await Promise.all([
         adminApi.listUsers(),
         adminApi.listPermissions(),
         adminApi.listRoles(),
+        masterApi.listEntities({ status: 'active', pageSize: 500 }).catch(() => ({ data: [] })),
       ]);
       setUsers(usersRes.data);
       setCatalog(permRes.data);
       setRoles(rolesRes.data);
+      setEntityOptions(
+        (entitiesRes.data || []).map((e) => ({
+          id: Number(e.id),
+          name: String(e.name || ''),
+          code: String(e.code || ''),
+        }))
+      );
     } catch {
       setUsers([]);
     } finally {
@@ -51,6 +67,7 @@ export default function UserPermissionsPage() {
     if (selectedUser) {
       setSelectedRole(selectedUser.role);
       setSelectedPerms([...selectedUser.permissions]);
+      setSelectedEntityId(selectedUser.entityId ? Number(selectedUser.entityId) : '');
     }
   }, [selectedUser]);
 
@@ -94,11 +111,38 @@ export default function UserPermissionsPage() {
     return groups;
   }, [catalog]);
 
+  const visibleGroupedCatalog = useMemo(() => {
+    const allowed = ROLE_NAV_WHITELIST[selectedRole];
+    if (!allowed) {
+      const out: Record<string, NavItem[]> = {};
+      for (const [group, items] of Object.entries(groupedCatalog)) {
+        if (group === 'Requester' && selectedRole !== 'Requester') continue;
+        out[group] = items;
+      }
+      return out;
+    }
+    const allowSet = new Set(allowed);
+    const out: Record<string, NavItem[]> = {};
+    for (const [group, items] of Object.entries(groupedCatalog)) {
+      const filtered = items.filter((i) => allowSet.has(i.code));
+      if (!filtered.length) continue;
+      if (group === 'Requester') {
+        out['PR'] = [...(out['PR'] || []), ...filtered];
+        continue;
+      }
+      out[group] = filtered;
+    }
+    return out;
+  }, [groupedCatalog, selectedRole]);
+
   const roleChanged = selectedUser ? selectedRole !== selectedUser.role : false;
   const permsChanged = selectedUser
     ? JSON.stringify([...selectedPerms].sort()) !== JSON.stringify([...selectedUser.permissions].sort())
     : false;
-  const hasChanges = roleChanged || permsChanged;
+  const entityChanged = selectedUser
+    ? (selectedEntityId || null) !== (selectedUser.entityId || null)
+    : false;
+  const hasChanges = roleChanged || permsChanged || entityChanged;
 
   const togglePerm = (code: string) => {
     setSelectedPerms((prev) =>
@@ -149,12 +193,13 @@ export default function UserPermissionsPage() {
     if (!selectedUserId || !selectedUser || selectedUser.isSuperAdmin || !hasChanges) return;
     setSaving(true);
     try {
-      const payload: { role?: string; permissions?: string[] } = {};
+      const payload: { role?: string; permissions?: string[]; entityId?: number | null } = {};
       if (roleChanged) payload.role = selectedRole;
       if (permsChanged || roleChanged) payload.permissions = selectedPerms;
+      if (entityChanged) payload.entityId = selectedEntityId ? Number(selectedEntityId) : null;
 
       await adminApi.updateUser(selectedUserId, payload);
-      showToast(`Updated role and permissions for ${selectedUser.name}`, 'success');
+      showToast(`Updated settings for ${selectedUser.name}`, 'success');
       await load();
       await refreshUser();
     } catch (err) {
@@ -253,6 +298,11 @@ export default function UserPermissionsPage() {
                     {u.source === 'refexone' && (
                       <span className="px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-600">RefexOne</span>
                     )}
+                    {u.entityName ? (
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-violet-50 text-violet-700">
+                        {u.entityCode || u.entityName}
+                      </span>
+                    ) : null}
                     <span className="text-xs text-teal-600">{u.permissions.length} menus</span>
                   </div>
                 </button>
@@ -341,6 +391,29 @@ export default function UserPermissionsPage() {
                       ))}
                     </select>
                   </div>
+                  <div className="min-w-[220px]">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                      Dashboard Entity
+                    </label>
+                    <select
+                      value={selectedEntityId}
+                      onChange={(e) =>
+                        setSelectedEntityId(e.target.value ? Number(e.target.value) : '')
+                      }
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                    >
+                      <option value="">All entities (no filter)</option>
+                      {entityOptions.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name} {e.code ? `(${e.code})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      For L1/L2: enable <strong>Dashboard</strong> under CFO menus, then pick entity — Financial
+                      Insights shows only that entity (default selected). My Tasks are not filtered.
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={applyRoleDefaults}
@@ -359,7 +432,13 @@ export default function UserPermissionsPage() {
               </div>
 
               <div className="p-6 max-h-[520px] overflow-y-auto space-y-6">
-                {Object.entries(groupedCatalog).map(([group, items]) => (
+                {ROLE_NAV_WHITELIST[selectedRole] ? (
+                  <p className="text-xs text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+                    L1/L2/CFO users only see the menus below. To give Financial Insights to L1/L2, check{' '}
+                    <strong>Dashboard</strong> under CFO and assign a Dashboard Entity above.
+                  </p>
+                ) : null}
+                {Object.entries(visibleGroupedCatalog).map(([group, items]) => (
                   <div key={group}>
                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">{group}</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

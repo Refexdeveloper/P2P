@@ -199,7 +199,7 @@ export default function VendorInvoicePage() {
         invoiceTax: 0,
       });
       setUploadRow(null);
-      showToast('Invoice recorded via manual entry — sent to Accounts for verification');
+      showToast('Invoice uploaded — vendor acceptance opened and sent to Accounts for verification');
       await load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Manual entry failed');
@@ -332,7 +332,7 @@ export default function VendorInvoicePage() {
                                     className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 cursor-pointer"
                                     title={!row.vendorEmail ? 'Vendor email missing' : 'Email vendor invoice link'}
                                   >
-                                    {busyId === row.id ? 'Sending…' : 'Send Mail'}
+                                    {busyId === row.id ? 'Sending…' : row.vendorNotifiedAt ? 'Resend Mail' : 'Send Mail'}
                                   </button>
                                 )}
                                 {row.canManualEntry && (
@@ -341,7 +341,7 @@ export default function VendorInvoicePage() {
                                     onClick={() => openManual(row)}
                                     className="px-3 py-1.5 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
                                   >
-                                    Manual Entry
+                                    Upload Invoice
                           </button>
                                 )}
                               </div>
@@ -376,7 +376,7 @@ export default function VendorInvoicePage() {
                                         onClick={() => handleSendMail(row)}
                                         className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg disabled:opacity-50 cursor-pointer"
                                       >
-                                        {busyId === row.id ? 'Sending…' : 'Send Mail'}
+                                        {busyId === row.id ? 'Sending…' : row.vendorNotifiedAt ? 'Resend Mail' : 'Send Mail'}
                             </button>
                           )}
                                     {row.canManualEntry && (
@@ -385,7 +385,7 @@ export default function VendorInvoicePage() {
                                         onClick={() => openManual(row)}
                                         className="px-3 py-1.5 text-xs font-semibold border border-gray-300 rounded-lg cursor-pointer"
                                       >
-                                        Manual Entry
+                                        Upload Invoice
                             </button>
                           )}
                                   </div>
@@ -435,10 +435,10 @@ export default function VendorInvoicePage() {
           <div className="absolute inset-0 bg-black/40" onClick={() => !uploading && setUploadRow(null)} />
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
             <div className="px-6 py-4 bg-amber-50 border-b border-amber-100">
-              <h3 className="text-base font-bold text-amber-900">Manual Invoice Entry</h3>
+              <h3 className="text-base font-bold text-amber-900">Upload Invoice (Manual)</h3>
               <p className="text-xs text-gray-600 mt-1">
-                PO {uploadRow.poNumber} · GRN {uploadRow.grnNumber || '—'} ·{' '}
-                {formatCurrency(uploadRow.poGrandTotal)}
+                Upload the vendor invoice file directly. PO {uploadRow.poNumber} · GRN{' '}
+                {uploadRow.grnNumber || '—'} · {formatCurrency(uploadRow.poGrandTotal)}
               </p>
             </div>
             <div className="p-6 space-y-3">
@@ -475,7 +475,7 @@ export default function VendorInvoicePage() {
                 Invoice file *
                 <input
                   type="file"
-                  accept=".pdf,image/*"
+                  accept=".pdf,.doc,.docx,image/*"
                   className="mt-1 w-full text-sm"
                   onChange={(e) => setForm((f) => ({ ...f, file: e.target.files?.[0] || null }))}
                 />

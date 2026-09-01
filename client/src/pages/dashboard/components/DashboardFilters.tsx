@@ -36,6 +36,8 @@ export default function DashboardFilters({
   vendors,
   resetValue,
   onChange,
+  lockEntity = false,
+  lockedEntityLabel,
 }: {
   value: DashboardFiltersValue;
   entities: Array<{ id: string; name: string }>;
@@ -44,6 +46,8 @@ export default function DashboardFilters({
   vendors: string[];
   resetValue?: DashboardFiltersValue;
   onChange: (next: DashboardFiltersValue) => void;
+  lockEntity?: boolean;
+  lockedEntityLabel?: string;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -77,10 +81,11 @@ export default function DashboardFilters({
           <select
             value={value.entityId}
             onChange={(e) => onChange({ ...value, entityId: e.target.value })}
-            className={`${fieldClass} min-w-[160px]`}
+            disabled={lockEntity}
+            className={`${fieldClass} min-w-[160px] ${lockEntity ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : ''}`}
             aria-label="Company"
           >
-            <option value="">All Companies</option>
+            <option value="">{lockEntity ? lockedEntityLabel || 'Assigned entity' : 'All Companies'}</option>
             {entities.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.name}

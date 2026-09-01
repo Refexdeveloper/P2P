@@ -167,7 +167,7 @@ router.get(
   requireRolesOrPermissions(['CFO'], ['nav.cfo_dashboard', 'nav.tasks', 'nav.rfq_approval']),
   async (req, res) => {
     try {
-      const data = await getCfoDashboard();
+      const data = await getCfoDashboard(req.user);
       res.json({ data });
     } catch (err) {
       res.status(500).json({ message: err.message });

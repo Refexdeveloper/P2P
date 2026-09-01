@@ -124,6 +124,9 @@ export interface AuthUser {
   role: string;
   departmentId?: number | null;
   departmentName?: string | null;
+  entityId?: number | null;
+  entityName?: string | null;
+  entityCode?: string | null;
   isSuperAdmin?: boolean;
   permissions?: string[];
   navigation?: NavItem[];
@@ -701,6 +704,8 @@ export const poApi = {
         monthlyPOTrend: Array<Record<string, string | number>>;
         monthlySeries: Array<{ key: string; label: string; color: string }>;
         recentPurchaseOrders: Array<{
+          poId: number | null;
+          prId: number | null;
           poNumber: string;
           entity: string;
           vendorName: string;
@@ -1564,6 +1569,9 @@ export interface AdminUserRecord {
   role: string;
   isActive: boolean;
   departmentName: string;
+  entityId?: number | null;
+  entityName?: string;
+  entityCode?: string;
   permissions: string[];
   isSuperAdmin: boolean;
   refexoneUserId?: string | null;
@@ -1649,7 +1657,7 @@ export const adminApi = {
     }),
   listPermissions: () => request<{ data: NavItem[] }>('/api/admin/permissions'),
   listRoles: () => request<{ data: AdminRoleRecord[] }>('/api/admin/roles'),
-  updateUser: (userId: number, payload: { role?: string; permissions?: string[] }) =>
+  updateUser: (userId: number, payload: { role?: string; permissions?: string[]; entityId?: number | null }) =>
     request<{ data: AdminUserRecord; message: string }>(`/api/admin/users/${userId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
@@ -1771,6 +1779,10 @@ export const adminApi = {
 export const accountsApi = {
   dashboard: () => request<{ data: Record<string, unknown> }>('/api/accounts/dashboard'),
   listPendingGrnPos: () => request<{ data: Record<string, unknown>[] }>('/api/accounts/grn/pending-pos'),
+  listGrnUsers: () =>
+    request<{
+      data: Array<{ id: number; name: string; email: string; role: string; department: string }>;
+    }>('/api/accounts/grn/users'),
   listGrns: () => request<{ data: Record<string, unknown>[] }>('/api/accounts/grn'),
   submitGrn: (body: Record<string, unknown>) =>
     request<{ data: Record<string, unknown>; message: string }>('/api/accounts/grn', {

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { accountsApi, poApi } from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
 
 interface CreateGRNModalProps {
   isOpen: boolean;
@@ -40,6 +41,14 @@ export interface NewGRNData {
   taxAmount: number;
   grandTotal: number;
 }
+
+type GrnReceiverUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  department: string;
+};
 
 type ApprovedPo = {
   id?: number;
@@ -131,13 +140,16 @@ export default function CreateGRNModal({
   initialPoNumber,
   initialPoId,
 }: CreateGRNModalProps) {
+  const { user } = useAuth();
   const lockedFromPo = Boolean(initialPoId || initialPoNumber);
   const steps = lockedFromPo ? [...LOCKED_STEPS] : [...ALL_STEPS];
 
   const [step, setStep] = useState(0);
   const [selectedPO, setSelectedPO] = useState<string>('');
   const [poSearch, setPOSearch] = useState('');
-  const [receivedBy, setReceivedBy] = useState('');
+  const [receivedByUserId, setReceivedByUserId] = useState<number | ''>('');
+  const [receiverUsers, setReceiverUsers] = useState<GrnReceiverUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [inspectedBy, setInspectedBy] = useState('');
   const [receivedDate, setReceivedDate] = useState(new Date().toISOString().split('T')[0]);
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -169,7 +181,9 @@ export default function CreateGRNModal({
     setStep(0);
     setSelectedPO('');
     setPOSearch('');
-    setReceivedBy('');
+    setReceivedByUserId('');
+    setReceiverUsers([]);
+    setLoadingUsers(false);
     setInspectedBy('');
     setReceivedDate(new Date().toISOString().split('T')[0]);
     setDeliveryAddress('');
@@ -258,6 +272,36 @@ export default function CreateGRNModal({
     };
   }, [isOpen, initialPoId, initialPoNumber, applyPoSelection, handleReset]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingUsers(true);
+      try {
+        const res = await accountsApi.listGrnUsers();
+        const list = (res.data || []) as GrnReceiverUser[];
+        if (cancelled) return;
+        setReceiverUsers(list);
+        if (user?.id) {
+          const self = list.find((u) => u.id === user.id);
+          if (self) setReceivedByUserId(self.id);
+        }
+      } catch {
+        if (!cancelled) setReceiverUsers([]);
+      } finally {
+        if (!cancelled) setLoadingUsers(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, user?.id]);
+
+  const selectedReceiver = useMemo(
+    () => receiverUsers.find((u) => u.id === receivedByUserId) || null,
+    [receiverUsers, receivedByUserId]
+  );
+
   const filteredPOs = useMemo(() => {
     if (!poSearch.trim()) return approvedPOs;
     const q = poSearch.toLowerCase();
@@ -289,7 +333,7 @@ export default function CreateGRNModal({
       newErrors.po = 'Please select a PO to proceed.';
     }
     if (contentStep === 1) {
-      if (!receivedBy.trim()) newErrors.receivedBy = 'Received By is required.';
+      if (!receivedByUserId) newErrors.receivedBy = 'Received By is required.';
       if (!receivedDate) newErrors.receivedDate = 'Received Date is required.';
       if (!deliveryAddress.trim()) newErrors.deliveryAddress = 'Delivery Address is required.';
     }
@@ -356,7 +400,7 @@ export default function CreateGRNModal({
       requester: selectedPOData.requester,
       paymentTerms: selectedPOData.paymentTerms,
       deliveryAddress,
-      receivedBy,
+      receivedBy: selectedReceiver?.name || '',
       inspectedBy,
       receivedDate,
       expectedDeliveryDate: selectedPOData.expectedDeliveryDate,
@@ -630,15 +674,26 @@ export default function CreateGRNModal({
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                     Received By <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={receivedBy}
-                    onChange={(e) => setReceivedBy(e.target.value)}
-                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 ${
+                  <select
+                    value={receivedByUserId}
+                    onChange={(e) =>
+                      setReceivedByUserId(e.target.value ? Number(e.target.value) : '')
+                    }
+                    disabled={loadingUsers}
+                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 bg-white ${
                       errors.receivedBy ? 'border-red-300' : 'border-gray-200'
                     }`}
-                    placeholder="Name of receiver"
-                  />
+                  >
+                    <option value="">
+                      {loadingUsers ? 'Loading users…' : 'Select user'}
+                    </option>
+                    {receiverUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} — {u.role}
+                        {u.department ? ` (${u.department})` : ''}
+                      </option>
+                    ))}
+                  </select>
                   {errors.receivedBy && <p className="text-xs text-red-500 mt-1">{errors.receivedBy}</p>}
                 </div>
                 <div>
@@ -784,7 +839,10 @@ export default function CreateGRNModal({
               <div className="grid grid-cols-2 gap-3 text-sm mb-4">
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-xs text-gray-500">Received By</p>
-                  <p className="font-semibold">{receivedBy}</p>
+                  <p className="font-semibold">{selectedReceiver?.name || '—'}</p>
+                  {selectedReceiver?.email ? (
+                    <p className="text-xs text-gray-500 mt-0.5">{selectedReceiver.email}</p>
+                  ) : null}
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-xs text-gray-500">Received Date</p>

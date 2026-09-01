@@ -116,12 +116,24 @@ router.get('/vendor-accept/:token/pdf', async (req, res) => {
 
 router.use(authenticate);
 
+/** Read PO details / documents — SCM, approvers, requester, and Financial Insights users. */
+const PO_READ_ROLES = [
+  'SCM Buyer',
+  'SCM Manager',
+  'Super Admin',
+  'CFO',
+  'PR Manager',
+  'HOD Approver',
+  'Requester',
+];
+const canReadPo = requireRolesOrPermissions(PO_READ_ROLES, ['nav.cfo_insights']);
+
 router.get(
   '/stats/cfo',
-  requireRolesOrPermissions(['CFO', 'Super Admin'], ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks', 'nav.rfq_approval']),
-  async (_req, res) => {
+  requireRolesOrPermissions(['CFO', 'Super Admin'], ['nav.cfo_insights']),
+  async (req, res) => {
     try {
-      const data = await getCfoPoInsights();
+      const data = await getCfoPoInsights(req.user);
       res.json({ data });
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -469,7 +481,7 @@ router.get('/', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) => {
   }
 });
 
-router.get('/by-number/:poNumber', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin'), async (req, res) => {
+router.get('/by-number/:poNumber', canReadPo, async (req, res) => {
   try {
     const data = await getPurchaseOrderByNumber(req.params.poNumber);
     if (!data) return res.status(404).json({ message: 'PO not found' });
@@ -479,7 +491,7 @@ router.get('/by-number/:poNumber', requireRoles('SCM Buyer', 'SCM Manager', 'CFO
   }
 });
 
-router.get('/:id/document', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin', 'Requester'), async (req, res) => {
+router.get('/:id/document', canReadPo, async (req, res) => {
   try {
     const po =
       req.user.role === 'Requester'
@@ -497,7 +509,7 @@ router.get('/:id/document', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR 
   }
 });
 
-router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manager', 'Super Admin', 'Requester'), async (req, res) => {
+router.get('/:id/pdf', canReadPo, async (req, res) => {
   try {
     const po =
       req.user.role === 'Requester'
@@ -533,7 +545,7 @@ router.get('/:id/pdf', requireRoles('SCM Buyer', 'SCM Manager', 'CFO', 'PR Manag
   }
 });
 
-router.get('/:id', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin', 'CFO', 'PR Manager', 'Requester'), async (req, res) => {
+router.get('/:id', canReadPo, async (req, res) => {
   try {
     const po =
       req.user.role === 'Requester'
@@ -696,7 +708,7 @@ router.post('/:id/vendor-acceptance/manual', requireRoles('Requester', 'SCM Buye
   }
 });
 
-router.get('/:id/vendor-acceptance/file', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/:id/vendor-acceptance/file', canReadPo, async (req, res) => {
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
@@ -708,7 +720,7 @@ router.get('/:id/vendor-acceptance/file', requireRoles('Requester', 'SCM Buyer',
   }
 });
 
-router.get('/:id/cancellation/:index/file', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/:id/cancellation/:index/file', canReadPo, async (req, res) => {
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });

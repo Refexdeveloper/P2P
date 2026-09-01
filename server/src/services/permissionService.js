@@ -100,9 +100,9 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.entity_master',
     'nav.department_master',
   ],
-  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval'],
+  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
-  'HOD Approver': ['nav.tasks', 'nav.rfq_approval'],
+  'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   'SCM Buyer': [
     'nav.purchase_requests',
     'nav.scm_rfq_entry',
@@ -156,6 +156,62 @@ export const ASSIGNABLE_ROLES = Object.keys(ROLE_DEFAULT_PERMISSIONS).filter(
   (role) => role !== SUPER_ADMIN_ROLE
 );
 
+/** Nav codes that belong only to Requester — never on L1/L2/CFO manager menus. */
+export const REQUESTER_ONLY_NAV_CODES = new Set([
+  'nav.requester_dashboard',
+  'nav.create_pr',
+  'nav.rfq_entry',
+  'nav.track_pr',
+  'nav.requester_vendor_po_acceptance',
+  'nav.requester_vendor_invoice',
+  'nav.grn',
+]);
+
+/** Admin-controlled menu whitelist per role (no Requester / unrelated menus). */
+export const ROLE_NAV_WHITELIST = {
+  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
+  'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
+  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
+};
+
+function enforceRoleNavWhitelist(role, codes = []) {
+  const allowed = ROLE_NAV_WHITELIST[role];
+  if (!allowed) {
+    return codes.filter((c) => !REQUESTER_ONLY_NAV_CODES.has(c));
+  }
+  const allowSet = new Set(allowed);
+  const out = codes.filter((c) => allowSet.has(c));
+  for (const code of ROLE_DEFAULT_PERMISSIONS[role] || []) {
+    if (allowSet.has(code) && !out.includes(code)) out.push(code);
+  }
+  if (role === 'PR Manager') {
+    return out.filter((c) => c !== 'nav.tasks');
+  }
+  return out;
+}
+
+async function persistRoleNavWhitelist(userId, role, codes) {
+  const next = enforceRoleNavWhitelist(role, codes);
+  const current = new Set(codes);
+  for (const code of codes) {
+    if (!next.includes(code)) {
+      await pool.query(`DELETE FROM user_permissions WHERE user_id = ? AND permission_code = ?`, [
+        userId,
+        code,
+      ]);
+    }
+  }
+  for (const code of next) {
+    if (!current.has(code)) {
+      await pool.query(
+        `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
+        [userId, code]
+      );
+    }
+  }
+  return next;
+}
+
 export function isSuperAdmin(role) {
   return role === SUPER_ADMIN_ROLE;
 }
@@ -188,19 +244,11 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
   if (!stored.length) return [...defaults];
 
   if (role === 'CFO') {
-    const allowed = ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'];
-    return allowed.filter((c) => validCodes.has(c));
+    return enforceRoleNavWhitelist(role, stored);
   }
 
-  if (role === 'PR Manager') {
-    if (!stored.includes('nav.pr_manager_dashboard') && validCodes.has('nav.pr_manager_dashboard')) {
-      stored.push('nav.pr_manager_dashboard');
-    }
-    const tasksIdx = stored.indexOf('nav.tasks');
-    if (tasksIdx >= 0) stored.splice(tasksIdx, 1);
-    if (!stored.includes('nav.rfq_approval') && validCodes.has('nav.rfq_approval')) {
-      stored.push('nav.rfq_approval');
-    }
+  if (role === 'HOD Approver' || role === 'PR Manager') {
+    return enforceRoleNavWhitelist(role, stored);
   }
 
   if (role === 'Requester' || role === 'SCM Buyer' || role === 'SCM Manager') {
@@ -278,46 +326,8 @@ export async function getUserPermissionCodes(userId, role, email = null) {
     // Stored rows exist but none map to real nav items → use role defaults
     // (fixes SSO users left with empty/stale permission rows → sidebar logout-only)
     if (stored.length) {
-      // Heal: L2 Manager should not have both My Tasks nav codes
-      if (role === 'PR Manager') {
-        if (!stored.includes('nav.pr_manager_dashboard') && validCodes.has('nav.pr_manager_dashboard')) {
-          stored.push('nav.pr_manager_dashboard');
-          await pool.query(
-            `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-            [userId, 'nav.pr_manager_dashboard']
-          );
-        }
-        if (stored.includes('nav.tasks')) {
-          const idx = stored.indexOf('nav.tasks');
-          if (idx >= 0) stored.splice(idx, 1);
-          await pool.query(
-            `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.tasks'`,
-            [userId]
-          );
-        }
-        if (!stored.includes('nav.rfq_approval') && validCodes.has('nav.rfq_approval')) {
-          stored.push('nav.rfq_approval');
-          await pool.query(
-            `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-            [userId, 'nav.rfq_approval']
-          );
-        }
-      }
-      if (role === 'CFO') {
-        const allowed = ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'];
-        for (const code of stored.filter((c) => !allowed.includes(c))) {
-          await pool.query(`DELETE FROM user_permissions WHERE user_id = ? AND permission_code = ?`, [userId, code]);
-        }
-        stored.splice(0, stored.length, ...stored.filter((c) => allowed.includes(c)));
-        for (const code of allowed) {
-          if (!stored.includes(code) && validCodes.has(code)) {
-            stored.push(code);
-            await pool.query(
-              `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-              [userId, code]
-            );
-          }
-        }
+      if (ROLE_NAV_WHITELIST[role]) {
+        return persistRoleNavWhitelist(userId, role, stored);
       }
       // Heal: Requester + SCM roles always get Masters menu permissions
       if (role === 'Requester' || role === 'SCM Buyer' || role === 'SCM Manager') {
@@ -423,11 +433,11 @@ export async function getUserNavigation(userId, role, email = null) {
     }
   }
 
-  // CFO: Dashboard + My Tasks only (unless email-specific override)
-  if (role === 'CFO' && !getEmailNavPermissionOverride(email)) {
-    const allowed = new Set(ROLE_DEFAULT_PERMISSIONS.CFO || ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks']);
+  // CFO / L1 / L2: only whitelisted dashboards (no Requester menus)
+  if (ROLE_NAV_WHITELIST[role] && !getEmailNavPermissionOverride(email)) {
+    const allowed = new Set(ROLE_NAV_WHITELIST[role]);
     nav = nav.filter((n) => allowed.has(n.code));
-    const order = ROLE_DEFAULT_PERMISSIONS.CFO || [];
+    const order = ROLE_DEFAULT_PERMISSIONS[role] || [];
     const rank = new Map(order.map((code, i) => [code, i]));
     nav.sort((a, b) => {
       const ai = rank.has(a.code) ? rank.get(a.code) : 1000 + a.sort;
@@ -481,14 +491,20 @@ export async function setUserPermissions(userId, permissionCodes) {
   if (isSuperAdmin(userRows[0].role)) throw new Error('Cannot modify Super Admin permissions');
 
   const validCodes = new Set(NAV_ITEMS.map((n) => n.code));
-  const filtered = [...new Set(permissionCodes.filter((c) => validCodes.has(c)))];
+  let filtered = [...new Set(permissionCodes.filter((c) => validCodes.has(c)))];
+  const role = userRows[0].role;
+  if (ROLE_NAV_WHITELIST[role]) {
+    filtered = enforceRoleNavWhitelist(role, filtered);
+  } else {
+    filtered = filtered.filter((c) => !REQUESTER_ONLY_NAV_CODES.has(c) || role === 'Requester');
+  }
 
   await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [userId]);
   for (const code of filtered) {
     await pool.query(`INSERT INTO user_permissions (user_id, permission_code) VALUES (?, ?)`, [userId, code]);
   }
 
-  return getUserPermissionCodes(userId, userRows[0].role);
+  return getUserPermissionCodes(userId, role);
 }
 
 export async function seedUserPermissionsForRole(userId, role) {
@@ -511,6 +527,26 @@ export async function enrichAuthUser(userRow) {
   await syncEmailNavPermissions(effectiveUser.id, effectiveUser.email);
   const permissions = await getUserPermissionCodes(effectiveUser.id, effectiveUser.role, effectiveUser.email);
   const navigation = await getUserNavigation(effectiveUser.id, effectiveUser.role, effectiveUser.email);
+
+  let entityId = effectiveUser.entity_id ?? effectiveUser.entityId ?? null;
+  let entityName = effectiveUser.entity_name ?? effectiveUser.entityName ?? null;
+  let entityCode = effectiveUser.entity_code ?? effectiveUser.entityCode ?? null;
+  if (!entityId && effectiveUser.id) {
+    const [entityRows] = await pool.query(
+      `SELECT u.entity_id, e.name AS entity_name, e.code AS entity_code
+       FROM users u
+       LEFT JOIN entity_masters e ON e.id = u.entity_id
+       WHERE u.id = ?
+       LIMIT 1`,
+      [effectiveUser.id]
+    );
+    if (entityRows[0]?.entity_id) {
+      entityId = Number(entityRows[0].entity_id);
+      entityName = entityRows[0].entity_name || null;
+      entityCode = entityRows[0].entity_code || null;
+    }
+  }
+
   return {
     id: effectiveUser.id,
     email: effectiveUser.email,
@@ -518,6 +554,9 @@ export async function enrichAuthUser(userRow) {
     role: effectiveUser.role,
     departmentId: effectiveUser.department_id ?? effectiveUser.departmentId ?? null,
     departmentName: effectiveUser.department_name ?? effectiveUser.departmentName ?? null,
+    entityId: entityId ? Number(entityId) : null,
+    entityName: entityName || null,
+    entityCode: entityCode || null,
     isSuperAdmin: isSuperAdmin(effectiveUser.role),
     permissions,
     navigation: navigation.map((n) => ({

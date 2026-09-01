@@ -61,8 +61,8 @@ router.get('/roles', async (_req, res) => {
 
 router.put('/users/:id', async (req, res) => {
   try {
-    const { role, permissions } = req.body || {};
-    const data = await updateUser(req.user, Number(req.params.id), { role, permissions });
+    const { role, permissions, entityId } = req.body || {};
+    const data = await updateUser(req.user, Number(req.params.id), { role, permissions, entityId });
     res.json({ data, message: 'User updated' });
   } catch (err) {
     res.status(400).json({ message: err.message });

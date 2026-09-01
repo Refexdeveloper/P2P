@@ -70,9 +70,9 @@ function exportCsv(filename: string, lines: string[]) {
 function readHidden(): Record<string, boolean> {
   try {
     const raw = localStorage.getItem(CUSTOMIZE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, boolean>) : { tables: true };
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
   } catch {
-    return { tables: true };
+    return {};
   }
 }
 
@@ -98,11 +98,19 @@ export default function Dashboard() {
   >([]);
   const [cfoEntities, setCfoEntities] = useState<CfoEntity[]>([]);
   const [payments, setPayments] = useState<Array<PaymentRow & { department?: string }>>([]);
-  const [showTables, setShowTables] = useState(false);
+  const [showTables, setShowTables] = useState(true);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [hidden, setHidden] = useState<Record<string, boolean>>(readHidden);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const customizeRef = useRef<HTMLDivElement>(null);
+  const lockedEntityId = user?.entityId ? String(user.entityId) : null;
+
+  useEffect(() => {
+    if (!lockedEntityId) return;
+    const apply = (prev: DashboardFiltersValue) => ({ ...prev, entityId: lockedEntityId });
+    setFilters(apply);
+    setResetValue(apply);
+  }, [lockedEntityId]);
 
   const load = async () => {
     setLoading(true);
@@ -397,9 +405,17 @@ export default function Dashboard() {
     : '';
 
   const visible = (key: string) => !hidden[key];
-  const companyOptions = entities.length
-    ? entities
-    : data.entityWisePOSummary.map((e) => ({ id: String(e.entityId || e.entityName), name: e.entityName }));
+  const companyOptions = useMemo(() => {
+    const base = entities.length
+      ? entities
+      : data.entityWisePOSummary.map((e) => ({ id: String(e.entityId || e.entityName), name: e.entityName }));
+    if (lockedEntityId) {
+      const match = base.find((e) => e.id === lockedEntityId);
+      if (match) return [match];
+      if (user?.entityName) return [{ id: lockedEntityId, name: user.entityName }];
+    }
+    return base;
+  }, [entities, data.entityWisePOSummary, lockedEntityId, user?.entityName]);
 
   const openDetails = () => {
     setShowTables(true);
@@ -474,6 +490,8 @@ export default function Dashboard() {
           categories={categories}
           vendors={[...new Set(data.topVendorsByPOAmount.map((v) => v.vendorName))]}
           onChange={setFilters}
+          lockEntity={Boolean(lockedEntityId)}
+          lockedEntityLabel={user?.entityName || user?.entityCode || undefined}
         />
 
         {error && (

@@ -27,6 +27,9 @@ interface User {
   role: UserRole;
   departmentId?: number | null;
   departmentName?: string | null;
+  entityId?: number | null;
+  entityName?: string | null;
+  entityCode?: string | null;
   isSuperAdmin: boolean;
   permissions: string[];
   navigation: NavItem[];
@@ -124,6 +127,9 @@ function mapAuthUser(u: AuthUser): User {
     role,
     departmentId: u.departmentId,
     departmentName: u.departmentName,
+    entityId: u.entityId ?? null,
+    entityName: u.entityName ?? null,
+    entityCode: u.entityCode ?? null,
     isSuperAdmin: Boolean(u.isSuperAdmin),
     permissions: u.permissions || [],
     navigation: ensureNavigation(role, u.navigation, u.email),

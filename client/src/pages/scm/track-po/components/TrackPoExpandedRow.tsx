@@ -53,6 +53,8 @@ type DocRow = {
 type Props = {
   row: TrackRowLite;
   colSpan?: number;
+  /** Full-page layout (Financial Insights PO detail) — no table row wrapper */
+  standalone?: boolean;
 };
 
 const formatCurrency = (amount: number) =>
@@ -197,7 +199,7 @@ async function loadAuthPreview(doc: DocRow, poId: number | null): Promise<FilePr
   return { url: URL.createObjectURL(sniffed.blob), fileName: doc.fileName, kind: sniffed.kind };
 }
 
-export default function TrackPoExpandedRow({ row, colSpan = 10 }: Props) {
+export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = false }: Props) {
   const [tab, setTab] = useState<'details' | 'documents' | 'history'>('details');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -468,10 +470,14 @@ export default function TrackPoExpandedRow({ row, colSpan = 10 }: Props) {
     URL.revokeObjectURL(a.href);
   };
 
-  return (
-    <tr>
-      <td colSpan={colSpan} className="p-0 bg-slate-50 border-b border-teal-100">
-        <div className="m-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+  const panel = (
+    <div
+      className={
+        standalone
+          ? 'bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden'
+          : 'm-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden'
+      }
+    >
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
             <div className="min-w-0">
               <p className="text-sm font-bold text-gray-900 truncate">
@@ -707,50 +713,67 @@ export default function TrackPoExpandedRow({ row, colSpan = 10 }: Props) {
               </div>
             )}
           </div>
-        </div>
+    </div>
+  );
 
-        {filePreview &&
-          createPortal(
-            <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50">
-              <div className="bg-white rounded-xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-xl">
-                <div className="p-4 border-b border-gray-200 flex justify-between items-center gap-3">
-                  <span className="font-semibold text-gray-900 truncate">{filePreview.fileName}</span>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={filePreview.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                    >
-                      Open in new tab
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        URL.revokeObjectURL(filePreview.url);
-                        setFilePreview(null);
-                      }}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xl cursor-pointer"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-                <div className="p-4 flex-1 overflow-auto bg-slate-50">
-                  {filePreview.kind === 'image' ? (
-                    <img src={filePreview.url} alt={filePreview.fileName} className="max-h-[75vh] mx-auto rounded-lg" />
-                  ) : (
-                    <iframe
-                      title="Document preview"
-                      src={filePreview.url}
-                      className="w-full h-[75vh] border border-gray-200 rounded-lg bg-white"
-                    />
-                  )}
-                </div>
-              </div>
-            </div>,
-            document.body
-          )}
+  const previewModal =
+    filePreview &&
+    createPortal(
+      <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50">
+        <div className="bg-white rounded-xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-xl">
+          <div className="p-4 border-b border-gray-200 flex justify-between items-center gap-3">
+            <span className="font-semibold text-gray-900 truncate">{filePreview.fileName}</span>
+            <div className="flex items-center gap-2">
+              <a
+                href={filePreview.url}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Open in new tab
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  URL.revokeObjectURL(filePreview.url);
+                  setFilePreview(null);
+                }}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xl cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+          <div className="p-4 flex-1 overflow-auto bg-slate-50">
+            {filePreview.kind === 'image' ? (
+              <img src={filePreview.url} alt={filePreview.fileName} className="max-h-[75vh] mx-auto rounded-lg" />
+            ) : (
+              <iframe
+                title="Document preview"
+                src={filePreview.url}
+                className="w-full h-[75vh] border border-gray-200 rounded-lg bg-white"
+              />
+            )}
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+
+  if (standalone) {
+    return (
+      <>
+        {panel}
+        {previewModal}
+      </>
+    );
+  }
+
+  return (
+    <tr>
+      <td colSpan={colSpan} className="p-0 bg-slate-50 border-b border-teal-100">
+        {panel}
+        {previewModal}
       </td>
     </tr>
   );

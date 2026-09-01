@@ -1,6 +1,9 @@
+import { useNavigate } from 'react-router-dom';
 import { CARD, formatCompactInr } from '../cfoFormat';
 
 type Order = {
+  poId?: number | null;
+  prId?: number | null;
   poNumber: string;
   entity: string;
   vendorName: string;
@@ -18,6 +21,18 @@ const statusConfig: Record<string, { bg: string; text: string; dot: string }> = 
 };
 
 export default function RecentPOTable({ orders }: { orders: Order[] }) {
+  const navigate = useNavigate();
+
+  const openDetail = (po: Order) => {
+    if (po.poId) {
+      navigate(`/dashboard/po/${po.poId}`);
+      return;
+    }
+    if (po.poNumber) {
+      navigate(`/dashboard/po?poNumber=${encodeURIComponent(po.poNumber)}`);
+    }
+  };
+
   return (
     <div className={`${CARD} overflow-hidden`}>
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -58,8 +73,14 @@ export default function RecentPOTable({ orders }: { orders: Order[] }) {
             ) : (
               orders.map((po) => {
                 const cfg = statusConfig[po.status] ?? statusConfig['Pending Approval'];
+                const clickable = Boolean(po.poId || po.poNumber);
                 return (
-                  <tr key={po.poNumber} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={po.poNumber}
+                    onClick={() => clickable && openDetail(po)}
+                    className={`transition-colors ${clickable ? 'hover:bg-teal-50/60 cursor-pointer' : 'hover:bg-gray-50'}`}
+                    title={clickable ? 'View full PO details and documents' : undefined}
+                  >
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       <span className="text-sm font-semibold text-teal-600">{po.poNumber}</span>
                     </td>

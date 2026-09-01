@@ -1495,6 +1495,7 @@ export default function CreatePOPage() {
       letterheadLockedRef.current = true;
       setLetterheadLocked(true);
       setCreatedPoId(editPoId);
+      setPoEditStatus('draft');
       prLineItemsHydratedRef.current = true;
       return;
     }
@@ -2545,8 +2546,12 @@ export default function CreatePOPage() {
       setTimeout(() => setDraftSaved(false), 3000);
       if (!editPoId && savedId) {
         keepLocalDraftAfterSaveRef.current = true;
-        navigate(`/scm/create-po?poId=${savedId}&manual=1&from=create-po`, { replace: true });
+        const params = new URLSearchParams({ poId: String(savedId), from: 'create-po' });
+        if (isManualPoFlow) params.set('manual', '1');
+        else if (numericPrId) params.set('prId', String(numericPrId));
+        navigate(`/scm/create-po?${params.toString()}`, { replace: true });
       }
+      setPoEditStatus('draft');
       const refreshPoId = savedId || editPoId || createdPoId;
       if (refreshPoId) {
         try {
@@ -3059,7 +3064,10 @@ export default function CreatePOPage() {
     );
   }
 
-  const canSaveDraft = !isEditMode || poEditStatus === 'draft';
+  const canSaveDraft =
+    !isEditMode ||
+    poEditStatus === 'draft' ||
+    (isEditMode && !poEditStatus && fromParam === 'create-po');
   const isPendingManagerApproval =
     poEditStatus === 'pending_approval' || poEditStatus === 'pendingapproval';
   const isManagerPoReview =

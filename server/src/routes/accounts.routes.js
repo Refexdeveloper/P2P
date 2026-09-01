@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireRoles } from '../middleware/auth.js';
 import {
   listPendingGrnPos,
+  listGrnReceiverUsers,
   listGrns,
   submitGrn,
   listInvoices,
@@ -56,6 +57,15 @@ router.get('/dashboard', requireRoles(...ACCOUNTS_ROLES), async (req, res) => {
 router.get('/grn/pending-pos', requireRoles(...GRN_ROLES), async (req, res) => {
   try {
     const data = await listPendingGrnPos(req.user);
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/grn/users', requireRoles(...GRN_ROLES), async (_req, res) => {
+  try {
+    const data = await listGrnReceiverUsers();
     res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
