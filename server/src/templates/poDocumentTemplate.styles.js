@@ -77,38 +77,95 @@ export const PO_STYLES = `
     page-break-after: auto;
     break-after: auto;
   }
+  /* Keep header / body / footer on the same horizontal margins */
   .pdf-header {
     grid-row: 1;
-    padding: 6mm 8mm 2mm;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5mm ${PO_PDF_LAYOUT.side} 2mm;
   }
   .pdf-content {
     grid-row: 2;
+    width: 100%;
     min-height: 0;
-    padding: 3mm 8mm 4mm;
+    box-sizing: border-box;
+    padding: 2mm ${PO_PDF_LAYOUT.side} 2mm;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+  }
+  .pdf-content > * {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .pdf-content .table-frame {
+    width: 100%;
+    max-width: 100%;
   }
   .pdf-footer {
     grid-row: 3;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     justify-content: flex-end;
     width: 100%;
-    padding: 2mm 8mm 6mm;
+    box-sizing: border-box;
+    padding: 2mm ${PO_PDF_LAYOUT.side} 5mm;
     background: #fff;
     text-align: center;
   }
   .pdf-footer-brand {
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
     text-align: center;
   }
   .pdf-footer-brand,
   .pdf-footer-brand * {
     text-align: center !important;
+    box-sizing: border-box;
+  }
+  .pdf-footer-brand .pdf-run-footer,
+  .pdf-footer-brand .pdf-run-footer-inner,
+  .pdf-footer-brand .run-footer-html,
+  .pdf-footer-brand .footer,
+  .pdf-footer-brand .footer-master-content,
+  .pdf-footer-brand .doc-footer {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
   }
   .pdf-footer-brand table {
-    margin-left: auto;
-    margin-right: auto;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    table-layout: fixed;
+  }
+  .pdf-footer-brand img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  .pdf-footer-brand .offices,
+  .pdf-footer-brand .reg {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 12px;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .pdf-footer-brand .office-col {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: left !important;
   }
   .pdf-page-no,
   .pagenum {
@@ -118,7 +175,7 @@ export const PO_STYLES = `
     font-size: 10px;
     font-weight: 700;
     color: #333;
-    margin: 8px 0 0;
+    margin: 6px 0 0;
     padding: 0;
     float: none !important;
     position: static !important;

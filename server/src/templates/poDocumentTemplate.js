@@ -265,7 +265,14 @@ function letterheadFooterInner(po = {}) {
   const entity = resolveBrandingValue(po, 'entity', 'entity') || 'Refex Green Mobility Limited';
   if (footerLogo) {
     if (looksLikeHtml(footerLogo)) {
-      return `<div class="run-footer-html">${sanitizeChromeHtml(footerLogo)}</div>`;
+      // Force letterhead footer HTML to the same content width as the page body
+      const html = sanitizeChromeHtml(footerLogo)
+        .replace(/\swidth\s*=\s*("|')?\d+%?\1/gi, ' width="100%"')
+        .replace(/(^|;)\s*width\s*:\s*[^;]+/gi, '$1width:100%')
+        .replace(/(^|;)\s*max-width\s*:\s*[^;]+/gi, '$1max-width:100%')
+        .replace(/(^|;)\s*margin-left\s*:\s*[^;]+/gi, '$1margin-left:0')
+        .replace(/(^|;)\s*margin-right\s*:\s*[^;]+/gi, '$1margin-right:0');
+      return `<div class="run-footer-html">${html}</div>`;
     }
     if (looksLikeImageSrc(footerLogo)) {
       return `<img class="run-footer-img" src="${safeImgSrc(footerLogo)}" alt="Footer Logo" />`;

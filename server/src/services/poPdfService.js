@@ -232,7 +232,7 @@ function buildMeasureHtml(parts) {
     `
     <div class="pdf-page" style="height:auto;max-height:none;overflow:visible">
       <header class="pdf-header" data-block="header">${parts.headerHtml}</header>
-      <main class="pdf-content" style="overflow:visible">
+      <main class="pdf-content" style="overflow:visible;height:auto;max-height:none">
         <div data-block="details">${parts.detailsHtml}</div>
         <div class="table-frame">
           <table class="price po-table" id="measure-price">
@@ -277,8 +277,8 @@ function packPoPages(parts, heights) {
   const pageH = mm(297);
   const headerH = Math.max(heights.header || 0, mm(16));
   const footerH = Math.max(heights.footer || 0, mm(40));
-  const contentPad = mm(3) + mm(4);
-  const safety = mm(12);
+  const contentPad = mm(2) + mm(2);
+  const safety = mm(16);
   const contentH = Math.max(180, pageH - headerH - footerH - contentPad - safety);
 
   const pages = [];
