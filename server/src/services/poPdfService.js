@@ -285,22 +285,30 @@ function packPoPages(parts, heights) {
   let current = [];
   let used = 0;
 
+  /** Push current page only when it has real content — never emit blank pages. */
   const flush = () => {
     if (current.length) pages.push(current);
     current = [];
     used = 0;
   };
 
+  /** Start a new page for the next section (no blank page if current is empty). */
+  const startNewSection = () => {
+    flush();
+  };
+
   const canFit = (extra) => used + extra <= contentH;
 
   const addHtml = (html, h, forceNew = false) => {
-    if (forceNew) flush();
+    if (!html || !String(html).trim()) return;
+    if (forceNew) startNewSection();
     const need = Math.max(h, 8);
     if (used > 0 && !canFit(need)) flush();
     current.push(html);
     used += need;
   };
 
+  // —— Page 1+: Header + line items ——
   addHtml(parts.detailsHtml, heights.details || 0, false);
 
   const theadH = heights.priceThead || 52;
@@ -348,17 +356,13 @@ function packPoPages(parts, heights) {
     flushPrice();
   }
 
+  // —— Next page(s): Terms & Conditions ——
   if (parts.termRows.length) {
+    startNewSection();
     let tBucket = [];
     let tContinued = false;
     const tHeadH = heights.termsThead || 48;
-    const ensureTermsHeadroom = (rowH) => {
-      if (tBucket.length === 0) {
-        if (used > 0 && !canFit(tHeadH + rowH)) flush();
-        if (tBucket.length === 0 && used === 0) used = 0;
-        if (tBucket.length === 0) used += tHeadH;
-      }
-    };
+    used = tHeadH;
     const flushTerms = () => {
       if (!tBucket.length) return;
       current.push(
@@ -369,7 +373,6 @@ function packPoPages(parts, heights) {
     };
     parts.termRows.forEach((_, i) => {
       const rowH = heightOf(heights, `term-${i}`, 40);
-      ensureTermsHeadroom(rowH);
       if (!canFit(rowH) && tBucket.length) {
         flushTerms();
         flush();
@@ -381,17 +384,13 @@ function packPoPages(parts, heights) {
     flushTerms();
   }
 
+  // —— Next page(s): Annexure I ——
   if (parts.annexureRows.length) {
+    startNewSection();
     let aBucket = [];
     let aContinued = false;
     const aHeadH = heights.annexureThead || 48;
-    const ensureAnnexHeadroom = (rowH) => {
-      if (aBucket.length === 0) {
-        if (used > 0 && !canFit(aHeadH + rowH)) flush();
-        if (aBucket.length === 0 && used === 0) used = 0;
-        if (aBucket.length === 0) used += aHeadH;
-      }
-    };
+    used = aHeadH;
     const flushAnn = () => {
       if (!aBucket.length) return;
       current.push(
@@ -404,10 +403,8 @@ function packPoPages(parts, heights) {
       aContinued = true;
     };
     parts.annexureRows.forEach((rowHtml, i) => {
-      const blockId =
-        rowHtml.match(/data-block="([^"]+)"/)?.[1] || `annexure-${i}`;
+      const blockId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || `annexure-${i}`;
       const rowH = heightOf(heights, blockId, 36);
-      ensureAnnexHeadroom(rowH);
       if (!canFit(rowH) && aBucket.length) {
         flushAnn();
         flush();
@@ -419,22 +416,34 @@ function packPoPages(parts, heights) {
     flushAnn();
   }
 
+  // —— Annexure II (each block on its own page when present) ——
   parts.annexureIiBlocks.forEach((_, i) => {
     addHtml(parts.annexureIiBlocks[i], heightOf(heights, `annexure-ii-${i}`, 180), true);
   });
 
-  const notesH = heights.notes || 120;
-  const ackH = heights.ack || 100;
-  if (canFit(notesH + ackH)) {
-    addHtml(`<div class="notes-ack-stack">${parts.notesHtml}${parts.ackHtml}</div>`, notesH + ackH, false);
-  } else {
-    if (used > 0 && !canFit(notesH)) flush();
-    addHtml(parts.notesHtml, notesH, false);
-    if (used > 0 && !canFit(ackH)) flush();
-    addHtml(parts.ackHtml, ackH, false);
+  // —— New page: Special notes ——
+  // —— Acknowledgment: same page if it fits, otherwise its own page (no blank pages) ——
+  const notesHtml = String(parts.notesHtml || '').trim();
+  const ackHtml = String(parts.ackHtml || '').trim();
+  const notesH = notesHtml ? heights.notes || 120 : 0;
+  const ackH = ackHtml ? heights.ack || 100 : 0;
+
+  if (notesHtml) {
+    startNewSection();
+    addHtml(notesHtml, notesH, false);
+    if (ackHtml && canFit(ackH)) {
+      addHtml(ackHtml, ackH, false);
+    } else if (ackHtml) {
+      startNewSection();
+      addHtml(ackHtml, ackH, false);
+    }
+  } else if (ackHtml) {
+    startNewSection();
+    addHtml(ackHtml, ackH, false);
   }
+
   flush();
-  return pages;
+  return pages.filter((page) => Array.isArray(page) && page.some((chunk) => String(chunk || '').trim()));
 }
 
 async function waitForPdfAssets(page) {

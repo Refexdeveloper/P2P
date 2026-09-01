@@ -362,8 +362,14 @@ export const PO_STYLES = `
 
   .page-terms,
   .page-annexure,
+  .page-annexure-ii,
   .page-notes,
   .page-ack {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+  /* First content sheet (header + line items) must not force a blank lead-in page */
+  .page-sheet:first-child {
     page-break-before: auto !important;
     break-before: auto !important;
   }
@@ -536,6 +542,10 @@ export const PO_STYLES = `
     body.po-document-preview .page-annexure-ii,
     body.po-document-preview .page-notes,
     body.po-document-preview .page-ack {
+      page-break-before: always !important;
+      break-before: page !important;
+    }
+    body.po-document-preview .page-sheet:first-child {
       page-break-before: auto !important;
       break-before: auto !important;
     }
