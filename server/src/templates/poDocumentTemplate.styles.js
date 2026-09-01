@@ -71,6 +71,7 @@ export const PO_STYLES = `
     grid-template-rows: auto minmax(0, 1fr) auto;
     page-break-after: always;
     break-after: page;
+    overflow: hidden;
   }
   .pdf-page:last-child {
     page-break-after: auto;
@@ -84,7 +85,7 @@ export const PO_STYLES = `
     grid-row: 2;
     min-height: 0;
     padding: 3mm 8mm 4mm;
-    overflow: visible;
+    overflow: hidden;
   }
   .pdf-footer {
     grid-row: 3;
@@ -716,13 +717,6 @@ export const PO_STYLES = `
   }
   table.annexure-table td li {
     margin: 1px 0;
-  }
-  table.annexure-table tr.annexure-row-continued td {
-    border-top: none;
-  }
-  table.annexure-table tr.annexure-row-continued td.sno-col,
-  table.annexure-table tr.annexure-row-continued td.head-col {
-    border-top: none;
   }
   .notes-ack-stack .special-notes {
     margin-bottom: 8px;

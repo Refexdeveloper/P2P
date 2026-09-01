@@ -278,7 +278,7 @@ function packPoPages(parts, heights) {
   const headerH = Math.max(heights.header || 0, mm(16));
   const footerH = Math.max(heights.footer || 0, mm(40));
   const contentPad = mm(3) + mm(4);
-  const safety = mm(5);
+  const safety = mm(12);
   const contentH = Math.max(180, pageH - headerH - footerH - contentPad - safety);
 
   const pages = [];
@@ -329,8 +329,12 @@ function packPoPages(parts, heights) {
 
   const placePriceRow = (rowHtml, rowH) => {
     const needThead = bucket.length === 0 ? theadH : 0;
-    if (!canFit(needThead + rowH) && (used > 0 || bucket.length > 0)) {
+    // Only break to a new page when this page already has price rows — never leave a logo-only blank page.
+    if (!canFit(needThead + rowH) && bucket.length > 0) {
       flushPrice();
+      flush();
+      continued = priceStarted;
+    } else if (!canFit(needThead + rowH) && used > 0 && bucket.length === 0) {
       flush();
       continued = priceStarted;
     }
@@ -345,8 +349,11 @@ function packPoPages(parts, heights) {
 
   if (bucket.length || !priceStarted) {
     const needThead = bucket.length === 0 ? theadH : 0;
-    if (!canFit(needThead + totalsH) && (used > 0 || bucket.length > 0)) {
+    if (!canFit(needThead + totalsH) && bucket.length > 0) {
       flushPrice();
+      flush();
+      continued = true;
+    } else if (!canFit(needThead + totalsH) && used > 0 && bucket.length === 0) {
       flush();
       continued = true;
     }
@@ -378,6 +385,7 @@ function packPoPages(parts, heights) {
         flush();
         used = tHeadH;
       }
+      // Oversized single row: still place on this page (avoid blank page + empty thead-only page)
       tBucket.push(parts.termRows[i]);
       used += rowH;
     });
@@ -438,7 +446,20 @@ function packPoPages(parts, heights) {
   }
 
   flush();
-  return pages.filter((page) => Array.isArray(page) && page.some((chunk) => String(chunk || '').trim()));
+
+  const pageHasContent = (page) => {
+    const html = (page || []).join('');
+    const text = html
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return text.length > 8;
+  };
+
+  return pages.filter((page) => Array.isArray(page) && pageHasContent(page));
 }
 
 async function waitForPdfAssets(page) {
