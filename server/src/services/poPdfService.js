@@ -278,7 +278,7 @@ function packPoPages(parts, heights) {
   const headerH = Math.max(heights.header || 0, mm(16));
   const footerH = Math.max(heights.footer || 0, mm(40));
   const contentPad = mm(3) + mm(4);
-  const safety = mm(8);
+  const safety = mm(5);
   const contentH = Math.max(180, pageH - headerH - footerH - contentPad - safety);
 
   const pages = [];
@@ -349,11 +349,16 @@ function packPoPages(parts, heights) {
   }
 
   if (parts.termRows.length) {
-    flush();
     let tBucket = [];
     let tContinued = false;
     const tHeadH = heights.termsThead || 48;
-    used = tHeadH;
+    const ensureTermsHeadroom = (rowH) => {
+      if (tBucket.length === 0) {
+        if (used > 0 && !canFit(tHeadH + rowH)) flush();
+        if (tBucket.length === 0 && used === 0) used = 0;
+        if (tBucket.length === 0) used += tHeadH;
+      }
+    };
     const flushTerms = () => {
       if (!tBucket.length) return;
       current.push(
@@ -364,6 +369,7 @@ function packPoPages(parts, heights) {
     };
     parts.termRows.forEach((_, i) => {
       const rowH = heightOf(heights, `term-${i}`, 40);
+      ensureTermsHeadroom(rowH);
       if (!canFit(rowH) && tBucket.length) {
         flushTerms();
         flush();
@@ -376,11 +382,16 @@ function packPoPages(parts, heights) {
   }
 
   if (parts.annexureRows.length) {
-    flush();
     let aBucket = [];
     let aContinued = false;
     const aHeadH = heights.annexureThead || 48;
-    used = aHeadH;
+    const ensureAnnexHeadroom = (rowH) => {
+      if (aBucket.length === 0) {
+        if (used > 0 && !canFit(aHeadH + rowH)) flush();
+        if (aBucket.length === 0 && used === 0) used = 0;
+        if (aBucket.length === 0) used += aHeadH;
+      }
+    };
     const flushAnn = () => {
       if (!aBucket.length) return;
       current.push(
@@ -392,14 +403,17 @@ function packPoPages(parts, heights) {
       aBucket = [];
       aContinued = true;
     };
-    parts.annexureRows.forEach((_, i) => {
-      const rowH = heightOf(heights, `annexure-${i}`, 40);
+    parts.annexureRows.forEach((rowHtml, i) => {
+      const blockId =
+        rowHtml.match(/data-block="([^"]+)"/)?.[1] || `annexure-${i}`;
+      const rowH = heightOf(heights, blockId, 36);
+      ensureAnnexHeadroom(rowH);
       if (!canFit(rowH) && aBucket.length) {
         flushAnn();
         flush();
         used = aHeadH;
       }
-      aBucket.push(parts.annexureRows[i]);
+      aBucket.push(rowHtml);
       used += rowH;
     });
     flushAnn();
@@ -409,8 +423,16 @@ function packPoPages(parts, heights) {
     addHtml(parts.annexureIiBlocks[i], heightOf(heights, `annexure-ii-${i}`, 180), true);
   });
 
-  addHtml(parts.notesHtml, heights.notes || 220, true);
-  addHtml(parts.ackHtml, heights.ack || 180, true);
+  const notesH = heights.notes || 120;
+  const ackH = heights.ack || 100;
+  if (canFit(notesH + ackH)) {
+    addHtml(`<div class="notes-ack-stack">${parts.notesHtml}${parts.ackHtml}</div>`, notesH + ackH, false);
+  } else {
+    if (used > 0 && !canFit(notesH)) flush();
+    addHtml(parts.notesHtml, notesH, false);
+    if (used > 0 && !canFit(ackH)) flush();
+    addHtml(parts.ackHtml, ackH, false);
+  }
   flush();
   return pages;
 }
@@ -469,8 +491,9 @@ async function paginatePoHtml(browser, po, options) {
     document.querySelectorAll('#measure-terms tbody tr').forEach((el, i) => {
       map[`term-${i}`] = el.getBoundingClientRect().height;
     });
-    document.querySelectorAll('#measure-annexure tbody tr').forEach((el, i) => {
-      map[`annexure-${i}`] = el.getBoundingClientRect().height;
+    document.querySelectorAll('#measure-annexure tbody tr').forEach((el) => {
+      const block = el.getAttribute('data-block');
+      if (block) map[block] = el.getBoundingClientRect().height;
     });
     document.querySelectorAll('[data-block^="annexure-ii-"]').forEach((el) => {
       map[el.getAttribute('data-block')] = el.getBoundingClientRect().height;

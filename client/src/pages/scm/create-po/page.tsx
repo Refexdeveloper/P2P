@@ -512,6 +512,7 @@ function ClauseTableEditor({
   onChange,
   onReloadFromMaster,
   reloadDisabled,
+  loadFromPo,
   docLabel = 'Purchase Order',
   editorRevision = '',
 }: {
@@ -525,6 +526,13 @@ function ClauseTableEditor({
   onChange: (next: PoLetterheadClause[]) => void;
   onReloadFromMaster?: () => void;
   reloadDisabled?: boolean;
+  loadFromPo?: {
+    poNumber: string;
+    onPoNumberChange: (value: string) => void;
+    onLoad: () => void;
+    loading?: boolean;
+    error?: string;
+  };
   docLabel?: string;
   /** Bump when document type changes so rich-text editors remount with new wording */
   editorRevision?: string;
@@ -588,7 +596,37 @@ function ClauseTableEditor({
             Rich text · paste keeps bold · shown on {docLabel} PDF
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {loadFromPo ? (
+            <div className="flex items-center gap-2 flex-wrap mr-1">
+              <input
+                type="text"
+                value={loadFromPo.poNumber}
+                onChange={(e) => loadFromPo.onPoNumberChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    loadFromPo.onLoad();
+                  }
+                }}
+                placeholder="PO number"
+                className="w-36 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400"
+              />
+              <button
+                type="button"
+                onClick={loadFromPo.onLoad}
+                disabled={loadFromPo.loading || !loadFromPo.poNumber.trim()}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadFromPo.loading ? (
+                  <i className="ri-loader-4-line animate-spin"></i>
+                ) : (
+                  <i className="ri-download-2-line"></i>
+                )}
+                Load Annexure
+              </button>
+            </div>
+          ) : null}
           {onReloadFromMaster ? (
             <button
               type="button"
@@ -598,6 +636,9 @@ function ClauseTableEditor({
             >
               Reload from Master
             </button>
+          ) : null}
+          {loadFromPo?.error ? (
+            <span className="text-xs text-red-600 w-full sm:w-auto">{loadFromPo.error}</span>
           ) : null}
           <button
             type="button"
@@ -1442,6 +1483,57 @@ export default function CreatePOPage() {
     setLetterheadLocked(false);
     await loadLetterhead(poType, documentType, true);
   }, [loadLetterhead, poType, documentType]);
+
+  const reloadAnnexureFromMaster = useCallback(async () => {
+    setAnnexurePoLoadError('');
+    setLetterheadLoading(true);
+    setTemplateLoadError('');
+    try {
+      const alignedType = alignPoTypeWithDocument(poType, documentType);
+      const res = await poLetterheadApi.get(alignedType);
+      const nextAnnexure = adaptClausesForDocumentType(res.data.annexure || [], documentType);
+      markDraftEdited();
+      annexureDraftRef.current = nextAnnexure;
+      setAnnexureClauses(nextAnnexure);
+    } catch (err) {
+      setAnnexurePoLoadError(
+        err instanceof Error ? err.message : 'Could not reload annexure from PO Type Master'
+      );
+    } finally {
+      setLetterheadLoading(false);
+    }
+  }, [poType, documentType, markDraftEdited]);
+
+  const [annexureSourcePoNumber, setAnnexureSourcePoNumber] = useState('');
+  const [annexurePoLoadLoading, setAnnexurePoLoadLoading] = useState(false);
+  const [annexurePoLoadError, setAnnexurePoLoadError] = useState('');
+
+  const loadAnnexureFromPoNumber = useCallback(async () => {
+    const poNumber = annexureSourcePoNumber.trim();
+    if (!poNumber) {
+      setAnnexurePoLoadError('Enter a PO number');
+      return;
+    }
+    setAnnexurePoLoadLoading(true);
+    setAnnexurePoLoadError('');
+    try {
+      const res = await poApi.getByNumber(poNumber);
+      const loadedAnnexure = ((res.data?.annexureClauses as PoLetterheadClause[]) || []).filter(
+        (row) => String(row.termsHeader || '').trim() || String(row.termsDescription || '').trim()
+      );
+      if (!loadedAnnexure.length) {
+        setAnnexurePoLoadError(`PO ${poNumber} has no Annexure I data`);
+        return;
+      }
+      markDraftEdited();
+      annexureDraftRef.current = loadedAnnexure;
+      setAnnexureClauses(loadedAnnexure);
+    } catch (err) {
+      setAnnexurePoLoadError(err instanceof Error ? err.message : 'PO not found');
+    } finally {
+      setAnnexurePoLoadLoading(false);
+    }
+  }, [annexureSourcePoNumber, markDraftEdited]);
 
   // Keep Short/Long template family aligned with Purchase Order vs Work Order
   const prevDocumentTypeRef = useRef(documentType);
@@ -4424,11 +4516,21 @@ export default function CreatePOPage() {
                 descriptionColumnLabel="Annexure Description"
                 headerPlaceholder="e.g. Parties, Delivery, Payment"
                 descriptionPlaceholder={`Annexure I clause details (shown on ${docLabel} PDF)`}
-                emptyHint={`No annexure rows yet — reload from master or add rows. Commercial terms load from PO Type Master.`}
+                emptyHint={`No annexure rows yet — reload from master, load from an existing PO number, or add rows.`}
                 clauses={annexureClauses}
                 onChange={handleAnnexureClausesChange}
-                onReloadFromMaster={reloadClausesFromMaster}
-                reloadDisabled={letterheadLoading}
+                onReloadFromMaster={reloadAnnexureFromMaster}
+                reloadDisabled={letterheadLoading || annexurePoLoadLoading}
+                loadFromPo={{
+                  poNumber: annexureSourcePoNumber,
+                  onPoNumberChange: (value) => {
+                    setAnnexureSourcePoNumber(value);
+                    if (annexurePoLoadError) setAnnexurePoLoadError('');
+                  },
+                  onLoad: () => void loadAnnexureFromPoNumber(),
+                  loading: annexurePoLoadLoading,
+                  error: annexurePoLoadError,
+                }}
                 docLabel={docLabel}
                 editorRevision={`${documentType}-${poType}-annexure-i`}
               />

@@ -138,10 +138,18 @@ export const PO_STYLES = `
   }
   .line-item,
   .po-line-item,
-  .po-line-item td,
-  .terms-row {
+  .po-line-item td {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+  table.terms:not(.annexure-table) .terms-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  table.annexure-table tr.terms-row,
+  table.annexure-table tbody tr {
+    break-inside: auto;
+    page-break-inside: auto;
   }
 
   body.po-document-pdf-pages table.price,
@@ -354,11 +362,10 @@ export const PO_STYLES = `
 
   .page-terms,
   .page-annexure,
-  .page-annexure-ii,
   .page-notes,
   .page-ack {
-    page-break-before: always !important;
-    break-before: page !important;
+    page-break-before: auto !important;
+    break-before: auto !important;
   }
 
   /* Keep section title with at least one row when a table continues */
@@ -370,6 +377,11 @@ export const PO_STYLES = `
   table.price tr.total {
     page-break-inside: avoid;
     break-inside: avoid;
+  }
+  table.annexure-table tr,
+  table.annexure-table tbody tr {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
   }
 
   .page-body { width: 100%; }
@@ -392,6 +404,12 @@ export const PO_STYLES = `
       box-shadow: 0 2px 12px rgba(0,0,0,.16);
       display: flex;
       flex-direction: column;
+    }
+    body.po-document-preview .page-annexure.page-sheet,
+    body.po-document-preview .page-terms.page-sheet,
+    body.po-document-preview .page-notes.page-sheet,
+    body.po-document-preview .page-ack.page-sheet {
+      min-height: auto;
     }
     body.po-document-preview .page-sheet .page-body { flex: 1 1 auto; }
     body.po-document-preview .page-sheet .pdf-run-footer { margin-top: auto; width: 100%; }
@@ -671,6 +689,34 @@ export const PO_STYLES = `
   }
   table.terms-compact th,
   table.terms-compact td { padding: 5px 7px; font-size: 11px; }
+  table.annexure-table th,
+  table.annexure-table td {
+    padding: 3px 5px;
+    font-size: 10.5px;
+    line-height: 1.28;
+  }
+  table.annexure-table td p {
+    margin: 2px 0;
+    line-height: 1.28;
+  }
+  table.annexure-table td ul,
+  table.annexure-table td ol {
+    margin: 2px 0 2px 16px;
+    padding: 0;
+  }
+  table.annexure-table td li {
+    margin: 1px 0;
+  }
+  table.annexure-table tr.annexure-row-continued td {
+    border-top: none;
+  }
+  table.annexure-table tr.annexure-row-continued td.sno-col,
+  table.annexure-table tr.annexure-row-continued td.head-col {
+    border-top: none;
+  }
+  .notes-ack-stack .special-notes {
+    margin-bottom: 8px;
+  }
 
   /*
    * separate + spacing 0 keeps full black borders on page-break continuations.
@@ -814,6 +860,7 @@ export const PO_STYLES = `
   table.terms thead, table.price thead { display: table-header-group; }
   table.terms tbody, table.price tbody { display: table-row-group; }
   table.terms tr { page-break-inside: avoid; break-inside: avoid; }
+  table.annexure-table tr { page-break-inside: auto; break-inside: auto; }
   table.price tbody.price-items tr {
     page-break-inside: avoid;
     break-inside: avoid;

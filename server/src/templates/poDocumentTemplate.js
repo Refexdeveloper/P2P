@@ -691,13 +691,47 @@ function annexureTheadHtml(docLabel, continued = false) {
           </thead>`;
 }
 
-function annexureRowHtml(item, po, idx) {
+function splitAnnexureDescriptionParts(html) {
+  const raw = String(html || '').trim();
+  if (!raw) return [''];
+  const matches = [...raw.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].map((m) => m[0]);
+  if (matches.length > 1) return matches;
+  return [raw];
+}
+
+function annexureRowHtml(item, po, idx, partIndex = 0) {
+  const showMeta = partIndex === 0;
+  const blockId = partIndex === 0 ? `annexure-${idx}` : `annexure-${idx}-${partIndex}`;
+  const header = item.termsHeader || item.terms_header || '';
   return `
-      <tr class="terms-row" data-block="annexure-${idx}">
-        <td class="sno-col">${idx + 1}.</td>
-        <td class="head-col"><strong>${clauseHeaderHtml(item.termsHeader || item.terms_header, po, 'Header')}</strong></td>
+      <tr class="terms-row${showMeta ? '' : ' annexure-row-continued'}" data-block="${blockId}">
+        <td class="sno-col">${showMeta ? `${idx + 1}.` : ''}</td>
+        <td class="head-col">${showMeta && header ? `<strong>${clauseHeaderHtml(header, po, 'Header')}</strong>` : ''}</td>
         <td>${applyClausePlaceholders(item.termsDescription || item.terms_description || '', po)}</td>
       </tr>`;
+}
+
+/** Split long annexure clauses into paragraph chunks so PDF packing fits more rows per page. */
+export function buildAnnexurePackRows(annexure, po) {
+  const rows = [];
+  (annexure || []).forEach((item, idx) => {
+    const parts = splitAnnexureDescriptionParts(item.termsDescription || item.terms_description || '');
+    parts.forEach((partHtml, partIndex) => {
+      rows.push(
+        annexureRowHtml(
+          {
+            ...item,
+            termsDescription: partHtml,
+            termsHeader: partIndex === 0 ? item.termsHeader || item.terms_header : '',
+          },
+          po,
+          idx,
+          partIndex
+        )
+      );
+    });
+  });
+  return rows;
 }
 
 function termsSummaryHtml(po, terms, forPdf) {
@@ -1016,7 +1050,7 @@ export function buildPoPdfParts(poInput, options = {}) {
     termRows: terms.map((term, index) => termRowHtml(term, po, index)).filter(Boolean),
     annexureThead: annexure.length ? annexureTheadHtml(docLabel, false) : '',
     annexureTheadContinued: annexure.length ? annexureTheadHtml(docLabel, true) : '',
-    annexureRows: annexure.map((item, idx) => annexureRowHtml(item, po, idx)),
+    annexureRows: buildAnnexurePackRows(annexure, po),
     annexureIiBlocks: annexureIi.map((row, idx) => annexureIiItemHtml(row, idx, annexureIi.length, docLabel)),
     notesHtml: specialNotesInnerHtml(po, options),
     ackHtml: acknowledgmentInnerHtml(po),

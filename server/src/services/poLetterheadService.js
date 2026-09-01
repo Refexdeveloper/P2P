@@ -325,6 +325,20 @@ const headerPlain = (value) =>
     .trim()
     .toLowerCase();
 
+function defaultsWithTitle(defaults, poType) {
+  return {
+    ...defaults,
+    title: PO_TYPE_LABELS[poType] || defaults.title,
+  };
+}
+
+async function seedCustomTypeIfEmpty(customType, sourceDefaults) {
+  const clauses = await clauseHeadersForType(customType);
+  if (!clauses.length) {
+    await saveLetterhead(customType, defaultsWithTitle(sourceDefaults, customType));
+  }
+}
+
 export async function seedLetterheadDefaults() {
   // Short PO: apply Refex commercial template when missing, or when still on old stub defaults
   const shortClauses = await clauseHeadersForType('short_po');
@@ -361,8 +375,9 @@ export async function seedLetterheadDefaults() {
     await saveLetterhead('long_wo', LONG_WO_LETTERHEAD_DEFAULTS);
   }
 
-  // Custom PO/WO types — ensure empty master rows exist for admin configuration
-  for (const customType of ['custom_short_po', 'custom_long_po', 'custom_short_wo', 'custom_long_wo']) {
-    await ensureMaster(customType);
-  }
+  // Custom PO/WO — seed with same default content as matching standard type
+  await seedCustomTypeIfEmpty('custom_short_po', SHORT_PO_LETTERHEAD_DEFAULTS);
+  await seedCustomTypeIfEmpty('custom_long_po', LONG_PO_LETTERHEAD_DEFAULTS);
+  await seedCustomTypeIfEmpty('custom_short_wo', SHORT_WO_LETTERHEAD_DEFAULTS);
+  await seedCustomTypeIfEmpty('custom_long_wo', LONG_WO_LETTERHEAD_DEFAULTS);
 }
