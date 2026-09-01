@@ -41,32 +41,7 @@ async function deletePoDependents(conn, poIds) {
   await conn.query(`DELETE FROM purchase_orders WHERE id IN (${ph})`, ids);
 }
 
-export async function adminDeletePurchaseOrder(user, poId) {
-  assertSuperAdmin(user);
-  const id = Number(poId);
-  if (!id) throw new Error('PO id is required');
-
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    const [rows] = await conn.query(
-      `SELECT id, po_number FROM purchase_orders WHERE id = ? LIMIT 1`,
-      [id]
-    );
-    if (!rows.length) throw new Error('Purchase order not found');
-    await deletePoDependents(conn, [id]);
-    await conn.commit();
-    return { poId: id, poNumber: rows[0].po_number };
-  } catch (err) {
-    await conn.rollback();
-    throw err;
-  } finally {
-    conn.release();
-  }
-}
-
-export async function adminDeletePurchaseRequest(user, prId) {
-  assertSuperAdmin(user);
+async function deletePurchaseRequestCascade(prId) {
   const id = Number(prId);
   if (!id) throw new Error('PR id is required');
 
@@ -111,3 +86,34 @@ export async function adminDeletePurchaseRequest(user, prId) {
     conn.release();
   }
 }
+
+export async function adminDeletePurchaseOrder(user, poId) {
+  assertSuperAdmin(user);
+  const id = Number(poId);
+  if (!id) throw new Error('PO id is required');
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT id, po_number FROM purchase_orders WHERE id = ? LIMIT 1`,
+      [id]
+    );
+    if (!rows.length) throw new Error('Purchase order not found');
+    await deletePoDependents(conn, [id]);
+    await conn.commit();
+    return { poId: id, poNumber: rows[0].po_number };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function adminDeletePurchaseRequest(user, prId) {
+  assertSuperAdmin(user);
+  return deletePurchaseRequestCascade(prId);
+}
+
+export { deletePurchaseRequestCascade };

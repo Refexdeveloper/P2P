@@ -49,6 +49,12 @@ function canEditRequesterPr(request: RequesterPR, isAdminEditor: boolean) {
   return REQUESTER_EDITABLE_STATUSES.has(raw) || front === 'draft' || front === 'returned';
 }
 
+function isDraftRequesterPr(request: RequesterPR) {
+  const raw = String(request.statusRaw || '').toUpperCase();
+  const front = String(request.status || '').toLowerCase();
+  return raw === 'DRAFT' || front === 'draft';
+}
+
 interface RequesterTask {
   id: string;
   taskId: number;
@@ -99,6 +105,7 @@ export default function RequesterDashboard() {
   const [selectedPrId, setSelectedPrId] = useState<number | null>(null);
   const [drawerPR, setDrawerPR] = useState<PRDetail | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -175,6 +182,25 @@ export default function RequesterDashboard() {
   const closeDrawer = () => {
     setSelectedPrId(null);
     setDrawerPR(null);
+  };
+
+  const handleDeleteDraft = async (prId: number) => {
+    const request = requesterPRs.find((r) => r.prId === prId);
+    const label = request?.id || `PR-${prId}`;
+    const ok = window.confirm(`Delete draft ${label}?\n\nThis permanently removes the draft. This cannot be undone.`);
+    if (!ok) return;
+    setDeletingId(prId);
+    setError('');
+    try {
+      await prApi.deleteDraft(prId);
+      if (selectedPrId === prId) closeDrawer();
+      await loadList();
+      await loadSideData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete draft');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const widgetCards = [
@@ -401,6 +427,18 @@ export default function RequesterDashboard() {
                           Edit
                         </button>
                       )}
+                      {user?.role === 'Requester' && isDraftRequesterPr(request) && (
+                        <button
+                          type="button"
+                          disabled={deletingId === request.prId}
+                          onClick={() => void handleDeleteDraft(request.prId)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-rose-700 border border-rose-200 rounded-md hover:bg-rose-50 cursor-pointer disabled:opacity-50"
+                          title="Delete draft"
+                        >
+                          <i className="ri-delete-bin-line"></i>
+                          {deletingId === request.prId ? 'Deleting…' : 'Delete'}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -474,6 +512,8 @@ export default function RequesterDashboard() {
           pr={drawerPR}
           loading={drawerLoading}
           onClose={closeDrawer}
+          onDeleteDraft={user?.role === 'Requester' ? handleDeleteDraft : undefined}
+          deletingDraft={drawerPR ? deletingId === drawerPR.id : false}
         />
       )}
     </DashboardLayout>

@@ -25,6 +25,7 @@ import {
   toRequesterDashboardFormat,
   toManagerDashboardFormat,
   toCfoDashboardFormat,
+  deleteRequesterDraftPurchaseRequest,
 } from '../services/prService.js';
 import { getSendBackTargetsForPr } from '../services/sendBackService.js';
 import { addPrAttachment, getPrAttachmentFile, deletePrAttachment } from '../services/prAttachmentService.js';
@@ -285,6 +286,16 @@ router.get('/:id/send-back-targets', async (req, res) => {
     res.json({ data: targets });
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+});
+
+/** Requester: delete own draft PR only */
+router.delete('/:id/draft', requireRoles('Requester'), async (req, res) => {
+  try {
+    const data = await deleteRequesterDraftPurchaseRequest(req.user, Number(req.params.id));
+    res.json({ data, message: `Draft ${data.prNumber} deleted` });
+  } catch (err) {
+    res.status(err.message === 'Purchase request not found' ? 404 : 400).json({ message: err.message });
   }
 });
 

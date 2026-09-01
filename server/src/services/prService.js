@@ -41,6 +41,7 @@ import {
 } from './documentNumberService.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { resolveUserEntityScope, poEntityScopeSql } from '../utils/entityScope.js';
+import { deletePurchaseRequestCascade } from './adminDeleteService.js';
 
 async function fetchLatestPoMetaByPrIds(prIds) {
   if (!Array.isArray(prIds) || !prIds.length) return new Map();
@@ -4003,4 +4004,30 @@ export function toCfoDashboardFormat(pr) {
       timestamp: h.date,
     })),
   };
+}
+
+/** Requester may permanently delete their own draft PRs only. */
+export async function deleteRequesterDraftPurchaseRequest(user, prId) {
+  const id = Number(prId);
+  if (!id) throw new Error('PR id is required');
+  if (user?.role !== 'Requester') {
+    throw new Error('Only requesters can delete draft purchase requests');
+  }
+
+  const [rows] = await pool.query(
+    `SELECT id, pr_number, status, requester_id FROM purchase_requests WHERE id = ? LIMIT 1`,
+    [id]
+  );
+  if (!rows.length) throw new Error('Purchase request not found');
+
+  const pr = rows[0];
+  const status = String(pr.status || '').toUpperCase();
+  if (status !== PR_STATUS.DRAFT) {
+    throw new Error('Only draft purchase requests can be deleted');
+  }
+  if (Number(pr.requester_id) !== Number(user.id)) {
+    throw new Error('You can only delete your own draft PRs');
+  }
+
+  return deletePurchaseRequestCascade(id);
 }

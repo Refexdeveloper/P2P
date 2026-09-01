@@ -270,6 +270,11 @@ export const prApi = {
     request<{ data: { prId: number; prNumber: string }; message: string }>(`/api/purchase-requests/${id}`, {
       method: 'DELETE',
     }),
+  deleteDraft: (id: number) =>
+    request<{ data: { prId: number; prNumber: string }; message: string }>(
+      `/api/purchase-requests/${id}/draft`,
+      { method: 'DELETE' }
+    ),
   approve: (
     id: number,
     action: 'approve' | 'reject' | 'return' | 'rework',

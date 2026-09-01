@@ -837,6 +837,29 @@ export default function TrackPRPage() {
     }
   };
 
+  const isDraftTrackPr = (pr: TrackPR) =>
+    pr.status === 'draft' || asText(pr.statusRaw).toUpperCase() === 'DRAFT';
+
+  const handleDeleteDraft = async (pr: TrackPR) => {
+    if (user?.role !== 'Requester' || !pr.prId || !isDraftTrackPr(pr)) return;
+    const ok = window.confirm(
+      `Delete draft ${pr.prNumber || pr.id}?\n\nThis permanently removes the draft. This cannot be undone.`
+    );
+    if (!ok) return;
+    setDeletingId(pr.prId);
+    setError('');
+    try {
+      const res = await prApi.deleteDraft(pr.prId);
+      setToast(res.message || 'Draft deleted');
+      setTimeout(() => setToast(''), 3500);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete draft');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(t);
@@ -1184,6 +1207,17 @@ export default function TrackPRPage() {
                                     title="Send PR back to any previous workflow step"
                                   >
                                     Send Back
+                                  </button>
+                                )}
+                                {user?.role === 'Requester' && isDraftTrackPr(pr) && (
+                                  <button
+                                    type="button"
+                                    disabled={deletingId === pr.prId}
+                                    onClick={() => void handleDeleteDraft(pr)}
+                                    className="px-3 py-1.5 text-xs font-medium text-rose-700 border border-rose-300 rounded-md hover:bg-rose-50 transition-colors whitespace-nowrap disabled:opacity-50"
+                                    title="Delete this draft"
+                                  >
+                                    {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
                                   </button>
                                 )}
                                 {isSuperAdmin && (

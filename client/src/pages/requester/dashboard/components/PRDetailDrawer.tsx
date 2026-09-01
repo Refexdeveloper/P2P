@@ -94,9 +94,17 @@ interface PRDetailDrawerProps {
   pr: PRDetail | null;
   loading: boolean;
   onClose: () => void;
+  onDeleteDraft?: (prId: number) => Promise<void>;
+  deletingDraft?: boolean;
 }
 
-export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerProps) {
+export default function PRDetailDrawer({
+  pr,
+  loading,
+  onClose,
+  onDeleteDraft,
+  deletingDraft = false,
+}: PRDetailDrawerProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'quotes' | 'history'>('details');
@@ -137,6 +145,17 @@ export default function PRDetailDrawer({ pr, loading, onClose }: PRDetailDrawerP
               {loading && <p className="text-sm text-gray-500">Loading PR details...</p>}
             </div>
             <div className="flex items-center gap-2">
+              {isDraft && user?.role === 'Requester' && onDeleteDraft && pr && (
+                <button
+                  type="button"
+                  disabled={deletingDraft}
+                  onClick={() => void onDeleteDraft(pr.id)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors disabled:opacity-50"
+                >
+                  <i className="ri-delete-bin-line"></i>
+                  {deletingDraft ? 'Deleting…' : 'Delete draft'}
+                </button>
+              )}
               {canEdit && pr && (
                 <Link
                   to={`/requester/edit-pr/${pr.id}`}
