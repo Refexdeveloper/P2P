@@ -34,24 +34,42 @@ export default function ScmManagerDashboardPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [poRes, rfqRes, taskRes] = await Promise.all([
+      const [pendingRes, allRes, rfqRes, taskRes] = await Promise.all([
+        poApi.listPending().catch(() => ({ data: [] as unknown[] })),
         poApi.list().catch(() => ({ data: [] as unknown[] })),
         rfqApi.listPostApprovalPending().catch(() => ({ data: [] as PostRfqPendingItem[] })),
         taskApi.list().catch(() => ({ data: [] as unknown[] })),
       ]);
 
-      const pos = (poRes.data as PoRow[]) || [];
-      const pending = pos.filter((p) => p.status === 'Pending Approval');
-      const approved = pos.filter(
-        (p) =>
-          p.status === 'PO Approved' ||
-          p.status === 'Sent to Vendor' ||
-          p.status === 'Pending Vendor Acceptance' ||
-          p.status === 'Vendor Accepted' ||
-          p.status === 'Partially Accepted' ||
-          p.status === 'Pending Buyer Verify'
-      );
-      const rejected = pos.filter((p) => p.status === 'PO Rejected');
+      const isPendingSign = (status?: string) => {
+        const s = String(status || '').toLowerCase();
+        return (
+          s === 'pending scm manager sign' ||
+          s === 'pending approval' ||
+          s === 'pending_approval'
+        );
+      };
+      const isApprovedLike = (status?: string) => {
+        const s = String(status || '');
+        return (
+          s === 'PO Approved' ||
+          s === 'Sent to Vendor' ||
+          s === 'Pending Vendor Acceptance' ||
+          s === 'Vendor Accepted' ||
+          s === 'Partially Accepted' ||
+          s === 'SCM Manager Signed — Buyer Verify' ||
+          s === 'Pending Buyer Verify'
+        );
+      };
+
+      const pendingFromApi = (pendingRes.data as PoRow[]) || [];
+      const allPos = (allRes.data as PoRow[]) || [];
+      const pending =
+        pendingFromApi.length > 0
+          ? pendingFromApi
+          : allPos.filter((p) => isPendingSign(p.status));
+      const approved = allPos.filter((p) => isApprovedLike(p.status));
+      const rejected = allPos.filter((p) => p.status === 'PO Rejected');
 
       setPendingPos(pending);
       setApprovedPos(approved.length);

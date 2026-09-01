@@ -556,14 +556,18 @@ export const PO_STYLES = `
 
   .info-box {
     border: 1px solid #000;
-    padding: 10px 14px;
-    margin-bottom: 14px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
     page-break-inside: avoid;
     break-inside: avoid;
     width: 100%;
   }
-  .info-box p { margin: 3px 0; }
+  .info-box p { margin: 1px 0; line-height: 1.3; }
   .info-box a { color: #1155cc; text-decoration: underline; }
+  .letterhead-block { margin-bottom: 6px; width: 100%; }
+  .letterhead-block p { margin: 1px 0; line-height: 1.3; }
+  .letterhead-block p:empty,
+  .letterhead-block p:has(> br:only-child) { display: none; }
 
   .table-frame {
     width: 100%;
@@ -940,5 +944,4 @@ export const PO_STYLES = `
     padding-bottom: 0;
   }
   .ack-box .sig-gap { height: 70px; }
-  .letterhead-block { margin-bottom: 10px; width: 100%; }
 `;

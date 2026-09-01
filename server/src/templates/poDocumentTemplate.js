@@ -887,6 +887,10 @@ function adaptLetterheadHeader(html, isWorkOrder) {
   out = out.replace(titleBlock, '');
   out = out.replace(/RFQ\s*No\.?/gi, 'Quote No').replace(/RFQ\s*Number/gi, 'Quote Number');
   out = out.replace(/Ref\.?\s*No\s*\/?\s*Date\.?/gi, 'Quote No');
+  // Drop empty spacer paragraphs that letterhead masters often leave behind
+  out = out
+    .replace(/<(p|div)([^>]*)>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/\1>/gi, '')
+    .replace(/(<(?:p|div)[^>]*>)\s*(?:&nbsp;|&#160;|<br\s*\/?>)+\s*(<\/(?:p|div)>)/gi, '');
   if (isWorkOrder) {
     out = out
       .replace(/purchase\s+order\s*\/\s*work\s+order(?:\s*\/\s*service\s+order)?/gi, 'Work Order')
@@ -929,9 +933,7 @@ function poIntroHtml(po) {
       <p><strong>PAN No:</strong>${escapeHtml(vendorPan)}</p>
       <p><strong>Email:</strong> <a href="mailto:${escapeHtml(po.vendorEmail)}">${escapeHtml(po.vendorEmail)}</a></p>
       <p><strong>Phone:</strong> ${escapeHtml(vendorPhone)}</p>
-      <p>&nbsp;</p>
       <p><strong>Quote No:</strong> ${escapeHtml(quoteNoText)}</p>
-      <p>&nbsp;</p>
       <p><strong>Subject:</strong> ${escapeHtml(subjectFallback)}</p>
     </div>`;
 }

@@ -3826,14 +3826,18 @@ export async function listTasks(user) {
 
   if (user.role === 'SCM Manager') {
     const [poSignRows] = await pool.query(
-      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, pr.title, pr.priority,
-              d.name AS department_name, u.name AS requester_name, wt.created_at AS task_created_at, wt.due_date,
+      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, po.updated_at,
+              COALESCE(NULLIF(TRIM(pr.title), ''), CONCAT('Manual ', IF(po.purchase_type = 'work_order', 'WO', 'PO'))) AS title,
+              COALESCE(pr.priority, 'MEDIUM') AS priority,
+              COALESCE(d.name, '') AS department_name,
+              COALESCE(u.name, 'SCM Buyer') AS requester_name,
+              wt.created_at AS task_created_at, wt.due_date,
               e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
        FROM purchase_orders po
-       JOIN purchase_requests pr ON pr.id = po.pr_id
-       JOIN departments d ON d.id = pr.department_id
-       JOIN users u ON u.id = pr.requester_id
-       LEFT JOIN entity_masters e ON e.id = pr.entity_id
+       LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+       LEFT JOIN departments d ON d.id = pr.department_id
+       LEFT JOIN users u ON u.id = COALESCE(pr.requester_id, po.created_by)
+       LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)
        LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
          AND wt.task_type = 'PO_APPROVAL' AND wt.status = 'pending'
        WHERE po.status = 'pending_approval'
@@ -3845,18 +3849,18 @@ export async function listTasks(user) {
         id: `po-sign-${row.po_id}`,
         taskId: row.po_id,
         poId: row.po_id,
-        prId: row.pr_id,
+        prId: row.pr_id || null,
         prNumber: row.po_number,
         title: `${row.title} — PO Sign`,
         requester: row.requester_name,
-        department: row.department_name,
+        department: row.department_name || '—',
         entityId: row.entity_id || null,
         entityName: row.entity_name || '',
         entityCode: row.entity_code || '',
         totalAmount: Number(row.grand_total),
         priority: mapPriorityToFrontend(row.priority),
         status: 'pending_approval',
-        statusUI: 'Pending PO Sign',
+        statusUI: 'Pending SCM Manager Sign',
         submittedDate: sla.submittedDate,
         dueDate: sla.dueDate,
         slaRemaining: sla.slaRemaining,
