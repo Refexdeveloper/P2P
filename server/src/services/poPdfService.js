@@ -422,7 +422,7 @@ function packPoPages(parts, heights) {
   });
 
   // —— New page: Special notes ——
-  // —— Acknowledgment: same page if it fits, otherwise its own page (no blank pages) ——
+  // —— New page: Seller acknowledgment (always separate) ——
   const notesHtml = String(parts.notesHtml || '').trim();
   const ackHtml = String(parts.ackHtml || '').trim();
   const notesH = notesHtml ? heights.notes || 120 : 0;
@@ -431,13 +431,8 @@ function packPoPages(parts, heights) {
   if (notesHtml) {
     startNewSection();
     addHtml(notesHtml, notesH, false);
-    if (ackHtml && canFit(ackH)) {
-      addHtml(ackHtml, ackH, false);
-    } else if (ackHtml) {
-      startNewSection();
-      addHtml(ackHtml, ackH, false);
-    }
-  } else if (ackHtml) {
+  }
+  if (ackHtml) {
     startNewSection();
     addHtml(ackHtml, ackH, false);
   }
