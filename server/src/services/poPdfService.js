@@ -230,9 +230,9 @@ function buildMeasureHtml(parts) {
 
   return wrapPoHtmlDocument(
     `
-    <div class="pdf-page" style="height:auto;max-height:none;overflow:visible">
+    <div class="pdf-page pdf-page-measure" style="height:auto;max-height:none;overflow:visible;width:210mm">
       <header class="pdf-header" data-block="header">${parts.headerHtml}</header>
-      <main class="pdf-content" style="overflow:visible;height:auto;max-height:none">
+      <main class="pdf-content pdf-content-measure" style="overflow:visible;height:auto;max-height:none;width:100%">
         <div data-block="details">${parts.detailsHtml}</div>
         <div class="table-frame">
           <table class="price po-table" id="measure-price">
@@ -272,14 +272,20 @@ function heightOf(map, id, fallback = 48) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+/** Pack rows conservatively — measured heights often underestimate wrapped text in PDF. */
+function packRowHeight(map, id, fallback = 48) {
+  return heightOf(map, id, fallback) * 1.14 + 12;
+}
+
 function packPoPages(parts, heights) {
   const mm = (n) => (n * 96) / 25.4;
   const pageH = mm(297);
-  const headerH = Math.max(heights.header || 0, mm(16));
-  const footerH = Math.max(heights.footer || 0, mm(40));
+  const headerH = Math.max(heights.header || 0, mm(18));
+  const footerH = Math.max((heights.footer || 0) * 1.12, mm(58));
   const contentPad = mm(2) + mm(2);
-  const safety = mm(16);
-  const contentH = Math.max(180, pageH - headerH - footerH - contentPad - safety);
+  const safety = mm(22);
+  const contentH = Math.max(160, pageH - headerH - footerH - contentPad - safety);
+  const slack = mm(8);
 
   const pages = [];
   let current = [];
@@ -297,7 +303,7 @@ function packPoPages(parts, heights) {
     flush();
   };
 
-  const canFit = (extra) => used + extra <= contentH;
+  const canFit = (extra) => used + extra <= contentH - slack;
 
   const addHtml = (html, h, forceNew = false) => {
     if (!html || !String(html).trim()) return;
@@ -344,7 +350,7 @@ function packPoPages(parts, heights) {
   };
 
   parts.itemRows.forEach((_, i) => {
-    placePriceRow(parts.itemRows[i], heightOf(heights, `item-${i}`, 64));
+    placePriceRow(parts.itemRows[i], packRowHeight(heights, `item-${i}`, 64));
   });
 
   if (bucket.length || !priceStarted) {
@@ -379,13 +385,15 @@ function packPoPages(parts, heights) {
       tContinued = true;
     };
     parts.termRows.forEach((_, i) => {
-      const rowH = heightOf(heights, `term-${i}`, 40);
+      const rowH = packRowHeight(heights, `term-${i}`, 40);
       if (!canFit(rowH) && tBucket.length) {
         flushTerms();
         flush();
         used = tHeadH;
+      } else if (!canFit(rowH) && used > tHeadH) {
+        flush();
+        used = tHeadH;
       }
-      // Oversized single row: still place on this page (avoid blank page + empty thead-only page)
       tBucket.push(parts.termRows[i]);
       used += rowH;
     });
@@ -412,9 +420,12 @@ function packPoPages(parts, heights) {
     };
     parts.annexureRows.forEach((rowHtml, i) => {
       const blockId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || `annexure-${i}`;
-      const rowH = heightOf(heights, blockId, 36);
+      const rowH = packRowHeight(heights, blockId, 36);
       if (!canFit(rowH) && aBucket.length) {
         flushAnn();
+        flush();
+        used = aHeadH;
+      } else if (!canFit(rowH) && used > aHeadH) {
         flush();
         used = aHeadH;
       }
@@ -433,16 +444,14 @@ function packPoPages(parts, heights) {
   // —— New page: Seller acknowledgment (always separate) ——
   const notesHtml = String(parts.notesHtml || '').trim();
   const ackHtml = String(parts.ackHtml || '').trim();
-  const notesH = notesHtml ? heights.notes || 120 : 0;
-  const ackH = ackHtml ? heights.ack || 100 : 0;
 
   if (notesHtml) {
     startNewSection();
-    addHtml(notesHtml, notesH, false);
+    addHtml(notesHtml, packRowHeight(heights, 'notes', 120), false);
   }
   if (ackHtml) {
     startNewSection();
-    addHtml(ackHtml, ackH, false);
+    addHtml(ackHtml, packRowHeight(heights, 'ack', 100), false);
   }
 
   flush();

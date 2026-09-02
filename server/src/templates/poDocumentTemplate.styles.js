@@ -100,6 +100,7 @@ export const PO_STYLES = `
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    flex-shrink: 0;
   }
   .pdf-content .table-frame {
     width: 100%;
@@ -208,6 +209,12 @@ export const PO_STYLES = `
   table.annexure-table tbody tr {
     break-inside: auto;
     page-break-inside: auto;
+  }
+  table.annexure-table td {
+    break-inside: auto;
+    page-break-inside: auto;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   body.po-document-pdf-pages table.price,
