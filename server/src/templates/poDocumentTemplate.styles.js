@@ -67,8 +67,8 @@ export const PO_STYLES = `
     position: relative;
     box-sizing: border-box;
     background: #fff;
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    display: flex;
+    flex-direction: column;
     page-break-after: always;
     break-after: page;
     overflow: hidden;
@@ -79,15 +79,16 @@ export const PO_STYLES = `
   }
   /* Keep header / body / footer on the same horizontal margins */
   .pdf-header {
-    grid-row: 1;
+    flex: 0 0 auto;
     width: 100%;
     box-sizing: border-box;
     padding: 5mm ${PO_PDF_LAYOUT.side} 2mm;
   }
   .pdf-content {
-    grid-row: 2;
+    flex: 1 1 0;
     width: 100%;
     min-height: 0;
+    max-height: 100%;
     box-sizing: border-box;
     padding: 2mm ${PO_PDF_LAYOUT.side} 2mm;
     overflow: hidden;
@@ -95,6 +96,8 @@ export const PO_STYLES = `
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
+    position: relative;
+    z-index: 1;
   }
   .pdf-content > * {
     width: 100%;
@@ -107,7 +110,7 @@ export const PO_STYLES = `
     max-width: 100%;
   }
   .pdf-footer {
-    grid-row: 3;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -117,6 +120,9 @@ export const PO_STYLES = `
     padding: 2mm ${PO_PDF_LAYOUT.side} 5mm;
     background: #fff;
     text-align: center;
+    position: relative;
+    z-index: 5;
+    isolation: isolate;
   }
   .pdf-footer-brand {
     width: 100%;

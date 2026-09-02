@@ -273,19 +273,19 @@ function heightOf(map, id, fallback = 48) {
 }
 
 /** Pack rows conservatively — measured heights often underestimate wrapped text in PDF. */
-function packRowHeight(map, id, fallback = 48) {
-  return heightOf(map, id, fallback) * 1.14 + 12;
+function packRowHeight(map, id, fallback = 48, packMargin = 1) {
+  return (heightOf(map, id, fallback) * 1.14 + 12) * packMargin;
 }
 
-function packPoPages(parts, heights) {
+function packPoPages(parts, heights, packMargin = 1) {
   const mm = (n) => (n * 96) / 25.4;
   const pageH = mm(297);
-  const headerH = Math.max(heights.header || 0, mm(18));
-  const footerH = Math.max((heights.footer || 0) * 1.12, mm(58));
-  const contentPad = mm(2) + mm(2);
-  const safety = mm(22);
-  const contentH = Math.max(160, pageH - headerH - footerH - contentPad - safety);
-  const slack = mm(8);
+  const headerH = Math.max(heights.header || 0, mm(18)) * packMargin;
+  const footerH = Math.max((heights.footer || 0) * 1.15, mm(62)) * packMargin;
+  const contentPad = (mm(2) + mm(2)) * packMargin;
+  const safety = mm(24) * packMargin;
+  const contentH = Math.max(140, pageH - headerH - footerH - contentPad - safety);
+  const slack = mm(10) * packMargin;
 
   const pages = [];
   let current = [];
@@ -350,7 +350,7 @@ function packPoPages(parts, heights) {
   };
 
   parts.itemRows.forEach((_, i) => {
-    placePriceRow(parts.itemRows[i], packRowHeight(heights, `item-${i}`, 64));
+    placePriceRow(parts.itemRows[i], packRowHeight(heights, `item-${i}`, 64, packMargin));
   });
 
   if (bucket.length || !priceStarted) {
@@ -385,7 +385,7 @@ function packPoPages(parts, heights) {
       tContinued = true;
     };
     parts.termRows.forEach((_, i) => {
-      const rowH = packRowHeight(heights, `term-${i}`, 40);
+      const rowH = packRowHeight(heights, `term-${i}`, 40, packMargin);
       if (!canFit(rowH) && tBucket.length) {
         flushTerms();
         flush();
@@ -420,7 +420,7 @@ function packPoPages(parts, heights) {
     };
     parts.annexureRows.forEach((rowHtml, i) => {
       const blockId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || `annexure-${i}`;
-      const rowH = packRowHeight(heights, blockId, 36);
+      const rowH = packRowHeight(heights, blockId, 36, packMargin);
       if (!canFit(rowH) && aBucket.length) {
         flushAnn();
         flush();
@@ -447,11 +447,11 @@ function packPoPages(parts, heights) {
 
   if (notesHtml) {
     startNewSection();
-    addHtml(notesHtml, packRowHeight(heights, 'notes', 120), false);
+    addHtml(notesHtml, packRowHeight(heights, 'notes', 120, packMargin), false);
   }
   if (ackHtml) {
     startNewSection();
-    addHtml(ackHtml, packRowHeight(heights, 'ack', 100), false);
+    addHtml(ackHtml, packRowHeight(heights, 'ack', 100, packMargin), false);
   }
 
   flush();
@@ -536,11 +536,43 @@ async function paginatePoHtml(browser, po, options) {
   });
   await measurePage.close();
 
-  const packed = packPoPages(parts, heights);
-  const total = Math.max(packed.length, 1);
-  const pagesHtml = packed
-    .map((chunks, i) => pdfPageHtml(parts, chunks.join('\n'), i + 1, total))
-    .join('\n');
+  let packMargin = 1;
+  let packed = [];
+  let pagesHtml = '';
+  let total = 1;
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    packed = packPoPages(parts, heights, packMargin);
+    total = Math.max(packed.length, 1);
+    pagesHtml = packed.map((chunks, i) => pdfPageHtml(parts, chunks.join('\n'), i + 1, total)).join('\n');
+    const draftHtml = wrapPoHtmlDocument(
+      pagesHtml,
+      `${parts.docLabel} - ${parts.poNumber}`,
+      'po-document po-document-pdf-pages'
+    );
+
+    const checkPage = await browser.newPage();
+    await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+    try {
+      await checkPage.setContent(draftHtml, { waitUntil: 'load', timeout: 90000 });
+    } catch {
+      await checkPage.setContent(draftHtml, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    }
+    await checkPage.emulateMediaType('print');
+    await waitForPdfAssets(checkPage);
+
+    const hasOverflow = await checkPage.evaluate(() =>
+      Array.from(document.querySelectorAll('.pdf-page')).some((pageEl) => {
+        const content = pageEl.querySelector('.pdf-content');
+        if (!content) return false;
+        return content.scrollHeight > content.clientHeight + 6;
+      })
+    );
+    await checkPage.close();
+
+    if (!hasOverflow) break;
+    packMargin += 0.1;
+  }
 
   return wrapPoHtmlDocument(
     pagesHtml,
