@@ -1577,6 +1577,7 @@ export default function CreatePOPage() {
       setCreatedPoId(editPoId);
       setPoEditStatus('draft');
       prLineItemsHydratedRef.current = true;
+      setLoading(false);
       return;
     }
     skipNextLetterheadLoad.current = true;
@@ -1772,9 +1773,19 @@ export default function CreatePOPage() {
 
   useEffect(() => {
     if (isEditMode) {
-      loadExistingPo();
+      if (!keepLocalDraftAfterSaveRef.current) {
+        setLoading(true);
+        setLoadError('');
+      }
+      void loadExistingPo();
     }
-  }, [isEditMode, loadExistingPo]);
+  }, [isEditMode, editPoId, loadExistingPo]);
+
+  useEffect(() => {
+    if (!numericPrId && !isEditMode && !isManualMode) {
+      setLoading(false);
+    }
+  }, [numericPrId, isEditMode, isManualMode]);
 
   const loadContext = useCallback(async () => {
     if (isEditMode) return;

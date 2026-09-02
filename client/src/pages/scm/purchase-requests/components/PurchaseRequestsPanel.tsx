@@ -279,6 +279,14 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
     navigate(`/scm/create-po?${qs.toString()}`);
   };
 
+  const openEditDraft = (poId: number) => {
+    if (!poId) {
+      setError('This draft PO could not be opened.');
+      return;
+    }
+    navigate(`/scm/create-po?poId=${poId}&from=create-po`);
+  };
+
   const openImportModal = async (row?: BucketRow) => {
     const opts = await loadReadyOptions();
     const target = row || opts[0] || null;
@@ -610,7 +618,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                               {pr.status === 'Draft' && pr.poId && (
                                 <button
                                   type="button"
-                                  onClick={() => navigate(`/scm/create-po?poId=${pr.poId}&from=create-po`)}
+                                  onClick={() => openEditDraft(pr.poId!)}
                                   className="px-2.5 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold whitespace-nowrap"
                                 >
                                   Edit Draft
