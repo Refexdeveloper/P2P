@@ -67,8 +67,8 @@ export const PO_STYLES = `
     position: relative;
     box-sizing: border-box;
     background: #fff;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     page-break-after: always;
     break-after: page;
     overflow: hidden;
@@ -79,16 +79,15 @@ export const PO_STYLES = `
   }
   /* Keep header / body / footer on the same horizontal margins */
   .pdf-header {
-    flex: 0 0 auto;
+    grid-row: 1;
     width: 100%;
     box-sizing: border-box;
     padding: 5mm ${PO_PDF_LAYOUT.side} 2mm;
   }
   .pdf-content {
-    flex: 1 1 0;
+    grid-row: 2;
     width: 100%;
     min-height: 0;
-    max-height: 100%;
     box-sizing: border-box;
     padding: 2mm ${PO_PDF_LAYOUT.side} 2mm;
     overflow: hidden;
@@ -96,21 +95,18 @@ export const PO_STYLES = `
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
-    position: relative;
-    z-index: 1;
   }
   .pdf-content > * {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    flex-shrink: 0;
   }
   .pdf-content .table-frame {
     width: 100%;
     max-width: 100%;
   }
   .pdf-footer {
-    flex: 0 0 auto;
+    grid-row: 3;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -120,9 +116,6 @@ export const PO_STYLES = `
     padding: 2mm ${PO_PDF_LAYOUT.side} 5mm;
     background: #fff;
     text-align: center;
-    position: relative;
-    z-index: 5;
-    isolation: isolate;
   }
   .pdf-footer-brand {
     width: 100%;
@@ -215,12 +208,6 @@ export const PO_STYLES = `
   table.annexure-table tbody tr {
     break-inside: auto;
     page-break-inside: auto;
-  }
-  table.annexure-table td {
-    break-inside: auto;
-    page-break-inside: auto;
-    overflow-wrap: anywhere;
-    word-break: break-word;
   }
 
   body.po-document-pdf-pages table.price,

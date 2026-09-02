@@ -230,9 +230,9 @@ function buildMeasureHtml(parts) {
 
   return wrapPoHtmlDocument(
     `
-    <div class="pdf-page pdf-page-measure" style="height:auto;max-height:none;overflow:visible;width:210mm">
+    <div class="pdf-page" style="height:auto;max-height:none;overflow:visible">
       <header class="pdf-header" data-block="header">${parts.headerHtml}</header>
-      <main class="pdf-content pdf-content-measure" style="overflow:visible;height:auto;max-height:none;width:100%">
+      <main class="pdf-content" style="overflow:visible;height:auto;max-height:none">
         <div data-block="details">${parts.detailsHtml}</div>
         <div class="table-frame">
           <table class="price po-table" id="measure-price">
@@ -272,20 +272,14 @@ function heightOf(map, id, fallback = 48) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-/** Pack rows conservatively — measured heights often underestimate wrapped text in PDF. */
-function packRowHeight(map, id, fallback = 48, packMargin = 1) {
-  return (heightOf(map, id, fallback) * 1.14 + 12) * packMargin;
-}
-
-function packPoPages(parts, heights, packMargin = 1) {
+function packPoPages(parts, heights) {
   const mm = (n) => (n * 96) / 25.4;
   const pageH = mm(297);
-  const headerH = Math.max(heights.header || 0, mm(18)) * packMargin;
-  const footerH = Math.max((heights.footer || 0) * 1.15, mm(62)) * packMargin;
-  const contentPad = (mm(2) + mm(2)) * packMargin;
-  const safety = mm(24) * packMargin;
-  const contentH = Math.max(140, pageH - headerH - footerH - contentPad - safety);
-  const slack = mm(10) * packMargin;
+  const headerH = Math.max(heights.header || 0, mm(16));
+  const footerH = Math.max(heights.footer || 0, mm(40));
+  const contentPad = mm(2) + mm(2);
+  const safety = mm(16);
+  const contentH = Math.max(180, pageH - headerH - footerH - contentPad - safety);
 
   const pages = [];
   let current = [];
@@ -303,7 +297,7 @@ function packPoPages(parts, heights, packMargin = 1) {
     flush();
   };
 
-  const canFit = (extra) => used + extra <= contentH - slack;
+  const canFit = (extra) => used + extra <= contentH;
 
   const addHtml = (html, h, forceNew = false) => {
     if (!html || !String(html).trim()) return;
@@ -350,7 +344,7 @@ function packPoPages(parts, heights, packMargin = 1) {
   };
 
   parts.itemRows.forEach((_, i) => {
-    placePriceRow(parts.itemRows[i], packRowHeight(heights, `item-${i}`, 64, packMargin));
+    placePriceRow(parts.itemRows[i], heightOf(heights, `item-${i}`, 64));
   });
 
   if (bucket.length || !priceStarted) {
@@ -385,15 +379,13 @@ function packPoPages(parts, heights, packMargin = 1) {
       tContinued = true;
     };
     parts.termRows.forEach((_, i) => {
-      const rowH = packRowHeight(heights, `term-${i}`, 40, packMargin);
+      const rowH = heightOf(heights, `term-${i}`, 40);
       if (!canFit(rowH) && tBucket.length) {
         flushTerms();
         flush();
         used = tHeadH;
-      } else if (!canFit(rowH) && used > tHeadH) {
-        flush();
-        used = tHeadH;
       }
+      // Oversized single row: still place on this page (avoid blank page + empty thead-only page)
       tBucket.push(parts.termRows[i]);
       used += rowH;
     });
@@ -420,12 +412,9 @@ function packPoPages(parts, heights, packMargin = 1) {
     };
     parts.annexureRows.forEach((rowHtml, i) => {
       const blockId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || `annexure-${i}`;
-      const rowH = packRowHeight(heights, blockId, 36, packMargin);
+      const rowH = heightOf(heights, blockId, 36);
       if (!canFit(rowH) && aBucket.length) {
         flushAnn();
-        flush();
-        used = aHeadH;
-      } else if (!canFit(rowH) && used > aHeadH) {
         flush();
         used = aHeadH;
       }
@@ -444,14 +433,16 @@ function packPoPages(parts, heights, packMargin = 1) {
   // —— New page: Seller acknowledgment (always separate) ——
   const notesHtml = String(parts.notesHtml || '').trim();
   const ackHtml = String(parts.ackHtml || '').trim();
+  const notesH = notesHtml ? heights.notes || 120 : 0;
+  const ackH = ackHtml ? heights.ack || 100 : 0;
 
   if (notesHtml) {
     startNewSection();
-    addHtml(notesHtml, packRowHeight(heights, 'notes', 120, packMargin), false);
+    addHtml(notesHtml, notesH, false);
   }
   if (ackHtml) {
     startNewSection();
-    addHtml(ackHtml, packRowHeight(heights, 'ack', 100, packMargin), false);
+    addHtml(ackHtml, ackH, false);
   }
 
   flush();
@@ -536,43 +527,11 @@ async function paginatePoHtml(browser, po, options) {
   });
   await measurePage.close();
 
-  let packMargin = 1;
-  let packed = [];
-  let pagesHtml = '';
-  let total = 1;
-
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    packed = packPoPages(parts, heights, packMargin);
-    total = Math.max(packed.length, 1);
-    pagesHtml = packed.map((chunks, i) => pdfPageHtml(parts, chunks.join('\n'), i + 1, total)).join('\n');
-    const draftHtml = wrapPoHtmlDocument(
-      pagesHtml,
-      `${parts.docLabel} - ${parts.poNumber}`,
-      'po-document po-document-pdf-pages'
-    );
-
-    const checkPage = await browser.newPage();
-    await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
-    try {
-      await checkPage.setContent(draftHtml, { waitUntil: 'load', timeout: 90000 });
-    } catch {
-      await checkPage.setContent(draftHtml, { waitUntil: 'domcontentloaded', timeout: 90000 });
-    }
-    await checkPage.emulateMediaType('print');
-    await waitForPdfAssets(checkPage);
-
-    const hasOverflow = await checkPage.evaluate(() =>
-      Array.from(document.querySelectorAll('.pdf-page')).some((pageEl) => {
-        const content = pageEl.querySelector('.pdf-content');
-        if (!content) return false;
-        return content.scrollHeight > content.clientHeight + 6;
-      })
-    );
-    await checkPage.close();
-
-    if (!hasOverflow) break;
-    packMargin += 0.1;
-  }
+  const packed = packPoPages(parts, heights);
+  const total = Math.max(packed.length, 1);
+  const pagesHtml = packed
+    .map((chunks, i) => pdfPageHtml(parts, chunks.join('\n'), i + 1, total))
+    .join('\n');
 
   return wrapPoHtmlDocument(
     pagesHtml,
