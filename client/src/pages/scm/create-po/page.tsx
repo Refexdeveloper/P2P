@@ -1754,15 +1754,17 @@ export default function CreatePOPage() {
         compliance: 'Yes',
       });
       setLoadError('');
-      try {
-        const blob = await poApi.fetchPdfBlob(editPoId);
-        setPdfPreviewUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return URL.createObjectURL(blob);
-        });
-      } catch {
-        /* draft PDF may not exist yet */
-      }
+      void (async () => {
+        try {
+          const blob = await poApi.fetchPdfBlob(editPoId);
+          setPdfPreviewUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return URL.createObjectURL(blob);
+          });
+        } catch {
+          /* PDF loads on demand from Preview tab if generation is still running */
+        }
+      })();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load PO');
       setPr(null);
@@ -2645,16 +2647,18 @@ export default function CreatePOPage() {
       setPoEditStatus('draft');
       const refreshPoId = savedId || editPoId || createdPoId;
       if (refreshPoId) {
-        try {
-          const payload = await applyMasterVendorToPayload(buildPreviewPayload());
-          const blob = await poApi.previewPdfBlobByPoId(refreshPoId, payload);
-          setPdfPreviewUrl((prev) => {
-            if (prev) URL.revokeObjectURL(prev);
-            return URL.createObjectURL(blob);
-          });
-        } catch {
-          /* preview PDF optional */
-        }
+        void (async () => {
+          try {
+            const payload = await applyMasterVendorToPayload(buildPreviewPayload());
+            const blob = await poApi.previewPdfBlobByPoId(refreshPoId, payload);
+            setPdfPreviewUrl((prev) => {
+              if (prev) URL.revokeObjectURL(prev);
+              return URL.createObjectURL(blob);
+            });
+          } catch {
+            /* preview PDF optional */
+          }
+        })();
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Could not save draft');

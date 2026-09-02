@@ -394,7 +394,7 @@ function heightOf(map, id, fallback = 48) {
 
 /** Measured row height + buffer for wrapped text in the final PDF layout. */
 function packRowHeight(map, id, fallback = 48, scale = 1) {
-  return (heightOf(map, id, fallback) * 1.12 + 10) * scale;
+  return (heightOf(map, id, fallback) * 1.15 + 12) * scale;
 }
 
 function newTableBlock(type, continued = false) {
@@ -404,7 +404,7 @@ function newTableBlock(type, continued = false) {
 function packPoPages(parts, heights, scale = 1) {
   const layout = computePageLayout(heights);
   const contentH = layout.contentMaxPx;
-  const slack = Math.ceil((6 * 96) / 25.4) * scale;
+  const slack = Math.ceil((10 * 96) / 25.4) * scale;
   const tableGap = Math.ceil((2 * 96) / 25.4);
 
   const pages = [];
@@ -587,13 +587,16 @@ async function waitForPdfAssets(page) {
   });
 }
 
-async function detectFooterCollisions(browser, html) {
-  const checkPage = await browser.newPage();
-  await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+async function detectFooterCollisions(browser, html, reusePage = null) {
+  const checkPage = reusePage || (await browser.newPage());
+  const ownsPage = !reusePage;
+  if (ownsPage) {
+    await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+  }
   try {
-    await checkPage.setContent(html, { waitUntil: 'load', timeout: 90000 });
+    await checkPage.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
   } catch {
-    await checkPage.setContent(html, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    await checkPage.setContent(html, { waitUntil: 'load', timeout: 60000 });
   }
   await checkPage.emulateMediaType('print');
   await waitForPdfAssets(checkPage);
@@ -607,12 +610,6 @@ async function detectFooterCollisions(browser, html) {
       if (!footer || !content) return;
 
       const footerTop = footer.getBoundingClientRect().top;
-      const contentBottom = content.getBoundingClientRect().bottom;
-      const pageRect = pageEl.getBoundingClientRect();
-
-      if (Math.abs(pageRect.height - 1123) > 8 && pageRect.height > 0) {
-        hits.push({ pageIndex, reason: 'page-height', pageHeight: pageRect.height });
-      }
 
       const checkEl = (el) => {
         const rect = el.getBoundingClientRect();
@@ -634,31 +631,21 @@ async function detectFooterCollisions(browser, html) {
         hits.push({
           pageIndex,
           reason: 'content-overflow',
-          scrollHeight: content.scrollHeight,
-          clientHeight: content.clientHeight,
           overflowPx: Math.round(content.scrollHeight - content.clientHeight),
-        });
-      }
-
-      if (contentBottom > footerTop + tolerance) {
-        hits.push({
-          pageIndex,
-          reason: 'content-box-overlap',
-          overflowPx: Math.round(contentBottom - footerTop),
         });
       }
     });
     return hits;
   });
-  await checkPage.close();
-  return collisions;
+  if (ownsPage) await checkPage.close();
+  return { collisions, checkPage: ownsPage ? null : checkPage };
 }
 
 async function paginatePoHtml(browser, po, options) {
   const parts = buildPoPdfParts(po, options);
   const measurePage = await browser.newPage();
-  await measurePage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
-  await measurePage.setContent(buildMeasureHtml(parts), { waitUntil: 'load', timeout: 90000 });
+  await measurePage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+  await measurePage.setContent(buildMeasureHtml(parts), { waitUntil: 'domcontentloaded', timeout: 60000 });
   await measurePage.emulateMediaType('print');
   await waitForPdfAssets(measurePage);
 
@@ -710,40 +697,48 @@ async function paginatePoHtml(browser, po, options) {
   await measurePage.close();
 
   const layout = computePageLayout(heights);
-  let packScale = 1;
+  const checkPage = await browser.newPage();
+  await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+
+  let packScale = 1.1;
   let pages = [];
+  const maxAttempts = 3;
+  const maxRepairs = 20;
 
-  for (let attempt = 0; attempt < 16; attempt += 1) {
-    pages = clonePages(packPoPages(parts, heights, packScale));
+  try {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      pages = clonePages(packPoPages(parts, heights, packScale));
 
-    for (let repair = 0; repair < 200; repair += 1) {
+      for (let repair = 0; repair < maxRepairs; repair += 1) {
+        const draftHtml = wrapPoHtmlDocument(
+          renderPagesHtml(pages, parts, layout),
+          `${parts.docLabel} - ${parts.poNumber}`,
+          'po-document po-document-pdf-pages'
+        );
+        const { collisions } = await detectFooterCollisions(browser, draftHtml, checkPage);
+        if (!collisions.length) break;
+
+        const worstPage = collisions.reduce(
+          (max, c) => (c.pageIndex > max ? c.pageIndex : max),
+          collisions[0].pageIndex
+        );
+        if (!shiftLastUnitFromPage(pages, worstPage)) break;
+      }
+
       const pagesHtml = renderPagesHtml(pages, parts, layout);
       const draftHtml = wrapPoHtmlDocument(
         pagesHtml,
         `${parts.docLabel} - ${parts.poNumber}`,
         'po-document po-document-pdf-pages'
       );
-      const collisions = await detectFooterCollisions(browser, draftHtml);
-      if (!collisions.length) break;
-
-      const worstPage = collisions.reduce(
-        (max, c) => (c.pageIndex > max ? c.pageIndex : max),
-        collisions[0].pageIndex
-      );
-      if (!shiftLastUnitFromPage(pages, worstPage)) break;
+      const { collisions: remaining } = await detectFooterCollisions(browser, draftHtml, checkPage);
+      if (!remaining.length) {
+        return draftHtml;
+      }
+      packScale += 0.1;
     }
-
-    const pagesHtml = renderPagesHtml(pages, parts, layout);
-    const draftHtml = wrapPoHtmlDocument(
-      pagesHtml,
-      `${parts.docLabel} - ${parts.poNumber}`,
-      'po-document po-document-pdf-pages'
-    );
-    const remaining = await detectFooterCollisions(browser, draftHtml);
-    if (!remaining.length) {
-      return draftHtml;
-    }
-    packScale += 0.06;
+  } finally {
+    await checkPage.close();
   }
 
   return wrapPoHtmlDocument(
@@ -771,9 +766,9 @@ export async function htmlToPdf(html, filePath) {
     const page = await browser.newPage();
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
     try {
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 90000 });
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
     } catch {
-      await page.setContent(html, { waitUntil: 'load', timeout: 90000 });
+      await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
     }
     await page.emulateMediaType('print');
     await waitForPdfAssets(page);
@@ -822,9 +817,9 @@ export async function generatePoPdf(po, options = {}) {
     const page = await browser.newPage();
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
     try {
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 90000 });
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
     } catch {
-      await page.setContent(html, { waitUntil: 'load', timeout: 90000 });
+      await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
     }
     await page.emulateMediaType('print');
     await waitForPdfAssets(page);

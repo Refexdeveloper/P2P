@@ -539,6 +539,7 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
     }
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
     fs.createReadStream(fullPath).pipe(res);
   } catch (err) {
     res.status(400).json({ message: err.message });
