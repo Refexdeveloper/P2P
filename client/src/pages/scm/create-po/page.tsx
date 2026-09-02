@@ -12,6 +12,7 @@ import {
   masterApi,
   vendorApi,
   triggerBlobDownload,
+  poPdfDownloadFileName,
   fileToAttachmentPayload,
   PoType,
   PoLetterheadClause,
@@ -2315,7 +2316,7 @@ export default function CreatePOPage() {
       const url = URL.createObjectURL(blob);
       const win = window.open(url, '_blank');
       if (!win) {
-        triggerBlobDownload(blob, `${poNumber || pr?.prNumber || 'PO'}_preview.pdf`);
+        triggerBlobDownload(blob, poPdfDownloadFileName(poNumber || pr?.prNumber, 'preview'));
       }
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
@@ -3119,7 +3120,7 @@ export default function CreatePOPage() {
                   try {
                     setPdfDownloading(true);
                     const blob = await poApi.fetchPdfBlob(createdPoId);
-                    triggerBlobDownload(blob, `${poNumber || 'PO'}.pdf`);
+                    triggerBlobDownload(blob, poPdfDownloadFileName(poNumber, 'final'));
                   } catch (err) {
                     alert(err instanceof Error ? err.message : 'Could not download PDF');
                   } finally {
@@ -4605,7 +4606,7 @@ export default function CreatePOPage() {
                                 : await poApi.previewPdfBlob(numericPrId!, payload);
                           triggerBlobDownload(
                             blob,
-                            `${poNumber || pr?.prNumber || 'PO'}_preview.pdf`
+                            poPdfDownloadFileName(poNumber || pr?.prNumber, 'preview')
                           );
                         } catch (err) {
                           alert(err instanceof Error ? err.message : 'Could not download PDF');
@@ -4626,7 +4627,7 @@ export default function CreatePOPage() {
                           try {
                             setPdfDownloading(true);
                             const blob = await poApi.fetchPdfBlob(editPoId);
-                            triggerBlobDownload(blob, `${poNumber || 'PO'}.pdf`);
+                            triggerBlobDownload(blob, poPdfDownloadFileName(poNumber, 'final'));
                           } catch (err) {
                             alert(err instanceof Error ? err.message : 'Could not download saved PDF');
                           } finally {

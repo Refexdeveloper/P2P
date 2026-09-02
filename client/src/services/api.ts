@@ -54,6 +54,22 @@ export function triggerBlobDownload(blob: Blob, fileName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Safe download name from PO number, e.g. PO-SWELTER-2026-27-0001.pdf */
+export function poPdfDownloadFileName(
+  poNumber: string | null | undefined,
+  kind: 'final' | 'draft' | 'signed' | 'preview' = 'final'
+) {
+  const base = String(poNumber || 'PO')
+    .trim()
+    .replace(/[^\w.-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '') || 'PO';
+  if (kind === 'preview') return `${base}_preview.pdf`;
+  if (kind === 'signed') return `${base}_signed.pdf`;
+  if (kind === 'draft') return `${base}_draft.pdf`;
+  return `${base}.pdf`;
+}
+
 async function downloadCsvFile(path: string, fallbackName: string) {
   const token = getToken();
   const res = await fetch(`${API_URL}${path}`, {
@@ -921,6 +937,12 @@ export const poApi = {
   getPdfUrl: (poId: number) => `${PO_API_URL}/api/po/${poId}/pdf`,
   downloadPdf: async (poId: number) => {
     const blob = await poApi.fetchPdfBlob(poId);
+    return blob;
+  },
+  /** Fetch PO PDF and save as {poNumber}.pdf */
+  downloadPdfFile: async (poId: number, poNumber?: string, kind: 'final' | 'draft' | 'signed' = 'final') => {
+    const blob = await poApi.fetchPdfBlob(poId);
+    triggerBlobDownload(blob, poPdfDownloadFileName(poNumber, kind));
     return blob;
   },
   getDocumentUrl: (poId: number) => `${PO_API_URL}/api/po/${poId}/document`,

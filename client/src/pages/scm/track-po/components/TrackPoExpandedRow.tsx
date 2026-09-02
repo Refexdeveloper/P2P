@@ -293,7 +293,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
         kind: 'PO PDF',
         name: `${poNumber} PDF`,
         extra: String(po?.signedPdfPath || po?.pdfPath || ''),
-        fileName: String(po?.signedPdfPath || po?.pdfPath || `${poNumber}.pdf`),
+        fileName: `${poNumber}.pdf`,
         url: poApi.getPdfUrl(row.poId),
       });
       docs.push({
@@ -445,7 +445,8 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
       const opened = await loadAuthPreview(doc, row.poId);
       const a = document.createElement('a');
       a.href = opened.url;
-      a.download = doc.fileName;
+      const rawName = String(doc.fileName || 'document').replace(/^.*[/\\]/, '');
+      a.download = rawName || `${row.poNumber || 'PO'}.pdf`;
       a.click();
       URL.revokeObjectURL(opened.url);
     } catch (err) {

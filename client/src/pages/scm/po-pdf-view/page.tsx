@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { poApi } from '../../../services/api';
+import { poApi, poPdfDownloadFileName, triggerBlobDownload } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 
 export default function POPDFViewPage() {
@@ -14,6 +14,7 @@ export default function POPDFViewPage() {
   const [metaLoading, setMetaLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [usingHtmlPreview, setUsingHtmlPreview] = useState(false);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -149,6 +150,24 @@ export default function POPDFViewPage() {
   }
 
   const title = String(po.poNumber || poNumber || 'Purchase Order');
+  const poId = Number(po.id);
+
+  const handleDownload = async () => {
+    if (!Number.isFinite(poId) || poId <= 0) return;
+    try {
+      setPdfDownloading(true);
+      const blob = await poApi.fetchPdfBlob(poId);
+      const kind = po.signedPdfPath || po.signedAt ? 'signed' : 'final';
+      triggerBlobDownload(
+        blob,
+        poPdfDownloadFileName(String(po.poNumber || poNumber || title), kind === 'signed' ? 'signed' : 'final')
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not download PDF');
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
@@ -161,12 +180,23 @@ export default function POPDFViewPage() {
               : 'PO document viewer'}
           </p>
         </div>
-        <button
-          onClick={goBack}
-          className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 cursor-pointer"
-        >
-          Back
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleDownload()}
+            disabled={pdfDownloading || pdfLoading}
+            className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 cursor-pointer disabled:opacity-50"
+          >
+            <i className="ri-download-2-line mr-1"></i>
+            {pdfDownloading ? 'Downloading…' : 'Download PDF'}
+          </button>
+          <button
+            onClick={goBack}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 cursor-pointer"
+          >
+            Back
+          </button>
+        </div>
       </div>
       <div className="flex-1 relative">
         {!docUrl && pdfLoading && (

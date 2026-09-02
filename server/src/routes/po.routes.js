@@ -538,7 +538,12 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
       }
     }
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    const downloadBase = String(po.poNumber || `PO-${po.id}`)
+      .trim()
+      .replace(/[^\w.-]+/g, '_')
+      .replace(/_+/g, '_') || `PO-${po.id}`;
+    const downloadName = `${downloadBase}${isSigned ? '_signed' : ''}.pdf`;
+    res.setHeader('Content-Disposition', `inline; filename="${downloadName}"`);
     res.setHeader('Cache-Control', 'private, max-age=300');
     fs.createReadStream(fullPath).pipe(res);
   } catch (err) {
