@@ -12,7 +12,8 @@ export default function POPDFViewPage() {
   const [po, setPO] = useState<Record<string, unknown> | null>(null);
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [metaLoading, setMetaLoading] = useState(true);
-  const [docLoading, setDocLoading] = useState(true);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [usingHtmlPreview, setUsingHtmlPreview] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -21,8 +22,14 @@ export default function POPDFViewPage() {
 
     const load = async () => {
       setMetaLoading(true);
-      setDocLoading(true);
+      setPdfLoading(false);
+      setUsingHtmlPreview(false);
       setError('');
+      setDocUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+
       try {
         let data: Record<string, unknown>;
         if (poIdParam) {
@@ -43,22 +50,47 @@ export default function POPDFViewPage() {
         const token = localStorage.getItem('p2p_token');
         const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
-        const pdfRes = await fetch(poApi.getPdfUrl(poId), { headers: authHeaders });
-        if (cancelled) return;
-        if (pdfRes.ok) {
-          const blob = await pdfRes.blob();
-          objectUrl = URL.createObjectURL(blob);
-          setDocUrl(objectUrl);
+        const htmlPromise = fetch(poApi.getDocumentUrl(poId), { headers: authHeaders })
+          .then(async (htmlRes) => {
+            if (!htmlRes.ok) return null;
+            const html = await htmlRes.text();
+            return URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+          })
+          .catch(() => null);
+
+        const pdfPromise = fetch(poApi.getPdfUrl(poId), { headers: authHeaders })
+          .then(async (pdfRes) => {
+            if (!pdfRes.ok) return null;
+            const blob = await pdfRes.blob();
+            return URL.createObjectURL(blob);
+          })
+          .catch(() => null);
+
+        const htmlUrl = await htmlPromise;
+        if (cancelled) {
+          if (htmlUrl) URL.revokeObjectURL(htmlUrl);
           return;
         }
+        if (htmlUrl) {
+          objectUrl = htmlUrl;
+          setDocUrl(htmlUrl);
+          setUsingHtmlPreview(true);
+        }
 
-        const htmlRes = await fetch(poApi.getDocumentUrl(poId), { headers: authHeaders });
-        if (cancelled) return;
-        if (!htmlRes.ok) throw new Error('Could not load PO document');
-        const html = await htmlRes.text();
-        const htmlBlob = new Blob([html], { type: 'text/html' });
-        objectUrl = URL.createObjectURL(htmlBlob);
-        setDocUrl(objectUrl);
+        setPdfLoading(true);
+        const pdfUrl = await pdfPromise;
+        if (cancelled) {
+          if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+          return;
+        }
+        if (pdfUrl) {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          objectUrl = pdfUrl;
+          setDocUrl(pdfUrl);
+          setUsingHtmlPreview(false);
+        } else if (!htmlUrl) {
+          throw new Error('Could not load PO document');
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load PO');
@@ -67,7 +99,7 @@ export default function POPDFViewPage() {
       } finally {
         if (!cancelled) {
           setMetaLoading(false);
-          setDocLoading(false);
+          setPdfLoading(false);
         }
       }
     };
@@ -123,7 +155,11 @@ export default function POPDFViewPage() {
       <div className="bg-white border-b px-6 py-4 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-lg font-bold text-gray-900">{title}</h1>
-          <p className="text-sm text-gray-500">PO document viewer</p>
+          <p className="text-sm text-gray-500">
+            {pdfLoading && usingHtmlPreview
+              ? 'Showing preview — final PDF is generating…'
+              : 'PO document viewer'}
+          </p>
         </div>
         <button
           onClick={goBack}
@@ -133,12 +169,11 @@ export default function POPDFViewPage() {
         </button>
       </div>
       <div className="flex-1 relative">
-        {docLoading && !docUrl && (
+        {!docUrl && pdfLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100/90 z-10">
             <div className="text-center">
               <div className="w-10 h-10 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-gray-500">Generating PO document…</p>
-              <p className="text-xs text-gray-400 mt-1">This may take a moment for long POs</p>
+              <p className="text-gray-500">Loading PO document…</p>
             </div>
           </div>
         )}
@@ -147,9 +182,8 @@ export default function POPDFViewPage() {
             title="PO Document"
             src={docUrl}
             className="w-full h-[calc(100vh-73px)] border-0 bg-white"
-            onLoad={() => setDocLoading(false)}
           />
-        ) : !docLoading ? (
+        ) : !pdfLoading ? (
           <div className="flex items-center justify-center h-[calc(100vh-73px)] text-gray-500">
             Document could not be loaded.
           </div>

@@ -729,29 +729,46 @@ function splitTermDescriptionParts(html) {
       (/<strong\b/i.test(tok.html) || /:\s*<\/p>\s*$/i.test(tok.html) || /:\s*<\/strong>\s*<\/p>\s*$/i.test(tok.html));
 
     if (isHeadingPara && next?.kind === 'li') {
-      parts.push(`${tok.html}<ul>${next.html}</ul>`);
-      i += 2;
+      let listHtml = '';
+      let j = i + 1;
+      while (flatTokens[j]?.kind === 'li') {
+        listHtml += flatTokens[j].html;
+        j += 1;
+      }
+      parts.push(`${tok.html}<ul>${listHtml}</ul>`);
+      i = j;
       continue;
     }
-    if (tok.kind === 'li') parts.push(`<ul>${tok.html}</ul>`);
-    else parts.push(tok.html);
+    if (tok.kind === 'li') {
+      let listHtml = tok.html;
+      let j = i + 1;
+      while (flatTokens[j]?.kind === 'li') {
+        listHtml += flatTokens[j].html;
+        j += 1;
+      }
+      parts.push(`<ul>${listHtml}</ul>`);
+      i = j;
+      continue;
+    }
+    parts.push(tok.html);
     i += 1;
   }
   return parts.length ? parts : [raw];
 }
 
-/** Split multi-bullet HTML parts so each pack row fits within one A4 content band. */
-function expandTermPartRows(partHtml) {
+/** Split only very long bullet lists so rows stay paginable — keeps normal lists in one cell. */
+function chunkLargeListHtml(partHtml, maxItems = 10) {
   const lis = [...String(partHtml || '').matchAll(/<li\b[^>]*>[\s\S]*?<\/li>/gi)].map((m) => m[0]);
-  if (lis.length <= 1) return [partHtml];
+  if (lis.length <= maxItems) return [partHtml];
 
   const firstLiIdx = partHtml.search(/<li\b/i);
   const prefix = firstLiIdx > 0 ? partHtml.slice(0, firstLiIdx).trim() : '';
-  const rows = [prefix ? `${prefix}<ul>${lis[0]}</ul>` : `<ul>${lis[0]}</ul>`];
-  for (let i = 1; i < lis.length; i += 1) {
-    rows.push(`<ul>${lis[i]}</ul>`);
+  const chunks = [];
+  for (let start = 0; start < lis.length; start += maxItems) {
+    const slice = lis.slice(start, start + maxItems).join('');
+    chunks.push(start === 0 && prefix ? `${prefix}<ul>${slice}</ul>` : `<ul>${slice}</ul>`);
   }
-  return rows;
+  return chunks;
 }
 
 function termPackRowHtml(term, po, termIndex, partIndex, cellHtml, showHeader, blockId) {
@@ -777,7 +794,7 @@ export function buildTermPackRows(terms, po) {
     const parts = splitTermDescriptionParts(descHtml);
 
     parts.forEach((partHtml, partIndex) => {
-      const subParts = expandTermPartRows(partHtml);
+      const subParts = chunkLargeListHtml(partHtml);
       subParts.forEach((subHtml, subIndex) => {
         const isFirst = partIndex === 0 && subIndex === 0;
         const packPartIndex = isFirst ? 0 : partIndex + subIndex;
@@ -831,7 +848,7 @@ export function buildAnnexurePackRows(annexure, po) {
     const parts = splitTermDescriptionParts(descHtml);
 
     parts.forEach((partHtml, partIndex) => {
-      const subParts = expandTermPartRows(partHtml);
+      const subParts = chunkLargeListHtml(partHtml);
       subParts.forEach((subHtml, subIndex) => {
         const isFirst = partIndex === 0 && subIndex === 0;
         const blockId = isFirst ? `annexure-${idx}` : `annexure-${idx}-${partIndex}-${subIndex}`;

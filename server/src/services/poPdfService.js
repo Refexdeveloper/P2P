@@ -330,6 +330,11 @@ function shiftLastUnitFromPage(pages, pageIndex) {
   if (unit.type === 'html') {
     nextPage.unshift(unit);
   } else {
+    const nextFirstTable = nextPage.find((b) => b.type !== 'html');
+    if (nextFirstTable && nextFirstTable.type !== unit.type) {
+      pages.splice(nextIdx, 0, [unit]);
+      return true;
+    }
     const peer = nextPage.find((b) => b.type === unit.type);
     if (peer) {
       peer.rows.unshift(...unit.rows);
@@ -533,7 +538,9 @@ function packPoPages(parts, heights, scale = 1) {
       tableType: 'terms-table',
       theadH: heights.termsThead || 48,
       defaultRowH: 36,
+      forceNewSection: true,
     });
+    flush();
   }
 
   if (parts.annexureRows.length) {
@@ -542,7 +549,9 @@ function packPoPages(parts, heights, scale = 1) {
       tableType: 'annexure-table',
       theadH: heights.annexureThead || 48,
       defaultRowH: 36,
+      forceNewSection: true,
     });
+    flush();
   }
 
   parts.annexureIiBlocks.forEach((_, i) => {
