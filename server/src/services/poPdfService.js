@@ -427,7 +427,7 @@ function nextPageHasLaterSection(nextPage, unitType) {
   return nextPage.some((block) => (SECTION_ORDER[block.type] ?? 3) > unitOrder);
 }
 
-/** One row per clause; use overflow chunks only when a row is taller than one page. */
+/** One row per clause; split only when a row exceeds one page height. */
 function resolveFlowableRows(simpleRows, overflowRows, heights, contentMaxPx, scale = 1, _attrName = 'data-term') {
   if (!simpleRows?.length) return [];
   const footerSlack = Math.ceil((8 * 96) / 25.4) * scale;
@@ -438,9 +438,9 @@ function resolveFlowableRows(simpleRows, overflowRows, heights, contentMaxPx, sc
     const blockId = rowBlockId(simple, `row-${i}`);
     const rowH = packRowHeight(heights, blockId, 48, scale);
     const idx = simple.match(/data-(?:term|annexure)="(\d+)"/)?.[1] ?? String(i);
-    const attrName = simple.includes('data-annexure=') ? 'data-annexure' : 'data-term';
-    const expanded = (overflowRows || []).filter((r) => r.includes(`${attrName}="${idx}"`));
-    if (expanded.length > 1 && rowH > maxRowH * 0.85) {
+    const rowAttr = simple.includes('data-annexure=') ? 'data-annexure' : 'data-term';
+    const expanded = (overflowRows || []).filter((r) => r.includes(`${rowAttr}="${idx}"`));
+    if (expanded.length > 1 && rowH > maxRowH * 0.65) {
       out.push(...expanded);
     } else {
       out.push(simple);

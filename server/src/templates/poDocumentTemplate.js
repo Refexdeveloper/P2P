@@ -850,7 +850,7 @@ function groupPartsIntoChunks(parts, maxParts = 6) {
   return chunks;
 }
 
-/** One cell per clause; split only for extreme list length (page-overflow fallback). */
+/** One row per clause; build large section groups only for page-overflow fallback. */
 function buildDescriptionOverflowChunks(descHtml, maxListItems = 25) {
   const raw = String(descHtml || '').trim();
   if (!raw) return [''];
@@ -859,6 +859,12 @@ function buildDescriptionOverflowChunks(descHtml, maxListItems = 25) {
   if (lis.length > maxListItems) {
     return chunkLargeListHtml(raw, maxListItems);
   }
+
+  const parts = splitTermDescriptionParts(raw);
+  if (parts.length > 8) {
+    return groupPartsIntoChunks(parts, Math.ceil(parts.length / 2));
+  }
+
   return [raw];
 }
 
