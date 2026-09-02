@@ -222,7 +222,7 @@ function pdfPageHtml(parts, contentHtml, pageNo, totalPages) {
 }
 
 function buildMeasureHtml(parts) {
-  const termRows = parts.termRows.join('');
+  const termRows = (parts.termPackRows || parts.termRows || []).join('');
   const annexRows = parts.annexureRows.join('');
   const annexIi = parts.annexureIiBlocks
     .map((html, i) => `<div data-block="annexure-ii-${i}">${html}</div>`)
@@ -230,9 +230,9 @@ function buildMeasureHtml(parts) {
 
   return wrapPoHtmlDocument(
     `
-    <div class="pdf-page" style="height:auto;max-height:none;overflow:visible">
+    <div class="pdf-page pdf-page-measure" style="height:297mm;max-height:297mm;width:210mm">
       <header class="pdf-header" data-block="header">${parts.headerHtml}</header>
-      <main class="pdf-content" style="overflow:visible;height:auto;max-height:none">
+      <main class="pdf-content pdf-content-measure" data-block="content-area">
         <div data-block="details">${parts.detailsHtml}</div>
         <div class="table-frame">
           <table class="price po-table" id="measure-price">
@@ -244,7 +244,7 @@ function buildMeasureHtml(parts) {
           </table>
         </div>
         ${
-          parts.termRows.length
+          (parts.termPackRows || parts.termRows || []).length
             ? `<div class="table-frame"><table class="terms terms-compact po-table" id="measure-terms">${parts.termsThead}<tbody>${termRows}</tbody></table></div>`
             : ''
         }
@@ -272,32 +272,39 @@ function heightOf(map, id, fallback = 48) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function packPoPages(parts, heights) {
+/** Measured row height + buffer for wrapped text in the final PDF layout. */
+function packRowHeight(map, id, fallback = 48, scale = 1) {
+  return (heightOf(map, id, fallback) * 1.08 + 8) * scale;
+}
+
+function packPoPages(parts, heights, scale = 1) {
   const mm = (n) => (n * 96) / 25.4;
   const pageH = mm(297);
-  const headerH = Math.max(heights.header || 0, mm(16));
-  const footerH = Math.max(heights.footer || 0, mm(40));
-  const contentPad = mm(2) + mm(2);
-  const safety = mm(16);
-  const contentH = Math.max(180, pageH - headerH - footerH - contentPad - safety);
+  const headerH = Math.max(heights.header || 0, mm(18));
+  const footerH = Math.max((heights.footer || 0) * 1.1, mm(55));
+  const contentPad = mm(4) * scale;
+  const safety = mm(10) * scale;
+  const contentH = Math.max(
+    140,
+    heights.contentArea || pageH - headerH - footerH - contentPad - safety
+  );
+  const slack = mm(6) * scale;
 
   const pages = [];
   let current = [];
   let used = 0;
 
-  /** Push current page only when it has real content — never emit blank pages. */
   const flush = () => {
     if (current.length) pages.push(current);
     current = [];
     used = 0;
   };
 
-  /** Start a new page for the next section (no blank page if current is empty). */
   const startNewSection = () => {
     flush();
   };
 
-  const canFit = (extra) => used + extra <= contentH;
+  const canFit = (extra) => used + extra <= contentH - slack;
 
   const addHtml = (html, h, forceNew = false) => {
     if (!html || !String(html).trim()) return;
@@ -306,6 +313,48 @@ function packPoPages(parts, heights) {
     if (used > 0 && !canFit(need)) flush();
     current.push(html);
     used += need;
+  };
+
+  /** Pack table rows across pages — never clip; move overflow rows to next page. */
+  const packTableSection = ({
+    rows,
+    rowHeightId,
+    theadH,
+    flushTable,
+    defaultRowH = 40,
+    forceNewSection = true,
+  }) => {
+    if (!rows.length) return;
+    if (forceNewSection) startNewSection();
+    let bucket = [];
+    let continued = false;
+    used = theadH;
+
+    const flushBucket = () => {
+      if (!bucket.length) return;
+      current.push(flushTable(continued, bucket.join('')));
+      bucket = [];
+      continued = true;
+    };
+
+    rows.forEach((rowHtml, i) => {
+      const blockId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || `${rowHeightId}-${i}`;
+      const rowH = packRowHeight(heights, blockId, defaultRowH, scale);
+
+      if (!canFit(rowH) && bucket.length) {
+        flushBucket();
+        flush();
+        used = theadH;
+      } else if (!canFit(rowH) && used > theadH) {
+        flush();
+        used = theadH;
+      }
+
+      bucket.push(rowHtml);
+      used += rowH;
+    });
+
+    flushBucket();
   };
 
   // —— Page 1+: Header + line items ——
@@ -344,7 +393,7 @@ function packPoPages(parts, heights) {
   };
 
   parts.itemRows.forEach((_, i) => {
-    placePriceRow(parts.itemRows[i], heightOf(heights, `item-${i}`, 64));
+    placePriceRow(parts.itemRows[i], packRowHeight(heights, `item-${i}`, 64, scale));
   });
 
   if (bucket.length || !priceStarted) {
@@ -363,86 +412,50 @@ function packPoPages(parts, heights) {
     flushPrice();
   }
 
-  // —— Next page(s): Terms & Conditions ——
-  if (parts.termRows.length) {
-    startNewSection();
-    let tBucket = [];
-    let tContinued = false;
-    const tHeadH = heights.termsThead || 48;
-    used = tHeadH;
-    const flushTerms = () => {
-      if (!tBucket.length) return;
-      current.push(
-        termsTableHtml(tContinued ? parts.termsTheadContinued : parts.termsThead, tBucket.join(''))
-      );
-      tBucket = [];
-      tContinued = true;
-    };
-    parts.termRows.forEach((_, i) => {
-      const rowH = heightOf(heights, `term-${i}`, 40);
-      if (!canFit(rowH) && tBucket.length) {
-        flushTerms();
-        flush();
-        used = tHeadH;
-      }
-      // Oversized single row: still place on this page (avoid blank page + empty thead-only page)
-      tBucket.push(parts.termRows[i]);
-      used += rowH;
+  // —— Terms & Conditions (flowable rows — paginate across A4 pages) ——
+  const termPackRows = parts.termPackRows || parts.termRows || [];
+  if (termPackRows.length) {
+    packTableSection({
+      rows: termPackRows,
+      rowHeightId: 'term',
+      theadH: heights.termsThead || 48,
+      defaultRowH: 36,
+      flushTable: (continued, body) =>
+        termsTableHtml(continued ? parts.termsTheadContinued : parts.termsThead, body),
     });
-    flushTerms();
   }
 
-  // —— Next page(s): Annexure I ——
+  // —— Annexure I ——
   if (parts.annexureRows.length) {
-    startNewSection();
-    let aBucket = [];
-    let aContinued = false;
-    const aHeadH = heights.annexureThead || 48;
-    used = aHeadH;
-    const flushAnn = () => {
-      if (!aBucket.length) return;
-      current.push(
+    packTableSection({
+      rows: parts.annexureRows,
+      rowHeightId: 'annexure',
+      theadH: heights.annexureThead || 48,
+      defaultRowH: 36,
+      flushTable: (continued, body) =>
         annexureTableHtml(
-          aContinued ? parts.annexureTheadContinued : parts.annexureThead,
-          aBucket.join('')
-        )
-      );
-      aBucket = [];
-      aContinued = true;
-    };
-    parts.annexureRows.forEach((rowHtml, i) => {
-      const blockId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || `annexure-${i}`;
-      const rowH = heightOf(heights, blockId, 36);
-      if (!canFit(rowH) && aBucket.length) {
-        flushAnn();
-        flush();
-        used = aHeadH;
-      }
-      aBucket.push(rowHtml);
-      used += rowH;
+          continued ? parts.annexureTheadContinued : parts.annexureThead,
+          body
+        ),
     });
-    flushAnn();
   }
 
-  // —— Annexure II (each block on its own page when present) ——
   parts.annexureIiBlocks.forEach((_, i) => {
-    addHtml(parts.annexureIiBlocks[i], heightOf(heights, `annexure-ii-${i}`, 180), true);
+    addHtml(parts.annexureIiBlocks[i], packRowHeight(heights, `annexure-ii-${i}`, 180, scale), true);
   });
 
   // —— New page: Special notes ——
   // —— New page: Seller acknowledgment (always separate) ——
   const notesHtml = String(parts.notesHtml || '').trim();
   const ackHtml = String(parts.ackHtml || '').trim();
-  const notesH = notesHtml ? heights.notes || 120 : 0;
-  const ackH = ackHtml ? heights.ack || 100 : 0;
 
   if (notesHtml) {
     startNewSection();
-    addHtml(notesHtml, notesH, false);
+    addHtml(notesHtml, packRowHeight(heights, 'notes', 120, scale), false);
   }
   if (ackHtml) {
     startNewSection();
-    addHtml(ackHtml, ackH, false);
+    addHtml(ackHtml, packRowHeight(heights, 'ack', 100, scale), false);
   }
 
   flush();
@@ -497,9 +510,20 @@ async function paginatePoHtml(browser, po, options) {
       const el = document.querySelector(sel);
       return el ? el.getBoundingClientRect().height : 0;
     };
+    const pageEl = document.querySelector('.pdf-page-measure');
+    const headerEl = document.querySelector('[data-block="header"]');
+    const footerEl = document.querySelector('[data-block="footer"]');
+    const contentEl = document.querySelector('[data-block="content-area"]');
+    let contentArea = 0;
+    if (pageEl && headerEl && footerEl) {
+      contentArea = pageEl.clientHeight - headerEl.offsetHeight - footerEl.offsetHeight;
+    } else if (contentEl) {
+      contentArea = contentEl.clientHeight;
+    }
     const map = {
       header: h('[data-block="header"]'),
       footer: h('[data-block="footer"]'),
+      contentArea,
       details: h('[data-block="details"]'),
       priceThead: document.querySelector('#measure-price thead')?.getBoundingClientRect().height || 52,
       totals: 0,
@@ -513,8 +537,9 @@ async function paginatePoHtml(browser, po, options) {
     });
     const totalRows = document.querySelectorAll('#measure-price tbody tr.total, #measure-price tbody tr.amount-words-row');
     map.totals = Array.from(totalRows).reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
-    document.querySelectorAll('#measure-terms tbody tr').forEach((el, i) => {
-      map[`term-${i}`] = el.getBoundingClientRect().height;
+    document.querySelectorAll('#measure-terms tbody tr').forEach((el) => {
+      const block = el.getAttribute('data-block');
+      if (block) map[block] = el.getBoundingClientRect().height;
     });
     document.querySelectorAll('#measure-annexure tbody tr').forEach((el) => {
       const block = el.getAttribute('data-block');
@@ -527,11 +552,42 @@ async function paginatePoHtml(browser, po, options) {
   });
   await measurePage.close();
 
-  const packed = packPoPages(parts, heights);
-  const total = Math.max(packed.length, 1);
-  const pagesHtml = packed
-    .map((chunks, i) => pdfPageHtml(parts, chunks.join('\n'), i + 1, total))
-    .join('\n');
+  let packScale = 1;
+  let packed = [];
+  let pagesHtml = '';
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    packed = packPoPages(parts, heights, packScale);
+    const total = Math.max(packed.length, 1);
+    pagesHtml = packed.map((chunks, i) => pdfPageHtml(parts, chunks.join('\n'), i + 1, total)).join('\n');
+    const draftHtml = wrapPoHtmlDocument(
+      pagesHtml,
+      `${parts.docLabel} - ${parts.poNumber}`,
+      'po-document po-document-pdf-pages'
+    );
+
+    const checkPage = await browser.newPage();
+    await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+    try {
+      await checkPage.setContent(draftHtml, { waitUntil: 'load', timeout: 90000 });
+    } catch {
+      await checkPage.setContent(draftHtml, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    }
+    await checkPage.emulateMediaType('print');
+    await waitForPdfAssets(checkPage);
+
+    const hasOverflow = await checkPage.evaluate(() =>
+      Array.from(document.querySelectorAll('.pdf-page')).some((pageEl) => {
+        const content = pageEl.querySelector('.pdf-content');
+        if (!content) return false;
+        return content.scrollHeight > content.clientHeight + 4;
+      })
+    );
+    await checkPage.close();
+
+    if (!hasOverflow) break;
+    packScale += 0.07;
+  }
 
   return wrapPoHtmlDocument(
     pagesHtml,

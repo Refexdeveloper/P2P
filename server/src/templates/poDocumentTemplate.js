@@ -682,6 +682,117 @@ function termRowHtml(term, po, index) {
     </tr>`;
 }
 
+/**
+ * Split rich-text term descriptions into flowable blocks (paragraphs / bullets)
+ * so PDF packing can paginate without clipping or footer overlap.
+ */
+function splitTermDescriptionParts(html) {
+  const raw = String(html || '').trim();
+  if (!raw) return [''];
+
+  const flatTokens = [];
+
+  const listRe = /<(ul|ol)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let cursor = 0;
+  let listMatch;
+  while ((listMatch = listRe.exec(raw)) !== null) {
+    const before = raw.slice(cursor, listMatch.index);
+    if (before.trim()) {
+      const ps = [...before.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].map((m) => m[0]);
+      if (ps.length) ps.forEach((p) => flatTokens.push({ html: p, kind: 'p' }));
+      else flatTokens.push({ html: before.trim(), kind: 'block' });
+    }
+    const lis = [...listMatch[2].matchAll(/<li\b[^>]*>[\s\S]*?<\/li>/gi)].map((m) => m[0]);
+    lis.forEach((li) => flatTokens.push({ html: li, kind: 'li' }));
+    cursor = listMatch.index + listMatch[0].length;
+  }
+  const tail = raw.slice(cursor);
+  if (tail.trim()) {
+    const ps = [...tail.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].map((m) => m[0]);
+    if (ps.length) ps.forEach((p) => flatTokens.push({ html: p, kind: 'p' }));
+    else flatTokens.push({ html: tail.trim(), kind: 'block' });
+  }
+
+  if (!flatTokens.length) {
+    const ps = [...raw.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].map((m) => m[0]);
+    if (ps.length > 1) return ps;
+    return [raw];
+  }
+
+  const parts = [];
+  let i = 0;
+  while (i < flatTokens.length) {
+    const tok = flatTokens[i];
+    const next = flatTokens[i + 1];
+    const isHeadingPara =
+      tok.kind === 'p' &&
+      (/<strong\b/i.test(tok.html) || /:\s*<\/p>\s*$/i.test(tok.html) || /:\s*<\/strong>\s*<\/p>\s*$/i.test(tok.html));
+
+    if (isHeadingPara && next?.kind === 'li') {
+      parts.push(`${tok.html}<ul>${next.html}</ul>`);
+      i += 2;
+      continue;
+    }
+    if (tok.kind === 'li') parts.push(`<ul>${tok.html}</ul>`);
+    else parts.push(tok.html);
+    i += 1;
+  }
+  return parts.length ? parts : [raw];
+}
+
+/** Split multi-bullet HTML parts so each pack row fits within one A4 content band. */
+function expandTermPartRows(partHtml) {
+  const lis = [...String(partHtml || '').matchAll(/<li\b[^>]*>[\s\S]*?<\/li>/gi)].map((m) => m[0]);
+  if (lis.length <= 1) return [partHtml];
+
+  const firstLiIdx = partHtml.search(/<li\b/i);
+  const prefix = firstLiIdx > 0 ? partHtml.slice(0, firstLiIdx).trim() : '';
+  const rows = [prefix ? `${prefix}<ul>${lis[0]}</ul>` : `<ul>${lis[0]}</ul>`];
+  for (let i = 1; i < lis.length; i += 1) {
+    rows.push(`<ul>${lis[i]}</ul>`);
+  }
+  return rows;
+}
+
+function termPackRowHtml(term, po, termIndex, partIndex, cellHtml, showHeader, blockId) {
+  const headerHtml = showHeader
+    ? clauseHeaderHtml(term.termsHeader || term.terms_header, po, 'Term')
+    : '';
+  const contClass = partIndex > 0 ? ' terms-row-continued' : '';
+  return `
+    <tr class="terms-row${contClass}" data-block="${blockId}" data-term="${termIndex}">
+      <th class="head-col${showHeader ? '' : ' terms-head-continued'}">${headerHtml}</th>
+      <td>${cellHtml}</td>
+    </tr>`;
+}
+
+/** Flowable Terms rows for PDF page packing — one row per paragraph/bullet group. */
+export function buildTermPackRows(terms, po) {
+  const rows = [];
+  (terms || []).forEach((term, termIndex) => {
+    const headerRaw = term.termsHeader || term.terms_header || '';
+    if (isQuoteNoHeader(headerRaw)) return;
+
+    const descHtml = applyClausePlaceholders(term.termsDescription || term.terms_description || '', po);
+    const parts = splitTermDescriptionParts(descHtml);
+
+    parts.forEach((partHtml, partIndex) => {
+      const subParts = expandTermPartRows(partHtml);
+      subParts.forEach((subHtml, subIndex) => {
+        const isFirst = partIndex === 0 && subIndex === 0;
+        const packPartIndex = isFirst ? 0 : partIndex + subIndex;
+        const blockId = isFirst
+          ? `term-${termIndex}`
+          : `term-${termIndex}-${partIndex}-${subIndex}`;
+        rows.push(
+          termPackRowHtml(term, po, termIndex, packPartIndex, subHtml, isFirst, blockId)
+        );
+      });
+    });
+  });
+  return rows;
+}
+
 function annexureTheadHtml(docLabel, continued = false) {
   const title = `ANNEXURE-I — ${escapeHtml(docLabel).toUpperCase()}${continued ? ' — Continued' : ''}`;
   return `
@@ -1026,6 +1137,7 @@ export function buildPoPdfParts(poInput, options = {}) {
     termsThead: terms.length ? termsTheadHtml(po, false) : '',
     termsTheadContinued: terms.length ? termsTheadHtml(po, true) : '',
     termRows: terms.map((term, index) => termRowHtml(term, po, index)).filter(Boolean),
+    termPackRows: buildTermPackRows(terms, po),
     annexureThead: annexure.length ? annexureTheadHtml(docLabel, false) : '',
     annexureTheadContinued: annexure.length ? annexureTheadHtml(docLabel, true) : '',
     annexureRows: buildAnnexurePackRows(annexure, po),

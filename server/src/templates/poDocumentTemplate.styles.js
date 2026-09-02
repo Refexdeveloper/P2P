@@ -67,8 +67,8 @@ export const PO_STYLES = `
     position: relative;
     box-sizing: border-box;
     background: #fff;
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    display: flex;
+    flex-direction: column;
     page-break-after: always;
     break-after: page;
     overflow: hidden;
@@ -79,15 +79,16 @@ export const PO_STYLES = `
   }
   /* Keep header / body / footer on the same horizontal margins */
   .pdf-header {
-    grid-row: 1;
+    flex: 0 0 auto;
     width: 100%;
     box-sizing: border-box;
     padding: 5mm ${PO_PDF_LAYOUT.side} 2mm;
   }
   .pdf-content {
-    grid-row: 2;
+    flex: 1 1 0;
     width: 100%;
     min-height: 0;
+    max-height: 100%;
     box-sizing: border-box;
     padding: 2mm ${PO_PDF_LAYOUT.side} 2mm;
     overflow: hidden;
@@ -95,18 +96,21 @@ export const PO_STYLES = `
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
+    position: relative;
+    z-index: 1;
   }
   .pdf-content > * {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    flex-shrink: 0;
   }
   .pdf-content .table-frame {
     width: 100%;
     max-width: 100%;
   }
   .pdf-footer {
-    grid-row: 3;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -116,6 +120,8 @@ export const PO_STYLES = `
     padding: 2mm ${PO_PDF_LAYOUT.side} 5mm;
     background: #fff;
     text-align: center;
+    position: relative;
+    z-index: 5;
   }
   .pdf-footer-brand {
     width: 100%;
@@ -203,6 +209,30 @@ export const PO_STYLES = `
   table.terms:not(.annexure-table) .terms-row {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+  table.terms:not(.annexure-table) tr.terms-row-continued {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+  table.terms:not(.annexure-table) tr.terms-row-continued th.terms-head-continued {
+    border-top: none;
+    background: #fff;
+  }
+  table.terms:not(.annexure-table) tr.terms-row-continued td {
+    border-top: none;
+  }
+  table.terms:not(.annexure-table) td p,
+  table.terms:not(.annexure-table) td ul,
+  table.terms:not(.annexure-table) td ol {
+    margin: 3px 0;
+    line-height: 1.35;
+  }
+  table.terms:not(.annexure-table) td ul,
+  table.terms:not(.annexure-table) td ol {
+    padding-left: 18px;
+  }
+  table.terms:not(.annexure-table) td li {
+    margin: 2px 0;
   }
   table.annexure-table tr.terms-row,
   table.annexure-table tbody tr {
