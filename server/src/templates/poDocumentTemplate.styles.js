@@ -866,22 +866,22 @@ export const PO_STYLES = `
   }
   table.terms-compact th,
   table.terms-compact td { padding: 5px 7px; font-size: 11px; }
-  /* PDF paginated pages — terms (slightly larger for readability) */
+  /* PDF paginated pages — tighter terms so long Scope of Work fits with less overlap */
   body.po-document-pdf-pages table.terms-compact th,
   body.po-document-pdf-pages table.terms-compact td {
-    padding: 3px 5px;
-    font-size: 10.5px;
-    line-height: 1.28;
+    padding: 2px 4px;
+    font-size: 9.5px;
+    line-height: 1.22;
   }
   body.po-document-pdf-pages table.terms-compact th.head-col {
-    font-size: 10.5px;
+    font-size: 9.5px;
     vertical-align: top;
   }
   body.po-document-pdf-pages table.terms-compact td p,
   body.po-document-pdf-pages table.terms-compact td ul,
   body.po-document-pdf-pages table.terms-compact td ol {
     margin: 1px 0;
-    line-height: 1.28;
+    line-height: 1.22;
   }
   body.po-document-pdf-pages table.terms-compact td ul,
   body.po-document-pdf-pages table.terms-compact td ol {
@@ -901,29 +901,29 @@ export const PO_STYLES = `
     min-height: 0;
   }
 
-  /* PDF paginated pages — price schedule / line items */
+  /* PDF paginated pages — tighter price schedule / line items */
   body.po-document-pdf-pages table.price th,
   body.po-document-pdf-pages table.price td,
   body.po-document-pdf-pages table.po-table th,
   body.po-document-pdf-pages table.po-table td {
-    padding: 3px 5px !important;
-    font-size: 10.5px;
-    line-height: 1.28;
+    padding: 2px 4px !important;
+    font-size: 9.5px;
+    line-height: 1.22;
   }
   body.po-document-pdf-pages table.price th.section-title,
   body.po-document-pdf-pages table.po-table th.section-title {
-    padding: 4px 6px !important;
-    font-size: 11px;
+    padding: 3px 5px !important;
+    font-size: 10px;
   }
   body.po-document-pdf-pages table.price thead tr.col-heads th,
   body.po-document-pdf-pages table.po-table thead tr.col-heads th {
-    font-size: 10px;
-    padding: 3px 4px !important;
+    font-size: 9px;
+    padding: 2px 3px !important;
   }
   body.po-document-pdf-pages table.price .spec-block p,
   body.po-document-pdf-pages table.po-table .spec-block p {
     margin: 1px 0;
-    line-height: 1.28;
+    line-height: 1.22;
   }
   body.po-document-pdf-pages table.price tbody tr,
   body.po-document-pdf-pages table.po-table tbody tr {
@@ -931,68 +931,68 @@ export const PO_STYLES = `
   }
   body.po-document-pdf-pages table.price tr.amount-words-row .amount-words-inner,
   body.po-document-pdf-pages table.po-table tr.amount-words-row .amount-words-inner {
-    font-size: 10.5px;
-    line-height: 1.28;
+    font-size: 9.5px;
+    line-height: 1.22;
     gap: 6px;
   }
 
-  /* Preview / draft PDF — line items */
+  /* Preview / draft PDF — moderately compact line items */
   body.po-document-preview table.price th,
   body.po-document-preview table.price td,
   body.po-document-pdf table.price th,
   body.po-document-pdf table.price td {
-    padding: 4px 6px;
-    font-size: 11.5px;
-    line-height: 1.3;
+    padding: 4px 5px;
+    font-size: 10.5px;
+    line-height: 1.25;
   }
   body.po-document-preview table.price th.section-title,
   body.po-document-pdf table.price th.section-title {
-    padding: 5px 7px;
-    font-size: 12px;
+    padding: 4px 6px;
+    font-size: 11px;
   }
   body.po-document-preview table.price thead tr.col-heads th,
   body.po-document-pdf table.price thead tr.col-heads th {
-    font-size: 11px;
-    padding: 3px 5px;
+    font-size: 10px;
+    padding: 3px 4px;
   }
   body.po-document-preview table.price .spec-block p,
   body.po-document-pdf table.price .spec-block p {
     margin: 2px 0;
-    line-height: 1.3;
+    line-height: 1.25;
   }
   body.po-document-preview table.price tr.amount-words-row .amount-words-inner,
   body.po-document-pdf table.price tr.amount-words-row .amount-words-inner {
-    font-size: 11.5px;
-    line-height: 1.3;
+    font-size: 10.5px;
+    line-height: 1.25;
     gap: 8px;
   }
 
-  /* PDF paginated pages — PO header / vendor details */
+  /* PDF paginated pages — tighter PO header / vendor details */
   body.po-document-pdf-pages .title {
-    font-size: 13px;
+    font-size: 12px;
     letter-spacing: 0.5px;
     margin: 2px 0 4px 0;
   }
   body.po-document-pdf-pages .po-meta {
-    font-size: 10.5px;
+    font-size: 9.5px;
     margin-bottom: 4px;
   }
   body.po-document-pdf-pages .info-box {
     padding: 4px 6px;
     margin-bottom: 6px;
-    font-size: 10.5px;
+    font-size: 9.5px;
   }
   body.po-document-pdf-pages .info-box p {
     margin: 0;
-    line-height: 1.25;
+    line-height: 1.2;
   }
   body.po-document-pdf-pages .letterhead-block {
     margin-bottom: 3px;
   }
   body.po-document-pdf-pages .letterhead-block p {
     margin: 0;
-    line-height: 1.25;
-    font-size: 10.5px;
+    line-height: 1.2;
+    font-size: 9.5px;
   }
   body.po-document-pdf-pages .table-frame {
     margin: 3px 0 0;
@@ -1001,25 +1001,25 @@ export const PO_STYLES = `
   /* Preview / draft PDF — moderately compact PO header / vendor details */
   body.po-document-preview .title,
   body.po-document-pdf .title {
-    font-size: 14px;
+    font-size: 13px;
     letter-spacing: 0.5px;
     margin: 4px 0 6px 0;
   }
   body.po-document-preview .po-meta,
   body.po-document-pdf .po-meta {
-    font-size: 11.5px;
+    font-size: 10.5px;
     margin-bottom: 6px;
   }
   body.po-document-preview .info-box,
   body.po-document-pdf .info-box {
     padding: 5px 8px;
     margin-bottom: 8px;
-    font-size: 11.5px;
+    font-size: 10.5px;
   }
   body.po-document-preview .info-box p,
   body.po-document-pdf .info-box p {
     margin: 0;
-    line-height: 1.28;
+    line-height: 1.22;
   }
   body.po-document-preview .letterhead-block,
   body.po-document-pdf .letterhead-block {
@@ -1028,25 +1028,25 @@ export const PO_STYLES = `
   body.po-document-preview .letterhead-block p,
   body.po-document-pdf .letterhead-block p {
     margin: 0;
-    line-height: 1.28;
-    font-size: 11.5px;
+    line-height: 1.22;
+    font-size: 10.5px;
   }
   body.po-document-preview .table-frame,
   body.po-document-pdf .table-frame {
     margin: 4px 0 0;
   }
 
-  /* PDF paginated pages — Special Notes & Acknowledgment */
+  /* PDF paginated pages — tighter Special Notes & Acknowledgment */
   body.po-document-pdf-pages .special-notes,
   body.po-document-pdf-pages .ack-box {
-    padding: 5px 7px;
-    font-size: 10.5px;
-    line-height: 1.28;
+    padding: 4px 6px;
+    font-size: 9.5px;
+    line-height: 1.22;
   }
   body.po-document-pdf-pages .special-notes p,
   body.po-document-pdf-pages .ack-box p {
-    margin: 2px 0;
-    line-height: 1.28;
+    margin: 1px 0;
+    line-height: 1.22;
   }
   body.po-document-pdf-pages .sig-space {
     min-height: 36px;
@@ -1060,11 +1060,11 @@ export const PO_STYLES = `
   body.po-document-pdf-pages .sig-space .dsc-box {
     margin-top: 4px;
     padding: 4px 6px;
-    font-size: 9.5px;
-    line-height: 1.28;
+    font-size: 8.5px;
+    line-height: 1.25;
   }
   body.po-document-pdf-pages .sig-space .dsc-box .dsc-title {
-    font-size: 10px;
+    font-size: 9px;
     margin-bottom: 2px;
   }
   body.po-document-pdf-pages .sig-space .sig-img.sig-dsc {
@@ -1078,21 +1078,21 @@ export const PO_STYLES = `
     margin-bottom: 4px;
   }
 
-  /* Preview / draft PDF — Special Notes & Acknowledgment */
+  /* Preview / draft PDF — moderately compact Special Notes & Acknowledgment */
   body.po-document-preview .special-notes,
   body.po-document-preview .ack-box,
   body.po-document-pdf .special-notes,
   body.po-document-pdf .ack-box {
     padding: 6px 8px;
-    font-size: 11.5px;
-    line-height: 1.3;
+    font-size: 10.5px;
+    line-height: 1.25;
   }
   body.po-document-preview .special-notes p,
   body.po-document-preview .ack-box p,
   body.po-document-pdf .special-notes p,
   body.po-document-pdf .ack-box p {
     margin: 2px 0;
-    line-height: 1.3;
+    line-height: 1.25;
   }
   body.po-document-preview .sig-space,
   body.po-document-pdf .sig-space {
@@ -1108,7 +1108,7 @@ export const PO_STYLES = `
   body.po-document-pdf .sig-space .dsc-box {
     margin-top: 5px;
     padding: 5px 7px;
-    font-size: 10px;
+    font-size: 9px;
     line-height: 1.3;
   }
   body.po-document-preview .ack-box .sig-gap,
@@ -1125,15 +1125,15 @@ export const PO_STYLES = `
   }
   body.po-document-pdf-pages table.annexure-table th,
   body.po-document-pdf-pages table.annexure-table td {
-    padding: 3px 5px;
-    font-size: 10.5px;
-    line-height: 1.28;
+    padding: 2px 4px;
+    font-size: 9.5px;
+    line-height: 1.22;
   }
   table.annexure-table th,
   table.annexure-table td {
-    padding: 4px 6px;
-    font-size: 11.5px;
-    line-height: 1.3;
+    padding: 3px 5px;
+    font-size: 10.5px;
+    line-height: 1.28;
   }
   table.annexure-table td p {
     margin: 2px 0;
