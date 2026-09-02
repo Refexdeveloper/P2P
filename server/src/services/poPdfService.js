@@ -209,16 +209,136 @@ function annexureTableHtml(thead, rowsHtml) {
   return `<div class="table-frame"><table class="terms terms-compact annexure-table">${thead}<tbody>${rowsHtml}</tbody></table></div>`;
 }
 
-function pdfPageHtml(parts, contentHtml, pageNo, totalPages) {
+function pdfPageHtml(parts, contentHtml, pageNo, totalPages, contentMaxPx) {
+  const contentStyle =
+    contentMaxPx > 0
+      ? ` style="height:${contentMaxPx}px;max-height:${contentMaxPx}px;min-height:0"`
+      : '';
   return `
 <div class="pdf-page">
   <header class="pdf-header">${parts.headerHtml}</header>
-  <main class="pdf-content">${contentHtml}</main>
+  <main class="pdf-content"${contentStyle}>${contentHtml}</main>
   <footer class="pdf-footer">
     <div class="pdf-footer-brand">${parts.footerHtml}</div>
     <div class="pdf-page-no">Page ${pageNo} of ${totalPages}</div>
   </footer>
 </div>`;
+}
+
+/** A4 layout regions derived from measured header/footer — hard content boundary. */
+function computePageLayout(heights) {
+  const mm = (n) => (n * 96) / 25.4;
+  const pageH = mm(297);
+  const headerH = Math.max(heights.header || 0, mm(18));
+  const footerH = Math.max(heights.footer || 0, mm(55));
+  const contentPad = mm(4);
+  const contentMaxPx = Math.floor(
+    Math.max(120, heights.contentArea || pageH - headerH - footerH - contentPad)
+  );
+  return { pageH, headerH, footerH, contentMaxPx, contentPad };
+}
+
+function renderTableBlock(block, parts) {
+  const body = block.rows.join('');
+  if (block.type === 'price-table') {
+    return priceTableHtml(
+      block.continued ? parts.priceTheadContinued : parts.priceThead,
+      body
+    );
+  }
+  if (block.type === 'terms-table') {
+    return termsTableHtml(
+      block.continued ? parts.termsTheadContinued : parts.termsThead,
+      body
+    );
+  }
+  if (block.type === 'annexure-table') {
+    return annexureTableHtml(
+      block.continued ? parts.annexureTheadContinued : parts.annexureThead,
+      body
+    );
+  }
+  return '';
+}
+
+function renderPageBlocks(blocks, parts) {
+  return blocks
+    .map((block) => {
+      if (block.type === 'html') return block.html;
+      return renderTableBlock(block, parts);
+    })
+    .join('\n');
+}
+
+function renderPagesHtml(pages, parts, layout) {
+  const total = Math.max(pages.length, 1);
+  return pages
+    .map((blocks, i) =>
+      pdfPageHtml(parts, renderPageBlocks(blocks, parts), i + 1, total, layout.contentMaxPx)
+    )
+    .join('\n');
+}
+
+function pageHasContent(blocks) {
+  for (const block of blocks || []) {
+    if (block.type === 'html') {
+      const text = String(block.html || '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (text.length > 4) return true;
+    } else if (block.rows?.length) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function clonePages(pages) {
+  return pages.map((page) =>
+    page.map((block) => {
+      if (block.type === 'html') return { ...block };
+      return { ...block, rows: [...block.rows] };
+    })
+  );
+}
+
+/** Move the last packable unit off an overflowing page onto the next page. */
+function shiftLastUnitFromPage(pages, pageIndex) {
+  if (pageIndex < 0 || pageIndex >= pages.length) return false;
+  const page = pages[pageIndex];
+  if (!page.length) return false;
+
+  const lastBlock = page[page.length - 1];
+  let unit;
+
+  if (lastBlock.type !== 'html' && lastBlock.rows.length > 1) {
+    unit = { type: lastBlock.type, continued: true, rows: [lastBlock.rows.pop()] };
+    if (!lastBlock.rows.length) page.pop();
+  } else {
+    unit = page.pop();
+    if (unit.type !== 'html') unit = { ...unit, continued: true };
+  }
+
+  if (!page.length) pages.splice(pageIndex, 1);
+
+  const nextIdx = pageIndex >= pages.length ? pages.length : pageIndex + 1;
+  if (!pages[nextIdx]) pages.splice(nextIdx, 0, []);
+  const nextPage = pages[nextIdx];
+
+  if (unit.type === 'html') {
+    nextPage.unshift(unit);
+  } else {
+    const peer = nextPage.find((b) => b.type === unit.type);
+    if (peer) {
+      peer.rows.unshift(...unit.rows);
+      peer.continued = true;
+    } else {
+      nextPage.unshift(unit);
+    }
+  }
+  return true;
 }
 
 function buildMeasureHtml(parts) {
@@ -274,28 +394,25 @@ function heightOf(map, id, fallback = 48) {
 
 /** Measured row height + buffer for wrapped text in the final PDF layout. */
 function packRowHeight(map, id, fallback = 48, scale = 1) {
-  return (heightOf(map, id, fallback) * 1.08 + 8) * scale;
+  return (heightOf(map, id, fallback) * 1.12 + 10) * scale;
+}
+
+function newTableBlock(type, continued = false) {
+  return { type, continued, rows: [] };
 }
 
 function packPoPages(parts, heights, scale = 1) {
-  const mm = (n) => (n * 96) / 25.4;
-  const pageH = mm(297);
-  const headerH = Math.max(heights.header || 0, mm(18));
-  const footerH = Math.max((heights.footer || 0) * 1.1, mm(55));
-  const contentPad = mm(4) * scale;
-  const safety = mm(10) * scale;
-  const contentH = Math.max(
-    140,
-    heights.contentArea || pageH - headerH - footerH - contentPad - safety
-  );
-  const slack = mm(6) * scale;
+  const layout = computePageLayout(heights);
+  const contentH = layout.contentMaxPx;
+  const slack = Math.ceil((6 * 96) / 25.4) * scale;
+  const tableGap = Math.ceil((2 * 96) / 25.4);
 
   const pages = [];
   let current = [];
   let used = 0;
 
   const flush = () => {
-    if (current.length) pages.push(current);
+    if (current.length && pageHasContent(current)) pages.push(current);
     current = [];
     used = 0;
   };
@@ -311,38 +428,42 @@ function packPoPages(parts, heights, scale = 1) {
     if (forceNew) startNewSection();
     const need = Math.max(h, 8);
     if (used > 0 && !canFit(need)) flush();
-    current.push(html);
+    current.push({ type: 'html', html });
     used += need;
   };
 
-  /** Pack table rows across pages — never clip; move overflow rows to next page. */
   const packTableSection = ({
     rows,
-    rowHeightId,
+    tableType,
     theadH,
-    flushTable,
     defaultRowH = 40,
     forceNewSection = true,
   }) => {
     if (!rows.length) return;
     if (forceNewSection) startNewSection();
-    let bucket = [];
-    let continued = false;
-    used = theadH;
 
-    const flushBucket = () => {
-      if (!bucket.length) return;
-      current.push(flushTable(continued, bucket.join('')));
-      bucket = [];
+    let block = null;
+    let continued = false;
+    used += theadH;
+
+    const ensureBlock = () => {
+      if (!block) {
+        block = newTableBlock(tableType, continued);
+        current.push(block);
+      }
+    };
+
+    const closeBlock = () => {
+      block = null;
       continued = true;
     };
 
     rows.forEach((rowHtml, i) => {
-      const blockId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || `${rowHeightId}-${i}`;
+      const blockId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || `${tableType}-${i}`;
       const rowH = packRowHeight(heights, blockId, defaultRowH, scale);
 
-      if (!canFit(rowH) && bucket.length) {
-        flushBucket();
+      if (!canFit(rowH) && block?.rows.length) {
+        closeBlock();
         flush();
         used = theadH;
       } else if (!canFit(rowH) && used > theadH) {
@@ -350,11 +471,10 @@ function packPoPages(parts, heights, scale = 1) {
         used = theadH;
       }
 
-      bucket.push(rowHtml);
-      used += rowH;
+      ensureBlock();
+      block.rows.push(rowHtml);
+      used += rowH + (block.rows.length === 1 ? 0 : 0);
     });
-
-    flushBucket();
   };
 
   // —— Page 1+: Header + line items ——
@@ -362,33 +482,31 @@ function packPoPages(parts, heights, scale = 1) {
 
   const theadH = heights.priceThead || 52;
   const totalsH = heights.totals || 72;
-  let priceStarted = false;
-  let continued = false;
-  let bucket = [];
+  let priceBlock = null;
+  let priceContinued = false;
 
-  const flushPrice = () => {
-    if (!bucket.length) return;
-    current.push(
-      priceTableHtml(continued ? parts.priceTheadContinued : parts.priceThead, bucket.join(''))
-    );
-    bucket = [];
-    continued = true;
-    priceStarted = true;
+  const ensurePriceBlock = () => {
+    if (!priceBlock) {
+      priceBlock = newTableBlock('price-table', priceContinued);
+      current.push(priceBlock);
+      used += theadH + tableGap;
+    }
+  };
+
+  const flushPriceBlock = () => {
+    priceBlock = null;
+    priceContinued = true;
   };
 
   const placePriceRow = (rowHtml, rowH) => {
-    const needThead = bucket.length === 0 ? theadH : 0;
-    // Only break to a new page when this page already has price rows — never leave a logo-only blank page.
-    if (!canFit(needThead + rowH) && bucket.length > 0) {
-      flushPrice();
+    if (priceBlock && !canFit(rowH)) {
+      flushPriceBlock();
       flush();
-      continued = priceStarted;
-    } else if (!canFit(needThead + rowH) && used > 0 && bucket.length === 0) {
+    } else if (!priceBlock && used > 0 && !canFit(theadH + rowH)) {
       flush();
-      continued = priceStarted;
     }
-    if (bucket.length === 0) used += theadH;
-    bucket.push(rowHtml);
+    ensurePriceBlock();
+    priceBlock.rows.push(rowHtml);
     used += rowH;
   };
 
@@ -396,47 +514,34 @@ function packPoPages(parts, heights, scale = 1) {
     placePriceRow(parts.itemRows[i], packRowHeight(heights, `item-${i}`, 64, scale));
   });
 
-  if (bucket.length || !priceStarted) {
-    const needThead = bucket.length === 0 ? theadH : 0;
-    if (!canFit(needThead + totalsH) && bucket.length > 0) {
-      flushPrice();
+  if (priceBlock || !pages.length) {
+    if (priceBlock && !canFit(totalsH)) {
+      flushPriceBlock();
       flush();
-      continued = true;
-    } else if (!canFit(needThead + totalsH) && used > 0 && bucket.length === 0) {
+    } else if (!priceBlock && used > 0 && !canFit(theadH + totalsH)) {
       flush();
-      continued = true;
     }
-    if (bucket.length === 0) used += theadH;
-    bucket.push(parts.totalsRows);
+    ensurePriceBlock();
+    priceBlock.rows.push(parts.totalsRows);
     used += totalsH;
-    flushPrice();
   }
 
-  // —— Terms & Conditions (flowable rows — paginate across A4 pages) ——
   const termPackRows = parts.termPackRows || parts.termRows || [];
   if (termPackRows.length) {
     packTableSection({
       rows: termPackRows,
-      rowHeightId: 'term',
+      tableType: 'terms-table',
       theadH: heights.termsThead || 48,
       defaultRowH: 36,
-      flushTable: (continued, body) =>
-        termsTableHtml(continued ? parts.termsTheadContinued : parts.termsThead, body),
     });
   }
 
-  // —— Annexure I ——
   if (parts.annexureRows.length) {
     packTableSection({
       rows: parts.annexureRows,
-      rowHeightId: 'annexure',
+      tableType: 'annexure-table',
       theadH: heights.annexureThead || 48,
       defaultRowH: 36,
-      flushTable: (continued, body) =>
-        annexureTableHtml(
-          continued ? parts.annexureTheadContinued : parts.annexureThead,
-          body
-        ),
     });
   }
 
@@ -444,8 +549,6 @@ function packPoPages(parts, heights, scale = 1) {
     addHtml(parts.annexureIiBlocks[i], packRowHeight(heights, `annexure-ii-${i}`, 180, scale), true);
   });
 
-  // —— New page: Special notes ——
-  // —— New page: Seller acknowledgment (always separate) ——
   const notesHtml = String(parts.notesHtml || '').trim();
   const ackHtml = String(parts.ackHtml || '').trim();
 
@@ -459,19 +562,6 @@ function packPoPages(parts, heights, scale = 1) {
   }
 
   flush();
-
-  const pageHasContent = (page) => {
-    const html = (page || []).join('');
-    const text = html
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return text.length > 8;
-  };
-
   return pages.filter((page) => Array.isArray(page) && pageHasContent(page));
 }
 
@@ -497,10 +587,77 @@ async function waitForPdfAssets(page) {
   });
 }
 
+async function detectFooterCollisions(browser, html) {
+  const checkPage = await browser.newPage();
+  await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+  try {
+    await checkPage.setContent(html, { waitUntil: 'load', timeout: 90000 });
+  } catch {
+    await checkPage.setContent(html, { waitUntil: 'domcontentloaded', timeout: 90000 });
+  }
+  await checkPage.emulateMediaType('print');
+  await waitForPdfAssets(checkPage);
+
+  const collisions = await checkPage.evaluate(() => {
+    const tolerance = 3;
+    const hits = [];
+    document.querySelectorAll('.pdf-page').forEach((pageEl, pageIndex) => {
+      const footer = pageEl.querySelector('.pdf-footer');
+      const content = pageEl.querySelector('.pdf-content');
+      if (!footer || !content) return;
+
+      const footerTop = footer.getBoundingClientRect().top;
+      const contentBottom = content.getBoundingClientRect().bottom;
+      const pageRect = pageEl.getBoundingClientRect();
+
+      if (Math.abs(pageRect.height - 1123) > 8 && pageRect.height > 0) {
+        hits.push({ pageIndex, reason: 'page-height', pageHeight: pageRect.height });
+      }
+
+      const checkEl = (el) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.height < 1 || rect.width < 1) return;
+        if (rect.bottom > footerTop + tolerance) {
+          hits.push({
+            pageIndex,
+            reason: 'footer-overlap',
+            block: el.getAttribute('data-block') || el.tagName,
+            overflowPx: Math.round(rect.bottom - footerTop),
+          });
+        }
+      };
+
+      content.querySelectorAll('tbody tr[data-block]').forEach(checkEl);
+      content.querySelectorAll('.table-frame, .annexure-ii, .special-notes, .ack-block').forEach(checkEl);
+
+      if (content.scrollHeight > content.clientHeight + tolerance) {
+        hits.push({
+          pageIndex,
+          reason: 'content-overflow',
+          scrollHeight: content.scrollHeight,
+          clientHeight: content.clientHeight,
+          overflowPx: Math.round(content.scrollHeight - content.clientHeight),
+        });
+      }
+
+      if (contentBottom > footerTop + tolerance) {
+        hits.push({
+          pageIndex,
+          reason: 'content-box-overlap',
+          overflowPx: Math.round(contentBottom - footerTop),
+        });
+      }
+    });
+    return hits;
+  });
+  await checkPage.close();
+  return collisions;
+}
+
 async function paginatePoHtml(browser, po, options) {
   const parts = buildPoPdfParts(po, options);
   const measurePage = await browser.newPage();
-  await measurePage.setViewport({ width: 794, height: 1600, deviceScaleFactor: 1 });
+  await measurePage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
   await measurePage.setContent(buildMeasureHtml(parts), { waitUntil: 'load', timeout: 90000 });
   await measurePage.emulateMediaType('print');
   await waitForPdfAssets(measurePage);
@@ -552,45 +709,45 @@ async function paginatePoHtml(browser, po, options) {
   });
   await measurePage.close();
 
+  const layout = computePageLayout(heights);
   let packScale = 1;
-  let packed = [];
-  let pagesHtml = '';
+  let pages = [];
 
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    packed = packPoPages(parts, heights, packScale);
-    const total = Math.max(packed.length, 1);
-    pagesHtml = packed.map((chunks, i) => pdfPageHtml(parts, chunks.join('\n'), i + 1, total)).join('\n');
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    pages = clonePages(packPoPages(parts, heights, packScale));
+
+    for (let repair = 0; repair < 200; repair += 1) {
+      const pagesHtml = renderPagesHtml(pages, parts, layout);
+      const draftHtml = wrapPoHtmlDocument(
+        pagesHtml,
+        `${parts.docLabel} - ${parts.poNumber}`,
+        'po-document po-document-pdf-pages'
+      );
+      const collisions = await detectFooterCollisions(browser, draftHtml);
+      if (!collisions.length) break;
+
+      const worstPage = collisions.reduce(
+        (max, c) => (c.pageIndex > max ? c.pageIndex : max),
+        collisions[0].pageIndex
+      );
+      if (!shiftLastUnitFromPage(pages, worstPage)) break;
+    }
+
+    const pagesHtml = renderPagesHtml(pages, parts, layout);
     const draftHtml = wrapPoHtmlDocument(
       pagesHtml,
       `${parts.docLabel} - ${parts.poNumber}`,
       'po-document po-document-pdf-pages'
     );
-
-    const checkPage = await browser.newPage();
-    await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
-    try {
-      await checkPage.setContent(draftHtml, { waitUntil: 'load', timeout: 90000 });
-    } catch {
-      await checkPage.setContent(draftHtml, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    const remaining = await detectFooterCollisions(browser, draftHtml);
+    if (!remaining.length) {
+      return draftHtml;
     }
-    await checkPage.emulateMediaType('print');
-    await waitForPdfAssets(checkPage);
-
-    const hasOverflow = await checkPage.evaluate(() =>
-      Array.from(document.querySelectorAll('.pdf-page')).some((pageEl) => {
-        const content = pageEl.querySelector('.pdf-content');
-        if (!content) return false;
-        return content.scrollHeight > content.clientHeight + 4;
-      })
-    );
-    await checkPage.close();
-
-    if (!hasOverflow) break;
-    packScale += 0.07;
+    packScale += 0.06;
   }
 
   return wrapPoHtmlDocument(
-    pagesHtml,
+    renderPagesHtml(pages, parts, layout),
     `${parts.docLabel} - ${parts.poNumber}`,
     'po-document po-document-pdf-pages'
   );

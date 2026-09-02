@@ -809,18 +809,37 @@ function annexureTheadHtml(docLabel, continued = false) {
           </thead>`;
 }
 
-function annexureRowHtml(item, po, idx) {
+function annexureRowHtml(item, po, idx, partIndex, cellHtml, showHeader, blockId) {
+  const contClass = partIndex > 0 ? ' terms-row-continued' : '';
+  const snoCell = showHeader ? `${idx + 1}.` : '';
+  const headerCell = showHeader
+    ? `<strong>${clauseHeaderHtml(item.termsHeader || item.terms_header, po, 'Header')}</strong>`
+    : '';
   return `
-      <tr class="terms-row" data-block="annexure-${idx}">
-        <td class="sno-col">${idx + 1}.</td>
-        <td class="head-col"><strong>${clauseHeaderHtml(item.termsHeader || item.terms_header, po, 'Header')}</strong></td>
-        <td>${applyClausePlaceholders(item.termsDescription || item.terms_description || '', po)}</td>
+      <tr class="terms-row${contClass}" data-block="${blockId}" data-annexure="${idx}">
+        <td class="sno-col">${snoCell}</td>
+        <td class="head-col">${headerCell}</td>
+        <td>${cellHtml}</td>
       </tr>`;
 }
 
-/** One table row per annexure clause (keep header + full description in the same cell). */
+/** Flowable Annexure rows for PDF page packing — one row per paragraph/bullet group. */
 export function buildAnnexurePackRows(annexure, po) {
-  return (annexure || []).map((item, idx) => annexureRowHtml(item, po, idx));
+  const rows = [];
+  (annexure || []).forEach((item, idx) => {
+    const descHtml = applyClausePlaceholders(item.termsDescription || item.terms_description || '', po);
+    const parts = splitTermDescriptionParts(descHtml);
+
+    parts.forEach((partHtml, partIndex) => {
+      const subParts = expandTermPartRows(partHtml);
+      subParts.forEach((subHtml, subIndex) => {
+        const isFirst = partIndex === 0 && subIndex === 0;
+        const blockId = isFirst ? `annexure-${idx}` : `annexure-${idx}-${partIndex}-${subIndex}`;
+        rows.push(annexureRowHtml(item, po, idx, isFirst ? 0 : partIndex + subIndex, subHtml, isFirst, blockId));
+      });
+    });
+  });
+  return rows;
 }
 
 function termsSummaryHtml(po, terms, forPdf) {
@@ -904,7 +923,7 @@ function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
 function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Order', forPdf) {
   if (!annexure?.length) return '';
 
-  const rows = annexure.map((item, idx) => annexureRowHtml(item, po, idx)).join('');
+  const rows = buildAnnexurePackRows(annexure, po).join('');
 
   return wrapSheet(
     `

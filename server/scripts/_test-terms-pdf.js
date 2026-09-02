@@ -1,15 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { generatePoPdf, PO_UPLOAD_DIR } from '../src/services/poPdfService.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const headerPng =
-  'data:image/svg+xml;base64,' +
-  Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40"><rect width="160" height="40" fill="#2e3192"/><text x="80" y="26" fill="#fff" font-size="16" font-family="Arial" text-anchor="middle" font-weight="700">HEADER</text></svg>`
-  ).toString('base64');
 
 const footerHtml = `
 <div style="text-align:center">
@@ -19,11 +12,22 @@ const footerHtml = `
   <div style="font-size:9px;color:#444;margin-top:4px">Registered Office · Corporate Office · Chennai</div>
 </div>`;
 
+const headerPng =
+  'data:image/svg+xml;base64,' +
+  Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40"><rect width="160" height="40" fill="#2e3192"/><text x="80" y="26" fill="#fff" font-size="16" font-family="Arial" text-anchor="middle" font-weight="700">HEADER</text></svg>`
+  ).toString('base64');
+
 function bullets(n, prefix) {
-  return Array.from({ length: n }, (_, i) => `<li>${prefix} item ${i + 1}: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore.</li>`).join('');
+  return Array.from(
+    { length: n },
+    (_, i) =>
+      `<li>${prefix} item ${i + 1}: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</li>`
+  ).join('');
 }
 
-const longTermsHtml = `
+function longTermsHtml() {
+  return `
 <p><strong>Reporting and Communication:</strong></p>
 <ul>${bullets(8, 'Reporting')}</ul>
 <p><strong>Escalation and Backup Support:</strong></p>
@@ -33,70 +37,105 @@ const longTermsHtml = `
 <p><strong>Holiday Coverage:</strong></p>
 <ul>${bullets(5, 'Holiday')}</ul>
 <p><strong>Additional Support Options:</strong></p>
-<ul>${bullets(9, 'Support')}</ul>
-`;
-
-const po = {
-  purchaseType: 'purchase_order',
-  poNumber: 'PO-TERMS-TEST',
-  poType: 'short_po',
-  createdAt: new Date().toISOString(),
-  vendorName: 'Acme Supplies Pvt Ltd',
-  vendorAddress: '123 Industrial Area, Chennai',
-  vendorEmail: 'vendor@acme.com',
-  vendorPhone: '9876543210',
-  vendorGst: '33AAAAA0000A1Z5',
-  vendorPan: 'AAAAA0000A',
-  prNumber: 'PR-TEST-1',
-  department: 'IT',
-  requester: 'Test User',
-  entity: 'Refex Holding Private Limited',
-  currency: 'INR',
-  headerLogo: headerPng,
-  footerLogo: footerHtml,
-  lineItems: [
-    {
-      itemName: 'Annual Maintenance',
-      description: '<p>Comprehensive AMC for IT infrastructure</p>',
-      quantity: 1,
-      unitPrice: 250000,
-      taxPercentage: 18,
-      total: 250000,
-      uom: "No's",
-    },
-  ],
-  subtotal: 250000,
-  taxAmount: 45000,
-  grandTotal: 295000,
-  termsClauses: [
-    { termsHeader: 'Payment', termsDescription: '<p>Net 30 days from invoice date.</p>' },
-    { termsHeader: 'Delivery', termsDescription: '<p>Within 15 working days.</p>' },
-    {
-      termsHeader: 'Service Level',
-      termsDescription: longTermsHtml,
-    },
-  ],
-  annexureClauses: [{ termsHeader: 'Parties', termsDescription: '<p>Standard parties clause for testing.</p>' }],
-  poTermsDetails: { subject: 'Terms pagination validation PO' },
-  paymentTerms: 'Net 30',
-};
-
-if (!fs.existsSync(PO_UPLOAD_DIR)) fs.mkdirSync(PO_UPLOAD_DIR, { recursive: true });
-
-const result = await generatePoPdf(po, { fileName: '_terms_pagination_test.pdf' });
-console.log('result', result);
-
-if (result.htmlOnly) {
-  console.error('PDF generation failed:', result.pdfError);
-  process.exit(1);
+<ul>${bullets(9, 'Support')}</ul>`;
 }
 
-const html = fs.readFileSync(result.htmlPath, 'utf8');
-const pageCount = (html.match(/class="pdf-page"/g) || []).length;
-console.log('pages in HTML:', pageCount);
+function longAnnexureHtml() {
+  return `
+<p><strong>Scope of Work:</strong></p>
+<ul>${bullets(10, 'Scope')}</ul>
+<p><strong>Deliverables:</strong></p>
+<ul>${bullets(8, 'Deliverable')}</ul>
+<p><strong>Acceptance Criteria:</strong></p>
+<ul>${bullets(7, 'Acceptance')}</ul>`;
+}
 
-const { default: puppeteer } = await import('puppeteer-core');
-import os from 'os';
+function basePo(overrides = {}) {
+  return {
+    purchaseType: 'purchase_order',
+    poNumber: 'PO-PDF-TEST',
+    poType: 'short_po',
+    createdAt: new Date().toISOString(),
+    vendorName: 'Acme Supplies Pvt Ltd',
+    vendorAddress: 'Chennai',
+    vendorEmail: 'vendor@acme.com',
+    vendorPhone: '9876543210',
+    vendorGst: '33AAAAA0000A1Z5',
+    vendorPan: 'AAAAA0000A',
+    prNumber: 'PR-TEST-1',
+    department: 'IT',
+    requester: 'Test User',
+    entity: 'Refex Holding Private Limited',
+    currency: 'INR',
+    headerLogo: headerPng,
+    footerLogo: footerHtml,
+    lineItems: [
+      {
+        itemName: 'Annual Maintenance',
+        description: '<p>Comprehensive AMC</p>',
+        quantity: 1,
+        unitPrice: 250000,
+        taxPercentage: 18,
+        total: 250000,
+        uom: "No's",
+      },
+    ],
+    subtotal: 250000,
+    taxAmount: 45000,
+    grandTotal: 295000,
+    termsClauses: [{ termsHeader: 'Payment', termsDescription: '<p>Net 30 days.</p>' }],
+    annexureClauses: [{ termsHeader: 'Parties', termsDescription: '<p>Standard parties clause.</p>' }],
+    poTermsDetails: { subject: 'PDF pagination test' },
+    paymentTerms: 'Net 30',
+    ...overrides,
+  };
+}
+
+const CASES = [
+  { name: 'short', po: basePo() },
+  {
+    name: 'medium-terms',
+    po: basePo({
+      termsClauses: [
+        { termsHeader: 'Payment', termsDescription: '<p>Net 30.</p>' },
+        { termsHeader: 'Delivery', termsDescription: `<p>On schedule.</p><ul>${bullets(3, 'Del')}</ul>` },
+      ],
+    }),
+  },
+  {
+    name: 'long-terms',
+    po: basePo({
+      termsClauses: [
+        { termsHeader: 'Payment', termsDescription: '<p>Net 30.</p>' },
+        { termsHeader: 'Service Level', termsDescription: longTermsHtml() },
+      ],
+    }),
+  },
+  {
+    name: 'long-annexure',
+    po: basePo({
+      annexureClauses: [
+        { termsHeader: 'Parties', termsDescription: '<p>Parties clause.</p>' },
+        { termsHeader: 'Scope', termsDescription: longAnnexureHtml() },
+      ],
+    }),
+  },
+  {
+    name: 'long-both',
+    po: basePo({
+      termsClauses: [
+        { termsHeader: 'Payment', termsDescription: '<p>Net 30.</p>' },
+        { termsHeader: 'Service Level', termsDescription: longTermsHtml() },
+      ],
+      annexureClauses: [
+        { termsHeader: 'Parties', termsDescription: '<p>Parties clause.</p>' },
+        { termsHeader: 'Scope', termsDescription: longAnnexureHtml() },
+      ],
+    }),
+  },
+];
+
+if (!fs.existsSync(PO_UPLOAD_DIR)) fs.mkdirSync(PO_UPLOAD_DIR, { recursive: true });
 
 const CHROME_PATHS = {
   win32: [
@@ -104,7 +143,6 @@ const CHROME_PATHS = {
       ? path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe')
       : null,
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
   ].filter(Boolean),
 };
 
@@ -112,46 +150,60 @@ const executablePath =
   process.env.PUPPETEER_EXECUTABLE_PATH ||
   CHROME_PATHS[os.platform()]?.find((p) => p && fs.existsSync(p));
 
-if (!executablePath) {
-  console.log('Skip overflow check — Chrome not found');
-  process.exit(0);
-}
+const { default: puppeteer } = executablePath ? await import('puppeteer-core') : { default: null };
 
-const browser = await puppeteer.launch({
-  executablePath,
-  headless: true,
-  args: ['--no-sandbox', '--disable-setuid-sandbox'],
-});
-const page = await browser.newPage();
-await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
-await page.setContent(html, { waitUntil: 'load' });
-await page.emulateMediaType('print');
-
-const report = await page.evaluate(() => {
-  const pages = Array.from(document.querySelectorAll('.pdf-page'));
-  return pages.map((pageEl, i) => {
-    const content = pageEl.querySelector('.pdf-content');
-    const footer = pageEl.querySelector('.pdf-footer');
-    const overflow = content ? content.scrollHeight > content.clientHeight + 4 : false;
-    const pageRect = pageEl.getBoundingClientRect();
-    return {
-      page: i + 1,
-      pageHeight: Math.round(pageRect.height),
-      contentScroll: content?.scrollHeight || 0,
-      contentClient: content?.clientHeight || 0,
-      overflow,
-      footerTop: footer ? Math.round(footer.getBoundingClientRect().top) : 0,
-      pageBottom: Math.round(pageRect.bottom),
-    };
+async function inspectHtml(html) {
+  if (!puppeteer || !executablePath) {
+    return { skipped: true };
+  }
+  const browser = await puppeteer.launch({
+    executablePath,
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
-});
+  const page = await browser.newPage();
+  await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+  await page.setContent(html, { waitUntil: 'load' });
+  await page.emulateMediaType('print');
 
-await browser.close();
-
-console.log('page report:', JSON.stringify(report, null, 2));
-const bad = report.filter((p) => p.overflow);
-if (bad.length) {
-  console.error('OVERFLOW on pages:', bad.map((p) => p.page).join(', '));
-  process.exit(1);
+  const report = await page.evaluate(() => {
+    const tolerance = 3;
+    return Array.from(document.querySelectorAll('.pdf-page')).map((pageEl, i) => {
+      const content = pageEl.querySelector('.pdf-content');
+      const footer = pageEl.querySelector('.pdf-footer');
+      const pageRect = pageEl.getBoundingClientRect();
+      const footerTop = footer?.getBoundingClientRect().top || 0;
+      let overlap = false;
+      content?.querySelectorAll('tbody tr[data-block], .table-frame, .annexure-ii').forEach((el) => {
+        if (el.getBoundingClientRect().bottom > footerTop + tolerance) overlap = true;
+      });
+      return {
+        page: i + 1,
+        pageHeight: Math.round(pageRect.height),
+        overlap,
+        contentOverflow: content ? content.scrollHeight > content.clientHeight + tolerance : false,
+      };
+    });
+  });
+  await browser.close();
+  return report;
 }
-console.log('OK — no content overflow detected');
+
+let failed = false;
+for (const testCase of CASES) {
+  const fileName = `_pdf_test_${testCase.name}.pdf`;
+  const result = await generatePoPdf(testCase.po, { fileName });
+  if (result.htmlOnly) {
+    console.error(`FAIL ${testCase.name}:`, result.pdfError);
+    failed = true;
+    continue;
+  }
+  const html = fs.readFileSync(result.htmlPath, 'utf8');
+  const pages = (html.match(/class="pdf-page"/g) || []).length;
+  const report = await inspectHtml(html);
+  const bad = (report || []).filter((p) => p.overlap || p.contentOverflow || Math.abs(p.pageHeight - 1123) > 8);
+  console.log(`${testCase.name}: pages=${pages}`, bad.length ? `FAIL ${JSON.stringify(bad)}` : 'OK');
+  if (bad.length) failed = true;
+}
+
+process.exit(failed ? 1 : 0);
