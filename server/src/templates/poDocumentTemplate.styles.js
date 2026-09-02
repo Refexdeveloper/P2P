@@ -209,11 +209,19 @@ export const PO_STYLES = `
     page-break-inside: auto;
   }
   table.terms:not(.annexure-table) tr.terms-row-continued th.terms-head-continued {
-    border-top: none;
+    border-top: none !important;
+    border-bottom: none !important;
     background: #fff;
   }
   table.terms:not(.annexure-table) tr.terms-row-continued td {
-    border-top: none;
+    border-top: none !important;
+  }
+  body.po-document-pdf-pages table.terms tr.terms-row-continued > th,
+  body.po-document-pdf-pages table.terms tr.terms-row-continued > td {
+    border-top: none !important;
+  }
+  body.po-document-pdf-pages table.terms tr.terms-row-continued td {
+    padding-top: 0;
   }
   table.terms:not(.annexure-table) td p,
   table.terms:not(.annexure-table) td ul,
@@ -235,11 +243,23 @@ export const PO_STYLES = `
   }
   table.annexure-table tr.terms-row-continued td.sno-col,
   table.annexure-table tr.terms-row-continued td.head-col {
-    border-top: none;
+    border-top: none !important;
+    border-bottom: none !important;
     background: #fff;
   }
   table.annexure-table tr.terms-row-continued td {
-    border-top: none;
+    border-top: none !important;
+  }
+  body.po-document-pdf-pages table.annexure-table tr.terms-row-continued > td,
+  body.po-document-pdf-pages table.annexure-table tr.terms-row-continued > th {
+    border-top: none !important;
+  }
+  body.po-document-pdf-pages table.annexure-table tr.terms-row-continued td.sno-col,
+  body.po-document-pdf-pages table.annexure-table tr.terms-row-continued td.head-col {
+    border-bottom: none !important;
+  }
+  body.po-document-pdf-pages table.annexure-table tbody tr.terms-row:not(.terms-row-continued) + tr.terms-row-continued > td {
+    border-top: none !important;
   }
   table.annexure-table td p,
   table.annexure-table td ul,
@@ -802,6 +822,52 @@ export const PO_STYLES = `
   }
   table.terms-compact th,
   table.terms-compact td { padding: 5px 7px; font-size: 11px; }
+  /* PDF paginated pages — tighter terms so long Scope of Work fits with less overlap */
+  body.po-document-pdf-pages table.terms-compact th,
+  body.po-document-pdf-pages table.terms-compact td {
+    padding: 2px 4px;
+    font-size: 9.5px;
+    line-height: 1.22;
+  }
+  body.po-document-pdf-pages table.terms-compact th.head-col {
+    font-size: 9.5px;
+    vertical-align: top;
+  }
+  body.po-document-pdf-pages table.terms-compact td p,
+  body.po-document-pdf-pages table.terms-compact td ul,
+  body.po-document-pdf-pages table.terms-compact td ol {
+    margin: 1px 0;
+    line-height: 1.22;
+  }
+  body.po-document-pdf-pages table.terms-compact td ul,
+  body.po-document-pdf-pages table.terms-compact td ol {
+    padding-left: 14px;
+    margin: 1px 0 2px;
+  }
+  body.po-document-pdf-pages table.terms-compact td li {
+    margin: 0;
+    padding: 0;
+  }
+  body.po-document-pdf-pages table.terms-compact tbody tr {
+    height: auto;
+  }
+  body.po-document-pdf-pages table.terms-compact tbody td,
+  body.po-document-pdf-pages table.terms-compact tbody th {
+    height: auto;
+    min-height: 0;
+  }
+  body.po-document-pdf-pages .table-frame {
+    margin-bottom: 0;
+  }
+  body.po-document-pdf-pages .pdf-content .table-frame + .table-frame {
+    margin-top: 0;
+  }
+  body.po-document-pdf-pages table.annexure-table th,
+  body.po-document-pdf-pages table.annexure-table td {
+    padding: 2px 4px;
+    font-size: 9.5px;
+    line-height: 1.22;
+  }
   table.annexure-table th,
   table.annexure-table td {
     padding: 3px 5px;

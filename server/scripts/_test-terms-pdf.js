@@ -40,6 +40,14 @@ function longTermsHtml() {
 <ul>${bullets(9, 'Support')}</ul>`;
 }
 
+function longTermsDivHtml() {
+  return Array.from(
+    { length: 18 },
+    (_, i) =>
+      `<div><strong>Clause ${i + 1}:</strong> Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam.</div>`
+  ).join('');
+}
+
 function longAnnexureHtml() {
   return `
 <p><strong>Scope of Work:</strong></p>
@@ -108,6 +116,15 @@ const CASES = [
       termsClauses: [
         { termsHeader: 'Payment', termsDescription: '<p>Net 30.</p>' },
         { termsHeader: 'Service Level', termsDescription: longTermsHtml() },
+      ],
+    }),
+  },
+  {
+    name: 'long-terms-div',
+    po: basePo({
+      termsClauses: [
+        { termsHeader: 'Payment', termsDescription: '<p>Net 30.</p>' },
+        { termsHeader: 'General Terms', termsDescription: longTermsDivHtml() },
       ],
     }),
   },

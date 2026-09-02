@@ -682,68 +682,88 @@ function termRowHtml(term, po, index) {
     </tr>`;
 }
 
-/**
- * Split rich-text term descriptions into flowable blocks (paragraphs / bullets)
- * so PDF packing can paginate without clipping or footer overlap.
- */
-function splitTermDescriptionParts(html) {
+function tokenizeDescriptionSegment(segment) {
+  const seg = String(segment || '').trim();
+  if (!seg) return [];
+
+  const blockRe = /<(p|div|h[1-6]|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gi;
+  const blocks = [...seg.matchAll(blockRe)].map((m) => ({
+    html: m[0],
+    kind: /^h[1-6]/i.test(m[1]) ? 'heading' : 'block',
+  }));
+  if (blocks.length) return blocks;
+
+  const brParts = seg.split(/(?:<br\s*\/?>\s*){2,}/i).map((s) => s.trim()).filter(Boolean);
+  if (brParts.length > 1) return brParts.map((html) => ({ html, kind: 'block' }));
+
+  return [{ html: seg, kind: 'block' }];
+}
+
+function tokenizeDescriptionHtml(html) {
   const raw = String(html || '').trim();
-  if (!raw) return [''];
+  if (!raw) return [];
 
-  const flatTokens = [];
-
+  const tokens = [];
   const listRe = /<(ul|ol)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   let cursor = 0;
   let listMatch;
   while ((listMatch = listRe.exec(raw)) !== null) {
-    const before = raw.slice(cursor, listMatch.index);
-    if (before.trim()) {
-      const ps = [...before.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].map((m) => m[0]);
-      if (ps.length) ps.forEach((p) => flatTokens.push({ html: p, kind: 'p' }));
-      else flatTokens.push({ html: before.trim(), kind: 'block' });
-    }
+    tokenizeDescriptionSegment(raw.slice(cursor, listMatch.index)).forEach((t) => tokens.push(t));
     const lis = [...listMatch[2].matchAll(/<li\b[^>]*>[\s\S]*?<\/li>/gi)].map((m) => m[0]);
-    lis.forEach((li) => flatTokens.push({ html: li, kind: 'li' }));
+    lis.forEach((li) => tokens.push({ html: li, kind: 'li' }));
     cursor = listMatch.index + listMatch[0].length;
   }
-  const tail = raw.slice(cursor);
-  if (tail.trim()) {
-    const ps = [...tail.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].map((m) => m[0]);
-    if (ps.length) ps.forEach((p) => flatTokens.push({ html: p, kind: 'p' }));
-    else flatTokens.push({ html: tail.trim(), kind: 'block' });
-  }
+  tokenizeDescriptionSegment(raw.slice(cursor)).forEach((t) => tokens.push(t));
+  return tokens;
+}
 
-  if (!flatTokens.length) {
-    const ps = [...raw.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].map((m) => m[0]);
-    if (ps.length > 1) return ps;
-    return [raw];
-  }
+function isHeadingToken(tok) {
+  if (tok.kind === 'heading') return true;
+  const h = tok.html;
+  return (
+    /<strong\b/i.test(h) ||
+    /:\s*<\/(?:p|div|strong|span)>/i.test(h) ||
+    /:\s*<\/(?:p|div)>\s*$/i.test(h)
+  );
+}
+
+function isBulletParagraph(html) {
+  const h = String(html || '').trim();
+  return (
+    /^<p\b[^>]*>\s*(?:&bull;|&#8226;|•|[-*–—]|\d+[.)])\s/i.test(h) ||
+    /^<p\b[^>]*>\s*<span[^>]*>\s*(?:&bull;|&#8226;|•|[-*–—]|\d+[.)])\s/i.test(h)
+  );
+}
+
+function groupDescriptionTokens(tokens) {
+  if (!tokens.length) return [''];
 
   const parts = [];
   let i = 0;
-  while (i < flatTokens.length) {
-    const tok = flatTokens[i];
-    const next = flatTokens[i + 1];
-    const isHeadingPara =
-      tok.kind === 'p' &&
-      (/<strong\b/i.test(tok.html) || /:\s*<\/p>\s*$/i.test(tok.html) || /:\s*<\/strong>\s*<\/p>\s*$/i.test(tok.html));
+  while (i < tokens.length) {
+    const tok = tokens[i];
+    const next = tokens[i + 1];
 
-    if (isHeadingPara && next?.kind === 'li') {
+    if (isHeadingToken(tok) && (next?.kind === 'li' || isBulletParagraph(next?.html))) {
       let listHtml = '';
       let j = i + 1;
-      while (flatTokens[j]?.kind === 'li') {
-        listHtml += flatTokens[j].html;
+      while (j < tokens.length && (tokens[j]?.kind === 'li' || isBulletParagraph(tokens[j]?.html))) {
+        listHtml += tokens[j].html;
         j += 1;
       }
-      parts.push(`${tok.html}<ul>${listHtml}</ul>`);
+      if (tokens[i + 1]?.kind === 'li') {
+        parts.push(`${tok.html}<ul>${listHtml}</ul>`);
+      } else {
+        parts.push(tok.html + listHtml);
+      }
       i = j;
       continue;
     }
     if (tok.kind === 'li') {
       let listHtml = tok.html;
       let j = i + 1;
-      while (flatTokens[j]?.kind === 'li') {
-        listHtml += flatTokens[j].html;
+      while (tokens[j]?.kind === 'li') {
+        listHtml += tokens[j].html;
         j += 1;
       }
       parts.push(`<ul>${listHtml}</ul>`);
@@ -753,7 +773,27 @@ function splitTermDescriptionParts(html) {
     parts.push(tok.html);
     i += 1;
   }
-  return parts.length ? parts : [raw];
+  return parts.length ? parts : [''];
+}
+
+function ensurePartsPreserveContent(rawHtml, parts) {
+  const rawLen = stripHtmlToText(rawHtml).length;
+  if (!rawLen) return [''];
+  const partsLen = parts.reduce((sum, p) => sum + stripHtmlToText(p).length, 0);
+  if (!parts.length || partsLen < rawLen * 0.85) return [String(rawHtml).trim()];
+  return parts;
+}
+
+/**
+ * Split rich-text term descriptions into flowable blocks (paragraphs / bullet groups).
+ * Keeps one block per heading+list group — no micro-splitting into tiny rows.
+ */
+function splitTermDescriptionParts(html) {
+  const raw = String(html || '').trim();
+  if (!raw) return [''];
+  const tokens = tokenizeDescriptionHtml(raw);
+  const grouped = groupDescriptionTokens(tokens);
+  return ensurePartsPreserveContent(raw, grouped);
 }
 
 /** Split only very long bullet lists so rows stay paginable — keeps normal lists in one cell. */
@@ -763,10 +803,15 @@ function chunkLargeListHtml(partHtml, maxItems = 10) {
 
   const firstLiIdx = partHtml.search(/<li\b/i);
   const prefix = firstLiIdx > 0 ? partHtml.slice(0, firstLiIdx).trim() : '';
+  const prefixOpensList = /<ul\b[^>]*>\s*$/i.test(prefix);
   const chunks = [];
   for (let start = 0; start < lis.length; start += maxItems) {
     const slice = lis.slice(start, start + maxItems).join('');
-    chunks.push(start === 0 && prefix ? `${prefix}<ul>${slice}</ul>` : `<ul>${slice}</ul>`);
+    if (start === 0 && prefix) {
+      chunks.push(prefixOpensList ? `${prefix}${slice}</ul>` : `${prefix}<ul>${slice}</ul>`);
+    } else {
+      chunks.push(`<ul>${slice}</ul>`);
+    }
   }
   return chunks;
 }
@@ -783,7 +828,7 @@ function termPackRowHtml(term, po, termIndex, partIndex, cellHtml, showHeader, b
     </tr>`;
 }
 
-/** Flowable Terms rows for PDF page packing — one row per paragraph/bullet group. */
+/** One PDF row per terms clause — full description in a single cell (matches preview). */
 export function buildTermPackRows(terms, po) {
   const rows = [];
   (terms || []).forEach((term, termIndex) => {
@@ -791,20 +836,45 @@ export function buildTermPackRows(terms, po) {
     if (isQuoteNoHeader(headerRaw)) return;
 
     const descHtml = applyClausePlaceholders(term.termsDescription || term.terms_description || '', po);
-    const parts = splitTermDescriptionParts(descHtml);
+    rows.push(termPackRowHtml(term, po, termIndex, 0, descHtml, true, `term-${termIndex}`));
+  });
+  return rows;
+}
 
-    parts.forEach((partHtml, partIndex) => {
-      const subParts = chunkLargeListHtml(partHtml);
-      subParts.forEach((subHtml, subIndex) => {
-        const isFirst = partIndex === 0 && subIndex === 0;
-        const packPartIndex = isFirst ? 0 : partIndex + subIndex;
-        const blockId = isFirst
-          ? `term-${termIndex}`
-          : `term-${termIndex}-${partIndex}-${subIndex}`;
-        rows.push(
-          termPackRowHtml(term, po, termIndex, packPartIndex, subHtml, isFirst, blockId)
-        );
-      });
+function groupPartsIntoChunks(parts, maxParts = 6) {
+  if (parts.length <= maxParts) return [parts.join('')];
+  const chunks = [];
+  for (let i = 0; i < parts.length; i += maxParts) {
+    chunks.push(parts.slice(i, i + maxParts).join(''));
+  }
+  return chunks;
+}
+
+/** One cell per clause; split only for extreme list length (page-overflow fallback). */
+function buildDescriptionOverflowChunks(descHtml, maxListItems = 25) {
+  const raw = String(descHtml || '').trim();
+  if (!raw) return [''];
+
+  const lis = [...raw.matchAll(/<li\b[^>]*>[\s\S]*?<\/li>/gi)];
+  if (lis.length > maxListItems) {
+    return chunkLargeListHtml(raw, maxListItems);
+  }
+  return [raw];
+}
+
+/** Fallback when a single clause row is taller than one page — split by section / long lists. */
+export function buildTermOverflowPackRows(terms, po) {
+  const rows = [];
+  (terms || []).forEach((term, termIndex) => {
+    const headerRaw = term.termsHeader || term.terms_header || '';
+    if (isQuoteNoHeader(headerRaw)) return;
+
+    const descHtml = applyClausePlaceholders(term.termsDescription || term.terms_description || '', po);
+    const chunks = buildDescriptionOverflowChunks(descHtml);
+    chunks.forEach((chunk, chunkIndex) => {
+      const isFirst = chunkIndex === 0;
+      const blockId = isFirst ? `term-${termIndex}` : `term-${termIndex}-p${chunkIndex}`;
+      rows.push(termPackRowHtml(term, po, termIndex, isFirst ? 0 : chunkIndex, chunk, isFirst, blockId));
     });
   });
   return rows;
@@ -821,7 +891,7 @@ function annexureTheadHtml(docLabel, continued = false) {
             <tr class="col-heads">
               <th class="sno-col">S.NO.</th>
               <th class="head-col">HEADERS</th>
-              <th class="col-terms">TERMS AND CONDITIONS</th>
+              <th class="col-terms">DESCRIPTION</th>
             </tr>
           </thead>`;
 }
@@ -840,23 +910,38 @@ function annexureRowHtml(item, po, idx, partIndex, cellHtml, showHeader, blockId
       </tr>`;
 }
 
-/** Flowable Annexure rows for PDF page packing — one row per paragraph/bullet group. */
+/** One PDF row per annexure clause — full description in a single cell (matches preview). */
 export function buildAnnexurePackRows(annexure, po) {
   const rows = [];
   (annexure || []).forEach((item, idx) => {
     const descHtml = applyClausePlaceholders(item.termsDescription || item.terms_description || '', po);
-    const parts = splitTermDescriptionParts(descHtml);
+    rows.push(annexureRowHtml(item, po, idx, 0, descHtml, true, `annexure-${idx}`));
+  });
+  return rows;
+}
 
-    parts.forEach((partHtml, partIndex) => {
-      const subParts = chunkLargeListHtml(partHtml);
-      subParts.forEach((subHtml, subIndex) => {
-        const isFirst = partIndex === 0 && subIndex === 0;
-        const blockId = isFirst ? `annexure-${idx}` : `annexure-${idx}-${partIndex}-${subIndex}`;
-        rows.push(annexureRowHtml(item, po, idx, isFirst ? 0 : partIndex + subIndex, subHtml, isFirst, blockId));
-      });
+/** Fallback when a single annexure row is taller than one page — split by section / long lists. */
+export function buildAnnexureOverflowPackRows(annexure, po) {
+  const rows = [];
+  (annexure || []).forEach((item, idx) => {
+    const descHtml = applyClausePlaceholders(item.termsDescription || item.terms_description || '', po);
+    const chunks = buildDescriptionOverflowChunks(descHtml);
+    chunks.forEach((chunk, chunkIndex) => {
+      const isFirst = chunkIndex === 0;
+      const blockId = isFirst ? `annexure-${idx}` : `annexure-${idx}-p${chunkIndex}`;
+      rows.push(annexureRowHtml(item, po, idx, isFirst ? 0 : chunkIndex, chunk, isFirst, blockId));
     });
   });
   return rows;
+}
+
+function annexurePreviewRows(annexure, po) {
+  return (annexure || [])
+    .map((item, idx) => {
+      const descHtml = applyClausePlaceholders(item.termsDescription || item.terms_description || '', po);
+      return annexureRowHtml(item, po, idx, 0, descHtml, true, `annexure-${idx}`);
+    })
+    .join('');
 }
 
 function termsSummaryHtml(po, terms, forPdf) {
@@ -940,7 +1025,7 @@ function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
 function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Order', forPdf) {
   if (!annexure?.length) return '';
 
-  const rows = buildAnnexurePackRows(annexure, po).join('');
+  const rows = annexurePreviewRows(annexure, po);
 
   return wrapSheet(
     `
@@ -1174,9 +1259,15 @@ export function buildPoPdfParts(poInput, options = {}) {
     termsTheadContinued: terms.length ? termsTheadHtml(po, true) : '',
     termRows: terms.map((term, index) => termRowHtml(term, po, index)).filter(Boolean),
     termPackRows: buildTermPackRows(terms, po),
+    termOverflowRows: buildTermOverflowPackRows(terms, po),
     annexureThead: annexure.length ? annexureTheadHtml(docLabel, false) : '',
     annexureTheadContinued: annexure.length ? annexureTheadHtml(docLabel, true) : '',
+    annexureSimpleRows: annexure.map((item, idx) => {
+      const descHtml = applyClausePlaceholders(item.termsDescription || item.terms_description || '', po);
+      return annexureRowHtml(item, po, idx, 0, descHtml, true, `annexure-${idx}`);
+    }),
     annexureRows: buildAnnexurePackRows(annexure, po),
+    annexureOverflowRows: buildAnnexureOverflowPackRows(annexure, po),
     annexureIiBlocks: annexureIi.map((row, idx) => annexureIiItemHtml(row, idx, annexureIi.length, docLabel)),
     notesHtml: specialNotesInnerHtml(po, options),
     ackHtml: acknowledgmentInnerHtml(po),

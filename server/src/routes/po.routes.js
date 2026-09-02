@@ -526,7 +526,7 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
       fileName: preferredName,
       signed: isSigned,
       signature: signatureOpts,
-      forceRegenerate: isSigned,
+      forceRegenerate: isSigned || String(po.statusRaw || po.status || '').toLowerCase() === 'draft',
     });
     // Persist regenerated PDF path when previous value was HTML-only
     if (!isSigned && po.pdfPath !== fileName) {

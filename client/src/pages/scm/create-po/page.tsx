@@ -2148,7 +2148,10 @@ export default function CreatePOPage() {
   }, [effectiveGstPercentage]);
 
   const buildPreviewPayload = useCallback(() => {
-    const synced = withSyncedQuoteNo(termsClauses, {
+    const liveTerms = termsDraftRef.current.length ? termsDraftRef.current : termsClauses;
+    const liveAnnexure = annexureDraftRef.current.length ? annexureDraftRef.current : annexureClauses;
+    const liveAnnexureIi = annexureIiDraftRef.current.length ? annexureIiDraftRef.current : annexureIiRows;
+    const synced = withSyncedQuoteNo(liveTerms, {
       ...poTermsDetails,
       siteAddress: poTermsDetails.siteAddress || deliveryAddress,
       paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
@@ -2202,9 +2205,10 @@ export default function CreatePOPage() {
     footerLogo,
     terms: synced.terms,
     termsClauses: synced.terms,
-    annexure: annexureClauses,
-    annexureIiRows: annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row)),
-    annexureIiHtml: serializeAnnexureIi(annexureIiRows.filter((row) => !annexureIiRowIsEmpty(row))),
+    annexure: liveAnnexure,
+    annexureClauses: liveAnnexure,
+    annexureIiRows: liveAnnexureIi.filter((row) => !annexureIiRowIsEmpty(row)),
+    annexureIiHtml: serializeAnnexureIi(liveAnnexureIi.filter((row) => !annexureIiRowIsEmpty(row))),
     poTermsDetails: synced.poTermsDetails,
     purchaseType: documentType,
     vendorName: masterVendor?.name || vendorNameForPo,

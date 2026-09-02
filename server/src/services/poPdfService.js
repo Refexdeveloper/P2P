@@ -304,6 +304,7 @@ function clonePages(pages) {
   );
 }
 
+
 /** Move the last packable unit off an overflowing page onto the next page. */
 function shiftLastUnitFromPage(pages, pageIndex) {
   if (pageIndex < 0 || pageIndex >= pages.length) return false;
@@ -329,6 +330,8 @@ function shiftLastUnitFromPage(pages, pageIndex) {
 
   if (unit.type === 'html') {
     nextPage.unshift(unit);
+  } else if (nextPageHasLaterSection(nextPage, unit.type)) {
+    pages.splice(nextIdx, 0, [unit]);
   } else {
     const nextFirstTable = nextPage.find((b) => b.type !== 'html');
     if (nextFirstTable && nextFirstTable.type !== unit.type) {
@@ -347,8 +350,8 @@ function shiftLastUnitFromPage(pages, pageIndex) {
 }
 
 function buildMeasureHtml(parts) {
-  const termRows = (parts.termPackRows || parts.termRows || []).join('');
-  const annexRows = parts.annexureRows.join('');
+  const termRows = collectMeasureRows(parts.termRows, parts.termOverflowRows).join('');
+  const annexRows = collectMeasureRows(parts.annexureSimpleRows, parts.annexureOverflowRows).join('');
   const annexIi = parts.annexureIiBlocks
     .map((html, i) => `<div data-block="annexure-ii-${i}">${html}</div>`)
     .join('');
@@ -369,12 +372,12 @@ function buildMeasureHtml(parts) {
           </table>
         </div>
         ${
-          (parts.termPackRows || parts.termRows || []).length
+          collectMeasureRows(parts.termRows, parts.termOverflowRows).length
             ? `<div class="table-frame"><table class="terms terms-compact po-table" id="measure-terms">${parts.termsThead}<tbody>${termRows}</tbody></table></div>`
             : ''
         }
         ${
-          parts.annexureRows.length
+          collectMeasureRows(parts.annexureSimpleRows, parts.annexureOverflowRows).length
             ? `<div class="table-frame"><table class="terms annexure-table po-table" id="measure-annexure">${parts.annexureThead}<tbody>${annexRows}</tbody></table></div>`
             : ''
         }
@@ -397,9 +400,53 @@ function heightOf(map, id, fallback = 48) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-/** Measured row height + buffer for wrapped text in the final PDF layout. */
+/** Measured row height + small buffer for page packing (collision repair handles overlap). */
 function packRowHeight(map, id, fallback = 48, scale = 1) {
-  return (heightOf(map, id, fallback) * 1.15 + 12) * scale;
+  return (heightOf(map, id, fallback) * 1.03 + 4) * scale;
+}
+
+function rowBlockId(rowHtml, fallback) {
+  return rowHtml.match(/data-block="([^"]+)"/)?.[1] || fallback;
+}
+
+/** Unique rows for height measurement (preview rows + expanded pack rows). */
+function collectMeasureRows(simpleRows, packRows) {
+  const byBlock = new Map();
+  for (const row of [...(simpleRows || []), ...(packRows || [])]) {
+    const id = rowBlockId(row, '');
+    if (id) byBlock.set(id, row);
+  }
+  return [...byBlock.values()];
+}
+
+const SECTION_ORDER = { 'price-table': 0, 'terms-table': 1, 'annexure-table': 2, html: 3 };
+
+function nextPageHasLaterSection(nextPage, unitType) {
+  if (!nextPage?.length) return false;
+  const unitOrder = SECTION_ORDER[unitType] ?? 1;
+  return nextPage.some((block) => (SECTION_ORDER[block.type] ?? 3) > unitOrder);
+}
+
+/** One row per clause; use overflow chunks only when a row is taller than one page. */
+function resolveFlowableRows(simpleRows, overflowRows, heights, contentMaxPx, scale = 1, _attrName = 'data-term') {
+  if (!simpleRows?.length) return [];
+  const footerSlack = Math.ceil((8 * 96) / 25.4) * scale;
+  const maxRowH = (contentMaxPx - footerSlack) * 0.92;
+  const out = [];
+  for (let i = 0; i < simpleRows.length; i += 1) {
+    const simple = simpleRows[i];
+    const blockId = rowBlockId(simple, `row-${i}`);
+    const rowH = packRowHeight(heights, blockId, 48, scale);
+    const idx = simple.match(/data-(?:term|annexure)="(\d+)"/)?.[1] ?? String(i);
+    const attrName = simple.includes('data-annexure=') ? 'data-annexure' : 'data-term';
+    const expanded = (overflowRows || []).filter((r) => r.includes(`${attrName}="${idx}"`));
+    if (expanded.length > 1 && rowH > maxRowH * 0.85) {
+      out.push(...expanded);
+    } else {
+      out.push(simple);
+    }
+  }
+  return out;
 }
 
 function newTableBlock(type, continued = false) {
@@ -409,7 +456,7 @@ function newTableBlock(type, continued = false) {
 function packPoPages(parts, heights, scale = 1) {
   const layout = computePageLayout(heights);
   const contentH = layout.contentMaxPx;
-  const slack = Math.ceil((10 * 96) / 25.4) * scale;
+  const slack = Math.ceil((8 * 96) / 25.4) * scale;
   const tableGap = Math.ceil((2 * 96) / 25.4);
 
   const pages = [];
@@ -478,7 +525,7 @@ function packPoPages(parts, heights, scale = 1) {
 
       ensureBlock();
       block.rows.push(rowHtml);
-      used += rowH + (block.rows.length === 1 ? 0 : 0);
+      used += rowH;
     });
   };
 
@@ -531,7 +578,11 @@ function packPoPages(parts, heights, scale = 1) {
     used += totalsH;
   }
 
-  const termPackRows = parts.termPackRows || parts.termRows || [];
+  const termPackRows =
+    (parts.resolvedTermRows?.length ? parts.resolvedTermRows : null) ||
+    parts.termRows ||
+    parts.termPackRows ||
+    [];
   if (termPackRows.length) {
     packTableSection({
       rows: termPackRows,
@@ -540,18 +591,21 @@ function packPoPages(parts, heights, scale = 1) {
       defaultRowH: 36,
       forceNewSection: true,
     });
-    flush();
   }
 
-  if (parts.annexureRows.length) {
+  const annexurePackRows =
+    (parts.resolvedAnnexureRows?.length ? parts.resolvedAnnexureRows : null) ||
+    parts.annexureSimpleRows ||
+    parts.annexureRows ||
+    [];
+  if (annexurePackRows.length) {
     packTableSection({
-      rows: parts.annexureRows,
+      rows: annexurePackRows,
       tableType: 'annexure-table',
       theadH: heights.annexureThead || 48,
       defaultRowH: 36,
       forceNewSection: true,
     });
-    flush();
   }
 
   parts.annexureIiBlocks.forEach((_, i) => {
@@ -706,17 +760,37 @@ async function paginatePoHtml(browser, po, options) {
   await measurePage.close();
 
   const layout = computePageLayout(heights);
+  const packParts = {
+    ...parts,
+    resolvedTermRows: resolveFlowableRows(
+      parts.termPackRows || parts.termRows,
+      parts.termOverflowRows,
+      heights,
+      layout.contentMaxPx,
+      1,
+      'data-term'
+    ),
+    resolvedAnnexureRows: resolveFlowableRows(
+      parts.annexureRows || parts.annexureSimpleRows,
+      parts.annexureOverflowRows,
+      heights,
+      layout.contentMaxPx,
+      1,
+      'data-annexure'
+    ),
+  };
+
   const checkPage = await browser.newPage();
   await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
 
-  let packScale = 1.1;
+  let packScale = 1.0;
   let pages = [];
-  const maxAttempts = 3;
-  const maxRepairs = 20;
+  const maxAttempts = 4;
+  const maxRepairs = 30;
 
   try {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      pages = clonePages(packPoPages(parts, heights, packScale));
+      pages = clonePages(packPoPages(packParts, heights, packScale));
 
       for (let repair = 0; repair < maxRepairs; repair += 1) {
         const draftHtml = wrapPoHtmlDocument(
@@ -893,6 +967,7 @@ function looksLikePdfFile(filePath) {
  */
 export async function ensurePoPdf(po, options = {}) {
   const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || options.signed);
+  const isDraft = String(po.statusRaw || po.status || '').toLowerCase() === 'draft';
   const preferredName =
     options.fileName ||
     (isSigned ? po.signedPdfPath : null) ||
@@ -901,7 +976,17 @@ export async function ensurePoPdf(po, options = {}) {
   const pdfName = String(preferredName).replace(/\.html$/i, '.pdf');
   const pdfPath = path.join(PO_UPLOAD_DIR, path.basename(pdfName));
 
-  if (fs.existsSync(pdfPath) && looksLikePdfFile(pdfPath) && !options.forceRegenerate) {
+  const pdfMtime = fs.existsSync(pdfPath) ? fs.statSync(pdfPath).mtimeMs : 0;
+  const poUpdatedMs = Number(po.updatedAtMs || 0);
+  const pdfStale = poUpdatedMs > 0 && pdfMtime > 0 && poUpdatedMs > pdfMtime + 500;
+
+  if (
+    fs.existsSync(pdfPath) &&
+    looksLikePdfFile(pdfPath) &&
+    !options.forceRegenerate &&
+    !isDraft &&
+    !pdfStale
+  ) {
     return { fullPath: pdfPath, fileName: path.basename(pdfName), isHtml: false };
   }
 

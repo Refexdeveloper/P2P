@@ -1,10 +1,6 @@
 import { useState, useEffect, FormEvent, ChangeEvent, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-
-const API_URL = (import.meta.env.VITE_API_URL || 'https://p2p-backend-645830234926.asia-south1.run.app').replace(
-  /\/$/,
-  ''
-);
+import { API_BASE_URL } from '../../../services/api';
 
 type VendorField = { id: string; label: string; type: string; core?: boolean; required?: boolean };
 
@@ -90,7 +86,7 @@ export default function VendorSubmitQuotePage() {
 
   useEffect(() => {
     if (!token) return;
-    fetch(`${API_URL}/api/rfq/quote/${token}`)
+    fetch(`${API_BASE_URL}/api/rfq/quote/${token}`)
       .then((r) => r.json())
       .then((res) => {
         if (res.message && !res.data) throw new Error(res.message);
@@ -179,7 +175,7 @@ export default function VendorSubmitQuotePage() {
         quotedUnitPrice: Number(line.quotedUnitPrice) || 0,
         quotedTotal: (Number(line.quotedUnitPrice) || 0) * (Number(line.quantity) || 0),
       }));
-      const res = await fetch(`${API_URL}/api/rfq/quote/${token}`, {
+      const res = await fetch(`${API_BASE_URL}/api/rfq/quote/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

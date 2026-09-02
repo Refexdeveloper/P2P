@@ -765,6 +765,8 @@ async function enrichPO(row) {
     signerComments: row.signer_comments,
     signedAt: row.signed_at ? formatDateTime(row.signed_at) : null,
     createdAt: formatDate(row.created_at),
+    updatedAt: row.updated_at ? formatDateTime(row.updated_at) : null,
+    updatedAtMs: row.updated_at ? new Date(row.updated_at).getTime() : 0,
     createdByUserId: row.created_by || null,
     createdBy: creator.name || 'SCM Buyer',
     createdByRole: creator.role || 'SCM Buyer',

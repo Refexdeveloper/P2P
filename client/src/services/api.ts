@@ -1,7 +1,7 @@
 const LIVE_API = 'https://p2p-backend-645830234926.asia-south1.run.app';
-const FROM_ENV = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-// Local `npm run dev` always uses the Vite /api proxy (see vite.config.ts → live Cloud Run).
-const API_URL = (import.meta.env.DEV ? '' : FROM_ENV || LIVE_API).replace(/\/$/, '');
+/** API base URL — set VITE_API_URL in client/.env (see .env.example). */
+export const API_BASE_URL = String(import.meta.env.VITE_API_URL || LIVE_API).replace(/\/$/, '');
+const API_URL = API_BASE_URL;
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
