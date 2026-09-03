@@ -137,6 +137,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [cancelError, setCancelError] = useState('');
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [retrievingKey, setRetrievingKey] = useState<string | null>(null);
   const csvFileRef = useRef<HTMLInputElement>(null);
   const cancelFileRef = useRef<HTMLInputElement>(null);
 
@@ -285,6 +286,24 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
       return;
     }
     navigate(`/scm/create-po?poId=${poId}&from=create-po`);
+  };
+
+  const handleRetrieveCancelled = async (pr: BucketRow) => {
+    if (!pr.poId) return;
+    const ok = window.confirm(
+      `Retrieve ${pr.poNumber || 'this cancelled PO'} as a draft?\n\nYou can edit and resubmit it for approval.`
+    );
+    if (!ok) return;
+    setRetrievingKey(pr.key);
+    setError('');
+    try {
+      await poApi.retrieve(pr.poId);
+      openEditDraft(pr.poId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to retrieve cancelled PO');
+    } finally {
+      setRetrievingKey(null);
+    }
   };
 
   const openImportModal = async (row?: BucketRow) => {
@@ -622,6 +641,17 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                   className="px-2.5 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold whitespace-nowrap"
                                 >
                                   Edit Draft
+                                </button>
+                              )}
+                              {pr.status === 'Cancelled' && pr.poId && (
+                                <button
+                                  type="button"
+                                  disabled={retrievingKey === pr.key}
+                                  onClick={() => void handleRetrieveCancelled(pr)}
+                                  className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap disabled:opacity-50"
+                                  title="Retrieve cancelled PO as draft"
+                                >
+                                  {retrievingKey === pr.key ? 'Retrieving…' : 'Retrieve'}
                                 </button>
                               )}
                               {pr.poId && (

@@ -1081,6 +1081,10 @@ export const poApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  retrieve: (poId: number) =>
+    request<{ data: unknown; message: string }>(`/api/po/${poId}/retrieve`, {
+      method: 'POST',
+    }),
   update: (poId: number, body: Record<string, unknown>) =>
     request<{ data: Record<string, unknown>; message: string }>(`/api/po/${poId}`, {
       method: 'PUT',

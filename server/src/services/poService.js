@@ -813,6 +813,7 @@ function formatApprovalStage(stage) {
     PO_REJECTED: 'SCM Manager Approval',
     PO_SENT_BACK: 'SCM Manager Approval',
     PO_CANCELLED: 'PO Cancellation',
+    PO_RETRIEVED: 'PO Retrieved as Draft',
     HOD_REVIEW: 'HOD / Manager Approval',
     PR_MANAGER_REVIEW: 'L2 Manager Approval',
     CFO_REVIEW: 'CFO Approval',
@@ -1506,7 +1507,7 @@ export async function createPurchaseOrder(user, prId, body) {
   if (!pr) throw new Error('PR not found');
 
   const [existing] = await pool.query(
-    `SELECT id FROM purchase_orders WHERE pr_id = ? AND status IN ('pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')`,
+    `SELECT id FROM purchase_orders WHERE pr_id = ? AND status IN ('draft', 'pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')`,
     [prId]
   );
   if (existing.length) throw new Error('A purchase order already exists for this PR');
@@ -3431,6 +3432,99 @@ export async function cancelPurchaseOrder(user, poId, body = {}) {
   return updated;
 }
 
+/** Restore a cancelled PO as an editable draft (keeps PO number + line items). */
+export async function retrieveCancelledPurchaseOrder(user, poId) {
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+    throw new Error('You are not allowed to retrieve cancelled purchase orders');
+  }
+
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  const row = rows[0];
+  if (row.status !== 'cancelled') {
+    throw new Error('Only cancelled POs can be retrieved as draft');
+  }
+
+  if (row.pr_id) {
+    const [otherDraft] = await pool.query(
+      `SELECT id, po_number FROM purchase_orders
+       WHERE pr_id = ? AND status = 'draft' AND id <> ? LIMIT 1`,
+      [row.pr_id, poId]
+    );
+    if (otherDraft.length) {
+      throw new Error(
+        `A draft PO already exists for this PR (${otherDraft[0].po_number}). Open that draft instead.`
+      );
+    }
+    const [active] = await pool.query(
+      `SELECT id, po_number FROM purchase_orders
+       WHERE pr_id = ?
+         AND status IN ('pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')
+         AND id <> ?
+       LIMIT 1`,
+      [row.pr_id, poId]
+    );
+    if (active.length) {
+      throw new Error(`An active PO already exists for this PR (${active[0].po_number}).`);
+    }
+  }
+
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'draft',
+       signed_pdf_path = NULL,
+       signer_id = NULL,
+       signature_name = NULL,
+       signature_image_path = NULL,
+       signer_comments = NULL,
+       signed_at = NULL,
+       pdf_path = NULL,
+       cancellation_reason = NULL,
+       cancellation_attachments_json = NULL,
+       cancelled_by = NULL,
+       cancelled_at = NULL,
+       vendor_acceptance_status = NULL,
+       vendor_acceptance_token = NULL,
+       vendor_acceptance_mode = NULL,
+       vendor_acceptance_remarks = NULL,
+       vendor_acceptance_file_name = NULL,
+       vendor_acceptance_file_path = NULL,
+       created_by = ?,
+       updated_at = NOW()
+     WHERE id = ?`,
+    [user.id, poId]
+  );
+
+  if (row.pr_id) {
+    await pool.query(
+      `UPDATE purchase_requests
+       SET status = 'APPROVED', current_stage = 'PO_CREATED', updated_at = NOW()
+       WHERE id = ?`,
+      [row.pr_id]
+    );
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 2);
+    await pool.query(
+      `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, status, due_date)
+       VALUES (?, 'PO_REVISION', 'SCM Buyer', 'pending', ?)`,
+      [row.pr_id, dueDate.toISOString().split('T')[0]]
+    );
+
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_RETRIEVED', ?, 'retrieved', ?)`,
+      [
+        row.pr_id,
+        user.id,
+        `Cancelled PO ${row.po_number} retrieved as draft for revision`,
+      ]
+    );
+  }
+
+  return getPurchaseOrderById(poId);
+}
+
 export async function rejectPurchaseOrder(user, poId, remarks) {
   if (user.role !== 'SCM Manager') throw new Error('Only SCM Manager can reject purchase orders');
 
@@ -3491,7 +3585,8 @@ export async function updatePurchaseOrder(user, poId, body) {
 
   const canManagerEdit = user.role === 'SCM Manager' && existing.status === 'pending_approval';
   const canBuyerEdit = user.role === 'SCM Buyer' && existing.status === 'pending_buyer_verify';
-  const canBuyerRevise = user.role === 'SCM Buyer' && existing.status === 'draft';
+  const canBuyerRevise =
+    (user.role === 'SCM Buyer' || user.role === 'Super Admin') && existing.status === 'draft';
   if (!canManagerEdit && !canBuyerEdit && !canBuyerRevise) {
     throw new Error('You are not allowed to edit this purchase order');
   }

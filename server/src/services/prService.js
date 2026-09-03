@@ -399,6 +399,8 @@ function formatPrApprovalStage(stage, prFlow = 'standard') {
     PO_REJECTED: 'SCM Manager Approval',
     PO_SENT_BACK: 'SCM Manager Approval',
     PO_UPDATED: 'PO Updated',
+    PO_CANCELLED: 'PO Cancellation',
+    PO_RETRIEVED: 'PO Retrieved as Draft',
   };
   return (
     labels[stage] ||

@@ -152,6 +152,8 @@ function statusColor(status: string) {
       return 'bg-indigo-100 text-indigo-800';
     case 'draft':
       return 'bg-slate-100 text-slate-700';
+    case 'cancelled':
+      return 'bg-rose-100 text-rose-700';
     default:
       return 'bg-gray-100 text-gray-700';
   }
@@ -192,6 +194,7 @@ export default function TrackPoPage() {
   const [oldPoImport, setOldPoImport] = useState(true);
   const [readyOptions, setReadyOptions] = useState<ReadyOption[]>([]);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [retrievingKey, setRetrievingKey] = useState<string | null>(null);
   const [toast, setToast] = useState('');
 
   useEffect(() => {
@@ -397,6 +400,30 @@ export default function TrackPoPage() {
     if (opts?.fromCsv) qs.set('from', 'csv');
     if (opts?.legacy) qs.set('legacy', '1');
     navigate(`/scm/create-po?${qs.toString()}`);
+  };
+
+  const openEditDraft = (poId: number) => {
+    navigate(`/scm/create-po?poId=${poId}&from=create-po`);
+  };
+
+  const handleRetrieveCancelled = async (row: TrackRow) => {
+    if (!row.poId) return;
+    const ok = window.confirm(
+      `Retrieve ${row.poNumber || 'this cancelled PO'} as a draft?\n\nYou can edit and resubmit it for approval.`
+    );
+    if (!ok) return;
+    setRetrievingKey(row.key);
+    setError('');
+    try {
+      await poApi.retrieve(row.poId);
+      setToast(`${row.poNumber || 'PO'} retrieved as draft`);
+      setTimeout(() => setToast(''), 3500);
+      openEditDraft(row.poId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to retrieve cancelled PO');
+    } finally {
+      setRetrievingKey(null);
+    }
   };
 
   const openImportModal = async (prId?: number) => {
@@ -702,6 +729,26 @@ export default function TrackPoPage() {
                                     Import
                                   </button>
                                 </>
+                              )}
+                              {row.status === 'draft' && row.poId && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditDraft(row.poId!)}
+                                  className="px-3 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold"
+                                >
+                                  Edit Draft
+                                </button>
+                              )}
+                              {row.status === 'cancelled' && row.poId && (
+                                <button
+                                  type="button"
+                                  disabled={retrievingKey === row.key}
+                                  onClick={() => void handleRetrieveCancelled(row)}
+                                  className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold disabled:opacity-50"
+                                  title="Retrieve cancelled PO as draft"
+                                >
+                                  {retrievingKey === row.key ? 'Retrieving…' : 'Retrieve'}
+                                </button>
                               )}
                               {row.poId && (
                                 <button

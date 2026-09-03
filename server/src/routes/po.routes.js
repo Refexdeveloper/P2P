@@ -16,6 +16,7 @@ import {
   rejectPurchaseOrder,
   sendBackPurchaseOrder,
   cancelPurchaseOrder,
+  retrieveCancelledPurchaseOrder,
   finalVerifyPurchaseOrder,
   rejectBuyerFinalVerify,
   sendBackBuyerFinalVerify,
@@ -645,6 +646,15 @@ router.post('/:id/cancel', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin
   try {
     const data = await cancelPurchaseOrder(req.user, Number(req.params.id), req.body || {});
     res.json({ data, message: 'PO cancelled successfully' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/retrieve', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+  try {
+    const data = await retrieveCancelledPurchaseOrder(req.user, Number(req.params.id));
+    res.json({ data, message: 'Cancelled PO retrieved as draft' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
