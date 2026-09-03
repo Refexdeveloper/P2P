@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled } from './gcsStorage.js';
 import { formatDate, formatDateTime } from '../utils/constants.js';
 import { sendVendorInvoiceRequestNotification } from './emailService.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
@@ -49,13 +50,17 @@ function parseHistory(raw) {
   return [];
 }
 
-function saveBase64File(dir, prefix, fileName, fileData) {
+async function saveBase64File(dir, prefix, fileName, fileData, gcsFolder) {
   if (!fileData || !fileName) return { fileName: null, filePath: null };
   const raw = String(fileData).includes(',') ? String(fileData).split(',')[1] : String(fileData);
   const buffer = Buffer.from(raw, 'base64');
   const safe = String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
   const stored = `${prefix}_${Date.now()}_${safe}`;
-  fs.writeFileSync(path.join(dir, stored), buffer);
+  if (gcsFolder && gcsEnabled()) {
+    await uploadToGcs(`${gcsFolder}/${stored}`, buffer);
+  } else {
+    fs.writeFileSync(path.join(dir, stored), buffer);
+  }
   return { fileName: safe, filePath: stored };
 }
 
@@ -601,7 +606,7 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
   if (!body.fileName || !body.fileData) throw new Error('Invoice file is required');
 
   const mode = body.mode === 'email' ? 'email' : 'manual';
-  const { fileName, filePath } = saveBase64File(INVOICE_DIR, `inv_${invoiceId}`, body.fileName, body.fileData);
+  const { fileName, filePath } = await saveBase64File(INVOICE_DIR, `inv_${invoiceId}`, body.fileName, body.fileData, 'invoices');
   const history = [
     ...parseHistory(inv.approval_history),
     {
@@ -778,7 +783,7 @@ export async function uploadPayment(user, invoiceId, body) {
   if (!body.utrReference?.trim()) throw new Error('UTR / reference is required');
 
   const { fileName, filePath } = body.fileName && body.fileData
-    ? saveBase64File(PAYMENT_DIR, `pay_${invoiceId}`, body.fileName, body.fileData)
+    ? await saveBase64File(PAYMENT_DIR, `pay_${invoiceId}`, body.fileName, body.fileData, 'invoices')
     : { fileName: null, filePath: null };
 
   const history = [
@@ -1089,13 +1094,18 @@ export async function submitInvoiceByToken(token, body = {}) {
   );
 }
 
-export function resolveInvoiceFile(invoiceId) {
-  return pool
-    .query(`SELECT invoice_file_name, invoice_file_path FROM invoices WHERE id = ?`, [invoiceId])
-    .then(([rows]) => {
-      if (!rows.length || !rows[0].invoice_file_path) return null;
-      const fullPath = path.join(INVOICE_DIR, rows[0].invoice_file_path);
-      if (!fs.existsSync(fullPath)) return null;
-      return { fullPath, fileName: rows[0].invoice_file_name || 'invoice.pdf' };
-    });
+export async function resolveInvoiceFile(invoiceId) {
+  const [rows] = await pool.query(
+    `SELECT invoice_file_name, invoice_file_path FROM invoices WHERE id = ?`,
+    [invoiceId]
+  );
+  if (!rows.length || !rows[0].invoice_file_path) return null;
+  const fileName = rows[0].invoice_file_name || 'invoice.pdf';
+  if (gcsEnabled()) {
+    const buf = await downloadFromGcs(`invoices/${path.basename(rows[0].invoice_file_path)}`);
+    if (buf?.length) return { fullPath: null, fileName, buffer: buf };
+  }
+  const fullPath = path.join(INVOICE_DIR, rows[0].invoice_file_path);
+  if (fs.existsSync(fullPath)) return { fullPath, fileName };
+  return null;
 }

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PR_UPLOAD_DIR = path.join(__dirname, '../../uploads/pr-attachments');
@@ -70,18 +71,22 @@ export async function savePrAttachments(prId, userId, files, db = pool) {
     const { fileName, buffer, mimeType, size } = normalizeIncomingFile(file);
     const storedName = `${prId}_${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-    try {
-      ensureUploadDir();
-      fs.writeFileSync(path.join(PR_UPLOAD_DIR, storedName), buffer);
-    } catch (err) {
-      console.warn('PR attachment disk write skipped (will keep DB copy):', err.message);
+    if (useGcsForNewUploads()) {
+      await uploadToGcs(`pr-attachments/${storedName}`, buffer, mimeType || 'application/octet-stream');
+    } else {
+      try {
+        ensureUploadDir();
+        fs.writeFileSync(path.join(PR_UPLOAD_DIR, storedName), buffer);
+      } catch (err) {
+        console.warn('PR attachment disk write skipped (will keep DB copy):', err.message);
+      }
     }
 
     const [result] = await db.query(
       `INSERT INTO pr_attachments
        (pr_id, file_name, file_path, file_size, mime_type, file_data, uploaded_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [prId, fileName, storedName, size, mimeType, buffer, userId || null]
+      [prId, fileName, storedName, size, mimeType, useGcsForNewUploads() ? null : buffer, userId || null]
     );
 
     saved.push({
@@ -111,21 +116,29 @@ export async function getPrAttachmentFile(prId, attachmentId) {
   if (!rows.length) throw new Error('Attachment not found');
 
   const row = rows[0];
+  const mimeType = row.mime_type || 'application/octet-stream';
+  const fileName = row.file_name;
+
+  // Legacy MySQL blob
   if (row.file_data && (Buffer.isBuffer(row.file_data) ? row.file_data.length : row.file_data.length)) {
     return {
-      fileName: row.file_name,
-      mimeType: row.mime_type || 'application/octet-stream',
+      fileName,
+      mimeType,
       buffer: Buffer.isBuffer(row.file_data) ? row.file_data : Buffer.from(row.file_data),
     };
   }
 
+  // New uploads in GCS
+  if (gcsEnabled() && row.file_path) {
+    const buf = await downloadFromGcs(`pr-attachments/${path.basename(row.file_path)}`);
+    if (buf) return { fileName, mimeType, buffer: buf };
+  }
+
   const fullPath = path.join(PR_UPLOAD_DIR, row.file_path || '');
-  if (!fs.existsSync(fullPath)) throw new Error('File not found on server');
-  return {
-    fileName: row.file_name,
-    mimeType: row.mime_type || 'application/octet-stream',
-    buffer: fs.readFileSync(fullPath),
-  };
+  if (fs.existsSync(fullPath)) {
+    return { fileName, mimeType, buffer: fs.readFileSync(fullPath) };
+  }
+  throw new Error('File not found on server');
 }
 
 export async function deletePrAttachment(prId, attachmentId) {
@@ -174,12 +187,18 @@ export async function loadPrAttachmentsForMail(prId) {
     let content = blobToBuffer(row.file_data);
     if (!content?.length && row.file_path) {
       try {
-        const fullPath = path.isAbsolute(String(row.file_path))
-          ? String(row.file_path)
-          : path.join(PR_UPLOAD_DIR, String(row.file_path));
-        if (fs.existsSync(fullPath)) {
-          const buf = fs.readFileSync(fullPath);
-          if (buf.length) content = buf;
+        if (gcsEnabled()) {
+          const buf = await downloadFromGcs(`pr-attachments/${path.basename(String(row.file_path))}`);
+          if (buf?.length) content = buf;
+        }
+        if (!content?.length) {
+          const fullPath = path.isAbsolute(String(row.file_path))
+            ? String(row.file_path)
+            : path.join(PR_UPLOAD_DIR, String(row.file_path));
+          if (fs.existsSync(fullPath)) {
+            const buf = fs.readFileSync(fullPath);
+            if (buf.length) content = buf;
+          }
         }
       } catch {
         /* skip missing file */

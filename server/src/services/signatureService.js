@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled } from './gcsStorage.js';
 import {
   getPreferredScmManagerEmail,
   getPreferredScmManagerName,
@@ -33,6 +34,11 @@ export function saveSignatureFile(buffer, ext, fileBaseName) {
   const fileName = `${fileBaseName}.${ext}`;
   const fullPath = path.join(SIGNATURE_UPLOAD_DIR, fileName);
   fs.writeFileSync(fullPath, buffer);
+  // New uploads also go to GCS
+  if (gcsEnabled()) {
+    uploadToGcs(`signatures/${fileName}`, buffer, `image/${ext === 'jpg' ? 'jpeg' : ext}`)
+      .catch((e) => console.warn('[GCS] signature upload failed:', e.message));
+  }
   return fileName;
 }
 
@@ -56,6 +62,19 @@ export function signatureFileToDataUrl(fileName) {
   const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
   const buffer = fs.readFileSync(fullPath);
   return `data:${mime};base64,${buffer.toString('base64')}`;
+}
+
+/** GCS fallback version — async, used when disk is missing (e.g. Cloud Run). */
+export async function signatureFileToDataUrlAsync(fileName) {
+  if (!fileName) return null;
+  const sync = signatureFileToDataUrl(fileName);
+  if (sync) return sync;
+  if (!gcsEnabled()) return null;
+  const buf = await downloadFromGcs(`signatures/${path.basename(fileName)}`);
+  if (!buf?.length) return null;
+  const ext = path.extname(fileName).slice(1).toLowerCase() || 'png';
+  const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
+  return `data:${mime};base64,${buf.toString('base64')}`;
 }
 
 /** Ensure seed PNG exists under uploads/signatures (copy from assets if needed). */

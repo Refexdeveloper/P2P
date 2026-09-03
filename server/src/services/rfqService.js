@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
 import {
   getPurchaseRequestById,
   completeRequesterTask,
@@ -155,12 +156,10 @@ function ensureUploadDir() {
 }
 
 /**
- * Save quotation file to disk (best-effort) and return DB-ready buffer.
- * Cloud Run disks are ephemeral — quotation_file_data in MySQL is the source of truth.
+ * Save quotation file — GCS for new uploads; legacy disk + MySQL blob when GCS is off.
  */
-function saveQuotationFile(invitationId, round, fileName, base64Data) {
+async function saveQuotationFile(invitationId, round, fileName, base64Data) {
   if (!base64Data || !fileName) return { fileName: null, filePath: null, buffer: null };
-  // Accept raw base64 or data-URL (data:application/pdf;base64,...)
   const raw = String(base64Data).includes(',')
     ? String(base64Data).split(',').pop()
     : String(base64Data);
@@ -174,6 +173,12 @@ function saveQuotationFile(invitationId, round, fileName, base64Data) {
   if (buffer.length > 10 * 1024 * 1024) {
     throw new Error('Quotation file must be under 10MB');
   }
+
+  if (useGcsForNewUploads()) {
+    await uploadToGcs(`rfq-attachments/${storedName}`, buffer);
+    return { fileName: safeName, filePath: storedName, buffer: null };
+  }
+
   try {
     ensureUploadDir();
     fs.writeFileSync(path.join(UPLOAD_DIR, storedName), buffer);
@@ -192,6 +197,15 @@ function bufferFromDiskPath(filePath) {
     if (!fs.existsSync(full)) return null;
     const buf = fs.readFileSync(full);
     return buf.length ? buf : null;
+  } catch {
+    return null;
+  }
+}
+
+async function bufferFromGcs(filePath) {
+  if (!filePath || !gcsEnabled()) return null;
+  try {
+    return await downloadFromGcs(`rfq-attachments/${path.basename(String(filePath))}`);
   } catch {
     return null;
   }
@@ -232,7 +246,17 @@ function hasStoredQuotationBlob(row) {
   return Boolean(mysqlBlobToBuffer(row?.quotation_file_data || row?.file_data));
 }
 
+function hasStoredQuotationFile(row) {
+  if (hasStoredQuotationBlob(row)) return true;
+  return Boolean(String(row?.quotation_file_path || row?.file_path || '').trim());
+}
+
+function quotationBlobForDb(buffer) {
+  return useGcsForNewUploads() ? null : buffer;
+}
+
 async function persistPrimaryQuotationBlob(submissionId, buffer) {
+  if (useGcsForNewUploads()) return;
   if (!submissionId) throw new Error('Quotation submission is missing');
   const blob = mysqlBlobToBuffer(buffer);
   if (!blob?.length) throw new Error('Quotation file data is empty or invalid');
@@ -271,22 +295,24 @@ async function insertExtraQuotationFiles(submissionId, invitationId, round, file
   if (!files?.length || !submissionId) return;
   try {
     for (let i = 0; i < files.length; i++) {
-      const info = saveQuotationFile(invitationId, round, files[i].fileName, files[i].fileData);
+      const info = await saveQuotationFile(invitationId, round, files[i].fileName, files[i].fileData);
       if (!info.filePath && !info.buffer) {
         throw new Error(`Failed to save quotation file ${files[i].fileName}`);
       }
       await pool.query(
         `INSERT INTO vendor_quotation_files (submission_id, file_name, file_path, file_data, sort_order)
          VALUES (?, ?, ?, ?, ?)`,
-        [submissionId, info.fileName, info.filePath, info.buffer, i]
+        [submissionId, info.fileName, info.filePath, useGcsForNewUploads() ? null : info.buffer, i]
       );
-      const [check] = await pool.query(
-        `SELECT LENGTH(file_data) AS n FROM vendor_quotation_files
-         WHERE submission_id = ? AND file_name = ? ORDER BY id DESC LIMIT 1`,
-        [submissionId, info.fileName]
-      );
-      if (!(Number(check[0]?.n) > 0)) {
-        throw new Error(`Quotation file ${files[i].fileName} did not save to the database`);
+      if (!useGcsForNewUploads()) {
+        const [check] = await pool.query(
+          `SELECT LENGTH(file_data) AS n FROM vendor_quotation_files
+           WHERE submission_id = ? AND file_name = ? ORDER BY id DESC LIMIT 1`,
+          [submissionId, info.fileName]
+        );
+        if (!(Number(check[0]?.n) > 0)) {
+          throw new Error(`Quotation file ${files[i].fileName} did not save to the database`);
+        }
       }
     }
   } catch (err) {
@@ -322,18 +348,19 @@ async function persistQuoteFileSet({
   let primaryName = existingPrimaryName || null;
 
   const writePrimary = async (file) => {
-    const info = saveQuotationFile(invitationId, round, file.fileName, file.fileData);
+    const info = await saveQuotationFile(invitationId, round, file.fileName, file.fileData);
     if (!info.filePath && !info.buffer) throw new Error('Failed to save quotation file');
     await pool.query(
       `UPDATE vendor_quotation_submissions
        SET quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?
        WHERE id = ?`,
-      [info.fileName, info.filePath, info.buffer, submissionId]
+      [info.fileName, info.filePath, useGcsForNewUploads() ? null : info.buffer, submissionId]
     );
-    await persistPrimaryQuotationBlob(submissionId, info.buffer);
+    if (!useGcsForNewUploads()) await persistPrimaryQuotationBlob(submissionId, info.buffer);
   };
 
   const finish = async () => {
+    if (useGcsForNewUploads()) return;
     try {
       const [rows] = await pool.query(
         `SELECT LENGTH(quotation_file_data) AS n, quotation_file_path
@@ -592,7 +619,7 @@ function mapSubmissionRow(s) {
     deliveryTerms: s.delivery_terms || '',
     quotationFileName: s.quotation_file_name || '',
     quotationFilePath: s.quotation_file_path || '',
-    hasQuotationFile: hasStoredQuotationBlob(s),
+    hasQuotationFile: hasStoredQuotationFile(s),
     quoteLineItems,
     customFields,
     requesterFields,
@@ -887,7 +914,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
                 `Entered on Create PR by ${user.name || user.email}`,
                 prev.fileName,
                 prev.filePath,
-                fileBuffer,
+                quotationBlobForDb(fileBuffer),
                 JSON.stringify({}),
                 JSON.stringify({ enteredBy: user.name, entryMode: 'create-pr' }),
               ]
@@ -899,7 +926,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
               quote,
               existingPrimaryName: prev.fileName,
             });
-            if (mysqlBlobToBuffer(fileBuffer)) {
+            if (mysqlBlobToBuffer(fileBuffer) && !useGcsForNewUploads()) {
               await persistPrimaryQuotationBlob(ins.insertId, fileBuffer);
             }
           }
@@ -924,7 +951,10 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       `SELECT quotation_file_data FROM vendor_quotation_submissions WHERE id = ?`,
       [meta.submissionId]
     );
-    meta.buffer = mysqlBlobToBuffer(blobRows[0]?.quotation_file_data) || bufferFromDiskPath(meta.filePath);
+    meta.buffer =
+      mysqlBlobToBuffer(blobRows[0]?.quotation_file_data) ||
+      (await bufferFromGcs(meta.filePath)) ||
+      bufferFromDiskPath(meta.filePath);
     try {
       const [extraRows] = await pool.query(
         `SELECT file_name, file_path, file_data, sort_order FROM vendor_quotation_files WHERE submission_id = ?`,
@@ -1002,7 +1032,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       let filePath = null;
       let fileBuffer = null;
       if (quote.quotationFileName && quote.quotationFileData) {
-        const fileInfo = saveQuotationFile(
+        const fileInfo = await saveQuotationFile(
           invitationId,
           quote.round,
           quote.quotationFileName,
@@ -1013,16 +1043,17 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         }
         fileName = fileInfo.fileName;
         filePath = fileInfo.filePath;
-        // Always keep DB blob — Cloud Run disk is ephemeral; emails need this.
-        fileBuffer = fileInfo.buffer;
+        fileBuffer = quotationBlobForDb(fileInfo.buffer);
       } else if (prev?.fileName) {
         fileName = prev.fileName;
         filePath = prev.filePath;
         fileBuffer = mysqlBlobToBuffer(prev.buffer) || bufferFromDiskPath(prev.filePath);
         if (!fileBuffer?.length && !quote.quotationFileData) {
-          throw new Error(
-            `Quotation file for ${name} is missing after deploy. Re-upload the PDF on Create PR and save.`
-          );
+          if (!(useGcsForNewUploads() && prev.filePath)) {
+            throw new Error(
+              `Quotation file for ${name} is missing after deploy. Re-upload the PDF on Create PR and save.`
+            );
+          }
         }
       } else {
         continue;
@@ -1053,14 +1084,14 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         quote,
         existingPrimaryName: fileName,
       });
-      if (fileBuffer) await persistPrimaryQuotationBlob(ins.insertId, fileBuffer);
+      if (fileBuffer && !useGcsForNewUploads()) await persistPrimaryQuotationBlob(ins.insertId, fileBuffer);
       const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: quote.quotationFiles });
       if (prev?.extras?.length && !extraIncoming.length) {
         for (const extra of prev.extras) {
           await pool.query(
             `INSERT INTO vendor_quotation_files (submission_id, file_name, file_path, file_data, sort_order)
              VALUES (?, ?, ?, ?, ?)`,
-            [ins.insertId, extra.fileName, extra.filePath, extra.buffer, extra.sortOrder || 0]
+            [ins.insertId, extra.fileName, extra.filePath, quotationBlobForDb(extra.buffer), extra.sortOrder || 0]
           );
         }
       }
@@ -1487,7 +1518,7 @@ export async function submitVendorQuotation(token, body = {}) {
   const primaryFile = quotationFileName && quotationFileData
     ? { fileName: quotationFileName, fileData: quotationFileData }
     : extraIncoming[0];
-  const fileInfo = saveQuotationFile(inv.id, inv.round, primaryFile.fileName, primaryFile.fileData);
+  const fileInfo = await saveQuotationFile(inv.id, inv.round, primaryFile.fileName, primaryFile.fileData);
   if (!fileInfo.filePath && !fileInfo.buffer) {
     throw new Error('Failed to save quotation file');
   }
@@ -1508,11 +1539,11 @@ export async function submitVendorQuotation(token, body = {}) {
       core.deliveryTerms || '',
       fileInfo.fileName,
       fileInfo.filePath,
-      fileInfo.buffer,
+      quotationBlobForDb(fileInfo.buffer),
       JSON.stringify(customFields),
     ]
   );
-  await persistPrimaryQuotationBlob(ins.insertId, fileInfo.buffer);
+  if (!useGcsForNewUploads()) await persistPrimaryQuotationBlob(ins.insertId, fileInfo.buffer);
   await persistQuoteFileSet({
     submissionId: ins.insertId,
     invitationId: inv.id,
@@ -1573,7 +1604,7 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
 
   let fileInfo = { fileName: '', filePath: null, buffer: null };
   if (body.quotationFileName && body.quotationFileData) {
-    fileInfo = saveQuotationFile(
+    fileInfo = await saveQuotationFile(
       inv.id,
       inv.round,
       body.quotationFileName,
@@ -1602,7 +1633,7 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
         buffer: prevFiles[0].quotation_file_data,
       };
     } else {
-      fileInfo = saveQuotationFile(
+      fileInfo = await saveQuotationFile(
         inv.id,
         inv.round,
         extraIncoming[0].fileName,
@@ -1647,12 +1678,12 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
       core.deliveryTerms || '',
       fileInfo.fileName,
       fileInfo.filePath,
-      fileInfo.buffer,
+      quotationBlobForDb(fileInfo.buffer),
       JSON.stringify(customFields),
       JSON.stringify(requesterFields),
     ]
   );
-  if (fileInfo.buffer) await persistPrimaryQuotationBlob(ins.insertId, fileInfo.buffer);
+  if (fileInfo.buffer && !useGcsForNewUploads()) await persistPrimaryQuotationBlob(ins.insertId, fileInfo.buffer);
   await persistQuoteFileSet({
     submissionId: ins.insertId,
     invitationId: inv.id,
@@ -2158,11 +2189,13 @@ async function buildRfqSummary(prId) {
   };
 }
 
-function nodemailerAttachment(filename, row) {
+async function nodemailerAttachment(filename, row) {
   const fromDb = mysqlBlobToBuffer(row.quotation_file_data || row.file_data);
   if (fromDb?.length) {
     return { filename, content: fromDb };
   }
+  const gcsBuf = await bufferFromGcs(row.quotation_file_path || row.file_path);
+  if (gcsBuf?.length) return { filename, content: gcsBuf };
   const diskBuf = bufferFromDiskPath(row.quotation_file_path || row.file_path);
   if (diskBuf?.length) return { filename, content: diskBuf };
   return null;
@@ -2189,7 +2222,7 @@ async function loadQuotationMailAttachments(prId) {
       '_'
     );
     const filename = `${safeVendor}_R${row.round}_${safeFile}`;
-    const attachment = nodemailerAttachment(filename, row);
+    const attachment = await nodemailerAttachment(filename, row);
     if (!attachment) {
       console.warn(
         `Quotation attachment missing for PR ${prId} submission ${row.id} (${filename}) — no disk file and no DB blob`
@@ -3324,7 +3357,7 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
   let fileBuffer = null;
   let replaceFile = false;
   if (body.quotationFileName && body.quotationFileData) {
-    const fileInfo = saveQuotationFile(
+    const fileInfo = await saveQuotationFile(
       row.invitation_id,
       row.round || row.inv_round || 1,
       body.quotationFileName,
@@ -3335,7 +3368,7 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
     }
     fileName = fileInfo.fileName;
     filePath = fileInfo.filePath;
-    fileBuffer = fileInfo.buffer;
+    fileBuffer = quotationBlobForDb(fileInfo.buffer);
     replaceFile = true;
   }
 
@@ -3403,7 +3436,7 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
         submissionId,
       ]
     );
-    if (fileBuffer) await persistPrimaryQuotationBlob(submissionId, fileBuffer);
+    if (fileBuffer && !useGcsForNewUploads()) await persistPrimaryQuotationBlob(submissionId, fileBuffer);
   } else {
     await pool.query(
       `UPDATE vendor_quotation_submissions
@@ -3475,7 +3508,7 @@ export async function attachQuotationFileToSubmission(user, submissionId, body) 
     throw new Error('Quotation file is required');
   }
 
-  const fileInfo = saveQuotationFile(
+  const fileInfo = await saveQuotationFile(
     row.invitation_id,
     row.round || row.inv_round || 1,
     body.quotationFileName,
@@ -3490,9 +3523,9 @@ export async function attachQuotationFileToSubmission(user, submissionId, body) 
     `UPDATE vendor_quotation_submissions
      SET quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?
      WHERE id = ?`,
-    [fileInfo.fileName, fileInfo.filePath, fileInfo.buffer, submissionId]
+    [fileInfo.fileName, fileInfo.filePath, quotationBlobForDb(fileInfo.buffer), submissionId]
   );
-  await persistPrimaryQuotationBlob(submissionId, fileInfo.buffer);
+  if (!useGcsForNewUploads()) await persistPrimaryQuotationBlob(submissionId, fileInfo.buffer);
 
   return {
     submissionId,
@@ -3540,18 +3573,23 @@ export async function getSubmissionFile(user, submissionId) {
 
   const fileName = row.quotation_file_name || 'quotation.pdf';
 
-  // Deployed Cloud Run: DB blob is source of truth (disk is ephemeral).
+  // Legacy MySQL blob, then GCS, then disk.
   const fromDb = mysqlBlobToBuffer(row.quotation_file_data);
   if (fromDb?.length) {
     return { fullPath: null, fileName, buffer: fromDb };
   }
 
+  const gcsBuf = await bufferFromGcs(row.quotation_file_path);
+  if (gcsBuf?.length) return { fullPath: null, fileName, buffer: gcsBuf };
+
   const diskBuf = bufferFromDiskPath(row.quotation_file_path);
   if (diskBuf?.length) {
-    try {
-      await persistPrimaryQuotationBlob(submissionId, diskBuf);
-    } catch (err) {
-      console.warn('Quotation DB backfill skipped:', err.message);
+    if (!useGcsForNewUploads()) {
+      try {
+        await persistPrimaryQuotationBlob(submissionId, diskBuf);
+      } catch (err) {
+        console.warn('Quotation DB backfill skipped:', err.message);
+      }
     }
     return { fullPath: null, fileName, buffer: diskBuf };
   }
@@ -3602,15 +3640,19 @@ export async function getQuotationExtraFile(user, fileId) {
   if (fromDb?.length) {
     return { fullPath: null, fileName, buffer: fromDb };
   }
+  const gcsBuf = await bufferFromGcs(row.file_path);
+  if (gcsBuf?.length) return { fullPath: null, fileName, buffer: gcsBuf };
   const diskBuf = bufferFromDiskPath(row.file_path);
   if (diskBuf?.length) {
-    try {
-      await pool.query(`UPDATE vendor_quotation_files SET file_data = ? WHERE id = ?`, [
-        diskBuf,
-        fileId,
-      ]);
-    } catch (err) {
-      console.warn('Extra quotation DB backfill skipped:', err.message);
+    if (!useGcsForNewUploads()) {
+      try {
+        await pool.query(`UPDATE vendor_quotation_files SET file_data = ? WHERE id = ?`, [
+          diskBuf,
+          fileId,
+        ]);
+      } catch (err) {
+        console.warn('Extra quotation DB backfill skipped:', err.message);
+      }
     }
     return { fullPath: null, fileName, buffer: diskBuf };
   }

@@ -1627,9 +1627,13 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
     text = built.text;
     try {
       const { resolvePoDocumentPath } = await import('./poPdfService.js');
-      const pdfPath = resolvePoDocumentPath(po);
-      if (pdfPath) {
-        attachments = [{ filename: `${po.poNumber}_signed.pdf`, path: pdfPath, contentType: 'application/pdf' }];
+      const doc = await resolvePoDocumentPath(po);
+      if (doc) {
+        if (doc.buffer) {
+          attachments = [{ filename: `${po.poNumber}_signed.pdf`, content: doc.buffer, contentType: 'application/pdf' }];
+        } else if (doc.fullPath) {
+          attachments = [{ filename: `${po.poNumber}_signed.pdf`, path: doc.fullPath, contentType: 'application/pdf' }];
+        }
       }
     } catch {
       /* send without PDF */

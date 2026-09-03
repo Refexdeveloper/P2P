@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
 import { formatDate } from '../utils/constants.js';
 import { parseCsv, rowsToCsv, normalizeHeaderKey } from '../utils/csv.js';
 
@@ -136,10 +137,9 @@ function decodeVendorFile(base64Data) {
 }
 
 /**
- * Save vendor document to disk (best-effort) and return a DB-ready buffer.
- * Cloud Run disks are ephemeral — file_data in MySQL is the source of truth.
+ * Save vendor document — GCS for new uploads; legacy disk + MySQL blob when GCS is off.
  */
-function saveVendorDocument(vendorId, docType, fileName, base64Data) {
+async function saveVendorDocument(vendorId, docType, fileName, base64Data) {
   if (!base64Data || !fileName) return null;
 
   const originalName = path.basename(String(fileName)).trim();
@@ -154,6 +154,11 @@ function saveVendorDocument(vendorId, docType, fileName, base64Data) {
     throw new Error(`Vendor document ${originalName} must be under 10MB`);
   }
 
+  if (useGcsForNewUploads()) {
+    await uploadToGcs(`vendor-kyc/${safeName}`, buffer);
+    return { fileName: originalName, filePath: safeName, buffer: null };
+  }
+
   try {
     ensureVendorDir();
     fs.writeFileSync(path.join(VENDOR_UPLOAD_DIR, safeName), buffer);
@@ -165,7 +170,7 @@ function saveVendorDocument(vendorId, docType, fileName, base64Data) {
 }
 
 async function upsertVendorDocument(vendorId, docType, fileName, base64Data) {
-  const saved = saveVendorDocument(vendorId, docType, fileName, base64Data);
+  const saved = await saveVendorDocument(vendorId, docType, fileName, base64Data);
   if (!saved) return;
 
   await ensureFileDataColumn();
@@ -402,16 +407,23 @@ export async function getVendorDocumentFile(vendorId, docType) {
     return { fullPath: null, fileName, buffer };
   }
 
+  if (gcsEnabled() && row.file_path) {
+    const buf = await downloadFromGcs(`vendor-kyc/${path.basename(String(row.file_path))}`);
+    if (buf?.length) return { fullPath: null, fileName, buffer: buf };
+  }
+
   const fullPath = path.join(VENDOR_UPLOAD_DIR, row.file_path || '');
   if (row.file_path && fs.existsSync(fullPath)) {
     const buffer = fs.readFileSync(fullPath);
-    try {
-      await pool.query(
-        `UPDATE vendor_documents SET file_data = ? WHERE vendor_id = ? AND doc_type = ?`,
-        [buffer, vendorId, docType]
-      );
-    } catch (err) {
-      console.warn('Vendor document DB backfill skipped:', err.message);
+    if (!useGcsForNewUploads()) {
+      try {
+        await pool.query(
+          `UPDATE vendor_documents SET file_data = ? WHERE vendor_id = ? AND doc_type = ?`,
+          [buffer, vendorId, docType]
+        );
+      } catch (err) {
+        console.warn('Vendor document DB backfill skipped:', err.message);
+      }
     }
     return { fullPath, fileName, buffer };
   }

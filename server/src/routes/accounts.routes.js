@@ -183,6 +183,11 @@ router.get('/invoices/:id/file', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer'), a
   try {
     const file = await resolveInvoiceFile(Number(req.params.id));
     if (!file) return res.status(404).json({ message: 'Invoice file not found' });
+    if (file.buffer) {
+      res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      return res.send(file.buffer);
+    }
     res.download(file.fullPath, file.fileName);
   } catch (err) {
     res.status(400).json({ message: err.message });

@@ -105,10 +105,15 @@ router.get('/vendor-accept/:token/pdf', async (req, res) => {
       [String(req.params.token || '').trim()]
     );
     if (!rows.length) return res.status(404).json({ message: 'Invalid link' });
-    const doc = resolvePoDocumentPath({
+    const doc = await resolvePoDocumentPath({
       signedPdfPath: rows[0].signed_pdf_path,
       pdfPath: rows[0].pdf_path,
     });
+    if (doc.buffer) {
+      res.setHeader('Content-Disposition', `attachment; filename="${rows[0].po_number}_signed.pdf"`);
+      res.setHeader('Content-Type', 'application/pdf');
+      return res.send(doc.buffer);
+    }
     res.download(doc.fullPath, `${rows[0].po_number}_signed.pdf`);
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -729,7 +734,13 @@ router.get('/:id/vendor-acceptance/file', canReadPo, async (req, res) => {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
     await assertVendorAcceptanceActor(req.user, { pr_id: po.prId, prId: po.prId, created_by: po.createdByUserId });
-    const fullPath = resolveVendorAcceptanceFile(po);
+    const result = await resolveVendorAcceptanceFile(po);
+    if (result?.buffer) {
+      res.setHeader('Content-Disposition', `attachment; filename="${po.vendorAcceptanceFileName || 'vendor-acceptance.pdf'}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      return res.send(result.buffer);
+    }
+    const fullPath = typeof result === 'string' ? result : result?.fullPath;
     res.download(fullPath, po.vendorAcceptanceFileName || 'vendor-acceptance.pdf');
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -740,8 +751,13 @@ router.get('/:id/cancellation/:index/file', canReadPo, async (req, res) => {
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
-    const { fullPath, fileName } = resolveCancellationAttachment(po, req.params.index);
-    res.download(fullPath, fileName);
+    const attachment = await resolveCancellationAttachment(po, req.params.index);
+    if (attachment?.buffer) {
+      res.setHeader('Content-Disposition', `attachment; filename="${attachment.fileName}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      return res.send(attachment.buffer);
+    }
+    res.download(attachment.fullPath, attachment.fileName);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

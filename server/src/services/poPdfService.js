@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
+import { uploadToGcs, downloadFromGcs, gcsEnabled } from './gcsStorage.js';
 import {
   buildPoDocumentHtml,
   buildPoPdfParts,
@@ -914,6 +915,12 @@ export async function generatePoPdf(po, options = {}) {
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
       displayHeaderFooter: false,
     });
+    // Upload PDF to GCS
+    if (gcsEnabled() && fs.existsSync(filePath)) {
+      const buf = fs.readFileSync(filePath);
+      uploadToGcs(`purchase-orders/${fileName}`, buf, 'application/pdf')
+        .catch((e) => console.warn('[GCS] PO PDF upload failed:', e.message));
+    }
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
     console.warn('HTML-to-PDF failed, HTML document saved:', err.message);
@@ -933,20 +940,26 @@ export async function generatePoPdf(po, options = {}) {
   }
 }
 
-export function resolvePoDocumentPath(po) {
+export async function resolvePoDocumentPath(po) {
   const fileName = po.signedPdfPath || po.pdfPath;
   if (!fileName) throw new Error('Document not generated');
-  const fullPath = path.join(PO_UPLOAD_DIR, path.basename(fileName));
-  if (!fs.existsSync(fullPath)) {
-    const htmlName = path.basename(fileName).replace(/\.pdf$/i, '.html');
-    const htmlPath = path.join(PO_UPLOAD_DIR, htmlName);
-    if (fs.existsSync(htmlPath)) {
-      return { fullPath: htmlPath, fileName: htmlName, isHtml: true };
-    }
-    throw new Error('PO document file not found');
+  const baseName = path.basename(fileName);
+  const fullPath = path.join(PO_UPLOAD_DIR, baseName);
+  if (fs.existsSync(fullPath)) {
+    const isHtml = fullPath.toLowerCase().endsWith('.html');
+    return { fullPath, fileName: baseName, isHtml };
   }
-  const isHtml = fullPath.toLowerCase().endsWith('.html');
-  return { fullPath, fileName: path.basename(fileName), isHtml };
+  const htmlName = baseName.replace(/\.pdf$/i, '.html');
+  const htmlPath = path.join(PO_UPLOAD_DIR, htmlName);
+  if (fs.existsSync(htmlPath)) {
+    return { fullPath: htmlPath, fileName: htmlName, isHtml: true };
+  }
+  // GCS fallback for new uploads
+  if (gcsEnabled()) {
+    const buf = await downloadFromGcs(`purchase-orders/${baseName}`);
+    if (buf?.length) return { fullPath: null, fileName: baseName, isHtml: false, buffer: buf };
+  }
+  throw new Error('PO document file not found');
 }
 
 function looksLikePdfFile(filePath) {

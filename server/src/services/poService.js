@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import pool from '../config/db.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled } from './gcsStorage.js';
 import { getPurchaseRequestById } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath, ensurePoPdf } from './poPdfService.js';
 import { sendPoVendorNotification, queuePoWorkflowNotification, queueApproverActionConfirmationForUser } from './emailService.js';
@@ -272,7 +273,12 @@ function saveVendorAcceptanceFile(poId, fileName, base64Data) {
   const storedName = `po-${poId}-vendor-acceptance-${Date.now()}-${safeName}`;
   const fullPath = path.join(PO_UPLOAD_DIR, storedName);
   const raw = String(base64Data).includes(',') ? String(base64Data).split(',').pop() : String(base64Data);
-  fs.writeFileSync(fullPath, Buffer.from(raw, 'base64'));
+  const buffer = Buffer.from(raw, 'base64');
+  fs.writeFileSync(fullPath, buffer);
+  if (gcsEnabled()) {
+    uploadToGcs(`purchase-orders/${storedName}`, buffer)
+      .catch((e) => console.warn('[GCS] vendor-acceptance upload failed:', e.message));
+  }
   return { fileName: safeName, filePath: storedName };
 }
 
@@ -283,7 +289,12 @@ function savePoAttachment(poId, prefix, fileName, base64Data) {
   const storedName = `po-${poId}-${prefix}-${Date.now()}-${safeName}`;
   const fullPath = path.join(PO_UPLOAD_DIR, storedName);
   const raw = String(base64Data).includes(',') ? String(base64Data).split(',').pop() : String(base64Data);
-  fs.writeFileSync(fullPath, Buffer.from(raw, 'base64'));
+  const buffer = Buffer.from(raw, 'base64');
+  fs.writeFileSync(fullPath, buffer);
+  if (gcsEnabled()) {
+    uploadToGcs(`purchase-orders/${storedName}`, buffer)
+      .catch((e) => console.warn('[GCS] PO attachment upload failed:', e.message));
+  }
   return { fileName: safeName, filePath: storedName };
 }
 
@@ -2819,7 +2830,7 @@ export async function assertRequesterPoDocumentAccess(user, poId) {
   return po;
 }
 
-export function resolvePoPdfPath(po) {
+export async function resolvePoPdfPath(po) {
   return resolvePoDocumentPath(po);
 }
 
@@ -4233,28 +4244,37 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
   return getVendorAcceptanceByToken(clean);
 }
 
-export function resolveVendorAcceptanceFile(poRowOrPath) {
+export async function resolveVendorAcceptanceFile(poRowOrPath) {
   const filePath =
     typeof poRowOrPath === 'string'
       ? poRowOrPath
       : poRowOrPath?.vendor_acceptance_file_path || poRowOrPath?.vendorAcceptanceFilePath;
   if (!filePath) throw new Error('Acceptance file not found');
-  const fullPath = path.join(PO_UPLOAD_DIR, path.basename(filePath));
-  if (!fs.existsSync(fullPath)) throw new Error('Acceptance file missing on server');
-  return fullPath;
+  const baseName = path.basename(filePath);
+  const fullPath = path.join(PO_UPLOAD_DIR, baseName);
+  if (fs.existsSync(fullPath)) return fullPath;
+  // GCS fallback
+  if (gcsEnabled()) {
+    const buf = await downloadFromGcs(`purchase-orders/${baseName}`);
+    if (buf?.length) return { buffer: buf, fileName: baseName };
+  }
+  throw new Error('Acceptance file missing on server');
 }
 
-export function resolveCancellationAttachment(po, index) {
+export async function resolveCancellationAttachment(po, index) {
   const files = Array.isArray(po?.cancellationAttachments) ? po.cancellationAttachments : [];
   const file = files[Number(index)];
   const stored = String(file?.filePath || '').trim();
   if (!stored) throw new Error('Cancellation attachment not found');
-  const fullPath = path.join(PO_UPLOAD_DIR, path.basename(stored));
-  if (!fs.existsSync(fullPath)) throw new Error('Cancellation file missing on server');
-  return {
-    fullPath,
-    fileName: String(file.fileName || path.basename(fullPath)),
-  };
+  const baseName = path.basename(stored);
+  const fullPath = path.join(PO_UPLOAD_DIR, baseName);
+  if (fs.existsSync(fullPath)) return { fullPath, fileName: String(file.fileName || baseName) };
+  // GCS fallback
+  if (gcsEnabled()) {
+    const buf = await downloadFromGcs(`purchase-orders/${baseName}`);
+    if (buf?.length) return { fullPath: null, buffer: buf, fileName: String(file.fileName || baseName) };
+  }
+  throw new Error('Cancellation file missing on server');
 }
 
 const CFO_PO_ENTITY_COLORS = [
