@@ -1,6 +1,8 @@
+import { Link } from 'react-router-dom';
 import { CARD, formatCompactInr } from '../cfoFormat';
 
 type Entity = {
+  entityId?: number | null;
   entityName: string;
   code: string;
   totalPOCount: number;
@@ -12,9 +14,17 @@ type Entity = {
 
 const formatCurrency = formatCompactInr;
 
+function entityDetailPath(entity: Entity) {
+  const params = new URLSearchParams();
+  if (entity.entityId) params.set('entityId', String(entity.entityId));
+  if (entity.entityName) params.set('name', entity.entityName);
+  const qs = params.toString();
+  return qs ? `/dashboard/entity?${qs}` : null;
+}
+
 export default function EntityPOSummaryTable({ entities }: { entities: Entity[] }) {
   return (
-      <div className={`${CARD} overflow-hidden`}>
+    <div className={`${CARD} overflow-hidden`}>
       <div className="px-5 py-4 border-b border-gray-100">
         <h3 className="text-sm font-semibold text-gray-800">Entity-wise PO Summary</h3>
       </div>
@@ -55,24 +65,42 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
                   entity.totalPOAmount > 0
                     ? Math.round((entity.approvedAmount / entity.totalPOAmount) * 100)
                     : 0;
+                const href = entityDetailPath(entity);
                 return (
-                  <tr key={`${entity.code}-${entity.entityName}`} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={`${entity.code}-${entity.entityName}`}
+                    className={`transition-colors ${href ? 'hover:bg-teal-50/50 cursor-pointer' : 'hover:bg-gray-50'}`}
+                  >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <div
                           className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: entity.color }}
                         ></div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 whitespace-nowrap">
-                            {entity.entityName}
-                          </p>
+                        <div className="min-w-0">
+                          {href ? (
+                            <Link
+                              to={href}
+                              className="block text-sm font-medium text-teal-700 hover:underline whitespace-nowrap"
+                              title={`View POs for ${entity.entityName}`}
+                            >
+                              {entity.entityName}
+                            </Link>
+                          ) : (
+                            <p className="text-sm font-medium text-gray-900 whitespace-nowrap">{entity.entityName}</p>
+                          )}
                           <p className="text-xs text-gray-400">{entity.code}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <span className="text-sm font-semibold text-gray-900">{entity.totalPOCount}</span>
+                      {href ? (
+                        <Link to={href} className="text-sm font-semibold text-gray-900 hover:text-teal-700">
+                          {entity.totalPOCount}
+                        </Link>
+                      ) : (
+                        <span className="text-sm font-semibold text-gray-900">{entity.totalPOCount}</span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       <span className="text-sm font-bold text-gray-900">

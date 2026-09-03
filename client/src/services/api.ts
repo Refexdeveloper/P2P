@@ -405,6 +405,20 @@ export const prApi = {
           user: string;
           timestamp: string;
         }>;
+        purchaseOrders?: Array<{
+          id: string;
+          poId: number;
+          poNumber: string;
+          vendorName: string;
+          amount: number;
+          status: string;
+          statusRaw?: string;
+          entity: string;
+          entityName: string;
+          entityCode?: string;
+          poDate: string;
+          isHighValue?: boolean;
+        }>;
       };
     }>('/api/purchase-requests/stats/cfo'),
 };
