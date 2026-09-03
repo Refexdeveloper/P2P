@@ -44,6 +44,17 @@ const canEditPrDetails = requireRolesOrPermissions(
   ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard', 'nav.rfq_entry', 'nav.scm_rfq_entry', 'nav.create_pr']
 );
 
+function prSaveErrorMessage(err) {
+  const raw = String(err?.message || 'Request failed');
+  if (err?.code === 'ER_DUP_ENTRY' || /Duplicate entry/i.test(raw)) {
+    if (/pr_number|DRAFT-/i.test(raw)) {
+      return 'Could not assign PR number (conflict). Please try Submit again.';
+    }
+    return 'A duplicate record already exists. Please try again.';
+  }
+  return raw;
+}
+
 router.use(authenticate);
 
 router.post('/', canCreatePr, async (req, res) => {
@@ -51,7 +62,7 @@ router.post('/', canCreatePr, async (req, res) => {
     const pr = await createPurchaseRequest(req.user, req.body);
     res.status(201).json({ data: pr });
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ message: prSaveErrorMessage(err) });
   }
 });
 
@@ -275,7 +286,7 @@ router.post('/:id/resubmit', canCreatePr, async (req, res) => {
     const pr = await resubmitPurchaseRequest(req.user, req.params.id, req.body);
     res.json({ data: pr, message: 'PR resubmitted successfully' });
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ message: prSaveErrorMessage(err) });
   }
 });
 

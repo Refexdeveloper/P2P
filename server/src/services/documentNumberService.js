@@ -82,6 +82,32 @@ export function tempDraftPrNumber(userId) {
 }
 
 /**
+ * Highest #### already used for this doc type + entity code + FY
+ * (keeps sequences in sync when drafts previously consumed official numbers).
+ */
+async function maxExistingDocumentSeq(docType, entityCode, fyLabel, connection = pool) {
+  const type = String(docType || '').toUpperCase();
+  const prefix = `${type}-${entityCode}-${fyLabel}-`;
+  if (type === 'PR') {
+    const [rows] = await connection.query(
+      `SELECT MAX(CAST(SUBSTRING_INDEX(pr_number, '-', -1) AS UNSIGNED)) AS max_seq
+       FROM purchase_requests
+       WHERE pr_number LIKE ?
+         AND pr_number NOT LIKE 'DRAFT-%'`,
+      [`${prefix}%`]
+    );
+    return Number(rows[0]?.max_seq) || 0;
+  }
+  const [rows] = await connection.query(
+    `SELECT MAX(CAST(SUBSTRING_INDEX(po_number, '-', -1) AS UNSIGNED)) AS max_seq
+     FROM purchase_orders
+     WHERE po_number LIKE ?`,
+    [`${prefix}%`]
+  );
+  return Number(rows[0]?.max_seq) || 0;
+}
+
+/**
  * Assign official PR-{ENTITY}-{FY}-{seq} when a draft is submitted.
  * No-op if the PR already has a real number (e.g. returned for rework).
  */
@@ -89,27 +115,44 @@ export async function assignOfficialPrNumberIfNeeded(prId, entityId, currentPrNu
   if (!isDraftPlaceholderPrNumber(currentPrNumber)) {
     return String(currentPrNumber || '');
   }
-  const prNumber = await nextDocumentNumber('PR', Number(entityId), connection);
-  await connection.query(`UPDATE purchase_requests SET pr_number = ? WHERE id = ?`, [prNumber, prId]);
-  return prNumber;
+
+  let lastErr;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const prNumber = await nextDocumentNumber('PR', Number(entityId), connection);
+    try {
+      await connection.query(`UPDATE purchase_requests SET pr_number = ? WHERE id = ?`, [prNumber, prId]);
+      return prNumber;
+    } catch (err) {
+      lastErr = err;
+      // Another PR already holds this number — advance sequence and retry
+      if (err?.code === 'ER_DUP_ENTRY' || /Duplicate entry/i.test(String(err?.message || ''))) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr || new Error('Could not assign a unique PR number. Please try again.');
 }
 
 /**
  * Atomically increments and returns next number:
  * PR-RGML-2025-26-0001 / PO-RGML-2025-26-0001 / WO-RGML-2025-26-0001
  * PO and WO sequences increment separately per entity + FY.
+ * Sequence is floored to max(existing documents) so submit never reuses a number.
  */
 export async function nextDocumentNumber(docType, entityId, connection = pool) {
   const raw = String(docType || '').toUpperCase();
   const type = raw === 'PO' ? 'PO' : raw === 'WO' ? 'WO' : 'PR';
   const entity = await resolveEntityForNumbering(entityId, connection);
   const fyLabel = getIndianFinancialYearLabel();
+  const maxExisting = await maxExistingDocumentSeq(type, entity.code, fyLabel, connection);
 
+  // First insert: start at maxExisting+1. Concurrent updates: GREATEST(last_seq, maxExisting)+1.
   await connection.query(
     `INSERT INTO document_number_sequences (doc_type, entity_id, fy_label, last_seq)
-     VALUES (?, ?, ?, 1)
-     ON DUPLICATE KEY UPDATE last_seq = last_seq + 1`,
-    [type, entity.id, fyLabel]
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE last_seq = GREATEST(last_seq, ?) + 1`,
+    [type, entity.id, fyLabel, maxExisting + 1, maxExisting]
   );
 
   const [rows] = await connection.query(
@@ -118,6 +161,6 @@ export async function nextDocumentNumber(docType, entityId, connection = pool) {
     [type, entity.id, fyLabel]
   );
 
-  const seq = String(Number(rows[0]?.last_seq || 1)).padStart(4, '0');
+  const seq = String(Number(rows[0]?.last_seq || maxExisting + 1)).padStart(4, '0');
   return `${type}-${entity.code}-${fyLabel}-${seq}`;
 }

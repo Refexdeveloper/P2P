@@ -1180,101 +1180,120 @@ export async function createPurchaseRequest(user, body) {
     await conn.beginTransaction();
 
     let prNumber;
-    if (submit) {
-      prNumber = await nextDocumentNumber('PR', Number(entityId), conn);
-    } else {
-      prNumber = tempDraftPrNumber(user.id);
-    }
-
     let result;
-    try {
-      [result] = await conn.query(
-        `INSERT INTO purchase_requests
+    let prId;
+
+    const insertPrRow = async (number) => {
+      try {
+        const [res] = await conn.query(
+          `INSERT INTO purchase_requests
          (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, pr_flow, approval_user_id, approval_user_ids, current_stage, submitted_at,
           billing_location_id, billing_location, billing_gst_no, billing_address, delivery_poc, place_of_delivery, expected_delivery_timeline, payment_terms,
           request_category, project_detail, special_notes,
           delivery_poc_email, delivery_poc_phone, project_manager_ho, project_manager_contact, project_manager_email)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          prNumber,
-          prTitle,
-          requestType,
-          normalizedPurchaseType,
-          departmentId,
-          Number(entityId),
-          user.id,
-          priority,
-          justification,
-          requiredDate || null,
-          normalizedCurrency,
-          totalAmount,
-          status,
-          vendorMode,
-          prFlow,
-          selectedApprover?.id || null,
-          selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
-          currentStage,
-          submit ? new Date() : null,
-          billing.billingLocationId,
-          billing.billingLocation || null,
-          billing.billingGstNo || null,
-          extras.billingAddress || null,
-          extras.deliveryPoc || null,
-          extras.placeOfDelivery || null,
-          extras.expectedDeliveryTimeline || null,
-          extras.paymentTerms || null,
-          requestCategory || null,
-          extras.projectDetail || null,
-          extras.specialNotes || null,
-          extras.deliveryPocEmail || null,
-          extras.deliveryPocPhone || null,
-          extras.projectManagerHo || null,
-          extras.projectManagerContact || null,
-          extras.projectManagerEmail || null,
-        ]
-      );
-    } catch (err) {
-      if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
-      [result] = await conn.query(
-        `INSERT INTO purchase_requests
+          [
+            number,
+            prTitle,
+            requestType,
+            normalizedPurchaseType,
+            departmentId,
+            Number(entityId),
+            user.id,
+            priority,
+            justification,
+            requiredDate || null,
+            normalizedCurrency,
+            totalAmount,
+            status,
+            vendorMode,
+            prFlow,
+            selectedApprover?.id || null,
+            selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
+            currentStage,
+            submit ? new Date() : null,
+            billing.billingLocationId,
+            billing.billingLocation || null,
+            billing.billingGstNo || null,
+            extras.billingAddress || null,
+            extras.deliveryPoc || null,
+            extras.placeOfDelivery || null,
+            extras.expectedDeliveryTimeline || null,
+            extras.paymentTerms || null,
+            requestCategory || null,
+            extras.projectDetail || null,
+            extras.specialNotes || null,
+            extras.deliveryPocEmail || null,
+            extras.deliveryPocPhone || null,
+            extras.projectManagerHo || null,
+            extras.projectManagerContact || null,
+            extras.projectManagerEmail || null,
+          ]
+        );
+        return res;
+      } catch (err) {
+        if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
+        const [res] = await conn.query(
+          `INSERT INTO purchase_requests
          (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, pr_flow, approval_user_id, approval_user_ids, current_stage, submitted_at,
           billing_location_id, billing_location, billing_gst_no, billing_address, delivery_poc, place_of_delivery, expected_delivery_timeline, payment_terms)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          prNumber,
-          prTitle,
-          requestType,
-          normalizedPurchaseType,
-          departmentId,
-          Number(entityId),
-          user.id,
-          priority,
-          justification,
-          requiredDate || null,
-          normalizedCurrency,
-          totalAmount,
-          status,
-          vendorMode,
-          prFlow,
-          selectedApprover?.id || null,
-          selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
-          currentStage,
-          submit ? new Date() : null,
-          billing.billingLocationId,
-          billing.billingLocation || null,
-          billing.billingGstNo || null,
-          extras.billingAddress || null,
-          extras.deliveryPoc || null,
-          extras.placeOfDelivery || null,
-          extras.expectedDeliveryTimeline || null,
-          extras.paymentTerms || null,
-        ]
-      );
-    }
+          [
+            number,
+            prTitle,
+            requestType,
+            normalizedPurchaseType,
+            departmentId,
+            Number(entityId),
+            user.id,
+            priority,
+            justification,
+            requiredDate || null,
+            normalizedCurrency,
+            totalAmount,
+            status,
+            vendorMode,
+            prFlow,
+            selectedApprover?.id || null,
+            selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
+            currentStage,
+            submit ? new Date() : null,
+            billing.billingLocationId,
+            billing.billingLocation || null,
+            billing.billingGstNo || null,
+            extras.billingAddress || null,
+            extras.deliveryPoc || null,
+            extras.placeOfDelivery || null,
+            extras.expectedDeliveryTimeline || null,
+            extras.paymentTerms || null,
+          ]
+        );
+        return res;
+      }
+    };
 
-    const prId = result.insertId;
-
-    if (!submit) {
+    if (submit) {
+      let lastErr;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        prNumber = await nextDocumentNumber('PR', Number(entityId), conn);
+        try {
+          result = await insertPrRow(prNumber);
+          prId = result.insertId;
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (err?.code === 'ER_DUP_ENTRY' || /Duplicate entry/i.test(String(err?.message || ''))) {
+            continue;
+          }
+          throw err;
+        }
+      }
+      if (lastErr) throw lastErr;
+    } else {
+      prNumber = tempDraftPrNumber(user.id);
+      result = await insertPrRow(prNumber);
+      prId = result.insertId;
       prNumber = stableDraftPrNumber(prId);
       await conn.query(`UPDATE purchase_requests SET pr_number = ? WHERE id = ?`, [prNumber, prId]);
     }
