@@ -180,6 +180,8 @@ export default function CreatePRPage() {
   const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
   const [businessJustification, setBusinessJustification] = useState('');
   const [requiredDate, setRequiredDate] = useState('');
+  const [workStartDate, setWorkStartDate] = useState('');
+  const [workEndDate, setWorkEndDate] = useState('');
   const [billingLocationId, setBillingLocationId] = useState<number | ''>('');
   const [billingLocation, setBillingLocation] = useState('');
   const [billingGstNo, setBillingGstNo] = useState('');
@@ -337,6 +339,8 @@ export default function CreatePRPage() {
     setCurrency(normalizeCurrency(draft.currency));
     setBusinessJustification(draft.businessJustification || '');
     setRequiredDate(draft.requiredDate || '');
+    setWorkStartDate(draft.workStartDate || '');
+    setWorkEndDate(draft.workEndDate || '');
     setBillingLocationId(draft.billingLocationId === '' || draft.billingLocationId == null ? '' : Number(draft.billingLocationId));
     setBillingLocation(draft.billingLocation || '');
     setBillingGstNo(draft.billingGstNo || '');
@@ -511,6 +515,8 @@ export default function CreatePRPage() {
         setCurrency(normalizeCurrency(pr.currency));
         setBusinessJustification(pr.justification || '');
         setRequiredDate(pr.requiredDate || '');
+        setWorkStartDate(String(pr.workStartDate || ''));
+        setWorkEndDate(String(pr.workEndDate || ''));
         setBillingLocationId(pr.billingLocationId ? Number(pr.billingLocationId) : '');
         setBillingLocation(pr.billingLocation || '');
         setBillingGstNo(pr.billingGstNo || '');
@@ -822,6 +828,8 @@ export default function CreatePRPage() {
       currency,
       businessJustification,
       requiredDate,
+      workStartDate,
+      workEndDate,
       billingLocationId,
       billingLocation,
       billingGstNo,
@@ -879,6 +887,8 @@ export default function CreatePRPage() {
     currency,
     businessJustification,
     requiredDate,
+    workStartDate,
+    workEndDate,
     billingLocationId,
     billingLocation,
     billingGstNo,
@@ -1010,6 +1020,8 @@ export default function CreatePRPage() {
     currency,
     businessJustification,
     requiredDate,
+    workStartDate,
+    workEndDate,
     billingLocationId,
     billingLocation,
     billingGstNo,
@@ -1348,6 +1360,8 @@ export default function CreatePRPage() {
           currency,
           businessJustification,
           requiredDate,
+          workStartDate,
+          workEndDate,
           billingLocationId,
           billingLocation,
           billingGstNo,
@@ -1487,6 +1501,11 @@ export default function CreatePRPage() {
     if (!requestCategory) newErrors.requestCategory = 'Request category is required';
     if (!businessJustification.trim()) newErrors.businessJustification = 'Business justification is required';
     if (!requiredDate) newErrors.requiredDate = 'Required date is required';
+    if (purchaseType === 'work_order') {
+      if (workStartDate && workEndDate && workEndDate < workStartDate) {
+        newErrors.workEndDate = 'End date must be on or after the start date';
+      }
+    }
     if (askBillingOnCreatePr) {
       if (billingLocations.length > 0 && !billingLocationId) {
         newErrors.billingLocationId = 'Select billing region / GST for this entity';
@@ -1662,6 +1681,8 @@ export default function CreatePRPage() {
     vendorSelection,
     justification: businessJustification,
     requiredDate: requiredDate || undefined,
+    workStartDate: purchaseType === 'work_order' ? workStartDate || undefined : undefined,
+    workEndDate: purchaseType === 'work_order' ? workEndDate || undefined : undefined,
     billingLocationId: billingLocationId || undefined,
     billingLocation: billingLocation.trim() || undefined,
     billingGstNo: billingGstNo.trim() || undefined,
@@ -1778,6 +1799,8 @@ export default function CreatePRPage() {
           currency,
           businessJustification,
           requiredDate,
+          workStartDate,
+          workEndDate,
           billingLocationId,
           billingLocation,
           billingGstNo,
@@ -2437,6 +2460,10 @@ export default function CreatePRPage() {
                       if (opt.id === 'purchase_order' && requestType === 'Service') {
                         setRequestType('Opex');
                       }
+                      if (opt.id === 'purchase_order') {
+                        setWorkStartDate('');
+                        setWorkEndDate('');
+                      }
                     }}
                     className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
                       purchaseType === opt.id
@@ -2500,6 +2527,68 @@ export default function CreatePRPage() {
               />
               {errors.requiredDate && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><i className="ri-error-warning-line"></i>{errors.requiredDate}</p>}
             </div>
+
+            {purchaseType === 'work_order' && (
+              <>
+                <div data-field="workStartDate">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    Work Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={workStartDate}
+                    onChange={(e) => {
+                      setWorkStartDate(e.target.value);
+                      if (errors.workStartDate) {
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.workStartDate;
+                          return next;
+                        });
+                      }
+                    }}
+                    className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white cursor-pointer ${
+                      errors.workStartDate ? 'border-red-400 bg-red-50' : 'border-violet-200'
+                    }`}
+                  />
+                  {errors.workStartDate && (
+                    <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                      <i className="ri-error-warning-line"></i>
+                      {errors.workStartDate}
+                    </p>
+                  )}
+                </div>
+                <div data-field="workEndDate">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    Work End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={workEndDate}
+                    onChange={(e) => {
+                      setWorkEndDate(e.target.value);
+                      if (errors.workEndDate) {
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.workEndDate;
+                          return next;
+                        });
+                      }
+                    }}
+                    min={workStartDate || undefined}
+                    className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white cursor-pointer ${
+                      errors.workEndDate ? 'border-red-400 bg-red-50' : 'border-violet-200'
+                    }`}
+                  />
+                  {errors.workEndDate && (
+                    <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                      <i className="ri-error-warning-line"></i>
+                      {errors.workEndDate}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
 
             {/* Currency — INR / USD / EUR */}
             <div>

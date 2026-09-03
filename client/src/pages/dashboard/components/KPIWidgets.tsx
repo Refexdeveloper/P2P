@@ -8,35 +8,12 @@ type Kpis = {
   budgetUtilization: number;
 };
 
-function Sparkline({ values, color }: { values: number[]; color: string }) {
-  if (values.length < 2) return <div className="h-8 mt-3" />;
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values, 0);
-  const span = max - min || 1;
-  const pts = values
-    .map((v, i) => {
-      const x = (i / (values.length - 1)) * 100;
-      const y = 18 - ((v - min) / span) * 14;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(' ');
-  const fill = `${pts} 100,20 0,20`;
-  return (
-    <svg viewBox="0 0 100 20" className="w-full h-8 mt-2" preserveAspectRatio="none" aria-hidden>
-      <polygon points={fill} fill={color} opacity="0.12" />
-      <polyline fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" points={pts} />
-    </svg>
-  );
-}
-
 export default function KPIWidgets({
   kpis,
-  sparkline,
   previousTotal,
   previousMonthLabel,
 }: {
   kpis: Kpis;
-  sparkline: number[];
   previousTotal: number;
   previousMonthLabel?: string;
 }) {
@@ -57,7 +34,6 @@ export default function KPIWidgets({
       icon: 'ri-shopping-cart-2-line',
       iconBg: 'bg-indigo-50',
       iconColor: 'text-indigo-600',
-      spark: '#6366F1',
     },
     {
       title: 'Approved PO Amount',
@@ -69,7 +45,6 @@ export default function KPIWidgets({
       icon: 'ri-shield-check-line',
       iconBg: 'bg-emerald-50',
       iconColor: 'text-emerald-600',
-      spark: '#10B981',
     },
     {
       title: 'Pending PO Amount',
@@ -81,7 +56,6 @@ export default function KPIWidgets({
       icon: 'ri-time-line',
       iconBg: 'bg-orange-50',
       iconColor: 'text-orange-500',
-      spark: '#F97316',
     },
     {
       title: 'Vendor Payments',
@@ -93,7 +67,6 @@ export default function KPIWidgets({
       icon: 'ri-bank-line',
       iconBg: 'bg-sky-50',
       iconColor: 'text-sky-600',
-      spark: '#0EA5E9',
     },
     {
       title: 'Budget Utilization',
@@ -105,7 +78,6 @@ export default function KPIWidgets({
       icon: 'ri-pie-chart-2-line',
       iconBg: 'bg-rose-50',
       iconColor: 'text-rose-500',
-      spark: '#F43F5E',
     },
   ];
 
@@ -114,7 +86,7 @@ export default function KPIWidgets({
       {cards.map((card) => (
         <div
           key={card.title}
-          className="bg-white border border-[#EEF0F5] rounded-[16px] shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-[0_10px_28px_rgba(16,24,40,0.06)] hover:-translate-y-px transition-all duration-200 px-4 pt-4 pb-2 min-h-[158px] flex flex-col"
+          className="bg-white border border-[#EEF0F5] rounded-[16px] shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-[0_10px_28px_rgba(16,24,40,0.06)] hover:-translate-y-px transition-all duration-200 px-4 py-4 min-h-[120px] flex flex-col"
         >
           <div className="flex items-start justify-between gap-2">
             <p className="text-[12px] font-medium text-slate-500 leading-tight pt-0.5">{card.title}</p>
@@ -133,9 +105,6 @@ export default function KPIWidgets({
             {!card.flat ? <i className={`${card.up ? 'ri-arrow-up-line' : 'ri-arrow-down-line'} text-[10px]`}></i> : null}
             {card.delta}
           </p>
-          <div className="mt-auto">
-            <Sparkline values={sparkline} color={card.spark} />
-          </div>
         </div>
       ))}
     </div>

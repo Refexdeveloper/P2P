@@ -225,6 +225,8 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_requests ADD COLUMN place_of_delivery TEXT NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN expected_delivery_timeline VARCHAR(255) NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN payment_terms VARCHAR(255) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN work_start_date DATE NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN work_end_date DATE NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN pr_flow ENUM('standard', 'functional') NOT NULL DEFAULT 'standard'`,
   `ALTER TABLE purchase_requests ADD COLUMN approval_user_id INT NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN approval_user_ids JSON NULL`,

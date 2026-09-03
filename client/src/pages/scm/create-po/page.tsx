@@ -4837,15 +4837,17 @@ export default function CreatePOPage() {
             <div className="p-6">
               <div className="bg-gray-50 rounded-xl p-4 mb-5 space-y-2.5">
                 {[
-                  { label: 'PO Number', value: poNumber, highlight: true },
-                  { label: 'PO Date', value: formatPoDateLabel(poDate) },
-                  { label: 'Vendor', value: pr.recommendedVendor },
+                  { label: isWorkOrder ? 'WO Number' : 'PO Number', value: poNumber, highlight: true },
+                  { label: isWorkOrder ? 'WO Date' : 'PO Date', value: formatPoDateLabel(poDate) },
+                  { label: 'Vendor', value: isManualPoFlow ? manualVendorName : pr.recommendedVendor },
                   { label: 'Grand Total', value: fmt(grandTotal) },
                   { label: 'Payment Terms', value: paymentTerms },
-                ].map(row => (
+                ].map((row) => (
                   <div key={row.label} className="flex justify-between text-sm">
                     <span className="text-gray-500">{row.label}</span>
-                    <span className={`font-semibold ${row.highlight ? 'text-teal-600' : 'text-gray-900'}`}>{row.value}</span>
+                    <span className={`font-semibold ${row.highlight ? 'text-teal-600' : 'text-gray-900'}`}>
+                      {row.value}
+                    </span>
                   </div>
                 ))}
               </div>

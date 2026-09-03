@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'reac
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
 import SendBackModal from '../../scm/rfq-entry/components/SendBackModal';
+import PostRfqApprovalModal from '../../rfq-approval/components/PostRfqApprovalModal';
 import CreateVendorForm from '../../scm/vendor-master/components/CreateVendorForm';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
@@ -14,9 +15,11 @@ import {
   vendorApi,
   VendorRecord,
   EntityRecord,
+  PrAttachmentRecord,
 } from '../../../services/api';
 import RfqChatbot from '../../../components/feature/RfqChatbot';
 import { openRfqChat } from '../../../components/feature/rfqChatOpen';
+import PrDocumentsPanel from '../../../components/feature/PrDocumentsPanel';
 import RfqVendorQuoteTable, { type RfqQuoteTableRow } from './components/RfqVendorQuoteTable';
 import VendorSearchSelect from './components/VendorSearchSelect';
 import RfqExtraQuestionsPanel from './components/RfqExtraQuestionsPanel';
@@ -176,6 +179,7 @@ export default function RfqEntryDetailPage() {
   const [mode, setMode] = useState<'entry' | 'preview'>('entry');
   const [previewRound, setPreviewRound] = useState(1);
   const [pr, setPr] = useState<{
+    id?: number;
     prNumber: string;
     title: string;
     department: string;
@@ -190,6 +194,7 @@ export default function RfqEntryDetailPage() {
     placeOfDelivery?: string;
     expectedDeliveryTimeline?: string;
     paymentTerms?: string;
+    attachments?: PrAttachmentRecord[];
     lineItems?: Array<{
       id: number | string;
       description: string;
@@ -222,6 +227,8 @@ export default function RfqEntryDetailPage() {
   const [preferredTab, setPreferredTab] = useState<number | null>(null);
   const [startingRoundId, setStartingRoundId] = useState<number | null>(null);
   const [sendBackTarget, setSendBackTarget] = useState<TableRow | null>(null);
+  const [sendBackSubmitting, setSendBackSubmitting] = useState(false);
+  const [showPrStepSendBack, setShowPrStepSendBack] = useState(false);
   const [filePreview, setFilePreview] = useState<{ url: string; fileName: string } | null>(null);
   const [manualDrafts, setManualDrafts] = useState<Record<number, Record<string, unknown>>>({});
   const [manualFiles, setManualFiles] = useState<Record<number, File[]>>({});
@@ -639,6 +646,13 @@ export default function RfqEntryDetailPage() {
   const canSubmitRfq = Boolean(
     recommendedRow?.hasActiveQuote && recommendationJustification.trim()
   );
+  const canPrStepSendBack =
+    Boolean(prId) &&
+    !isFinalized &&
+    (user?.role === 'SCM Buyer' ||
+      user?.role === 'SCM Manager' ||
+      user?.role === 'Super Admin' ||
+      Boolean(user?.isSuperAdmin));
 
   const showToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type });
@@ -1724,23 +1738,49 @@ export default function RfqEntryDetailPage() {
     }
   };
 
+  const handlePrStepSendBack = async (remarks: string, options?: { returnTo?: string }) => {
+    if (!prId || !options?.returnTo) {
+      throw new Error('Select a previous stage to send back to');
+    }
+    const res = await prApi.adminSendBack(Number(prId), {
+      returnTo: options.returnTo,
+      remarks: remarks.trim(),
+    });
+    setShowPrStepSendBack(false);
+    clearDirty();
+    skipLeaveBlockRef.current = true;
+    if (prId) clearRfqEntryDraft(user?.id, Number(prId));
+    showToast(res.message || 'PR sent back to previous step');
+    navigate(listPath);
+  };
+
   const handleSendBack = async (reason: string, backFields: string[]) => {
-    if (!sendBackTarget) return;
+    if (!sendBackTarget || sendBackSubmitting) return;
+    const target = sendBackTarget;
+    setSendBackSubmitting(true);
+    setError('');
     try {
-      const res = await rfqApi.sendBack(sendBackTarget.invitationId, reason, backFields);
+      const res = await rfqApi.sendBack(target.invitationId, reason, backFields);
       setTableRows((res.data.tableRows || []) as TableRow[]);
       if (res.data.config) setConfig(res.data.config as RfqConfig);
+      if (Number(recommendedId) === Number(target.invitationId)) {
+        setRecommendedId(null);
+        setRecommendationJustification('');
+      }
       setSendBackTarget(null);
-      showToast(res.message || `Re-quote Round ${sendBackTarget.round + 1} started`);
-      setPreferredTab(sendBackTarget.round + 1);
+      showToast(res.message || `Sent back — Round ${target.round + 1} started`);
+      setPreferredTab(target.round + 1);
       const updated = ((res.data.tableRows || []) as TableRow[]).find(
-        (r) => r.invitationId === sendBackTarget.invitationId
+        (r) => r.invitationId === target.invitationId
       );
       if (updated) {
-        openNewRoundPopup(updated, sendBackTarget);
+        openNewRoundPopup(updated, target);
       }
+      markDirty();
     } catch (err) {
       failQuote(err instanceof Error ? err.message : 'Send-back failed');
+    } finally {
+      setSendBackSubmitting(false);
     }
   };
 
@@ -1970,7 +2010,13 @@ export default function RfqEntryDetailPage() {
   };
 
   const askBeforeRequote = (row: TableRow) => {
-    void beginNextQuoteRound(row);
+    if (isFinalized) return;
+    if (!row.canSendBack && row.status !== 'submitted') {
+      failQuote('Send back is only available after a quote is submitted.');
+      return;
+    }
+    setSendBackTarget(row);
+    setError('');
   };
 
   const closeQuotePopup = () => {
@@ -2055,6 +2101,17 @@ export default function RfqEntryDetailPage() {
             >
               <i className="ri-edit-line mr-1.5"></i>
               Edit PR
+            </button>
+          )}
+          {canPrStepSendBack && (
+            <button
+              type="button"
+              onClick={() => setShowPrStepSendBack(true)}
+              className="px-5 py-2.5 border border-orange-300 text-orange-800 bg-orange-50 text-sm font-semibold rounded-xl hover:bg-orange-100"
+              title="Send this PR back to a previous workflow step"
+            >
+              <i className="ri-arrow-go-back-line mr-1.5"></i>
+              Send Back
             </button>
           )}
           {!isFinalized && (
@@ -2151,6 +2208,16 @@ export default function RfqEntryDetailPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {prId && pr && (
+        <div className="mb-5 bg-white rounded-xl border border-indigo-100 shadow-sm p-4 sm:p-5">
+          <PrDocumentsPanel
+            prId={Number(pr.id || prId)}
+            attachments={pr.attachments}
+            compact
+          />
         </div>
       )}
 
@@ -2341,7 +2408,9 @@ export default function RfqEntryDetailPage() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 2 &amp; 3</p>
                   <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
                   <p className="text-sm text-gray-500 mt-1">
-                    Tap <strong>Edit</strong> to fill the current round. Use <strong>Next round</strong> only when you need a re-quote, then <strong>Save quote + file</strong>. Finally <strong>Choose</strong> a vendor.
+                    Tap <strong>Edit</strong> to fill the current round. Use vendor <strong>Re-quote</strong> for the
+                    next quote round, or header <strong>Send Back</strong> to return the PR to a previous workflow
+                    step. Then <strong>Choose</strong> a vendor.
                   </p>
                 </div>
                 <div className="px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-semibold text-gray-600">
@@ -3172,7 +3241,30 @@ export default function RfqEntryDetailPage() {
       )}
 
       {sendBackTarget && (
-        <SendBackModal vendorName={sendBackTarget.vendorName} currentRound={sendBackTarget.round} onConfirm={handleSendBack} onClose={() => setSendBackTarget(null)} />
+        <SendBackModal
+          vendorName={sendBackTarget.vendorName}
+          currentRound={sendBackTarget.round}
+          submitting={sendBackSubmitting}
+          onConfirm={(reason, fields) => void handleSendBack(reason, fields)}
+          onClose={() => {
+            if (sendBackSubmitting) return;
+            setSendBackTarget(null);
+          }}
+        />
+      )}
+
+      {showPrStepSendBack && prId && pr && (
+        <PostRfqApprovalModal
+          isOpen
+          action="rework"
+          prNumber={pr.prNumber}
+          title={pr.title}
+          stageLabel="RFQ Entry — Send Back"
+          prId={Number(prId)}
+          useAdminTargets
+          onClose={() => setShowPrStepSendBack(false)}
+          onConfirm={handlePrStepSendBack}
+        />
       )}
 
       {addVendorRowKey && (

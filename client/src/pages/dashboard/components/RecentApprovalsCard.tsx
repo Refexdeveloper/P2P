@@ -19,14 +19,29 @@ function iconFor(type: string) {
 
 export default function RecentApprovalsCard({
   rows,
-  onViewAll,
+  onClick,
 }: {
   rows: ApprovalRow[];
-  onViewAll?: () => void;
+  onClick?: () => void;
 }) {
   const list = rows.slice(0, 3);
   return (
-    <div className={`${CARD} p-5 h-full flex flex-col`}>
+    <div
+      className={`${CARD} p-5 h-full flex flex-col ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <h3 className="text-[15px] font-semibold text-slate-900 mb-4">Recent Approvals</h3>
       <div className="flex-1 space-y-3">
         {list.length === 0 ? (
@@ -56,15 +71,6 @@ export default function RecentApprovalsCard({
           })
         )}
       </div>
-      {onViewAll ? (
-        <button
-          type="button"
-          onClick={onViewAll}
-          className="mt-3 w-full pt-3 border-t border-[#EEF0F5] text-[12px] font-medium text-indigo-500 hover:text-indigo-600 text-center"
-        >
-          View All Approvals
-        </button>
-      ) : null}
     </div>
   );
 }

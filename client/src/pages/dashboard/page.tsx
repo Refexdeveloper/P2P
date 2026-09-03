@@ -323,10 +323,10 @@ export default function Dashboard() {
     };
   }, [data.kpis, data.monthlyPOTrend, filteredEntities, filteredTrend, filteredVendors, filters, entityTrendKey]);
 
-  const sparkline = filteredTrend.map((p) =>
+  const trendTotals = filteredTrend.map((p) =>
     entityTrendKey ? Number(p[entityTrendKey] || 0) : Number(p.total || 0)
   );
-  const previousTotal = sparkline.length >= 2 ? sparkline[sparkline.length - 2] : 0;
+  const previousTotal = trendTotals.length >= 2 ? trendTotals[trendTotals.length - 2] : 0;
   const previousMonthLabel = filteredTrend.length >= 2
     ? String(filteredTrend[filteredTrend.length - 2].month || 'prior month')
     : 'prior month';
@@ -420,6 +420,9 @@ export default function Dashboard() {
   const openDetails = () => {
     setShowTables(true);
     setHidden((prev) => ({ ...prev, tables: false }));
+    window.setTimeout(() => {
+      document.getElementById('cfo-detail-tables')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   return (
@@ -502,7 +505,6 @@ export default function Dashboard() {
         {visible('kpi') ? (
           <KPIWidgets
             kpis={kpis}
-            sparkline={sparkline.length ? sparkline : [0, 0]}
             previousTotal={previousTotal}
             previousMonthLabel={previousMonthLabel}
           />
@@ -510,8 +512,8 @@ export default function Dashboard() {
 
         {visible('analytics') ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-            <EntityPieChart entities={filteredEntities} onViewAll={openDetails} />
-            <TopEntitiesBarChart entities={filteredEntities} onViewReport={openDetails} />
+            <EntityPieChart entities={filteredEntities} onClick={openDetails} />
+            <TopEntitiesBarChart entities={filteredEntities} onClick={openDetails} />
             <MonthlyTrendChart
               trend={
                 entityTrendKey
@@ -519,7 +521,7 @@ export default function Dashboard() {
                   : filteredTrend
               }
               series={data.monthlySeries}
-              onViewAnalytics={openDetails}
+              onClick={openDetails}
             />
           </div>
         ) : null}
@@ -537,16 +539,16 @@ export default function Dashboard() {
                   : undefined
               }
               formatValue={statusUsesAmount ? formatCompactInr : undefined}
-              onViewAll={openDetails}
+              onClick={openDetails}
             />
-            <RecentApprovalsCard rows={approvalRows} onViewAll={openDetails} />
-            <UpcomingPaymentsCard rows={paymentRows} onViewAll={openDetails} />
+            <RecentApprovalsCard rows={approvalRows} onClick={openDetails} />
+            <UpcomingPaymentsCard rows={paymentRows} onClick={openDetails} />
           </div>
         ) : null}
 
         {showTables || visible('tables') ? (
           <>
-            <div className="mb-4">
+            <div id="cfo-detail-tables" className="mb-4">
               <EntityPOSummaryTable entities={filteredEntities} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">

@@ -4,7 +4,8 @@ import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
   type ApprovalHistoryEntry,
 } from './ApprovalHistoryPanel';
-import { prApi, rfqApi, type VendorComparisonData } from '../../services/api';
+import PrDocumentsPanel from './PrDocumentsPanel';
+import { prApi, rfqApi, type PrAttachmentRecord, type VendorComparisonData } from '../../services/api';
 
 interface LineItem {
   id?: number;
@@ -27,6 +28,8 @@ interface PRDetail {
   projectDetail?: string;
   priority: string;
   requiredDate: string;
+  workStartDate?: string;
+  workEndDate?: string;
   expectedDeliveryTimeline?: string;
   paymentTerms?: string;
   billingLocation?: string;
@@ -42,6 +45,7 @@ interface PRDetail {
   vendorSelection?: string;
   lineItems: LineItem[];
   approvalHistory: ApprovalHistoryEntry[];
+  attachments: PrAttachmentRecord[];
 }
 
 interface Props {
@@ -121,7 +125,7 @@ export default function RfqListExpandedRow({
   statusLabel = '',
   actionSlot,
 }: Props) {
-  const [tab, setTab] = useState<'details' | 'items' | 'vendors' | 'history'>('details');
+  const [tab, setTab] = useState<'details' | 'items' | 'documents' | 'vendors' | 'history'>('details');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pr, setPr] = useState<PRDetail | null>(null);
@@ -162,6 +166,18 @@ export default function RfqListExpandedRow({
         if (prRes.status === 'fulfilled') {
           const d = prRes.value.data as Record<string, unknown>;
           const items = Array.isArray(d.lineItems) ? (d.lineItems as LineItem[]) : [];
+          const attachments = Array.isArray(d.attachments)
+            ? (d.attachments as PrAttachmentRecord[])
+                .filter((f) => Number(f?.id) > 0)
+                .map((f) => ({
+                  id: Number(f.id),
+                  prId: Number(f.prId) || prId,
+                  fileName: String(f.fileName || ''),
+                  size: Number(f.size) || 0,
+                  mimeType: f.mimeType ? String(f.mimeType) : undefined,
+                  uploadedAt: f.uploadedAt ? String(f.uploadedAt) : undefined,
+                }))
+            : [];
           setPr({
             id: Number(d.id),
             prNumber: String(d.prNumber || ''),
@@ -175,6 +191,8 @@ export default function RfqListExpandedRow({
             requiredDate: String(d.requiredDate || ''),
             expectedDeliveryTimeline: String(d.expectedDeliveryTimeline || ''),
             paymentTerms: String(d.paymentTerms || ''),
+            workStartDate: String(d.workStartDate || ''),
+            workEndDate: String(d.workEndDate || ''),
             billingLocation: String(d.billingLocation || ''),
             billingGstNo: String(d.billingGstNo || ''),
             billingAddress: String(d.billingAddress || ''),
@@ -188,6 +206,7 @@ export default function RfqListExpandedRow({
             vendorSelection: d.vendorSelection ? String(d.vendorSelection) : undefined,
             lineItems: items,
             approvalHistory: normalizeHistory(d.approvalHistory),
+            attachments,
           });
         } else {
           throw prRes.reason instanceof Error ? prRes.reason : new Error('Failed to load PR details');
@@ -218,6 +237,11 @@ export default function RfqListExpandedRow({
       icon: 'ri-list-check-2',
     },
     {
+      key: 'documents' as const,
+      label: `PR Documents${pr?.attachments?.length ? ` (${pr.attachments.length})` : ''}`,
+      icon: 'ri-file-list-3-line',
+    },
+    {
       key: 'vendors' as const,
       label: `Vendor Comparison${comparison?.vendorCount ? ` (${comparison.vendorCount})` : ''}`,
       icon: 'ri-table-line',
@@ -239,7 +263,7 @@ export default function RfqListExpandedRow({
                 {pr?.prNumber || `PR #${prId}`}
                 {pr?.title ? ` — ${pr.title}` : ''}
               </p>
-              <p className="text-xs text-gray-500">PR details · Line items · Vendor comparison · Approval history</p>
+                <p className="text-xs text-gray-500">PR details · Documents · Line items · Vendor comparison · Approval history</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
               {actionSlot}
@@ -293,6 +317,12 @@ export default function RfqListExpandedRow({
                     ['Project Detail', pr.projectDetail || '—'],
                     ['Priority', pr.priority],
                     ['Required Date', pr.requiredDate || '—'],
+                    ...(pr.workStartDate || pr.workEndDate
+                      ? [
+                          ['Work Start Date', pr.workStartDate || '—'] as [string, string],
+                          ['Work End Date', pr.workEndDate || '—'] as [string, string],
+                        ]
+                      : []),
                     ['Expected Timeline', pr.expectedDeliveryTimeline || '—'],
                     ['Payment Terms', pr.paymentTerms || '—'],
                     ['Billing Region', pr.billingLocation || '—'],
@@ -359,7 +389,15 @@ export default function RfqListExpandedRow({
                   </h4>
                   <ManagerL2CommentsHighlight history={pr.approvalHistory} />
                 </div>
+
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+                  <PrDocumentsPanel prId={pr.id} attachments={pr.attachments} compact />
+                </div>
               </div>
+            )}
+
+            {!loading && !error && pr && tab === 'documents' && (
+              <PrDocumentsPanel prId={pr.id} attachments={pr.attachments} />
             )}
 
             {!loading && !error && pr && tab === 'items' && (

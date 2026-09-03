@@ -70,8 +70,7 @@ function pickText(...vals: Array<unknown>): string {
 
 function htmlToPlain(html: string): string {
   if (!html) return '';
-  if (!/[<>]/.test(html)) return html.trim();
-  return html
+  return String(html)
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
     .replace(/<li[^>]*>/gi, '• ')
@@ -81,7 +80,11 @@ function htmlToPlain(html: string): string {
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
 
@@ -113,10 +116,12 @@ function asLineItems(raw: unknown): LineItem[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
     const r = item as Record<string, unknown>;
+    const itemName = htmlToPlain(String(r.itemName || ''));
+    const description = htmlToPlain(String(r.description || r.itemName || ''));
     return {
       id: (r.id as number | string) ?? undefined,
-      itemName: String(r.itemName || ''),
-      description: String(r.description || r.itemName || ''),
+      itemName,
+      description,
       category: String(r.category || ''),
       quantity: Number(r.quantity) || 0,
       unit: String(r.unit || r.uom || ''),
@@ -596,7 +601,9 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                               <td className="px-3 py-2.5 font-medium text-gray-900 break-words">
                                 {item.itemName || item.description || '—'}
                                 {item.itemName && item.description && item.itemName !== item.description ? (
-                                  <span className="block text-xs font-normal text-gray-500">{item.description}</span>
+                                  <span className="block text-xs font-normal text-gray-500 whitespace-pre-line">
+                                    {item.description}
+                                  </span>
                                 ) : null}
                               </td>
                               <td className="px-3 py-2.5 text-gray-700">{item.category || '—'}</td>

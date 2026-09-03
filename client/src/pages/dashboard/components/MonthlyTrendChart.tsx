@@ -13,11 +13,11 @@ const PAD_BOTTOM = 28;
 
 export default function MonthlyTrendChart({
   trend,
-  onViewAnalytics,
+  onClick,
 }: {
   trend: TrendPoint[];
   series?: Series[];
-  onViewAnalytics?: () => void;
+  onClick?: () => void;
 }) {
   const [tooltip, setTooltip] = useState<{ x: number; month: string; total: number; approved: number; pending: number } | null>(
     null
@@ -60,7 +60,22 @@ export default function MonthlyTrendChart({
   const yTicks = [0, maxVal * 0.25, maxVal * 0.5, maxVal * 0.75, maxVal];
 
   return (
-    <div className={`${CARD} p-5 h-full flex flex-col`}>
+    <div
+      className={`${CARD} p-5 h-full flex flex-col ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <h3 className="text-[15px] font-semibold text-slate-900">Monthly PO Amount Trend</h3>
         <div className="flex items-center gap-3">
@@ -170,15 +185,6 @@ export default function MonthlyTrendChart({
           </svg>
         </div>
       )}
-      {onViewAnalytics ? (
-        <button
-          type="button"
-          onClick={onViewAnalytics}
-          className="mt-3 w-full pt-3 border-t border-[#EEF0F5] text-[12px] font-medium text-indigo-500 hover:text-indigo-600 text-center"
-        >
-          View Analytics
-        </button>
-      ) : null}
     </div>
   );
 }

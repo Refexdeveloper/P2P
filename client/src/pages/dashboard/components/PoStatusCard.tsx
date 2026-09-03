@@ -7,12 +7,12 @@ export default function PoStatusCard({
   slices,
   centerLabel,
   formatValue,
-  onViewAll,
+  onClick,
 }: {
   slices: Slice[];
   centerLabel?: string;
   formatValue?: (n: number) => string;
-  onViewAll?: () => void;
+  onClick?: () => void;
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const total = slices.reduce((s, x) => s + x.value, 0);
@@ -27,7 +27,22 @@ export default function PoStatusCard({
   });
 
   return (
-    <div className={`${CARD} p-5 h-full flex flex-col`}>
+    <div
+      className={`${CARD} p-5 h-full flex flex-col ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <h3 className="text-[15px] font-semibold text-slate-900 mb-3">PO Status Overview</h3>
       {!total ? (
         <p className="text-sm text-slate-500 py-8 text-center">No PO status data yet.</p>
@@ -53,7 +68,6 @@ export default function PoStatusCard({
                     fill="none"
                     stroke={segment.color}
                     strokeWidth={hovered === segment.key ? 13 : 11}
-                    className="cursor-pointer"
                     onMouseEnter={() => setHovered(segment.key)}
                     onMouseLeave={() => setHovered(null)}
                   />
@@ -82,15 +96,6 @@ export default function PoStatusCard({
           </div>
         </div>
       )}
-      {onViewAll ? (
-        <button
-          type="button"
-          onClick={onViewAll}
-          className="mt-3 w-full pt-3 border-t border-[#EEF0F5] text-[12px] font-medium text-indigo-500 hover:text-indigo-600 text-center"
-        >
-          View All POs
-        </button>
-      ) : null}
     </div>
   );
 }

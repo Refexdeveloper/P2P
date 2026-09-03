@@ -650,6 +650,8 @@ async function enrichPR(row) {
     priorityLower: mapPriorityToFrontend(row.priority),
     justification: row.justification,
     requiredDate: formatDate(row.required_date),
+    workStartDate: formatDate(row.work_start_date),
+    workEndDate: formatDate(row.work_end_date),
     currency: normalizeCurrency(row.currency),
     totalAmount: Number(row.total_amount),
     status: row.status,
@@ -1124,6 +1126,8 @@ export async function createPurchaseRequest(user, body) {
     lineItems = [],
     attachments = [],
     submit = false,
+    workStartDate,
+    workEndDate,
   } = body;
   const extras = parseRequisitionExtras(body);
   const requestCategory = normalizeRequestCategory(body.requestCategory ?? body.request_category);
@@ -1133,6 +1137,19 @@ export async function createPurchaseRequest(user, body) {
   const vendorMode = vendorSelection === 'own' ? 'own' : 'scm';
   const normalizedPurchaseType = normalizePurchaseType(purchaseType);
   const normalizedCurrency = normalizeCurrency(currency);
+  const workStart =
+    normalizedPurchaseType === 'work_order'
+      ? String(workStartDate || body.work_start_date || '').trim().slice(0, 10) || null
+      : null;
+  const workEnd =
+    normalizedPurchaseType === 'work_order'
+      ? String(workEndDate || body.work_end_date || '').trim().slice(0, 10) || null
+      : null;
+  if (submit && normalizedPurchaseType === 'work_order') {
+    if (!workStart) throw new Error('Work start date is required for Work Order');
+    if (!workEnd) throw new Error('Work end date is required for Work Order');
+    if (workEnd < workStart) throw new Error('Work end date must be on or after the start date');
+  }
 
   if (submit && !lineItems.length) {
     throw new Error('At least one line item is required');
@@ -1306,6 +1323,15 @@ export async function createPurchaseRequest(user, body) {
 
     if (attachments.length) {
       await savePrAttachments(prId, user.id, attachments, conn);
+    }
+
+    try {
+      await conn.query(
+        `UPDATE purchase_requests SET work_start_date = ?, work_end_date = ?, updated_at = NOW() WHERE id = ?`,
+        [workStart, workEnd, prId]
+      );
+    } catch (err) {
+      if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
     }
 
     let hodAssignment = null;
@@ -1803,6 +1829,8 @@ function mapScmBucketSummary(row) {
     priorityLower: mapPriorityToFrontend(row.priority),
     justification: row.justification,
     requiredDate: formatDate(row.required_date),
+    workStartDate: formatDate(row.work_start_date),
+    workEndDate: formatDate(row.work_end_date),
     currency: normalizeCurrency(row.currency),
     totalAmount: Number(row.total_amount),
     status: row.status,
@@ -2622,7 +2650,14 @@ export async function processApproval(user, prId, action, remarks, options = {})
       );
       notifyWorkflowStepProgress(nextLabel);
     } else if (rfqEntryRequester?.email) {
-      // Particular requester — RFQ entry step
+      // Particular requester — RFQ entry step (include FSD / PR documents)
+      let attachments = [];
+      try {
+        const { loadPrAttachmentsForMail } = await import('./prAttachmentService.js');
+        attachments = await loadPrAttachmentsForMail(updatedPr.id);
+      } catch (err) {
+        console.warn('PR/FSD attachments for RFQ Entry mail skipped:', err.message);
+      }
       queuePrApprovalPendingNotification(
         updatedPr,
         'Requester',
@@ -2632,6 +2667,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           approverEmails: [rfqEntryRequester.email],
           approverName: rfqEntryRequester.name,
           stageLabel: 'RFQ Entry Required',
+          attachments,
         }
       );
       notifyWorkflowStepProgress('RFQ Entry (Own Vendor)', 'L1 Manager Approval');
@@ -2648,7 +2684,14 @@ export async function processApproval(user, prId, action, remarks, options = {})
           approverName: 'SCM Buyer',
         });
       } catch (err) {
-        console.warn('SCM Buyer RFQ mail pack failed, sending without files:', err.message);
+        console.warn('SCM Buyer RFQ mail pack failed, sending with PR docs only:', err.message);
+        let attachments = [];
+        try {
+          const { loadPrAttachmentsForMail } = await import('./prAttachmentService.js');
+          attachments = await loadPrAttachmentsForMail(updatedPr.id);
+        } catch (attErr) {
+          console.warn('PR/FSD attachments for SCM RFQ mail skipped:', attErr.message);
+        }
         queuePrApprovalPendingNotification(
           updatedPr,
           'SCM Buyer',
@@ -2659,6 +2702,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
             stageLabel: scmLabel,
             approverEmails: scmRfqBuyerEmails.length ? scmRfqBuyerEmails : undefined,
             approverName: 'SCM Buyer',
+            attachments,
           }
         );
       }
@@ -2770,6 +2814,8 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
     currency,
     lineItems = [],
     attachments = [],
+    workStartDate,
+    workEndDate,
   } = body;
   const extras = parseRequisitionExtras(body, {
     deliveryPoc: pr.delivery_poc,
@@ -2824,6 +2870,19 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
     : normalizePurchaseType(pr.purchase_type);
   const normalizedCurrency = normalizeCurrency(currency ?? pr.currency);
   const billing = await resolvePrBilling(nextEntityId, body, pr);
+  const workStart =
+    normalizedPurchaseType === 'work_order'
+      ? String(workStartDate || body.work_start_date || '').trim().slice(0, 10) || null
+      : null;
+  const workEnd =
+    normalizedPurchaseType === 'work_order'
+      ? String(workEndDate || body.work_end_date || '').trim().slice(0, 10) || null
+      : null;
+  if (!isDraftLike && normalizedPurchaseType === 'work_order') {
+    if (!workStart) throw new Error('Work start date is required for Work Order');
+    if (!workEnd) throw new Error('Work end date is required for Work Order');
+    if (workEnd < workStart) throw new Error('Work end date must be on or after the start date');
+  }
 
   // Draft: never wipe existing line items with an accidental empty payload (autosave / race).
   const shouldReplaceLineItems =
@@ -2902,6 +2961,15 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
 
     if (attachments.length) {
       await savePrAttachments(prId, user.id, attachments, db);
+    }
+
+    try {
+      await db.query(
+        `UPDATE purchase_requests SET work_start_date = ?, work_end_date = ?, updated_at = NOW() WHERE id = ?`,
+        [workStart, workEnd, prId]
+      );
+    } catch (err) {
+      if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
     }
   };
 
@@ -2983,6 +3051,8 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     vendorSelection,
     currency,
     lineItems = [],
+    workStartDate,
+    workEndDate,
   } = body;
   const extras = parseRequisitionExtras(body, {
     deliveryPoc: pr.delivery_poc,
@@ -3037,6 +3107,14 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     : normalizePurchaseType(pr.purchase_type);
   const normalizedCurrency = normalizeCurrency(currency ?? pr.currency);
   const billing = await resolvePrBilling(nextEntityId, body, pr);
+  const workStart =
+    normalizedPurchaseType === 'work_order'
+      ? String(workStartDate || body.work_start_date || '').trim().slice(0, 10) || null
+      : null;
+  const workEnd =
+    normalizedPurchaseType === 'work_order'
+      ? String(workEndDate || body.work_end_date || '').trim().slice(0, 10) || null
+      : null;
 
   const conn = await pool.getConnection();
   try {
@@ -3088,6 +3166,15 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
         prId,
       ]
     );
+
+    try {
+      await conn.query(
+        `UPDATE purchase_requests SET work_start_date = ?, work_end_date = ? WHERE id = ?`,
+        [workStart, workEnd, prId]
+      );
+    } catch (err) {
+      if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
+    }
 
     await conn.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
     for (const item of lineItems) {

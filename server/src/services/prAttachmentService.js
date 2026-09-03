@@ -144,3 +144,66 @@ export async function deletePrAttachment(prId, attachmentId) {
   }
   return { id: attachmentId };
 }
+
+function blobToBuffer(value) {
+  if (value == null || value === '') return null;
+  if (Buffer.isBuffer(value)) return value.length ? value : null;
+  if (value instanceof Uint8Array) return value.byteLength ? Buffer.from(value) : null;
+  if (Array.isArray(value) && value.length) return Buffer.from(value);
+  if (typeof value === 'object' && Array.isArray(value.data) && value.data.length) {
+    return Buffer.from(value.data);
+  }
+  return null;
+}
+
+/** Nodemailer attachments for step/approval mails (FSD + PR uploads). */
+export async function loadPrAttachmentsForMail(prId) {
+  if (!prId) return [];
+  const [rows] = await pool.query(
+    `SELECT id, file_name, file_path, mime_type, file_data
+     FROM pr_attachments
+     WHERE pr_id = ?
+     ORDER BY id ASC`,
+    [prId]
+  );
+
+  const attachments = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const safeFile = String(row.file_name || 'document').replace(/[^a-zA-Z0-9._-]/g, '_');
+    let content = blobToBuffer(row.file_data);
+    if (!content?.length && row.file_path) {
+      try {
+        const fullPath = path.isAbsolute(String(row.file_path))
+          ? String(row.file_path)
+          : path.join(PR_UPLOAD_DIR, String(row.file_path));
+        if (fs.existsSync(fullPath)) {
+          const buf = fs.readFileSync(fullPath);
+          if (buf.length) content = buf;
+        }
+      } catch {
+        /* skip missing file */
+      }
+    }
+    if (!content?.length) {
+      console.warn(`PR attachment ${row.id} for PR ${prId} missing blob/disk (${safeFile})`);
+      continue;
+    }
+
+    let filename = `PR_${safeFile}`;
+    let n = 2;
+    while (seen.has(filename.toLowerCase())) {
+      const ext = path.extname(safeFile);
+      const base = path.basename(safeFile, ext);
+      filename = `PR_${base}_${n}${ext}`;
+      n += 1;
+    }
+    seen.add(filename.toLowerCase());
+    attachments.push({
+      filename,
+      content,
+      contentType: row.mime_type || undefined,
+    });
+  }
+  return attachments;
+}

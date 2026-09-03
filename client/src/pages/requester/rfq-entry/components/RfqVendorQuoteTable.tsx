@@ -524,8 +524,10 @@ export default function RfqVendorQuoteTable({
                         <button
                           type="button"
                           onClick={() => onSendBack(row)}
-                          className="px-3 py-1.5 rounded-lg border border-amber-200 text-amber-800 text-xs font-semibold"
+                          className="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-semibold hover:bg-amber-100"
+                          title="Request vendor re-quote for next round"
                         >
+                          <i className="ri-refresh-line mr-1"></i>
                           Re-quote
                         </button>
                       )}

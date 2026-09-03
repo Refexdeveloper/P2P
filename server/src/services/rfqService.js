@@ -2252,9 +2252,33 @@ export async function collectQuotationAttachments(prId) {
 
 export async function getRfqEmailPack(prId) {
   const rfqSummary = await buildRfqSummary(prId);
+  const quoteAttachments = await loadQuotationMailAttachments(prId);
+  let prDocs = [];
+  try {
+    const { loadPrAttachmentsForMail } = await import('./prAttachmentService.js');
+    prDocs = await loadPrAttachmentsForMail(prId);
+  } catch (err) {
+    console.warn(`PR/FSD attachments for mail PR ${prId} skipped:`, err.message);
+  }
+
+  const seen = new Set(quoteAttachments.map((a) => String(a.filename || '').toLowerCase()));
+  const merged = [...quoteAttachments];
+  for (const doc of prDocs) {
+    let filename = doc.filename;
+    let n = 2;
+    while (seen.has(String(filename).toLowerCase())) {
+      const ext = path.extname(doc.filename);
+      const base = path.basename(doc.filename, ext);
+      filename = `${base}_${n}${ext}`;
+      n += 1;
+    }
+    seen.add(String(filename).toLowerCase());
+    merged.push({ ...doc, filename });
+  }
+
   return {
     rfqSummary,
-    attachments: await loadQuotationMailAttachments(prId),
+    attachments: merged,
   };
 }
 

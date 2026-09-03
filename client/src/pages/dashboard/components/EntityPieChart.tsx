@@ -10,10 +10,10 @@ type Entity = {
 
 export default function EntityPieChart({
   entities,
-  onViewAll,
+  onClick,
 }: {
   entities: Entity[];
-  onViewAll?: () => void;
+  onClick?: () => void;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const top = entities.slice(0, 4);
@@ -27,7 +27,22 @@ export default function EntityPieChart({
 
   if (!top.length || total <= 0) {
     return (
-      <div className={`${CARD} p-5 h-full flex flex-col`}>
+      <div
+        className={`${CARD} p-5 h-full flex flex-col ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+        onClick={onClick}
+        onKeyDown={
+          onClick
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onClick();
+                }
+              }
+            : undefined
+        }
+        role={onClick ? 'button' : undefined}
+        tabIndex={onClick ? 0 : undefined}
+      >
         <h3 className="text-[15px] font-semibold text-slate-900">Entity-wise PO Distribution</h3>
         <p className="text-sm text-slate-500 py-10 text-center">No PO spend data yet.</p>
       </div>
@@ -43,7 +58,22 @@ export default function EntityPieChart({
   });
 
   return (
-    <div className={`${CARD} p-5 h-full flex flex-col`}>
+    <div
+      className={`${CARD} p-5 h-full flex flex-col ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <h3 className="text-[15px] font-semibold text-slate-900 mb-4">Entity-wise PO Distribution</h3>
       <div className="flex flex-col sm:flex-row items-center gap-5 flex-1">
         <div className="relative w-[168px] h-[168px] shrink-0">
@@ -66,7 +96,7 @@ export default function EntityPieChart({
                   stroke={segment.color}
                   strokeWidth={hoveredIndex === index ? 14 : 12}
                   strokeLinecap="butt"
-                  className="cursor-pointer transition-all duration-200"
+                  className="transition-all duration-200"
                   onMouseEnter={() => setHoveredIndex(index)}
                   onMouseLeave={() => setHoveredIndex(null)}
                 />
@@ -84,39 +114,30 @@ export default function EntityPieChart({
           {segments
             .filter((item) => item.entityName !== 'Others')
             .map((item, index) => (
-            <div
-              key={item.entityName}
-              className={`flex items-start justify-between gap-2 rounded-lg px-1 py-0.5 cursor-pointer ${
-                hoveredIndex === index ? 'bg-slate-50' : ''
-              }`}
-              onMouseEnter={() => setHoveredIndex(index)}
-              onMouseLeave={() => setHoveredIndex(null)}
-            >
-              <div className="flex items-start gap-2 min-w-0">
-                <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: item.color }} />
-                <span className="text-[12px] text-slate-600 leading-snug truncate" title={item.entityName}>
-                  {item.entityName}
-                </span>
+              <div
+                key={item.entityName}
+                className={`flex items-start justify-between gap-2 rounded-lg px-1 py-0.5 ${
+                  hoveredIndex === index ? 'bg-slate-50' : ''
+                }`}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseLeave={() => setHoveredIndex(null)}
+              >
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: item.color }} />
+                  <span className="text-[12px] text-slate-600 leading-snug truncate" title={item.entityName}>
+                    {item.entityName}
+                  </span>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-[12px] font-semibold text-slate-900" title={formatFullInr(item.totalPOAmount)}>
+                    {formatCompactInr(item.totalPOAmount)}
+                  </p>
+                  <p className="text-[11px] text-slate-400">{item.percent.toFixed(1)}%</p>
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <p className="text-[12px] font-semibold text-slate-900" title={formatFullInr(item.totalPOAmount)}>
-                  {formatCompactInr(item.totalPOAmount)}
-                </p>
-                <p className="text-[11px] text-slate-400">{item.percent.toFixed(1)}%</p>
-              </div>
-            </div>
-          ))}
+            ))}
         </div>
       </div>
-      {onViewAll ? (
-        <button
-          type="button"
-          onClick={onViewAll}
-          className="mt-4 w-full pt-3 border-t border-[#EEF0F5] text-[12px] font-medium text-indigo-500 hover:text-indigo-600 text-center"
-        >
-          View All Entities
-        </button>
-      ) : null}
     </div>
   );
 }

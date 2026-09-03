@@ -42,6 +42,8 @@ export type CreatePrDraftSnapshot = {
   currency: string;
   businessJustification: string;
   requiredDate: string;
+  workStartDate?: string;
+  workEndDate?: string;
   billingLocationId: number | '';
   billingLocation: string;
   billingGstNo: string;
