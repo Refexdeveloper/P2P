@@ -94,7 +94,16 @@ export default function Dashboard() {
   const [departments, setDepartments] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [approvals, setApprovals] = useState<
-    Array<{ id: string; title: string; entity: string; amount: number; timestamp: string; type: string }>
+    Array<{
+      id: string;
+      title: string;
+      entity: string;
+      amount: number;
+      timestamp: string;
+      type: string;
+      poId?: number | null;
+      poNumber?: string;
+    }>
   >([]);
   const [cfoEntities, setCfoEntities] = useState<CfoEntity[]>([]);
   const [payments, setPayments] = useState<Array<PaymentRow & { department?: string }>>([]);
@@ -147,14 +156,19 @@ export default function Dashboard() {
         }))
       );
       setApprovals(
-        (dash.data.recentActivity || []).map((a) => ({
-          id: a.id,
-          title: a.prId,
-          entity: a.entity,
-          amount: a.amount,
-          timestamp: a.timestamp,
-          type: a.type,
-        }))
+        (dash.data.recentActivity || []).map((a) => {
+          const poId = Number(a.id);
+          return {
+            id: a.id,
+            title: a.prId,
+            entity: a.entity,
+            amount: a.amount,
+            timestamp: a.timestamp,
+            type: a.type,
+            poId: Number.isFinite(poId) && poId > 0 ? poId : null,
+            poNumber: a.prId,
+          };
+        })
       );
     } catch {
       setCfoEntities([]);
@@ -541,7 +555,7 @@ export default function Dashboard() {
               formatValue={statusUsesAmount ? formatCompactInr : undefined}
               onClick={openDetails}
             />
-            <RecentApprovalsCard rows={approvalRows} onClick={openDetails} />
+            <RecentApprovalsCard rows={approvalRows} />
             <UpcomingPaymentsCard rows={paymentRows} onClick={openDetails} />
           </div>
         ) : null}
