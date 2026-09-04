@@ -121,12 +121,16 @@ export default function Dashboard() {
     setResetValue(apply);
   }, [lockedEntityId]);
 
-  const load = async () => {
+  const load = async (filterOverride?: Partial<DashboardFiltersValue>) => {
+    const active = { ...filters, ...filterOverride };
     setLoading(true);
     setError(null);
     try {
       const [insightsRes, masterEnt, masterDept, masterCat] = await Promise.all([
-        poApi.cfoInsights(),
+        poApi.cfoInsights({
+          department: active.department || undefined,
+          category: active.category || undefined,
+        }),
         masterApi.listEntities({ status: 'active', pageSize: 500 }).catch(() => ({ data: [] as Array<{ id: number; name: string }> })),
         masterApi.listDepartments({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
         masterApi.listCategories({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
@@ -205,7 +209,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.department, filters.category]);
 
   useEffect(() => {
     localStorage.setItem(CUSTOMIZE_KEY, JSON.stringify(hidden));
@@ -254,6 +259,9 @@ export default function Dashboard() {
   const filteredOrders = useMemo(() => {
     return data.recentPurchaseOrders.filter((po) => {
       if (selectedEntityName && po.entity !== selectedEntityName) return false;
+      if (filters.department && (po as { department?: string }).department && (po as { department?: string }).department !== filters.department) {
+        return false;
+      }
       if (filters.vendor && po.vendorName !== filters.vendor) return false;
       if (filters.poStatus && po.status !== filters.poStatus) return false;
       if (!inDateRange(po.poDate, filters.dateFrom, filters.dateTo)) return false;
@@ -295,7 +303,7 @@ export default function Dashboard() {
     const entityApproved = filteredEntities.reduce((s, e) => s + e.approvedAmount, 0);
     const entityPending = filteredEntities.reduce((s, e) => s + e.pendingAmount, 0);
     const narrowed =
-      Boolean(filters.entityId || filters.vendor || filters.amountMin || filters.amountMax);
+      Boolean(filters.entityId || filters.vendor || filters.amountMin || filters.amountMax || filters.department || filters.category);
 
     let totalPOAmount = narrowed ? entityTotal : data.kpis.totalPOAmount;
     let approvedPOAmount = narrowed ? entityApproved : data.kpis.approvedPOAmount;
@@ -377,7 +385,7 @@ export default function Dashboard() {
   const paymentRows = useMemo(() => {
     return payments.filter((p) => {
       if (filters.vendor && p.vendor !== filters.vendor) return false;
-      if (filters.department && p.department && p.department !== filters.department) return false;
+      if (filters.department && p.department !== filters.department) return false;
       if ((filters.dateFrom || filters.dateTo) && p.dueDate && !inDateRange(p.dueDate, filters.dateFrom, filters.dateTo)) {
         return false;
       }

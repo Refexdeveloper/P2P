@@ -139,7 +139,10 @@ router.get(
   requireRolesOrPermissions(['CFO', 'Super Admin'], ['nav.cfo_insights']),
   async (req, res) => {
     try {
-      const data = await getCfoPoInsights(req.user);
+      const data = await getCfoPoInsights(req.user, {
+        department: typeof req.query.department === 'string' ? req.query.department : '',
+        category: typeof req.query.category === 'string' ? req.query.category : '',
+      });
       res.json({ data });
     } catch (err) {
       res.status(500).json({ message: err.message });

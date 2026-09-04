@@ -15,9 +15,11 @@ interface Props {
   addNoun?: string;
   compact?: boolean;
   resetKey?: string;
+  emptyHint?: string;
   onSelect: (option: SearchCreateOption) => void;
   onClear: () => void;
   onCreate?: (name: string) => Promise<void>;
+  onOpen?: () => void;
 }
 
 export default function SearchCreateField({
@@ -29,9 +31,11 @@ export default function SearchCreateField({
   addNoun,
   compact,
   resetKey,
+  emptyHint,
   onSelect,
   onClear,
   onCreate,
+  onOpen,
 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -114,6 +118,7 @@ export default function SearchCreateField({
           onFocus={() => {
             setQuery(displayValue);
             setOpen(true);
+            onOpen?.();
           }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
@@ -152,7 +157,12 @@ export default function SearchCreateField({
         <div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg">
           {filtered.length === 0 && !canAdd && (
             <p className="px-3 py-2.5 text-sm text-gray-500">
-              {typed ? `No ${addNoun || 'matches'} for “${typed}”` : 'Start typing to search'}
+              {typed
+                ? `No ${addNoun || 'matches'} for “${typed}”`
+                : emptyHint ||
+                  (options.length === 0
+                    ? `No ${addNoun || 'options'} available`
+                    : 'Start typing to search')}
             </p>
           )}
           {filtered.map((opt) => (

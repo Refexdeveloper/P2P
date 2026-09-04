@@ -713,8 +713,12 @@ export const poApi = {
     request<{ data: { id: number | null; name: string; email: string; role: string } }>(
       '/api/po/scm-manager'
     ),
-  cfoInsights: () =>
-    request<{
+  cfoInsights: (params?: { department?: string; category?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.department) qs.set('department', params.department);
+    if (params?.category) qs.set('category', params.category);
+    const q = qs.toString();
+    return request<{
       data: {
         kpis: {
           totalPOAmount: number;
@@ -743,6 +747,7 @@ export const poApi = {
           prId: number | null;
           poNumber: string;
           entity: string;
+          department?: string;
           vendorName: string;
           poAmount: number;
           poDate: string;
@@ -755,7 +760,8 @@ export const poApi = {
           poCount: number;
         }>;
       };
-    }>('/api/po/stats/cfo'),
+    }>(`/api/po/stats/cfo${q ? `?${q}` : ''}`);
+  },
   getCreateContext: (prId: number) =>
     request<{
       data: { pr: Record<string, unknown>; vendor: Record<string, unknown>; draftPoId?: number | null };

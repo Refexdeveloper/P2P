@@ -4316,13 +4316,41 @@ function cfoPoStatusLabel(status) {
 
 /**
  * Live CFO Financial Insights: PO KPIs, entity rollups, monthly trend, recent POs, top vendors.
+ * Optional filters: department, category (applied server-side).
  */
-export async function getCfoPoInsights(user = null) {
+export async function getCfoPoInsights(user = null, filters = {}) {
   const scope = await resolveUserEntityScope(user);
   const poScope = poEntityScopeSql(scope.entityId);
   const excludedSql = sqlInList(CFO_PO_EXCLUDED_STATUSES);
   const pendingSql = sqlInList(CFO_PO_PENDING_STATUSES);
   const approvedSql = sqlInList(CFO_PO_APPROVED_STATUSES);
+
+  const department = String(filters.department || '').trim();
+  const category = String(filters.category || '').trim();
+
+  const extraJoins = [];
+  const extraWhere = [];
+  const extraParams = [];
+  const needsPrJoin = Boolean(department || category);
+  if (needsPrJoin && !poScope.join) {
+    extraJoins.push('LEFT JOIN purchase_requests pr ON pr.id = po.pr_id');
+  }
+  if (department) {
+    extraJoins.push('LEFT JOIN departments d_cfo ON d_cfo.id = pr.department_id');
+    extraWhere.push(' AND d_cfo.name = ?');
+    extraParams.push(department);
+  }
+  if (category) {
+    extraWhere.push(` AND (
+      EXISTS (SELECT 1 FROM po_line_items pli WHERE pli.po_id = po.id AND pli.category = ?)
+      OR EXISTS (SELECT 1 FROM pr_line_items pli2 WHERE pli2.pr_id = po.pr_id AND pli2.category = ?)
+    )`);
+    extraParams.push(category, category);
+  }
+
+  const joinSql = `${poScope.join} ${extraJoins.join(' ')}`.trim();
+  const whereSql = `${poScope.where}${extraWhere.join('')}`;
+  const queryParams = [...poScope.params, ...extraParams];
 
   const [[kpi]] = await pool.query(
     `SELECT
@@ -4331,24 +4359,45 @@ export async function getCfoPoInsights(user = null) {
        COALESCE(SUM(CASE WHEN po.status IN (${pendingSql}) THEN po.grand_total ELSE 0 END), 0) AS pending_po_amount,
        COUNT(CASE WHEN po.status NOT IN (${excludedSql}) THEN 1 END) AS total_po_count
      FROM purchase_orders po
-     ${poScope.join}
-     WHERE 1=1${poScope.where}`,
-    poScope.params
+     ${joinSql}
+     WHERE 1=1${whereSql}`,
+    queryParams
   );
 
-  const invoiceEntityFilter = scope.entityId
-    ? ` AND EXISTS (
+  const invoiceFilters = [];
+  const invoiceParams = [];
+  if (scope.entityId) {
+    invoiceFilters.push(` AND EXISTS (
          SELECT 1 FROM purchase_orders po_i
          LEFT JOIN purchase_requests pr_i ON pr_i.id = po_i.pr_id
          WHERE po_i.id = i.po_id AND COALESCE(po_i.entity_id, pr_i.entity_id) = ?
-       )`
-    : '';
-  const invoiceParams = scope.entityId ? [scope.entityId] : [];
+       )`);
+    invoiceParams.push(scope.entityId);
+  }
+  if (department) {
+    invoiceFilters.push(` AND EXISTS (
+         SELECT 1 FROM purchase_orders po_i
+         LEFT JOIN purchase_requests pr_i ON pr_i.id = po_i.pr_id
+         LEFT JOIN departments d_i ON d_i.id = pr_i.department_id
+         WHERE po_i.id = i.po_id AND d_i.name = ?
+       )`);
+    invoiceParams.push(department);
+  }
+  if (category) {
+    invoiceFilters.push(` AND EXISTS (
+         SELECT 1 FROM purchase_orders po_i
+         WHERE po_i.id = i.po_id AND (
+           EXISTS (SELECT 1 FROM po_line_items pli WHERE pli.po_id = po_i.id AND pli.category = ?)
+           OR EXISTS (SELECT 1 FROM pr_line_items pli2 WHERE pli2.pr_id = po_i.pr_id AND pli2.category = ?)
+         )
+       )`);
+    invoiceParams.push(category, category);
+  }
 
   const [[payments]] = await pool.query(
     `SELECT COALESCE(SUM(i.invoice_grand_total), 0) AS paid_value
      FROM invoices i
-     WHERE i.status = 'paid'${invoiceEntityFilter}`,
+     WHERE i.status = 'paid'${invoiceFilters.join('')}`,
     invoiceParams
   );
 
@@ -4363,13 +4412,13 @@ export async function getCfoPoInsights(user = null) {
        COALESCE(SUM(CASE WHEN po.status IN (${pendingSql}) THEN po.grand_total ELSE 0 END), 0) AS pending_amount
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     ${poScope.join}
-     WHERE po.status NOT IN (${excludedSql})${poScope.where}
+     ${joinSql}
+     WHERE po.status NOT IN (${excludedSql})${whereSql}
      GROUP BY COALESCE(e.id, 0),
               COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned'),
               COALESCE(NULLIF(TRIM(e.code), ''), 'N/A')
      ORDER BY total_po_amount DESC`,
-    poScope.params
+    queryParams
   );
 
   const entityWisePOSummary = entityRows.map((row, idx) => ({
@@ -4400,12 +4449,12 @@ export async function getCfoPoInsights(user = null) {
        COALESCE(SUM(po.grand_total), 0) AS amount
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     ${poScope.join}
+     ${joinSql}
      WHERE po.status NOT IN (${excludedSql})
-       AND COALESCE(po.po_date, po.created_at) >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)${poScope.where}
+       AND COALESCE(po.po_date, po.created_at) >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)${whereSql}
      GROUP BY ym, month_label, entity_name
      ORDER BY ym ASC`,
-    poScope.params
+    queryParams
   );
 
   const monthMap = new Map();
@@ -4447,14 +4496,17 @@ export async function getCfoPoInsights(user = null) {
        po.grand_total,
        po.status,
        COALESCE(po.po_date, po.created_at) AS po_date,
-       COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), '—') AS entity_name
+       COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), '—') AS entity_name,
+       COALESCE(NULLIF(TRIM(d_recent.name), ''), '') AS department_name
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     ${poScope.join}
-     WHERE po.status NOT IN ('draft', 'cancelled')${poScope.where}
+     LEFT JOIN purchase_requests pr_recent ON pr_recent.id = po.pr_id
+     LEFT JOIN departments d_recent ON d_recent.id = pr_recent.department_id
+     ${joinSql}
+     WHERE po.status NOT IN ('draft', 'cancelled')${whereSql}
      ORDER BY COALESCE(po.po_date, po.created_at) DESC, po.id DESC
      LIMIT 12`,
-    poScope.params
+    queryParams
   );
 
   const recentPurchaseOrders = recentRows.map((row) => ({
@@ -4462,6 +4514,7 @@ export async function getCfoPoInsights(user = null) {
     prId: Number(row.pr_id) || null,
     poNumber: row.po_number,
     entity: row.entity_name,
+    department: row.department_name || '',
     vendorName: row.vendor_name || '—',
     poAmount: Number(row.grand_total || 0),
     poDate: formatDate(row.po_date),
@@ -4476,12 +4529,12 @@ export async function getCfoPoInsights(user = null) {
        COALESCE(SUM(po.grand_total), 0) AS total_po_amount
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
-     ${poScope.join}
-     WHERE po.status NOT IN (${excludedSql})${poScope.where}
+     ${joinSql}
+     WHERE po.status NOT IN (${excludedSql})${whereSql}
      GROUP BY vendor_name, entity_name
      ORDER BY total_po_amount DESC
      LIMIT 10`,
-    poScope.params
+    queryParams
   );
 
   const topVendorsByPOAmount = vendorRows.map((row) => ({

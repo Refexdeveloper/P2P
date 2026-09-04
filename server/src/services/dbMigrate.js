@@ -446,6 +446,9 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_requests ADD COLUMN project_manager_email VARCHAR(255) NULL`,
   `ALTER TABLE po_letterhead_masters MODIFY COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo', 'custom_short_po', 'custom_long_po', 'custom_short_wo', 'custom_long_wo') NOT NULL`,
   `ALTER TABLE purchase_orders MODIFY COLUMN po_type ENUM('short_po', 'long_po', 'short_wo', 'long_wo', 'custom_short_po', 'custom_long_po', 'custom_short_wo', 'custom_long_wo') NOT NULL DEFAULT 'short_po'`,
+  // Allow decimal quantities on PO line items (e.g. 2.5)
+  `ALTER TABLE po_line_items MODIFY COLUMN quantity DECIMAL(15, 3) NOT NULL DEFAULT 1`,
+  `ALTER TABLE pr_line_items MODIFY COLUMN quantity DECIMAL(15, 3) NOT NULL DEFAULT 1`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

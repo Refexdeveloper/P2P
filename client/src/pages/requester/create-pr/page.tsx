@@ -1231,18 +1231,26 @@ export default function CreatePRPage() {
   }, [persistPrId, prFlow, vendorSelection]);
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    const loadMasters = async () => {
+      // Load entities independently so item/category failures don't blank the entity dropdown
       try {
-        const [itemsRes, catsRes, entityRes, deptRes] = await Promise.all([
+        const entityRes = await masterApi.listEntities({ status: 'active' });
+        if (!cancelled) setEntities(entityRes.data || []);
+      } catch {
+        if (!cancelled) setEntities([]);
+      }
+
+      try {
+        const [itemsRes, catsRes, deptRes] = await Promise.all([
           masterApi.listItems({ status: 'active' }),
           masterApi.listCategories({ status: 'active', requestType }),
-          masterApi.listEntities({ status: 'active' }),
           masterApi.listDepartments({ status: 'active' }),
         ]);
+        if (cancelled) return;
         const items = itemsRes.data || [];
         setMasterItems(items);
         setMasterCategories(catsRes.data || []);
-        setEntities(entityRes.data || []);
         setDepartments(deptRes.data || []);
         // Match existing line items to Item Master by name when editing
         setLineItems((prev) =>
@@ -1265,10 +1273,33 @@ export default function CreatePRPage() {
           })
         );
       } catch {
-        setMasterItems([]);
-        setMasterCategories([]);
+        if (!cancelled) {
+          setMasterItems([]);
+          setMasterCategories([]);
+          setDepartments([]);
+        }
       }
-    })();
+    };
+    void loadMasters();
+
+    const refreshEntities = () => {
+      void masterApi
+        .listEntities({ status: 'active' })
+        .then((res) => {
+          if (!cancelled) setEntities(res.data || []);
+        })
+        .catch(() => {});
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') refreshEntities();
+    };
+    window.addEventListener('focus', refreshEntities);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refreshEntities);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [requestType]);
 
   const selectedEntity = useMemo(
@@ -2406,6 +2437,11 @@ export default function CreatePRPage() {
                 placeholder="Search entity by code, name, cost center…"
                 hasError={Boolean(errors.entityId)}
                 addNoun="entity"
+                emptyHint={
+                  entities.length
+                    ? undefined
+                    : 'No entities found. Add them in Entity Master, then click here again.'
+                }
                 onSelect={(opt) => {
                   setEntityId(Number(opt.id));
                   const ent = entities.find((e) => e.id === Number(opt.id));
@@ -2433,10 +2469,30 @@ export default function CreatePRPage() {
                   setBillingGstNo('');
                   setBillingAddress('');
                 }}
+                onCreate={async (name) => {
+                  const created = await masterApi.chatCreateEntity({ name });
+                  const ent = created.data;
+                  setEntities((prev) => {
+                    if (prev.some((e) => e.id === ent.id)) return prev;
+                    return [...prev, ent].sort((a, b) => a.name.localeCompare(b.name));
+                  });
+                  setEntityId(ent.id);
+                }}
+                onOpen={() => {
+                  void masterApi
+                    .listEntities({ status: 'active' })
+                    .then((res) => setEntities(res.data || []))
+                    .catch(() => {});
+                }}
               />
               {errors.entityId && (
                 <p className="text-xs text-red-500 mt-1">{errors.entityId}</p>
               )}
+              {!errors.entityId && entities.length === 0 ? (
+                <p className="text-xs text-amber-600 mt-1.5">
+                  No entities loaded from Entity Master. Add an entity there, then reopen this field.
+                </p>
+              ) : null}
             </div>
 
             {/* Purchase Type */}

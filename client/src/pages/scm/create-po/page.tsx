@@ -1461,6 +1461,15 @@ export default function CreatePOPage() {
     [manualEntityId, entityOptions]
   );
 
+  const loadEntityOptions = useCallback(async () => {
+    try {
+      const res = await masterApi.listEntities({ status: 'active' });
+      setEntityOptions(res.data || []);
+    } catch {
+      setEntityOptions([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isManualPoFlow) return;
     let cancelled = false;
@@ -1472,10 +1481,17 @@ export default function CreatePOPage() {
         if (!cancelled) setEntityOptions([]);
       }
     })();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void loadEntityOptions();
+    };
+    window.addEventListener('focus', loadEntityOptions);
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', loadEntityOptions);
+      document.removeEventListener('visibilitychange', onVis);
     };
-  }, [isManualPoFlow]);
+  }, [isManualPoFlow, loadEntityOptions]);
 
   const reloadClausesFromMaster = useCallback(async () => {
     skipNextLetterheadLoad.current = false;
@@ -1803,7 +1819,7 @@ export default function CreatePOPage() {
         const entRes = await masterApi.listEntities({ status: 'active' }).catch(() => ({ data: [] }));
         const ents = (entRes.data || []) as EntityRecord[];
         if (!shouldApplyContext()) return;
-        if (ents.length) setEntityOptions(ents);
+        setEntityOptions(ents);
         setManualPoNoPr(true);
         setLetterheadId('');
         setEntity('');
@@ -2424,13 +2440,14 @@ export default function CreatePOPage() {
     });
   };
 
-  const handleQtyChange = (id: string | number, val: number) => {
+  const handleQtyChange = (id: string | number, raw: string) => {
     patchLineItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, quantity: val, total: calcLineTotal(val, item.unitPrice) }
-          : item
-      )
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const parsed = raw === '' || raw === '.' ? 0 : parseFloat(raw);
+        const val = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+        return { ...item, quantity: val, total: calcLineTotal(val, item.unitPrice) };
+      })
     );
   };
 
@@ -3454,6 +3471,10 @@ export default function CreatePOPage() {
                           selectedId={manualEntityId || null}
                           placeholder="Search entity by code, name, cost center…"
                           addNoun="entity"
+                          emptyHint="No entities found. Add them in Entity Master, then click here again."
+                          onOpen={() => {
+                            void loadEntityOptions();
+                          }}
                           onSelect={(opt) => {
                             const id = Number(opt.id);
                             setManualEntityId(id);
@@ -3480,10 +3501,30 @@ export default function CreatePOPage() {
                                 : prev
                             );
                           }}
+                          onCreate={async (name) => {
+                            const created = await masterApi.chatCreateEntity({ name });
+                            const ent = created.data;
+                            setEntityOptions((prev) => {
+                              if (prev.some((e) => e.id === ent.id)) return prev;
+                              return [...prev, ent].sort((a, b) => a.name.localeCompare(b.name));
+                            });
+                            setManualEntityId(ent.id);
+                            setPr((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    entityId: ent.id,
+                                    entityName: ent.name,
+                                    entityCode: ent.code,
+                                  }
+                                : prev
+                            );
+                            if (!entity) setEntity(ent.name);
+                          }}
                         />
                         {entityOptions.length === 0 ? (
                           <p className="text-xs text-amber-600 mt-1.5">
-                            No entities loaded. Check Entity Master or refresh the page.
+                            No entities loaded. Add in Entity Master (status Active), then reopen this field.
                           </p>
                         ) : null}
                       </div>
@@ -4138,9 +4179,11 @@ export default function CreatePOPage() {
                           <td className="px-2 py-2.5 align-top">
                           <input
                             type="number"
-                              min="1"
+                              min="0.01"
+                              step="0.01"
+                              inputMode="decimal"
                               value={item.quantity}
-                              onChange={e => handleQtyChange(item.id, parseInt(e.target.value) || 1)}
+                              onChange={(e) => handleQtyChange(item.id, e.target.value)}
                               className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
                             />
                           </td>
