@@ -1,5 +1,28 @@
-export function formatCurrency(amount) {
-  return `₹${Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export function normalizeEmailCurrency(value) {
+  const code = String(value || '')
+    .trim()
+    .toUpperCase();
+  if (code === 'EUR' || code === 'USD' || code === 'INR') return code;
+  return 'INR';
+}
+
+export function formatCurrency(amount, currency = 'INR') {
+  const code = normalizeEmailCurrency(currency);
+  const n = Number(amount || 0);
+  try {
+    return new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
+  } catch {
+    const symbol = code === 'USD' ? '$' : code === 'EUR' ? '€' : '₹';
+    return `${symbol}${n.toLocaleString(code === 'INR' ? 'en-IN' : 'en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
 }
 
 /** RefexOne logo shown at the top of all outbound HTML emails */
@@ -63,4 +86,27 @@ export function formatEntity(prOrPo) {
   if (!name && !code) return '—';
   if (name && code) return `${name} (${code})`;
   return name || code;
+}
+
+/** Entity location / billing region for email subjects */
+export function formatEntityLocation(prOrPo) {
+  return String(
+    prOrPo?.billingLocation ||
+      prOrPo?.billing_location ||
+      prOrPo?.entityLocation ||
+      prOrPo?.entity_location ||
+      ''
+  ).trim();
+}
+
+/** SCM RFQ Entry subject: New PR request received - PR — Entity - Location */
+export function formatScmRfqEntrySubject(pr) {
+  const prNumber = String(pr?.prNumber || pr?.pr_number || '').trim() || 'PR';
+  const entity =
+    String(pr?.entityName || pr?.entity || '').trim() ||
+    String(pr?.entityCode || '').trim() ||
+    '—';
+  const location = formatEntityLocation(pr);
+  const entityPart = location ? `${entity} - ${location}` : entity;
+  return `New PR request received - ${prNumber} — ${entityPart}`;
 }

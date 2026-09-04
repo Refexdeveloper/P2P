@@ -3906,6 +3906,8 @@ export async function openVendorAcceptanceStageForPo(poId) {
   if (!rows.length) return null;
   const row = rows[0];
   if (isWorkOrderPo(row)) return null;
+  const pt = String(row.purchase_type || '').toLowerCase();
+  if (pt === 'sass' || pt === 'saas' || pt === 'cloud_subscription') return null;
   const vaStatus = row.vendor_acceptance_status;
   if (vaStatus && vaStatus !== 'pending') return null;
 

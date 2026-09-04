@@ -454,6 +454,13 @@ const MIGRATIONS = [
   // Entity location addresses for Create PR / PO autofill
   `ALTER TABLE entity_locations ADD COLUMN billing_address TEXT NULL`,
   `ALTER TABLE entity_locations ADD COLUMN site_address TEXT NULL`,
+  // SASS purchase type — L1 (user) → L2 Srivaths → Mugesh → invoice → Accounts (no SCM)
+  `ALTER TABLE purchase_requests MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass') NOT NULL DEFAULT 'purchase_order'`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass') NOT NULL DEFAULT 'purchase_order'`,
+  // SASS: vendor is known on Create PR — no RFQ entry
+  `ALTER TABLE purchase_requests ADD COLUMN vendor_id INT NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN vendor_name VARCHAR(150) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN vendor_email VARCHAR(150) NULL`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

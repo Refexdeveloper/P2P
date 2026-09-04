@@ -9,6 +9,7 @@ import TaskDetailDrawer from './components/TaskDetailDrawer';
 import { taskApi, prApi, poApi } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate } from '../../utils/formatDate';
+import { formatMoney, normalizeCurrency } from '../../constants/currency';
 
 const STAGE_LABELS: Record<string, string> = {
   SUBMITTED: 'PR Submitted',
@@ -48,6 +49,7 @@ interface TaskItem {
   entityName: string;
   entityCode: string;
   totalAmount: number;
+  currency?: string;
   priority: string;
   status: string;
   submittedDate: string;
@@ -67,6 +69,25 @@ interface TaskItem {
   isPoRevise?: boolean;
   vendorSelection?: 'own' | 'scm';
   askBusinessApproval?: boolean;
+  purchaseType?: string;
+  purchaseTypeLabel?: string;
+  isSass?: boolean;
+}
+
+function isSassTask(task: { isSass?: boolean; purchaseType?: string }) {
+  if (task.isSass) return true;
+  const t = String(task.purchaseType || '')
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return t === 'sass' || t === 'saas' || t === 'cloud_subscription';
+}
+
+function SassBadge() {
+  return (
+    <span className="px-1.5 py-0.5 bg-teal-100 text-teal-800 text-[10px] font-bold rounded tracking-wide flex-shrink-0">
+      Cloud Subscription
+    </span>
+  );
 }
 
 export default function TasksPage() {
@@ -99,6 +120,7 @@ export default function TasksPage() {
           entityName: String(t.entityName || ''),
           entityCode: String(t.entityCode || ''),
           totalAmount: Number(t.totalAmount),
+          currency: normalizeCurrency(String(t.currency || 'INR')),
           priority: String(t.priority),
           status,
           submittedDate: String(t.submittedDate || ''),
@@ -118,6 +140,9 @@ export default function TasksPage() {
           isPoRevise: Boolean(t.isPoRevise),
           vendorSelection: t.vendorSelection === 'own' ? 'own' : 'scm',
           askBusinessApproval: Boolean(t.askBusinessApproval),
+          purchaseType: t.purchaseType ? String(t.purchaseType) : 'purchase_order',
+          purchaseTypeLabel: t.purchaseTypeLabel ? String(t.purchaseTypeLabel) : undefined,
+          isSass: Boolean(t.isSass),
         };
       });
       setTasks(mapped);
@@ -164,6 +189,7 @@ export default function TasksPage() {
       prNumber: task.prNumber,
       prTitle: task.title,
       amount: task.totalAmount,
+      currency: task.currency || 'INR',
     });
     setSearchParams({}, { replace: true });
   }, [loading, tasks, searchParams, setSearchParams, navigate]);
@@ -195,6 +221,8 @@ export default function TasksPage() {
     currentApprover: string;
     justification: string;
     vendorSelection?: 'own' | 'scm';
+    purchaseType?: string;
+    isSass?: boolean;
     billingLocation?: string;
     billingGstNo?: string;
     billingAddress?: string;
@@ -230,6 +258,7 @@ export default function TasksPage() {
     prNumber: string;
     prTitle: string;
     amount: number;
+    currency?: string;
   }>({
     isOpen: false,
     type: 'approve',
@@ -237,6 +266,7 @@ export default function TasksPage() {
     prNumber: '',
     prTitle: '',
     amount: 0,
+    currency: 'INR',
   });
 
   const showToast = (text: string, type: 'success' | 'error') => {
@@ -303,12 +333,14 @@ export default function TasksPage() {
       priority: task.priority,
       status: task.status,
       totalAmount: task.totalAmount,
-      currency: 'INR',
+      currency: normalizeCurrency(task.currency),
       submittedDate: task.submittedDate,
       requiredDate: '',
       currentApprover: task.currentApprover,
       justification: 'Loading…',
       vendorSelection: task.vendorSelection === 'own' ? 'own' : 'scm',
+      purchaseType: task.purchaseType,
+      isSass: isSassTask(task),
       billingLocation: '',
       billingGstNo: '',
       billingAddress: '',
@@ -353,6 +385,13 @@ export default function TasksPage() {
       const vendorSelection =
         pr.vendorSelection === 'own' || task.vendorSelection === 'own' ? 'own' : 'scm';
 
+      const purchaseType = String(pr.purchaseType || task.purchaseType || 'purchase_order');
+      const isSass =
+        isSassTask(task) ||
+        ['sass', 'saas', 'cloud_subscription'].includes(
+          purchaseType.toLowerCase().replace(/[\s-]+/g, '_')
+        );
+
       setDrawerDetail({
         id: task.id,
         prNumber: String(pr.prNumber || task.prNumber),
@@ -368,12 +407,16 @@ export default function TasksPage() {
         priority: String(pr.priorityLower || pr.priority || task.priority).toLowerCase(),
         status: task.status === 'pending_approval' ? 'pending_approval' : task.status,
         totalAmount: Number(pr.totalAmount ?? task.totalAmount),
-        currency: 'INR',
+        currency: normalizeCurrency(
+          String(pr.currency || task.currency || 'INR')
+        ),
         submittedDate: String(pr.submittedDate || task.submittedDate),
         requiredDate: String(pr.requiredDate || ''),
         currentApprover: formatApproverStage(pr, task),
         justification: String(pr.justification || 'No justification provided.'),
         vendorSelection,
+        purchaseType,
+        isSass,
         billingLocation: String(pr.billingLocation || ''),
         billingGstNo: String(pr.billingGstNo || ''),
         billingAddress: String(pr.billingAddress || ''),
@@ -421,6 +464,7 @@ export default function TasksPage() {
       prNumber: task.prNumber,
       prTitle: task.title,
       amount: task.totalAmount,
+      currency: task.currency || 'INR',
     });
   };
 
@@ -565,8 +609,8 @@ export default function TasksPage() {
 
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
-  const formatInr = (amount: number) =>
-    `₹${Number(amount || 0).toLocaleString('en-IN')}`;
+  const formatAmount = (amount: number, currency?: string) =>
+    formatMoney(amount, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const getSlaInfo = (task: typeof processedTasks[0]) => {
     if (task.status !== 'pending_approval') return null;
@@ -725,7 +769,7 @@ export default function TasksPage() {
           <div className="min-w-0">
             <p className="text-sm text-gray-500">Total Pending Value</p>
             <p className="text-lg sm:text-xl font-bold text-gray-900 truncate">
-              {formatInr(stats.totalValue)}
+              {formatAmount(stats.totalValue, 'INR')}
             </p>
           </div>
         </div>
@@ -840,6 +884,7 @@ export default function TasksPage() {
           {filteredTasks.map((task) => {
             const slaInfo = getSlaInfo(task);
             const isPending = task.status === 'pending_approval';
+            const sass = isSassTask(task);
             return (
               <div
                 key={task.id}
@@ -853,26 +898,36 @@ export default function TasksPage() {
                   }
                 }}
                 className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-                  task.isOverdue && isPending ? 'bg-red-50/40' : 'bg-white'
+                  task.isOverdue && isPending
+                    ? 'bg-red-50/40'
+                    : sass
+                      ? 'bg-teal-50/70 border-l-4 border-l-teal-500'
+                      : 'bg-white'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold text-gray-900">{task.prNumber}</p>
+                      {sass && <SassBadge />}
                       {(task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) && (
                         <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-semibold rounded">
                           Post-RFQ
                         </span>
                       )}
                     </div>
+                    {sass && (
+                      <p className="text-[11px] font-semibold text-teal-700 mt-1 uppercase tracking-wide">
+                        Cloud Subscription request
+                      </p>
+                    )}
                     <p className="text-sm font-medium text-gray-900 mt-0.5 line-clamp-2">{task.title}</p>
                     <p className="text-xs text-gray-500 mt-1">
                       {task.lineItems} item{task.lineItems !== 1 ? 's' : ''} · {task.requestType}
                     </p>
                   </div>
                   <p className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
-                    {formatInr(task.totalAmount)}
+                    {formatAmount(task.totalAmount, task.currency)}
                   </p>
                 </div>
 
@@ -945,21 +1000,27 @@ export default function TasksPage() {
               {filteredTasks.map((task) => {
                 const slaInfo = getSlaInfo(task);
                 const isPending = task.status === 'pending_approval';
+                const sass = isSassTask(task);
                 const rowOverdue = Boolean(task.isOverdue && isPending);
                 const stickyBg = rowOverdue
                   ? 'bg-red-50 group-hover:bg-red-50'
-                  : 'bg-white group-hover:bg-gray-50';
+                  : sass
+                    ? 'bg-teal-50/80 group-hover:bg-teal-50'
+                    : 'bg-white group-hover:bg-gray-50';
 
                 return (
                   <tr
                     key={task.id}
                     onClick={() => openTaskDetail(task.id)}
                     className={`group hover:bg-gray-50 transition-colors cursor-pointer ${
-                      rowOverdue ? 'bg-red-50/40' : ''
+                      rowOverdue ? 'bg-red-50/40' : sass ? 'bg-teal-50/60' : ''
                     }`}
                   >
                     <td className="px-3 py-3 align-middle whitespace-nowrap text-sm font-medium text-gray-900">
-                      {task.prNumber}
+                      <div className="flex items-center gap-1.5">
+                        {task.prNumber}
+                        {sass && <SassBadge />}
+                      </div>
                     </td>
                     <td className="px-3 py-3 align-middle text-sm text-gray-900 max-w-[220px]">
                       <div className="min-w-0">
@@ -971,6 +1032,11 @@ export default function TasksPage() {
                             </span>
                           )}
                         </div>
+                        {sass && (
+                          <p className="text-[10px] font-bold text-teal-700 uppercase tracking-wide mt-0.5">
+                            Cloud Subscription request
+                          </p>
+                        )}
                         <p className="text-gray-500 text-xs mt-0.5 truncate">
                           {task.lineItems} item{task.lineItems !== 1 ? 's' : ''} &middot; {task.requestType}
                         </p>
@@ -1011,7 +1077,7 @@ export default function TasksPage() {
                       {task.department || '—'}
                     </td>
                     <td className="px-3 py-3 align-middle whitespace-nowrap text-sm font-semibold text-gray-900 text-right tabular-nums">
-                      {formatInr(task.totalAmount)}
+                      {formatAmount(task.totalAmount, task.currency)}
                     </td>
                     <td className="px-3 py-3 align-middle whitespace-nowrap">
                       <PriorityBadge priority={task.priority} size="sm" />
@@ -1114,6 +1180,7 @@ export default function TasksPage() {
         prNumber={modalState.prNumber}
         prTitle={modalState.prTitle}
         amount={modalState.amount}
+        currency={modalState.currency || 'INR'}
         prId={
           tasks.find((t) => t.id === modalState.taskId)?.isPoSign
             ? undefined

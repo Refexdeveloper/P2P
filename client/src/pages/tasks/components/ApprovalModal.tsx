@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { prApi } from '../../../services/api';
+import { formatMoney } from '../../../constants/currency';
 
 interface ApprovalModalProps {
   isOpen: boolean;
@@ -7,6 +8,7 @@ interface ApprovalModalProps {
   prNumber: string;
   prTitle: string;
   amount: number;
+  currency?: string;
   prId?: number;
   askBusinessApproval?: boolean;
   onConfirm: (remarks: string, returnTo?: string, goToBusinessApproval?: boolean) => void;
@@ -19,6 +21,7 @@ export default function ApprovalModal({
   prNumber,
   prTitle,
   amount,
+  currency = 'INR',
   prId,
   askBusinessApproval = false,
   onConfirm,
@@ -167,7 +170,12 @@ export default function ApprovalModal({
           <div className="bg-gray-50 rounded-lg p-3 mb-4">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-bold text-gray-500">{prNumber}</span>
-              <span className="text-sm font-bold text-gray-900">₹{Number(amount || 0).toLocaleString('en-IN')}</span>
+              <span className="text-sm font-bold text-gray-900">
+                {formatMoney(Number(amount || 0), currency, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
             </div>
             <p className="text-sm font-medium text-gray-800">{prTitle}</p>
           </div>

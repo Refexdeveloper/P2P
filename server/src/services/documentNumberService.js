@@ -47,12 +47,11 @@ export function normalizePurchaseType(value) {
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
-  if (
-    raw === 'work_order' ||
-    raw === 'workorder' ||
-    raw === 'wo'
-  ) {
+  if (raw === 'work_order' || raw === 'workorder' || raw === 'wo') {
     return 'work_order';
+  }
+  if (raw === 'sass' || raw === 'saas' || raw === 'cloud_subscription') {
+    return 'sass';
   }
   return 'purchase_order';
 }
@@ -63,7 +62,10 @@ export function purchaseTypeToDocType(purchaseType) {
 }
 
 export function purchaseTypeLabel(purchaseType) {
-  return normalizePurchaseType(purchaseType) === 'work_order' ? 'Work Order' : 'Purchase Order';
+  const t = normalizePurchaseType(purchaseType);
+  if (t === 'work_order') return 'Work Order';
+  if (t === 'sass') return 'Cloud Subscription';
+  return 'Purchase Order';
 }
 
 /** Temporary / draft PR numbers must not consume the official FY sequence. */

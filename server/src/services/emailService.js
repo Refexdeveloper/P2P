@@ -13,6 +13,7 @@ import {
 import { buildPoVendorEmail } from '../templates/poVendorEmail.js';
 import { buildPoWorkflowEmail } from '../templates/poWorkflowEmail.js';
 import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceRequestEmail.js';
+import { buildSassInvoiceUploadedEmail } from '../templates/sassInvoiceUploadedEmail.js';
 import { resolveScmBuyerUsers, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
 import { formatRoleDisplayName, withEmailLogo } from '../templates/emailUtils.js';
 import {
@@ -562,6 +563,17 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
   let primaryName = options.approverName || null;
 
   if (assignedRole === 'SCM Buyer') {
+    const purchaseType = String(pr?.purchaseType || pr?.purchase_type || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+    if (
+      options.rfqEntry &&
+      (purchaseType === 'sass' || purchaseType === 'saas' || purchaseType === 'cloud_subscription')
+    ) {
+      console.log(`Skipped SCM RFQ Entry mail for Cloud Subscription PR ${pr.prNumber || pr.id}`);
+      return;
+    }
     const buyerEmails = await getScmBuyerNotifyEmails();
     emails = [...new Set([...emails, ...buyerEmails])];
     if (!primaryName && buyerEmails.length) primaryName = 'SCM Buyer';
@@ -1333,6 +1345,47 @@ export async function sendVendorInvoiceRequestNotification(po, invoice, { portal
     poNumber: po?.poNumber || po?.po_number || null,
     prNumber: po?.prNumber || po?.pr_number || null,
     meta: { portalUrl, invoiceId: invoice?.id || null },
+  });
+}
+
+/**
+ * Cloud Subscription — after requester uploads invoice, notify L1 + Srivaths + Mugesh.
+ */
+export async function sendSassInvoiceUploadedNotification({
+  pr,
+  invoice,
+  recipients = [],
+  uploaderName = 'Requester',
+  attachments = [],
+}) {
+  if (!recipients.length) return null;
+
+  for (const recipient of recipients) {
+    const email = String(recipient?.email || '').trim();
+    if (!email) continue;
+    const { subject, html, text } = buildSassInvoiceUploadedEmail({
+      pr,
+      invoice,
+      uploaderName,
+      recipientName: recipient.name || email.split('@')[0] || 'Approver',
+      appBaseUrl: getAppBaseUrl(),
+    });
+    await sendMailToRecipients([email], subject, html, text, attachments, {
+      emailType: 'sass_invoice_uploaded',
+      prId: pr?.id || pr?.prId || null,
+      prNumber: pr?.prNumber || pr?.pr_number || null,
+      meta: {
+        invoiceNumber: invoice?.invoiceNumber || invoice?.invoice_number || null,
+        invoiceFileName: invoice?.invoiceFileName || invoice?.fileName || null,
+        recipientName: recipient.name || null,
+      },
+    });
+  }
+}
+
+export function queueSassInvoiceUploadedNotification(payload) {
+  enqueueMail(() => sendSassInvoiceUploadedNotification(payload)).catch((err) => {
+    console.error('Email send failure (Cloud Subscription invoice uploaded):', err.message);
   });
 }
 

@@ -958,6 +958,13 @@ export const poApi = {
   getByNumber: (poNumber: string) =>
     request<{ data: Record<string, unknown> }>(`/api/po/by-number/${encodeURIComponent(poNumber)}`),
   get: (poId: number) => request<{ data: Record<string, unknown> }>(`/api/po/${poId}`),
+  fulfillment: (poId: number) =>
+    request<{
+      data: {
+        grn: Record<string, unknown> | null;
+        invoice: Record<string, unknown> | null;
+      };
+    }>(`/api/po/${poId}/fulfillment`),
   adminDelete: (poId: number) =>
     request<{ data: { poId: number; poNumber: string }; message: string }>(`/api/po/${poId}`, {
       method: 'DELETE',

@@ -8,6 +8,7 @@ export const PR_STATUS = {
   PENDING_RFQ_CFO_APPROVAL: 'PENDING_RFQ_CFO_APPROVAL', // CFO (post-RFQ, Own path)
   PENDING_BUSINESS_APPROVAL: 'PENDING_BUSINESS_APPROVAL', // SCM Manager vendor approval (SCM path)
   PENDING_SCM_PO: 'PENDING_SCM_PO',
+  AWAITING_INVOICE: 'AWAITING_INVOICE', // SASS: requester invoice upload after Mugesh
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
   RETURNED: 'RETURNED',
@@ -26,6 +27,7 @@ export const STAGE = {
   BUSINESS_REVIEW: 'BUSINESS_REVIEW', // SCM Manager vendor approval
   SCM_PO_CREATE: 'SCM_PO_CREATE',
   PO_CREATED: 'PO_CREATED',
+  SASS_INVOICE_UPLOAD: 'SASS_INVOICE_UPLOAD',
 };
 
 /** Pre-RFQ approval chain (SCM path: HOD → L2 → CFO). Own path branches after HOD. */
@@ -109,6 +111,7 @@ export function mapStatusToFrontend(status) {
     [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: 'pending_approval',
     [PR_STATUS.PENDING_BUSINESS_APPROVAL]: 'pending_approval',
     [PR_STATUS.PENDING_SCM_PO]: 'pending_approval',
+    [PR_STATUS.AWAITING_INVOICE]: 'pending_approval',
     [PR_STATUS.APPROVED]: 'approved',
     [PR_STATUS.REJECTED]: 'rejected',
     [PR_STATUS.RETURNED]: 'returned',
@@ -263,7 +266,32 @@ export function resolveRequesterPrDisplay(prStatus, prFlow = 'standard', vendorS
   };
 }
 
-export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelection = 'scm') {
+export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelection = 'scm', purchaseType = 'purchase_order') {
+  const isSass =
+    String(purchaseType || '')
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_') === 'sass' ||
+    String(purchaseType || '')
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_') === 'saas' ||
+    String(purchaseType || '')
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_') === 'cloud_subscription';
+
+  if (isSass) {
+    const sassMap = {
+      [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending L1 Manager Approval',
+      [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: 'Pending L2 Manager Approval (Srivaths)',
+      [PR_STATUS.PENDING_CFO_APPROVAL]: 'Pending Mugesh Approval',
+      [PR_STATUS.AWAITING_INVOICE]: 'Awaiting Invoice Upload',
+      [PR_STATUS.APPROVED]: 'Approved — With Accounts',
+      [PR_STATUS.REJECTED]: 'Rejected',
+      [PR_STATUS.RETURNED]: 'Returned for Rework',
+      [PR_STATUS.DRAFT]: 'Draft',
+    };
+    if (sassMap[status]) return sassMap[status];
+  }
+
   if (prFlow === 'functional') {
     const functionalMap = {
       [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending User Approval',
@@ -284,6 +312,7 @@ export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelectio
     [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: 'Pending RFQ CFO Approval',
     [PR_STATUS.PENDING_BUSINESS_APPROVAL]: 'Pending SCM Manager Vendor Approval',
     [PR_STATUS.PENDING_SCM_PO]: 'Pending SCM Buyer Create PO',
+    [PR_STATUS.AWAITING_INVOICE]: 'Awaiting Invoice Upload',
     [PR_STATUS.APPROVED]: 'Approved',
     [PR_STATUS.REJECTED]: 'Rejected',
     [PR_STATUS.RETURNED]: 'Returned for Rework',

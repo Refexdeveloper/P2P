@@ -158,7 +158,9 @@ export default function CreatePRPage() {
   const [requestCategory, setRequestCategory] = useState<'Product' | 'Service'>('Product');
   const [projectDetail, setProjectDetail] = useState('');
   const [specialNotes, setSpecialNotes] = useState('');
-  const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order'>('purchase_order');
+  const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order' | 'sass'>(
+    'purchase_order'
+  );
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
   const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
   const [approvalUserIds, setApprovalUserIds] = useState<number[]>([]);
@@ -289,9 +291,13 @@ export default function CreatePRPage() {
   const isResubmitFlow = isEditMode && isReturned && !isAdminEditFlow;
   const backTo = isAdminEditFlow || isEditMode ? '/requester/track-pr' : '/requester/dashboard';
   const persistPrId = editPrId || savedDraftId;
-  const askBillingOnCreatePr = !(prFlow === 'standard' && vendorSelection === 'own');
-  /** Standard + Own Vendor: no unit price / HSN / GST on PR lines (quotes come at RFQ). */
-  const hideLinePricing = prFlow === 'standard' && vendorSelection === 'own';
+  const askBillingOnCreatePr =
+    purchaseType === 'sass' || !(prFlow === 'standard' && vendorSelection === 'own');
+  /** Standard Own Vendor (non-SASS): no unit price on PR lines. SASS collects quotes on Create PR. */
+  const hideLinePricing =
+    purchaseType !== 'sass' && prFlow === 'standard' && vendorSelection === 'own';
+  const showInlineVendorQuotes =
+    purchaseType === 'sass' || (prFlow === 'functional' && vendorSelection === 'own');
   const restoredKeyRef = useRef('');
 
   const applyDraftSnapshot = (draft: CreatePrDraftSnapshot, options?: { preserveRicherLineItems?: boolean }) => {
@@ -303,7 +309,13 @@ export default function CreatePRPage() {
     setRequestCategory(normalizeRequestCategory(draft.requestCategory) || 'Product');
     setProjectDetail(draft.projectDetail || '');
     setSpecialNotes(draft.specialNotes || '');
-    setPurchaseType(draft.purchaseType === 'work_order' ? 'work_order' : 'purchase_order');
+    setPurchaseType(
+      draft.purchaseType === 'work_order'
+        ? 'work_order'
+        : draft.purchaseType === 'sass'
+          ? 'sass'
+          : 'purchase_order'
+    );
     setVendorSelection(draft.vendorSelection === 'own' ? 'own' : 'scm');
     setPrFlow(draft.prFlow === 'functional' ? 'functional' : 'standard');
     setApprovalUserIds(Array.isArray(draft.approvalUserIds) ? draft.approvalUserIds : []);
@@ -479,6 +491,9 @@ export default function CreatePRPage() {
           placeOfDelivery?: string;
           expectedDeliveryTimeline?: string;
           paymentTerms?: string;
+          vendorId?: number | null;
+          vendorName?: string;
+          vendorEmail?: string;
           status: string;
           lineItems: { id?: number; description: string; quantity: number; unitCost: number; category: string; unit?: string; gstPercentage?: number }[];
           approvalHistory?: { stage: string; user: string; role: string; date: string; status: string; remarks: string }[];
@@ -491,7 +506,15 @@ export default function CreatePRPage() {
         const loadedPurchaseType =
           pr.purchaseType === 'work_order' || pr.purchaseType === 'Work Order'
             ? 'work_order'
-            : 'purchase_order';
+            : pr.purchaseType === 'sass' ||
+                pr.purchaseType === 'SASS' ||
+                pr.purchaseType === 'SAAS' ||
+                pr.purchaseType === 'saas' ||
+                String(pr.purchaseType || '')
+                  .toLowerCase()
+                  .replace(/[\s-]+/g, '_') === 'cloud_subscription'
+              ? 'sass'
+              : 'purchase_order';
         setPurchaseType(loadedPurchaseType);
         // Service is only allowed for Work Order
         setRequestType(
@@ -502,7 +525,9 @@ export default function CreatePRPage() {
         setRequestCategory(normalizeRequestCategory(pr.requestCategory) || 'Product');
         setProjectDetail(pr.projectDetail || '');
         setSpecialNotes(pr.specialNotes || '');
-        setVendorSelection(pr.vendorSelection === 'own' ? 'own' : 'scm');
+        setVendorSelection(
+          loadedPurchaseType === 'sass' || pr.vendorSelection === 'own' ? 'own' : 'scm'
+        );
         setPrFlow(pr.prFlow === 'functional' ? 'functional' : 'standard');
         setApprovalUserIds(
           Array.isArray(pr.approvalUserIds) && pr.approvalUserIds.length
@@ -1067,7 +1092,7 @@ export default function CreatePRPage() {
   }, []);
 
   useEffect(() => {
-    if (!persistPrId || prFlow !== 'functional' || vendorSelection !== 'own') {
+    if (!persistPrId || !showInlineVendorQuotes) {
       setExistingRfqHasQuotes(false);
       return;
     }
@@ -1228,7 +1253,7 @@ export default function CreatePRPage() {
         setExistingRfqHasQuotes(false);
       }
     })();
-  }, [persistPrId, prFlow, vendorSelection]);
+  }, [persistPrId, showInlineVendorQuotes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1549,7 +1574,13 @@ export default function CreatePRPage() {
     if (prFlow === 'functional' && approvalUserIds.length > 5) {
       newErrors.approvalUserId = 'Select up to 5 users for Functional Flow approval';
     }
-    if (prFlow === 'functional' && vendorSelection === 'own') {
+    if (purchaseType === 'sass' && approvalUserIds.length === 0) {
+      newErrors.approvalUserId = 'Select L1 Manager / User Approver for Cloud Subscription';
+    }
+    if (purchaseType === 'sass' && approvalUserIds.length > 1) {
+      newErrors.approvalUserId = 'Select exactly one L1 Manager / User Approver for Cloud Subscription';
+    }
+    if (showInlineVendorQuotes) {
       const hasRound1 = rfqVendors.some((row) => {
         const round1 = row.quotes.find((q) => q.round === 1);
         const price = Number(round1?.quotedPrice);
@@ -1563,6 +1594,19 @@ export default function CreatePRPage() {
       });
       if (!hasRound1 && !existingRfqHasQuotes) {
         newErrors.rfqVendors = 'Add at least one vendor with a round-1 quoted price and quotation file';
+      }
+      if (
+        !rfqRecommendedKey &&
+        !rfqRecommendedMeta.vendorId &&
+        !rfqRecommendedMeta.vendorEmail &&
+        !rfqRecommendedMeta.vendorName
+      ) {
+        newErrors.rfqVendors =
+          newErrors.rfqVendors || 'Pick one recommended vendor (Step 3) before submit';
+      }
+      if (!String(rfqRecommendationJustification || '').trim()) {
+        newErrors.rfqVendors =
+          newErrors.rfqVendors || 'Add justification when choosing the recommended vendor';
       }
     }
     if (lineItems.length === 0) {
@@ -1608,6 +1652,16 @@ export default function CreatePRPage() {
     if (!validateForm()) return;
       setSubmitAction('submit');
       setShowConfirmModal(true);
+    if (purchaseType === 'sass') {
+      setNextStepLabel('L1 Manager Approval');
+      setL1Manager(
+        selectedApprovalUser
+          ? { name: selectedApprovalUser.name, email: selectedApprovalUser.email }
+          : null
+      );
+      setIsLoadingL1(false);
+      return;
+    }
     if (prFlow === 'functional') {
       setNextStepLabel(
         selectedApprovalUsers.length > 1
@@ -1706,10 +1760,22 @@ export default function CreatePRPage() {
     entityId: entityId ? Number(entityId) : undefined,
     priority,
     currency,
-    prFlow,
-    approvalUserId: prFlow === 'functional' && approvalUserIds[0] ? Number(approvalUserIds[0]) : undefined,
-    approvalUserIds: prFlow === 'functional' ? approvalUserIds : undefined,
-    vendorSelection,
+    prFlow: purchaseType === 'sass' ? 'standard' : prFlow,
+    approvalUserId:
+      (prFlow === 'functional' || purchaseType === 'sass') && approvalUserIds[0]
+        ? Number(approvalUserIds[0])
+        : undefined,
+    approvalUserIds:
+      prFlow === 'functional' || purchaseType === 'sass'
+        ? purchaseType === 'sass'
+          ? approvalUserIds.slice(0, 1)
+          : approvalUserIds
+        : undefined,
+    vendorSelection: purchaseType === 'sass' ? 'own' : vendorSelection,
+    vendorId:
+      purchaseType === 'sass' && rfqRecommendedMeta.vendorId
+        ? Number(rfqRecommendedMeta.vendorId)
+        : undefined,
     justification: businessJustification,
     requiredDate: requiredDate || undefined,
     workStartDate: purchaseType === 'work_order' ? workStartDate || undefined : undefined,
@@ -1866,10 +1932,16 @@ export default function CreatePRPage() {
       }
       const payload: Record<string, unknown> = {
         ...buildPayload(itemsForSave),
-        vendorSelection: vendorSelection === 'own' ? 'own' : 'scm',
-        prFlow: prFlow === 'functional' ? 'functional' : 'standard',
+        vendorSelection:
+          purchaseType === 'sass' ? 'own' : vendorSelection === 'own' ? 'own' : 'scm',
+        prFlow:
+          purchaseType === 'sass'
+            ? 'standard'
+            : prFlow === 'functional'
+              ? 'functional'
+              : 'standard',
       };
-      if (prFlow === 'functional' && vendorSelection === 'own') {
+      if (showInlineVendorQuotes) {
         const needsQuotationUpload = rfqVendors.some((row) =>
           row.quotes.some((q) => localQuoteFiles(q).length > 0)
         );
@@ -1893,6 +1965,7 @@ export default function CreatePRPage() {
           if (chosen) {
             payload.rfqRecommendedVendorEmail = chosen.email;
             payload.rfqRecommendedVendorName = chosen.name;
+            payload.vendorId = chosen.vendorId ? Number(chosen.vendorId) : undefined;
             payload.rfqRecommendationJustification = rfqRecommendationJustification;
           }
         }
@@ -2518,6 +2591,11 @@ export default function CreatePRPage() {
                   [
                     { id: 'purchase_order' as const, label: 'Purchase Order', hint: 'Number: PO-Entity-FY-####' },
                     { id: 'work_order' as const, label: 'Work Order', hint: 'Number: WO-Entity-FY-####' },
+                    {
+                      id: 'sass' as const,
+                      label: 'Cloud Subscription',
+                      hint: 'L1 → L2 Srivaths → Mugesh → Invoice → Accounts',
+                    },
                   ]
                 ).map((opt) => (
                   <button
@@ -2529,9 +2607,14 @@ export default function CreatePRPage() {
                       if (opt.id === 'purchase_order' && requestType === 'Service') {
                         setRequestType('Opex');
                       }
-                      if (opt.id === 'purchase_order') {
+                      if (opt.id === 'purchase_order' || opt.id === 'sass') {
                         setWorkStartDate('');
                         setWorkEndDate('');
+                      }
+                      if (opt.id === 'sass') {
+                        setPrFlow('standard');
+                        setVendorSelection('own');
+                        setApprovalUserIds((prev) => prev.slice(0, 1));
                       }
                     }}
                     className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
@@ -2797,6 +2880,40 @@ export default function CreatePRPage() {
               </div>
             </div>
 
+            {purchaseType === 'sass' ? (
+              <>
+                <div className="md:col-span-2 lg:col-span-3 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+                  <p className="text-sm font-semibold text-teal-900">Cloud Subscription approval path</p>
+                  <p className="text-xs text-teal-800 mt-1">
+                    Add vendors &amp; quotes below (same as Functional Own), pick one recommended
+                    vendor, select L1 → L2 Srivaths → Mugesh → you upload invoice → Accounts. SCM
+                    RFQ is skipped.
+                  </p>
+                </div>
+                <div className="md:col-span-2" data-field="approvalUserId">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    L1 Manager / User Approver <span className="text-red-500">*</span>
+                  </label>
+                  <UserSearchSelect
+                    users={approvalUsers}
+                    value={approvalUserIds}
+                    onChange={(ids) => setApprovalUserIds(ids.slice(0, 1))}
+                    placeholder="Search and select L1 approver"
+                    error={Boolean(errors.approvalUserId)}
+                    max={1}
+                  />
+                  {errors.approvalUserId && (
+                    <p className="text-xs text-red-500 mt-1">{errors.approvalUserId}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    L2 is automatically Srivaths (srivaths.varadharajan@refex.co.in). Next is Mugesh
+                    (mugesh.m@refex.co.in). Do not select Srivaths as L1 unless that person is
+                    intentionally your L1.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
             {/* Request Flow */}
             <div className="md:col-span-2">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -2864,6 +2981,8 @@ export default function CreatePRPage() {
                   {vendorSelection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry'} → Buyer Final Verify → Create PO → SCM Manager approval.
                 </p>
               </div>
+            )}
+              </>
             )}
 
           </div>
@@ -3079,7 +3198,7 @@ export default function CreatePRPage() {
           </div>
         </div>
 
-        {prFlow === 'functional' && vendorSelection === 'own' && (
+        {showInlineVendorQuotes && (
           <div data-field="rfqVendors">
           <FunctionalOwnRfqSection
             vendors={vendorMaster}

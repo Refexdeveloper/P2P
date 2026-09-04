@@ -235,14 +235,6 @@ function letterheadLocKey(loc: LetterheadLocationRecord, index = 0) {
   return `name:${loc.location || index}`;
 }
 
-function escapeHtmlText(value: string) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function addressLinesToHtml(text: string) {
   return String(text || '')
     .split(/\r?\n/)

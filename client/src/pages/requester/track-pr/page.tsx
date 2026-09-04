@@ -329,6 +329,11 @@ function ensureScmPipelineStages(
   rawStatus: string,
   prevDate: string | null
 ): TimelineStage[] {
+  const purchaseType = asText(pr.purchaseType || pr.purchase_type, '').toLowerCase();
+  // SASS never involves SCM / RFQ — vendor is set on Create PR
+  if (purchaseType === 'sass' || purchaseType === 'saas' || purchaseType === 'cloud_subscription') {
+    return stages;
+  }
   const vendorSelection = asText(pr.vendorSelection, 'scm').toLowerCase();
   const scmBuyerName = personName(pr.scmBuyer, 'SCM Buyer');
   const scmManagerName = personName(pr.scmManager, 'SCM Manager');
@@ -1231,7 +1236,13 @@ export default function TrackPRPage() {
                                     {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
                                   </button>
                                 )}
-                                {isAdminEditor && pr.status !== 'draft' && (
+                                {isAdminEditor &&
+                                  pr.status !== 'draft' &&
+                                  String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
+                                  String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
+                                  String(pr.purchaseType || '')
+                                    .toLowerCase()
+                                    .replace(/[\s-]+/g, '_') !== 'cloud_subscription' && (
                                   <button
                                     onClick={() =>
                                       navigate(

@@ -2321,6 +2321,22 @@ export async function getRfqEmailPack(prId) {
  * Functional Own → SCM Buyer, Create PO, etc.
  */
 export async function queuePostQuotationApprovalMail(pr, assignedRole, options = {}) {
+  // Cloud Subscription never involves SCM — refuse RFQ Entry step mails to buyers
+  const purchaseType = String(pr?.purchaseType || pr?.purchase_type || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  if (
+    options.rfqEntry &&
+    assignedRole === 'SCM Buyer' &&
+    (purchaseType === 'sass' || purchaseType === 'saas' || purchaseType === 'cloud_subscription')
+  ) {
+    console.log(
+      `Skipped SCM RFQ Entry mail for Cloud Subscription PR ${pr?.prNumber || pr?.id || ''}`
+    );
+    return { rfqSummary: null, attachments: [] };
+  }
+
   const prId = pr?.id || pr?.prId;
   const pack = prId ? await getRfqEmailPack(prId) : { rfqSummary: null, attachments: [] };
   const namedFiles = [];

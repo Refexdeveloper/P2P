@@ -4,7 +4,7 @@ import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
   type ApprovalHistoryEntry,
 } from '../../../../components/feature/ApprovalHistoryPanel';
-import { poApi, prApi, rfqApi, type VendorComparisonData } from '../../../../services/api';
+import { poApi, prApi, rfqApi, accountsApi, type VendorComparisonData } from '../../../../services/api';
 import { allQuotationFilesForRound } from '../../../../utils/quotationFiles';
 
 type TrackRowLite = {
@@ -112,6 +112,88 @@ function normalizeHistory(raw: unknown): ApprovalHistoryEntry[] {
   });
 }
 
+function isPoPastApproval(statusRaw: unknown, statusLabel: string): boolean {
+  const raw = String(statusRaw || '').toLowerCase();
+  const label = String(statusLabel || '').toLowerCase();
+  if (
+    [
+      'approved',
+      'sent_to_vendor',
+      'awaiting_grn',
+      'grn_completed',
+      'invoice_entry',
+      'pending_accounts_approval',
+      'approved_for_payment',
+      'paid',
+    ].includes(raw)
+  ) {
+    return true;
+  }
+  return (
+    label.includes('approved') ||
+    label.includes('vendor accept') ||
+    label.includes('grn') ||
+    label.includes('invoice') ||
+    label.includes('paid') ||
+    label.includes('pending vendor')
+  );
+}
+
+function isVendorAcceptanceFinished(po: Record<string, unknown> | null): boolean {
+  if (!po) return false;
+  const status = String(po.vendorAcceptanceStatus || '').toLowerCase();
+  if (['accepted', 'rejected', 'partial'].includes(status)) return true;
+  if (String(po.vendorAcceptedAt || '').trim()) return true;
+  if (String(po.vendorAcceptanceFileName || '').trim()) return true;
+  return false;
+}
+
+type FulfillmentGrn = {
+  id: number;
+  grnNumber?: string;
+  status?: string;
+  receivedDate?: string | null;
+  receivedBy?: string;
+  inspectedBy?: string;
+  remarks?: string;
+  receivedValue?: number;
+  lineItems?: Array<{
+    id?: string;
+    description?: string;
+    orderedQty?: number;
+    receivedQty?: number;
+    unitPrice?: number;
+    total?: number;
+    condition?: string;
+  }>;
+};
+
+type FulfillmentInvoice = {
+  id: number;
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  submittedDate?: string;
+  vendor?: string;
+  status?: string;
+  invoiceGrandTotal?: number;
+  invoiceSubtotal?: number;
+  invoiceGST?: number;
+  grnNumber?: string;
+  invoiceFileName?: string | null;
+  hasInvoiceFile?: boolean;
+  vendorInvoiceMode?: string | null;
+  accountsRemarks?: string;
+};
+
+function FieldCard({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="bg-gray-50 rounded-lg p-3 min-w-0">
+      <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+      <p className="text-sm font-medium text-gray-900 break-words whitespace-pre-wrap">{value || '—'}</p>
+    </div>
+  );
+}
+
 function asLineItems(raw: unknown): LineItem[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
@@ -205,13 +287,17 @@ async function loadAuthPreview(doc: DocRow, poId: number | null): Promise<FilePr
 }
 
 export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = false }: Props) {
-  const [tab, setTab] = useState<'details' | 'documents' | 'history'>('details');
+  const [tab, setTab] = useState<
+    'details' | 'documents' | 'history' | 'acceptance' | 'grn' | 'invoice'
+  >('details');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pr, setPr] = useState<Record<string, unknown> | null>(null);
   const [po, setPo] = useState<Record<string, unknown> | null>(null);
   const [comparison, setComparison] = useState<VendorComparisonData | null>(null);
   const [history, setHistory] = useState<ApprovalHistoryEntry[]>([]);
+  const [grn, setGrn] = useState<FulfillmentGrn | null>(null);
+  const [invoice, setInvoice] = useState<FulfillmentInvoice | null>(null);
   const [filePreview, setFilePreview] = useState<FilePreview | null>(null);
   const [fileError, setFileError] = useState('');
   const [openingKey, setOpeningKey] = useState('');
@@ -226,6 +312,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
         if (row.prId) tasks.push(prApi.get(row.prId));
         if (row.poId) tasks.push(poApi.get(row.poId));
         if (row.prId) tasks.push(rfqApi.getComparison(row.prId));
+        if (row.poId) tasks.push(poApi.fulfillment(row.poId));
 
         const results = await Promise.allSettled(tasks);
         if (cancelled) return;
@@ -233,6 +320,10 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
         let prData: Record<string, unknown> | null = null;
         let poData: Record<string, unknown> | null = null;
         let cmpData: VendorComparisonData | null = null;
+        let fulfillment: { grn: FulfillmentGrn | null; invoice: FulfillmentInvoice | null } = {
+          grn: null,
+          invoice: null,
+        };
         let idx = 0;
 
         if (row.prId) {
@@ -253,10 +344,22 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
             cmpData = (cmpRes.value as { data: VendorComparisonData }).data;
           }
         }
+        if (row.poId) {
+          const fulRes = results[idx++];
+          if (fulRes.status === 'fulfilled') {
+            const data = (fulRes.value as { data: typeof fulfillment }).data;
+            fulfillment = {
+              grn: (data?.grn as FulfillmentGrn | null) || null,
+              invoice: (data?.invoice as FulfillmentInvoice | null) || null,
+            };
+          }
+        }
 
         setPr(prData);
         setPo(poData);
         setComparison(cmpData);
+        setGrn(fulfillment.grn);
+        setInvoice(fulfillment.invoice);
 
         const poHist = normalizeHistory(poData?.approvalHistory);
         const prHist = normalizeHistory(prData?.approvalHistory);
@@ -407,6 +510,12 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
   );
   const gstin = pickText(poTerms.buyerGstNo, pr?.billingGstNo).toUpperCase();
 
+  const showFulfillmentTabs =
+    Boolean(row.poId) && isPoPastApproval(po?.statusRaw, row.statusLabel);
+  const showAcceptanceTab = showFulfillmentTabs && isVendorAcceptanceFinished(po);
+  const showGrnTab = showFulfillmentTabs && Boolean(grn);
+  const showInvoiceTab = showFulfillmentTabs && Boolean(invoice);
+
   const tabs = [
     { key: 'details' as const, label: 'PO Details', icon: 'ri-information-line' },
     {
@@ -414,12 +523,24 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
       label: `Documents${documents.length ? ` (${documents.length})` : ''}`,
       icon: 'ri-folder-2-line',
     },
+    ...(showAcceptanceTab
+      ? [{ key: 'acceptance' as const, label: 'Vendor Acceptance', icon: 'ri-checkbox-circle-line' }]
+      : []),
+    ...(showGrnTab ? [{ key: 'grn' as const, label: 'GRN', icon: 'ri-truck-line' }] : []),
+    ...(showInvoiceTab
+      ? [{ key: 'invoice' as const, label: 'Invoice', icon: 'ri-file-invoice-line' }]
+      : []),
     {
       key: 'history' as const,
       label: `Approval History${history.length ? ` (${history.length})` : ''}`,
       icon: 'ri-history-line',
     },
   ];
+
+  useEffect(() => {
+    const keys = new Set(tabs.map((t) => t.key));
+    if (!keys.has(tab)) setTab('details');
+  }, [tab, showAcceptanceTab, showGrnTab, showInvoiceTab]);
 
   const handleOpenFile = async (doc: DocRow) => {
     if (!doc.url) {
@@ -700,6 +821,164 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                     </table>
                   </div>
                 )}
+              </div>
+            )}
+
+            {!loading && !error && tab === 'acceptance' && showAcceptanceTab && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${
+                      String(po?.vendorAcceptanceStatus || '').toLowerCase() === 'rejected'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    {String(po?.vendorAcceptanceStatus || 'Recorded').replace(/_/g, ' ')}
+                  </span>
+                  {po?.vendorAcceptanceMode ? (
+                    <span className="text-xs text-gray-500">via {String(po.vendorAcceptanceMode)}</span>
+                  ) : null}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <FieldCard label="Accepted / responded at" value={String(po?.vendorAcceptedAt || '—')} />
+                  <FieldCard
+                    label="Delivery confirmed date"
+                    value={String(po?.vendorDeliveryConfirmedDate || '—')}
+                  />
+                  <FieldCard label="Mode" value={String(po?.vendorAcceptanceMode || '—')} />
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-0.5">Vendor remarks</p>
+                  <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                    {String(po?.vendorAcceptanceRemarks || '—')}
+                  </p>
+                </div>
+                {row.poId && String(po?.vendorAcceptanceFileName || '').trim() ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleOpenFile({
+                          key: `accept-${row.poId}`,
+                          kind: 'Vendor Acceptance',
+                          name: String(po?.vendorAcceptanceFileName),
+                          fileName: String(po?.vendorAcceptanceFileName),
+                          url: poApi.getVendorAcceptanceFileUrl(row.poId!),
+                        })
+                      }
+                      className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
+                    >
+                      <i className="ri-file-line mr-1"></i>
+                      View acceptance file
+                    </button>
+                    <span className="text-xs text-gray-500">{String(po?.vendorAcceptanceFileName)}</span>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {!loading && !error && tab === 'grn' && grn && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <FieldCard label="GRN Number" value={grn.grnNumber} />
+                  <FieldCard label="Status" value={grn.status} />
+                  <FieldCard label="Received date" value={grn.receivedDate} />
+                  <FieldCard
+                    label="Received value"
+                    value={formatCurrency(Number(grn.receivedValue || 0))}
+                  />
+                  <FieldCard label="Received by" value={grn.receivedBy} />
+                  <FieldCard label="Inspected by" value={grn.inspectedBy} />
+                </div>
+                {grn.remarks ? (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-0.5">Remarks</p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{grn.remarks}</p>
+                  </div>
+                ) : null}
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    GRN line items ({grn.lineItems?.length || 0})
+                  </h4>
+                  {(grn.lineItems || []).length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">No GRN lines</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[640px] text-sm">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Item</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Ordered</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Received</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Condition</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {(grn.lineItems || []).map((li, idx) => (
+                            <tr key={li.id || idx}>
+                              <td className="px-3 py-2 text-gray-900">{li.description || '—'}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{li.orderedQty ?? '—'}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{li.receivedQty ?? '—'}</td>
+                              <td className="px-3 py-2">{li.condition || '—'}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">
+                                {formatCurrency(Number(li.total || 0))}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!loading && !error && tab === 'invoice' && invoice && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <FieldCard label="Invoice number" value={invoice.invoiceNumber} />
+                  <FieldCard label="Status" value={invoice.status} />
+                  <FieldCard label="Invoice date" value={invoice.invoiceDate} />
+                  <FieldCard label="Submitted" value={invoice.submittedDate} />
+                  <FieldCard label="Vendor" value={invoice.vendor} />
+                  <FieldCard label="GRN" value={invoice.grnNumber} />
+                  <FieldCard
+                    label="Invoice total"
+                    value={formatCurrency(Number(invoice.invoiceGrandTotal || 0))}
+                  />
+                  <FieldCard label="Entry mode" value={invoice.vendorInvoiceMode || '—'} />
+                </div>
+                {invoice.accountsRemarks ? (
+                  <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+                    <p className="text-xs text-amber-700 mb-0.5">Accounts remarks</p>
+                    <p className="text-sm text-amber-950 whitespace-pre-wrap">{invoice.accountsRemarks}</p>
+                  </div>
+                ) : null}
+                {invoice.hasInvoiceFile && invoice.id ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleOpenFile({
+                          key: `inv-${invoice.id}`,
+                          kind: 'Invoice',
+                          name: String(invoice.invoiceFileName || `Invoice-${invoice.id}`),
+                          fileName: String(invoice.invoiceFileName || `invoice-${invoice.id}.pdf`),
+                          url: accountsApi.invoiceFileUrl(invoice.id),
+                        })
+                      }
+                      className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
+                    >
+                      <i className="ri-file-invoice-line mr-1"></i>
+                      View invoice file
+                    </button>
+                    <span className="text-xs text-gray-500">
+                      {invoice.invoiceFileName || `Invoice #${invoice.id}`}
+                    </span>
+                  </div>
+                ) : null}
               </div>
             )}
 

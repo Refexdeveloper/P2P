@@ -47,7 +47,7 @@ export interface LineItemQuestionConfig {
 }
 
 export interface PrConversationAnswers {
-  purchaseType?: 'purchase_order' | 'work_order';
+  purchaseType?: 'purchase_order' | 'work_order' | 'sass';
   prTitle?: string;
   entityId?: number | '';
   department?: string;
@@ -81,6 +81,7 @@ export const PR_HEADER_QUESTIONS: PrQuestionConfig[] = [
     options: [
       { value: 'purchase_order', label: 'Purchase Order' },
       { value: 'work_order', label: 'Work Order' },
+      { value: 'sass', label: 'Cloud Subscription' },
     ],
   },
   {
@@ -241,7 +242,13 @@ export function formatHeaderAnswer(
 ): string {
   switch (field) {
     case 'purchaseType':
-      return answers.purchaseType === 'work_order' ? 'Work Order' : answers.purchaseType === 'purchase_order' ? 'Purchase Order' : '';
+      return answers.purchaseType === 'work_order'
+        ? 'Work Order'
+        : answers.purchaseType === 'sass'
+          ? 'Cloud Subscription'
+          : answers.purchaseType === 'purchase_order'
+            ? 'Purchase Order'
+            : '';
     case 'entityId':
       return entityLabel || (answers.entityId ? String(answers.entityId) : '');
     case 'vendorSelection':

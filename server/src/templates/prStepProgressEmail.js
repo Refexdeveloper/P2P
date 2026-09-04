@@ -132,7 +132,7 @@ export function buildPrStepProgressEmail({
       <td style="padding:24px 28px;">
         <div style="font-size:18px;font-weight:700;color:#0f172a;">${escapeHtml(pr.prNumber)} — ${escapeHtml(pr.title)}</div>
         <div style="margin-top:10px;font-size:14px;color:#475569;">Entity: <strong>${escapeHtml(entityLabel)}</strong></div>
-        <div style="margin-top:6px;font-size:14px;color:#475569;">Amount: <strong>${formatCurrency(pr.totalAmount)}</strong></div>
+        <div style="margin-top:6px;font-size:14px;color:#475569;">Amount: <strong>${formatCurrency(pr.totalAmount, pr.currency || pr.currency_code || 'INR')}</strong></div>
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
           ${completedBlock}
         </table>

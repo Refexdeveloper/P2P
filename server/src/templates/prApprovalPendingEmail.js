@@ -1,5 +1,21 @@
-import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
+import { escapeHtml, formatCurrency, formatEntity, formatEntityLocation, formatRoleDisplayName, formatScmRfqEntrySubject } from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
+
+function money(amount, currencyOrPr) {
+  const currency =
+    typeof currencyOrPr === 'string'
+      ? currencyOrPr
+      : currencyOrPr?.currency || currencyOrPr?.currency_code || 'INR';
+  return formatCurrency(amount, currency);
+}
+
+function isSassPrPayload(pr) {
+  const raw = String(pr?.purchaseType || pr?.purchase_type || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return raw === 'sass' || raw === 'saas' || raw === 'cloud_subscription';
+}
 
 function isOwnVendorPr(pr) {
   return pr?.vendorSelection === 'own' || pr?.vendor_selection === 'own';
@@ -112,7 +128,7 @@ function buildRecommendationJustificationBlock(rfqSummary) {
                   </div>
                   <div style="font-size:15px;font-weight:700;color:#064e3b;margin-top:4px;">
                     ${escapeHtml(vendor || 'Recommended vendor')}
-                    <span style="font-size:12px;font-weight:600;color:#047857;"> · ${formatCurrency(rfqSummary?.quotedPrice || 0)}</span>
+                    <span style="font-size:12px;font-weight:600;color:#047857;"> · ${money(rfqSummary?.quotedPrice || 0, rfqSummary)}</span>
                   </div>
                 </td>
               </tr>
@@ -179,7 +195,7 @@ function buildPriceNegotiationTrendBlock(rfqSummary) {
         return `
           <td style="padding:12px 8px;text-align:center;border-bottom:1px solid #f1f5f9;${isLast ? 'background:#f0fdfa;' : ''}">
             <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Price</div>
-            <div style="font-size:13px;font-weight:800;color:${isLast ? '#0f766e' : '#0f172a'};margin-top:2px;">${price ? formatCurrency(price) : '—'}</div>
+            <div style="font-size:13px;font-weight:800;color:${isLast ? '#0f766e' : '#0f172a'};margin-top:2px;">${price ? money(price, rfqSummary) : '—'}</div>
             ${changeHtml}
             ${fileHtml}
             ${use.submittedAt ? `<div style="font-size:10px;color:#94a3b8;margin-top:4px;">${escapeHtml(String(use.submittedAt))}</div>` : ''}
@@ -192,7 +208,7 @@ function buildPriceNegotiationTrendBlock(rfqSummary) {
             <div style="font-size:13px;font-weight:700;color:#0f172a;">${escapeHtml(vendor.name)}</div>
             ${vendor.isRecommended ? '<div style="display:inline-block;margin-top:4px;padding:2px 8px;background:#d1fae5;color:#047857;font-size:10px;font-weight:700;border-radius:999px;">★ Recommended</div>' : ''}
             <div style="font-size:11px;color:#94a3b8;margin-top:6px;">${rounds.length} round${rounds.length === 1 ? '' : 's'}</div>
-            <div style="font-size:11px;color:#64748b;">Last: ${lastPrice ? formatCurrency(lastPrice) : '—'}</div>
+            <div style="font-size:11px;color:#64748b;">Last: ${lastPrice ? money(lastPrice, rfqSummary) : '—'}</div>
           </td>
           ${cells}
         </tr>`;
@@ -368,13 +384,13 @@ function buildQuotedAmountBlock(pr, rfqSummary) {
                 <td width="50%" style="padding:6px;">
                   <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
                     <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">PR Estimated Amount</div>
-                    <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${formatCurrency(pr.totalAmount)}</div>
+                    <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${money(pr.totalAmount, pr)}</div>
                   </td></tr></table>
                 </td>
                 <td width="50%" style="padding:6px;">
                   <table width="100%" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;"><tr><td style="padding:12px 14px;">
                     <div style="font-size:10px;color:#0f766e;text-transform:uppercase;font-weight:700;">${best.recommended ? 'Recommended Quote' : 'Best Quoted Amount'}</div>
-                    <div style="font-size:18px;font-weight:800;color:#0f766e;margin-top:4px;">${formatCurrency(best.price)}</div>
+                    <div style="font-size:18px;font-weight:800;color:#0f766e;margin-top:4px;">${money(best.price, pr)}</div>
                     <div style="font-size:12px;color:#115e59;margin-top:4px;">${escapeHtml(best.vendor || 'Vendor')}</div>
                   </td></tr></table>
                 </td>
@@ -472,9 +488,9 @@ function buildRecommendedQuoteLineItemsBlock(rfqSummary) {
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;color:#64748b;">${i + 1}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#0f172a;">${desc}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">${qty}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;">${formatCurrency(unit)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;">${money(unit, rfqSummary)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center;color:#64748b;">${gst != null ? `${gst}%` : '—'}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;font-weight:700;color:#047857;">${formatCurrency(total)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;font-weight:700;color:#047857;">${money(total, rfqSummary)}</td>
       </tr>`;
     })
     .join('');
@@ -510,7 +526,7 @@ function buildRecommendedQuoteLineItemsBlock(rfqSummary) {
             <tfoot>
               <tr style="background:#ecfdf5;">
                 <td colspan="5" style="padding:10px;font-size:12px;font-weight:700;color:#065f46;text-align:right;">Quoted total</td>
-                <td style="padding:10px;font-size:14px;font-weight:800;color:#047857;text-align:right;">${formatCurrency(Number(rfqSummary?.quotedPrice) || grand)}</td>
+                <td style="padding:10px;font-size:14px;font-weight:800;color:#047857;text-align:right;">${money(Number(rfqSummary?.quotedPrice) || grand, rfqSummary)}</td>
               </tr>
             </tfoot>
           </table>
@@ -519,6 +535,9 @@ function buildRecommendedQuoteLineItemsBlock(rfqSummary) {
 
 function buildNegotiationRoundsBlock(pr, rfqSummary) {
   if (!rfqSummary?.vendors?.length) return '';
+  if (rfqSummary && !rfqSummary.currency) {
+    rfqSummary = { ...rfqSummary, currency: pr?.currency || pr?.currency_code || 'INR' };
+  }
 
   return `
         ${buildQuotedAmountBlock(pr, rfqSummary)}
@@ -542,8 +561,13 @@ export function buildPrApprovalPendingEmail({
   appBaseUrl = null,
   roleDisplayName: roleDisplayNameOverride = null,
 }) {
+  const currency = pr?.currency || pr?.currency_code || 'INR';
+  if (rfqSummary && !rfqSummary.currency) {
+    rfqSummary = { ...rfqSummary, currency };
+  }
   const isRequesterStep = assignedRole === 'Requester';
   const isScmRfqEntry = rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq);
+  const isSassRequest = isSassPrPayload(pr);
   const stageLower = String(stageLabel || '').toLowerCase();
   const isUserApproval = stageLower.includes('user approval');
   const hasRfqVendors = Boolean(rfqSummary?.vendors?.length);
@@ -563,15 +587,21 @@ export function buildPrApprovalPendingEmail({
         : isRfqEntryStep
           ? 'RFQ Entry'
           : 'Purchase Request');
-  const subject = isCreatePoStep
+  const baseSubject = isCreatePoStep
     ? `Action Required: Create PO for ${pr.prNumber} — ${pr.title}`
-    : isRfqEntryStep
-      ? `Action Required: RFQ Entry for ${pr.prNumber} — ${pr.title}`
-      : isUserApproval && hasRfqVendors
-        ? `Action Required: Approve PR ${pr.prNumber} — quotations & amount`
-        : postRfq
-          ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
-          : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
+    : isScmRfqEntry
+      ? formatScmRfqEntrySubject(pr)
+      : isRfqEntryStep
+        ? `Action Required: RFQ Entry for ${pr.prNumber} — ${pr.title}`
+        : isUserApproval && hasRfqVendors
+          ? `Action Required: Approve PR ${pr.prNumber} — quotations & amount`
+          : postRfq
+            ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
+            : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
+  const subject =
+    isSassRequest && !isScmRfqEntry
+      ? `Cloud Subscription Request — ${baseSubject}`
+      : baseSubject;
   const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const path = getPortalPath(assignedRole, postRfq && !isCreatePoStep);
   const portalUrl = wrapPortalUrlWithSso(
@@ -678,8 +708,8 @@ export function buildPrApprovalPendingEmail({
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#6b7280;text-align:center;">${i + 1}</td>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">${escapeHtml(item.description)}</td>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">${item.quantity}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;">${formatCurrency(item.unitCost)}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;font-weight:700;color:#047857;">${formatCurrency(item.total)}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;">${money(item.unitCost, pr)}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;font-weight:700;color:#047857;">${money(item.total, pr)}</td>
       </tr>`;
     })
     .join('');
@@ -694,7 +724,7 @@ export function buildPrApprovalPendingEmail({
             <table width="100%" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:14px 16px;font-size:14px;color:#14532d;line-height:1.6;">
               <strong>Recommended Vendor:</strong> ${escapeHtml(rfqSummary.recommendedVendor || '—')}<br/>
               <strong>Vendors Quoted:</strong> ${rfqSummary.vendorCount || 0}<br/>
-              <strong>Quoted Price:</strong> ${formatCurrency(rfqSummary.quotedPrice || 0)}
+              <strong>Quoted Price:</strong> ${money(rfqSummary.quotedPrice || 0, rfqSummary)}
               ${
                 rfqSummary.recommendationJustification
                   ? `<br/><br/><strong>Justification:</strong> ${escapeHtml(rfqSummary.recommendationJustification)}`
@@ -706,22 +736,37 @@ export function buildPrApprovalPendingEmail({
       : '';
 
   const entityLabel = formatEntity(pr);
-  const headerEyebrow = isRfqEntryStep
-    ? 'RFQ Entry Required'
-    : isUserApproval
-      ? 'User Approval Required'
-      : postRfq
-        ? 'RFQ Approval Required'
-        : 'Approval Required';
-  const headerTitle = isRfqEntryStep
-    ? escapeHtml(stageText)
-    : isUserApproval && hasRfqVendors
-      ? 'Review quotations and approve this PR'
-      : postRfq
-        ? `${escapeHtml(stageText)} — Vendor Comparison`
+  const entityLocationLabel = formatEntityLocation(pr);
+  const headerEyebrow = isSassRequest
+    ? 'Cloud Subscription Request'
+    : isScmRfqEntry
+      ? 'New PR Request Received'
+      : isRfqEntryStep
+        ? 'RFQ Entry Required'
         : isUserApproval
-          ? 'Purchase Request Pending Your Action'
-          : 'Purchase Request Pending Your Action';
+          ? 'User Approval Required'
+          : postRfq
+            ? 'RFQ Approval Required'
+            : 'Approval Required';
+  const headerTitle = isSassRequest
+    ? isRfqEntryStep && !isScmRfqEntry
+      ? escapeHtml(stageText)
+      : 'Cloud Subscription purchase request needs your action'
+    : isScmRfqEntry
+      ? 'New PR request received'
+      : isRfqEntryStep
+        ? escapeHtml(stageText)
+        : isUserApproval && hasRfqVendors
+          ? 'Review quotations and approve this PR'
+          : postRfq
+            ? `${escapeHtml(stageText)} — Vendor Comparison`
+            : isUserApproval
+              ? 'Purchase Request Pending Your Action'
+              : 'Purchase Request Pending Your Action';
+  const headerSub =
+    isScmRfqEntry && !isSassRequest
+      ? `${escapeHtml(pr.prNumber || '')}${entityLabel && entityLabel !== '—' ? ` — ${escapeHtml(entityLabel)}` : ''}${entityLocationLabel ? ` - ${escapeHtml(entityLocationLabel)}` : ''}`
+      : `Hello ${escapeHtml(approverName || 'Approver')}, a PR needs your review as <strong>${escapeHtml(roleDisplayName)}</strong>.`;
 
   const html = `
 <!DOCTYPE html>
@@ -732,16 +777,28 @@ export function buildPrApprovalPendingEmail({
     <tr><td align="center">
       <table width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #dbe3ee;">
         <tr>
-          <td style="background:linear-gradient(135deg,#0c4a6e,#0369a1);padding:28px 32px;">
-            <div style="font-size:11px;color:#bae6fd;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">${headerEyebrow}</div>
+          <td style="background:${isSassRequest ? 'linear-gradient(135deg,#0f766e,#0d9488)' : 'linear-gradient(135deg,#0c4a6e,#0369a1)'};padding:28px 32px;">
+            <div style="font-size:11px;color:${isSassRequest ? '#ccfbf1' : '#bae6fd'};letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">${headerEyebrow}</div>
             <div style="font-size:24px;color:#fff;font-weight:800;margin-top:8px;">${headerTitle}</div>
-            <div style="font-size:14px;color:#e0f2fe;margin-top:8px;">Hello ${escapeHtml(approverName || 'Approver')}, a PR needs your review as <strong>${escapeHtml(roleDisplayName)}</strong>.</div>
+            <div style="font-size:14px;color:${isSassRequest ? '#ecfdf5' : '#e0f2fe'};margin-top:8px;">${headerSub}</div>
+            ${
+              isSassRequest
+                ? `<div style="display:inline-block;margin-top:14px;padding:6px 12px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.35);border-radius:999px;font-size:12px;font-weight:700;color:#fff;letter-spacing:0.04em;">CLOUD SUBSCRIPTION REQUEST</div>`
+                : ''
+            }
           </td>
         </tr>
         <tr>
           <td style="padding:28px 32px 12px 32px;">
             <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700;">PR Number</div>
-            <div style="font-size:22px;color:#0f172a;font-weight:800;margin-top:4px;">${escapeHtml(pr.prNumber)}</div>
+            <div style="font-size:22px;color:#0f172a;font-weight:800;margin-top:4px;">
+              ${escapeHtml(pr.prNumber)}
+              ${
+                isSassRequest
+                  ? `<span style="display:inline-block;margin-left:10px;vertical-align:middle;padding:3px 10px;border-radius:999px;background:#ccfbf1;color:#0f766e;font-size:11px;font-weight:800;letter-spacing:0.04em;">CLOUD SUBSCRIPTION</span>`
+                  : ''
+              }
+            </div>
             <div style="font-size:16px;color:#334155;margin-top:6px;font-weight:600;">${escapeHtml(pr.title)}</div>
           </td>
         </tr>
@@ -753,6 +810,11 @@ export function buildPrApprovalPendingEmail({
                   <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"><tr><td style="padding:12px 14px;">
                     <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;">Entity</div>
                     <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;">${escapeHtml(entityLabel)}</div>
+                    ${
+                      entityLocationLabel
+                        ? `<div style="font-size:12px;color:#64748b;margin-top:4px;">${escapeHtml(entityLocationLabel)}</div>`
+                        : ''
+                    }
                   </td></tr></table>
                 </td>
                 <td width="50%" style="padding:6px;">
@@ -793,7 +855,7 @@ export function buildPrApprovalPendingEmail({
                 <td width="50%" style="padding:6px;">
                   <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
                     <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">Total Amount</div>
-                    <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${formatCurrency(pr.totalAmount)}</div>
+                    <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${money(pr.totalAmount, pr)}</div>
                   </td></tr></table>
                 </td>
                 <td width="50%" style="padding:6px;"></td>
@@ -851,15 +913,17 @@ export function buildPrApprovalPendingEmail({
 
   const bestQuote = bestQuotedFromSummary(rfqSummary);
   const text = [
-    `Action Required: PR ${pr.prNumber} — ${pr.title}`,
+    isSassRequest ? `CLOUD SUBSCRIPTION REQUEST — ${subject}` : isScmRfqEntry ? subject : `Action Required: PR ${pr.prNumber} — ${pr.title}`,
     `Entity: ${entityLabel}`,
+    entityLocationLabel ? `Entity Location: ${entityLocationLabel}` : '',
+    isSassRequest ? 'Purchase Type: Cloud Subscription' : '',
     `Role: ${roleDisplayName}`,
     `Stage: ${stageText}`,
     `Requester: ${requester?.name || pr.requester}`,
-    lineOwnVendor ? 'Vendor Path: Own Vendor' : `PR Amount: ${formatCurrency(pr.totalAmount)}`,
-    bestQuote ? `Quoted Amount: ${formatCurrency(bestQuote.price)} (${bestQuote.vendor})` : '',
+    lineOwnVendor ? 'Vendor Path: Own Vendor' : `PR Amount: ${money(pr.totalAmount, pr)}`,
+    bestQuote ? `Quoted Amount: ${money(bestQuote.price, pr)} (${bestQuote.vendor})` : '',
     rfqSummary?.recommendedVendor
-      ? `Recommended: ${rfqSummary.recommendedVendor} (${formatCurrency(rfqSummary.quotedPrice || 0)})`
+      ? `Recommended: ${rfqSummary.recommendedVendor} (${money(rfqSummary.quotedPrice || 0, rfqSummary)})`
       : '',
     rfqSummary?.recommendationJustification
       ? `Justification: ${rfqSummary.recommendationJustification}`

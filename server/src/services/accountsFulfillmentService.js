@@ -659,10 +659,84 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
   );
 
   try {
-    const { openVendorAcceptanceStageForPo } = await import('./poService.js');
-    await openVendorAcceptanceStageForPo(inv.po_id);
+    const { isSassPurchaseType } = await import('./sassWorkflow.js');
+    const [poTypeRows] = await pool.query(`SELECT purchase_type FROM purchase_orders WHERE id = ?`, [
+      inv.po_id,
+    ]);
+    const skipVendorAcceptance = isSassPurchaseType(poTypeRows[0]?.purchase_type);
+    if (!skipVendorAcceptance) {
+      const { openVendorAcceptanceStageForPo } = await import('./poService.js');
+      await openVendorAcceptanceStageForPo(inv.po_id);
+    }
   } catch (err) {
     console.warn('Open vendor acceptance after invoice upload failed:', err.message);
+  }
+
+  try {
+    const {
+      isSassPurchaseType,
+      completeSassInvoiceUploadTask,
+      resolveSassInvoiceUploadedRecipients,
+    } = await import('./sassWorkflow.js');
+    const [poRows] = await pool.query(`SELECT purchase_type, pr_id FROM purchase_orders WHERE id = ?`, [
+      inv.po_id,
+    ]);
+    const poRow = poRows[0];
+    if (poRow && isSassPurchaseType(poRow.purchase_type) && poRow.pr_id) {
+      await completeSassInvoiceUploadTask(pool, poRow.pr_id);
+      await pool.query(
+        `UPDATE purchase_requests
+         SET status = ?, current_stage = NULL, updated_at = NOW()
+         WHERE id = ? AND status = ?`,
+        ['APPROVED', poRow.pr_id, 'AWAITING_INVOICE']
+      );
+      await pool.query(
+        `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+         VALUES (?, 'SASS_INVOICE_UPLOAD', ?, 'submitted', ?)`,
+        [poRow.pr_id, user?.id || null, 'Invoice uploaded — routed to Accounts (SCM skipped)']
+      );
+
+      // Notify L1 Manager + Srivaths + Mugesh that invoice file was uploaded
+      try {
+        const { queueSassInvoiceUploadedNotification } = await import('./emailService.js');
+        const { pr: notifyPr, recipients } = await resolveSassInvoiceUploadedRecipients(poRow.pr_id);
+        const attachments = [];
+        try {
+          let buffer = null;
+          if (gcsEnabled()) {
+            buffer = await downloadFromGcs(`invoices/${filePath}`);
+          } else {
+            const full = path.join(INVOICE_DIR, filePath);
+            if (fs.existsSync(full)) buffer = fs.readFileSync(full);
+          }
+          if (buffer?.length) {
+            attachments.push({
+              filename: fileName || 'invoice.pdf',
+              content: buffer,
+            });
+          }
+        } catch (attErr) {
+          console.warn('Cloud Subscription invoice attachment skipped:', attErr.message);
+        }
+        if (notifyPr && recipients.length) {
+          queueSassInvoiceUploadedNotification({
+            pr: notifyPr,
+            invoice: {
+              invoiceNumber,
+              invoiceFileName: fileName,
+              invoiceGrandTotal: grand,
+            },
+            recipients,
+            uploaderName: user?.name || 'Requester',
+            attachments,
+          });
+        }
+      } catch (mailErr) {
+        console.warn('Cloud Subscription invoice-uploaded mail failed:', mailErr.message);
+      }
+    }
+  } catch (err) {
+    console.warn('Cloud Subscription invoice upload follow-up failed:', err.message);
   }
 
   return getInvoiceById(invoiceId);
@@ -1108,4 +1182,109 @@ export async function resolveInvoiceFile(invoiceId) {
   const fullPath = path.join(INVOICE_DIR, rows[0].invoice_file_path);
   if (fs.existsSync(fullPath)) return { fullPath, fileName };
   return null;
+}
+
+/** Compact GRN + invoice snapshot for Track PO expand (finished-flow tabs). */
+export async function getPoFulfillmentSummary(poId) {
+  const id = Number(poId);
+  if (!id) return { grn: null, invoice: null };
+
+  const [grnRows] = await pool.query(
+    `SELECT g.*, po.po_number, po.vendor_name
+     FROM grn_headers g
+     JOIN purchase_orders po ON po.id = g.po_id
+     WHERE g.po_id = ?
+     ORDER BY g.id DESC
+     LIMIT 1`,
+    [id]
+  );
+
+  let grn = null;
+  if (grnRows.length) {
+    const row = grnRows[0];
+    const [lines] = await pool.query(
+      `SELECT * FROM grn_line_items WHERE grn_id = ? ORDER BY id ASC`,
+      [row.id]
+    );
+    const statusRaw = String(row.status || '');
+    const finished = ['submitted', 'fully_received', 'partially_received'].includes(statusRaw);
+    if (finished) {
+      grn = {
+        id: row.id,
+        grnNumber: row.grn_number,
+        poId: row.po_id,
+        poNumber: row.po_number,
+        vendor: row.vendor_name || '',
+        status: GRN_STATUS_UI[statusRaw] || statusRaw,
+        statusRaw,
+        receivedDate: row.receipt_date ? formatDate(row.receipt_date) : null,
+        receivedBy: row.received_by || '',
+        inspectedBy: row.inspected_by || '',
+        remarks: row.remarks || '',
+        receivedValue: Number(row.received_value) || 0,
+        lineItems: lines.map((li) => ({
+          id: String(li.id),
+          description: li.description,
+          orderedQty: Number(li.ordered_qty) || 0,
+          receivedQty: Number(li.received_qty) || 0,
+          unitPrice: Number(li.unit_price) || 0,
+          total: Number(li.line_total) || 0,
+          condition: li.condition_label || 'Good',
+        })),
+      };
+    }
+  }
+
+  const [invRows] = await pool.query(
+    `SELECT i.*, po.po_number, po.vendor_name, po.vendor_email, g.grn_number
+     FROM invoices i
+     JOIN purchase_orders po ON po.id = i.po_id
+     LEFT JOIN grn_headers g ON g.id = i.grn_id
+     WHERE i.po_id = ?
+     ORDER BY i.id DESC
+     LIMIT 1`,
+    [id]
+  );
+
+  let invoice = null;
+  if (invRows.length) {
+    const row = invRows[0];
+    const statusRaw = String(row.status || '');
+    const hasFile = Boolean(row.invoice_file_path);
+    const finished =
+      hasFile ||
+      [
+        'pending_verification',
+        'pending_manager_approval',
+        'approved_for_payment',
+        'on_hold',
+        'discrepancy',
+        'paid',
+        'rejected',
+      ].includes(statusRaw);
+    if (finished) {
+      invoice = {
+        id: row.id,
+        invoiceNumber: row.invoice_number || `DRAFT-${row.id}`,
+        invoiceDate: row.invoice_date ? formatDate(row.invoice_date) : '',
+        submittedDate: row.submitted_at ? formatDateTime(row.submitted_at) : formatDateTime(row.created_at),
+        vendor: row.vendor_name || '',
+        vendorEmail: row.vendor_email || '',
+        poId: row.po_id,
+        poNumber: row.po_number,
+        grnNumber: row.grn_number || '',
+        status: INVOICE_STATUS_UI[statusRaw] || statusRaw,
+        statusRaw,
+        invoiceSubtotal: Number(row.invoice_subtotal) || 0,
+        invoiceGST: Number(row.invoice_tax) || 0,
+        invoiceGrandTotal: Number(row.invoice_grand_total) || Number(row.po_grand_total) || 0,
+        invoiceFileName: row.invoice_file_name || null,
+        hasInvoiceFile: hasFile,
+        vendorInvoiceMode: row.vendor_invoice_mode || null,
+        accountsRemarks: row.accounts_remarks || '',
+      };
+    }
+  }
+
+  return { grn, invoice };
 }

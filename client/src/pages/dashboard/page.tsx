@@ -123,9 +123,9 @@ export default function Dashboard() {
 
   const load = async (filterOverride?: Partial<DashboardFiltersValue>) => {
     const active = { ...filters, ...filterOverride };
-    setLoading(true);
-    setError(null);
-    try {
+      setLoading(true);
+      setError(null);
+      try {
       const [insightsRes, masterEnt, masterDept, masterCat] = await Promise.all([
         poApi.cfoInsights({
           department: active.department || undefined,
@@ -143,9 +143,9 @@ export default function Dashboard() {
       setDepartments([...new Set((masterDept.data || []).map((d) => String(d.name || '').trim()).filter(Boolean))]);
       setCategories([...new Set((masterCat.data || []).map((c) => String(c.name || '').trim()).filter(Boolean))]);
       setUpdatedAt(new Date());
-    } catch (err) {
-      setData(EMPTY);
-      setError(err instanceof Error ? err.message : 'Failed to load CFO insights');
+      } catch (err) {
+          setData(EMPTY);
+          setError(err instanceof Error ? err.message : 'Failed to load CFO insights');
     } finally {
       setLoading(false);
     }
@@ -519,7 +519,7 @@ export default function Dashboard() {
           lockedEntityLabel={user?.entityName || user?.entityCode || undefined}
         />
 
-        {error && (
+      {error && (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
         )}
         {loading && <p className="mb-4 text-sm text-slate-500">Loading live PO insights…</p>}
@@ -545,7 +545,7 @@ export default function Dashboard() {
               series={data.monthlySeries}
               onClick={openDetails}
             />
-          </div>
+        </div>
         ) : null}
 
         {visible('second') ? (
@@ -572,11 +572,11 @@ export default function Dashboard() {
           <>
             <div id="cfo-detail-tables" className="mb-4">
               <EntityPOSummaryTable entities={filteredEntities} />
-            </div>
+        </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
               <RecentPOTable orders={filteredOrders} />
               <TopVendorsTable vendors={filteredVendors} />
-            </div>
+        </div>
           </>
         ) : null}
 

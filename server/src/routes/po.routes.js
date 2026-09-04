@@ -32,6 +32,7 @@ import {
   getCfoPoInsights,
   assertRequesterPoDocumentAccess,
 } from '../services/poService.js';
+import { getPoFulfillmentSummary } from '../services/accountsFulfillmentService.js';
 import { adminDeletePurchaseOrder } from '../services/adminDeleteService.js';
 import {
   resolveScmManagerUser,
@@ -588,6 +589,21 @@ router.get('/:id', canReadPo, async (req, res) => {
         : await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
     res.json({ data: po });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/:id/fulfillment', canReadPo, async (req, res) => {
+  try {
+    const poId = Number(req.params.id);
+    const po =
+      req.user.role === 'Requester'
+        ? await assertRequesterPoDocumentAccess(req.user, poId)
+        : await getPurchaseOrderById(poId);
+    if (!po) return res.status(404).json({ message: 'PO not found' });
+    const data = await getPoFulfillmentSummary(poId);
+    res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

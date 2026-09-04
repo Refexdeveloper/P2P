@@ -3,6 +3,7 @@ import StatusBadge from '../../../components/base/StatusBadge';
 import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatDate';
 import PrVendorQuotationsPanel from '../../../components/feature/PrVendorQuotationsPanel';
 import { collapsePrAdminEditHistory } from '../../../components/feature/ApprovalHistoryPanel';
+import { formatMoney } from '../../../constants/currency';
 import { useState } from 'react';
 
 interface LineItem {
@@ -45,6 +46,8 @@ interface PRTask {
   currentApprover: string;
   justification: string;
   vendorSelection?: 'own' | 'scm';
+  purchaseType?: string;
+  isSass?: boolean;
   billingLocation?: string;
   billingGstNo?: string;
   billingAddress?: string;
@@ -105,6 +108,13 @@ export default function TaskDetailDrawer({
   );
   const [hasQuotes, setHasQuotes] = useState(false);
   const isOwnVendor = task.vendorSelection === 'own';
+  const isSass =
+    Boolean(task.isSass) ||
+    ['sass', 'saas', 'cloud_subscription'].includes(
+      String(task.purchaseType || '')
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_')
+    );
   /** Own Vendor / quoted PRs: show name, description, qty — hide unit cost & total */
   const hideLinePricing = isOwnVendor || hasQuotes;
 
@@ -117,15 +127,25 @@ export default function TaskDetailDrawer({
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div className="relative flex h-full w-full max-w-xl flex-col bg-white shadow-2xl animate-slide-in-right">
         {/* Header */}
-        <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
+        <div className={`shrink-0 border-b px-6 py-4 z-10 ${isSass ? 'bg-teal-50 border-teal-200' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center justify-between">
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className="text-xs font-bold text-gray-500">{task.prNumber}</span>
+                {isSass && (
+                  <span className="px-2 py-0.5 bg-teal-600 text-white text-[10px] font-bold rounded tracking-wide">
+                    CLOUD SUBSCRIPTION REQUEST
+                  </span>
+                )}
                 <StatusBadge status={task.status} size="sm" />
                 <PriorityBadge priority={(task.priority || 'medium').toLowerCase()} size="sm" />
               </div>
               <h3 className="text-base font-semibold text-gray-900">{task.title}</h3>
+              {isSass && (
+                <p className="text-xs text-teal-800 mt-1 font-medium">
+                  Cloud Subscription path: L1 → Srivaths → Mugesh → Invoice → Accounts (SCM skipped)
+                </p>
+              )}
             </div>
             <button
               onClick={onClose}
@@ -192,7 +212,10 @@ export default function TaskDetailDrawer({
                   <p className="text-sm font-bold text-gray-900">
                     {hideLinePricing
                       ? 'Own Vendor'
-                      : `₹${Number(task.totalAmount || 0).toLocaleString('en-IN')}`}
+                      : formatMoney(Number(task.totalAmount || 0), task.currency, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                   </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
@@ -308,10 +331,16 @@ export default function TaskDetailDrawer({
                             {!hideLinePricing && (
                               <>
                                 <td className="px-3 py-2 text-right text-gray-700">
-                                  ₹{Number(item.unitCost || 0).toLocaleString('en-IN')}
+                                  {formatMoney(Number(item.unitCost || 0), task.currency, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
                                 </td>
                                 <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                                  ₹{Number(item.total || 0).toLocaleString('en-IN')}
+                                  {formatMoney(Number(item.total || 0), task.currency, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
                                 </td>
                               </>
                             )}
@@ -327,7 +356,10 @@ export default function TaskDetailDrawer({
                           Grand Total
                         </td>
                         <td className="px-3 py-2 text-right font-bold text-gray-900">
-                          ₹{Number(task.totalAmount || 0).toLocaleString('en-IN')}
+                          {formatMoney(Number(task.totalAmount || 0), task.currency, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
                         </td>
                       </tr>
                     </tfoot>

@@ -12,8 +12,10 @@ export type CreatePrDraftSnapshot = {
   department: string;
   entityId: number | '';
   requestType: 'Capex' | 'Opex' | 'Service';
-  purchaseType: 'purchase_order' | 'work_order';
+  purchaseType: 'purchase_order' | 'work_order' | 'sass';
   vendorSelection: 'own' | 'scm';
+  /** SASS — vendor known on Create PR (no RFQ). */
+  sassVendorId?: string | null;
   prFlow: 'standard' | 'functional';
   approvalUserIds: number[];
   rfqMaxRounds: number;

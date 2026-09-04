@@ -69,6 +69,8 @@ interface RequesterTask {
   label: string;
   actionPath: string;
   cta?: string;
+  purchaseType?: string;
+  isSass?: boolean;
 }
 
 const PAGE_SIZE = 10;
@@ -296,14 +298,48 @@ export default function RequesterDashboard() {
             </span>
           </div>
           <div className="divide-y divide-gray-100">
-            {requesterTasks.map((task) => (
-              <div key={task.id} className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-gray-50 transition-colors">
+            {requesterTasks.map((task) => {
+              const isSass =
+                Boolean(task.isSass) ||
+                ['sass', 'saas', 'cloud_subscription'].includes(
+                  String(task.purchaseType || '')
+                    .toLowerCase()
+                    .replace(/[\s-]+/g, '_')
+                );
+              return (
+              <div
+                key={task.id}
+                className={`p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-colors ${
+                  isSass
+                    ? 'bg-teal-50/80 hover:bg-teal-50 border-l-4 border-l-teal-500'
+                    : 'hover:bg-gray-50'
+                }`}
+              >
                 <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-teal-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <i className="ri-file-edit-line text-teal-600 text-lg"></i>
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      isSass ? 'bg-teal-600' : 'bg-teal-50'
+                    }`}
+                  >
+                    <i
+                      className={`ri-file-edit-line text-lg ${isSass ? 'text-white' : 'text-teal-600'}`}
+                    ></i>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-teal-700 uppercase tracking-wide">{task.label || 'RFQ Entry'}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p
+                        className={`text-xs font-semibold uppercase tracking-wide ${
+                          isSass ? 'text-teal-800' : 'text-teal-700'
+                        }`}
+                      >
+                        {task.label || 'RFQ Entry'}
+                      </p>
+                      {isSass && (
+                        <span className="px-1.5 py-0.5 bg-teal-600 text-white text-[10px] font-bold rounded tracking-wide">
+                          CLOUD SUBSCRIPTION REQUEST
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm font-semibold text-gray-900 mt-1">{task.prNumber}</p>
                     <p className="text-sm text-gray-600 mt-0.5">{task.title}</p>
                     <p className="text-xs text-gray-400 mt-1">
@@ -320,7 +356,8 @@ export default function RequesterDashboard() {
                   {task.cta || (task.taskType === 'PR_APPROVAL' ? 'Review & Approve' : 'Start RFQ Entry')}
                 </Link>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

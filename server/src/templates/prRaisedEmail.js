@@ -1,8 +1,5 @@
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
-
-function formatCurrency(amount) {
-  return `₹${Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { formatCurrency } from './emailUtils.js';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -27,7 +24,7 @@ function lineItemDescription(item) {
   return desc;
 }
 
-function buildLineItemsTable(lineItems = [], { ownVendor = false } = {}) {
+function buildLineItemsTable(lineItems = [], { ownVendor = false, currency = 'INR' } = {}) {
   if (ownVendor) {
     const rows = lineItems
       .map((item, index) => {
@@ -68,8 +65,8 @@ function buildLineItemsTable(lineItems = [], { ownVendor = false } = {}) {
             <span style="color:#6b7280;font-size:12px;">${escapeHtml(item.category || '—')}</span>
           </td>
           <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;text-align:center;">${item.quantity}</td>
-          <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;text-align:right;">${formatCurrency(item.unitCost)}</td>
-          <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#047857;text-align:right;font-weight:700;">${formatCurrency(item.total)}</td>
+          <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;text-align:right;">${formatCurrency(item.unitCost, currency)}</td>
+          <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#047857;text-align:right;font-weight:700;">${formatCurrency(item.total, currency)}</td>
         </tr>`
     )
     .join('');
@@ -91,7 +88,7 @@ function buildLineItemsTable(lineItems = [], { ownVendor = false } = {}) {
       <tfoot>
         <tr style="background:#ecfdf5;">
           <td colspan="4" style="padding:14px 10px;font-size:13px;color:#065f46;text-align:right;font-weight:700;border-top:1px solid #bbf7d0;">Grand Total</td>
-          <td style="padding:14px 10px;font-size:15px;color:#047857;text-align:right;font-weight:800;border-top:1px solid #bbf7d0;">${formatCurrency(lineItems.reduce((sum, item) => sum + Number(item.total || 0), 0))}</td>
+          <td style="padding:14px 10px;font-size:15px;color:#047857;text-align:right;font-weight:800;border-top:1px solid #bbf7d0;">${formatCurrency(lineItems.reduce((sum, item) => sum + Number(item.total || 0), 0), currency)}</td>
         </tr>
       </tfoot>
     </table>`;
@@ -121,6 +118,8 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
     ? 'A purchase request has been updated and resubmitted for approval workflow.'
     : 'A new purchase request has been raised and submitted for approval.';
   const ownVendor = isOwnVendorPr(pr);
+  const currency = pr.currency || pr.currency_code || 'INR';
+  const money = (n) => formatCurrency(n, currency);
 
   const html = `
 <!DOCTYPE html>
@@ -180,7 +179,7 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
                   ${
                     ownVendor
                       ? infoCell('Vendor Path', 'Own Vendor')
-                      : infoCell('Total Amount', formatCurrency(pr.totalAmount))
+                      : infoCell('Total Amount', money(pr.totalAmount))
                   }
                   ${infoCell('Entity Cost Center', pr.entityCostCenter || '—')}
                 </tr>
@@ -202,7 +201,7 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
           <tr>
             <td style="padding:0 32px 24px 32px;">
               <div style="font-size:13px;color:#0f172a;font-weight:700;margin-bottom:12px;">Line Items</div>
-              ${buildLineItemsTable(pr.lineItems, { ownVendor })}
+              ${buildLineItemsTable(pr.lineItems, { ownVendor, currency })}
             </td>
           </tr>
 
@@ -245,7 +244,7 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
     `Type: ${pr.requestType}`,
     `Priority: ${pr.priority}`,
     `Required Date: ${pr.requiredDate || '—'}`,
-    ownVendor ? 'Vendor Path: Own Vendor' : `Total Amount: ${formatCurrency(pr.totalAmount)}`,
+    ownVendor ? 'Vendor Path: Own Vendor' : `Total Amount: ${money(pr.totalAmount)}`,
     '',
     'Business Justification:',
     pr.justification || 'Not provided',
@@ -257,7 +256,7 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
       if (ownVendor) {
         return desc ? `${i + 1}. ${name} — ${desc}` : `${i + 1}. ${name}`;
       }
-      return `${i + 1}. ${item.description} | ${item.category} | Qty: ${item.quantity} | Unit: ${formatCurrency(item.unitCost)} | Total: ${formatCurrency(item.total)}`;
+      return `${i + 1}. ${item.description} | ${item.category} | Qty: ${item.quantity} | Unit: ${formatCurrency(item.unitCost, currency)} | Total: ${formatCurrency(item.total, currency)}`;
     }),
   ].join('\n');
 
