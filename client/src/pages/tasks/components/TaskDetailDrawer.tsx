@@ -425,7 +425,7 @@ export default function TaskDetailDrawer({
                             <span className="text-xs text-gray-400">{formatDateTime(step.date)}</span>
                           </div>
                           <p className="text-xs text-gray-500">
-                            {step.approver} &middot; {step.role}
+                            {step.approver}
                           </p>
                           {step.remarks && (
                             <p className="text-xs text-gray-600 mt-0.5 italic">
