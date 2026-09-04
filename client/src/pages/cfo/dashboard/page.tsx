@@ -84,6 +84,7 @@ export default function CFODashboardPage() {
     prNumber: string;
     prTitle: string;
     amount: number;
+    requireInvoiceUpload?: boolean;
   }>({ isOpen: false, type: 'approve', prId: 0, prNumber: '', prTitle: '', amount: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -123,9 +124,18 @@ export default function CFODashboardPage() {
     if (!['approve', 'reject'].includes(action)) return;
 
     const pr = cfoPRList.find((p) => Number(p.prId) === prId);
-    if (!pr || pr.status !== 'Pending CFO Approval') return;
+    if (!pr || (pr.status !== 'Pending CFO Approval' && pr.status !== 'Pending Mugesh Approval'))
+      return;
 
     deepLinkHandled.current = true;
+    const isSass =
+      Boolean(pr.isSass) ||
+      Boolean(pr.requireInvoiceUpload) ||
+      ['sass', 'saas', 'cloud_subscription'].includes(
+        String(pr.purchaseType || '')
+          .toLowerCase()
+          .replace(/[\s-]+/g, '_')
+      );
     setApprovalModal({
       isOpen: true,
       type: action as 'approve' | 'reject',
@@ -133,6 +143,7 @@ export default function CFODashboardPage() {
       prNumber: String(pr.id),
       prTitle: String(pr.title),
       amount: Number(pr.amount),
+      requireInvoiceUpload: action === 'approve' && isSass,
     });
     setSearchParams({}, { replace: true });
   }, [loading, cfoPRList, searchParams, setSearchParams]);
@@ -405,9 +416,13 @@ export default function CFODashboardPage() {
         prNumber={approvalModal.prNumber}
         prTitle={approvalModal.prTitle}
         amount={approvalModal.amount}
+        prId={approvalModal.prId}
+        requireInvoiceUpload={Boolean(approvalModal.requireInvoiceUpload)}
         onClose={() => setApprovalModal((prev) => ({ ...prev, isOpen: false }))}
-        onConfirm={async (remarks) => {
-          await prApi.approve(approvalModal.prId, approvalModal.type, remarks);
+        onConfirm={async (remarks, _returnTo, _goToBusiness, invoice) => {
+          await prApi.approve(approvalModal.prId, approvalModal.type, remarks, {
+            ...(invoice ? { invoice } : {}),
+          });
           setApprovalModal((prev) => ({ ...prev, isOpen: false }));
           await loadDashboard();
         }}

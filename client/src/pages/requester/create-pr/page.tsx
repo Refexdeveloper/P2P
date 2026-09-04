@@ -2594,7 +2594,7 @@ export default function CreatePRPage() {
                     {
                       id: 'sass' as const,
                       label: 'Cloud Subscription',
-                      hint: 'L1 → L2 Srivaths → Mugesh → Invoice → Accounts',
+                      hint: 'L1 → L2 Srivaths → Mugesh (invoice) → Accounts',
                     },
                   ]
                 ).map((opt) => (
@@ -2886,8 +2886,8 @@ export default function CreatePRPage() {
                   <p className="text-sm font-semibold text-teal-900">Cloud Subscription approval path</p>
                   <p className="text-xs text-teal-800 mt-1">
                     Add vendors &amp; quotes below (same as Functional Own), pick one recommended
-                    vendor, select L1 → L2 Srivaths → Mugesh → you upload invoice → Accounts. SCM
-                    RFQ is skipped.
+                    vendor, select L1 → L2 Srivaths → Mugesh uploads invoice on approval → Accounts.
+                    SCM RFQ is skipped.
                   </p>
                 </div>
                 <div className="md:col-span-2" data-field="approvalUserId">
@@ -2907,8 +2907,8 @@ export default function CreatePRPage() {
                   )}
                   <p className="text-xs text-gray-500 mt-1.5">
                     L2 is automatically Srivaths (srivaths.varadharajan@refex.co.in). Next is Mugesh
-                    (mugesh.m@refex.co.in). Do not select Srivaths as L1 unless that person is
-                    intentionally your L1.
+                    (mugesh.m@refex.co.in), who approves and uploads the invoice on the same step.
+                    Do not select Srivaths as L1 unless that person is intentionally your L1.
                   </p>
                 </div>
               </>

@@ -334,10 +334,11 @@ router.post('/:id/admin/send-back', canApproveAdmin, async (req, res) => {
 /** Any authenticated user may call this; processApproval enforces role/assignment. */
 router.post('/:id/approve', async (req, res) => {
   try {
-    const { action = 'approve', remarks, returnTo, goToBusinessApproval } = req.body;
+    const { action = 'approve', remarks, returnTo, goToBusinessApproval, invoice } = req.body;
     const pr = await processApproval(req.user, req.params.id, action, remarks, {
       returnTo,
       goToBusinessApproval,
+      invoice,
     });
     res.json({ data: pr, message: `PR ${action}d successfully` });
   } catch (err) {

@@ -295,7 +295,19 @@ export const prApi = {
     id: number,
     action: 'approve' | 'reject' | 'return' | 'rework',
     remarks: string,
-    options?: { returnTo?: string; goToBusinessApproval?: boolean }
+    options?: {
+      returnTo?: string;
+      goToBusinessApproval?: boolean;
+      invoice?: {
+        invoiceNumber: string;
+        fileName: string;
+        fileData: string;
+        invoiceDate?: string;
+        invoiceSubtotal?: number;
+        invoiceTax?: number;
+        invoiceGrandTotal?: number;
+      };
+    }
   ) =>
     request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/approve`, {
       method: 'POST',
@@ -306,6 +318,7 @@ export const prApi = {
         ...(typeof options?.goToBusinessApproval === 'boolean'
           ? { goToBusinessApproval: options.goToBusinessApproval }
           : {}),
+        ...(options?.invoice ? { invoice: options.invoice } : {}),
       }),
     }),
   resubmit: (id: number, body: Record<string, unknown>) =>

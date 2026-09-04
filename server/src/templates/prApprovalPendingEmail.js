@@ -539,9 +539,11 @@ function buildNegotiationRoundsBlock(pr, rfqSummary) {
     ...rfqSummary,
     currency: pr?.currency || pr?.currency_code || rfqSummary.currency || 'INR',
   };
+  // Cloud Subscription already shows Total Amount in the PR summary — skip duplicate amount cards
+  const skipDuplicateAmounts = isSassPrPayload(pr);
 
   return `
-        ${buildQuotedAmountBlock(pr, rfqSummary)}
+        ${skipDuplicateAmounts ? '' : buildQuotedAmountBlock(pr, rfqSummary)}
         ${buildRecommendationJustificationBlock(rfqSummary)}
         ${buildRecommendedQuoteLineItemsBlock(rfqSummary)}
         ${buildPriceNegotiationTrendBlock(rfqSummary)}
@@ -628,7 +630,7 @@ export function buildPrApprovalPendingEmail({
             : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
   const subject =
     isSassRequest && !isScmRfqEntry
-      ? `Cloud Subscription Request — ${baseSubject}`
+      ? `Cloud Subscription · ${baseSubject.replace(/^Action Required:\s*/i, '')}`
       : baseSubject;
   const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const path = getPortalPath(assignedRole, postRfq && !isCreatePoStep);
@@ -756,8 +758,12 @@ export function buildPrApprovalPendingEmail({
             <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">RFQ Summary</div>
             <table width="100%" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:14px 16px;font-size:14px;color:#14532d;line-height:1.6;">
               <strong>Recommended Vendor:</strong> ${escapeHtml(rfqSummary.recommendedVendor || '—')}<br/>
-              <strong>Vendors Quoted:</strong> ${rfqSummary.vendorCount || 0}<br/>
-              <strong>Quoted Price:</strong> ${money(rfqSummary.quotedPrice || 0, rfqSummary)}
+              <strong>Vendors Quoted:</strong> ${rfqSummary.vendorCount || 0}
+              ${
+                isSassRequest
+                  ? ''
+                  : `<br/><strong>Quoted Price:</strong> ${money(rfqSummary.quotedPrice || 0, rfqSummary)}`
+              }
               ${
                 rfqSummary.recommendationJustification
                   ? `<br/><br/><strong>Justification:</strong> ${escapeHtml(rfqSummary.recommendationJustification)}`
@@ -771,7 +777,7 @@ export function buildPrApprovalPendingEmail({
   const entityLabel = formatEntity(pr);
   const entityLocationLabel = formatEntityLocation(pr);
   const headerEyebrow = isSassRequest
-    ? 'Cloud Subscription Request'
+    ? 'Cloud Subscription'
     : isScmRfqEntry
       ? 'New PR Request Received'
       : isRfqEntryStep
@@ -784,7 +790,7 @@ export function buildPrApprovalPendingEmail({
   const headerTitle = isSassRequest
     ? isRfqEntryStep && !isScmRfqEntry
       ? escapeHtml(stageText)
-      : 'Cloud Subscription purchase request needs your action'
+      : 'Purchase request needs your review'
     : isScmRfqEntry
       ? 'New PR request received'
       : isRfqEntryStep
@@ -814,11 +820,6 @@ export function buildPrApprovalPendingEmail({
             <div style="font-size:11px;color:${isSassRequest ? '#ccfbf1' : '#bae6fd'};letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">${headerEyebrow}</div>
             <div style="font-size:24px;color:#fff;font-weight:800;margin-top:8px;">${headerTitle}</div>
             <div style="font-size:14px;color:${isSassRequest ? '#ecfdf5' : '#e0f2fe'};margin-top:8px;">${headerSub}</div>
-            ${
-              isSassRequest
-                ? `<div style="display:inline-block;margin-top:14px;padding:6px 12px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.35);border-radius:999px;font-size:12px;font-weight:700;color:#fff;letter-spacing:0.04em;">CLOUD SUBSCRIPTION REQUEST</div>`
-                : ''
-            }
           </td>
         </tr>
         <tr>
@@ -826,11 +827,6 @@ export function buildPrApprovalPendingEmail({
             <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700;">PR Number</div>
             <div style="font-size:22px;color:#0f172a;font-weight:800;margin-top:4px;">
               ${escapeHtml(pr.prNumber)}
-              ${
-                isSassRequest
-                  ? `<span style="display:inline-block;margin-left:10px;vertical-align:middle;padding:3px 10px;border-radius:999px;background:#ccfbf1;color:#0f766e;font-size:11px;font-weight:800;letter-spacing:0.04em;">CLOUD SUBSCRIPTION</span>`
-                  : ''
-              }
             </div>
             <div style="font-size:16px;color:#334155;margin-top:6px;font-weight:600;">${escapeHtml(pr.title)}</div>
           </td>
@@ -953,7 +949,7 @@ export function buildPrApprovalPendingEmail({
 
   const bestQuote = bestQuotedFromSummary(rfqSummary);
   const text = [
-    isSassRequest ? `CLOUD SUBSCRIPTION REQUEST — ${subject}` : isScmRfqEntry ? subject : `Action Required: PR ${pr.prNumber} — ${pr.title}`,
+    isSassRequest ? subject : isScmRfqEntry ? subject : `Action Required: PR ${pr.prNumber} — ${pr.title}`,
     `Entity: ${entityLabel}`,
     entityLocationLabel ? `Entity Location: ${entityLocationLabel}` : '',
     isSassRequest ? 'Purchase Type: Cloud Subscription' : '',
@@ -961,10 +957,14 @@ export function buildPrApprovalPendingEmail({
     `Stage: ${stageText}`,
     `Requester: ${requester?.name || pr.requester}`,
     lineOwnVendor ? 'Vendor Path: Own Vendor' : `PR Amount: ${money(pr.totalAmount, pr)}`,
-    bestQuote ? `Quoted Amount: ${money(bestQuote.price, pr)} (${bestQuote.vendor})` : '',
-    rfqSummary?.recommendedVendor
-      ? `Recommended: ${rfqSummary.recommendedVendor} (${money(rfqSummary.quotedPrice || 0, rfqSummary)})`
+    !isSassRequest && bestQuote
+      ? `Quoted Amount: ${money(bestQuote.price, pr)} (${bestQuote.vendor})`
       : '',
+    !isSassRequest && rfqSummary?.recommendedVendor
+      ? `Recommended: ${rfqSummary.recommendedVendor} (${money(rfqSummary.quotedPrice || 0, rfqSummary)})`
+      : isSassRequest && rfqSummary?.recommendedVendor
+        ? `Recommended Vendor: ${rfqSummary.recommendedVendor}`
+        : '',
     rfqSummary?.recommendationJustification
       ? `Justification: ${rfqSummary.recommendationJustification}`
       : '',

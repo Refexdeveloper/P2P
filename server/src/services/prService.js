@@ -6,6 +6,7 @@ import {
   queueRequesterStepProgressNotification,
   queueStakeholderStepProgressNotifications,
   queueApproverActionConfirmationForUser,
+  queueSassInvoiceUploadedNotification,
 } from './emailService.js';
 import {
   getL1ManagerForEmail,
@@ -45,9 +46,9 @@ import {
   createSassL2ApprovalTask,
   createSassMugeshApprovalTask,
   openSassInvoiceStage,
-  completeSassInvoiceUploadTask,
+  applySassMugeshInvoiceUpload,
+  resolveSassInvoiceUploadedRecipients,
   resolveSassVendorFromBody,
-  SASS_L2_NAME,
   SASS_MUGESH_NAME,
 } from './sassWorkflow.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
@@ -383,7 +384,7 @@ function formatPrApprovalStage(stage, prFlow = 'standard', purchaseType = 'purch
       HOD_REVIEW: 'L1 Manager Approval',
       PR_MANAGER_REVIEW: 'L2 Manager Approval (Srivaths)',
       CFO_REVIEW: 'Mugesh Approval',
-      SASS_INVOICE_UPLOAD: 'Requester Invoice Upload',
+      SASS_INVOICE_UPLOAD: 'Mugesh Invoice Upload',
     };
     if (sassLabels[stage]) return sassLabels[stage];
   }
@@ -1416,7 +1417,7 @@ export async function createPurchaseRequest(user, body) {
 
     if (submit) {
       const pathLabel = isSass
-        ? `Cloud Subscription · L1 (selected): ${selectedApprover?.name || selectedApprover?.email || '—'} → L2: Srivaths → Mugesh → Requester Invoice → Accounts (SCM skipped)`
+        ? `Cloud Subscription · L1 (selected): ${selectedApprover?.name || selectedApprover?.email || '—'} → L2: Srivaths → Mugesh (approve + invoice) → Accounts (SCM skipped)`
         : prFlow === 'functional'
           ? `Functional Flow · User Approval (${selectedApprovers.length}): ${selectedApprovers.map((u) => u.name || u.email).join(' → ')} · then SCM Final RFQ / RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval · Vendor path: ${vendorMode === 'own' ? 'Own Vendor (quotes on Create PR)' : 'SCM Vendor Selection'}`
           : `Vendor path: ${vendorMode === 'own' ? 'Own Vendor' : 'SCM Vendor Selection'}`;
@@ -2490,9 +2491,16 @@ export async function processApproval(user, prId, action, remarks, options = {})
         }
       } else if (actingRole === 'CFO') {
         if (isSass) {
-          // Mugesh → requester invoice upload (no SCM)
-          newStatus = PR_STATUS.AWAITING_INVOICE;
-          newStage = STAGE.SASS_INVOICE_UPLOAD;
+          // Mugesh approve + invoice upload on same step → completed (Accounts)
+          const inv = options.invoice || {};
+          if (!String(inv.invoiceNumber || '').trim()) {
+            throw new Error('Invoice number is required for Cloud Subscription approval');
+          }
+          if (!inv.fileName || !inv.fileData) {
+            throw new Error('Invoice file is required for Cloud Subscription approval');
+          }
+          newStatus = PR_STATUS.APPROVED;
+          newStage = null;
           nextRole = null;
           skipToScmRfq = false;
         } else {
@@ -2586,16 +2594,23 @@ export async function processApproval(user, prId, action, remarks, options = {})
       }
     }
 
+    let sassInvoiceUploadMeta = null;
     if (isSass && actingRole === 'CFO' && action === 'approve') {
-      await openSassInvoiceStage(conn, pr, user);
+      const { invoiceId } = await openSassInvoiceStage(conn, pr, user, {
+        createRequesterTask: false,
+      });
+      sassInvoiceUploadMeta = await applySassMugeshInvoiceUpload(conn, invoiceId, user, {
+        ...(options.invoice || {}),
+        remarks: remarks,
+      });
       await conn.query(
         `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
         [
           prId,
           STAGE.SASS_INVOICE_UPLOAD,
           user.id,
-          'routed',
-          'Routed to requester for invoice upload — SCM skipped',
+          'submitted',
+          `Invoice uploaded by Mugesh (${sassInvoiceUploadMeta.invoiceNumber}) — completed, routed to Accounts (SCM skipped)`,
         ]
       );
     }
@@ -2839,7 +2854,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
       notifyWorkflowStepProgress('RFQ Entry (Own Vendor)', 'L1 Manager Approval');
     } else if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve' && !isSass) {
       // Functional Own (and any PR that already has quotation rounds) → SCM Buyer with files attached
-      // SASS never notifies SCM — invoice upload is handled separately after Mugesh approve
+      // SASS never notifies SCM — Mugesh uploads invoice on the same approval step
       const scmLabel =
         isFunctional && pr.vendor_selection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry';
       try {
@@ -2878,26 +2893,39 @@ export async function processApproval(user, prId, action, remarks, options = {})
         isFunctional ? 'User Approval (chain complete)' : `${actingRole} Approval`
       );
     } else if (isSass && actingRole === 'CFO' && action === 'approve') {
-      // Mugesh approved SASS → notify requester for invoice upload (never SCM)
-      const [reqRows] = await pool.query(`SELECT id, email, name FROM users WHERE id = ?`, [
-        updatedPr.requesterId || pr.requester_id,
-      ]);
-      const requester = reqRows[0];
-      if (requester?.email) {
-        queuePrApprovalPendingNotification(
-          updatedPr,
-          'Requester',
-          { name: requester.name, email: requester.email },
-          updatedPr.departmentId,
-          {
-            approverEmails: [requester.email],
-            approverName: requester.name,
-            stageLabel: 'Invoice Upload Required',
-            roleDisplayName: 'Requester',
-          }
-        );
+      // Mugesh approved + uploaded invoice → notify Requester, L1, L2, itdev (never requester task)
+      try {
+        const { pr: notifyPr, recipients } = await resolveSassInvoiceUploadedRecipients(prId);
+        const attachments = [];
+        if (sassInvoiceUploadMeta?.buffer?.length) {
+          attachments.push({
+            filename: sassInvoiceUploadMeta.fileName || 'invoice.pdf',
+            content: sassInvoiceUploadMeta.buffer,
+          });
+        }
+        if (notifyPr && recipients.length) {
+          queueSassInvoiceUploadedNotification({
+            pr: {
+              ...notifyPr,
+              title: notifyPr.title || updatedPr.title,
+              currency: notifyPr.currency || updatedPr.currency || 'INR',
+              totalAmount: notifyPr.totalAmount ?? updatedPr.totalAmount,
+            },
+            invoice: {
+              invoiceNumber: sassInvoiceUploadMeta?.invoiceNumber,
+              invoiceFileName: sassInvoiceUploadMeta?.fileName,
+              invoiceGrandTotal:
+                sassInvoiceUploadMeta?.grandTotal ?? updatedPr.totalAmount,
+            },
+            recipients,
+            uploaderName: user?.name || SASS_MUGESH_NAME,
+            attachments,
+          });
+        }
+      } catch (mailErr) {
+        console.warn('Cloud Subscription Mugesh invoice mail failed:', mailErr.message);
       }
-      notifyWorkflowStepProgress('Invoice Upload', 'Mugesh Approval');
+      notifyWorkflowStepProgress('Completed', 'Mugesh Approval');
     } else if (action === 'reject' || action === 'return' || action === 'rework') {
       // Particular requester — return / reject
       queuePostRfqActionNotification(updatedPr, actingRole, action, remarks, {
@@ -3921,6 +3949,12 @@ function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, display
         !isSassPurchaseType(pr.purchaseType) &&
         pr.status === PR_STATUS.PENDING_HOD_APPROVAL
     ),
+    requireInvoiceUpload: Boolean(
+      pending &&
+        !isPostRfq &&
+        isSassPurchaseType(pr.purchaseType) &&
+        pr.status === PR_STATUS.PENDING_CFO_APPROVAL
+    ),
   };
 }
 
@@ -4349,15 +4383,24 @@ export function toCfoDashboardFormat(pr) {
     amount: pr.totalAmount,
     priority: pr.priority,
     status:
-      pr.status === PR_STATUS.PENDING_CFO_APPROVAL || pr.status === PR_STATUS.PENDING_RFQ_CFO_APPROVAL
-        ? 'Pending CFO Approval'
-        : pr.statusUI,
+      isSassPurchaseType(pr.purchaseType)
+        ? pr.status === PR_STATUS.PENDING_CFO_APPROVAL
+          ? 'Pending Mugesh Approval'
+          : pr.statusUI
+        : pr.status === PR_STATUS.PENDING_CFO_APPROVAL || pr.status === PR_STATUS.PENDING_RFQ_CFO_APPROVAL
+          ? 'Pending CFO Approval'
+          : pr.statusUI,
     submittedDate: pr.submittedDate,
     dueDate: formatDate(due),
     justification: pr.justification,
     isHighValue: Number(pr.totalAmount) >= CFO_HIGH_VALUE_THRESHOLD,
     isOverdue: daysWaiting > 5,
     vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
+    purchaseType: pr.purchaseType || 'purchase_order',
+    isSass: isSassPurchaseType(pr.purchaseType),
+    requireInvoiceUpload: Boolean(
+      isSassPurchaseType(pr.purchaseType) && pr.status === PR_STATUS.PENDING_CFO_APPROVAL
+    ),
     lineItems: (pr.lineItems || []).map((li) => ({
       id: String(li.id),
       itemName: li.itemName || li.description,

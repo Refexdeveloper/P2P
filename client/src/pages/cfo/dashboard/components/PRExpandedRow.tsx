@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PriorityBadge from '../../../../components/base/PriorityBadge';
-import ApprovalModal from './ApprovalModal';
+import ApprovalModal from '../../../tasks/components/ApprovalModal';
 import { prApi } from '../../../../services/api';
 
 interface LineItem {
@@ -36,6 +36,9 @@ interface PR {
   dueDate: string;
   justification: string;
   vendorSelection?: 'own' | 'scm';
+  purchaseType?: string;
+  isSass?: boolean;
+  requireInvoiceUpload?: boolean;
   lineItems: LineItem[];
   approvalHistory: ApprovalHistoryItem[];
   isHighValue: boolean;
@@ -50,8 +53,16 @@ interface PRExpandedRowProps {
 export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpandedRowProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'history'>('details');
   const [showApprovalModal, setShowApprovalModal] = useState(false);
-  const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | 'request-info'>('approve');
+  const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | 'return'>('approve');
   const isOwnVendor = pr.vendorSelection === 'own';
+  const requireInvoice =
+    Boolean(pr.requireInvoiceUpload) ||
+    Boolean(pr.isSass) ||
+    ['sass', 'saas', 'cloud_subscription'].includes(
+      String(pr.purchaseType || '')
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_')
+    );
 
   const tabs = [
     { id: 'details' as const, label: 'PR Details', icon: 'ri-file-text-line' },
@@ -59,7 +70,7 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
     { id: 'history' as const, label: 'Approval History', icon: 'ri-time-line' },
   ];
 
-  const handleAction = (action: 'approve' | 'reject' | 'request-info') => {
+  const handleAction = (action: 'approve' | 'reject' | 'return') => {
     setApprovalAction(action);
     setShowApprovalModal(true);
   };
@@ -102,11 +113,11 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
         {/* Action Buttons */}
         <div className="flex gap-3">
           <button
-            onClick={() => handleAction('request-info')}
+            onClick={() => handleAction('return')}
             className="px-4 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-200 transition-all flex items-center gap-2 whitespace-nowrap"
           >
-            <i className="ri-question-line"></i>
-            Request Info
+            <i className="ri-arrow-go-back-line"></i>
+            Send Back
           </button>
           <button
             onClick={() => handleAction('reject')}
@@ -119,8 +130,8 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
             onClick={() => handleAction('approve')}
             className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 transition-all flex items-center gap-2 whitespace-nowrap"
           >
-            <i className="ri-checkbox-circle-line"></i>
-            Approve
+            <i className={requireInvoice ? 'ri-file-upload-line' : 'ri-checkbox-circle-line'}></i>
+            {requireInvoice ? 'Approve & Upload Invoice' : 'Approve'}
           </button>
         </div>
       </div>
@@ -294,21 +305,27 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
       {showApprovalModal && (
         <ApprovalModal
           isOpen={showApprovalModal}
-          pr={pr}
+          type={approvalAction}
+          prNumber={pr.id}
+          prTitle={pr.title}
+          amount={pr.amount}
+          prId={pr.prId}
+          requireInvoiceUpload={approvalAction === 'approve' && requireInvoice}
           onClose={() => setShowApprovalModal(false)}
-          onApprove={async (remarks) => {
-            if (pr.prId) {
-              await prApi.approve(pr.prId, 'approve', remarks || 'CFO approved');
-              setShowApprovalModal(false);
-              onRefresh?.();
-            }
-          }}
-          onReject={async (remarks) => {
-            if (pr.prId) {
-              await prApi.approve(pr.prId, 'reject', remarks);
-              setShowApprovalModal(false);
-              onRefresh?.();
-            }
+          onConfirm={async (remarks, returnTo, _goToBusiness, invoice) => {
+            if (!pr.prId) return;
+            const apiAction =
+              approvalAction === 'approve'
+                ? 'approve'
+                : approvalAction === 'return'
+                  ? 'return'
+                  : 'reject';
+            await prApi.approve(pr.prId, apiAction, remarks || 'CFO action', {
+              ...(returnTo ? { returnTo } : {}),
+              ...(invoice ? { invoice } : {}),
+            });
+            setShowApprovalModal(false);
+            onRefresh?.();
           }}
         />
       )}

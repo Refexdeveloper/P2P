@@ -48,6 +48,7 @@ interface PRTask {
   vendorSelection?: 'own' | 'scm';
   purchaseType?: string;
   isSass?: boolean;
+  requireInvoiceUpload?: boolean;
   billingLocation?: string;
   billingGstNo?: string;
   billingAddress?: string;
@@ -144,7 +145,8 @@ export default function TaskDetailDrawer({
               <h3 className="text-base font-semibold text-gray-900">{task.title}</h3>
               {isSass && (
                 <p className="text-xs text-teal-800 mt-1 font-medium">
-                  Cloud Subscription path: L1 → Srivaths → Mugesh → Invoice → Accounts (SCM skipped)
+                  Cloud Subscription path: L1 → Srivaths → Mugesh (approve + invoice) → Accounts (SCM
+                  skipped)
                 </p>
               )}
             </div>
@@ -449,9 +451,18 @@ export default function TaskDetailDrawer({
               type="button"
               disabled={loading}
               onClick={() => onApprove(task.id)}
-              className="flex-1 px-4 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+              className={`flex-1 px-4 py-2.5 text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 ${
+                task.requireInvoiceUpload
+                  ? 'bg-teal-600 hover:bg-teal-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+              }`}
             >
-              <i className="ri-check-double-line"></i> Approve
+              <i
+                className={
+                  task.requireInvoiceUpload ? 'ri-file-upload-line' : 'ri-check-double-line'
+                }
+              ></i>
+              {task.requireInvoiceUpload ? 'Approve & Upload Invoice' : 'Approve'}
             </button>
             <button
               type="button"

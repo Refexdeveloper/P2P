@@ -69,6 +69,7 @@ interface TaskItem {
   isPoRevise?: boolean;
   vendorSelection?: 'own' | 'scm';
   askBusinessApproval?: boolean;
+  requireInvoiceUpload?: boolean;
   purchaseType?: string;
   purchaseTypeLabel?: string;
   isSass?: boolean;
@@ -140,6 +141,7 @@ export default function TasksPage() {
           isPoRevise: Boolean(t.isPoRevise),
           vendorSelection: t.vendorSelection === 'own' ? 'own' : 'scm',
           askBusinessApproval: Boolean(t.askBusinessApproval),
+          requireInvoiceUpload: Boolean(t.requireInvoiceUpload),
           purchaseType: t.purchaseType ? String(t.purchaseType) : 'purchase_order',
           purchaseTypeLabel: t.purchaseTypeLabel ? String(t.purchaseTypeLabel) : undefined,
           isSass: Boolean(t.isSass),
@@ -221,9 +223,10 @@ export default function TasksPage() {
     currentApprover: string;
     justification: string;
     vendorSelection?: 'own' | 'scm';
-    purchaseType?: string;
-    isSass?: boolean;
-    billingLocation?: string;
+  purchaseType?: string;
+  isSass?: boolean;
+  requireInvoiceUpload?: boolean;
+  billingLocation?: string;
     billingGstNo?: string;
     billingAddress?: string;
     placeOfDelivery?: string;
@@ -341,6 +344,7 @@ export default function TasksPage() {
       vendorSelection: task.vendorSelection === 'own' ? 'own' : 'scm',
       purchaseType: task.purchaseType,
       isSass: isSassTask(task),
+      requireInvoiceUpload: Boolean(task.requireInvoiceUpload),
       billingLocation: '',
       billingGstNo: '',
       billingAddress: '',
@@ -417,6 +421,7 @@ export default function TasksPage() {
         vendorSelection,
         purchaseType,
         isSass,
+        requireInvoiceUpload: Boolean(task.requireInvoiceUpload),
         billingLocation: String(pr.billingLocation || ''),
         billingGstNo: String(pr.billingGstNo || ''),
         billingAddress: String(pr.billingAddress || ''),
@@ -468,7 +473,17 @@ export default function TasksPage() {
     });
   };
 
-  const handleConfirm = async (remarks: string, returnTo?: string, goToBusinessApproval?: boolean) => {
+  const handleConfirm = async (
+    remarks: string,
+    returnTo?: string,
+    goToBusinessApproval?: boolean,
+    invoice?: {
+      invoiceNumber: string;
+      fileName: string;
+      fileData: string;
+      invoiceDate?: string;
+    }
+  ) => {
     const { taskId, type, prNumber } = modalState;
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
@@ -486,6 +501,7 @@ export default function TasksPage() {
         await prApi.approve(task.prId, action, remarks, {
           ...(type === 'return' && returnTo ? { returnTo } : {}),
           ...(typeof goToBusinessApproval === 'boolean' ? { goToBusinessApproval } : {}),
+          ...(invoice ? { invoice } : {}),
         });
       }
       setActionUpdates((prev) => ({
@@ -1188,6 +1204,10 @@ export default function TasksPage() {
         }
         askBusinessApproval={Boolean(
           tasks.find((t) => t.id === modalState.taskId)?.askBusinessApproval
+        )}
+        requireInvoiceUpload={Boolean(
+          modalState.type === 'approve' &&
+            tasks.find((t) => t.id === modalState.taskId)?.requireInvoiceUpload
         )}
         onConfirm={handleConfirm}
         onClose={() =>
