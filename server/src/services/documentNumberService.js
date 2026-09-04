@@ -164,3 +164,24 @@ export async function nextDocumentNumber(docType, entityId, connection = pool) {
   const seq = String(Number(rows[0]?.last_seq || maxExisting + 1)).padStart(4, '0');
   return `${type}-${entity.code}-${fyLabel}-${seq}`;
 }
+
+/**
+ * Preview next number without consuming the sequence (UI only).
+ * Actual assignment still happens on save via nextDocumentNumber.
+ */
+export async function peekNextDocumentNumber(docType, entityId, connection = pool) {
+  const raw = String(docType || '').toUpperCase();
+  const type = raw === 'PO' ? 'PO' : raw === 'WO' ? 'WO' : 'PR';
+  const entity = await resolveEntityForNumbering(entityId, connection);
+  const fyLabel = getIndianFinancialYearLabel();
+  const maxExisting = await maxExistingDocumentSeq(type, entity.code, fyLabel, connection);
+
+  const [rows] = await connection.query(
+    `SELECT last_seq FROM document_number_sequences
+     WHERE doc_type = ? AND entity_id = ? AND fy_label = ?`,
+    [type, entity.id, fyLabel]
+  );
+  const lastSeq = Number(rows[0]?.last_seq) || 0;
+  const nextSeq = Math.max(lastSeq, maxExisting) + 1;
+  return `${type}-${entity.code}-${fyLabel}-${String(nextSeq).padStart(4, '0')}`;
+}

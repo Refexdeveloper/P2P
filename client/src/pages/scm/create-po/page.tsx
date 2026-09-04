@@ -956,7 +956,9 @@ export default function CreatePOPage() {
   } | null>(null);
 
   const [poNumber, setPoNumber] = useState('');
+  const [poNumberTouched, setPoNumberTouched] = useState(false);
   const handlePoNumberChange = (value: string) => {
+    setPoNumberTouched(true);
     setPoNumber(value.replace(/[\r\n\t]/g, '').slice(0, 40));
   };
   const [referencePoNumber, setReferencePoNumber] = useState('');
@@ -1460,6 +1462,38 @@ export default function CreatePOPage() {
         : entityOptions.find((e) => Number(e.id) === Number(manualEntityId)) || null,
     [manualEntityId, entityOptions]
   );
+
+  /** When entity / PO|WO type changes on manual create, fill the next document number. */
+  useEffect(() => {
+    if (!isManualPoFlow || isEditMode) return;
+    // CSV / reference import keeps its own number
+    if (importedPoNumber.trim()) return;
+    const entityId = Number(manualEntityId);
+    if (!entityId) {
+      setPoNumber('');
+      setPoNumberTouched(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await poApi.nextNumber({
+          entityId,
+          purchaseType: documentType,
+        });
+        if (cancelled) return;
+        const next = String(res.data?.poNumber || '').trim();
+        if (!next) return;
+        setPoNumber(next);
+        setPoNumberTouched(false);
+      } catch {
+        /* keep current field */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isManualPoFlow, isEditMode, manualEntityId, documentType, importedPoNumber]);
 
   const loadEntityOptions = useCallback(async () => {
     try {
@@ -3369,9 +3403,9 @@ export default function CreatePOPage() {
                   value={poNumber}
                   onChange={(e) => handlePoNumberChange(e.target.value)}
                   onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
-                  placeholder="Auto on save"
-                  maxLength={40}
-                  className="font-semibold text-teal-700 bg-white border border-gray-200 rounded-md px-2 py-1 w-[13rem] text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        placeholder="Select entity to auto-fill"
+                        maxLength={40}
+                        className="font-semibold text-teal-700 bg-white border border-gray-200 rounded-md px-2 py-1 w-[13rem] text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </label>
               <span>
@@ -3654,7 +3688,7 @@ export default function CreatePOPage() {
                         value={poNumber}
                         onChange={(e) => handlePoNumberChange(e.target.value)}
                         onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
-                        placeholder="Auto on save"
+                        placeholder="Select entity to auto-fill"
                         maxLength={40}
                         className="w-full px-3.5 py-2.5 border border-teal-200 rounded-lg text-sm font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-teal-50/40"
                       />

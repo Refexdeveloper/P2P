@@ -150,6 +150,26 @@ router.get(
   }
 );
 
+/** Preview next PO/WO number for an entity (does not consume sequence). */
+router.get('/next-number', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+  try {
+    const entityId = Number(req.query.entityId);
+    if (!entityId) return res.status(400).json({ message: 'entityId is required' });
+    const purchaseType =
+      String(req.query.purchaseType || '').toLowerCase() === 'work_order'
+        ? 'work_order'
+        : 'purchase_order';
+    const { peekNextDocumentNumber, purchaseTypeToDocType } = await import(
+      '../services/documentNumberService.js'
+    );
+    const docType = purchaseTypeToDocType(purchaseType);
+    const poNumber = await peekNextDocumentNumber(docType, entityId);
+    res.json({ data: { poNumber, docType, entityId, purchaseType } });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.get('/signatures', requireRoles('SCM Manager'), async (req, res) => {
   try {
     const data = await listUserSignatures(req.user.id);

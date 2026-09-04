@@ -766,6 +766,14 @@ export const poApi = {
     request<{
       data: { pr: Record<string, unknown>; vendor: Record<string, unknown>; draftPoId?: number | null };
     }>(`/api/po/pr/${prId}/context`),
+  nextNumber: (params: { entityId: number; purchaseType?: 'purchase_order' | 'work_order' }) => {
+    const qs = new URLSearchParams();
+    qs.set('entityId', String(params.entityId));
+    if (params.purchaseType) qs.set('purchaseType', params.purchaseType);
+    return request<{
+      data: { poNumber: string; docType: string; entityId: number; purchaseType: string };
+    }>(`/api/po/next-number?${qs.toString()}`);
+  },
   create: (prId: number, body: Record<string, unknown>) =>
     request<{ data: Record<string, unknown>; message: string }>(`/api/po/pr/${prId}`, {
       method: 'POST',
