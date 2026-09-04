@@ -18,7 +18,14 @@ function makeLocationKey() {
 }
 
 function emptyLocationRow(): LocationRow {
-  return { key: makeLocationKey(), location: '', gstNo: '', footerLogo: '' };
+  return {
+    key: makeLocationKey(),
+    location: '',
+    gstNo: '',
+    footerLogo: '',
+    billingAddress: '',
+    siteAddress: '',
+  };
 }
 
 function FooterLogoCell({
@@ -187,6 +194,8 @@ export default function EntityMasterPage() {
       location: l.location || '',
       gstNo: l.gstNo || '',
       footerLogo: l.footerLogo || '',
+      billingAddress: l.billingAddress || '',
+      siteAddress: l.siteAddress || '',
     }));
     setLocations(locs);
     setSelectedLocationKey(locs[0]?.key || '');
@@ -227,7 +236,11 @@ export default function EntityMasterPage() {
       setError('Cost center is required');
       return;
     }
-    const blankLoc = locations.find((l) => !l.location.trim() && (l.gstNo.trim() || l.footerLogo.trim()));
+    const blankLoc = locations.find(
+      (l) =>
+        !l.location.trim() &&
+        (l.gstNo.trim() || l.footerLogo.trim() || l.billingAddress.trim() || l.siteAddress.trim())
+    );
     if (blankLoc) {
       setError('Location name is required for each location row');
       return;
@@ -244,6 +257,8 @@ export default function EntityMasterPage() {
             location: l.location.trim(),
             gstNo: l.gstNo.trim(),
             footerLogo: l.footerLogo.trim(),
+            billingAddress: l.billingAddress.trim(),
+            siteAddress: l.siteAddress.trim(),
           })),
       };
       if (editing) {
@@ -477,7 +492,7 @@ export default function EntityMasterPage() {
                       Locations
                     </h3>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Add location rows with GST No and footer logo
+                      Add location rows with GST, billing address, site address and footer logo
                     </p>
                   </div>
                   <div className="flex flex-wrap items-end gap-2">
@@ -520,13 +535,19 @@ export default function EntityMasterPage() {
                       <thead className="bg-white border-b border-gray-100">
                         <tr>
                           <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase w-10">#</th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[160px]">
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[140px]">
                             Location
                           </th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[140px]">
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[130px]">
                             GST No
                           </th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[200px]">
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[180px]">
+                            Billing Address
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[180px]">
+                            Site Address
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[180px]">
                             Footer Logo
                           </th>
                           <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase w-16">
@@ -563,6 +584,24 @@ export default function EntityMasterPage() {
                                   placeholder="22AAAAA0000A1Z5"
                                   maxLength={15}
                                   className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                />
+                              </td>
+                              <td className="px-3 py-3">
+                                <textarea
+                                  value={loc.billingAddress}
+                                  onChange={(e) => updateLocation(loc.key, { billingAddress: e.target.value })}
+                                  placeholder="Full billing address"
+                                  rows={2}
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                                />
+                              </td>
+                              <td className="px-3 py-3">
+                                <textarea
+                                  value={loc.siteAddress}
+                                  onChange={(e) => updateLocation(loc.key, { siteAddress: e.target.value })}
+                                  placeholder="Full site / delivery address"
+                                  rows={2}
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
                                 />
                               </td>
                               <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>

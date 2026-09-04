@@ -1478,6 +1478,8 @@ export interface EntityLocationRecord {
   location: string;
   gstNo: string;
   footerLogo: string;
+  billingAddress?: string;
+  siteAddress?: string;
   sortOrder?: number;
 }
 

@@ -2448,10 +2448,22 @@ export default function CreatePRPage() {
                   const locs = ent?.locations?.filter((loc) => loc.location) || [];
                   const stillValid = locs.some((loc) => Number(loc.id) === Number(billingLocationId));
                   if (!stillValid) {
-                    setBillingLocationId('');
-                    setBillingLocation('');
-                    setBillingGstNo('');
-                    setBillingAddress('');
+                    if (locs.length === 1) {
+                      const loc = locs[0];
+                      setBillingLocationId(loc.id ? Number(loc.id) : '');
+                      setBillingLocation(loc.location || '');
+                      setBillingGstNo((loc.gstNo || '').toUpperCase());
+                      setBillingAddress(
+                        String(loc.billingAddress || '').trim() || loc.location || ''
+                      );
+                      setPlaceOfDelivery(String(loc.siteAddress || '').trim());
+                    } else {
+                      setBillingLocationId('');
+                      setBillingLocation('');
+                      setBillingGstNo('');
+                      setBillingAddress('');
+                      setPlaceOfDelivery('');
+                    }
                   }
                   if (errors.entityId || errors.billingLocationId) {
                     setErrors((prev) => {
@@ -2468,6 +2480,7 @@ export default function CreatePRPage() {
                   setBillingLocation('');
                   setBillingGstNo('');
                   setBillingAddress('');
+                  setPlaceOfDelivery('');
                 }}
                 onCreate={async (name) => {
                   const created = await masterApi.chatCreateEntity({ name });

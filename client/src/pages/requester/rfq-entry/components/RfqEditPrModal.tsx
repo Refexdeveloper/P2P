@@ -398,6 +398,9 @@ export default function RfqEditPrModal({ open, prId, onClose, onSaved, onToast }
                       onChange={(e) => {
                         const id = e.target.value === '' ? '' : Number(e.target.value);
                         const loc = billingLocations.find((row) => Number(row.id) === Number(id));
+                        const nextBilling =
+                          (loc?.billingAddress || '').trim() || loc?.location || '';
+                        const nextSite = (loc?.siteAddress || '').trim();
                         setForm((prev) =>
                           prev
                             ? {
@@ -405,10 +408,8 @@ export default function RfqEditPrModal({ open, prId, onClose, onSaved, onToast }
                                 billingLocationId: id,
                                 billingLocation: loc?.location || '',
                                 billingGstNo: (loc?.gstNo || '').toUpperCase(),
-                                billingAddress:
-                                  !prev.billingAddress.trim() || prev.billingAddress.trim() === prev.billingLocation
-                                    ? loc?.location || ''
-                                    : prev.billingAddress,
+                                billingAddress: nextBilling,
+                                ...(nextSite ? { placeOfDelivery: nextSite } : {}),
                               }
                             : prev
                         );

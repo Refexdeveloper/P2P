@@ -121,6 +121,8 @@ const MIGRATIONS = [
     location VARCHAR(255) NOT NULL,
     gst_no VARCHAR(50) NULL,
     footer_logo LONGTEXT NULL,
+    billing_address TEXT NULL,
+    site_address TEXT NULL,
     sort_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -449,6 +451,9 @@ const MIGRATIONS = [
   // Allow decimal quantities on PO line items (e.g. 2.5)
   `ALTER TABLE po_line_items MODIFY COLUMN quantity DECIMAL(15, 3) NOT NULL DEFAULT 1`,
   `ALTER TABLE pr_line_items MODIFY COLUMN quantity DECIMAL(15, 3) NOT NULL DEFAULT 1`,
+  // Entity location addresses for Create PR / PO autofill
+  `ALTER TABLE entity_locations ADD COLUMN billing_address TEXT NULL`,
+  `ALTER TABLE entity_locations ADD COLUMN site_address TEXT NULL`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

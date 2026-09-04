@@ -87,16 +87,15 @@ export default function PrBillingDeliverySection({
   }, []);
 
   const applyRegion = (id: number | '', loc?: EntityLocationRecord) => {
-    const previousLocation = value.billingLocation;
+    const nextBilling = (loc?.billingAddress || '').trim() || loc?.location || '';
+    const nextSite = (loc?.siteAddress || '').trim();
+
     onChange({
       billingLocationId: id,
       billingLocation: loc?.location || '',
       billingGstNo: (loc?.gstNo || '').toUpperCase(),
-      billingAddress: (() => {
-        const trimmed = value.billingAddress.trim();
-        if (!trimmed || trimmed === previousLocation) return loc?.location || '';
-        return value.billingAddress;
-      })(),
+      billingAddress: nextBilling,
+      ...(nextSite ? { placeOfDelivery: nextSite } : {}),
     });
     onClearError?.('billingLocationId');
   };
@@ -267,7 +266,7 @@ export default function PrBillingDeliverySection({
             }}
             disabled={disabled}
             rows={3}
-            placeholder="Enter billing / invoicing address"
+            placeholder="Auto-filled from Entity Master location (editable)"
             className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white resize-none ${
               errors.billingAddress ? 'border-red-400 bg-red-50' : 'border-gray-200'
             }`}
@@ -452,18 +451,18 @@ export default function PrBillingDeliverySection({
 
         <div data-field="placeOfDelivery">
           <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Place of Delivery
+            Site / Place of Delivery
           </label>
-          <input
-            type="text"
+          <textarea
             value={value.placeOfDelivery}
             onChange={(e) => {
               onChange({ placeOfDelivery: e.target.value });
               onClearError?.('placeOfDelivery');
             }}
             disabled={disabled}
-            placeholder="Site / warehouse address (can differ from billing)"
-            className={inputClass}
+            rows={3}
+            placeholder="Site address (auto-filled from Entity Master location)"
+            className={`${inputClass} resize-y`}
           />
         </div>
 

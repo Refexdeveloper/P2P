@@ -464,6 +464,8 @@ function mapEntityLocation(row) {
     location: row.location || '',
     gstNo: row.gst_no || '',
     footerLogo: row.footer_logo || '',
+    billingAddress: row.billing_address || '',
+    siteAddress: row.site_address || '',
     sortOrder: Number(row.sort_order) || 0,
   };
 }
@@ -497,6 +499,8 @@ function normalizeEntityLocations(raw) {
       location: String(item?.location || '').trim(),
       gstNo: String(item?.gstNo || item?.gst_no || '').trim(),
       footerLogo: String(item?.footerLogo || item?.footer_logo || '').trim(),
+      billingAddress: String(item?.billingAddress || item?.billing_address || '').trim(),
+      siteAddress: String(item?.siteAddress || item?.site_address || '').trim(),
       sortOrder: idx,
     }))
     .filter((item) => item.location);
@@ -506,9 +510,18 @@ async function replaceEntityLocations(entityId, locations) {
   await pool.query(`DELETE FROM entity_locations WHERE entity_id = ?`, [entityId]);
   for (const loc of locations) {
     await pool.query(
-      `INSERT INTO entity_locations (entity_id, location, gst_no, footer_logo, sort_order)
-       VALUES (?, ?, ?, ?, ?)`,
-      [entityId, loc.location, loc.gstNo || null, loc.footerLogo || null, loc.sortOrder]
+      `INSERT INTO entity_locations
+       (entity_id, location, gst_no, footer_logo, billing_address, site_address, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        entityId,
+        loc.location,
+        loc.gstNo || null,
+        loc.footerLogo || null,
+        loc.billingAddress || null,
+        loc.siteAddress || null,
+        loc.sortOrder,
+      ]
     );
   }
 }

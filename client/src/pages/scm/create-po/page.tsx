@@ -235,13 +235,52 @@ function letterheadLocKey(loc: LetterheadLocationRecord, index = 0) {
   return `name:${loc.location || index}`;
 }
 
-function buildInvoicingAddressFromLocation(loc: LetterheadLocationRecord) {
+function escapeHtmlText(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function addressLinesToHtml(text: string) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `<p>${escapeHtmlText(line)}</p>`)
+    .join('');
+}
+
+function matchEntityLocation(
+  entity: EntityRecord | null | undefined,
+  locationName: string
+) {
+  const name = String(locationName || '').trim().toLowerCase();
+  if (!entity?.locations?.length || !name) return null;
+  return (
+    entity.locations.find((l) => String(l.location || '').trim().toLowerCase() === name) || null
+  );
+}
+
+function buildInvoicingAddressFromLocation(
+  loc: LetterheadLocationRecord,
+  entityLoc?: { billingAddress?: string; siteAddress?: string } | null
+) {
+  const billing = String(entityLoc?.billingAddress || '').trim();
+  if (billing) {
+    const html = addressLinesToHtml(billing);
+    if (loc.gstNo?.trim()) {
+      return `${html}<p>GSTIN: ${escapeHtmlText(loc.gstNo.trim())}</p>`;
+    }
+    return html;
+  }
   const parts: string[] = [];
   if (loc.location?.trim()) {
-    parts.push(`<p>${loc.location.trim()}</p>`);
+    parts.push(`<p>${escapeHtmlText(loc.location.trim())}</p>`);
   }
   if (loc.gstNo?.trim()) {
-    parts.push(`<p>GSTIN: ${loc.gstNo.trim()}</p>`);
+    parts.push(`<p>GSTIN: ${escapeHtmlText(loc.gstNo.trim())}</p>`);
   }
   return parts.join('');
 }
@@ -1175,7 +1214,11 @@ export default function CreatePOPage() {
   }, [selectedLetterhead]);
 
   const applyLetterheadLocation = useCallback(
-    (loc: LetterheadLocationRecord | null, index = 0) => {
+    (
+      loc: LetterheadLocationRecord | null,
+      index = 0,
+      letterheadOverride?: LetterheadMasterRecord | null
+    ) => {
       if (!loc) {
         setLetterheadLocationKey('');
         setLocationGstNo('');
@@ -1190,16 +1233,33 @@ export default function CreatePOPage() {
       const key = letterheadLocKey(loc, index);
       setLetterheadLocationKey(key);
       setLocationGstNo(loc.gstNo || '');
-      const invoicing = buildInvoicingAddressFromLocation(loc);
+      const lh =
+        letterheadOverride !== undefined ? letterheadOverride : selectedLetterhead;
+      const matchedEntity =
+        (manualEntityId !== ''
+          ? entityOptions.find((e) => Number(e.id) === Number(manualEntityId))
+          : null) ||
+        matchEntityFromLetterhead(lh, entityOptions) ||
+        (pr?.entityId
+          ? entityOptions.find((e) => Number(e.id) === Number(pr.entityId))
+          : null) ||
+        null;
+      const entityLoc = matchEntityLocation(matchedEntity, loc.location || '');
+      const invoicing = buildInvoicingAddressFromLocation(loc, entityLoc);
+      const siteFromEntity = String(entityLoc?.siteAddress || '').trim();
       setPoTermsDetails((prev) => ({
         ...prev,
         locationName: loc.location || '',
         buyerGstNo: loc.gstNo || '',
         letterheadLocationId: loc.id != null ? String(loc.id) : key,
         invoicingAddress: invoicing || prev.invoicingAddress,
+        siteAddress: siteFromEntity || prev.siteAddress,
       }));
+      if (siteFromEntity) {
+        setDeliveryAddress(siteFromEntity);
+      }
     },
-    []
+    [entityOptions, manualEntityId, pr?.entityId, selectedLetterhead]
   );
 
   const applyLetterheadBranding = useCallback(
@@ -1247,7 +1307,7 @@ export default function CreatePOPage() {
           });
           return;
         }
-        applyLetterheadLocation(locs[0], 0);
+        applyLetterheadLocation(locs[0], 0, row);
       } else if (!opts?.keepLocation) {
         applyLetterheadLocation(null);
       }
@@ -1505,7 +1565,6 @@ export default function CreatePOPage() {
   }, []);
 
   useEffect(() => {
-    if (!isManualPoFlow) return;
     let cancelled = false;
     (async () => {
       try {
@@ -1525,7 +1584,7 @@ export default function CreatePOPage() {
       window.removeEventListener('focus', loadEntityOptions);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [isManualPoFlow, loadEntityOptions]);
+  }, [loadEntityOptions]);
 
   const reloadClausesFromMaster = useCallback(async () => {
     skipNextLetterheadLoad.current = false;
@@ -1960,6 +2019,7 @@ export default function CreatePOPage() {
         purchaseType?: 'purchase_order' | 'work_order';
         purchaseTypeLabel?: string;
         placeOfDelivery?: string;
+        billingAddress?: string;
         deliveryPoc?: string;
         deliveryPocEmail?: string;
         deliveryPocPhone?: string;
@@ -2020,6 +2080,9 @@ export default function CreatePOPage() {
         projectManagerHo: prev.projectManagerHo || prData.projectManagerHo || '',
         projectManagerEmail: prev.projectManagerEmail || prData.projectManagerEmail || '',
         projectManagerContact: prev.projectManagerContact || prData.projectManagerContact || '',
+        invoicingAddress:
+          prev.invoicingAddress ||
+          (prData.billingAddress ? addressLinesToHtml(String(prData.billingAddress)) : ''),
       }));
       setVendorMeta({
         name: vendor.name,
@@ -3525,6 +3588,26 @@ export default function CreatePOPage() {
                                   : prev
                               );
                               if (!entity) setEntity(selected.name);
+                              const locName = poTermsDetails.locationName || '';
+                              const entityLoc =
+                                matchEntityLocation(selected, locName) ||
+                                selected.locations?.find((l) => l.location) ||
+                                null;
+                              if (entityLoc) {
+                                const billing = String(entityLoc.billingAddress || '').trim();
+                                const site = String(entityLoc.siteAddress || '').trim();
+                                const gst = String(entityLoc.gstNo || locationGstNo || '').trim();
+                                setPoTermsDetails((prev) => ({
+                                  ...prev,
+                                  invoicingAddress: billing
+                                    ? `${addressLinesToHtml(billing)}${
+                                        gst ? `<p>GSTIN: ${escapeHtmlText(gst)}</p>` : ''
+                                      }`
+                                    : prev.invoicingAddress,
+                                  siteAddress: site || prev.siteAddress,
+                                }));
+                                if (site) setDeliveryAddress(site);
+                              }
                             }
                           }}
                           onClear={() => {
@@ -4541,7 +4624,7 @@ export default function CreatePOPage() {
                       ))}
                     </select>
                     <p className="text-xs text-gray-500 mt-1.5">
-                      Selecting a location fills GSTIN into Invoicing Address. Footer comes from the letterhead.
+                      Selecting a location fills GSTIN, billing (invoicing) address and site address from Entity Master when matched.
                     </p>
                   </div>
                 )}
