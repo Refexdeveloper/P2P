@@ -3648,6 +3648,7 @@ export default function CreatePOPage() {
                       onComparisonRoundsChange={setManualComparisonRounds}
                       vendors={masterVendors}
                       currencySymbol={moneySymbol}
+                      currency={currency}
                     />
                   )}
 

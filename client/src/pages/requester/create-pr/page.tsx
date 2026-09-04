@@ -3204,6 +3204,7 @@ export default function CreatePRPage() {
             vendors={vendorMaster}
             rows={rfqVendors}
             maxRounds={rfqMaxRounds}
+            currency={currency}
             error={errors.rfqVendors}
             prNumber={prNumber}
             recommendedKey={rfqRecommendedKey}

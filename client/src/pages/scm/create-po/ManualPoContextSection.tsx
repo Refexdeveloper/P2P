@@ -211,6 +211,7 @@ type Props = {
   onComparisonRoundsChange: (next: ManualComparisonRound[]) => void;
   vendors: VendorRecord[];
   currencySymbol: string;
+  currency?: string | null;
 };
 
 export default function ManualPoContextSection({
@@ -220,6 +221,7 @@ export default function ManualPoContextSection({
   onComparisonRoundsChange,
   vendors,
   currencySymbol,
+  currency,
 }: Props) {
   const [prDetailsOpen, setPrDetailsOpen] = useState(false);
   const [preferredTab, setPreferredTab] = useState<number | null>(1);
@@ -593,6 +595,7 @@ export default function ManualPoContextSection({
         ) : (
           <RfqVendorQuoteTable
             rows={comparisonRows}
+            currency={currency}
             recommendedId={
               recommendedQuoteKey
                 ? comparisonRows.find((r) => r.id === recommendedQuoteKey)?.invitationId ?? null

@@ -115,8 +115,9 @@ export default function TaskDetailDrawer({
         .toLowerCase()
         .replace(/[\s-]+/g, '_')
     );
-  /** Own Vendor / quoted PRs: show name, description, qty — hide unit cost & total */
-  const hideLinePricing = isOwnVendor || hasQuotes;
+  /** Own Vendor / quoted PRs: show name, description, qty — hide unit cost & total.
+   *  Cloud Subscription keeps full line pricing + quotation files. */
+  const hideLinePricing = !isSass && (isOwnVendor || hasQuotes);
 
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
@@ -274,13 +275,17 @@ export default function TaskDetailDrawer({
             </div>
 
             {task.prId ? (
-              <div className={hasQuotes ? '' : 'hidden'}>
-                <PrVendorQuotationsPanel prId={task.prId} onPresenceChange={setHasQuotes} />
+              <div className={isSass || hasQuotes ? '' : 'hidden'}>
+                <PrVendorQuotationsPanel
+                  prId={task.prId}
+                  currency={task.currency}
+                  onPresenceChange={setHasQuotes}
+                />
               </div>
             ) : null}
 
-            {/* PR line items — hidden once vendor quotations are present (show quote lines instead) */}
-            {!hasQuotes && (
+            {/* PR line items — Cloud Subscription always shows full lines; others hide when quotes exist */}
+            {(isSass || !hasQuotes) && (
             <div>
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                 Line Items ({lineItems.length})

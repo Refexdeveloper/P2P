@@ -33,6 +33,7 @@ import {
   readRfqEntryDraft,
   writeRfqEntryDraft,
 } from './rfqEntryDraftStorage';
+import { currencySymbol, formatMoney } from '../../../constants/currency';
 
 const REQUESTER_SCORE_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
 
@@ -98,8 +99,8 @@ function newDraftRow(): DraftRow {
   return { key: `d-${Date.now()}-${Math.random()}`, vendorId: '', vendorName: '', vendorEmail: '' };
 }
 
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+function formatCurrency(n: number, currency?: string | null) {
+  return formatMoney(n, currency, { maximumFractionDigits: 0, minimumFractionDigits: 0 });
 }
 
 /** Indian-style commas while typing (e.g. 45000 → 45,000). Keeps a trailing decimal point. */
@@ -136,10 +137,10 @@ function parseInrAmountInput(raw: string): number | string | '' {
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : '';
 }
 
-function formatFieldValue(field: RfqFieldDefinition, value: unknown) {
+function formatFieldValue(field: RfqFieldDefinition, value: unknown, currency?: string | null) {
   if (value === undefined || value === null || value === '') return '—';
   if (field.type === 'boolean') return value ? 'Yes' : 'No';
-  if (field.id === 'quotedPrice') return formatCurrency(Number(value));
+  if (field.id === 'quotedPrice') return formatCurrency(Number(value), currency);
   return String(value);
 }
 
@@ -184,6 +185,7 @@ export default function RfqEntryDetailPage() {
     title: string;
     department: string;
     totalAmount: number;
+    currency?: string | null;
     entityId?: number | null;
     vendorSelection?: string;
     billingLocationId?: number | null;
@@ -2420,6 +2422,7 @@ export default function RfqEntryDetailPage() {
 
               <RfqVendorQuoteTable
                 rows={displayTableRows}
+                currency={pr?.currency}
                 recommendedId={recommendedId}
                 quotedCount={quotedCount}
                 isFinalized={isFinalized}
@@ -2830,7 +2833,7 @@ export default function RfqEntryDetailPage() {
                                                 </div>
                                               ) : (
                                                 <div className="text-right font-medium text-gray-900">
-                                                  {unitPrice ? formatCurrency(Number(unitPrice)) : '—'}
+                                                  {unitPrice ? formatCurrency(Number(unitPrice), pr?.currency) : '—'}
                                                 </div>
                                               )}
                                             </td>
@@ -2859,7 +2862,7 @@ export default function RfqEntryDetailPage() {
                                               )}
                                             </td>
                                             <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                                              {lineTotal > 0 ? formatCurrency(lineTotal) : '—'}
+                                              {lineTotal > 0 ? formatCurrency(lineTotal, pr?.currency) : '—'}
                                             </td>
                                             {editable && (
                                               <td className="px-3 py-3 text-center">
@@ -2890,9 +2893,10 @@ export default function RfqEntryDetailPage() {
                                         </td>
                                         <td className="px-4 py-3 text-right text-sm font-bold text-teal-800">
                                           {formatCurrency(
-                                            quoteFieldsEditable
-                                              ? getManualQuoteTotal(row.invitationId)
-                                              : Number(vals.quotedPrice) || 0
+                                              quoteFieldsEditable
+                                                ? getManualQuoteTotal(row.invitationId)
+                                                : Number(vals.quotedPrice) || 0,
+                                              pr?.currency
                                           )}
                                         </td>
                                         {quoteFieldsEditable && <td />}
@@ -2928,7 +2932,7 @@ export default function RfqEntryDetailPage() {
                                       )
                                     ) : (
                                       <div className="min-h-[44px] px-3 rounded-xl bg-white border border-gray-200 text-sm text-gray-900 flex items-center">
-                                        {formatFieldValue(f, vals[f.id])}
+                                        {formatFieldValue(f, vals[f.id], pr?.currency)}
                                       </div>
                                     )}
                                   </div>
@@ -2936,7 +2940,7 @@ export default function RfqEntryDetailPage() {
                                 <div className="flex flex-col gap-2 min-w-0 rounded-xl border border-teal-200 bg-teal-50/70 p-3.5">
                                     <div className="flex items-center justify-between gap-2">
                                       <label className="block text-[11px] font-semibold uppercase tracking-wide text-teal-700 leading-none">
-                                        Quoted Price (₹) <span className="text-red-500">*</span>
+                                        Quoted Price ({currencySymbol(pr?.currency)}) <span className="text-red-500">*</span>
                                       </label>
                                       {quoteFieldsEditable &&
                                         Boolean(manualDrafts[row.invitationId]?.quotedPriceManual) && (
@@ -2952,7 +2956,7 @@ export default function RfqEntryDetailPage() {
                                     {quoteFieldsEditable ? (
                                       <div className="flex items-center h-11 border border-teal-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
                                         <span className="pl-3 pr-1 text-sm font-semibold text-teal-600 shrink-0 select-none">
-                                          ₹
+                                          {currencySymbol(pr?.currency)}
                                         </span>
                                         <input
                                           type="text"
@@ -2984,14 +2988,14 @@ export default function RfqEntryDetailPage() {
                                       </div>
                                     ) : (
                                       <div className="min-h-[44px] px-3 rounded-xl bg-white border border-teal-100 text-sm font-bold text-teal-800 flex items-center">
-                                        {formatCurrency(Number(vals.quotedPrice) || 0)}
+                                        {formatCurrency(Number(vals.quotedPrice) || 0, pr?.currency)}
                                       </div>
                                     )}
                                     {quoteFieldsEditable && (
                                       <p className="text-[11px] text-teal-800/80 leading-snug">
                                         You can type Quoted Price manually. Line table total is{' '}
                                         <span className="font-semibold">
-                                          {formatCurrency(getManualQuoteTotal(row.invitationId))}
+                                          {formatCurrency(getManualQuoteTotal(row.invitationId), pr?.currency)}
                                         </span>
                                         {manualDrafts[row.invitationId]?.quotedPriceManual
                                           ? ' — manual value will be saved.'
@@ -3062,7 +3066,7 @@ export default function RfqEntryDetailPage() {
                                         )
                                       ) : (
                                         <div className="min-h-[44px] px-3 rounded-xl bg-white border border-violet-100 text-sm text-gray-900 flex items-center">
-                                          {formatFieldValue(f, vals[f.id])}
+                                          {formatFieldValue(f, vals[f.id], pr?.currency)}
                                         </div>
                                       )}
                                     </div>

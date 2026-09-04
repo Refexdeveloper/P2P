@@ -7,6 +7,8 @@ import { openRfqChat } from '../../../components/feature/rfqChatOpen';
 import type { VendorRecord } from '../../../services/api';
 import { rfqApi } from '../../../services/api';
 import { PR_PAYMENT_TERM_OPTIONS } from '../../../constants/prRequisition';
+import { formatMoney, currencySymbol, normalizeCurrency } from '../../../constants/currency';
+import type { CurrencyCode } from '../../../constants/currency';
 
 export type SavedQuotationFile = {
   id?: number | null;
@@ -118,10 +120,6 @@ function syncQuotes(quotes: FunctionalRfqQuote[], maxRounds: number): Functional
   return next.map((slot) => quotes.find((q) => q.round === slot.round) || slot);
 }
 
-function formatMoney(n: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
-}
-
 interface Props {
   vendors: VendorRecord[];
   rows: FunctionalRfqVendorRow[];
@@ -129,6 +127,7 @@ interface Props {
   error?: string;
   existingQuoteNote?: string;
   prNumber?: string;
+  currency?: CurrencyCode | string | null;
   /** Persisted Choose selection (survives Save Draft / reload). */
   recommendedKey?: string | null;
   recommendationJustification?: string;
@@ -148,6 +147,7 @@ export default function FunctionalOwnRfqSection({
   vendors,
   rows,
   maxRounds,
+  currency: currencyProp,
   error,
   existingQuoteNote,
   prNumber,
@@ -158,6 +158,10 @@ export default function FunctionalOwnRfqSection({
   onChange,
   onVendorsRefresh,
 }: Props) {
+  const moneyCode = normalizeCurrency(currencyProp);
+  const moneySym = currencySymbol(moneyCode);
+  const moneyFmt = (n: number) =>
+    formatMoney(n, moneyCode, { maximumFractionDigits: 0, minimumFractionDigits: 0 });
   const [searchVendorId, setSearchVendorId] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [fileViewBusy, setFileViewBusy] = useState(false);
@@ -464,7 +468,7 @@ export default function FunctionalOwnRfqSection({
                     <p className="text-sm font-semibold text-gray-900 truncate">{row.name || 'Vendor'}</p>
                     <p className="text-xs text-gray-500 truncate">
                       {row.email || 'No email on file'}
-                      {hasQuote ? ` · ${formatMoney(Number(round1?.quotedPrice))}` : ' · Quote pending'}
+                      {hasQuote ? ` · ${moneyFmt(Number(round1?.quotedPrice))}` : ' · Quote pending'}
                     </p>
                   </div>
                   <button
@@ -579,6 +583,7 @@ export default function FunctionalOwnRfqSection({
           </div>
           <RfqVendorQuoteTable
             rows={comparisonRows}
+            currency={moneyCode}
             recommendedId={
               recommendedKey
                 ? comparisonRows.find((r) => r.id === recommendedKey)?.invitationId ?? null
@@ -810,7 +815,9 @@ export default function FunctionalOwnRfqSection({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Quoted price *</label>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                    Quoted price ({moneySym}) *
+                  </label>
                   <input
                     type="number"
                     min="0"

@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-
-const formatCurrency = (n: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+import { currencySymbol, formatMoney, normalizeCurrency } from '../../../../constants/currency';
 
 const roundColors = [
   { header: 'text-emerald-600', badge: 'bg-teal-100 text-teal-700', tab: 'bg-teal-600 text-white', idle: 'text-teal-700 hover:bg-teal-50' },
@@ -59,6 +57,8 @@ interface Props {
   quotedCount: number;
   isFinalized?: boolean;
   maxRounds?: number | null;
+  /** PR currency for price / reduction display (INR | USD | EUR). */
+  currency?: string | null;
   onEdit: (row: RfqQuoteTableRow, targetRound?: number) => void;
   onChoose: (row: RfqQuoteTableRow) => void;
   onRemove: (row: RfqQuoteTableRow) => void;
@@ -179,7 +179,12 @@ export default function RfqVendorQuoteTable({
   removingId,
   resendingId,
   preferredTab,
+  currency,
 }: Props) {
+  const moneyCode = normalizeCurrency(currency);
+  const moneySym = currencySymbol(moneyCode);
+  const formatCurrency = (n: number) =>
+    formatMoney(n, moneyCode, { maximumFractionDigits: 0, minimumFractionDigits: 0 });
   const dataRounds = usedRoundCount(rows);
   const [addedTabs, setAddedTabs] = useState(0);
   const roundCount = Math.max(dataRounds, addedTabs, 1);
@@ -323,7 +328,7 @@ export default function RfqVendorQuoteTable({
                 </th>
               ))}
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Reduction (₹)
+                Reduction ({moneySym})
               </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Reduction %

@@ -984,15 +984,18 @@ async function persistFunctionalOwnRfq(user, prId, body, { markSubmitted }) {
   });
 }
 
-async function loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId) {
-  if (prFlow !== 'functional' || vendorMode !== 'own' || !prId) {
+async function loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId, purchaseType = null) {
+  const wantsQuotes =
+    Boolean(prId) &&
+    (isSassPurchaseType(purchaseType) || (prFlow === 'functional' && vendorMode === 'own'));
+  if (!wantsQuotes) {
     return { rfqSummary: null, attachments: [] };
   }
   try {
     const { getRfqEmailPack } = await import('./rfqService.js');
     return await getRfqEmailPack(prId);
   } catch (err) {
-    console.warn('Functional RFQ email pack failed:', err.message);
+    console.warn('RFQ email pack failed:', err.message);
     return { rfqSummary: null, attachments: [] };
   }
 }
@@ -1019,7 +1022,12 @@ function queuePrSubmitNotifications({
   const prId = pr?.id || pr?.prId;
   setImmediate(() => {
     (async () => {
-      const mailPack = await loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId);
+      const mailPack = await loadFunctionalOwnRfqMailPack(
+        prFlow,
+        vendorMode,
+        prId,
+        pr?.purchaseType || pr?.purchase_type
+      );
       queuePrRaisedNotification(
         pr,
         { name: user.name, email: user.email },
@@ -2733,6 +2741,19 @@ export async function processApproval(user, prId, action, remarks, options = {})
         nextFunctionalApprover.id
       );
       const nextLabel = total > 1 ? `User Approval ${step} of ${total}` : 'User Approval';
+      let functionalMailExtras = {};
+      if (isSass || (isFunctional && pr.vendor_selection === 'own')) {
+        try {
+          const { getRfqEmailPack } = await import('./rfqService.js');
+          const pack = await getRfqEmailPack(updatedPr.id);
+          functionalMailExtras = {
+            rfqSummary: pack.rfqSummary,
+            attachments: pack.attachments,
+          };
+        } catch (err) {
+          console.warn('Quote pack for next-approver mail skipped:', err.message);
+        }
+      }
       queuePrApprovalPendingNotification(
         updatedPr,
         'HOD Approver',
@@ -2745,6 +2766,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           approverName: nextAssignee?.hodName || nextAssignee?.name || undefined,
           stageLabel: nextLabel,
           roleDisplayName: 'Selected Approver',
+          ...functionalMailExtras,
         }
       );
       const { step: doneStep, total: doneTotal } = approvalStepIndex(pr, user.id);
@@ -2753,7 +2775,27 @@ export async function processApproval(user, prId, action, remarks, options = {})
         doneTotal > 1 ? `User Approval ${doneStep} of ${doneTotal}` : 'User Approval'
       );
     } else if (nextRole && action === 'approve') {
-      const nextLabel = nextRole === 'PR Manager' ? 'L2 Manager Approval' : `${nextRole} Approval`;
+      const nextLabel =
+        isSass && nextRole === 'CFO'
+          ? 'Mugesh Approval'
+          : isSass && nextRole === 'PR Manager'
+            ? 'L2 Manager Approval'
+            : nextRole === 'PR Manager'
+              ? 'L2 Manager Approval'
+              : `${nextRole} Approval`;
+      let sassMailExtras = {};
+      if (isSass) {
+        try {
+          const { getRfqEmailPack } = await import('./rfqService.js');
+          const pack = await getRfqEmailPack(updatedPr.id);
+          sassMailExtras = {
+            rfqSummary: pack.rfqSummary,
+            attachments: pack.attachments,
+          };
+        } catch (err) {
+          console.warn('Cloud Subscription quote pack for approval mail skipped:', err.message);
+        }
+      }
       queuePrApprovalPendingNotification(
         updatedPr,
         nextRole,
@@ -2763,6 +2805,13 @@ export async function processApproval(user, prId, action, remarks, options = {})
           approverEmails: nextAssignee?.email ? [nextAssignee.email] : undefined,
           approverName: nextAssignee?.name || undefined,
           stageLabel: nextLabel,
+          roleDisplayName:
+            isSass && nextRole === 'CFO'
+              ? 'Mugesh'
+              : isSass && nextRole === 'PR Manager'
+                ? 'L2 Manager'
+                : undefined,
+          ...sassMailExtras,
         }
       );
       notifyWorkflowStepProgress(nextLabel);

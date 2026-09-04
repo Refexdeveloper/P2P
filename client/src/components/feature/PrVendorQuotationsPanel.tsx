@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { rfqApi } from '../../services/api';
 import { allQuotationFilesForQuote, type QuotationFileView } from '../../utils/quotationFiles';
+import { formatMoney as formatMoneyByCurrency } from '../../constants/currency';
 
 type QuoteLineItem = {
   lineItemId?: string | number;
@@ -31,9 +32,6 @@ type QuoteRow = {
   quotes?: QuoteRound[];
 };
 
-const formatMoney = (n: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n || 0);
-
 function hasQuotedPrice(q: QuoteRound) {
   return Number(q.quotedPrice) >= 0 && (Number(q.quotedPrice) > 0 || Boolean(q.submissionId));
 }
@@ -47,10 +45,13 @@ function linesForQuote(q: QuoteRound): QuoteLineItem[] {
 
 interface Props {
   prId: number;
+  currency?: string | null;
   onPresenceChange?: (hasQuotes: boolean) => void;
 }
 
-export default function PrVendorQuotationsPanel({ prId, onPresenceChange }: Props) {
+export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChange }: Props) {
+  const formatMoney = (n: number) =>
+    formatMoneyByCurrency(n, currency, { maximumFractionDigits: 0, minimumFractionDigits: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [rows, setRows] = useState<QuoteRow[]>([]);

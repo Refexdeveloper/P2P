@@ -688,7 +688,7 @@ export function buildPrApprovalPendingEmail({
       Click a button to open the portal — the approval popup will open automatically.
     </p>`;
 
-  const lineOwnVendor = isOwnVendorPr(pr);
+  const lineOwnVendor = isOwnVendorPr(pr) && !isSassRequest;
   const lineRows = (pr.lineItems || [])
     .map((item, i) => {
       if (lineOwnVendor) {
@@ -703,13 +703,18 @@ export function buildPrApprovalPendingEmail({
         </td>
       </tr>`;
       }
+      const name = lineItemName(item);
+      const desc = lineItemDescription(item);
       return `
       <tr>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#6b7280;text-align:center;">${i + 1}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">${escapeHtml(item.description)}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">${item.quantity}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;">${money(item.unitCost, pr)}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;font-weight:700;color:#047857;">${money(item.total, pr)}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">
+          <strong style="display:block;">${escapeHtml(name || item.description || '—')}</strong>
+          ${desc ? `<span style="color:#6b7280;font-size:12px;">${escapeHtml(desc)}</span>` : ''}
+        </td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;">${item.quantity ?? item.qty ?? '—'}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;">${money(item.unitCost ?? item.unit_cost ?? 0, pr)}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;font-weight:700;color:#047857;">${money(item.total ?? 0, pr)}</td>
       </tr>`;
     })
     .join('');
@@ -839,7 +844,7 @@ export function buildPrApprovalPendingEmail({
                 </td>
               </tr>
               ${
-                hasRfqVendors
+                hasRfqVendors && !isSassRequest
                   ? ''
                   : lineOwnVendor
                     ? `<tr>
@@ -858,7 +863,14 @@ export function buildPrApprovalPendingEmail({
                     <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${money(pr.totalAmount, pr)}</div>
                   </td></tr></table>
                 </td>
-                <td width="50%" style="padding:6px;"></td>
+                <td width="50%" style="padding:6px;">${
+                  isSassRequest
+                    ? `<table width="100%" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;"><tr><td style="padding:12px 14px;">
+                    <div style="font-size:10px;color:#0f766e;text-transform:uppercase;font-weight:700;">Purchase Type</div>
+                    <div style="font-size:16px;font-weight:800;color:#0f766e;margin-top:4px;">Cloud Subscription</div>
+                  </td></tr></table>`
+                    : ''
+                }</td>
               </tr>`
               }
             </table>
