@@ -25,10 +25,22 @@ import {
 } from './refexOneService.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
+import { formatCurrency, normalizeEmailCurrency } from '../templates/emailUtils.js';
+
+function currencySymbolForCode(currency) {
+  const code = normalizeEmailCurrency(currency);
+  if (code === 'USD') return '$';
+  if (code === 'EUR') return '€';
+  return '₹';
+}
+
+function quotedPriceFieldLabel(currency) {
+  return `Quoted Price (${currencySymbolForCode(currency)})`;
+}
 
 /** Default RFQ fields: vendor sees only Quoted Price (+ file upload). Other vendor fields appear after requester adds them. */
 export const DEFAULT_FIELD_DEFINITIONS = [
-  { id: 'quotedPrice', label: 'Quoted Price (₹)', type: 'number', filledBy: 'vendor', required: true, core: true, showIn: 'commercial' },
+  { id: 'quotedPrice', label: 'Quoted Price', type: 'number', filledBy: 'vendor', required: true, core: true, showIn: 'commercial' },
   { id: 'technicalScore', label: 'Technical Score', type: 'number', filledBy: 'requester', showIn: 'technical' },
   { id: 'commercialScore', label: 'Commercial Score', type: 'number', filledBy: 'requester', showIn: 'technical' },
   { id: 'overallScore', label: 'Overall Score', type: 'number', filledBy: 'requester', showIn: 'technical' },
@@ -1934,7 +1946,10 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
   }
 
   const quotePrice = Number(latestQuote.quotedPrice) || 0;
-  const quotePriceLabel = `₹${quotePrice.toLocaleString('en-IN')}`;
+  const [prCurRows] = await pool.query(`SELECT currency FROM purchase_requests WHERE id = ? LIMIT 1`, [
+    prId,
+  ]);
+  const quotePriceLabel = formatCurrency(quotePrice, prCurRows[0]?.currency);
   const justificationNote = ` Justification: ${justification}`;
 
   // Own vendor + Requester → HOD vendor final → L2 → CFO
@@ -2104,6 +2119,12 @@ async function buildRfqSummary(prId) {
   const invitations = await getInvitationsWithSubmissions(prId);
   if (!invitations.length) return null;
 
+  const [prCurrencyRows] = await pool.query(
+    `SELECT currency FROM purchase_requests WHERE id = ? LIMIT 1`,
+    [prId]
+  );
+  const currency = normalizeEmailCurrency(prCurrencyRows[0]?.currency);
+
   const recommended = invitations.find((i) => i.id === config.recommendedInvitationId);
   const latest = findActiveSubmission(recommended) ||
     recommended?.submissions?.find((s) => s.status === 'submitted');
@@ -2154,7 +2175,15 @@ async function buildRfqSummary(prId) {
     ...vendors.map((v) => (v.rounds || []).length)
   );
 
-  const fieldDefs = normalizeFieldDefinitions(config.fieldDefinitions);
+  const fieldDefs = normalizeFieldDefinitions(config.fieldDefinitions).map((f) =>
+    f.id === 'quotedPrice'
+      ? {
+          ...f,
+          // Rewrite stored "Quoted Price (₹)" (or any currency) to match this PR
+          label: quotedPriceFieldLabel(currency),
+        }
+      : f
+  );
   const comparisonRows = fieldDefs
     .filter((f) => shouldIncludeComparisonField(f, vendors))
     .map((f) => {
@@ -2163,7 +2192,7 @@ async function buildRfqSummary(prId) {
       let bestVal = null;
       for (const vendor of vendors) {
         const raw = vendor.latest?.[f.id];
-        cells[vendor.id] = formatMatrixValue(f.id, raw, f.type);
+        cells[vendor.id] = formatMatrixValue(f.id, raw, f.type, currency);
         if (typeof raw === 'number' && !Number.isNaN(raw)) {
           const lower = isLowerBetter(f.id);
           if (bestVal === null || (lower ? raw < bestVal : raw > bestVal)) {
@@ -2176,6 +2205,7 @@ async function buildRfqSummary(prId) {
     });
 
   return {
+    currency,
     recommendedVendor: recommended?.vendorName || '',
     recommendationJustification: config.recommendationJustification || '',
     vendorCount: invitations.length,
@@ -2580,10 +2610,10 @@ function isLowerBetter(paramId) {
   return paramId === 'quotedPrice' || paramId === 'leadTime';
 }
 
-function formatMatrixValue(fieldId, value, fieldType) {
+function formatMatrixValue(fieldId, value, fieldType, currency = 'INR') {
   if (value === undefined || value === null || value === '') return '—';
   if (fieldType === 'boolean') return value ? 'Compliant' : 'Non-Compliant';
-  if (fieldId === 'quotedPrice') return `₹${Number(value).toLocaleString('en-IN')}`;
+  if (fieldId === 'quotedPrice') return formatCurrency(Number(value), currency);
   if (fieldId === 'leadTime') return `${value} days`;
   if (['technicalScore', 'commercialScore', 'overallScore'].includes(fieldId)) {
     return `${value}/100`;
@@ -2651,6 +2681,7 @@ export async function getVendorComparisonMatrix(user, prId) {
   const config = await getOrCreateRfqConfig(prId);
   const invitations = await getInvitationsWithSubmissions(prId);
   const showFullNegotiation = roleConfig?.showFullNegotiation ?? true;
+  const currency = normalizeEmailCurrency(pr.currency || pr.currency_code);
 
   const vendors = invitations.map((inv) => {
     const activeSubmission = findActiveSubmission(inv);
@@ -2696,7 +2727,7 @@ export async function getVendorComparisonMatrix(user, prId) {
   const parameters = config.fieldDefinitions
     .map((f) => ({
       id: f.id,
-      label: f.label,
+      label: f.id === 'quotedPrice' ? quotedPriceFieldLabel(currency) : f.label,
       type: f.type,
       icon: paramIcon(f.id),
       showIn: f.showIn === 'commercial' ? 'commercial' : 'technical',
@@ -2711,7 +2742,7 @@ export async function getVendorComparisonMatrix(user, prId) {
 
     for (const vendor of vendors) {
       const raw = vendor.latest?.[param.id];
-      const display = formatMatrixValue(param.id, raw, param.type);
+      const display = formatMatrixValue(param.id, raw, param.type, currency);
       values[vendor.id] = { raw, display };
 
       if (typeof raw === 'number' && !Number.isNaN(raw)) {

@@ -535,9 +535,10 @@ function buildRecommendedQuoteLineItemsBlock(rfqSummary) {
 
 function buildNegotiationRoundsBlock(pr, rfqSummary) {
   if (!rfqSummary?.vendors?.length) return '';
-  if (rfqSummary && !rfqSummary.currency) {
-    rfqSummary = { ...rfqSummary, currency: pr?.currency || pr?.currency_code || 'INR' };
-  }
+  rfqSummary = {
+    ...rfqSummary,
+    currency: pr?.currency || pr?.currency_code || rfqSummary.currency || 'INR',
+  };
 
   return `
         ${buildQuotedAmountBlock(pr, rfqSummary)}
@@ -562,8 +563,35 @@ export function buildPrApprovalPendingEmail({
   roleDisplayName: roleDisplayNameOverride = null,
 }) {
   const currency = pr?.currency || pr?.currency_code || 'INR';
-  if (rfqSummary && !rfqSummary.currency) {
-    rfqSummary = { ...rfqSummary, currency };
+  if (rfqSummary) {
+    rfqSummary = {
+      ...rfqSummary,
+      currency,
+      comparisonRows: (rfqSummary.comparisonRows || []).map((row) =>
+        row?.id === 'quotedPrice'
+          ? {
+              ...row,
+              label: `Quoted Price (${
+                String(currency).toUpperCase() === 'USD'
+                  ? '$'
+                  : String(currency).toUpperCase() === 'EUR'
+                    ? '€'
+                    : '₹'
+              })`,
+              cells: Object.fromEntries(
+                Object.entries(row.cells || {}).map(([k, v]) => {
+                  // Re-format bare numbers / old ₹ values with PR currency when possible
+                  if (v == null || v === '—' || v === '') return [k, v];
+                  const raw = String(v).replace(/[^\d.-]/g, '');
+                  const n = Number(raw);
+                  if (!Number.isFinite(n)) return [k, v];
+                  return [k, formatCurrency(n, currency)];
+                })
+              ),
+            }
+          : row
+      ),
+    };
   }
   const isRequesterStep = assignedRole === 'Requester';
   const isScmRfqEntry = rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq);
