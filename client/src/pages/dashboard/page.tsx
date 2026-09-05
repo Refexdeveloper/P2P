@@ -83,7 +83,13 @@ function greetingForNow() {
   return 'Good evening';
 }
 
-export default function Dashboard() {
+export default function Dashboard({
+  embedded = false,
+  onBack,
+}: {
+  embedded?: boolean;
+  onBack?: () => void;
+} = {}) {
   const { user } = useAuth();
   const [data, setData] = useState<Insights>(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -447,11 +453,20 @@ export default function Dashboard() {
     }, 50);
   };
 
-  return (
-    <DashboardLayout>
-      <div className="-m-3 sm:-m-4 lg:-m-6 min-h-full bg-[#F8F9FC] px-4 sm:px-6 lg:px-7 py-6 font-sans">
+  const content = (
+      <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full bg-[#F8F9FC] px-4 sm:px-6 lg:px-7 py-6 font-sans`}>
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
           <div>
+            {embedded && onBack ? (
+              <button
+                type="button"
+                onClick={onBack}
+                className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800"
+              >
+                <i className="ri-arrow-left-line"></i>
+                Back to SCM Manager Dashboard
+              </button>
+            ) : null}
             <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">
               {greetingForNow()}, {user?.name || 'User'}
             </h1>
@@ -587,6 +602,8 @@ export default function Dashboard() {
           <span>{updatedLabel}</span>
         </div>
       </div>
-    </DashboardLayout>
   );
+
+  if (embedded) return content;
+  return <DashboardLayout>{content}</DashboardLayout>;
 }

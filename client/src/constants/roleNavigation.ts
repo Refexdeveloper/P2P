@@ -360,7 +360,6 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   'SCM Manager': [
     'nav.scm_manager_dashboard',
     'nav.po_approval',
-    'nav.scm_rfq_entry',
     'nav.rfq_approval',
     'nav.tasks',
     'nav.track_po',
@@ -469,16 +468,16 @@ export function ensureNavigation(
     }
   }
 
-  // SCM Manager sidebar order: Dashboard → PO Approval → RFQ Entry → RFQ Approval → My Tasks → …
+  // SCM Manager sidebar: Dashboard → PO Approval → RFQ Entry (approval queue) → My Tasks → …
   if (role === 'SCM Manager') {
     const order = ROLE_DEFAULT_CODES['SCM Manager'] || [];
     const rank = new Map(order.map((code, i) => [code, i]));
+    // Never show buyer RFQ Entry for SCM Manager
+    merged = merged.filter((n) => n.code !== 'nav.scm_rfq_entry');
     const codes = new Set(merged.map((n) => n.code));
-    merged = [...merged];
     for (const code of [
       'nav.scm_manager_dashboard',
       'nav.po_approval',
-      'nav.scm_rfq_entry',
       'nav.rfq_approval',
       'nav.tasks',
       'nav.track_po',
@@ -488,11 +487,17 @@ export function ensureNavigation(
         codes.add(code);
       }
     }
-    merged = [...merged].sort((a, b) => {
-      const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;
-      const bi = rank.has(b.code) ? (rank.get(b.code) as number) : 1000;
-      return ai - bi;
-    });
+    merged = [...merged]
+      .map((n) =>
+        n.code === 'nav.rfq_approval'
+          ? { ...n, label: 'RFQ Entry' }
+          : n
+      )
+      .sort((a, b) => {
+        const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;
+        const bi = rank.has(b.code) ? (rank.get(b.code) as number) : 1000;
+        return ai - bi;
+      });
   }
 
   // SCM Buyer: Dashboard → RFQ Entry → Create PO → Buyer Final Verify → Track PO → Masters

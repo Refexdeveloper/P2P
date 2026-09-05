@@ -127,7 +127,6 @@ export const ROLE_DEFAULT_PERMISSIONS = {
   'SCM Manager': [
     'nav.scm_manager_dashboard',
     'nav.po_approval',
-    'nav.scm_rfq_entry',
     'nav.rfq_approval',
     'nav.tasks',
     'nav.track_po',
@@ -296,11 +295,13 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
       healCodes.push(
         'nav.scm_manager_dashboard',
         'nav.po_approval',
-        'nav.scm_rfq_entry',
         'nav.rfq_approval',
         'nav.tasks',
         'nav.track_po'
       );
+      // SCM Manager uses RFQ Approval queue (shown as RFQ Entry) — not buyer RFQ Entry
+      const scmRfqIdx = stored.indexOf('nav.scm_rfq_entry');
+      if (scmRfqIdx >= 0) stored.splice(scmRfqIdx, 1);
     }
     for (const code of healCodes) {
       if (!stored.includes(code) && validCodes.has(code)) stored.push(code);
@@ -403,11 +404,18 @@ export async function getUserPermissionCodes(userId, role, email = null) {
           healCodes.push(
             'nav.scm_manager_dashboard',
             'nav.po_approval',
-            'nav.scm_rfq_entry',
             'nav.rfq_approval',
             'nav.tasks',
             'nav.track_po'
           );
+          if (stored.includes('nav.scm_rfq_entry')) {
+            const idx = stored.indexOf('nav.scm_rfq_entry');
+            if (idx >= 0) stored.splice(idx, 1);
+            await pool.query(
+              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.scm_rfq_entry'`,
+              [userId]
+            );
+          }
         }
         for (const code of healCodes) {
           if (!stored.includes(code) && validCodes.has(code)) {

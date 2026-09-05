@@ -137,7 +137,7 @@ const canReadPo = requireRolesOrPermissions(PO_READ_ROLES, ['nav.cfo_insights'])
 
 router.get(
   '/stats/cfo',
-  requireRolesOrPermissions(['CFO', 'Super Admin'], ['nav.cfo_insights']),
+  requireRolesOrPermissions(['CFO', 'Super Admin', 'SCM Manager'], ['nav.cfo_insights']),
   async (req, res) => {
     try {
       const data = await getCfoPoInsights(req.user, {

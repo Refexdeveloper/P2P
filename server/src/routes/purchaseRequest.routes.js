@@ -176,7 +176,10 @@ router.get(
 
 router.get(
   '/stats/cfo',
-  requireRolesOrPermissions(['CFO'], ['nav.cfo_dashboard', 'nav.tasks', 'nav.rfq_approval']),
+  requireRolesOrPermissions(
+    ['CFO', 'SCM Manager', 'Super Admin'],
+    ['nav.cfo_dashboard', 'nav.tasks', 'nav.rfq_approval', 'nav.scm_manager_dashboard']
+  ),
   async (req, res) => {
     try {
       const data = await getCfoDashboard(req.user);

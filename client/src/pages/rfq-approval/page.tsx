@@ -17,6 +17,17 @@ export default function RfqApprovalListPage() {
   const [error, setError] = useState('');
   const [goPoPrId, setGoPoPrId] = useState<number | null>(null);
   const isBuyer = user?.role === 'SCM Buyer';
+  const isScmManager = user?.role === 'SCM Manager';
+  const pageTitle = isBuyer
+    ? 'RFQ Approval'
+    : isScmManager
+      ? 'RFQ Entry'
+      : 'RFQ Post-Approval Queue';
+  const pageSub = isBuyer
+    ? 'Go PO finalizes RFQ. Those tasks stay here until SCM Manager approves, then Create PO.'
+    : isScmManager
+      ? 'Review vendor comparison and approve RFQ Entry tasks pending your decision.'
+      : `Review vendor comparison, negotiation rounds, and approve as ${user?.role}`;
 
   const load = useCallback(async () => {
     try {
@@ -69,12 +80,8 @@ export default function RfqApprovalListPage() {
   return (
     <DashboardLayout>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{isBuyer ? 'RFQ Approval' : 'RFQ Post-Approval Queue'}</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          {isBuyer
-            ? 'Go PO finalizes RFQ. Those tasks stay here until SCM Manager approves, then Create PO.'
-            : `Review vendor comparison, negotiation rounds, and approve as ${user?.role}`}
-        </p>
+        <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
+        <p className="text-sm text-gray-600 mt-1">{pageSub}</p>
       </div>
 
       {isBuyer && (

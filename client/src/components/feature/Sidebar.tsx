@@ -12,7 +12,7 @@ type NavBadgeCounts = {
   rfqApproval: number;
 };
 
-function badgeForPath(path: string, counts: NavBadgeCounts): number | null {
+function badgeForPath(path: string, counts: NavBadgeCounts, role?: string | null): number | null {
   if (path === '/tasks') {
     return counts.tasks > 0 ? counts.tasks : null;
   }
@@ -20,7 +20,9 @@ function badgeForPath(path: string, counts: NavBadgeCounts): number | null {
     return counts.rfqEntry > 0 ? counts.rfqEntry : null;
   }
   if (path === '/rfq-approval') {
-    return counts.rfqApproval > 0 ? counts.rfqApproval : null;
+    // SCM Manager menu label is "RFQ Entry" but path is RFQ Approval queue
+    const n = role === 'SCM Manager' ? counts.rfqEntry || counts.rfqApproval : counts.rfqApproval;
+    return n > 0 ? n : null;
   }
   if (path === '/accounts/invoice-verification') {
     const n = invoiceData.filter((i) => i.status === 'Pending Verification' || i.status === 'Discrepancy').length;
@@ -88,7 +90,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       role === 'CFO' ||
       role === 'Super Admin' ||
       role === 'Functional Team';
-    const wantsRfqEntry = role === 'SCM Manager' || role === 'SCM Buyer' || role === 'Super Admin';
+    const wantsRfqEntry = role === 'SCM Buyer' || role === 'Super Admin';
     const wantsRfqApproval =
       role === 'SCM Manager' ||
       role === 'HOD Approver' ||
@@ -113,10 +115,17 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           const s = String(t.status || '').toLowerCase();
           return !s || s === 'pending_approval' || s === 'pending';
         });
+        const approvalCount = Array.isArray(approvalRes.data) ? approvalRes.data.length : 0;
         setBadgeCounts({
           tasks: pendingTasks.length || 0,
-          rfqEntry: Array.isArray(entryRes.data) ? entryRes.data.length : 0,
-          rfqApproval: Array.isArray(approvalRes.data) ? approvalRes.data.length : 0,
+          // SCM Manager "RFQ Entry" menu is the approval queue
+          rfqEntry:
+            role === 'SCM Manager'
+              ? approvalCount
+              : Array.isArray(entryRes.data)
+                ? entryRes.data.length
+                : 0,
+          rfqApproval: approvalCount,
         });
       } catch {
         if (!cancelled) setBadgeCounts({ tasks: 0, rfqEntry: 0, rfqApproval: 0 });
@@ -136,7 +145,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       label: item.label,
       path: item.path,
       code: item.code,
-      badge: badgeForPath(item.path, badgeCounts),
+      badge: badgeForPath(item.path, badgeCounts, user?.role),
     }));
 
     const group: MenuGroup | null = masters.length
@@ -165,7 +174,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         label: item.label,
         path: item.path,
         code: item.code,
-        badge: badgeForPath(item.path, badgeCounts),
+        badge: badgeForPath(item.path, badgeCounts, user?.role),
       });
     }
     if (group && !mastersInserted) nodes.push(group);
@@ -195,7 +204,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         (!hasMasters ||
           (user.role === 'SCM Manager' &&
             (!nav.some((n) => n.code === 'nav.tasks') ||
-              !nav.some((n) => n.code === 'nav.scm_rfq_entry')))));
+              !nav.some((n) => n.code === 'nav.rfq_approval') ||
+              nav.some((n) => n.code === 'nav.scm_rfq_entry')))));
     if (needsHeal) {
       refreshUser().catch(() => undefined);
     }
