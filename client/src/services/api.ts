@@ -321,6 +321,23 @@ export const prApi = {
         ...(options?.invoice ? { invoice: options.invoice } : {}),
       }),
     }),
+  submitSassInvoice: (
+    id: number,
+    invoice: {
+      invoiceNumber: string;
+      fileName: string;
+      fileData: string;
+      invoiceDate?: string;
+      invoiceSubtotal?: number;
+      invoiceTax?: number;
+      invoiceGrandTotal?: number;
+      remarks?: string;
+    }
+  ) =>
+    request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/sass-invoice`, {
+      method: 'POST',
+      body: JSON.stringify({ invoice }),
+    }),
   resubmit: (id: number, body: Record<string, unknown>) =>
     request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/resubmit`, {
       method: 'POST',

@@ -1,7 +1,7 @@
 /**
  * SASS purchase-type workflow helpers.
- * Chain: Requester → L1 (selected) → L2 (Srivaths) → Mugesh (approve + invoice) → Accounts.
- * SCM is never involved. Invoice is uploaded by Mugesh on the same approval step.
+ * Chain: Requester → selected user approvals (L1) → Mugesh (approve) → Srivaths (L2) → Mugesh (invoice upload) → Accounts.
+ * SCM is never involved.
  */
 import fs from 'fs';
 import path from 'path';
@@ -126,22 +126,24 @@ export async function createSassMugeshApprovalTask(conn, prId, departmentId = nu
   return assignee;
 }
 
-export async function createSassInvoiceUploadTask(conn, prId, requesterId) {
+export async function createSassInvoiceUploadTask(conn, prId, departmentId = null) {
+  const assignee = await resolveSassMugeshAssignment(departmentId);
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 5);
   await conn.query(
     `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
-     VALUES (?, 'INVOICE_UPLOAD', 'Requester', ?, 'pending', ?)`,
-    [prId, requesterId, dueDate.toISOString().split('T')[0]]
+     VALUES (?, 'INVOICE_UPLOAD', 'CFO', ?, 'pending', ?)`,
+    [prId, assignee.userId, dueDate.toISOString().split('T')[0]]
   );
+  return assignee;
 }
 
 /**
- * After Mugesh approval: create an internal shell row + invoice stub.
+ * After Srivaths (L2) approval: create internal shell + invoice stub and assign Mugesh invoice-upload task.
  * Cloud Subscription does NOT consume PO/WO document numbers and has no PO document.
  */
 export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
-  const createRequesterTask = options.createRequesterTask === true;
+  const createMugeshInvoiceTask = options.createMugeshInvoiceTask !== false;
   const prId = Number(pr.id);
   const [existingPo] = await conn.query(
     `SELECT id, po_number FROM purchase_orders WHERE pr_id = ? ORDER BY id DESC LIMIT 1`,
@@ -236,7 +238,7 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
         performedBy: actorUser?.name || 'System',
         role: actorUser?.role || 'System',
         date: formatDateTime(new Date()),
-        notes: 'Mugesh uploads invoice on approval — SCM skipped',
+        notes: 'Awaiting Mugesh invoice upload — SCM skipped',
       },
     ];
     const [invResult] = await conn.query(
@@ -261,10 +263,11 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
     invoiceId = invResult.insertId;
   }
 
-  if (createRequesterTask) {
-    await createSassInvoiceUploadTask(conn, prId, pr.requester_id);
+  let mugeshAssignee = null;
+  if (createMugeshInvoiceTask) {
+    mugeshAssignee = await createSassInvoiceUploadTask(conn, prId, pr.department_id);
   }
-  return { poId, invoiceId };
+  return { poId, invoiceId, mugeshAssignee };
 }
 
 async function saveSassInvoiceAttachment(invoiceId, fileName, fileData) {
@@ -281,7 +284,7 @@ async function saveSassInvoiceAttachment(invoiceId, fileName, fileData) {
   return { fileName: safe, filePath: stored, buffer };
 }
 
-/** Save invoice file + mark invoice pending_verification (Mugesh same-step upload). */
+/** Save invoice file + mark invoice pending_verification (Mugesh invoice-upload task). */
 export async function applySassMugeshInvoiceUpload(conn, invoiceId, user, body = {}) {
   if (!body.fileName || !body.fileData) throw new Error('Invoice file is required');
   const invoiceNumber = String(body.invoiceNumber || '').trim() || null;

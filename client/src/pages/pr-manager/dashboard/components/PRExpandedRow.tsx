@@ -125,9 +125,16 @@ const PRExpandedRow: React.FC<PRExpandedRowProps> = ({ pr, onApprove, onReject, 
                 )}
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Justification</label>
-              <div className="text-sm text-gray-700 mt-1 leading-relaxed">{pr.justification}</div>
+            <div className="rounded-xl overflow-hidden border-2 border-amber-300 bg-amber-50 ring-2 ring-amber-200/50">
+              <div className="px-3 py-2 bg-amber-100 border-b border-amber-300 flex items-center gap-2">
+                <i className="ri-lightbulb-flash-line text-amber-700" aria-hidden />
+                <label className="text-xs font-extrabold text-amber-900 uppercase tracking-wider">
+                  Business Justification
+                </label>
+              </div>
+              <div className="px-3 py-3 text-sm text-amber-950 leading-relaxed whitespace-pre-wrap font-medium">
+                {pr.justification || 'No business justification provided.'}
+              </div>
             </div>
           </div>
         </div>

@@ -18,7 +18,7 @@ interface ApprovalModalProps {
   currency?: string;
   prId?: number;
   askBusinessApproval?: boolean;
-  /** Cloud Subscription Mugesh step: approve + upload invoice together */
+  /** Cloud Subscription Mugesh invoice-upload task */
   requireInvoiceUpload?: boolean;
   onConfirm: (
     remarks: string,
@@ -108,7 +108,7 @@ export default function ApprovalModal({
   const config = {
     approve: {
       title: requireInvoiceUpload
-        ? 'Approve & Upload Invoice'
+        ? 'Upload Cloud Subscription Invoice'
         : 'Approve Purchase Request',
       icon: requireInvoiceUpload ? 'ri-file-upload-line' : 'ri-check-double-line',
       headerBg: requireInvoiceUpload ? 'bg-teal-50' : 'bg-emerald-50',
@@ -119,7 +119,7 @@ export default function ApprovalModal({
         ? 'bg-teal-600 hover:bg-teal-700'
         : 'bg-emerald-600 hover:bg-emerald-700',
       btnIcon: requireInvoiceUpload ? 'ri-upload-2-line' : 'ri-check-double-line',
-      btnText: requireInvoiceUpload ? 'Approve & Submit Invoice' : 'Confirm Approve',
+      btnText: requireInvoiceUpload ? 'Submit Invoice' : 'Confirm Approve',
       placeholder: 'Enter approval remarks...',
       requireRemarks: true,
     },
@@ -232,7 +232,7 @@ export default function ApprovalModal({
               <h3 className={`text-base font-bold ${config.titleColor}`}>{config.title}</h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 {requireInvoiceUpload && type === 'approve'
-                  ? 'Approve and upload invoice in one step — status becomes Completed'
+                  ? 'Upload invoice for this Cloud Subscription — then routed to Accounts'
                   : 'This action cannot be undone'}
               </p>
             </div>

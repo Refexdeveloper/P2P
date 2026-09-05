@@ -128,14 +128,6 @@ export default function CFODashboardPage() {
       return;
 
     deepLinkHandled.current = true;
-    const isSass =
-      Boolean(pr.isSass) ||
-      Boolean(pr.requireInvoiceUpload) ||
-      ['sass', 'saas', 'cloud_subscription'].includes(
-        String(pr.purchaseType || '')
-          .toLowerCase()
-          .replace(/[\s-]+/g, '_')
-      );
     setApprovalModal({
       isOpen: true,
       type: action as 'approve' | 'reject',
@@ -143,7 +135,7 @@ export default function CFODashboardPage() {
       prNumber: String(pr.id),
       prTitle: String(pr.title),
       amount: Number(pr.amount),
-      requireInvoiceUpload: action === 'approve' && isSass,
+      requireInvoiceUpload: Boolean(action === 'approve' && pr.requireInvoiceUpload),
     });
     setSearchParams({}, { replace: true });
   }, [loading, cfoPRList, searchParams, setSearchParams]);

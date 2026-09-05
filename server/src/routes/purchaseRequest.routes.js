@@ -15,6 +15,7 @@ import {
   getManagerStats,
   getCfoDashboard,
   processApproval,
+  submitSassInvoiceUpload,
   updatePurchaseRequest,
   updatePrBillingDelivery,
   adminUpdatePurchaseRequest,
@@ -344,6 +345,16 @@ router.post('/:id/approve', async (req, res) => {
       invoice,
     });
     res.json({ data: pr, message: `PR ${action}d successfully` });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Mugesh Cloud Subscription invoice upload (assigned My Task after Srivaths). */
+router.post('/:id/sass-invoice', async (req, res) => {
+  try {
+    const pr = await submitSassInvoiceUpload(req.user, req.params.id, req.body?.invoice || req.body);
+    res.json({ data: pr, message: 'Invoice uploaded successfully' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

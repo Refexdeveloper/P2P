@@ -55,14 +55,7 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | 'return'>('approve');
   const isOwnVendor = pr.vendorSelection === 'own';
-  const requireInvoice =
-    Boolean(pr.requireInvoiceUpload) ||
-    Boolean(pr.isSass) ||
-    ['sass', 'saas', 'cloud_subscription'].includes(
-      String(pr.purchaseType || '')
-        .toLowerCase()
-        .replace(/[\s-]+/g, '_')
-    );
+  const requireInvoice = Boolean(pr.requireInvoiceUpload);
 
   const tabs = [
     { id: 'details' as const, label: 'PR Details', icon: 'ri-file-text-line' },

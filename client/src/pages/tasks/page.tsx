@@ -73,6 +73,8 @@ interface TaskItem {
   purchaseType?: string;
   purchaseTypeLabel?: string;
   isSass?: boolean;
+  isSassInvoiceUpload?: boolean;
+  invoiceId?: number;
 }
 
 function isSassTask(task: { isSass?: boolean; purchaseType?: string }) {
@@ -145,6 +147,8 @@ export default function TasksPage() {
           purchaseType: t.purchaseType ? String(t.purchaseType) : 'purchase_order',
           purchaseTypeLabel: t.purchaseTypeLabel ? String(t.purchaseTypeLabel) : undefined,
           isSass: Boolean(t.isSass),
+          isSassInvoiceUpload: Boolean(t.isSassInvoiceUpload),
+          invoiceId: t.invoiceId != null ? Number(t.invoiceId) : undefined,
         };
       });
       setTasks(mapped);
@@ -226,6 +230,7 @@ export default function TasksPage() {
   purchaseType?: string;
   isSass?: boolean;
   requireInvoiceUpload?: boolean;
+  isSassInvoiceUpload?: boolean;
   billingLocation?: string;
     billingGstNo?: string;
     billingAddress?: string;
@@ -345,6 +350,7 @@ export default function TasksPage() {
       purchaseType: task.purchaseType,
       isSass: isSassTask(task),
       requireInvoiceUpload: Boolean(task.requireInvoiceUpload),
+      isSassInvoiceUpload: Boolean(task.isSassInvoiceUpload),
       billingLocation: '',
       billingGstNo: '',
       billingAddress: '',
@@ -422,6 +428,7 @@ export default function TasksPage() {
         purchaseType,
         isSass,
         requireInvoiceUpload: Boolean(task.requireInvoiceUpload),
+        isSassInvoiceUpload: Boolean(task.isSassInvoiceUpload),
         billingLocation: String(pr.billingLocation || ''),
         billingGstNo: String(pr.billingGstNo || ''),
         billingAddress: String(pr.billingAddress || ''),
@@ -497,6 +504,17 @@ export default function TasksPage() {
         } else {
           return;
         }
+      } else if (task.isSassInvoiceUpload && type === 'approve') {
+        if (!invoice?.fileName || !invoice?.fileData) {
+          throw new Error('Invoice file is required');
+        }
+        await prApi.submitSassInvoice(task.prId, {
+          invoiceNumber: String(invoice.invoiceNumber || '').trim() || `CS-${task.prId}`,
+          fileName: invoice.fileName,
+          fileData: invoice.fileData,
+          invoiceDate: invoice.invoiceDate,
+          remarks,
+        });
       } else {
         await prApi.approve(task.prId, action, remarks, {
           ...(type === 'return' && returnTo ? { returnTo } : {}),
@@ -510,7 +528,9 @@ export default function TasksPage() {
       }));
       showToast(
         type === 'approve'
-          ? `${prNumber} has been approved successfully`
+          ? task.isSassInvoiceUpload
+            ? `${prNumber} invoice uploaded successfully`
+            : `${prNumber} has been approved successfully`
           : type === 'return'
           ? task.isPoSign
             ? `${prNumber} sent back to SCM Buyer for revision`
@@ -714,20 +734,34 @@ export default function TasksPage() {
         <>
           <button
             onClick={() => openModal(task.id, 'approve')}
-            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+            className={`p-1.5 rounded transition-colors cursor-pointer ${
+              task.isSassInvoiceUpload || task.requireInvoiceUpload
+                ? 'text-teal-600 hover:bg-teal-50'
+                : 'text-emerald-600 hover:bg-emerald-50'
+            }`}
             title={
-              task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
-                ? 'Approve (Vendor Comparison)'
-                : task.isPoSign
-                  ? 'Sign & Approve'
-                  : task.actionPath?.includes('/scm/buyer-final-verify')
-                    ? 'Verify'
-                    : 'Approve'
+              task.isSassInvoiceUpload || task.requireInvoiceUpload
+                ? 'Upload Invoice'
+                : task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
+                  ? 'Approve (Vendor Comparison)'
+                  : task.isPoSign
+                    ? 'Sign & Approve'
+                    : task.actionPath?.includes('/scm/buyer-final-verify')
+                      ? 'Verify'
+                      : 'Approve'
             }
           >
-            <i className={task.isPoSign ? 'ri-quill-pen-line' : 'ri-check-line'}></i>
+            <i
+              className={
+                task.isSassInvoiceUpload || task.requireInvoiceUpload
+                  ? 'ri-file-upload-line'
+                  : task.isPoSign
+                    ? 'ri-quill-pen-line'
+                    : 'ri-check-line'
+              }
+            ></i>
           </button>
-          {!task.actionPath?.includes('/scm/buyer-final-verify') && (
+          {!task.actionPath?.includes('/scm/buyer-final-verify') && !task.isSassInvoiceUpload && (
             <>
               <button
                 onClick={() => openModal(task.id, 'return')}

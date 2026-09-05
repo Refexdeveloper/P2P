@@ -49,6 +49,7 @@ interface PRTask {
   purchaseType?: string;
   isSass?: boolean;
   requireInvoiceUpload?: boolean;
+  isSassInvoiceUpload?: boolean;
   billingLocation?: string;
   billingGstNo?: string;
   billingAddress?: string;
@@ -266,13 +267,16 @@ export default function TaskDetailDrawer({
               </div>
             </div>
 
-            {/* Justification */}
-            <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Business Justification
-              </h4>
-              <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3">
-                {task.justification || 'No justification provided.'}
+            {/* Justification — highlighted for L1/L2 review */}
+            <div className="rounded-xl overflow-hidden border-2 border-amber-300 bg-amber-50 ring-2 ring-amber-200/50">
+              <div className="px-3.5 py-2.5 bg-amber-100 border-b border-amber-300 flex items-center gap-2">
+                <i className="ri-lightbulb-flash-line text-amber-700" aria-hidden />
+                <h4 className="text-xs font-extrabold text-amber-900 uppercase tracking-wide">
+                  Business Justification
+                </h4>
+              </div>
+              <p className="px-3.5 py-3 text-sm text-amber-950 leading-relaxed whitespace-pre-wrap font-medium">
+                {task.justification || 'No business justification provided.'}
               </p>
             </div>
 
@@ -452,34 +456,42 @@ export default function TaskDetailDrawer({
               disabled={loading}
               onClick={() => onApprove(task.id)}
               className={`flex-1 px-4 py-2.5 text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 ${
-                task.requireInvoiceUpload
+                task.requireInvoiceUpload || task.isSassInvoiceUpload
                   ? 'bg-teal-600 hover:bg-teal-700'
                   : 'bg-emerald-600 hover:bg-emerald-700'
               }`}
             >
               <i
                 className={
-                  task.requireInvoiceUpload ? 'ri-file-upload-line' : 'ri-check-double-line'
+                  task.requireInvoiceUpload || task.isSassInvoiceUpload
+                    ? 'ri-file-upload-line'
+                    : 'ri-check-double-line'
                 }
               ></i>
-              {task.requireInvoiceUpload ? 'Approve & Upload Invoice' : 'Approve'}
+              {task.isSassInvoiceUpload || task.requireInvoiceUpload
+                ? 'Upload Invoice'
+                : 'Approve'}
             </button>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => onReturn(task.id)}
-              className="flex-1 px-4 py-2.5 bg-white text-orange-600 text-sm font-semibold rounded-lg border border-orange-300 hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <i className="ri-arrow-go-back-line"></i> Send Back
-            </button>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => onReject(task.id)}
-              className="flex-1 px-4 py-2.5 bg-white text-red-600 text-sm font-semibold rounded-lg border border-red-300 hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <i className="ri-close-circle-line"></i> Reject
-            </button>
+            {!task.isSassInvoiceUpload && (
+              <>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => onReturn(task.id)}
+                  className="flex-1 px-4 py-2.5 bg-white text-orange-600 text-sm font-semibold rounded-lg border border-orange-300 hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <i className="ri-arrow-go-back-line"></i> Send Back
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => onReject(task.id)}
+                  className="flex-1 px-4 py-2.5 bg-white text-red-600 text-sm font-semibold rounded-lg border border-red-300 hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <i className="ri-close-circle-line"></i> Reject
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -195,6 +195,7 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
   };
 
   const justification = String(data.recommendationJustification || '').trim();
+  const businessJustification = String(data.pr?.justification || '').trim();
 
   const renderQuoteLinesTable = (lines: QuoteLine[], quotedTotal: number, recommendedTable: boolean) => {
     const headCls = recommendedTable ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-50 text-slate-700';
@@ -247,6 +248,25 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
       {fileError ? (
         <div className="px-4 py-2 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{fileError}</div>
       ) : null}
+
+      <section className="rounded-xl overflow-hidden border-2 border-amber-300 bg-amber-50 shadow-sm ring-2 ring-amber-200/60">
+        <div className="px-4 py-3 bg-amber-100 border-b border-amber-300 flex items-center gap-2">
+          <i className="ri-lightbulb-flash-line text-amber-700 text-lg" aria-hidden />
+          <div>
+            <p className="text-[11px] font-extrabold tracking-wide uppercase text-amber-900">
+              Business Justification
+            </p>
+            <p className="text-xs text-amber-800/90 mt-0.5">Requester rationale for this purchase</p>
+          </div>
+        </div>
+        {businessJustification ? (
+          <p className="px-4 py-3.5 text-sm text-amber-950 leading-relaxed whitespace-pre-wrap font-medium">
+            {businessJustification}
+          </p>
+        ) : (
+          <p className="px-4 py-3.5 text-sm italic text-amber-800/80">No business justification provided.</p>
+        )}
+      </section>
 
       {justification || data.recommendedVendorName ? (
         <section className="rounded-xl overflow-hidden border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50">

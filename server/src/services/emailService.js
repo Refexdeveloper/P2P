@@ -1017,6 +1017,7 @@ async function loadPrSummaryForConfirmation(context) {
       prNumber: context.prNumber || context.pr_number,
       title: context.title || '',
       totalAmount: Number(context.totalAmount ?? context.total_amount ?? 0),
+      purchaseType: context.purchaseType || context.purchase_type || 'purchase_order',
       entityName: context.entityName || context.entity_name || '',
       entityCode: context.entityCode || context.entity_code || '',
     };
@@ -1034,7 +1035,7 @@ async function loadPrSummaryForConfirmation(context) {
   if (!prId) return null;
 
   const [rows] = await pool.query(
-    `SELECT pr.id, pr.pr_number, pr.title, pr.total_amount,
+    `SELECT pr.id, pr.pr_number, pr.title, pr.total_amount, pr.purchase_type,
             e.name AS entity_name, e.code AS entity_code
      FROM purchase_requests pr
      LEFT JOIN entity_masters e ON e.id = pr.entity_id
@@ -1049,6 +1050,7 @@ async function loadPrSummaryForConfirmation(context) {
     prNumber: r.pr_number,
     title: r.title,
     totalAmount: Number(r.total_amount || 0),
+    purchaseType: r.purchase_type || 'purchase_order',
     entityName: r.entity_name || '',
     entityCode: r.entity_code || '',
   };

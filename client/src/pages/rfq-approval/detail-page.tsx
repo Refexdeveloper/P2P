@@ -271,9 +271,27 @@ export default function RfqApprovalDetailPage() {
       )}
 
       {(!data.vendors || data.vendors.length === 0) && data.pr.prFlow === 'standard' && data.pr.status === 'PENDING_BUSINESS_APPROVAL' ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="text-base font-bold text-gray-900 mb-3">PR Details</h3>
-          <p className="text-sm text-gray-600">{data.pr.justification || 'No additional justification.'}</p>
+        <div className="space-y-4">
+          <section className="rounded-xl overflow-hidden border-2 border-amber-300 bg-amber-50 shadow-sm ring-2 ring-amber-200/60">
+            <div className="px-4 py-3 bg-amber-100 border-b border-amber-300 flex items-center gap-2">
+              <i className="ri-lightbulb-flash-line text-amber-700 text-lg" aria-hidden />
+              <div>
+                <p className="text-[11px] font-extrabold tracking-wide uppercase text-amber-900">
+                  Business Justification
+                </p>
+                <p className="text-xs text-amber-800/90 mt-0.5">Requester rationale for this purchase</p>
+              </div>
+            </div>
+            <p className="px-4 py-3.5 text-sm text-amber-950 leading-relaxed whitespace-pre-wrap font-medium">
+              {data.pr.justification || 'No business justification provided.'}
+            </p>
+          </section>
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-base font-bold text-gray-900 mb-3">PR Details</h3>
+            <p className="text-sm text-gray-600">
+              {data.pr.title || 'Awaiting RFQ quotations.'}
+            </p>
+          </div>
         </div>
       ) : isL1OrL2Manager(user?.role) ? (
         <ManagerRfqQuoteSummary data={data} onPreviewFile={handlePreviewFile} />

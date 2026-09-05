@@ -8,7 +8,7 @@ export const PR_STATUS = {
   PENDING_RFQ_CFO_APPROVAL: 'PENDING_RFQ_CFO_APPROVAL', // CFO (post-RFQ, Own path)
   PENDING_BUSINESS_APPROVAL: 'PENDING_BUSINESS_APPROVAL', // SCM Manager vendor approval (SCM path)
   PENDING_SCM_PO: 'PENDING_SCM_PO',
-  AWAITING_INVOICE: 'AWAITING_INVOICE', // legacy SASS invoice stage (now Mugesh uploads on approve)
+  AWAITING_INVOICE: 'AWAITING_INVOICE', // SASS: Mugesh invoice upload after Srivaths approval
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
   RETURNED: 'RETURNED',
@@ -301,7 +301,7 @@ export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelectio
       [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending L1 Manager Approval',
       [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: 'Pending L2 Manager Approval (Srivaths)',
       [PR_STATUS.PENDING_CFO_APPROVAL]: 'Pending Mugesh Approval',
-      [PR_STATUS.AWAITING_INVOICE]: 'Awaiting Invoice Upload',
+      [PR_STATUS.AWAITING_INVOICE]: 'Pending Mugesh Invoice Upload',
       [PR_STATUS.APPROVED]: 'Completed — With Accounts',
       [PR_STATUS.REJECTED]: 'Rejected',
       [PR_STATUS.RETURNED]: 'Returned for Rework',
