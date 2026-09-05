@@ -4,8 +4,24 @@ import { ensureNavigation, isMastersNavItem } from '../../constants/roleNavigati
 import { useAuth } from '../../contexts/AuthContext';
 import { invoiceData } from '../../mocks/invoice-data';
 import { formatRoleDisplayName } from '../../utils/roleDisplay';
+import { rfqApi, taskApi } from '../../services/api';
 
-function badgeForPath(path: string): number | null {
+type NavBadgeCounts = {
+  tasks: number;
+  rfqEntry: number;
+  rfqApproval: number;
+};
+
+function badgeForPath(path: string, counts: NavBadgeCounts): number | null {
+  if (path === '/tasks') {
+    return counts.tasks > 0 ? counts.tasks : null;
+  }
+  if (path === '/scm/rfq-entry') {
+    return counts.rfqEntry > 0 ? counts.rfqEntry : null;
+  }
+  if (path === '/rfq-approval') {
+    return counts.rfqApproval > 0 ? counts.rfqApproval : null;
+  }
   if (path === '/accounts/invoice-verification') {
     const n = invoiceData.filter((i) => i.status === 'Pending Verification' || i.status === 'Discrepancy').length;
     return n > 0 ? n : null;
@@ -28,6 +44,7 @@ type MenuLeaf = {
   icon: string;
   label: string;
   path: string;
+  code?: string;
   badge: number | null;
 };
 
@@ -51,9 +68,65 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
   const location = useLocation();
   const { user, logout, refreshUser } = useAuth();
   const [mastersOpen, setMastersOpen] = useState(true);
+  const [badgeCounts, setBadgeCounts] = useState<NavBadgeCounts>({
+    tasks: 0,
+    rfqEntry: 0,
+    rfqApproval: 0,
+  });
 
   // Desktop: collapse when not hovered. Mobile drawer: always expanded when open.
   const collapsed = !mobileOpen && !hovered;
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const role = user.role || '';
+    const wantsTasks =
+      role === 'SCM Manager' ||
+      role === 'HOD Approver' ||
+      role === 'PR Manager' ||
+      role === 'CFO' ||
+      role === 'Super Admin' ||
+      role === 'Functional Team';
+    const wantsRfqEntry = role === 'SCM Manager' || role === 'SCM Buyer' || role === 'Super Admin';
+    const wantsRfqApproval =
+      role === 'SCM Manager' ||
+      role === 'HOD Approver' ||
+      role === 'PR Manager' ||
+      role === 'CFO' ||
+      role === 'Super Admin';
+
+    (async () => {
+      try {
+        const [taskRes, entryRes, approvalRes] = await Promise.all([
+          wantsTasks ? taskApi.list().catch(() => ({ data: [] as unknown[] })) : Promise.resolve({ data: [] }),
+          wantsRfqEntry
+            ? rfqApi.listScmEntryPending().catch(() => ({ data: [] as unknown[] }))
+            : Promise.resolve({ data: [] }),
+          wantsRfqApproval
+            ? rfqApi.listPostApprovalPending().catch(() => ({ data: [] as unknown[] }))
+            : Promise.resolve({ data: [] }),
+        ]);
+        if (cancelled) return;
+        const tasks = (taskRes.data as Array<{ status?: string }>) || [];
+        const pendingTasks = tasks.filter((t) => {
+          const s = String(t.status || '').toLowerCase();
+          return !s || s === 'pending_approval' || s === 'pending';
+        });
+        setBadgeCounts({
+          tasks: pendingTasks.length || 0,
+          rfqEntry: Array.isArray(entryRes.data) ? entryRes.data.length : 0,
+          rfqApproval: Array.isArray(approvalRes.data) ? approvalRes.data.length : 0,
+        });
+      } catch {
+        if (!cancelled) setBadgeCounts({ tasks: 0, rfqEntry: 0, rfqApproval: 0 });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.role, location.pathname]);
 
   const menuItems = useMemo<MenuNode[]>(() => {
     const nav = ensureNavigation(user?.role, user?.navigation, user?.email);
@@ -62,7 +135,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       icon: item.icon,
       label: item.label,
       path: item.path,
-      badge: badgeForPath(item.path),
+      code: item.code,
+      badge: badgeForPath(item.path, badgeCounts),
     }));
 
     const group: MenuGroup | null = masters.length
@@ -90,12 +164,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         icon: item.icon,
         label: item.label,
         path: item.path,
-        badge: badgeForPath(item.path),
+        code: item.code,
+        badge: badgeForPath(item.path, badgeCounts),
       });
     }
     if (group && !mastersInserted) nodes.push(group);
     return nodes;
-  }, [user?.role, user?.navigation, user?.email]);
+  }, [user?.role, user?.navigation, user?.email, badgeCounts]);
 
   useEffect(() => {
     const onMastersPath =
@@ -116,7 +191,11 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
     const hasMasters = nav.some(isMastersNavItem);
     const needsHeal =
       !user.navigation?.length ||
-      ((user.role === 'SCM Buyer' || user.role === 'SCM Manager') && !hasMasters);
+      ((user.role === 'SCM Buyer' || user.role === 'SCM Manager') &&
+        (!hasMasters ||
+          (user.role === 'SCM Manager' &&
+            (!nav.some((n) => n.code === 'nav.tasks') ||
+              !nav.some((n) => n.code === 'nav.scm_rfq_entry')))));
     if (needsHeal) {
       refreshUser().catch(() => undefined);
     }
@@ -133,6 +212,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         : item.path;
     const isActive =
       location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+    const isAlertBadge =
+      item.path === '/tasks' || item.path === '/scm/rfq-entry' || item.path === '/rfq-approval';
     return (
       <Link
         key={item.path}
@@ -149,17 +230,27 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           <div className="w-5 h-5 flex items-center justify-center relative">
             <i className={`${item.icon} text-lg`}></i>
             {collapsed && item.badge != null && (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 px-0.5 bg-teal-600 text-white text-[9px] font-semibold rounded-full flex items-center justify-center">
+              <span
+                className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 px-0.5 text-white text-[9px] font-semibold rounded-full flex items-center justify-center ${
+                  isAlertBadge ? 'bg-red-600' : 'bg-teal-600'
+                }`}
+              >
                 {item.badge}
               </span>
             )}
           </div>
           {!collapsed && (
-            <span className={`font-medium whitespace-nowrap ${nested ? 'text-xs' : 'text-sm'}`}>{item.label}</span>
+            <span className={`font-medium whitespace-nowrap ${nested ? 'text-xs' : 'text-sm'}`}>
+              {item.label}
+            </span>
           )}
         </div>
         {!collapsed && item.badge != null && (
-          <span className="px-2 py-0.5 bg-teal-600 text-white text-xs font-semibold rounded-full">
+          <span
+            className={`px-2 py-0.5 text-white text-xs font-semibold rounded-full ${
+              isAlertBadge ? 'bg-red-600' : 'bg-teal-600'
+            }`}
+          >
             {item.badge}
           </span>
         )}

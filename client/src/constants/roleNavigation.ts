@@ -360,10 +360,11 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   'SCM Manager': [
     'nav.scm_manager_dashboard',
     'nav.po_approval',
+    'nav.scm_rfq_entry',
     'nav.rfq_approval',
+    'nav.tasks',
     'nav.track_po',
     'nav.payment_authorization',
-    'nav.tasks',
     'nav.item_master',
     'nav.vendor_master',
     'nav.category_master',
@@ -468,12 +469,24 @@ export function ensureNavigation(
     }
   }
 
-  // SCM Manager sidebar order: Dashboard → PO Approval → RFQ Approval → …
+  // SCM Manager sidebar order: Dashboard → PO Approval → RFQ Entry → RFQ Approval → My Tasks → …
   if (role === 'SCM Manager') {
     const order = ROLE_DEFAULT_CODES['SCM Manager'] || [];
     const rank = new Map(order.map((code, i) => [code, i]));
-    if (!merged.some((n) => n.code === 'nav.scm_manager_dashboard') && NAV_BY_CODE['nav.scm_manager_dashboard']) {
-      merged = [NAV_BY_CODE['nav.scm_manager_dashboard'], ...merged];
+    const codes = new Set(merged.map((n) => n.code));
+    merged = [...merged];
+    for (const code of [
+      'nav.scm_manager_dashboard',
+      'nav.po_approval',
+      'nav.scm_rfq_entry',
+      'nav.rfq_approval',
+      'nav.tasks',
+      'nav.track_po',
+    ]) {
+      if (!codes.has(code) && NAV_BY_CODE[code]) {
+        merged.push(NAV_BY_CODE[code]);
+        codes.add(code);
+      }
     }
     merged = [...merged].sort((a, b) => {
       const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;

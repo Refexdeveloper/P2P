@@ -127,10 +127,11 @@ export const ROLE_DEFAULT_PERMISSIONS = {
   'SCM Manager': [
     'nav.scm_manager_dashboard',
     'nav.po_approval',
+    'nav.scm_rfq_entry',
     'nav.rfq_approval',
+    'nav.tasks',
     'nav.track_po',
     'nav.payment_authorization',
-    'nav.tasks',
     'nav.item_master',
     'nav.vendor_master',
     'nav.category_master',
@@ -292,7 +293,14 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
       if (vaIdx >= 0) stored.splice(vaIdx, 1);
     }
     if (role === 'SCM Manager') {
-      healCodes.push('nav.scm_manager_dashboard', 'nav.po_approval', 'nav.rfq_approval', 'nav.track_po');
+      healCodes.push(
+        'nav.scm_manager_dashboard',
+        'nav.po_approval',
+        'nav.scm_rfq_entry',
+        'nav.rfq_approval',
+        'nav.tasks',
+        'nav.track_po'
+      );
     }
     for (const code of healCodes) {
       if (!stored.includes(code) && validCodes.has(code)) stored.push(code);
@@ -392,7 +400,14 @@ export async function getUserPermissionCodes(userId, role, email = null) {
           }
         }
         if (role === 'SCM Manager') {
-          healCodes.push('nav.scm_manager_dashboard', 'nav.po_approval', 'nav.rfq_approval', 'nav.track_po');
+          healCodes.push(
+            'nav.scm_manager_dashboard',
+            'nav.po_approval',
+            'nav.scm_rfq_entry',
+            'nav.rfq_approval',
+            'nav.tasks',
+            'nav.track_po'
+          );
         }
         for (const code of healCodes) {
           if (!stored.includes(code) && validCodes.has(code)) {
