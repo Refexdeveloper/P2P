@@ -901,6 +901,7 @@ export const poApi = {
         entityId?: number | null;
         entityName?: string;
         requiredDate: string;
+        poDate?: string;
         createdAt: string;
         kind: 'ready' | 'po';
       }>;

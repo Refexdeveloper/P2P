@@ -134,7 +134,13 @@ export const REQUESTER_PO_DOCUMENT_STATUSES = new Set([
  * Requester-facing status labels — accounts for PO send-back and signed/released POs
  * while the PR row may still be APPROVED.
  */
-export function resolveRequesterPrDisplay(prStatus, prFlow = 'standard', vendorSelection = 'scm', poMeta = null) {
+export function resolveRequesterPrDisplay(
+  prStatus,
+  prFlow = 'standard',
+  vendorSelection = 'scm',
+  poMeta = null,
+  purchaseType = 'purchase_order'
+) {
   const po = poMeta && typeof poMeta === 'object' ? poMeta : {};
   const poId = po.id ? Number(po.id) : null;
   const poNumber = po.poNumber || po.po_number || '';
@@ -143,7 +149,7 @@ export function resolveRequesterPrDisplay(prStatus, prFlow = 'standard', vendorS
   const poSigned = Boolean(po.signedAt || po.signed_at || po.signedPdfPath || po.signed_pdf_path);
 
   let statusFrontend = mapStatusToFrontend(prStatus);
-  let statusUI = mapStatusToManagerUI(prStatus, prFlow, vendorSelection);
+  let statusUI = mapStatusToManagerUI(prStatus, prFlow, vendorSelection, purchaseType);
   let poDocumentAvailable = false;
 
   if (prStatus === PR_STATUS.RETURNED) {
@@ -252,7 +258,19 @@ export function resolveRequesterPrDisplay(prStatus, prFlow = 'standard', vendorS
 
   if (prStatus === PR_STATUS.APPROVED && !poId) {
     statusFrontend = 'approved';
-    statusUI = 'Approved — Awaiting PO';
+    const isSass =
+      String(purchaseType || '')
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_') === 'sass' ||
+      String(purchaseType || '')
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_') === 'saas' ||
+      String(purchaseType || '')
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_') === 'cloud_subscription';
+    statusUI = isSass
+      ? mapStatusToManagerUI(prStatus, prFlow, vendorSelection, purchaseType)
+      : 'Approved — Awaiting PO';
   }
 
   return {

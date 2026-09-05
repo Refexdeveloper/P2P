@@ -1257,7 +1257,13 @@ export default function TrackPRPage() {
                                     Edit RFQ
                                   </button>
                                 )}
-                                {pr.poDocumentAvailable && pr.poId ? (
+                                {String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
+                                  String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
+                                  String(pr.purchaseType || '')
+                                    .toLowerCase()
+                                    .replace(/[\s-]+/g, '_') !== 'cloud_subscription' &&
+                                  pr.poDocumentAvailable &&
+                                  pr.poId ? (
                                   <button
                                     type="button"
                                     onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
@@ -1267,7 +1273,12 @@ export default function TrackPRPage() {
                                     <i className="ri-file-pdf-2-line" />
                                     PO Document
                                   </button>
-                                ) : pr.poId ? (
+                                ) : String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
+                                  String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
+                                  String(pr.purchaseType || '')
+                                    .toLowerCase()
+                                    .replace(/[\s-]+/g, '_') !== 'cloud_subscription' &&
+                                  pr.poId ? (
                                   <span
                                     className="px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-md whitespace-nowrap"
                                     title="PO document available after SCM Buyer final verification"

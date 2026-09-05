@@ -24,6 +24,7 @@ interface BucketRow {
   amount: number;
   recommendedVendor: string;
   requiredDate: string;
+  poDate?: string;
   status: RowStatus;
   statusLabel: string;
   statusRaw: string;
@@ -162,6 +163,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
       amount: Number(r.amount) || 0,
       recommendedVendor: String(r.vendorName || ''),
       requiredDate: String(r.requiredDate || ''),
+      poDate: r.poDate ? String(r.poDate) : '',
       status: mapTrackStatusToBucket(String(r.status), String(r.statusRaw || '')),
       statusLabel: String(r.statusLabel || r.status || ''),
       statusRaw: String(r.statusRaw || ''),
@@ -536,7 +538,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
           {loading ? (
             <p className="p-8 text-sm text-gray-500">Loading...</p>
           ) : (
-            <table className="w-full min-w-[1180px]">
+            <table className="w-full min-w-[1280px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="w-11 px-2 py-3"></th>
@@ -545,6 +547,9 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[148px]">
                     PO Number
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[110px]">
+                    PO Date
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[160px]">
                     Title
@@ -569,7 +574,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-5 py-12 text-center text-sm text-gray-500">
+                    <td colSpan={10} className="px-5 py-12 text-center text-sm text-gray-500">
                       No purchase requests found
                     </td>
                   </tr>
@@ -602,6 +607,9 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                           </td>
                           <td className="px-3 py-3 align-middle text-gray-900 text-sm font-bold truncate max-w-[148px]" title={pr.poNumber || undefined}>
                             {pr.poNumber || '—'}
+                          </td>
+                          <td className="px-3 py-3 align-middle text-gray-700 text-sm whitespace-nowrap">
+                            {pr.poDate || '—'}
                           </td>
                           <td className="px-3 py-3 align-middle text-gray-900 font-medium text-sm truncate min-w-0" title={pr.title}>
                             {pr.title}
@@ -698,7 +706,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                         {isExpanded && (pr.prId > 0 || !!pr.poId) && (
                           <PRBucketExpandedRow
                             prId={pr.prId}
-                            colSpan={9}
+                            colSpan={10}
                             statusLabel={pr.statusLabel}
                             poId={pr.poId}
                             poNumber={pr.poNumber}

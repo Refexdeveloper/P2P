@@ -30,6 +30,7 @@ type TrackRow = {
   entityId?: number | null;
   entityName?: string;
   requiredDate: string;
+  poDate?: string;
   createdAt: string;
   kind: 'ready' | 'po';
 };
@@ -324,6 +325,7 @@ export default function TrackPoPage() {
       'Requester',
       'Amount',
       'Status',
+      'PO Date',
       'Required Date',
       'Created',
     ];
@@ -339,6 +341,7 @@ export default function TrackPoPage() {
         r.requester,
         r.amount,
         r.statusLabel,
+        r.poDate || '',
         r.requiredDate,
         r.createdAt,
       ]
@@ -633,12 +636,13 @@ export default function TrackPoPage() {
           {loading ? (
             <p className="p-8 text-sm text-gray-500">Loading purchase orders...</p>
           ) : (
-            <table className="w-full min-w-[1280px]">
+            <table className="w-full min-w-[1380px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-2 py-3 w-11"></th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PR Number</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PO / WO Number</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[110px]">PO Date</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[90px]">Type</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase min-w-[160px]">Title / Vendor</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Entity</th>
@@ -651,7 +655,7 @@ export default function TrackPoPage() {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-5 py-12 text-center text-sm text-gray-500">
+                    <td colSpan={11} className="px-5 py-12 text-center text-sm text-gray-500">
                       No purchase orders found
                     </td>
                   </tr>
@@ -675,6 +679,9 @@ export default function TrackPoPage() {
                           </td>
                           <td className="px-3 py-3 text-sm font-bold text-gray-900 truncate" title={row.poNumber || undefined}>
                             {row.poNumber || '—'}
+                          </td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">
+                            {row.poDate || '—'}
                           </td>
                           <td className="px-3 py-3">
                             <span
@@ -773,7 +780,7 @@ export default function TrackPoPage() {
                             </div>
                           </td>
                         </tr>
-                        {open && <TrackPoExpandedRow row={row} colSpan={10} />}
+                        {open && <TrackPoExpandedRow row={row} colSpan={11} />}
                       </Fragment>
                     );
                   })

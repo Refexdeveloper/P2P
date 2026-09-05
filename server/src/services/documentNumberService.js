@@ -83,6 +83,20 @@ export function tempDraftPrNumber(userId) {
   return `DRAFT-TMP-${Number(userId) || 0}-${Date.now()}`;
 }
 
+/** Draft PO/WO placeholders — same pattern as PR drafts. */
+export function isDraftPlaceholderPoNumber(poNumber) {
+  const n = String(poNumber || '').trim().toUpperCase();
+  return n.startsWith('DRAFT-');
+}
+
+export function stableDraftPoNumber(poId) {
+  return `DRAFT-${Number(poId)}`;
+}
+
+export function tempDraftPoNumber(userId) {
+  return `DRAFT-TMP-${Number(userId) || 0}-${Date.now()}`;
+}
+
 /**
  * Highest #### already used for this doc type + entity code + FY
  * (keeps sequences in sync when drafts previously consumed official numbers).
@@ -103,7 +117,10 @@ async function maxExistingDocumentSeq(docType, entityCode, fyLabel, connection =
   const [rows] = await connection.query(
     `SELECT MAX(CAST(SUBSTRING_INDEX(po_number, '-', -1) AS UNSIGNED)) AS max_seq
      FROM purchase_orders
-     WHERE po_number LIKE ?`,
+     WHERE po_number LIKE ?
+       AND po_number NOT LIKE 'CS-%'
+       AND po_number NOT LIKE 'DRAFT-%'
+       AND COALESCE(purchase_type, 'purchase_order') <> 'sass'`,
     [`${prefix}%`]
   );
   return Number(rows[0]?.max_seq) || 0;

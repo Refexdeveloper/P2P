@@ -644,4 +644,26 @@ export async function runStartupMigrations() {
   } catch (err) {
     console.warn('SCM Manager default signature seed skipped:', err.message);
   }
+
+  try {
+    const { rewriteConsumedCloudSubscriptionPoNumbers } = await import('./sassWorkflow.js');
+    const result = await rewriteConsumedCloudSubscriptionPoNumbers();
+    console.log(
+      `Cloud Subscription PO rewrite: scanned=${result.scanned}, rewritten=${result.rewritten}, sequencesFixed=${result.sequencesFixed}`
+    );
+  } catch (err) {
+    console.warn('Cloud Subscription PO number rewrite skipped:', err.message);
+  }
+
+  try {
+    const { rewriteDraftPoNumbersToPlaceholders } = await import('./poService.js');
+    const draftFix = await rewriteDraftPoNumbersToPlaceholders();
+    if (draftFix.rewritten || draftFix.sequencesFixed) {
+      console.log(
+        `Draft PO number rewrite: scanned=${draftFix.scanned}, rewritten=${draftFix.rewritten}, sequencesFixed=${draftFix.sequencesFixed}`
+      );
+    }
+  } catch (err) {
+    console.warn('Draft PO number rewrite skipped:', err.message);
+  }
 }

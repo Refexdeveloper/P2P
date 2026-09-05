@@ -2594,7 +2594,7 @@ export default function CreatePRPage() {
                     {
                       id: 'sass' as const,
                       label: 'Cloud Subscription',
-                      hint: 'L1 → L2 Srivaths → Mugesh (invoice) → Accounts',
+                      hint: 'No PO number · L1 → L2 Srivaths → Mugesh → Accounts',
                     },
                   ]
                 ).map((opt) => (

@@ -18,6 +18,9 @@ import {
   normalizePurchaseType,
   purchaseTypeLabel,
   purchaseTypeToDocType,
+  isDraftPlaceholderPoNumber,
+  stableDraftPoNumber,
+  tempDraftPoNumber,
 } from './documentNumberService.js';
 import { resolveUserEntityScope, poEntityScopeSql } from '../utils/entityScope.js';
 import {
@@ -569,7 +572,9 @@ async function assertPoNumberAvailable(poNumber, excludeId, connection = pool, d
   if (dup.length) throw new Error(`${docLabel} number ${poNumber} already exists`);
 }
 
-/** Use the buyer-typed number when unique; otherwise keep the existing / generated number. */
+/** Use the buyer-typed number when unique; otherwise keep the existing / generated number.
+ * Draft placeholders (DRAFT-*) are not treated as official numbers.
+ */
 async function resolvePersistedPoNumber({
   requested,
   existingNumber,
@@ -581,14 +586,53 @@ async function resolvePersistedPoNumber({
 }) {
   const custom = normalizeRequestedPoNumber(requested);
   const current = String(existingNumber || '').trim() || null;
-  if (custom) {
+  const currentIsDraft = isDraftPlaceholderPoNumber(current);
+
+  // Ignore draft-looking custom values — official numbers only
+  if (custom && !isDraftPlaceholderPoNumber(custom)) {
     if (!current || custom.toLowerCase() !== current.toLowerCase()) {
       await assertPoNumberAvailable(custom, excludeId, connection, docLabel);
     }
     return custom;
   }
-  if (current) return current;
+  if (current && !currentIsDraft) return current;
   return generatePoNumber(entityId, purchaseType, connection);
+}
+
+/** Assign official PO/WO number when leaving draft (send to SCM Manager). */
+async function assignOfficialPoNumberIfNeeded({
+  poId,
+  entityId,
+  purchaseType,
+  currentPoNumber,
+  requested,
+  connection,
+  docLabel,
+}) {
+  if (!isDraftPlaceholderPoNumber(currentPoNumber) && String(currentPoNumber || '').trim()) {
+    // Already has an official number — keep unless a different custom is requested
+    if (requested && !isDraftPlaceholderPoNumber(requested)) {
+      return resolvePersistedPoNumber({
+        requested,
+        existingNumber: currentPoNumber,
+        entityId,
+        purchaseType,
+        excludeId: poId,
+        connection,
+        docLabel,
+      });
+    }
+    return String(currentPoNumber).trim();
+  }
+  return resolvePersistedPoNumber({
+    requested,
+    existingNumber: null,
+    entityId,
+    purchaseType,
+    excludeId: poId,
+    connection,
+    docLabel,
+  });
 }
 
 async function getRecommendedVendor(prId) {
@@ -1525,7 +1569,9 @@ export async function createPurchaseOrder(user, prId, body) {
 
   // Old / historical PO import: create only — no manager approval workflow
   const skipApproval = Boolean(body?.skipApproval || body?.legacyImport || body?.oldPoImport);
-  const requestedPoNumber = normalizeRequestedPoNumber(body?.poNumber || body?.existingPoNumber);
+  const requestedPoNumber = skipApproval
+    ? normalizeRequestedPoNumber(body?.poNumber || body?.existingPoNumber)
+    : null;
   const bodyVendorName = String(body?.vendorName || '').trim();
   const bodyVendorEmail = String(body?.vendorEmail || '').trim();
 
@@ -2175,17 +2221,23 @@ export async function savePurchaseOrderDraft(user, body = {}) {
 
     const docLabel = purchaseTypeLabel(purchaseType);
     let poNumber = existing?.po_number || null;
+    // Drafts never consume PO/WO sequence — keep or assign DRAFT-{id}
+    const forceDraftPlaceholder = true;
 
     if (existing) {
-      poNumber = await resolvePersistedPoNumber({
-        requested: body.poNumber || body.existingPoNumber,
-        existingNumber: existing.po_number,
-        entityId: entityIdForNumber || existing.entity_id,
-        purchaseType,
-        excludeId: existing.id,
-        connection: conn,
-        docLabel,
-      });
+      if (forceDraftPlaceholder) {
+        poNumber = stableDraftPoNumber(existing.id);
+      } else {
+        poNumber = await resolvePersistedPoNumber({
+          requested: body.poNumber || body.existingPoNumber,
+          existingNumber: existing.po_number,
+          entityId: entityIdForNumber || existing.entity_id,
+          purchaseType,
+          excludeId: existing.id,
+          connection: conn,
+          docLabel,
+        });
+      }
       await conn.query(
         `UPDATE purchase_orders SET
           po_number = ?,
@@ -2235,15 +2287,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       const prEntityId = Number(pr.entityId || body.entityId || 0);
       if (!prEntityId) throw new Error('PR has no entity. Set entity on the PR before saving a draft.');
 
-      poNumber = await resolvePersistedPoNumber({
-        requested: body.poNumber || body.existingPoNumber,
-        existingNumber: null,
-        entityId: prEntityId,
-        purchaseType,
-        excludeId: null,
-        connection: conn,
-        docLabel,
-      });
+      poNumber = tempDraftPoNumber(user.id);
       const [result] = await conn.query(
         `INSERT INTO purchase_orders
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
@@ -2285,17 +2329,11 @@ export async function savePurchaseOrderDraft(user, body = {}) {
         ]
       );
       savedPoId = result.insertId;
+      poNumber = stableDraftPoNumber(savedPoId);
+      await conn.query(`UPDATE purchase_orders SET po_number = ? WHERE id = ?`, [poNumber, savedPoId]);
       await persistDraftLineItems(conn, savedPoId, lineItems);
     } else {
-      poNumber = await resolvePersistedPoNumber({
-        requested: body.poNumber || body.existingPoNumber,
-        existingNumber: null,
-        entityId: entityIdForNumber,
-        purchaseType,
-        excludeId: null,
-        connection: conn,
-        docLabel,
-      });
+      poNumber = tempDraftPoNumber(user.id);
       const [result] = await conn.query(
         `INSERT INTO purchase_orders
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
@@ -2335,6 +2373,8 @@ export async function savePurchaseOrderDraft(user, body = {}) {
         ]
       );
       savedPoId = result.insertId;
+      poNumber = stableDraftPoNumber(savedPoId);
+      await conn.query(`UPDATE purchase_orders SET po_number = ? WHERE id = ?`, [poNumber, savedPoId]);
       await persistDraftLineItems(conn, savedPoId, lineItems);
     }
 
@@ -2392,12 +2432,83 @@ export async function savePurchaseOrderDraft(user, body = {}) {
   return po;
 }
 
+/**
+ * Convert draft POs that already consumed official PO-#### numbers back to DRAFT-{id}
+ * and realign document sequences.
+ */
+export async function rewriteDraftPoNumbersToPlaceholders(connection = pool) {
+  const [rows] = await connection.query(
+    `SELECT id, po_number, entity_id
+     FROM purchase_orders
+     WHERE status = 'draft'
+       AND po_number LIKE 'PO-%'
+       AND COALESCE(purchase_type, 'purchase_order') <> 'sass'`
+  );
+
+  let rewritten = 0;
+  for (const row of rows) {
+    const draftNo = stableDraftPoNumber(row.id);
+    try {
+      await connection.query(`UPDATE purchase_orders SET po_number = ?, updated_at = NOW() WHERE id = ?`, [
+        draftNo,
+        row.id,
+      ]);
+      rewritten += 1;
+      console.log(`Draft PO rewrite: ${row.po_number} → ${draftNo} (id=${row.id})`);
+    } catch (err) {
+      console.warn(`Draft PO rewrite skipped id=${row.id}:`, err.message);
+    }
+  }
+
+  const [seqRows] = await connection.query(
+    `SELECT dns.id, dns.doc_type, dns.fy_label, dns.last_seq, e.code, e.cost_center, e.name
+     FROM document_number_sequences dns
+     JOIN entity_masters e ON e.id = dns.entity_id
+     WHERE dns.doc_type IN ('PO', 'WO')`
+  );
+
+  let sequencesFixed = 0;
+  for (const seq of seqRows) {
+    const code =
+      String(seq.code || seq.cost_center || seq.name || 'ENT')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .slice(0, 10) || 'ENT';
+    const type = String(seq.doc_type || 'PO').toUpperCase();
+    const prefix = `${type}-${code}-${seq.fy_label}-`;
+    const [maxRows] = await connection.query(
+      `SELECT MAX(CAST(SUBSTRING_INDEX(po_number, '-', -1) AS UNSIGNED)) AS max_seq
+       FROM purchase_orders
+       WHERE po_number LIKE ?
+         AND po_number NOT LIKE 'CS-%'
+         AND po_number NOT LIKE 'DRAFT-%'
+         AND COALESCE(purchase_type, 'purchase_order') <> 'sass'`,
+      [`${prefix}%`]
+    );
+    const maxSeq = Number(maxRows[0]?.max_seq) || 0;
+    const current = Number(seq.last_seq) || 0;
+    if (maxSeq !== current) {
+      await connection.query(`UPDATE document_number_sequences SET last_seq = ? WHERE id = ?`, [
+        maxSeq,
+        seq.id,
+      ]);
+      sequencesFixed += 1;
+    }
+  }
+
+  return { scanned: rows.length, rewritten, sequencesFixed };
+}
+
 export async function listPurchaseOrders(
   user,
   { pendingOnly = false, buyerVerifyOnly = false, approvalQueue = false } = {}
 ) {
   let sql = `SELECT po.* FROM purchase_orders po WHERE 1=1`;
   const params = [];
+
+  // Cloud Subscription shells are not real POs — never list in SCM PO queues
+  sql += ` AND COALESCE(po.purchase_type, 'purchase_order') <> 'sass'`;
+  sql += ` AND po.po_number NOT LIKE 'CS-%'`;
 
   if (buyerVerifyOnly) {
     sql += ` AND po.status = 'pending_buyer_verify'`;
@@ -2553,12 +2664,14 @@ export async function listTrackPurchaseOrders(
       pr.entity_id AS entity_id,
       COALESCE(e.name, '') COLLATE utf8mb4_unicode_ci AS entity_name,
       pr.required_date AS required_date,
+      CAST(NULL AS DATETIME) AS po_date,
       COALESCE(pr.submitted_at, pr.created_at) AS sort_at
     FROM purchase_requests pr
     JOIN departments d ON d.id = pr.department_id
     JOIN users u ON u.id = pr.requester_id
     LEFT JOIN entity_masters e ON e.id = pr.entity_id
-    WHERE (
+    WHERE COALESCE(pr.purchase_type, 'purchase_order') <> 'sass'
+    AND (
       pr.status = ?
       OR (
         pr.status = ?
@@ -2598,6 +2711,7 @@ export async function listTrackPurchaseOrders(
       COALESCE(po.entity_id, pr.entity_id) AS entity_id,
       COALESCE(po.entity, e.name, '') COLLATE utf8mb4_unicode_ci AS entity_name,
       po.expected_delivery_date AS required_date,
+      COALESCE(po.po_date, po.created_at) AS po_date,
       po.created_at AS sort_at
     FROM purchase_orders po
     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
@@ -2605,6 +2719,7 @@ export async function listTrackPurchaseOrders(
     LEFT JOIN users u ON u.id = pr.requester_id
     LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)
     WHERE 1=1
+    AND COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') <> 'sass'
     ${poTypeFilter}
     ${poEntityFilter}
     ${poDeptFilter}
@@ -2732,6 +2847,7 @@ export async function listTrackPurchaseOrders(
       entityId: r.entity_id != null ? Number(r.entity_id) : null,
       entityName: r.entity_name || '',
       requiredDate: formatDate(r.required_date),
+      poDate: formatDate(r.po_date),
       createdAt: formatDate(r.sort_at),
       kind: r.kind,
     };
@@ -2754,7 +2870,8 @@ async function getTrackListStats(user) {
   const readySql = `
     SELECT COUNT(*) AS cnt
     FROM purchase_requests pr
-    WHERE (
+    WHERE COALESCE(pr.purchase_type, 'purchase_order') <> 'sass'
+    AND (
       pr.status = ?
       OR (
         pr.status = ?
@@ -2785,7 +2902,7 @@ async function getTrackListStats(user) {
       SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_count,
       SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
     FROM purchase_orders
-    WHERE 1=1
+    WHERE COALESCE(purchase_type, 'purchase_order') <> 'sass'
   `;
   const poParams = [];
 
@@ -3687,15 +3804,35 @@ export async function updatePurchaseOrder(user, poId, body) {
         ? body.referencePoNumber?.trim() || null
         : existing.reference_po_number;
 
-    const nextPoNumber = await resolvePersistedPoNumber({
-      requested: body.poNumber || body.existingPoNumber,
-      existingNumber: existing.po_number,
-      entityId: existing.entity_id,
-      purchaseType: normalizePurchaseType(body.purchaseType || existing.purchase_type),
-      excludeId: poId,
-      connection: conn,
-      docLabel: purchaseTypeLabel(normalizePurchaseType(body.purchaseType || existing.purchase_type)),
-    });
+    const purchaseTypeForNumber = normalizePurchaseType(body.purchaseType || existing.purchase_type);
+    const docLabelForNumber = purchaseTypeLabel(purchaseTypeForNumber);
+
+    // When buyer sends draft → SCM Manager, assign official PO/WO number (draft placeholders only)
+    let nextPoNumber;
+    if (canBuyerRevise) {
+      nextPoNumber = await assignOfficialPoNumberIfNeeded({
+        poId,
+        entityId: existing.entity_id || (await resolveEntityIdFromPoBody(body, existing)),
+        purchaseType: purchaseTypeForNumber,
+        currentPoNumber: existing.po_number,
+        requested:
+          body.skipApproval || body.legacyImport || body.oldPoImport
+            ? body.poNumber || body.existingPoNumber
+            : null,
+        connection: conn,
+        docLabel: docLabelForNumber,
+      });
+    } else {
+      nextPoNumber = await resolvePersistedPoNumber({
+        requested: body.poNumber || body.existingPoNumber,
+        existingNumber: existing.po_number,
+        entityId: existing.entity_id,
+        purchaseType: purchaseTypeForNumber,
+        excludeId: poId,
+        connection: conn,
+        docLabel: docLabelForNumber,
+      });
+    }
 
     await conn.query(
       `UPDATE purchase_orders SET
@@ -4377,7 +4514,7 @@ export async function getCfoPoInsights(user = null, filters = {}) {
   }
 
   const joinSql = `${poScope.join} ${extraJoins.join(' ')}`.trim();
-  const whereSql = `${poScope.where}${extraWhere.join('')}`;
+  const whereSql = `${poScope.where}${extraWhere.join('')} AND COALESCE(po.purchase_type, 'purchase_order') <> 'sass' AND po.po_number NOT LIKE 'CS-%'`;
   const queryParams = [...poScope.params, ...extraParams];
 
   const [[kpi]] = await pool.query(

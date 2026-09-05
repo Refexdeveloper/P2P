@@ -89,12 +89,33 @@ async function fetchLatestPoMetaByPrIds(prIds) {
 }
 
 function applyRequesterDisplay(pr, poMeta = null) {
+  const isSass = isSassPurchaseType(pr.purchaseType || pr.purchase_type);
+  // Cloud Subscription uses an internal invoice shell only — never expose as a PO
   const display = resolveRequesterPrDisplay(
     pr.status,
     pr.prFlow === 'functional' ? 'functional' : 'standard',
     pr.vendorSelection === 'own' ? 'own' : 'scm',
-    poMeta
+    isSass ? null : poMeta,
+    pr.purchaseType || pr.purchase_type || 'purchase_order'
   );
+  if (isSass) {
+    return {
+      ...pr,
+      statusFrontend: display.statusFrontend,
+      statusUI: mapStatusToManagerUI(
+        pr.status,
+        pr.prFlow === 'functional' ? 'functional' : 'standard',
+        pr.vendorSelection === 'own' ? 'own' : 'scm',
+        pr.purchaseType || pr.purchase_type || 'sass'
+      ),
+      poId: null,
+      poNumber: '',
+      poStatus: '',
+      poDocumentAvailable: false,
+      poSentBack: false,
+      hasPurchaseOrder: false,
+    };
+  }
   return {
     ...pr,
     statusFrontend: display.statusFrontend,

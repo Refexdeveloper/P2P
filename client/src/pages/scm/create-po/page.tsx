@@ -1515,37 +1515,20 @@ export default function CreatePOPage() {
     [manualEntityId, entityOptions]
   );
 
-  /** When entity / PO|WO type changes on manual create, fill the next document number. */
+  /** Manual create: show draft placeholder until sent; do not pre-fill next PO number. */
   useEffect(() => {
     if (!isManualPoFlow || isEditMode) return;
-    // CSV / reference import keeps its own number
-    if (importedPoNumber.trim()) return;
-    const entityId = Number(manualEntityId);
-    if (!entityId) {
-      setPoNumber('');
+    if (importedPoNumber.trim()) {
+      setPoNumber(importedPoNumber.trim());
       setPoNumberTouched(false);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await poApi.nextNumber({
-          entityId,
-          purchaseType: documentType,
-        });
-        if (cancelled) return;
-        const next = String(res.data?.poNumber || '').trim();
-        if (!next) return;
-        setPoNumber(next);
-        setPoNumberTouched(false);
-      } catch {
-        /* keep current field */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isManualPoFlow, isEditMode, manualEntityId, documentType, importedPoNumber]);
+    // Keep empty / draft label — official number assigned on send to SCM Manager
+    if (!editPoId && !createdPoId) {
+      setPoNumber('');
+      setPoNumberTouched(false);
+    }
+  }, [isManualPoFlow, isEditMode, manualEntityId, documentType, importedPoNumber, editPoId, createdPoId]);
 
   const loadEntityOptions = useCallback(async () => {
     try {
@@ -3764,11 +3747,26 @@ export default function CreatePOPage() {
                         value={poNumber}
                         onChange={(e) => handlePoNumberChange(e.target.value)}
                         onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
-                        placeholder="Select entity to auto-fill"
+                        readOnly={!importedPoNumber.trim() && (poEditStatus === 'draft' || !poEditStatus)}
+                        placeholder={
+                          importedPoNumber.trim()
+                            ? 'Imported number'
+                            : 'Assigned when sent to SCM Manager'
+                        }
                         maxLength={40}
-                        className="w-full px-3.5 py-2.5 border border-teal-200 rounded-lg text-sm font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-teal-50/40"
+                        className={`w-full px-3.5 py-2.5 border border-teal-200 rounded-lg text-sm font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-teal-50/40 ${
+                          !importedPoNumber.trim() && (poEditStatus === 'draft' || !poEditStatus)
+                            ? 'cursor-default'
+                            : ''
+                        }`}
                       />
-                      <p className="text-[11px] text-gray-500 mt-1">Leave blank to auto-generate on first save</p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        {poNumber.toUpperCase().startsWith('DRAFT-')
+                          ? 'Draft number — official PO/WO number is generated when you send to SCM Manager'
+                          : importedPoNumber.trim()
+                            ? 'Imported / historical number'
+                            : 'Official number is generated when sent to SCM Manager (Save Draft keeps a draft number)'}
+                      </p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">

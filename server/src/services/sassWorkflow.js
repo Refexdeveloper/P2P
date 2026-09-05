@@ -8,7 +8,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
 import { ensureApproverUser } from './refexOneService.js';
-import { nextDocumentNumber } from './documentNumberService.js';
 import { formatDateTime } from '../utils/constants.js';
 import { uploadToGcs, gcsEnabled } from './gcsStorage.js';
 
@@ -138,14 +137,14 @@ export async function createSassInvoiceUploadTask(conn, prId, requesterId) {
 }
 
 /**
- * After Mugesh approval: create a shell PO + invoice stub.
- * Invoice is uploaded by Mugesh on the same approval step (no requester task).
+ * After Mugesh approval: create an internal shell row + invoice stub.
+ * Cloud Subscription does NOT consume PO/WO document numbers and has no PO document.
  */
 export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
   const createRequesterTask = options.createRequesterTask === true;
   const prId = Number(pr.id);
   const [existingPo] = await conn.query(
-    `SELECT id FROM purchase_orders WHERE pr_id = ? ORDER BY id DESC LIMIT 1`,
+    `SELECT id, po_number FROM purchase_orders WHERE pr_id = ? ORDER BY id DESC LIMIT 1`,
     [prId]
   );
   let poId = existingPo[0]?.id || null;
@@ -159,9 +158,10 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
   const subtotal = Number(pr.total_amount) || 0;
   const taxAmount = 0;
   const grandTotal = subtotal;
+  // Placeholder only — must not call nextDocumentNumber('PO') / consume PO sequence
+  const cloudRef = `CS-${prId}`;
 
   if (!poId) {
-    const poNumber = await nextDocumentNumber('PO', pr.entity_id || null, conn);
     const [poResult] = await conn.query(
       `INSERT INTO purchase_orders
        (po_number, pr_id, vendor_name, vendor_email, created_by,
@@ -169,7 +169,7 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
         entity_id, currency, subtotal, tax_amount, grand_total, status, gst_percentage)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'short_po', 'sass', ?, ?, ?, ?, ?, 'invoice_entry', 0)`,
       [
-        poNumber,
+        cloudRef,
         prId,
         String(pr.vendor_name || 'Cloud Subscription Vendor').slice(0, 255) || 'Cloud Subscription Vendor',
         'sass-invoice@placeholder.local',
@@ -206,8 +206,20 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
       );
     }
   } else {
+    // If an older SASS row already took a real PO-#### number, rewrite to CS-{prId}
+    const existingNum = String(existingPo[0]?.po_number || '');
+    if (/^PO-/i.test(existingNum) || !existingNum.startsWith('CS-')) {
+      try {
+        await conn.query(`UPDATE purchase_orders SET po_number = ?, updated_at = NOW() WHERE id = ?`, [
+          cloudRef,
+          poId,
+        ]);
+      } catch {
+        /* keep existing if unique conflict */
+      }
+    }
     await conn.query(
-      `UPDATE purchase_orders SET status = 'invoice_entry', updated_at = NOW() WHERE id = ?`,
+      `UPDATE purchase_orders SET status = 'invoice_entry', purchase_type = 'sass', updated_at = NOW() WHERE id = ?`,
       [poId]
     );
   }
@@ -470,4 +482,101 @@ export async function resolveSassInvoiceUploadedRecipients(prId) {
     cc,
     recipients,
   };
+}
+
+/**
+ * One-time / idempotent: rewrite Cloud Subscription rows that already consumed real
+ * PO-Entity-FY-#### numbers → CS-{prId}, then realign PO sequences to max remaining.
+ */
+export async function rewriteConsumedCloudSubscriptionPoNumbers(connection = pool) {
+  const [rows] = await connection.query(
+    `SELECT po.id, po.pr_id, po.po_number, po.entity_id, po.purchase_type,
+            pr.purchase_type AS pr_purchase_type
+     FROM purchase_orders po
+     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+     WHERE (
+         po.po_number LIKE 'PO-%'
+         OR (po.po_number NOT LIKE 'CS-%' AND po.po_number NOT LIKE 'DRAFT-%')
+       )
+       AND (
+         COALESCE(po.purchase_type, '') = 'sass'
+         OR COALESCE(pr.purchase_type, '') = 'sass'
+       )`
+  );
+
+  let rewritten = 0;
+
+  for (const row of rows) {
+    const prId = Number(row.pr_id) || 0;
+    const cloudRef = prId > 0 ? `CS-${prId}` : `CS-PO-${row.id}`;
+    const oldNumber = String(row.po_number || '');
+    if (oldNumber === cloudRef || oldNumber.startsWith('CS-')) continue;
+    try {
+      await connection.query(
+        `UPDATE purchase_orders
+         SET po_number = ?, purchase_type = 'sass', updated_at = NOW()
+         WHERE id = ?`,
+        [cloudRef, row.id]
+      );
+      rewritten += 1;
+      console.log(`Cloud Subscription PO rewrite: ${oldNumber} → ${cloudRef} (id=${row.id})`);
+    } catch (err) {
+      try {
+        const alt = `${cloudRef}-${row.id}`;
+        await connection.query(
+          `UPDATE purchase_orders
+           SET po_number = ?, purchase_type = 'sass', updated_at = NOW()
+           WHERE id = ?`,
+          [alt, row.id]
+        );
+        rewritten += 1;
+        console.log(`Cloud Subscription PO rewrite: ${oldNumber} → ${alt} (id=${row.id})`);
+      } catch (err2) {
+        console.warn(
+          `Cloud Subscription PO rewrite skipped id=${row.id} (${oldNumber}):`,
+          err2.message || err.message
+        );
+      }
+    }
+  }
+
+  // Always realign PO sequences so freed numbers are available again
+  const [seqRows] = await connection.query(
+    `SELECT dns.id, dns.entity_id, dns.fy_label, dns.last_seq, e.code, e.cost_center, e.name
+     FROM document_number_sequences dns
+     JOIN entity_masters e ON e.id = dns.entity_id
+     WHERE dns.doc_type = 'PO'`
+  );
+
+  let sequencesFixed = 0;
+  for (const seq of seqRows) {
+    const code =
+      String(seq.code || seq.cost_center || seq.name || 'ENT')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .slice(0, 10) || 'ENT';
+    const prefix = `PO-${code}-${seq.fy_label}-`;
+    const [maxRows] = await connection.query(
+      `SELECT MAX(CAST(SUBSTRING_INDEX(po_number, '-', -1) AS UNSIGNED)) AS max_seq
+       FROM purchase_orders
+       WHERE po_number LIKE ?
+         AND po_number NOT LIKE 'CS-%'
+         AND COALESCE(purchase_type, 'purchase_order') <> 'sass'`,
+      [`${prefix}%`]
+    );
+    const maxSeq = Number(maxRows[0]?.max_seq) || 0;
+    const current = Number(seq.last_seq) || 0;
+    if (maxSeq !== current) {
+      await connection.query(`UPDATE document_number_sequences SET last_seq = ? WHERE id = ?`, [
+        maxSeq,
+        seq.id,
+      ]);
+      sequencesFixed += 1;
+      console.log(
+        `PO sequence realigned ${prefix}: last_seq ${current} → ${maxSeq}`
+      );
+    }
+  }
+
+  return { scanned: rows.length, rewritten, sequencesFixed };
 }
