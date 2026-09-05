@@ -69,8 +69,8 @@ export default function DashboardFilters({
   const clearTo = resetValue || EMPTY;
 
   return (
-    <div className="bg-white border border-[#EEF0F5] rounded-[16px] px-4 py-3 mb-5">
-      <div className="flex items-end gap-3 overflow-x-auto pb-0.5">
+    <div className="bg-white border border-[#EEF0F5] rounded-[16px] px-4 py-3 mb-5 overflow-visible">
+      <div className="flex items-end gap-3 flex-wrap">
         <PeriodPicker
           dateFrom={value.dateFrom}
           dateTo={value.dateTo}
