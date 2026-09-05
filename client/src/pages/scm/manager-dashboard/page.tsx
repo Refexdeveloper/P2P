@@ -51,17 +51,16 @@ export default function ScmManagerDashboardPage() {
           s === 'pending_approval'
         );
       };
+      const isRejectedLike = (status?: string) => {
+        const s = String(status || '').toLowerCase();
+        return s === 'po rejected' || s === 'rejected';
+      };
       const isApprovedLike = (status?: string) => {
         const s = String(status || '');
-        return (
-          s === 'PO Approved' ||
-          s === 'Sent to Vendor' ||
-          s === 'Pending Vendor Acceptance' ||
-          s === 'Vendor Accepted' ||
-          s === 'Partially Accepted' ||
-          s === 'SCM Manager Signed — Buyer Verify' ||
-          s === 'Pending Buyer Verify'
-        );
+        if (!s || isPendingSign(s) || isRejectedLike(s)) return false;
+        const lower = s.toLowerCase();
+        if (lower === 'draft' || lower === 'cancelled' || lower === 'imported') return false;
+        return true;
       };
 
       const pendingFromApi = (pendingRes.data as PoRow[]) || [];
@@ -71,7 +70,7 @@ export default function ScmManagerDashboardPage() {
           ? pendingFromApi
           : allPos.filter((p) => isPendingSign(p.status));
       const approved = allPos.filter((p) => isApprovedLike(p.status));
-      const rejected = allPos.filter((p) => p.status === 'PO Rejected');
+      const rejected = allPos.filter((p) => isRejectedLike(p.status));
 
       setPendingPos(pending);
       setApprovedPos(approved.length);
@@ -82,7 +81,7 @@ export default function ScmManagerDashboardPage() {
         tasks.filter((t) => {
           const s = String(t.status || '').toLowerCase();
           return !s || s === 'pending_approval' || s === 'pending';
-        }).length || tasks.length
+        }).length
       );
     } finally {
       setLoading(false);
@@ -286,11 +285,11 @@ export default function ScmManagerDashboardPage() {
               Open queue →
             </Link>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
             {pendingPos.length === 0 ? (
               <p className="px-5 py-8 text-sm text-gray-400 text-center">No POs pending your approval</p>
             ) : (
-              pendingPos.slice(0, 5).map((po) => (
+              pendingPos.map((po) => (
                 <button
                   key={po.id || po.poNumber}
                   type="button"
@@ -310,6 +309,16 @@ export default function ScmManagerDashboardPage() {
               ))
             )}
           </div>
+          {pendingPos.length > 0 && (
+            <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-600 flex items-center justify-between">
+              <span>
+                {pendingPos.length} pending PO{pendingPos.length !== 1 ? 's' : ''}
+              </span>
+              <Link to="/scm/po-approval" className="font-semibold text-teal-700 hover:text-teal-900">
+                View all →
+              </Link>
+            </div>
+          )}
           {rejectedPos > 0 && (
             <div className="px-5 py-3 bg-red-50 border-t border-red-100 text-xs text-red-700">
               {rejectedPos} rejected PO{rejectedPos !== 1 ? 's' : ''} in history
@@ -338,11 +347,11 @@ export default function ScmManagerDashboardPage() {
               Open queue →
             </Link>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
             {rfqPending.length === 0 ? (
               <p className="px-5 py-8 text-sm text-gray-400 text-center">No RFQ entry pending</p>
             ) : (
-              rfqPending.slice(0, 5).map((item) => (
+              rfqPending.map((item) => (
                 <button
                   key={item.prId}
                   type="button"
@@ -362,6 +371,16 @@ export default function ScmManagerDashboardPage() {
               ))
             )}
           </div>
+          {rfqPending.length > 0 && (
+            <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-600 flex items-center justify-between">
+              <span>
+                {rfqPending.length} RFQ entr{rfqPending.length !== 1 ? 'ies' : 'y'} pending
+              </span>
+              <Link to="/rfq-approval" className="font-semibold text-teal-700 hover:text-teal-900">
+                View all →
+              </Link>
+            </div>
+          )}
         </div>
       </div>
 

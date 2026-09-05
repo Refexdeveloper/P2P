@@ -2402,7 +2402,8 @@ export async function listPurchaseOrders(
   if (buyerVerifyOnly) {
     sql += ` AND po.status = 'pending_buyer_verify'`;
   } else if (approvalQueue || (user.role === 'SCM Manager' && pendingOnly)) {
-    // Manager PO Sign & Approve: workflow POs only (exclude imported/draft noise)
+    // Manager PO Sign & Approve: workflow POs only (exclude imported/draft noise).
+    // Include post-sign lifecycle statuses so "Approved" counts stay accurate after GRN/invoice/payment.
     if (pendingOnly) {
       sql += ` AND po.status = 'pending_approval'`;
     } else {
@@ -2411,7 +2412,13 @@ export async function listPurchaseOrders(
         'pending_buyer_verify',
         'approved',
         'rejected',
-        'sent_to_vendor'
+        'sent_to_vendor',
+        'awaiting_grn',
+        'grn_completed',
+        'invoice_entry',
+        'pending_accounts_approval',
+        'approved_for_payment',
+        'paid'
       )`;
     }
   } else if (user.role === 'SCM Buyer' && !canEditAnyScmPurchaseOrder(user)) {
@@ -2639,7 +2646,11 @@ export async function listTrackPurchaseOrders(
   if (statusFilter === 'pending') {
     whereExtra += ` AND t.status_raw = 'pending_approval'`;
   } else if (statusFilter === 'approved') {
-    whereExtra += ` AND t.status_raw IN ('pending_buyer_verify', 'approved', 'sent_to_vendor')`;
+    whereExtra += ` AND t.status_raw IN (
+      'pending_buyer_verify', 'approved', 'sent_to_vendor',
+      'awaiting_grn', 'grn_completed', 'invoice_entry',
+      'pending_accounts_approval', 'approved_for_payment', 'paid'
+    )`;
   } else if (statusFilter === 'rejected') {
     whereExtra += ` AND t.status_raw = 'rejected'`;
   } else if (statusFilter === 'sent') {
@@ -2765,7 +2776,11 @@ async function getTrackListStats(user) {
     SELECT
       COUNT(*) AS po_total,
       SUM(CASE WHEN status = 'pending_approval' THEN 1 ELSE 0 END) AS pending,
-      SUM(CASE WHEN status IN ('pending_buyer_verify', 'approved', 'sent_to_vendor') THEN 1 ELSE 0 END) AS approved,
+      SUM(CASE WHEN status IN (
+        'pending_buyer_verify', 'approved', 'sent_to_vendor',
+        'awaiting_grn', 'grn_completed', 'invoice_entry',
+        'pending_accounts_approval', 'approved_for_payment', 'paid'
+      ) THEN 1 ELSE 0 END) AS approved,
       SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
       SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_count,
       SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
