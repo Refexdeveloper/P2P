@@ -728,6 +728,7 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
             },
             recipients,
             uploaderName: user?.name || 'Mugesh',
+            requesterName: notifyPr.requesterName || notifyPr.requester_name,
             attachments,
           });
         }

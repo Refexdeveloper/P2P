@@ -1349,16 +1349,25 @@ export async function sendVendorInvoiceRequestNotification(po, invoice, { portal
 }
 
 /**
- * Cloud Subscription — after requester uploads invoice, notify L1 + Srivaths + Mugesh.
+ * Cloud Subscription — after Mugesh uploads invoice, notify
+ * Requester + L1 + L2 + accounts_rgml_refexev + itdev.
  */
 export async function sendSassInvoiceUploadedNotification({
   pr,
   invoice,
   recipients = [],
-  uploaderName = 'Requester',
+  uploaderName = 'Mugesh',
+  requesterName = null,
   attachments = [],
 }) {
   if (!recipients.length) return null;
+
+  const greetRequester =
+    requesterName ||
+    pr?.requesterName ||
+    pr?.requester_name ||
+    pr?.requester ||
+    null;
 
   for (const recipient of recipients) {
     const email = String(recipient?.email || '').trim();
@@ -1367,7 +1376,8 @@ export async function sendSassInvoiceUploadedNotification({
       pr,
       invoice,
       uploaderName,
-      recipientName: recipient.name || email.split('@')[0] || 'Approver',
+      recipientName: recipient.name || email.split('@')[0] || 'Team',
+      requesterName: greetRequester,
       appBaseUrl: getAppBaseUrl(),
     });
     await sendMailToRecipients([email], subject, html, text, attachments, {
@@ -1378,6 +1388,7 @@ export async function sendSassInvoiceUploadedNotification({
         invoiceNumber: invoice?.invoiceNumber || invoice?.invoice_number || null,
         invoiceFileName: invoice?.invoiceFileName || invoice?.fileName || null,
         recipientName: recipient.name || null,
+        requesterName: greetRequester,
       },
     });
   }

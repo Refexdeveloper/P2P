@@ -2893,7 +2893,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
         isFunctional ? 'User Approval (chain complete)' : `${actingRole} Approval`
       );
     } else if (isSass && actingRole === 'CFO' && action === 'approve') {
-      // Mugesh approved + uploaded invoice → notify Requester, L1, L2, itdev (never requester task)
+      // Mugesh approved + uploaded invoice → notify Requester, L1, L2, accounts mailbox, itdev
       try {
         const { pr: notifyPr, recipients } = await resolveSassInvoiceUploadedRecipients(prId);
         const attachments = [];
@@ -2910,6 +2910,8 @@ export async function processApproval(user, prId, action, remarks, options = {})
               title: notifyPr.title || updatedPr.title,
               currency: notifyPr.currency || updatedPr.currency || 'INR',
               totalAmount: notifyPr.totalAmount ?? updatedPr.totalAmount,
+              requesterName:
+                notifyPr.requesterName || updatedPr.requester || updatedPr.requesterName,
             },
             invoice: {
               invoiceNumber: sassInvoiceUploadMeta?.invoiceNumber,
@@ -2919,6 +2921,8 @@ export async function processApproval(user, prId, action, remarks, options = {})
             },
             recipients,
             uploaderName: user?.name || SASS_MUGESH_NAME,
+            requesterName:
+              notifyPr.requesterName || updatedPr.requester || updatedPr.requesterName,
             attachments,
           });
         }

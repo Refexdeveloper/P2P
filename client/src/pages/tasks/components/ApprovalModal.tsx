@@ -267,7 +267,7 @@ export default function ApprovalModal({
               <p className="text-sm font-semibold text-teal-900">Upload invoice</p>
               <p className="text-xs text-teal-800 leading-relaxed">
                 Cloud Subscription: Mugesh uploads the invoice here. After submit, mail goes to
-                Requester, L1, L2 (Srivaths), and itdev with the invoice file.
+                Requester, L1, L2 (Srivaths), and accounts_rgml_refexev@refex.co.in.
               </p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">

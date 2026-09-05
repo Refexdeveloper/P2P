@@ -363,9 +363,11 @@ export async function completeSassInvoiceUploadTask(connOrPool, prId) {
 }
 
 export const SASS_ITDEV_NOTIFY_EMAIL = 'itdev@refex.co.in';
+export const SASS_ACCOUNTS_NOTIFY_EMAIL = 'accounts_rgml_refexev@refex.co.in';
 
 /**
- * After Mugesh uploads invoice — notify Requester, L1, L2 (Srivaths), itdev.
+ * After Mugesh uploads invoice — notify:
+ * Requester, L1 (user approver), L2 (Srivaths), Accounts (accounts_rgml_refexev), itdev.
  */
 export async function resolveSassInvoiceUploadedRecipients(prId) {
   const [prRows] = await pool.query(
@@ -400,7 +402,7 @@ export async function resolveSassInvoiceUploadedRecipients(prId) {
   // Requester
   if (pr.requester_email) push(pr.requester_email, pr.requester_name);
 
-  // L1 — prefer first HOD approve on this PR
+  // L1 / User Approver — prefer first HOD approve on this PR
   const [l1Hist] = await pool.query(
     `SELECT u.email, u.name
      FROM pr_approvals pa
@@ -434,8 +436,11 @@ export async function resolveSassInvoiceUploadedRecipients(prId) {
     }
   }
 
-  // L2 Srivaths + IT Dev
+  // L2 Srivaths
   push(SASS_L2_EMAIL, SASS_L2_NAME);
+
+  // Accounts team mailbox + IT Dev
+  push(SASS_ACCOUNTS_NOTIFY_EMAIL, 'Accounts');
   push(SASS_ITDEV_NOTIFY_EMAIL, 'IT Dev');
 
   return {
@@ -452,6 +457,8 @@ export async function resolveSassInvoiceUploadedRecipients(prId) {
       vendorName: pr.vendor_name || '',
       vendor_name: pr.vendor_name || '',
       justification: pr.justification || '',
+      requesterName: pr.requester_name || '',
+      requester_name: pr.requester_name || '',
     },
     recipients,
   };
