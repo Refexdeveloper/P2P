@@ -2,9 +2,8 @@ import { escapeHtml, formatCurrency, formatEntity } from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 /**
- * Mail after Mugesh uploads Cloud Subscription invoice —
- * sent to Requester, L1 (user approver), L2 (Srivaths),
- * accounts_rgml_refexev@refex.co.in, and itdev@refex.co.in.
+ * Mail after Mugesh uploads Cloud Subscription invoice.
+ * To: Requester · Cc: L1, L2 (Srivaths), accounts_rgml_refexev@refex.co.in, itdev@refex.co.in
  */
 export function buildSassInvoiceUploadedEmail({
   pr,

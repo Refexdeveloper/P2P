@@ -366,7 +366,8 @@ export const SASS_ACCOUNTS_NOTIFY_EMAIL = 'accounts_rgml_refexev@refex.co.in';
 
 /**
  * After Mugesh uploads invoice — notify:
- * Requester, L1 (user approver), L2 (Srivaths), Accounts (accounts_rgml_refexev), itdev.
+ * To: Requester
+ * Cc: L1 (user approver), L2 (Srivaths), Accounts (accounts_rgml_refexev), itdev
  */
 export async function resolveSassInvoiceUploadedRecipients(prId) {
   const [prRows] = await pool.query(
@@ -385,23 +386,28 @@ export async function resolveSassInvoiceUploadedRecipients(prId) {
     [prId]
   );
   const pr = prRows[0];
-  if (!pr) return { pr: null, recipients: [] };
+  if (!pr) return { pr: null, to: null, cc: [], recipients: [] };
 
-  const recipients = [];
   const seen = new Set();
-  const push = (email, name) => {
+  const make = (email, name) => {
     const e = String(email || '')
       .trim()
       .toLowerCase();
-    if (!e || seen.has(e)) return;
+    if (!e || seen.has(e)) return null;
     seen.add(e);
-    recipients.push({ email: e, name: name || e.split('@')[0] });
+    return { email: e, name: name || e.split('@')[0] };
   };
 
-  // Requester
-  if (pr.requester_email) push(pr.requester_email, pr.requester_name);
+  // To: Requester only
+  const to = pr.requester_email ? make(pr.requester_email, pr.requester_name) : null;
 
-  // L1 / User Approver — prefer first HOD approve on this PR
+  const cc = [];
+  const pushCc = (email, name) => {
+    const row = make(email, name);
+    if (row) cc.push(row);
+  };
+
+  // Cc: L1 / User Approver — prefer first HOD approve on this PR
   const [l1Hist] = await pool.query(
     `SELECT u.email, u.name
      FROM pr_approvals pa
@@ -414,9 +420,9 @@ export async function resolveSassInvoiceUploadedRecipients(prId) {
     [prId]
   );
   if (l1Hist[0]?.email) {
-    push(l1Hist[0].email, l1Hist[0].name);
+    pushCc(l1Hist[0].email, l1Hist[0].name);
   } else if (pr.approval_user_email) {
-    push(pr.approval_user_email, pr.approval_user_name);
+    pushCc(pr.approval_user_email, pr.approval_user_name);
   } else {
     let chain = [];
     try {
@@ -431,16 +437,16 @@ export async function resolveSassInvoiceUploadedRecipients(prId) {
         `SELECT email, name FROM users WHERE id = ? AND is_active = 1 LIMIT 1`,
         [firstId]
       );
-      if (uRows[0]?.email) push(uRows[0].email, uRows[0].name);
+      if (uRows[0]?.email) pushCc(uRows[0].email, uRows[0].name);
     }
   }
 
-  // L2 Srivaths
-  push(SASS_L2_EMAIL, SASS_L2_NAME);
+  // Cc: L2 Srivaths, Accounts mailbox, IT Dev
+  pushCc(SASS_L2_EMAIL, SASS_L2_NAME);
+  pushCc(SASS_ACCOUNTS_NOTIFY_EMAIL, 'Accounts');
+  pushCc(SASS_ITDEV_NOTIFY_EMAIL, 'IT Dev');
 
-  // Accounts team mailbox + IT Dev
-  push(SASS_ACCOUNTS_NOTIFY_EMAIL, 'Accounts');
-  push(SASS_ITDEV_NOTIFY_EMAIL, 'IT Dev');
+  const recipients = to ? [to, ...cc] : [...cc];
 
   return {
     pr: {
@@ -458,7 +464,10 @@ export async function resolveSassInvoiceUploadedRecipients(prId) {
       justification: pr.justification || '',
       requesterName: pr.requester_name || '',
       requester_name: pr.requester_name || '',
+      requesterEmail: pr.requester_email || '',
     },
+    to,
+    cc,
     recipients,
   };
 }

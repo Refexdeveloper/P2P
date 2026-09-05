@@ -456,7 +456,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
       ...logCtx,
       status: 'skipped',
       toAddresses: '',
-      ccAddresses: '',
+      ccAddresses: mailOptions.cc || [],
       bccAddresses: mailOptions.bcc || [],
       subject,
       errorMessage: 'No recipients',
@@ -468,6 +468,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
     ...logCtx,
     status: 'queued',
     toAddresses: toList,
+    ccAddresses: mailOptions.cc || [],
     bccAddresses: mailOptions.bcc || [],
     subject,
   });
@@ -494,6 +495,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
     const info = await transport.sendMail({
       from: getFromAddress(),
       to: toList.join(', '),
+      cc: mailOptions.cc?.length ? mailOptions.cc.join(', ') : undefined,
       bcc: mailOptions.bcc?.length ? mailOptions.bcc.join(', ') : undefined,
       subject,
       text,
@@ -501,7 +503,9 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
       attachments: attachments?.length ? attachments : undefined,
     });
     await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
-    console.log(`Email sent to ${toList.join(', ')} — ${info.messageId}`);
+    console.log(
+      `Email sent to ${toList.join(', ')}${mailOptions.cc?.length ? ` (cc: ${mailOptions.cc.join(', ')})` : ''} — ${info.messageId}`
+    );
     return info;
   } catch (err) {
     smtpReady = false;
@@ -512,6 +516,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
       const info = await transport.sendMail({
         from: getFromAddress(),
         to: toList.join(', '),
+        cc: mailOptions.cc?.length ? mailOptions.cc.join(', ') : undefined,
         bcc: mailOptions.bcc?.length ? mailOptions.bcc.join(', ') : undefined,
         subject,
         text,
@@ -1349,19 +1354,19 @@ export async function sendVendorInvoiceRequestNotification(po, invoice, { portal
 }
 
 /**
- * Cloud Subscription — after Mugesh uploads invoice, notify
- * Requester + L1 + L2 + accounts_rgml_refexev + itdev.
+ * Cloud Subscription — after Mugesh uploads invoice.
+ * One mail: To = Requester, Cc = L1 + L2 + Accounts + itdev.
  */
 export async function sendSassInvoiceUploadedNotification({
   pr,
   invoice,
   recipients = [],
+  to = null,
+  cc = [],
   uploaderName = 'Mugesh',
   requesterName = null,
   attachments = [],
 }) {
-  if (!recipients.length) return null;
-
   const greetRequester =
     requesterName ||
     pr?.requesterName ||
@@ -1369,29 +1374,61 @@ export async function sendSassInvoiceUploadedNotification({
     pr?.requester ||
     null;
 
-  for (const recipient of recipients) {
-    const email = String(recipient?.email || '').trim();
-    if (!email) continue;
-    const { subject, html, text } = buildSassInvoiceUploadedEmail({
-      pr,
-      invoice,
-      uploaderName,
-      recipientName: recipient.name || email.split('@')[0] || 'Team',
-      requesterName: greetRequester,
-      appBaseUrl: getAppBaseUrl(),
-    });
-    await sendMailToRecipients([email], subject, html, text, attachments, {
-      emailType: 'sass_invoice_uploaded',
-      prId: pr?.id || pr?.prId || null,
-      prNumber: pr?.prNumber || pr?.pr_number || null,
-      meta: {
-        invoiceNumber: invoice?.invoiceNumber || invoice?.invoice_number || null,
-        invoiceFileName: invoice?.invoiceFileName || invoice?.fileName || null,
-        recipientName: recipient.name || null,
-        requesterName: greetRequester,
-      },
-    });
+  // Prefer explicit to/cc; fall back to recipients[0]=To, rest=Cc
+  let toRecipient = to?.email
+    ? { email: String(to.email).trim().toLowerCase(), name: to.name }
+    : null;
+  let ccList = (Array.isArray(cc) ? cc : [])
+    .map((r) => ({
+      email: String(r?.email || '').trim().toLowerCase(),
+      name: r?.name,
+    }))
+    .filter((r) => r.email);
+
+  if (!toRecipient && recipients.length) {
+    const first = recipients[0];
+    toRecipient = {
+      email: String(first?.email || '').trim().toLowerCase(),
+      name: first?.name,
+    };
+    ccList = recipients
+      .slice(1)
+      .map((r) => ({
+        email: String(r?.email || '').trim().toLowerCase(),
+        name: r?.name,
+      }))
+      .filter((r) => r.email);
   }
+
+  if (!toRecipient?.email) return null;
+
+  const toEmail = toRecipient.email;
+  const ccEmails = [
+    ...new Set(ccList.map((r) => r.email).filter((e) => e && e !== toEmail)),
+  ];
+
+  const { subject, html, text } = buildSassInvoiceUploadedEmail({
+    pr,
+    invoice,
+    uploaderName,
+    recipientName: toRecipient.name || toEmail.split('@')[0] || 'Requester',
+    requesterName: greetRequester,
+    appBaseUrl: getAppBaseUrl(),
+  });
+
+  await sendMailToRecipients([toEmail], subject, html, text, attachments, {
+    cc: ccEmails,
+    emailType: 'sass_invoice_uploaded',
+    prId: pr?.id || pr?.prId || null,
+    prNumber: pr?.prNumber || pr?.pr_number || null,
+    meta: {
+      invoiceNumber: invoice?.invoiceNumber || invoice?.invoice_number || null,
+      invoiceFileName: invoice?.invoiceFileName || invoice?.fileName || null,
+      requesterName: greetRequester,
+      to: toEmail,
+      cc: ccEmails,
+    },
+  });
 }
 
 export function queueSassInvoiceUploadedNotification(payload) {

@@ -2892,7 +2892,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
     } else if (isSass && actingRole === 'CFO' && action === 'approve') {
       // Mugesh approved + uploaded invoice → notify Requester, L1, L2, accounts mailbox, itdev
       try {
-        const { pr: notifyPr, recipients } = await resolveSassInvoiceUploadedRecipients(prId);
+        const { pr: notifyPr, recipients, to, cc } = await resolveSassInvoiceUploadedRecipients(prId);
         const attachments = [];
         if (sassInvoiceUploadMeta?.buffer?.length) {
           attachments.push({
@@ -2900,7 +2900,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
             content: sassInvoiceUploadMeta.buffer,
           });
         }
-        if (notifyPr && recipients.length) {
+        if (notifyPr && (to?.email || recipients.length)) {
           queueSassInvoiceUploadedNotification({
             pr: {
               ...notifyPr,
@@ -2916,6 +2916,8 @@ export async function processApproval(user, prId, action, remarks, options = {})
               invoiceGrandTotal:
                 sassInvoiceUploadMeta?.grandTotal ?? updatedPr.totalAmount,
             },
+            to,
+            cc,
             recipients,
             uploaderName: user?.name || SASS_MUGESH_NAME,
             requesterName:

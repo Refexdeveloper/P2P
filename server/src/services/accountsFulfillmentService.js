@@ -699,7 +699,7 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
       // Notify L1 Manager + Srivaths + Mugesh that invoice file was uploaded
       try {
         const { queueSassInvoiceUploadedNotification } = await import('./emailService.js');
-        const { pr: notifyPr, recipients } = await resolveSassInvoiceUploadedRecipients(poRow.pr_id);
+        const { pr: notifyPr, recipients, to, cc } = await resolveSassInvoiceUploadedRecipients(poRow.pr_id);
         const attachments = [];
         try {
           let buffer = null;
@@ -718,7 +718,7 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
         } catch (attErr) {
           console.warn('Cloud Subscription invoice attachment skipped:', attErr.message);
         }
-        if (notifyPr && recipients.length) {
+        if (notifyPr && (to?.email || recipients.length)) {
           queueSassInvoiceUploadedNotification({
             pr: notifyPr,
             invoice: {
@@ -726,6 +726,8 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
               invoiceFileName: fileName,
               invoiceGrandTotal: grand,
             },
+            to,
+            cc,
             recipients,
             uploaderName: user?.name || 'Mugesh',
             requesterName: notifyPr.requesterName || notifyPr.requester_name,
