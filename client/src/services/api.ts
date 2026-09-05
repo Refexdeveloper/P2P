@@ -726,10 +726,17 @@ export const poApi = {
     request<{ data: { id: number | null; name: string; email: string; role: string } }>(
       '/api/po/scm-manager'
     ),
-  cfoInsights: (params?: { department?: string; category?: string }) => {
+  cfoInsights: (params?: {
+    department?: string;
+    category?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
     const qs = new URLSearchParams();
     if (params?.department) qs.set('department', params.department);
     if (params?.category) qs.set('category', params.category);
+    if (params?.dateFrom) qs.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) qs.set('dateTo', params.dateTo);
     const q = qs.toString();
     return request<{
       data: {

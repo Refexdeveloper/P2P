@@ -98,7 +98,35 @@ export default function PeriodPicker({
     applyRange(r.from, r.to);
     if (next === 'this_fy') setGrain('year');
     if (next === 'mtd') setGrain('monthly');
-    if (next === 'today') setOpen(false);
+    if (next === 'today') {
+      setGrain('custom');
+      setOpen(false);
+    }
+    if (next === 'qtd') setGrain('custom');
+  };
+
+  const pickGrain = (next: Granularity) => {
+    setGrain(next);
+    if (next === 'monthly') {
+      const m = months[0];
+      if (m) {
+        applyRange(m.from, m.to);
+        setKind(m.current ? 'mtd' : 'this_fy');
+      }
+      return;
+    }
+    if (next === 'weekly') {
+      const w = weeks[0];
+      if (w) applyRange(w.from, w.to);
+      return;
+    }
+    if (next === 'year') {
+      const y = years[0];
+      if (y) {
+        applyRange(y.from, y.to);
+        setKind('this_fy');
+      }
+    }
   };
 
   const list =
@@ -142,7 +170,7 @@ export default function PeriodPicker({
                   <button
                     key={g.id}
                     type="button"
-                    onClick={() => setGrain(g.id)}
+                    onClick={() => pickGrain(g.id)}
                     className={`flex-1 h-8 rounded-full text-[12px] font-medium ${
                       active
                         ? 'bg-white text-slate-800 shadow-sm border border-sky-200'
@@ -206,7 +234,8 @@ export default function PeriodPicker({
                       type="button"
                       onClick={() => {
                         applyRange(item.from, item.to);
-                        if ('current' in item && item.current) setKind('this_fy');
+                        if (grain === 'monthly') setKind(item.current ? 'mtd' : 'this_fy');
+                        else if (grain === 'year' && item.current) setKind('this_fy');
                         setOpen(false);
                       }}
                       className={`w-full text-left rounded-xl px-3 py-2.5 border ${

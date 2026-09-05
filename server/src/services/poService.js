@@ -4318,7 +4318,7 @@ function cfoPoStatusLabel(status) {
 
 /**
  * Live CFO Financial Insights: PO KPIs, entity rollups, monthly trend, recent POs, top vendors.
- * Optional filters: department, category (applied server-side).
+ * Optional filters: department, category, dateFrom, dateTo (applied server-side).
  */
 export async function getCfoPoInsights(user = null, filters = {}) {
   const scope = await resolveUserEntityScope(user);
@@ -4329,6 +4329,9 @@ export async function getCfoPoInsights(user = null, filters = {}) {
 
   const department = String(filters.department || '').trim();
   const category = String(filters.category || '').trim();
+  const dateFrom = String(filters.dateFrom || '').trim();
+  const dateTo = String(filters.dateTo || '').trim();
+  const poDateExpr = 'DATE(COALESCE(po.po_date, po.created_at))';
 
   const extraJoins = [];
   const extraWhere = [];
@@ -4348,6 +4351,14 @@ export async function getCfoPoInsights(user = null, filters = {}) {
       OR EXISTS (SELECT 1 FROM pr_line_items pli2 WHERE pli2.pr_id = po.pr_id AND pli2.category = ?)
     )`);
     extraParams.push(category, category);
+  }
+  if (dateFrom) {
+    extraWhere.push(` AND ${poDateExpr} >= ?`);
+    extraParams.push(dateFrom);
+  }
+  if (dateTo) {
+    extraWhere.push(` AND ${poDateExpr} <= ?`);
+    extraParams.push(dateTo);
   }
 
   const joinSql = `${poScope.join} ${extraJoins.join(' ')}`.trim();
@@ -4394,6 +4405,17 @@ export async function getCfoPoInsights(user = null, filters = {}) {
          )
        )`);
     invoiceParams.push(category, category);
+  }
+  if (dateFrom || dateTo) {
+    // Align vendor payments with PO period (invoice linked to PO created/dated in range).
+    invoiceFilters.push(` AND EXISTS (
+         SELECT 1 FROM purchase_orders po_i
+         WHERE po_i.id = i.po_id
+           ${dateFrom ? ' AND DATE(COALESCE(po_i.po_date, po_i.created_at)) >= ?' : ''}
+           ${dateTo ? ' AND DATE(COALESCE(po_i.po_date, po_i.created_at)) <= ?' : ''}
+       )`);
+    if (dateFrom) invoiceParams.push(dateFrom);
+    if (dateTo) invoiceParams.push(dateTo);
   }
 
   const [[payments]] = await pool.query(
@@ -4443,6 +4465,16 @@ export async function getCfoPoInsights(user = null, filters = {}) {
     matchNames: [e.entityName, e.code].filter(Boolean),
   }));
 
+  const trendStart =
+    dateFrom ||
+    (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 5);
+      d.setDate(1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    })();
+  const trendEnd = dateTo || new Date().toISOString().slice(0, 10);
+
   const [monthRows] = await pool.query(
     `SELECT
        DATE_FORMAT(COALESCE(po.po_date, po.created_at), '%Y-%m') AS ym,
@@ -4452,8 +4484,7 @@ export async function getCfoPoInsights(user = null, filters = {}) {
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
      ${joinSql}
-     WHERE po.status NOT IN (${excludedSql})
-       AND COALESCE(po.po_date, po.created_at) >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)${whereSql}
+     WHERE po.status NOT IN (${excludedSql})${whereSql}
      GROUP BY ym, month_label, entity_name
      ORDER BY ym ASC`,
     queryParams
@@ -4473,13 +4504,16 @@ export async function getCfoPoInsights(user = null, filters = {}) {
     if (series) point[series.key] += amount;
   }
 
-  // Ensure last 6 calendar months exist even if empty
+  // Fill months covering the selected period (or last 6 months when no dates)
   const monthlyPOTrend = [];
-  const now = new Date();
-  for (let i = 5; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const label = d.toLocaleString('en-US', { month: 'short' });
+  const startParts = String(trendStart).split('-').map(Number);
+  const endParts = String(trendEnd).split('-').map(Number);
+  let cursor = new Date(startParts[0] || new Date().getFullYear(), (startParts[1] || 1) - 1, 1);
+  const endMonth = new Date(endParts[0] || new Date().getFullYear(), (endParts[1] || 1) - 1, 1);
+  let guard = 0;
+  while (cursor <= endMonth && guard < 36) {
+    const ym = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+    const label = cursor.toLocaleString('en-US', { month: 'short' });
     if (monthMap.has(ym)) {
       monthlyPOTrend.push(monthMap.get(ym));
     } else {
@@ -4487,6 +4521,8 @@ export async function getCfoPoInsights(user = null, filters = {}) {
       for (const s of seriesKeys) empty[s.key] = 0;
       monthlyPOTrend.push(empty);
     }
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    guard += 1;
   }
 
   const [recentRows] = await pool.query(

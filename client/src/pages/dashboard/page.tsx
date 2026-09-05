@@ -136,6 +136,8 @@ export default function Dashboard({
         poApi.cfoInsights({
           department: active.department || undefined,
           category: active.category || undefined,
+          dateFrom: active.dateFrom || undefined,
+          dateTo: active.dateTo || undefined,
         }),
         masterApi.listEntities({ status: 'active', pageSize: 500 }).catch(() => ({ data: [] as Array<{ id: number; name: string }> })),
         masterApi.listDepartments({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
@@ -216,7 +218,7 @@ export default function Dashboard({
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.department, filters.category]);
+  }, [filters.department, filters.category, filters.dateFrom, filters.dateTo]);
 
   useEffect(() => {
     localStorage.setItem(CUSTOMIZE_KEY, JSON.stringify(hidden));
@@ -315,29 +317,12 @@ export default function Dashboard({
     let approvedPOAmount = narrowed ? entityApproved : data.kpis.approvedPOAmount;
     let pendingPOAmount = narrowed ? entityPending : data.kpis.pendingPOAmount;
 
-    const trendTotal = filteredTrend.reduce((s, p) => {
-      if (entityTrendKey) return s + Number(p[entityTrendKey] || 0);
-      return s + Number(p.total || 0);
-    }, 0);
-    const allTrendTotal = data.monthlyPOTrend.reduce((s, p) => s + Number(p.total || 0), 0);
-    const dateNarrowed =
-      (filters.dateFrom || filters.dateTo) && allTrendTotal > 0 && Math.abs(trendTotal - allTrendTotal) > 0.5;
-
-    if (dateNarrowed && !entityTrendKey) {
-      const ratio = totalPOAmount > 0 ? trendTotal / (narrowed ? entityTotal || totalPOAmount : data.kpis.totalPOAmount || trendTotal) : 1;
-      totalPOAmount = trendTotal;
-      approvedPOAmount *= ratio;
-      pendingPOAmount *= ratio;
-    } else if (dateNarrowed && entityTrendKey) {
-      const ratio = entityTotal > 0 ? trendTotal / entityTotal : 1;
-      totalPOAmount = trendTotal;
-      approvedPOAmount *= ratio;
-      pendingPOAmount *= ratio;
-    }
+    // Date range is applied server-side; avoid re-scaling KPIs from monthly buckets
+    // (day/week filters cannot be inferred from month-level trend points).
 
     if (filters.vendor && filteredVendors.length) {
       const vendorTotal = filteredVendors.reduce((s, v) => s + v.totalPOAmount, 0);
-      if (!dateNarrowed) totalPOAmount = vendorTotal;
+      totalPOAmount = vendorTotal;
     }
 
     return {
@@ -349,7 +334,7 @@ export default function Dashboard({
       budgetUtilization: totalPOAmount > 0 ? Math.round((approvedPOAmount / totalPOAmount) * 1000) / 10 : 0,
       entityCount: filteredEntities.length,
     };
-  }, [data.kpis, data.monthlyPOTrend, filteredEntities, filteredTrend, filteredVendors, filters, entityTrendKey]);
+  }, [data.kpis, filteredEntities, filteredVendors, filters]);
 
   const trendTotals = filteredTrend.map((p) =>
     entityTrendKey ? Number(p[entityTrendKey] || 0) : Number(p.total || 0)

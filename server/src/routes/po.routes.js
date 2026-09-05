@@ -143,6 +143,8 @@ router.get(
       const data = await getCfoPoInsights(req.user, {
         department: typeof req.query.department === 'string' ? req.query.department : '',
         category: typeof req.query.category === 'string' ? req.query.category : '',
+        dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : '',
+        dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : '',
       });
       res.json({ data });
     } catch (err) {
