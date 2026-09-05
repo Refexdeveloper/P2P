@@ -271,9 +271,8 @@ async function saveSassInvoiceAttachment(invoiceId, fileName, fileData) {
 
 /** Save invoice file + mark invoice pending_verification (Mugesh same-step upload). */
 export async function applySassMugeshInvoiceUpload(conn, invoiceId, user, body = {}) {
-  const invoiceNumber = String(body.invoiceNumber || '').trim();
-  if (!invoiceNumber) throw new Error('Invoice number is required');
   if (!body.fileName || !body.fileData) throw new Error('Invoice file is required');
+  const invoiceNumber = String(body.invoiceNumber || '').trim() || null;
 
   const [rows] = await conn.query(`SELECT * FROM invoices WHERE id = ? FOR UPDATE`, [invoiceId]);
   if (!rows.length) throw new Error('Invoice not found');

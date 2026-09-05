@@ -19,7 +19,6 @@ export function buildSassInvoiceUploadedEmail({
   const prNumber = pr?.prNumber || pr?.pr_number || '';
   const title = pr?.title || '';
   const entityLabel = formatEntity(pr);
-  const invoiceNumber = invoice?.invoiceNumber || invoice?.invoice_number || '—';
   const fileName = invoice?.invoiceFileName || invoice?.invoice_file_name || invoice?.fileName || '—';
   const amount = Number(
     invoice?.invoiceGrandTotal ??
@@ -70,7 +69,6 @@ export function buildSassInvoiceUploadedEmail({
             <div style="margin-top:14px;font-size:13px;color:#334155;line-height:1.75;">
               <div><strong>Entity:</strong> ${escapeHtml(entityLabel)}</div>
               ${vendorName ? `<div><strong>Vendor:</strong> ${escapeHtml(vendorName)}</div>` : ''}
-              <div><strong>Invoice number:</strong> ${escapeHtml(String(invoiceNumber))}</div>
               <div><strong>Invoice file:</strong> ${escapeHtml(String(fileName))} (attached)</div>
               <div><strong>Amount:</strong> ${formatCurrency(amount, currency)}</div>
               <div><strong>Payment:</strong> Corporate Credit Card</div>
@@ -104,7 +102,6 @@ export function buildSassInvoiceUploadedEmail({
     `PR: ${prNumber} — ${title}`,
     `Entity: ${entityLabel}`,
     vendorName ? `Vendor: ${vendorName}` : '',
-    `Invoice number: ${invoiceNumber}`,
     `Invoice file: ${fileName}`,
     `Amount: ${formatCurrency(amount, currency)}`,
     'Payment: Corporate Credit Card',

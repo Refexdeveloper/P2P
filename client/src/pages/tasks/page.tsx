@@ -478,10 +478,10 @@ export default function TasksPage() {
     returnTo?: string,
     goToBusinessApproval?: boolean,
     invoice?: {
-      invoiceNumber: string;
       fileName: string;
       fileData: string;
       invoiceDate?: string;
+      invoiceNumber?: string;
     }
   ) => {
     const { taskId, type, prNumber } = modalState;

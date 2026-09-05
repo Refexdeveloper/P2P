@@ -2493,9 +2493,6 @@ export async function processApproval(user, prId, action, remarks, options = {})
         if (isSass) {
           // Mugesh approve + invoice upload on same step → completed (Accounts)
           const inv = options.invoice || {};
-          if (!String(inv.invoiceNumber || '').trim()) {
-            throw new Error('Invoice number is required for Cloud Subscription approval');
-          }
           if (!inv.fileName || !inv.fileData) {
             throw new Error('Invoice file is required for Cloud Subscription approval');
           }
@@ -2610,7 +2607,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           STAGE.SASS_INVOICE_UPLOAD,
           user.id,
           'submitted',
-          `Invoice uploaded by Mugesh (${sassInvoiceUploadMeta.invoiceNumber}) — completed, routed to Accounts (SCM skipped)`,
+          `Invoice uploaded by Mugesh — completed, routed to Accounts (SCM skipped)`,
         ]
       );
     }

@@ -3,10 +3,10 @@ import { prApi } from '../../../services/api';
 import { formatMoney } from '../../../constants/currency';
 
 export type InvoiceUploadPayload = {
-  invoiceNumber: string;
   fileName: string;
   fileData: string;
   invoiceDate?: string;
+  invoiceNumber?: string;
 };
 
 interface ApprovalModalProps {
@@ -60,7 +60,6 @@ export default function ApprovalModal({
   const [targets, setTargets] = useState<{ key: string; label: string }[]>([]);
   const [targetsLoading, setTargetsLoading] = useState(false);
   const [goToBusinessApproval, setGoToBusinessApproval] = useState<boolean | null>(null);
-  const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -72,7 +71,6 @@ export default function ApprovalModal({
       setReturnTo('');
       setTargets([]);
       setGoToBusinessApproval(null);
-      setInvoiceNumber('');
       setInvoiceDate(new Date().toISOString().slice(0, 10));
       setInvoiceFile(null);
       setSubmitting(false);
@@ -172,10 +170,6 @@ export default function ApprovalModal({
       return;
     }
     if (type === 'approve' && requireInvoiceUpload) {
-      if (!invoiceNumber.trim()) {
-        setError('Invoice number is required');
-        return;
-      }
       if (!invoiceFile) {
         setError('Please upload the invoice file');
         return;
@@ -188,7 +182,6 @@ export default function ApprovalModal({
         setSubmitting(true);
         const fileData = await readFileAsBase64(invoiceFile);
         invoice = {
-          invoiceNumber: invoiceNumber.trim(),
           fileName: invoiceFile.name,
           fileData,
           invoiceDate: invoiceDate || undefined,
@@ -208,7 +201,6 @@ export default function ApprovalModal({
     );
     setRemarks('');
     setReturnTo('');
-    setInvoiceNumber('');
     setInvoiceFile(null);
     setSubmitting(false);
     setError('');
@@ -217,7 +209,6 @@ export default function ApprovalModal({
   const handleClose = () => {
     setRemarks('');
     setReturnTo('');
-    setInvoiceNumber('');
     setInvoiceFile(null);
     setError('');
     onClose();
@@ -269,21 +260,6 @@ export default function ApprovalModal({
                 Cloud Subscription: Mugesh uploads the invoice here. After submit, mail goes to
                 Requester, L1, L2 (Srivaths), and accounts_rgml_refexev@refex.co.in.
               </p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Invoice number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={invoiceNumber}
-                  onChange={(e) => {
-                    setInvoiceNumber(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="e.g. INV-2026-001"
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 bg-white"
-                />
-              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Invoice date</label>
                 <input
