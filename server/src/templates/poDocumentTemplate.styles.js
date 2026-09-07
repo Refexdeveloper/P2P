@@ -898,6 +898,8 @@ export const PO_STYLES = `
     word-wrap: break-word;
     overflow-wrap: anywhere;
     word-break: break-word;
+    white-space: normal;
+    overflow: visible;
   }
   .annexure-ii-body table th,
   .annexure-ii-body table.annexure-ii-table th {
@@ -916,6 +918,10 @@ export const PO_STYLES = `
     font-size: 10px;
     line-height: 1.3;
     padding: 4px 5px;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    overflow: visible !important;
   }
   body.po-document-pdf-pages .annexure-ii.annexure-ii-cont {
     border-top: none;

@@ -1028,6 +1028,7 @@ function normalizeAnnexureIiBodyHtml(html) {
   // Drop fixed Word widths that overflow A4 and break column alignment.
   out = out
     .replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\snowrap\b/gi, '')
     .replace(/style\s*=\s*(")([^"]*)(")/gi, (_m, q1, style, q2) => {
       const kept = String(style || '')
         .split(';')
@@ -1039,6 +1040,7 @@ function normalizeAnnexureIiBodyHtml(html) {
           if (/^mso-/i.test(key)) return false;
           if (key === 'width' || key === 'height' || key === 'min-width' || key === 'max-width') return false;
           if (key === 'position' || key === 'left' || key === 'top' || key === 'float') return false;
+          if (key === 'white-space') return false; // allow wrapping in PDF cells
           return [
             'text-align',
             'font-weight',
@@ -1192,8 +1194,66 @@ function annexureIiItemHtml(row, opts = {}) {
 }
 
 /**
- * Build Annexure-II PDF blocks — one card per editor row (keeps pasted tables as text).
- * Avoids duplicate "ANNEXURE-II — Continued" titles from over-splitting.
+ * Split a tall Annexure-II HTML card into ordered page chunks.
+ * Title appears only on the first chunk; table rows stay in Sr No. order.
+ */
+function chunkAnnexureIiHtmlForPdf(fullHtml, idx) {
+  const html = String(fullHtml || '').trim();
+  if (!html) return [];
+
+  const tableMatch = html.match(/<table\b[\s\S]*?<\/table>/i);
+  if (!tableMatch) {
+    return [{ key: `annexure-ii-${idx}`, html }];
+  }
+
+  const tableHtml = tableMatch[0];
+  const rowMatches = [...tableHtml.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)].map((m) => m[0]);
+  const ROWS_PER_PAGE = 11;
+  if (rowMatches.length <= ROWS_PER_PAGE) {
+    return [{ key: `annexure-ii-${idx}`, html }];
+  }
+
+  const openTable = tableHtml.match(/^<table\b[^>]*>/i)?.[0] || '<table class="annexure-ii-table">';
+  const hasHeaderRow = /<th\b/i.test(rowMatches[0] || '');
+  const headerRow = hasHeaderRow ? rowMatches[0] : '';
+  const dataRows = hasHeaderRow ? rowMatches.slice(1) : rowMatches;
+  const afterAll = html.slice(tableMatch.index + tableHtml.length);
+  const afterBody = afterAll.replace(/<\/div>\s*<\/div>\s*$/i, '');
+
+  const blocks = [];
+  const step = Math.max(6, ROWS_PER_PAGE - (hasHeaderRow ? 1 : 0));
+
+  for (let start = 0, part = 0; start < dataRows.length; start += step, part += 1) {
+    const slice = dataRows.slice(start, start + step);
+    const isFirst = part === 0;
+    const isLast = start + step >= dataRows.length;
+    const rowsHtml = `${hasHeaderRow ? headerRow : ''}${slice.join('')}`;
+    const table = `${openTable}${rowsHtml}</table>`;
+
+    if (isFirst) {
+      let firstHtml = html.replace(tableHtml, table);
+      if (!isLast && afterBody) {
+        firstHtml = firstHtml.replace(afterBody, '');
+      }
+      blocks.push({ key: `annexure-ii-${idx}-p${part}`, html: firstHtml });
+    } else {
+      const body = `${table}${isLast ? afterBody : ''}`;
+      blocks.push({
+        key: `annexure-ii-${idx}-p${part}`,
+        html: `
+      <div class="annexure-ii annexure-ii-cont">
+        <div class="annexure-ii-body">${body}</div>
+      </div>`,
+      });
+    }
+  }
+
+  return blocks.length ? blocks : [{ key: `annexure-ii-${idx}`, html }];
+}
+
+/**
+ * Build Annexure-II PDF blocks in document order.
+ * Long Excel tables are pre-split into sequential pages (title once, rows in order).
  */
 export function buildAnnexureIiPdfBlocks(rows) {
   const list = Array.isArray(rows) ? rows : [];
@@ -1202,10 +1262,7 @@ export function buildAnnexureIiPdfBlocks(rows) {
   list.forEach((row, idx) => {
     const html = annexureIiItemHtml(row);
     if (!html || !String(html).trim()) return;
-    blocks.push({
-      key: `annexure-ii-${idx}`,
-      html,
-    });
+    blocks.push(...chunkAnnexureIiHtmlForPdf(html, idx));
   });
 
   return blocks;
@@ -1217,9 +1274,9 @@ function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
   );
   if (!rows.length) return '';
 
-  // Preview: one sheet per Annexure-II row so pasted tables keep column alignment.
-  return rows
-    .map((row) => wrapSheet(annexureIiItemHtml(row), 'page-annexure-ii', po, forPdf))
+  // Same ordered chunks as PDF packing (title once, rows in sequence).
+  return buildAnnexureIiPdfBlocks(rows)
+    .map((block) => wrapSheet(block.html, 'page-annexure-ii', po, forPdf))
     .join('');
 }
 
