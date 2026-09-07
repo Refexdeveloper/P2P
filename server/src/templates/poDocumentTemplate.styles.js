@@ -821,9 +821,17 @@ export const PO_STYLES = `
     color: #333;
   }
   .annexure-ii-header {
-    padding: 8px 14px 0;
-    font-size: 13px;
+    padding: 10px 14px 8px;
+    font-size: 14px;
     font-weight: 700;
+    color: #111;
+    border-bottom: 1px solid #000;
+    background: #fff;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  .annexure-ii-header p {
+    margin: 0;
   }
   .annexure-ii-comments { margin-top: 10px; }
   .annexure-ii-body {

@@ -728,7 +728,9 @@ export async function clearStaleSassPrApprovalTasks() {
        AND wt.task_type = 'PR_APPROVAL'
        AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription')
        AND (
-         (wt.assigned_role = 'HOD Approver' AND pr.status <> 'PENDING_HOD_APPROVAL')
+         -- PR already past approval (invoice / done) — no PR_APPROVAL should stay open
+         pr.status IN ('AWAITING_INVOICE', 'APPROVED', 'REJECTED', 'CANCELLED', 'CLOSED')
+         OR (wt.assigned_role = 'HOD Approver' AND pr.status <> 'PENDING_HOD_APPROVAL')
          OR (
            wt.assigned_role = 'CFO'
            AND pr.status NOT IN ('PENDING_CFO_APPROVAL', 'PENDING_RFQ_CFO_APPROVAL')

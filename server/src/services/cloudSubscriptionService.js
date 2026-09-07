@@ -601,8 +601,9 @@ export async function processSubscriptionRenewalApproval(user, renewalId, action
 
   if (action === 'reject') {
     await pool.query(
-      `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW() WHERE id = ?`,
-      [task.id]
+      `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+       WHERE subscription_renewal_id = ? AND task_type = 'SUBSCRIPTION_RENEWAL' AND status = 'pending'`,
+      [renewal.id]
     );
     await pool.query(
       `UPDATE subscription_renewals SET status = 'REJECTED', updated_at = NOW() WHERE id = ?`,
@@ -626,8 +627,10 @@ export async function processSubscriptionRenewalApproval(user, renewalId, action
   if (action !== 'approve') throw new Error('Invalid action');
 
   await pool.query(
-    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW() WHERE id = ?`,
-    [task.id]
+    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+     WHERE subscription_renewal_id = ? AND task_type = 'SUBSCRIPTION_RENEWAL' AND status = 'pending'
+       AND assigned_role = ?`,
+    [renewal.id, stage]
   );
 
   const due = new Date();
@@ -711,6 +714,11 @@ async function completeSubscriptionRenewal(renewalId) {
   const renewal = rows[0];
   if (!renewal) throw new Error('Renewal not found');
 
+  await pool.query(
+    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+     WHERE subscription_renewal_id = ? AND task_type = 'SUBSCRIPTION_RENEWAL' AND status = 'pending'`,
+    [renewal.id]
+  );
   await pool.query(
     `UPDATE subscription_renewals
      SET status = 'RENEWAL_COMPLETED', current_stage = NULL, completed_at = NOW(), updated_at = NOW()

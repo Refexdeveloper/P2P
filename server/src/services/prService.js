@@ -50,6 +50,7 @@ import {
   applySassMugeshInvoiceUpload,
   resolveSassInvoiceUploadedRecipients,
   resolveSassVendorFromBody,
+  clearStaleSassPrApprovalTasks,
   SASS_MUGESH_NAME,
   SASS_MUGESH_EMAIL,
 } from './sassWorkflow.js';
@@ -1876,27 +1877,29 @@ export async function listPurchaseRequests(user, filters = {}) {
     params.push(...hodFilter.params);
   } else if (user.role === 'PR Manager') {
     if (filters.pendingOnly) {
-      // Only PRs assigned to this L2 manager (or unassigned role queue)
+      // Only PRs with a real pending L2 task for this user (or unassigned role queue).
+      // Do NOT use "no pending task" — that kept stuck-status PRs visible after approval.
+      const prMgrEmail = String(user.email || '').toLowerCase().trim();
       sql += ` AND pr.status IN (?, ?)
-        AND (
-          EXISTS (
-            SELECT 1 FROM workflow_tasks wt
-            WHERE wt.pr_id = pr.id
-              AND wt.status = 'pending'
-              AND wt.assigned_role = 'PR Manager'
-              AND (wt.assigned_user_id = ? OR wt.assigned_user_id IS NULL)
-          )
-          OR NOT EXISTS (
-            SELECT 1 FROM workflow_tasks wt2
-            WHERE wt2.pr_id = pr.id
-              AND wt2.status = 'pending'
-              AND wt2.assigned_role = 'PR Manager'
-          )
+        AND EXISTS (
+          SELECT 1 FROM workflow_tasks wt
+          LEFT JOIN users au ON au.id = wt.assigned_user_id
+          WHERE wt.pr_id = pr.id
+            AND wt.status = 'pending'
+            AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
+            AND wt.assigned_role = 'PR Manager'
+            AND (
+              wt.assigned_user_id = ?
+              OR wt.assigned_user_id IS NULL
+              OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+            )
         )`;
       params.push(
         PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
         PR_STATUS.PENDING_RFQ_L2_APPROVAL,
-        user.id
+        user.id,
+        prMgrEmail,
+        prMgrEmail
       );
     }
   } else if (user.role === 'CFO') {
@@ -4332,6 +4335,14 @@ export async function listTasks(user) {
     [roleConfig?.status, postRfqConfig?.status].filter(Boolean)
   );
 
+  // Heal leftover Cloud Subscription PR_APPROVAL rows so My Tasks does not keep
+  // showing Pending after L2 / Mugesh already approved and the PR moved on.
+  try {
+    await clearStaleSassPrApprovalTasks();
+  } catch (err) {
+    console.warn('clearStaleSassPrApprovalTasks skipped:', err.message);
+  }
+
   let prs = [];
 
   if (user.role === 'HOD Approver') {
@@ -4397,6 +4408,8 @@ export async function listTasks(user) {
       )
       .map((r) => r.id)
   );
+  /** Real open assignments for this user — source of truth for Pending vs Approved. */
+  const assignedPendingIds = new Set(assignedRows.map((r) => Number(r.id)));
   for (const row of assignedRows) {
     if (!pendingIds.has(row.id)) {
       const pr = await getPurchaseRequestById(row.id);
@@ -4414,6 +4427,24 @@ export async function listTasks(user) {
     decidedByPrId.set(pr.id, pr);
     if (!pendingIds.has(pr.id)) {
       prs.push(pr);
+    }
+  }
+
+  // If the user already decided and there is no open assigned task, never keep Pending.
+  // Fixes Cloud Subscription L2: approve → status moves on, but list still treated the PR
+  // as pending (role-queue / stale task) so refresh put it back under Pending.
+  for (const prId of [...pendingIds]) {
+    if (decidedByPrId.has(prId) && !assignedPendingIds.has(Number(prId))) {
+      pendingIds.delete(prId);
+    }
+  }
+  // Past L2/invoice statuses must not appear as pending for this approver either.
+  for (const pr of prs) {
+    if (
+      !assignedPendingIds.has(Number(pr.id)) &&
+      [PR_STATUS.AWAITING_INVOICE, PR_STATUS.APPROVED, PR_STATUS.REJECTED].includes(pr.status)
+    ) {
+      pendingIds.delete(pr.id);
     }
   }
 
@@ -4436,9 +4467,16 @@ export async function listTasks(user) {
   const quoteAmountByPr = await getRecommendedQuotedAmounts(prs.map((p) => p.id));
   const taskSlaByPr = await getPendingTaskSlaByPrIds([...pendingIds]);
 
-  const tasks = prs.map((pr) => {
-    const isPending = pendingIds.has(pr.id);
+  const tasks = prs
+    .filter((pr) => pendingIds.has(pr.id) || decidedByPrId.has(pr.id))
+    .map((pr) => {
+    let isPending = pendingIds.has(pr.id);
     const decision = decidedByPrId.get(pr.id);
+    // Belt-and-suspenders: never show Pending when this user already approved and
+    // there is no live assignment (Cloud Subscription L2 after approve).
+    if (isPending && decision && !assignedPendingIds.has(Number(pr.id))) {
+      isPending = false;
+    }
     const status = isPending
       ? 'pending_approval'
       : mapApproverActionToTaskStatus(decision?.myAction);

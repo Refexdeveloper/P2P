@@ -329,11 +329,21 @@ function pageHasContent(blocks) {
   return false;
 }
 
-/** True when an Annexure-II card has only the heading (no real body). */
+/** True when an Annexure-II card has only the section bar (no user heading / body). */
 function isAnnexureIiTitleOnly(html) {
   const h = String(html || '');
   if (!/class\s*=\s*["'][^"']*annexure-ii/i.test(h) && !/<div class="annexure-ii"/i.test(h)) {
     return false;
+  }
+  // User-provided Header must never be treated as empty.
+  const headerMatch = h.match(/<div class="annexure-ii-header">([\s\S]*?)<\/div>/i);
+  if (headerMatch) {
+    const headerText = headerMatch[1]
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (headerText.length > 0) return false;
   }
   const bodyMatch = h.match(/<div class="annexure-ii-body">([\s\S]*?)<\/div>\s*<\/div>\s*$/i);
   const body = bodyMatch ? bodyMatch[1] : h.replace(/<div class="annexure-ii-title">[\s\S]*?<\/div>/gi, '');
@@ -388,33 +398,58 @@ function blockLooksLikeAnnexureIi(block) {
 }
 
 /**
- * Hard guarantee: Annexure-II (all pages) → SCM manager sign → vendor acceptance.
- * Keep packed Annexure-II page groups intact (important for pasted tables).
+ * Hard guarantee: early sections → Annexure-II (title + your heading + table in order)
+ * → SCM manager sign → vendor acceptance.
+ * Never place continuation fragments before the titled Annexure-II card.
  */
 function enforceDocumentSectionOrder(pages) {
   if (!Array.isArray(pages) || !pages.length) return pages;
 
   const early = [];
-  const annexureIiPages = [];
+  const iiBlocks = [];
   const notes = [];
   const ack = [];
 
   for (const page of pages) {
     const earlyPage = [];
-    const iiPage = [];
     for (const block of page || []) {
       const t = block?.type;
       if (blockLooksLikeAnnexureIi(block)) {
-        iiPage.push({ ...block, type: 'annexure-ii' });
+        iiBlocks.push({ ...block, type: 'annexure-ii' });
       } else if (t === 'notes') notes.push(block);
       else if (t === 'ack') ack.push(block);
       else earlyPage.push(block);
     }
     if (earlyPage.length && pageHasContent(earlyPage)) early.push(earlyPage);
-    if (iiPage.length && pageHasContent(iiPage)) annexureIiPages.push(iiPage);
   }
 
-  const out = [...early, ...annexureIiPages];
+  // Keep encounter order, but never allow cont pages before the first titled card.
+  const orderedIi = [];
+  const heldEarlyConts = [];
+  let seenTitle = false;
+  for (const block of iiBlocks) {
+    const hasTitle = /<div class="annexure-ii-title">/i.test(block.html || '');
+    if (hasTitle) {
+      seenTitle = true;
+      orderedIi.push(block);
+      if (heldEarlyConts.length) {
+        orderedIi.push(...heldEarlyConts);
+        heldEarlyConts.length = 0;
+      }
+    } else if (!seenTitle) {
+      heldEarlyConts.push(block);
+    } else {
+      orderedIi.push(block);
+    }
+  }
+  orderedIi.push(...heldEarlyConts);
+
+  const iiPages = [];
+  for (const block of orderedIi) {
+    if (pageHasContent([block])) iiPages.push([block]);
+  }
+
+  const out = [...early, ...iiPages];
   if (notes.length) out.push(notes);
   if (ack.length) out.push(ack);
 
@@ -641,6 +676,16 @@ function splitOverflowingAnnexureIiTable(pages, pageIndex) {
 function isAnnexureIiSparse(html) {
   const h = String(html || '');
   if (!/annexure-ii/i.test(h)) return false;
+  // Never treat a card with the user's Header as disposable sparse content.
+  if (/<div class="annexure-ii-header">/i.test(h)) {
+    const headerMatch = h.match(/<div class="annexure-ii-header">([\s\S]*?)<\/div>/i);
+    const headerText = (headerMatch?.[1] || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (headerText) return false;
+  }
   if (isAnnexureIiTitleOnly(h)) return true;
   const bodyMatch = h.match(/<div class="annexure-ii-body">([\s\S]*?)<\/div>\s*<\/div>\s*$/i);
   const body = bodyMatch ? bodyMatch[1] : h;
@@ -694,21 +739,37 @@ function mergeSparseAnnexureIiPages(pages) {
 }
 
 /**
- * Fix mid-page ANNEXURE-II headings: if a titled card follows annexure content on the
- * same page, strip the duplicate title so the table reads in order.
+ * Keep Annexure-II reading order correct on a page:
+ * - titled card (ANNEXURE-II + user heading) before continuations
+ * - never strip the user-provided annexure-ii-header
  */
 function fixAnnexureIiHeadingOrder(pages) {
   if (!Array.isArray(pages)) return pages;
   for (const page of pages) {
+    if (!page?.length) continue;
+
+    // If a continuation sits before a titled card on the same page, swap them.
+    for (let i = 1; i < page.length; i += 1) {
+      const prev = page[i - 1];
+      const curr = page[i];
+      if (!blockLooksLikeAnnexureIi(prev) || !blockLooksLikeAnnexureIi(curr)) continue;
+      const prevHasTitle = /<div class="annexure-ii-title">/i.test(prev.html || '');
+      const currHasTitle = /<div class="annexure-ii-title">/i.test(curr.html || '');
+      if (!prevHasTitle && currHasTitle) {
+        page[i - 1] = curr;
+        page[i] = prev;
+      }
+    }
+
     let sawAnnexureIi = false;
-    for (const block of page || []) {
+    for (const block of page) {
       if (!blockLooksLikeAnnexureIi(block) || block.html == null) continue;
       const html = String(block.html);
       if (sawAnnexureIi && /<div class="annexure-ii-title">/i.test(html)) {
+        // Strip only the repeated ANNEXURE-II bar — keep user's Header text.
         block.html = html
           .replace(/<div class="annexure-ii-title">[\s\S]*?<\/div>/gi, '')
-          .replace(/<div class="annexure-ii-header">[\s\S]*?<\/div>/gi, '')
-          .replace(/class="annexure-ii"/i, 'class="annexure-ii annexure-ii-cont"');
+          .replace(/class="annexure-ii(?![^"]*cont)"/i, 'class="annexure-ii annexure-ii-cont"');
       }
       sawAnnexureIi = true;
     }
