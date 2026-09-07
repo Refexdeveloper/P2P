@@ -1158,8 +1158,14 @@ function annexureHtmlIsEmpty(html) {
 }
 
 function annexureIiItemHtml(row, opts = {}) {
-  const { includeTitle = true, includeHeader = true, includeBody = true, includeImages = true, includeComments = true } =
-    opts;
+  const {
+    includeTitle = true,
+    includeHeader = true,
+    includeBody = true,
+    includeImages = true,
+    includeComments = true,
+    rowIndex = null,
+  } = opts;
   const headerHtml = sanitizeAnnexureHtml(row.header || '');
   const bodyHtml = includeBody ? normalizeAnnexureIiBodyHtml(row.description || '') : '';
   const extraImages = includeImages
@@ -1181,8 +1187,13 @@ function annexureIiItemHtml(row, opts = {}) {
   const hasComments = Boolean(comments);
   if (!hasHeader && !hasBody && !hasImages && !hasComments) return '';
 
+  const rowAttr =
+    rowIndex != null && Number.isFinite(Number(rowIndex))
+      ? ` data-annexure-ii-row="${Number(rowIndex)}"`
+      : '';
+
   return `
-      <div class="annexure-ii">
+      <div class="annexure-ii"${rowAttr}>
         ${includeTitle ? `<div class="annexure-ii-title">ANNEXURE-II</div>` : ''}
         ${hasHeader ? `<div class="annexure-ii-header">${headerHtml}</div>` : ''}
         <div class="annexure-ii-body">${bodyHtml}${extraImages}${
@@ -1202,10 +1213,11 @@ export function buildAnnexureIiPdfBlocks(rows) {
   const blocks = [];
 
   list.forEach((row, idx) => {
-    const html = annexureIiItemHtml(row);
+    const html = annexureIiItemHtml(row, { rowIndex: idx });
     if (!html || !String(html).trim()) return;
     blocks.push({
       key: `annexure-ii-${idx}`,
+      rowIndex: idx,
       html,
     });
   });
@@ -1221,7 +1233,7 @@ function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
 
   // One sheet per editor row (full table) — packing handles page breaks.
   return rows
-    .map((row) => wrapSheet(annexureIiItemHtml(row), 'page-annexure-ii', po, forPdf))
+    .map((row, idx) => wrapSheet(annexureIiItemHtml(row, { rowIndex: idx }), 'page-annexure-ii', po, forPdf))
     .join('');
 }
 

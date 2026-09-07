@@ -390,6 +390,34 @@ function nextPageHasLaterSection(nextPage, unitType) {
   return nextPage.some((block) => sectionOrder(block.type) > unitOrder);
 }
 
+/** Editor-row index for Annexure-II (preserves add order across overflow repair). */
+export function getAnnexureIiRowIndex(block) {
+  if (!block) return null;
+  if (block.rowIndex != null && Number.isFinite(Number(block.rowIndex))) {
+    return Number(block.rowIndex);
+  }
+  const fromHtml = String(block.html || '').match(/data-annexure-ii-row\s*=\s*["']?(\d+)/i);
+  if (fromHtml) return Number(fromHtml[1]);
+  const fromKey = String(block.key || '').match(/annexure-ii-(\d+)/i);
+  if (fromKey) return Number(fromKey[1]);
+  return null;
+}
+
+function withAnnexureIiRowAttr(html, rowIndex) {
+  const h = String(html || '');
+  if (rowIndex == null || !Number.isFinite(Number(rowIndex))) return h;
+  if (/data-annexure-ii-row\s*=/i.test(h)) {
+    return h.replace(
+      /data-annexure-ii-row\s*=\s*["']?\d+["']?/i,
+      `data-annexure-ii-row="${Number(rowIndex)}"`
+    );
+  }
+  return h.replace(
+    /<div class="annexure-ii([^"]*)"/i,
+    `<div class="annexure-ii$1" data-annexure-ii-row="${Number(rowIndex)}"`
+  );
+}
+
 function blockLooksLikeAnnexureIi(block) {
   if (!block) return false;
   if (block.type === 'annexure-ii') return true;
@@ -398,9 +426,9 @@ function blockLooksLikeAnnexureIi(block) {
 }
 
 /**
- * Hard guarantee: early sections → Annexure-II (title + your heading + table in order)
- * → SCM manager sign → vendor acceptance.
- * Never place continuation fragments before the titled Annexure-II card.
+ * Hard guarantee: early sections → Annexure-II rows in editor add order
+ * (row 0, then row 1, …; titled card then its continuations) → notes → ack.
+ * Overflow repair must not leave a later row before an earlier one.
  */
 function enforceDocumentSectionOrder(pages) {
   if (!Array.isArray(pages) || !pages.length) return pages;
@@ -415,7 +443,14 @@ function enforceDocumentSectionOrder(pages) {
     for (const block of page || []) {
       const t = block?.type;
       if (blockLooksLikeAnnexureIi(block)) {
-        iiBlocks.push({ ...block, type: 'annexure-ii' });
+        const rowIndex = getAnnexureIiRowIndex(block);
+        iiBlocks.push({
+          ...block,
+          type: 'annexure-ii',
+          rowIndex,
+          html: withAnnexureIiRowAttr(block.html, rowIndex),
+          key: block.key || (rowIndex != null ? `annexure-ii-${rowIndex}` : block.key),
+        });
       } else if (t === 'notes') notes.push(block);
       else if (t === 'ack') ack.push(block);
       else earlyPage.push(block);
@@ -423,26 +458,32 @@ function enforceDocumentSectionOrder(pages) {
     if (earlyPage.length && pageHasContent(earlyPage)) early.push(earlyPage);
   }
 
-  // Keep encounter order, but never allow cont pages before the first titled card.
-  const orderedIi = [];
-  const heldEarlyConts = [];
-  let seenTitle = false;
+  // Group by editor row index so first-added stays first even if pages were interleaved.
+  const groups = new Map();
+  const ungrouped = [];
   for (const block of iiBlocks) {
-    const hasTitle = /<div class="annexure-ii-title">/i.test(block.html || '');
-    if (hasTitle) {
-      seenTitle = true;
-      orderedIi.push(block);
-      if (heldEarlyConts.length) {
-        orderedIi.push(...heldEarlyConts);
-        heldEarlyConts.length = 0;
-      }
-    } else if (!seenTitle) {
-      heldEarlyConts.push(block);
-    } else {
-      orderedIi.push(block);
+    const idx = getAnnexureIiRowIndex(block);
+    if (idx == null) {
+      ungrouped.push(block);
+      continue;
     }
+    if (!groups.has(idx)) groups.set(idx, []);
+    groups.get(idx).push(block);
   }
-  orderedIi.push(...heldEarlyConts);
+
+  const orderedIi = [];
+  for (const idx of [...groups.keys()].sort((a, b) => a - b)) {
+    const group = groups.get(idx);
+    // Within a row: titled card(s) first, then continuations (encounter order).
+    const titled = [];
+    const conts = [];
+    for (const block of group) {
+      if (/<div class="annexure-ii-title">/i.test(block.html || '')) titled.push(block);
+      else conts.push(block);
+    }
+    orderedIi.push(...titled, ...conts);
+  }
+  orderedIi.push(...ungrouped);
 
   const iiPages = [];
   for (const block of orderedIi) {
@@ -492,6 +533,21 @@ function shiftLastUnitFromPage(pages, pageIndex) {
     pages.splice(nextIdx, 0, [unit]);
     // Alone oversized block stays before notes/ack; caller must split/shrink it next.
     return !wasAloneAfterPop;
+  }
+
+  // Do not unshift an Annexure-II card onto a page that already has another II row —
+  // that interleaves add-order (first row ends up after later rows).
+  if (blockLooksLikeAnnexureIi(unit)) {
+    const unitRow = getAnnexureIiRowIndex(unit);
+    const nextHasOtherIi = nextPage.some((b) => {
+      if (!blockLooksLikeAnnexureIi(b)) return false;
+      const otherRow = getAnnexureIiRowIndex(b);
+      return unitRow == null || otherRow == null || otherRow !== unitRow;
+    });
+    if (nextHasOtherIi || nextPageHasLaterSection(nextPage, 'annexure-ii')) {
+      pages.splice(nextIdx, 0, [unit]);
+      return true;
+    }
   }
 
   if (unit.html != null) {
@@ -640,32 +696,50 @@ function splitOverflowingAnnexureIiTable(pages, pageIndex) {
       .trim();
     const afterBody = after.replace(/<\/div>\s*<\/div>\s*$/i, '').trim();
 
+    const rowIndex = getAnnexureIiRowIndex(block);
     page[bi] = {
       type: 'annexure-ii',
-      html: `
+      rowIndex,
+      key: rowIndex != null ? `annexure-ii-${rowIndex}` : block.key,
+      html: withAnnexureIiRowAttr(
+        `
       <div class="annexure-ii${alreadyCont ? ' annexure-ii-cont' : ''}">
         ${titleHtml}
         ${headerHtml}
         <div class="annexure-ii-body">${beforeBody}${keptTable}</div>
       </div>`,
+        rowIndex
+      ),
     };
 
-    const contHtml = `
+    const contHtml = withAnnexureIiRowAttr(
+      `
       <div class="annexure-ii annexure-ii-cont">
         <div class="annexure-ii-body">${contTable}${afterBody}</div>
-      </div>`;
+      </div>`,
+      rowIndex
+    );
 
     const nextIdx = pageIndex + 1;
     if (!pages[nextIdx]) pages.splice(nextIdx, 0, []);
     const nextPage = pages[nextIdx];
     const nextBusy =
-      nextPage.some((b) => blockLooksLikeAnnexureIi(b)) ||
-      nextPageHasLaterSection(nextPage, 'annexure-ii');
+      nextPage.some((b) => {
+        if (!blockLooksLikeAnnexureIi(b)) return false;
+        const otherRow = getAnnexureIiRowIndex(b);
+        return rowIndex == null || otherRow == null || otherRow !== rowIndex;
+      }) || nextPageHasLaterSection(nextPage, 'annexure-ii');
 
+    const contBlock = {
+      type: 'annexure-ii',
+      rowIndex,
+      key: rowIndex != null ? `annexure-ii-${rowIndex}` : undefined,
+      html: contHtml,
+    };
     if (nextBusy) {
-      pages.splice(nextIdx, 0, [{ type: 'annexure-ii', html: contHtml }]);
+      pages.splice(nextIdx, 0, [contBlock]);
     } else {
-      nextPage.unshift({ type: 'annexure-ii', html: contHtml });
+      nextPage.unshift(contBlock);
     }
     return true;
   }
@@ -722,9 +796,16 @@ function mergeSparseAnnexureIiPages(pages) {
     if (!prev?.length) continue;
     const prevLast = prev[prev.length - 1];
     if (!blockLooksLikeAnnexureIi(prevLast) || prevLast.html == null) continue;
+    const prevRow = getAnnexureIiRowIndex(prevLast);
+    const pageRow = getAnnexureIiRowIndex(page[0]);
+    if (prevRow != null && pageRow != null && prevRow !== pageRow) continue;
 
     // Append continuation tables into previous annexure body.
     for (const block of page) {
+      if (prevRow != null) {
+        const blockRow = getAnnexureIiRowIndex(block);
+        if (blockRow != null && blockRow !== prevRow) continue;
+      }
       const contTable = String(block.html || '').match(/<table\b[\s\S]*?<\/table>/i);
       if (!contTable) continue;
       const contRows = [...contTable[0].matchAll(/<tr\b[\s\S]*?<\/tr>/gi)]
@@ -740,7 +821,8 @@ function mergeSparseAnnexureIiPages(pages) {
 
 /**
  * Keep Annexure-II reading order correct on a page:
- * - titled card (ANNEXURE-II + user heading) before continuations
+ * - same-row continuation before that row's titled card can be swapped
+ * - never swap a continuation past a *different* editor row's titled card
  * - never strip the user-provided annexure-ii-header
  */
 function fixAnnexureIiHeadingOrder(pages) {
@@ -748,30 +830,40 @@ function fixAnnexureIiHeadingOrder(pages) {
   for (const page of pages) {
     if (!page?.length) continue;
 
-    // If a continuation sits before a titled card on the same page, swap them.
+    // Only swap cont ↔ title when they belong to the same Annexure-II editor row.
     for (let i = 1; i < page.length; i += 1) {
       const prev = page[i - 1];
       const curr = page[i];
       if (!blockLooksLikeAnnexureIi(prev) || !blockLooksLikeAnnexureIi(curr)) continue;
       const prevHasTitle = /<div class="annexure-ii-title">/i.test(prev.html || '');
       const currHasTitle = /<div class="annexure-ii-title">/i.test(curr.html || '');
-      if (!prevHasTitle && currHasTitle) {
-        page[i - 1] = curr;
-        page[i] = prev;
-      }
+      if (prevHasTitle || !currHasTitle) continue;
+      const prevRow = getAnnexureIiRowIndex(prev);
+      const currRow = getAnnexureIiRowIndex(curr);
+      if (prevRow != null && currRow != null && prevRow !== currRow) continue;
+      page[i - 1] = curr;
+      page[i] = prev;
     }
 
     let sawAnnexureIi = false;
+    let sawRowIndex = null;
     for (const block of page) {
       if (!blockLooksLikeAnnexureIi(block) || block.html == null) continue;
       const html = String(block.html);
-      if (sawAnnexureIi && /<div class="annexure-ii-title">/i.test(html)) {
+      const rowIndex = getAnnexureIiRowIndex(block);
+      if (
+        sawAnnexureIi &&
+        sawRowIndex != null &&
+        rowIndex === sawRowIndex &&
+        /<div class="annexure-ii-title">/i.test(html)
+      ) {
         // Strip only the repeated ANNEXURE-II bar — keep user's Header text.
         block.html = html
           .replace(/<div class="annexure-ii-title">[\s\S]*?<\/div>/gi, '')
           .replace(/class="annexure-ii(?![^"]*cont)"/i, 'class="annexure-ii annexure-ii-cont"');
       }
       sawAnnexureIi = true;
+      if (rowIndex != null) sawRowIndex = rowIndex;
     }
   }
   return pages;
@@ -1103,12 +1195,25 @@ function packPoPages(parts, heights, scale = 1) {
   (parts.annexureIiBlocks || []).forEach((block, i) => {
     const html = typeof block === 'string' ? block : block.html;
     const key = typeof block === 'string' ? `annexure-ii-${i}` : block.key || `annexure-ii-${i}`;
-    const rowIdx = Number(String(key).match(/^annexure-ii-(\d+)/)?.[1] ?? i);
+    const rowIdx =
+      typeof block === 'object' && block.rowIndex != null
+        ? Number(block.rowIndex)
+        : Number(String(key).match(/^annexure-ii-(\d+)/)?.[1] ?? i);
     // New editor row starts a section; do NOT force a new page for every small leftover.
     const forceNew = i === 0 || rowIdx !== prevAnnexureIiRow;
     prevAnnexureIiRow = rowIdx;
     const estimated = packRowHeight(heights, key, 160, scale);
-    addHtml(html, estimated, forceNew, 'annexure-ii');
+    if (!html || !String(html).trim()) return;
+    if (forceNew) startNewSection();
+    const need = Math.max(estimated, 8);
+    if (used > 0 && !canFit(need)) flush();
+    current.push({
+      type: 'annexure-ii',
+      html: withAnnexureIiRowAttr(html, rowIdx),
+      key,
+      rowIndex: rowIdx,
+    });
+    used += need;
   });
 
   const notesHtml = String(parts.notesHtml || '').trim();
