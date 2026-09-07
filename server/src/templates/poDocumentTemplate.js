@@ -1192,92 +1192,19 @@ function annexureIiItemHtml(row, opts = {}) {
 }
 
 /**
- * Build Annexure-II PDF blocks.
- * Pasted tables stay whole (column alignment). Standalone images follow after.
- * All Annexure-II blocks are packed before SCM sign / vendor acceptance.
+ * Build Annexure-II PDF blocks — one card per editor row (keeps pasted tables as text).
+ * Avoids duplicate "ANNEXURE-II — Continued" titles from over-splitting.
  */
 export function buildAnnexureIiPdfBlocks(rows) {
   const list = Array.isArray(rows) ? rows : [];
   const blocks = [];
 
   list.forEach((row, idx) => {
-    const galleryImages = (row.images || []).filter((img) => String(img?.src || '').trim());
-    const desc = normalizeAnnexureIiBodyHtml(row.description || '');
-    const headerHtml = sanitizeAnnexureHtml(row.header || '');
-    const comments = String(row.comments || '').trim();
-    const hasHeader = Boolean(headerHtml && !annexureHtmlIsEmpty(headerHtml));
-
-    const push = (key, continued, bodyInner, withHeader) => {
-      const body = String(bodyInner || '').trim();
-      if (!body && !(withHeader && hasHeader)) return;
-      blocks.push({
-        key,
-        html: `
-      <div class="annexure-ii">
-        <div class="annexure-ii-title">${continued ? 'ANNEXURE-II — Continued' : 'ANNEXURE-II'}</div>
-        ${withHeader && hasHeader ? `<div class="annexure-ii-header">${headerHtml}</div>` : ''}
-        <div class="annexure-ii-body">${body}</div>
-      </div>`,
-      });
-    };
-
-    const pieces = splitAnnexureIiDescriptionPieces(desc);
-
-    let continued = false;
-    let headerUsed = false;
-    let textBuf = '';
-    const flushText = () => {
-      const text = textBuf.trim();
-      textBuf = '';
-      if (!text || annexureHtmlIsEmpty(text)) return;
-      push(`annexure-ii-${idx}-t${blocks.length}`, continued, text, !headerUsed);
-      headerUsed = true;
-      continued = true;
-    };
-
-    if (!pieces.length) {
-      const body = comments
-        ? `<p class="annexure-ii-comments"><strong>Comments:</strong> ${escapeHtml(comments)}</p>`
-        : '';
-      push(`annexure-ii-${idx}`, false, body, true);
-      continued = true;
-      headerUsed = true;
-    } else {
-      for (const piece of pieces) {
-        // Keep full tables (and any images inside them) on one block.
-        if (/^<table\b/i.test(piece)) {
-          flushText();
-          push(`annexure-ii-${idx}-tbl${blocks.length}`, continued, piece, !headerUsed);
-          headerUsed = true;
-          continued = true;
-        } else if (/^<(?:figure|img)\b/i.test(piece)) {
-          flushText();
-          push(`annexure-ii-${idx}-e${blocks.length}`, true, piece, !headerUsed);
-          headerUsed = true;
-          continued = true;
-        } else {
-          textBuf += piece;
-        }
-      }
-      if (comments) {
-        textBuf += `<p class="annexure-ii-comments"><strong>Comments:</strong> ${escapeHtml(comments)}</p>`;
-      }
-      flushText();
-      if (!headerUsed && hasHeader) {
-        push(`annexure-ii-${idx}-h`, false, '', true);
-        continued = true;
-      }
-    }
-
-    galleryImages.forEach((img, imgIdx) => {
-      const caption = String(img.caption || '').trim();
-      const figure = `<figure class="annexure-figure"><img src="${safeImgSrc(img.src)}" alt="" style="max-width:100%;height:auto;object-fit:contain;" />${
-        caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''
-      }</figure>`;
-      const firstBlock = !continued && imgIdx === 0;
-      push(`annexure-ii-${idx}-g${imgIdx}`, !firstBlock, figure, firstBlock && !headerUsed);
-      headerUsed = true;
-      continued = true;
+    const html = annexureIiItemHtml(row);
+    if (!html || !String(html).trim()) return;
+    blocks.push({
+      key: `annexure-ii-${idx}`,
+      html,
     });
   });
 

@@ -311,19 +311,39 @@ function pageHasContent(blocks) {
   for (const block of blocks || []) {
     if (block.html != null) {
       const html = String(block.html || '');
-      // Image-only Annexure-II / figure pages must count as content (not dropped).
-      if (/<img\b/i.test(html) || /<figure\b/i.test(html)) return true;
+      // Drop title-only Annexure-II cards (blank "Continued" heading pages).
+      if (isAnnexureIiTitleOnly(html)) continue;
+      if (/<img\b/i.test(html) || /<figure\b/i.test(html) || /<table\b/i.test(html)) return true;
       const text = html
         .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<div class="annexure-ii-title">[\s\S]*?<\/div>/gi, '')
         .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-      if (text.length > 4) return true;
+      if (text.length > 2) return true;
     } else if (block.rows?.length) {
       return true;
     }
   }
   return false;
+}
+
+/** True when an Annexure-II card has only the heading (no real body). */
+function isAnnexureIiTitleOnly(html) {
+  const h = String(html || '');
+  if (!/class\s*=\s*["'][^"']*annexure-ii/i.test(h) && !/<div class="annexure-ii"/i.test(h)) {
+    return false;
+  }
+  const bodyMatch = h.match(/<div class="annexure-ii-body">([\s\S]*?)<\/div>\s*<\/div>\s*$/i);
+  const body = bodyMatch ? bodyMatch[1] : h.replace(/<div class="annexure-ii-title">[\s\S]*?<\/div>/gi, '');
+  if (/<img\b|<figure\b|<table\b/i.test(body)) return false;
+  const text = body
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length < 3;
 }
 
 function clonePages(pages) {
@@ -534,70 +554,96 @@ function splitTrailingImageFromOverflowRow(pages, pageIndex) {
 }
 
 /**
- * Split an overflowing Annexure-II HTML block so images stay before notes/ack.
- * Returns true when pages were changed.
+ * If a tall Annexure-II table overflows, move trailing rows to the next page
+ * without creating a blank "ANNEXURE-II — Continued" heading page.
  */
-function splitOversizedAnnexureIiBlock(pages, pageIndex) {
+function splitOverflowingAnnexureIiTable(pages, pageIndex) {
   if (pageIndex < 0 || pageIndex >= pages.length) return false;
   const page = pages[pageIndex];
   if (!page?.length) return false;
-
-  const wrapBody = (bodyInner, continued, headerHtml = '') => `
-      <div class="annexure-ii">
-        <div class="annexure-ii-title">${continued ? 'ANNEXURE-II — Continued' : 'ANNEXURE-II'}</div>
-        ${!continued && headerHtml ? headerHtml : ''}
-        <div class="annexure-ii-body">${bodyInner}</div>
-      </div>`;
 
   for (let bi = page.length - 1; bi >= 0; bi -= 1) {
     const block = page[bi];
     if (!blockLooksLikeAnnexureIi(block) || block.html == null) continue;
     const html = String(block.html || '');
+    if (isAnnexureIiTitleOnly(html)) {
+      page.splice(bi, 1);
+      if (!page.length) pages.splice(pageIndex, 1);
+      return true;
+    }
+
+    const tableMatch = html.match(/<table\b[\s\S]*?<\/table>/i);
+    if (!tableMatch) continue;
+
+    const tableHtml = tableMatch[0];
+    const rowMatches = [...tableHtml.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)].map((m) => m[0]);
+    if (rowMatches.length < 3) continue;
+
+    // Keep header row(s) + first half on this page; move the rest.
+    const keepCount = Math.max(2, Math.ceil(rowMatches.length * 0.55));
+    if (keepCount >= rowMatches.length) continue;
+
+    const headRows = rowMatches.slice(0, keepCount).join('');
+    const tailRows = rowMatches.slice(keepCount).join('');
+    const openTable = tableHtml.match(/^<table\b[^>]*>/i)?.[0] || '<table class="annexure-ii-table">';
+    const keptTable = `${openTable}${headRows}</table>`;
+    const contTable = `${openTable}${tailRows}</table>`;
+
+    const titleHtml = `<div class="annexure-ii-title">ANNEXURE-II</div>`;
     const headerMatch = html.match(/<div class="annexure-ii-header">[\s\S]*?<\/div>/i);
     const headerHtml = headerMatch ? headerMatch[0] : '';
-    const bodyMatch = html.match(/<div class="annexure-ii-body">([\s\S]*)<\/div>\s*<\/div>\s*$/i);
-    const bodyInner = bodyMatch ? bodyMatch[1] : html;
+    const before = html.slice(0, tableMatch.index);
+    const after = html.slice(tableMatch.index + tableMatch[0].length);
+    const beforeBody = before
+      .replace(/<div class="annexure-ii">/i, '')
+      .replace(/<div class="annexure-ii-title">[\s\S]*?<\/div>/i, '')
+      .replace(/<div class="annexure-ii-header">[\s\S]*?<\/div>/i, '')
+      .replace(/<div class="annexure-ii-body">/i, '')
+      .trim();
+    const afterBody = after.replace(/<\/div>\s*<\/div>\s*$/i, '').trim();
 
-    const media = [];
-    const re = /<figure\b[^>]*>[\s\S]*?<\/figure>|<img\b[^>]*\/?>/gi;
-    let m;
-    let cursor = 0;
-    let textParts = '';
-    while ((m = re.exec(bodyInner)) !== null) {
-      textParts += bodyInner.slice(cursor, m.index);
-      media.push(m[0]);
-      cursor = m.index + m[0].length;
-    }
-    textParts += bodyInner.slice(cursor);
-    const leadingText = textParts.trim();
+    page[bi] = {
+      type: 'annexure-ii',
+      html: `
+      <div class="annexure-ii">
+        ${titleHtml}
+        ${headerHtml}
+        <div class="annexure-ii-body">${beforeBody}${keptTable}${afterBody}</div>
+      </div>`,
+    };
 
-    if (media.length >= 2) {
-      const firstMedia = media[0];
-      const restMedia = media.slice(1);
-      page[bi] = {
-        type: 'annexure-ii',
-        html: wrapBody(`${leadingText}${firstMedia}`, false, headerHtml),
-      };
-      let insertAt = pageIndex + 1;
-      for (const piece of restMedia) {
-        pages.splice(insertAt, 0, [{ type: 'annexure-ii', html: wrapBody(piece, true) }]);
-        insertAt += 1;
-      }
-      return true;
-    }
+    // Continuation page: table only — no extra "Continued" heading card.
+    const contHtml = `
+      <div class="annexure-ii annexure-ii-cont">
+        <div class="annexure-ii-body">${contTable}</div>
+      </div>`;
 
-    if (media.length === 1 && leadingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length > 12) {
-      page[bi] = {
-        type: 'annexure-ii',
-        html: wrapBody(leadingText, false, headerHtml),
-      };
-      const nextIdx = pageIndex + 1;
-      if (!pages[nextIdx]) pages.splice(nextIdx, 0, []);
-      pages[nextIdx].unshift({ type: 'annexure-ii', html: wrapBody(media[0], true) });
-      return true;
-    }
+    const nextIdx = pageIndex + 1;
+    if (!pages[nextIdx]) pages.splice(nextIdx, 0, []);
+    pages[nextIdx].unshift({ type: 'annexure-ii', html: contHtml });
+    return true;
   }
   return false;
+}
+
+/** Remove blank Annexure-II heading pages and empty pages. */
+function pruneEmptyPages(pages) {
+  if (!Array.isArray(pages)) return pages;
+  for (let i = pages.length - 1; i >= 0; i -= 1) {
+    const page = pages[i];
+    if (!page?.length) {
+      pages.splice(i, 1);
+      continue;
+    }
+    for (let bi = page.length - 1; bi >= 0; bi -= 1) {
+      const block = page[bi];
+      if (block?.html != null && isAnnexureIiTitleOnly(block.html)) {
+        page.splice(bi, 1);
+      }
+    }
+    if (!page.length || !pageHasContent(page)) pages.splice(i, 1);
+  }
+  return pages;
 }
 
 /** Shrink images on an overflowing page so content fits before notes/ack. */
@@ -904,12 +950,10 @@ function packPoPages(parts, heights, scale = 1) {
     const html = typeof block === 'string' ? block : block.html;
     const key = typeof block === 'string' ? `annexure-ii-${i}` : block.key || `annexure-ii-${i}`;
     const rowIdx = Number(String(key).match(/^annexure-ii-(\d+)/)?.[1] ?? i);
-    const isStandaloneMedia = /-(?:g|e)\d+/i.test(String(key));
-    // Keep pasted table + surrounding text on the same page when they fit.
-    // New editor row or standalone image starts a fresh page.
-    const forceNew = i === 0 || isStandaloneMedia || rowIdx !== prevAnnexureIiRow;
+    // One Annexure-II card per editor row; each row starts on a new page.
+    const forceNew = i === 0 || rowIdx !== prevAnnexureIiRow;
     prevAnnexureIiRow = rowIdx;
-    addHtml(html, packRowHeight(heights, key, 180, scale), forceNew, 'annexure-ii');
+    addHtml(html, packRowHeight(heights, key, 220, scale), forceNew, 'annexure-ii');
   });
 
   const notesHtml = String(parts.notesHtml || '').trim();
@@ -927,34 +971,42 @@ function packPoPages(parts, heights, scale = 1) {
   flush();
   const packed = pages.filter((page) => Array.isArray(page) && pageHasContent(page));
   enforceDocumentSectionOrder(packed);
+  pruneEmptyPages(packed);
   return packed;
 }
 
 async function waitForPdfAssets(page) {
   await page.evaluate(async () => {
+    const withTimeout = (p, ms) =>
+      Promise.race([p, new Promise((resolve) => setTimeout(resolve, ms))]);
+
     if (document.fonts?.ready) {
       try {
-        await document.fonts.ready;
+        await withTimeout(document.fonts.ready, 1500);
       } catch {
         /* ignore */
       }
     }
     const imgs = Array.from(document.images || []);
-    await Promise.all(
-      imgs.map((img) =>
-        img.complete
-          ? Promise.resolve()
-          : new Promise((resolve) => {
-              img.onload = img.onerror = () => resolve();
-            })
-      )
+    await withTimeout(
+      Promise.all(
+        imgs.map((img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+                img.onload = img.onerror = () => resolve();
+              })
+        )
+      ),
+      4000
     );
   });
 }
 
-async function detectFooterCollisions(browser, html, reusePage = null) {
+async function detectFooterCollisions(browser, html, reusePage = null, opts = {}) {
   const checkPage = reusePage || (await browser.newPage());
   const ownsPage = !reusePage;
+  const waitAssets = opts.waitAssets !== false;
   if (ownsPage) {
     await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
   }
@@ -964,7 +1016,9 @@ async function detectFooterCollisions(browser, html, reusePage = null) {
     await checkPage.setContent(html, { waitUntil: 'load', timeout: 60000 });
   }
   await checkPage.emulateMediaType('print');
-  await waitForPdfAssets(checkPage);
+  if (waitAssets) {
+    await waitForPdfAssets(checkPage);
+  }
 
   const collisions = await checkPage.evaluate(() => {
     const tolerance = 3;
@@ -1087,8 +1141,9 @@ async function paginatePoHtml(browser, po, options) {
 
   let packScale = 1.0;
   let pages = [];
-  const maxAttempts = 4;
-  const maxRepairs = 30;
+  const maxAttempts = 2;
+  const maxRepairs = 8;
+  let assetsReady = false;
 
   try {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -1100,7 +1155,11 @@ async function paginatePoHtml(browser, po, options) {
           `${parts.docLabel} - ${parts.poNumber}`,
           'po-document po-document-pdf-pages'
         );
-        const { collisions } = await detectFooterCollisions(browser, draftHtml, checkPage);
+        // Wait for images only on the first collision check (major PDF speed win).
+        const { collisions } = await detectFooterCollisions(browser, draftHtml, checkPage, {
+          waitAssets: !assetsReady,
+        });
+        assetsReady = true;
         if (!collisions.length) break;
 
         const worstPage = collisions.reduce(
@@ -1109,29 +1168,32 @@ async function paginatePoHtml(browser, po, options) {
         );
         if (!shiftLastUnitFromPage(pages, worstPage)) {
           if (!splitTrailingImageFromOverflowRow(pages, worstPage)) {
-            if (!splitOversizedAnnexureIiBlock(pages, worstPage)) {
-              // Last resort: shrink images so the block fits on its page before notes/ack.
-              if (!shrinkOverflowImagesOnPage(pages, worstPage, Math.max(72, 140 - repair * 10))) {
+            if (!splitOverflowingAnnexureIiTable(pages, worstPage)) {
+              if (!shrinkOverflowImagesOnPage(pages, worstPage, Math.max(90, 160 - repair * 12))) {
                 break;
               }
             }
           }
         }
         enforceDocumentSectionOrder(pages);
+        pruneEmptyPages(pages);
       }
 
       enforceDocumentSectionOrder(pages);
+      pruneEmptyPages(pages);
       const pagesHtml = renderPagesHtml(pages, parts, layout);
       const draftHtml = wrapPoHtmlDocument(
         pagesHtml,
         `${parts.docLabel} - ${parts.poNumber}`,
         'po-document po-document-pdf-pages'
       );
-      const { collisions: remaining } = await detectFooterCollisions(browser, draftHtml, checkPage);
+      const { collisions: remaining } = await detectFooterCollisions(browser, draftHtml, checkPage, {
+        waitAssets: false,
+      });
       if (!remaining.length) {
         return draftHtml;
       }
-      packScale += 0.1;
+      packScale += 0.12;
     }
   } finally {
     await checkPage.close();

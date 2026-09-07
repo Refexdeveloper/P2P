@@ -75,9 +75,13 @@ const PASTE_ALLOWED_TAGS = new Set([
   'TABLE',
   'THEAD',
   'TBODY',
+  'TFOOT',
   'TR',
   'TD',
   'TH',
+  'COLGROUP',
+  'COL',
+  'CAPTION',
   'SUB',
   'SUP',
   'BLOCKQUOTE',
@@ -119,20 +123,88 @@ function wrapWithTag(el: HTMLElement, tagName: string) {
   el.appendChild(wrap);
 }
 
-/** Keep bold/italic/underline/lists from Word, Google Docs, and browsers. Strip scripts and junk. */
-function sanitizePastedHtml(raw: string, allowImages = false) {
-  const html = String(raw || '').trim();
-  if (!html) return '';
-  let fragment = html;
+/** Excel/Word CF_HTML often wraps the fragment — extract the usable body HTML. */
+function extractClipboardHtmlFragment(raw: string) {
+  let fragment = String(raw || '').trim();
+  if (!fragment) return '';
   const start = fragment.indexOf('<!--StartFragment-->');
   const end = fragment.indexOf('<!--EndFragment-->');
   if (start >= 0 && end > start) {
     fragment = fragment.slice(start + 20, end);
   }
-  const doc = new DOMParser().parseFromString(fragment, 'text/html');
-  doc.querySelectorAll('script,style,meta,link,noscript,iframe,object,embed,xml,head').forEach((n) => n.remove());
+  return fragment.trim();
+}
 
-  const hasTable = Boolean(doc.body.querySelector('table'));
+/** Convert Excel `text/plain` (tab-separated cells) into a real HTML table. */
+function excelPlainToTableHtml(plain: string) {
+  const text = String(plain || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+  if (!text.trim()) return '';
+  const lines = text.split('\n');
+  while (lines.length && lines[lines.length - 1] === '') lines.pop();
+  if (!lines.length) return '';
+  const hasTabs = lines.some((line) => line.includes('\t'));
+  if (!hasTabs) return '';
+
+  const rows = lines.map((line) => line.split('\t'));
+  const maxCols = Math.max(...rows.map((r) => r.length));
+  if (maxCols < 2 && rows.length < 2) return '';
+
+  const escape = (s: string) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const body = rows
+    .map((cells, ri) => {
+      const tag = ri === 0 ? 'th' : 'td';
+      const padded = [...cells];
+      while (padded.length < maxCols) padded.push('');
+      return `<tr>${padded
+        .map((c) => `<${tag}>${escape(c) || '&nbsp;'}</${tag}>`)
+        .join('')}</tr>`;
+    })
+    .join('');
+
+  return (
+    `<table class="annexure-pasted-table" style="width:100%;border-collapse:collapse;border:1px solid #000;">` +
+    `<tbody>${body}</tbody></table><p><br></p>`
+  );
+}
+
+function plainTextLooksLikeExcelTable(plain: string) {
+  const text = String(plain || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
+  if (!text) return false;
+  const lines = text.split('\n').filter((l) => l.length > 0);
+  if (!lines.length) return false;
+  return lines.some((line) => line.includes('\t'));
+}
+
+/** Keep bold/italic/underline/lists/tables from Word, Excel, Google Docs. */
+function sanitizePastedHtml(raw: string, allowImages = false) {
+  const html = extractClipboardHtmlFragment(raw);
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc
+    .querySelectorAll('script,style,meta,link,noscript,iframe,object,embed,xml,head')
+    .forEach((n) => n.remove());
+
+  let hasTable = Boolean(doc.body.querySelector('table'));
+  // Some Excel pastes leave the table only in the raw string if the fragment is odd.
+  if (!hasTable && /<table\b/i.test(html)) {
+    const recovered = html.match(/<table\b[\s\S]*?<\/table>/i);
+    if (recovered) {
+      doc.body.innerHTML = recovered[0];
+      hasTable = true;
+    }
+  }
+
   // Excel/Word often paste a bitmap of the table alongside HTML — drop it when a real table exists.
   if (hasTable) {
     doc.querySelectorAll('img').forEach((n) => n.remove());
@@ -144,7 +216,7 @@ function sanitizePastedHtml(raw: string, allowImages = false) {
     const tag = el.tagName;
     if (tag === 'IMG') {
       if (!allowImages || hasTable) {
-        unwrapElement(el);
+        el.remove();
         continue;
       }
       const src = el.getAttribute('src') || '';
@@ -154,7 +226,7 @@ function sanitizePastedHtml(raw: string, allowImages = false) {
         });
         el.setAttribute('style', 'max-width:100%;height:auto;');
       } else {
-        unwrapElement(el);
+        el.remove();
       }
       continue;
     }
@@ -166,15 +238,82 @@ function sanitizePastedHtml(raw: string, allowImages = false) {
     [...el.attributes].forEach((attr) => {
       const name = attr.name.toLowerCase();
       const keepAttr =
-        (tag === 'TD' || tag === 'TH') && (name === 'colspan' || name === 'rowspan');
+        ((tag === 'TD' || tag === 'TH') && (name === 'colspan' || name === 'rowspan')) ||
+        (tag === 'TABLE' && name === 'class');
       if (!keepAttr) el.removeAttribute(attr.name);
     });
+    if (tag === 'TABLE') {
+      el.classList.add('annexure-pasted-table');
+      el.setAttribute(
+        'style',
+        'width:100%;border-collapse:collapse;border:1px solid #000;'
+      );
+    }
+    if (tag === 'TD' || tag === 'TH') {
+      const cellStyle = [
+        'border:1px solid #000',
+        'padding:4px 6px',
+        'vertical-align:top',
+        style,
+      ]
+        .filter(Boolean)
+        .join(';');
+      el.setAttribute('style', cellStyle);
+    }
     if (/font-weight\s*:\s*(bold|bolder|[6-9]00)/i.test(style)) wrapWithTag(el, 'strong');
     if (/font-style\s*:\s*italic/i.test(style)) wrapWithTag(el, 'em');
     if (/text-decoration[^;]*underline/i.test(style)) wrapWithTag(el, 'u');
-    if (style) el.setAttribute('style', style);
+    else if (style && tag !== 'TABLE' && tag !== 'TD' && tag !== 'TH') {
+      el.setAttribute('style', style);
+    }
   }
+
+  // Ensure tables have visible borders even if cells were empty of styles.
+  doc.body.querySelectorAll('table').forEach((table) => {
+    table.classList.add('annexure-pasted-table');
+  });
+
   return doc.body.innerHTML.trim();
+}
+
+function insertHtmlAtCursor(html: string, editor: HTMLDivElement | null) {
+  if (!html || !editor) return false;
+  editor.focus();
+  try {
+    if (document.execCommand('insertHTML', false, html)) return true;
+  } catch {
+    /* fall through */
+  }
+  const sel = window.getSelection();
+  if (!sel) {
+    editor.insertAdjacentHTML('beforeend', html);
+    return true;
+  }
+  if (!sel.rangeCount) {
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  const frag = document.createDocumentFragment();
+  let last: ChildNode | null = null;
+  while (temp.firstChild) {
+    last = temp.firstChild;
+    frag.appendChild(temp.firstChild);
+  }
+  range.insertNode(frag);
+  if (last) {
+    range.setStartAfter(last);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  return true;
 }
 
 export default function RichTextEditor({
@@ -298,21 +437,40 @@ export default function RichTextEditor({
 
     const items = e.clipboardData?.items;
     const html = e.clipboardData?.getData('text/html') || '';
+    const plain = e.clipboardData?.getData('text/plain') || '';
 
-    // Prefer real HTML tables/text from Excel/Word. Clipboard often also includes a
-    // screenshot image of the selection — do not insert that when table HTML exists.
     if (!plainTextOnly) {
-      const hasTable = /<table\b/i.test(html);
-      const sanitized = sanitizePastedHtml(html, allowImages && !hasTable);
-      if (sanitized && (hasTable || htmlToPlainText(sanitized).trim())) {
-        document.execCommand('insertHTML', false, sanitized);
+      const hasHtmlTable = /<table\b/i.test(html);
+      const sanitized = sanitizePastedHtml(html, allowImages && !hasHtmlTable);
+      const sanitizedHasTable = /<table\b/i.test(sanitized);
+
+      // 1) Prefer real HTML table from Excel/Word
+      if (sanitized && (sanitizedHasTable || (hasHtmlTable && htmlToPlainText(sanitized).trim()))) {
+        insertHtmlAtCursor(sanitized, editorRef.current);
+        emitHtml();
+        return;
+      }
+
+      // 2) Excel cells usually also provide tab-separated plain text — convert to HTML table
+      if (plainTextLooksLikeExcelTable(plain)) {
+        const tableHtml = excelPlainToTableHtml(plain);
+        if (tableHtml) {
+          insertHtmlAtCursor(tableHtml, editorRef.current);
+          emitHtml();
+          return;
+        }
+      }
+
+      // 3) Other rich HTML (paragraphs, lists) without a table
+      if (sanitized && htmlToPlainText(sanitized).trim()) {
+        insertHtmlAtCursor(sanitized, editorRef.current);
         emitHtml();
         return;
       }
     }
 
-    // Image-only paste (no HTML table/text) — allow when editor supports images.
-    if (allowImages && !plainTextOnly && items) {
+    // 4) Image-only paste — never when Excel table text is present
+    if (allowImages && !plainTextOnly && items && !plainTextLooksLikeExcelTable(plain) && !/<table\b/i.test(html)) {
       for (const item of Array.from(items)) {
         if (item.type.startsWith('image/')) {
           const file = item.getAsFile();
@@ -322,23 +480,13 @@ export default function RichTextEditor({
       }
     }
 
-    let plain = e.clipboardData?.getData('text/plain') || '';
-    if (!plain.trim()) {
-      plain = htmlToPlainText(e.clipboardData?.getData('text/html') || '');
+    let text = plain;
+    if (!text.trim()) {
+      text = htmlToPlainText(html);
     }
-    if (!plain) return;
+    if (!text) return;
     if (plainTextOnly) document.execCommand('removeFormat', false);
-    const ok = document.execCommand('insertHTML', false, escapeForInsert(plain));
-    if (!ok && editorRef.current) {
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount) {
-        sel.deleteFromDocument();
-        sel.getRangeAt(0).insertNode(document.createTextNode(plain));
-        sel.collapseToEnd();
-      } else {
-        editorRef.current.append(document.createTextNode(plain));
-      }
-    }
+    insertHtmlAtCursor(escapeForInsert(text), editorRef.current);
     emitHtml();
   };
 
@@ -468,7 +616,7 @@ export default function RichTextEditor({
         onPaste={handlePaste}
         data-placeholder={placeholder}
         style={{ minHeight, lineHeight: advanced ? 1.5 : undefined }}
-        className="px-3 py-2.5 text-sm text-gray-800 font-sans focus:outline-none prose prose-sm max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 [&_img]:max-w-full [&_img]:h-auto [&_figure]:my-3 [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline"
+        className="px-3 py-2.5 text-sm text-gray-800 font-sans focus:outline-none prose prose-sm max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 [&_img]:max-w-full [&_img]:h-auto [&_figure]:my-3 [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 [&_td]:align-top [&_th]:border [&_th]:border-black [&_th]:px-2 [&_th]:py-1 [&_th]:bg-gray-100 [&_th]:font-semibold"
       />
     </div>
   );

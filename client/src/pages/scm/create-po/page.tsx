@@ -853,7 +853,8 @@ function AnnexureIiTableEditor({
         </button>
       </div>
       <p className="px-5 pt-3 text-xs text-gray-500">
-        Add technical data, scope, specifications, and images. Use Add Row for another page. Formatting is kept on save, preview, and PDF.
+        Add technical data, scope, specifications, and images. Paste Excel tables directly into Description
+        (Ctrl+V) — they are kept as text tables on preview and PDF. Use Add Row for another page.
       </p>
       <div className="divide-y divide-gray-100">
         {localRows.map((row, index) => (

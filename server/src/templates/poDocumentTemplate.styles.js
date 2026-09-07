@@ -917,9 +917,11 @@ export const PO_STYLES = `
     line-height: 1.3;
     padding: 4px 5px;
   }
-  body.po-document-pdf-pages .annexure-ii {
-    max-height: none;
-    overflow: visible;
+  body.po-document-pdf-pages .annexure-ii.annexure-ii-cont {
+    border-top: none;
+  }
+  body.po-document-pdf-pages .annexure-ii.annexure-ii-cont .annexure-ii-body {
+    padding-top: 4px;
   }
   table.terms-compact th,
   table.terms-compact td { padding: 5px 7px; font-size: 11px; }
