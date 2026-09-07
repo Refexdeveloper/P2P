@@ -2594,7 +2594,7 @@ export default function CreatePRPage() {
                     {
                       id: 'sass' as const,
                       label: 'Cloud Subscription',
-                      hint: 'No PO number · Approvals → Mugesh → Srivaths → Mugesh Invoice → Accounts',
+                      hint: 'No PO · L1 → (Mugesh requester? invoice) or Mugesh → Srivaths → invoice',
                     },
                   ]
                 ).map((opt) => (
@@ -2885,9 +2885,21 @@ export default function CreatePRPage() {
                 <div className="md:col-span-2 lg:col-span-3 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
                   <p className="text-sm font-semibold text-teal-900">Cloud Subscription approval path</p>
                   <p className="text-xs text-teal-800 mt-1">
-                    Add vendors &amp; quotes below (same as Functional Own), pick one recommended
-                    vendor, select user approval(s) → Mugesh approves → Srivaths (L2) approves →
-                    Mugesh uploads invoice (My Tasks) → Accounts. SCM RFQ is skipped.
+                    {String(user?.email || '')
+                      .trim()
+                      .toLowerCase() === 'mugesh.m@refex.co.in' ? (
+                      <>
+                        You are Mugesh — select L1 user approver → after L1 approval, this comes
+                        back to you for <strong>Invoice Upload</strong> (Mugesh approval &amp;
+                        Srivaths L2 are skipped) → Accounts. SCM RFQ is skipped.
+                      </>
+                    ) : (
+                      <>
+                        Add vendors &amp; quotes below, pick one recommended vendor, select L1 →
+                        Mugesh approves → Srivaths (L2) → Mugesh Invoice Upload → Accounts. SCM RFQ
+                        is skipped.
+                      </>
+                    )}
                   </p>
                 </div>
                 <div className="md:col-span-2" data-field="approvalUserId">
@@ -2906,10 +2918,11 @@ export default function CreatePRPage() {
                     <p className="text-xs text-red-500 mt-1">{errors.approvalUserId}</p>
                   )}
                   <p className="text-xs text-gray-500 mt-1.5">
-                    After your selected approver(s): Mugesh (mugesh.m@refex.co.in) approves, then
-                    Srivaths (srivaths.varadharajan@refex.co.in), then Mugesh gets an assigned My
-                    Task to upload the invoice. Do not select Srivaths as L1 unless that person is
-                    intentionally your L1.
+                    {String(user?.email || '')
+                      .trim()
+                      .toLowerCase() === 'mugesh.m@refex.co.in'
+                      ? 'After L1 approves, you get an assigned My Task to upload the invoice. Do not select yourself as L1.'
+                      : 'After L1: Mugesh (mugesh.m@refex.co.in) approves, then Srivaths, then Mugesh Invoice Upload. Do not select Srivaths as L1 unless that person is intentionally your L1.'}
                   </p>
                 </div>
               </>

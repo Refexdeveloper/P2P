@@ -55,6 +55,8 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [rows, setRows] = useState<QuoteRow[]>([]);
+  const [recommendationJustification, setRecommendationJustification] = useState('');
+  const [recommendedVendorName, setRecommendedVendorName] = useState('');
   const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null);
   const [expandedRound, setExpandedRound] = useState<string | null>(null);
 
@@ -69,25 +71,42 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
       .getByPr(prId)
       .then((res) => {
         if (cancelled) return;
-        const tableRows = ((res.data as { tableRows?: QuoteRow[] })?.tableRows || []) as QuoteRow[];
+        const payload = res.data as {
+          tableRows?: QuoteRow[];
+          config?: { recommendationJustification?: string; recommendedInvitationId?: number | null };
+        };
+        const tableRows = (payload?.tableRows || []) as QuoteRow[];
         const withQuotes = tableRows.filter((row) => (row.quotes || []).some(hasQuotedPrice));
         setRows(withQuotes);
+        const recJust = String(payload?.config?.recommendationJustification || '').trim();
+        setRecommendationJustification(recJust);
+        const recommended =
+          withQuotes.find((r) => r.isRecommended) ||
+          withQuotes.find(
+            (r) =>
+              payload?.config?.recommendedInvitationId != null &&
+              Number(r.invitationId) === Number(payload.config.recommendedInvitationId)
+          ) ||
+          null;
+        setRecommendedVendorName(recommended?.vendorName || '');
         onPresenceRef.current?.(withQuotes.length > 0);
         // Auto-expand recommended vendor's latest round line items
-        const recommended = withQuotes.find((r) => r.isRecommended) || withQuotes[0];
-        if (recommended) {
-          const quotes = [...(recommended.quotes || [])]
+        const expandTarget = recommended || withQuotes[0];
+        if (expandTarget) {
+          const quotes = [...(expandTarget.quotes || [])]
             .filter(hasQuotedPrice)
             .sort((a, b) => a.round - b.round);
           const latest = quotes[quotes.length - 1];
           if (latest && linesForQuote(latest).length) {
-            setExpandedRound(`${recommended.invitationId}-r${latest.round}`);
+            setExpandedRound(`${expandTarget.invitationId}-r${latest.round}`);
           }
         }
       })
       .catch((err) => {
         if (cancelled) return;
         setRows([]);
+        setRecommendationJustification('');
+        setRecommendedVendorName('');
         onPresenceRef.current?.(false);
         setError(err instanceof Error ? err.message : 'Could not load vendor quotations');
       })
@@ -140,23 +159,51 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
   }
   if (!rows.length) {
     if (error) return <p className="text-sm text-red-600 py-4">{error}</p>;
-    return null;
+    if (!recommendationJustification && !recommendedVendorName) return null;
   }
 
   return (
     <div className="space-y-3">
       {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h4 className="text-sm font-semibold text-gray-900">Vendor quotations</h4>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Round prices, line items, and quotation files — recommended round expands by default
-          </p>
+
+      {(recommendedVendorName || recommendationJustification) && (
+        <section className="rounded-xl overflow-hidden border-2 border-emerald-400 bg-emerald-50 shadow-sm ring-2 ring-emerald-300/70">
+          <div className="px-3.5 py-2.5 bg-emerald-200/90 border-b border-emerald-400 flex items-center gap-2">
+            <i className="ri-award-fill text-emerald-800 text-lg" aria-hidden />
+            <div className="min-w-0">
+              <h4 className="text-[11px] font-extrabold text-emerald-950 uppercase tracking-wide">
+                Vendor Recommendation Justification
+              </h4>
+              <p className="text-sm font-bold text-emerald-950 mt-0.5 truncate">
+                {recommendedVendorName || 'Recommended vendor'}
+              </p>
+            </div>
+          </div>
+          {recommendationJustification ? (
+            <p className="px-3.5 py-3 text-sm text-emerald-950 leading-relaxed whitespace-pre-wrap font-medium">
+              {recommendationJustification}
+            </p>
+          ) : (
+            <p className="px-3.5 py-3 text-sm italic text-emerald-800">
+              No justification was provided with this recommendation.
+            </p>
+          )}
+        </section>
+      )}
+
+      {rows.length > 0 && (
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-900">Vendor quotations</h4>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Round prices, line items, and quotation files — recommended round expands by default
+            </p>
+          </div>
+          <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+            {rows.length} vendor{rows.length === 1 ? '' : 's'} · up to Q{maxRound}
+          </span>
         </div>
-        <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
-          {rows.length} vendor{rows.length === 1 ? '' : 's'} · up to Q{maxRound}
-        </span>
-      </div>
+      )}
 
       {rows.map((row) => {
         const quotes = [...(row.quotes || [])].filter(hasQuotedPrice).sort((a, b) => a.round - b.round);

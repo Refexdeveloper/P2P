@@ -269,22 +269,27 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
       </section>
 
       {justification || data.recommendedVendorName ? (
-        <section className="rounded-xl overflow-hidden border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50">
-          <div className="px-4 py-3 bg-emerald-100/80 border-b border-emerald-200">
-            <p className="text-[11px] font-extrabold tracking-wide uppercase text-emerald-800">
-              Recommendation justification
-            </p>
-            <p className="text-base font-bold text-emerald-950 mt-0.5">
-              {data.recommendedVendorName || recommended?.name || 'Recommended vendor'}
-              {recommendedQuotedTotal > 0 ? (
-                <span className="ml-2 text-sm font-semibold text-emerald-700">{money(recommendedQuotedTotal)}</span>
-              ) : null}
-            </p>
+        <section className="rounded-xl overflow-hidden border-2 border-emerald-400 bg-emerald-50 shadow-sm ring-2 ring-emerald-300/70">
+          <div className="px-4 py-3 bg-emerald-200/90 border-b border-emerald-400 flex items-center gap-2">
+            <i className="ri-award-fill text-emerald-800 text-lg" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-extrabold tracking-wide uppercase text-emerald-950">
+                Vendor Recommendation Justification
+              </p>
+              <p className="text-base font-bold text-emerald-950 mt-0.5 truncate">
+                {data.recommendedVendorName || recommended?.name || 'Recommended vendor'}
+                {recommendedQuotedTotal > 0 ? (
+                  <span className="ml-2 text-sm font-semibold text-emerald-800">{money(recommendedQuotedTotal)}</span>
+                ) : null}
+              </p>
+            </div>
           </div>
           {justification ? (
-            <p className="px-4 py-3 text-sm text-emerald-950 leading-relaxed whitespace-pre-wrap">{justification}</p>
+            <p className="px-4 py-3.5 text-sm text-emerald-950 leading-relaxed whitespace-pre-wrap font-medium">
+              {justification}
+            </p>
           ) : (
-            <p className="px-4 py-3 text-sm italic text-emerald-700">
+            <p className="px-4 py-3.5 text-sm italic text-emerald-800">
               No justification was provided with this recommendation.
             </p>
           )}

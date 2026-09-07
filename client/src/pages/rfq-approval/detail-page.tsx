@@ -228,10 +228,19 @@ export default function RfqApprovalDetailPage() {
                   : 'RFQ quotation'}
             </span>
             {data.recommendedVendorName && (
-              <span className="text-emerald-700 font-medium break-words">
-                ⭐ Recommended: {data.recommendedVendorName}
+              <span className="inline-flex self-start items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold">
+                <i className="ri-award-fill" aria-hidden />
+                Recommended: {data.recommendedVendorName}
               </span>
             )}
+            {String(data.recommendationJustification || '').trim() ? (
+              <span
+                className="inline-flex self-start max-w-full sm:max-w-md px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-950 border border-emerald-300 text-xs font-medium truncate"
+                title={String(data.recommendationJustification)}
+              >
+                Justify: {String(data.recommendationJustification).trim()}
+              </span>
+            ) : null}
           </div>
         </div>
 

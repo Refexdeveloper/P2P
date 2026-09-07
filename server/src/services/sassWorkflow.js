@@ -1,6 +1,8 @@
 /**
  * SASS purchase-type workflow helpers.
- * Chain: Requester → selected user approvals (L1) → Mugesh (approve) → Srivaths (L2) → Mugesh (invoice upload) → Accounts.
+ * Default chain: Requester → selected user approvals (L1) → Mugesh (approve) → Srivaths (L2) → Mugesh (invoice upload) → Accounts.
+ * When Mugesh is the requester: Requester (Mugesh) → L1 → Mugesh invoice upload → Accounts
+ *   (skips Mugesh self-approval and Srivaths L2).
  * SCM is never involved.
  */
 import fs from 'fs';
@@ -30,6 +32,42 @@ export function isSassPurchaseType(value) {
 
 export function isSassPr(pr = {}) {
   return isSassPurchaseType(pr.purchase_type || pr.purchaseType);
+}
+
+/** True when the PR requester is Mugesh (Cloud Subscription self-request shortcut). */
+export function isSassMugeshRequester(prOrUser = {}) {
+  const email = String(
+    prOrUser.requester_email ||
+      prOrUser.requesterEmail ||
+      prOrUser.email ||
+      ''
+  )
+    .trim()
+    .toLowerCase();
+  if (email && email === SASS_MUGESH_EMAIL.toLowerCase()) return true;
+  const name = String(prOrUser.requester_name || prOrUser.requesterName || prOrUser.name || '')
+    .trim()
+    .toLowerCase();
+  // Prefer email; name-only match only when email missing and name is clearly Mugesh
+  if (!email && name && (name === 'mugesh' || name.startsWith('mugesh '))) return true;
+  return false;
+}
+
+export async function isSassMugeshRequesterByPrId(prId, connOrPool = null) {
+  const db = connOrPool || pool;
+  const [rows] = await db.query(
+    `SELECT u.email, u.name
+     FROM purchase_requests pr
+     JOIN users u ON u.id = pr.requester_id
+     WHERE pr.id = ?
+     LIMIT 1`,
+    [Number(prId)]
+  );
+  if (!rows[0]) return false;
+  return isSassMugeshRequester({
+    requester_email: rows[0].email,
+    requester_name: rows[0].name,
+  });
 }
 
 /** Resolve vendor from Create PR payload (SASS — from recommended RFQ vendor). */
@@ -582,4 +620,96 @@ export async function rewriteConsumedCloudSubscriptionPoNumbers(connection = poo
   }
 
   return { scanned: rows.length, rewritten, sequencesFixed };
+}
+
+/**
+ * Idempotent: already-raised Cloud Subscription PRs where Mugesh is the requester
+ * and the flow is stuck on Mugesh approval or Srivaths L2 → route to Mugesh invoice upload.
+ * Also ensures AWAITING_INVOICE rows have a pending INVOICE_UPLOAD task for Mugesh.
+ */
+export async function rerouteMugeshRequesterSassToInvoiceUpload(connection = pool) {
+  const mugeshEmail = SASS_MUGESH_EMAIL.toLowerCase();
+  const [rows] = await connection.query(
+    `SELECT pr.id, pr.pr_number, pr.status, pr.department_id, pr.requester_id,
+            pr.vendor_name, pr.place_of_delivery, pr.billing_address, pr.payment_terms,
+            pr.entity_id, pr.currency, pr.total_amount,
+            u.email AS requester_email, u.name AS requester_name
+     FROM purchase_requests pr
+     JOIN users u ON u.id = pr.requester_id
+     WHERE COALESCE(pr.purchase_type, '') = 'sass'
+       AND LOWER(TRIM(u.email)) = ?
+       AND pr.status IN ('PENDING_CFO_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'AWAITING_INVOICE')
+     ORDER BY pr.id ASC`,
+    [mugeshEmail]
+  );
+
+  let rerouted = 0;
+  let tasksEnsured = 0;
+
+  for (const row of rows) {
+    const prId = Number(row.id);
+    const status = String(row.status || '');
+    try {
+      const [pendingInv] = await connection.query(
+        `SELECT id FROM workflow_tasks
+         WHERE pr_id = ? AND task_type = 'INVOICE_UPLOAD' AND status = 'pending'
+         LIMIT 1`,
+        [prId]
+      );
+      const hasInvoiceTask = pendingInv.length > 0;
+
+      if (status === 'PENDING_CFO_APPROVAL' || status === 'PENDING_PR_MANAGER_APPROVAL') {
+        await connection.query(
+          `UPDATE workflow_tasks
+           SET status = 'completed', completed_at = NOW()
+           WHERE pr_id = ? AND status = 'pending' AND task_type = 'PR_APPROVAL'`,
+          [prId]
+        );
+        await connection.query(
+          `UPDATE purchase_requests
+           SET status = 'AWAITING_INVOICE', current_stage = 'SASS_INVOICE_UPLOAD', updated_at = NOW()
+           WHERE id = ?`,
+          [prId]
+        );
+        await connection.query(
+          `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+           VALUES (?, 'SASS_INVOICE_UPLOAD', ?, 'routed', ?)`,
+          [
+            prId,
+            row.requester_id,
+            'Startup migrate: Mugesh requester — skipped Mugesh/Srivaths approval, routed to invoice upload',
+          ]
+        );
+        await openSassInvoiceStage(
+          connection,
+          row,
+          { id: row.requester_id, name: row.requester_name, role: 'Requester' },
+          { createMugeshInvoiceTask: !hasInvoiceTask }
+        );
+        rerouted += 1;
+        if (!hasInvoiceTask) tasksEnsured += 1;
+        console.log(
+          `Cloud Subscription Mugesh-requester reroute: ${row.pr_number || prId} ${status} → AWAITING_INVOICE`
+        );
+      } else if (status === 'AWAITING_INVOICE' && !hasInvoiceTask) {
+        await openSassInvoiceStage(
+          connection,
+          row,
+          { id: row.requester_id, name: row.requester_name, role: 'Requester' },
+          { createMugeshInvoiceTask: true }
+        );
+        tasksEnsured += 1;
+        console.log(
+          `Cloud Subscription Mugesh-requester invoice task ensured: ${row.pr_number || prId}`
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `Cloud Subscription Mugesh-requester reroute skipped id=${prId}:`,
+        err.message
+      );
+    }
+  }
+
+  return { scanned: rows.length, rerouted, tasksEnsured };
 }

@@ -646,11 +646,18 @@ export async function runStartupMigrations() {
   }
 
   try {
-    const { rewriteConsumedCloudSubscriptionPoNumbers } = await import('./sassWorkflow.js');
+    const { rewriteConsumedCloudSubscriptionPoNumbers, rerouteMugeshRequesterSassToInvoiceUpload } =
+      await import('./sassWorkflow.js');
     const result = await rewriteConsumedCloudSubscriptionPoNumbers();
     console.log(
       `Cloud Subscription PO rewrite: scanned=${result.scanned}, rewritten=${result.rewritten}, sequencesFixed=${result.sequencesFixed}`
     );
+    const mugeshFix = await rerouteMugeshRequesterSassToInvoiceUpload();
+    if (mugeshFix.scanned) {
+      console.log(
+        `Cloud Subscription Mugesh-requester reroute: scanned=${mugeshFix.scanned}, rerouted=${mugeshFix.rerouted}, tasksEnsured=${mugeshFix.tasksEnsured}`
+      );
+    }
   } catch (err) {
     console.warn('Cloud Subscription PO number rewrite skipped:', err.message);
   }

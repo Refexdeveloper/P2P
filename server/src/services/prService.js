@@ -43,6 +43,7 @@ import {
 import {
   isSassPr,
   isSassPurchaseType,
+  isSassMugeshRequester,
   createSassL2ApprovalTask,
   createSassMugeshApprovalTask,
   openSassInvoiceStage,
@@ -50,6 +51,7 @@ import {
   resolveSassInvoiceUploadedRecipients,
   resolveSassVendorFromBody,
   SASS_MUGESH_NAME,
+  SASS_MUGESH_EMAIL,
 } from './sassWorkflow.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { resolveUserEntityScope, poEntityScopeSql } from '../utils/entityScope.js';
@@ -1438,7 +1440,9 @@ export async function createPurchaseRequest(user, body) {
 
     if (submit) {
       const pathLabel = isSass
-        ? `Cloud Subscription · Selected approvals: ${selectedApprover?.name || selectedApprover?.email || '—'} → Mugesh → L2: Srivaths → Mugesh Invoice Upload → Accounts (SCM skipped)`
+        ? isSassMugeshRequester(user)
+          ? `Cloud Subscription · Mugesh requester · L1: ${selectedApprover?.name || selectedApprover?.email || '—'} → Mugesh Invoice Upload → Accounts (Mugesh approval & Srivaths skipped)`
+          : `Cloud Subscription · Selected approvals: ${selectedApprover?.name || selectedApprover?.email || '—'} → Mugesh → L2: Srivaths → Mugesh Invoice Upload → Accounts (SCM skipped)`
         : prFlow === 'functional'
           ? `Functional Flow · User Approval (${selectedApprovers.length}): ${selectedApprovers.map((u) => u.name || u.email).join(' → ')} · then SCM Final RFQ / RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval · Vendor path: ${vendorMode === 'own' ? 'Own Vendor (quotes on Create PR)' : 'SCM Vendor Selection'}`
           : `Vendor path: ${vendorMode === 'own' ? 'Own Vendor' : 'SCM Vendor Selection'}`;
@@ -2358,6 +2362,17 @@ export async function processApproval(user, prId, action, remarks, options = {})
   const pr = prRows[0];
   const isFunctional = pr.pr_flow === 'functional';
   const isSass = isSassPr(pr);
+  let sassRequesterIsMugesh = false;
+  if (isSass) {
+    const [reqUserRows] = await pool.query(
+      `SELECT email, name FROM users WHERE id = ? LIMIT 1`,
+      [pr.requester_id]
+    );
+    sassRequesterIsMugesh = isSassMugeshRequester({
+      requester_email: reqUserRows[0]?.email,
+      requester_name: reqUserRows[0]?.name,
+    });
+  }
   const isFunctionalUserStep =
     (isFunctional || isSass) && pr.status === PR_STATUS.PENDING_HOD_APPROVAL;
   const pendingTask = await getPendingPrApprovalTask(prId);
@@ -2434,11 +2449,21 @@ export async function processApproval(user, prId, action, remarks, options = {})
     if (action === 'approve') {
       if (actingAsHod) {
         if (isSass) {
-          // SASS L1 (requester-selected) → Mugesh
-          newStatus = PR_STATUS.PENDING_CFO_APPROVAL;
-          newStage = STAGE.CFO_REVIEW;
-          nextRole = 'CFO';
-          skipToScmRfq = false;
+          if (sassRequesterIsMugesh) {
+            // Mugesh raised the PR — after L1 go straight to Mugesh invoice upload
+            // (skip Mugesh self-approval and Srivaths L2)
+            newStatus = PR_STATUS.AWAITING_INVOICE;
+            newStage = STAGE.SASS_INVOICE_UPLOAD;
+            nextRole = null;
+            skipToScmRfq = false;
+            remarks = `${remarks.trim()} [Cloud Subscription · Mugesh requester — routed to Mugesh Invoice Upload]`;
+          } else {
+            // SASS L1 (requester-selected) → Mugesh approval
+            newStatus = PR_STATUS.PENDING_CFO_APPROVAL;
+            newStage = STAGE.CFO_REVIEW;
+            nextRole = 'CFO';
+            skipToScmRfq = false;
+          }
         } else if (isFunctional) {
           const nextApproverId = nextIdInApprovalChain(pr, user.id);
           if (nextApproverId) {
@@ -2609,7 +2634,12 @@ export async function processApproval(user, prId, action, remarks, options = {})
     }
 
     let sassInvoiceStageMeta = null;
-    if (isSass && actingRole === 'PR Manager' && action === 'approve') {
+    if (
+      isSass &&
+      action === 'approve' &&
+      ((actingRole === 'PR Manager') ||
+        (actingAsHod && sassRequesterIsMugesh && newStatus === PR_STATUS.AWAITING_INVOICE))
+    ) {
       sassInvoiceStageMeta = await openSassInvoiceStage(conn, pr, user, {
         createMugeshInvoiceTask: true,
       });
@@ -2621,7 +2651,9 @@ export async function processApproval(user, prId, action, remarks, options = {})
           STAGE.SASS_INVOICE_UPLOAD,
           user.id,
           'routed',
-          'Routed to Mugesh for invoice upload (SCM skipped)',
+          sassRequesterIsMugesh && actingAsHod
+            ? 'Routed to Mugesh for invoice upload (Mugesh requester — L2/Mugesh approval skipped)'
+            : 'Routed to Mugesh for invoice upload (SCM skipped)',
         ]
       );
     }
@@ -2903,21 +2935,30 @@ export async function processApproval(user, prId, action, remarks, options = {})
         scmLabel,
         isFunctional ? 'User Approval (chain complete)' : `${actingRole} Approval`
       );
-    } else if (isSass && actingRole === 'PR Manager' && action === 'approve') {
-      // Srivaths approved → Mugesh invoice upload task
+    } else if (
+      isSass &&
+      action === 'approve' &&
+      ((actingRole === 'PR Manager') || (actingAsHod && sassRequesterIsMugesh))
+    ) {
+      // Routed to Mugesh invoice upload (after Srivaths, or after L1 when Mugesh is requester)
       queuePrApprovalPendingNotification(
         updatedPr,
         'CFO',
         { name: updatedPr.requester, email: '' },
         updatedPr.departmentId,
         {
-          approverEmails: nextAssignee?.email ? [nextAssignee.email] : undefined,
+          approverEmails: nextAssignee?.email
+            ? [nextAssignee.email]
+            : [SASS_MUGESH_EMAIL],
           approverName: nextAssignee?.name || SASS_MUGESH_NAME,
           stageLabel: 'Mugesh Invoice Upload',
           roleDisplayName: 'Mugesh',
         }
       );
-      notifyWorkflowStepProgress('Mugesh Invoice Upload', 'L2 Manager Approval');
+      notifyWorkflowStepProgress(
+        'Mugesh Invoice Upload',
+        actingAsHod && sassRequesterIsMugesh ? 'User Approval' : 'L2 Manager Approval'
+      );
     } else if (isSass && actingRole === 'CFO' && action === 'approve') {
       notifyWorkflowStepProgress('L2 Manager Approval', 'Mugesh Approval');
     } else if (action === 'reject' || action === 'return' || action === 'rework') {

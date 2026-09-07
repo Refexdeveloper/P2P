@@ -498,19 +498,30 @@ export default function VendorComparisonMatrix({
 
   return (
     <div className={`min-w-0 w-full max-w-full overflow-hidden ${compact ? 'space-y-4' : 'space-y-5'} print:space-y-4`}>
-      {/* Recommendation (existing) */}
+      {/* Vendor recommendation justification — highlighted for L1/L2 */}
       {(data.recommendedVendorName || recommendationJustification) && !compact && (
-        <div className={`${cardClass} border-emerald-200`}>
-          <div className="px-5 py-2.5 border-b border-emerald-100 bg-emerald-50/80 flex flex-wrap items-center gap-2">
-            <i className="ri-award-line text-emerald-700"></i>
-            <p className="text-sm font-bold text-[#12284A]">
-              Recommended: {data.recommendedVendorName || '—'}
-            </p>
+        <section className="rounded-xl overflow-hidden border-2 border-emerald-400 bg-emerald-50 shadow-sm ring-2 ring-emerald-300/70">
+          <div className="px-4 py-3 bg-emerald-200/90 border-b border-emerald-400 flex items-center gap-2">
+            <i className="ri-award-fill text-emerald-800 text-lg" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-extrabold tracking-wide uppercase text-emerald-950">
+                Vendor Recommendation Justification
+              </p>
+              <p className="text-base font-bold text-emerald-950 mt-0.5 truncate">
+                Recommended: {data.recommendedVendorName || '—'}
+              </p>
+            </div>
           </div>
           {recommendationJustification ? (
-            <p className="px-5 py-3 text-sm text-[#64748B] whitespace-pre-wrap">{recommendationJustification}</p>
-          ) : null}
-        </div>
+            <p className="px-4 py-3.5 text-sm text-emerald-950 leading-relaxed whitespace-pre-wrap font-medium">
+              {recommendationJustification}
+            </p>
+          ) : (
+            <p className="px-4 py-3.5 text-sm italic text-emerald-800">
+              No justification was provided with this recommendation.
+            </p>
+          )}
+        </section>
       )}
 
       {/* ── HEADER ── */}
