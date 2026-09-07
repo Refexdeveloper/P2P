@@ -1029,32 +1029,133 @@ function annexureHtmlIsEmpty(html) {
     .trim();
 }
 
-function annexureIiItemHtml(row) {
+function annexureIiItemHtml(row, opts = {}) {
+  const { includeTitle = true, includeHeader = true, includeBody = true, includeImages = true, includeComments = true } =
+    opts;
   const headerHtml = sanitizeAnnexureHtml(row.header || '');
-  const bodyHtml = sanitizeAnnexureHtml(row.description || '');
-  const extraImages = (row.images || [])
-    .map((img) => {
-      const src = String(img.src || '').trim();
-      if (!src) return '';
-      const caption = String(img.caption || '').trim();
-      return `<figure class="annexure-figure"><img src="${safeImgSrc(src)}" alt="" />${
-        caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''
-      }</figure>`;
-    })
-    .join('');
-  const comments = String(row.comments || '').trim();
+  const bodyHtml = includeBody ? sanitizeAnnexureHtml(row.description || '') : '';
+  const extraImages = includeImages
+    ? (row.images || [])
+        .map((img) => {
+          const src = String(img.src || '').trim();
+          if (!src) return '';
+          const caption = String(img.caption || '').trim();
+          return `<figure class="annexure-figure"><img src="${safeImgSrc(src)}" alt="" />${
+            caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''
+          }</figure>`;
+        })
+        .join('')
+    : '';
+  const comments = includeComments ? String(row.comments || '').trim() : '';
+  const hasHeader = includeHeader && headerHtml && !annexureHtmlIsEmpty(headerHtml);
+  const hasBody = Boolean(String(bodyHtml || '').trim() && !annexureHtmlIsEmpty(bodyHtml));
+  const hasImages = Boolean(String(extraImages || '').trim());
+  const hasComments = Boolean(comments);
+  if (!hasHeader && !hasBody && !hasImages && !hasComments) return '';
+
   return `
       <div class="annexure-ii">
-        <div class="annexure-ii-title">ANNEXURE-II</div>
-        ${
-          headerHtml && !annexureHtmlIsEmpty(headerHtml)
-            ? `<div class="annexure-ii-header">${headerHtml}</div>`
-            : ''
-        }
+        ${includeTitle ? `<div class="annexure-ii-title">ANNEXURE-II</div>` : ''}
+        ${hasHeader ? `<div class="annexure-ii-header">${headerHtml}</div>` : ''}
         <div class="annexure-ii-body">${bodyHtml}${extraImages}${
-          comments ? `<p class="annexure-ii-comments"><strong>Comments:</strong> ${escapeHtml(comments)}</p>` : ''
+          hasComments
+            ? `<p class="annexure-ii-comments"><strong>Comments:</strong> ${escapeHtml(comments)}</p>`
+            : ''
         }</div>
       </div>`;
+}
+
+/**
+ * Build Annexure-II PDF blocks with images on following pages so tall uploads
+ * finish before SCM manager sign / vendor acceptance.
+ */
+export function buildAnnexureIiPdfBlocks(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const blocks = [];
+
+  list.forEach((row, idx) => {
+    const galleryImages = (row.images || []).filter((img) => String(img?.src || '').trim());
+    const desc = sanitizeAnnexureHtml(row.description || '');
+    const headerHtml = sanitizeAnnexureHtml(row.header || '');
+    const comments = String(row.comments || '').trim();
+    const hasHeader = Boolean(headerHtml && !annexureHtmlIsEmpty(headerHtml));
+
+    const push = (key, continued, bodyInner, withHeader) => {
+      const body = String(bodyInner || '').trim();
+      if (!body && !(withHeader && hasHeader)) return;
+      blocks.push({
+        key,
+        html: `
+      <div class="annexure-ii">
+        <div class="annexure-ii-title">${continued ? 'ANNEXURE-II — Continued' : 'ANNEXURE-II'}</div>
+        ${withHeader && hasHeader ? `<div class="annexure-ii-header">${headerHtml}</div>` : ''}
+        <div class="annexure-ii-body">${body}</div>
+      </div>`,
+      });
+    };
+
+    const pieces = /<img\b|<figure\b/i.test(desc)
+      ? desc
+          .split(/(?=<figure\b|<img\b)/i)
+          .map((p) => p.trim())
+          .filter(Boolean)
+      : desc.trim()
+        ? [desc.trim()]
+        : [];
+
+    let continued = false;
+    let headerUsed = false;
+    let textBuf = '';
+    const flushText = () => {
+      const text = textBuf.trim();
+      textBuf = '';
+      if (!text || annexureHtmlIsEmpty(text)) return;
+      push(`annexure-ii-${idx}-t${blocks.length}`, continued, text, !headerUsed);
+      headerUsed = true;
+      continued = true;
+    };
+
+    if (!pieces.length) {
+      const body = comments
+        ? `<p class="annexure-ii-comments"><strong>Comments:</strong> ${escapeHtml(comments)}</p>`
+        : '';
+      push(`annexure-ii-${idx}`, false, body, true);
+      continued = true;
+      headerUsed = true;
+    } else {
+      for (const piece of pieces) {
+        if (/^<(?:figure|img)\b/i.test(piece)) {
+          flushText();
+          push(`annexure-ii-${idx}-e${blocks.length}`, true, piece, !headerUsed);
+          headerUsed = true;
+          continued = true;
+        } else {
+          textBuf += piece;
+        }
+      }
+      if (comments) {
+        textBuf += `<p class="annexure-ii-comments"><strong>Comments:</strong> ${escapeHtml(comments)}</p>`;
+      }
+      flushText();
+      if (!headerUsed && hasHeader) {
+        push(`annexure-ii-${idx}-h`, false, '', true);
+        continued = true;
+      }
+    }
+
+    galleryImages.forEach((img, imgIdx) => {
+      const caption = String(img.caption || '').trim();
+      const figure = `<figure class="annexure-figure"><img src="${safeImgSrc(img.src)}" alt="" style="max-height:140px;max-width:100%;height:auto;object-fit:contain;" />${
+        caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''
+      }</figure>`;
+      const firstBlock = !continued && imgIdx === 0;
+      push(`annexure-ii-${idx}-g${imgIdx}`, !firstBlock, figure, firstBlock && !headerUsed);
+      headerUsed = true;
+      continued = true;
+    });
+  });
+
+  return blocks;
 }
 
 function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
@@ -1063,9 +1164,11 @@ function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
   );
   if (!rows.length) return '';
 
-  const total = rows.length;
-  return rows
-    .map((row, idx) => wrapSheet(annexureIiItemHtml(row, idx, total, docLabel), 'page-annexure-ii', po, forPdf))
+  // Preview: one sheet per PDF block so images finish before notes / vendor acceptance.
+  const blocks = buildAnnexureIiPdfBlocks(rows);
+  if (!blocks.length) return '';
+  return blocks
+    .map((block) => wrapSheet(block.html, 'page-annexure-ii', po, forPdf))
     .join('');
 }
 
@@ -1315,7 +1418,7 @@ export function buildPoPdfParts(poInput, options = {}) {
     }),
     annexureRows: buildAnnexurePackRows(annexure, po),
     annexureOverflowRows: buildAnnexureOverflowPackRows(annexure, po),
-    annexureIiBlocks: annexureIi.map((row, idx) => annexureIiItemHtml(row, idx, annexureIi.length, docLabel)),
+    annexureIiBlocks: buildAnnexureIiPdfBlocks(annexureIi),
     notesHtml: specialNotesInnerHtml(po, options),
     ackHtml: acknowledgmentInnerHtml(po),
   };

@@ -310,7 +310,10 @@ function renderPagesHtml(pages, parts, layout) {
 function pageHasContent(blocks) {
   for (const block of blocks || []) {
     if (block.html != null) {
-      const text = String(block.html || '')
+      const html = String(block.html || '');
+      // Image-only Annexure-II / figure pages must count as content (not dropped).
+      if (/<img\b/i.test(html) || /<figure\b/i.test(html)) return true;
+      const text = html
         .replace(/<style[\s\S]*?<\/style>/gi, '')
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
@@ -357,6 +360,53 @@ function nextPageHasLaterSection(nextPage, unitType) {
   return nextPage.some((block) => sectionOrder(block.type) > unitOrder);
 }
 
+function blockLooksLikeAnnexureIi(block) {
+  if (!block) return false;
+  if (block.type === 'annexure-ii') return true;
+  if (block.html != null && /class\s*=\s*["'][^"']*annexure-ii/i.test(String(block.html))) return true;
+  return false;
+}
+
+/**
+ * Hard guarantee: Annexure-II (all pages) → SCM manager sign → vendor acceptance.
+ * Overflow repair must never leave images / annexure-ii after notes/ack.
+ */
+function enforceDocumentSectionOrder(pages) {
+  if (!Array.isArray(pages) || !pages.length) return pages;
+
+  const early = [];
+  const annexureIi = [];
+  const notes = [];
+  const ack = [];
+
+  for (const page of pages) {
+    const earlyPage = [];
+    for (const block of page || []) {
+      const t = block?.type;
+      if (blockLooksLikeAnnexureIi(block)) {
+        // Normalize type so later repairs keep section order.
+        annexureIi.push({ ...block, type: 'annexure-ii' });
+      } else if (t === 'notes') notes.push(block);
+      else if (t === 'ack') ack.push(block);
+      else earlyPage.push(block);
+    }
+    if (earlyPage.length && pageHasContent(earlyPage)) early.push(earlyPage);
+  }
+
+  const out = [...early];
+  for (const block of annexureIi) {
+    out.push([block]);
+  }
+  if (notes.length) out.push(notes);
+  if (ack.length) out.push(ack);
+
+  pages.length = 0;
+  for (const page of out) {
+    if (pageHasContent(page)) pages.push(page);
+  }
+  return pages;
+}
+
 /** Move the last packable unit off an overflowing page onto the next page. */
 function shiftLastUnitFromPage(pages, pageIndex) {
   if (pageIndex < 0 || pageIndex >= pages.length) return false;
@@ -384,9 +434,10 @@ function shiftLastUnitFromPage(pages, pageIndex) {
   const nextPage = pages[nextIdx];
 
   // Never push Annexure-II (or any earlier section) past manager sign / vendor acceptance.
-  if (nextPageHasLaterSection(nextPage, unit.type)) {
+  const unitType = blockLooksLikeAnnexureIi(unit) ? 'annexure-ii' : unit.type;
+  if (nextPageHasLaterSection(nextPage, unitType)) {
     pages.splice(nextIdx, 0, [unit]);
-    // Alone oversized block cannot be fixed by moving past later sections — stop repair.
+    // Alone oversized block stays before notes/ack; caller must split/shrink it next.
     return !wasAloneAfterPop;
   }
 
@@ -484,11 +535,124 @@ function splitTrailingImageFromOverflowRow(pages, pageIndex) {
   return false;
 }
 
+/**
+ * Split an overflowing Annexure-II HTML block so images stay before notes/ack.
+ * Returns true when pages were changed.
+ */
+function splitOversizedAnnexureIiBlock(pages, pageIndex) {
+  if (pageIndex < 0 || pageIndex >= pages.length) return false;
+  const page = pages[pageIndex];
+  if (!page?.length) return false;
+
+  const wrapBody = (bodyInner, continued, headerHtml = '') => `
+      <div class="annexure-ii">
+        <div class="annexure-ii-title">${continued ? 'ANNEXURE-II — Continued' : 'ANNEXURE-II'}</div>
+        ${!continued && headerHtml ? headerHtml : ''}
+        <div class="annexure-ii-body">${bodyInner}</div>
+      </div>`;
+
+  for (let bi = page.length - 1; bi >= 0; bi -= 1) {
+    const block = page[bi];
+    if (!blockLooksLikeAnnexureIi(block) || block.html == null) continue;
+    const html = String(block.html || '');
+    const headerMatch = html.match(/<div class="annexure-ii-header">[\s\S]*?<\/div>/i);
+    const headerHtml = headerMatch ? headerMatch[0] : '';
+    const bodyMatch = html.match(/<div class="annexure-ii-body">([\s\S]*)<\/div>\s*<\/div>\s*$/i);
+    const bodyInner = bodyMatch ? bodyMatch[1] : html;
+
+    const media = [];
+    const re = /<figure\b[^>]*>[\s\S]*?<\/figure>|<img\b[^>]*\/?>/gi;
+    let m;
+    let cursor = 0;
+    let textParts = '';
+    while ((m = re.exec(bodyInner)) !== null) {
+      textParts += bodyInner.slice(cursor, m.index);
+      media.push(m[0]);
+      cursor = m.index + m[0].length;
+    }
+    textParts += bodyInner.slice(cursor);
+    const leadingText = textParts.trim();
+
+    if (media.length >= 2) {
+      const firstMedia = media[0];
+      const restMedia = media.slice(1);
+      page[bi] = {
+        type: 'annexure-ii',
+        html: wrapBody(`${leadingText}${firstMedia}`, false, headerHtml),
+      };
+      let insertAt = pageIndex + 1;
+      for (const piece of restMedia) {
+        pages.splice(insertAt, 0, [{ type: 'annexure-ii', html: wrapBody(piece, true) }]);
+        insertAt += 1;
+      }
+      return true;
+    }
+
+    if (media.length === 1 && leadingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length > 12) {
+      page[bi] = {
+        type: 'annexure-ii',
+        html: wrapBody(leadingText, false, headerHtml),
+      };
+      const nextIdx = pageIndex + 1;
+      if (!pages[nextIdx]) pages.splice(nextIdx, 0, []);
+      pages[nextIdx].unshift({ type: 'annexure-ii', html: wrapBody(media[0], true) });
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Shrink images on an overflowing page so content fits before notes/ack. */
+function shrinkOverflowImagesOnPage(pages, pageIndex, maxHeightPx = 120) {
+  if (pageIndex < 0 || pageIndex >= pages.length) return false;
+  const page = pages[pageIndex];
+  if (!page?.length) return false;
+
+  let changed = false;
+  const shrinkHtml = (html) => {
+    let out = String(html || '');
+    const before = out;
+    out = out.replace(/<img\b([^>]*)>/gi, (_full, attrs) => {
+      let a = String(attrs || '');
+      if (/style\s*=\s*"/i.test(a)) {
+        a = a.replace(/style\s*=\s*"[^"]*"/i, (styleAttr) => {
+          let s = styleAttr.replace(/max-height\s*:\s*[^;!"']+/gi, `max-height:${maxHeightPx}px`);
+          if (!/max-height\s*:/i.test(s)) {
+            s = s.replace(/style\s*=\s*"/i, `style="max-height:${maxHeightPx}px !important;`);
+          } else {
+            s = s.replace(/max-height\s*:\s*[^;"]+/i, `max-height:${maxHeightPx}px !important`);
+          }
+          return s;
+        });
+      } else {
+        a = `${a} style="max-height:${maxHeightPx}px !important;max-width:100% !important;height:auto !important;object-fit:contain;"`;
+      }
+      a = a.replace(/\sheight\s*=\s*["'][^"']*["']/gi, '');
+      return `<img${a}>`;
+    });
+    if (out !== before) changed = true;
+    return out;
+  };
+
+  for (const block of page) {
+    if (block.html != null) {
+      block.html = shrinkHtml(block.html);
+    } else if (block.rows?.length) {
+      block.rows = block.rows.map((row) => shrinkHtml(row));
+    }
+  }
+  return changed;
+}
+
 function buildMeasureHtml(parts) {
   const termRows = collectMeasureRows(parts.termRows, parts.termOverflowRows).join('');
   const annexRows = collectMeasureRows(parts.annexureSimpleRows, parts.annexureOverflowRows).join('');
-  const annexIi = parts.annexureIiBlocks
-    .map((html, i) => `<div data-block="annexure-ii-${i}">${html}</div>`)
+  const annexIi = (parts.annexureIiBlocks || [])
+    .map((block, i) => {
+      const html = typeof block === 'string' ? block : block.html;
+      const key = typeof block === 'string' ? `annexure-ii-${i}` : block.key || `annexure-ii-${i}`;
+      return `<div data-block="${key}">${html}</div>`;
+    })
     .join('');
 
   return wrapPoHtmlDocument(
@@ -737,13 +901,10 @@ function packPoPages(parts, heights, scale = 1) {
     });
   }
 
-  parts.annexureIiBlocks.forEach((_, i) => {
-    addHtml(
-      parts.annexureIiBlocks[i],
-      packRowHeight(heights, `annexure-ii-${i}`, 180, scale),
-      true,
-      'annexure-ii'
-    );
+  (parts.annexureIiBlocks || []).forEach((block, i) => {
+    const html = typeof block === 'string' ? block : block.html;
+    const key = typeof block === 'string' ? `annexure-ii-${i}` : block.key || `annexure-ii-${i}`;
+    addHtml(html, packRowHeight(heights, key, 180, scale), true, 'annexure-ii');
   });
 
   const notesHtml = String(parts.notesHtml || '').trim();
@@ -759,7 +920,9 @@ function packPoPages(parts, heights, scale = 1) {
   }
 
   flush();
-  return pages.filter((page) => Array.isArray(page) && pageHasContent(page));
+  const packed = pages.filter((page) => Array.isArray(page) && pageHasContent(page));
+  enforceDocumentSectionOrder(packed);
+  return packed;
 }
 
 async function waitForPdfAssets(page) {
@@ -940,10 +1103,19 @@ async function paginatePoHtml(browser, po, options) {
           collisions[0].pageIndex
         );
         if (!shiftLastUnitFromPage(pages, worstPage)) {
-          if (!splitTrailingImageFromOverflowRow(pages, worstPage)) break;
+          if (!splitTrailingImageFromOverflowRow(pages, worstPage)) {
+            if (!splitOversizedAnnexureIiBlock(pages, worstPage)) {
+              // Last resort: shrink images so the block fits on its page before notes/ack.
+              if (!shrinkOverflowImagesOnPage(pages, worstPage, Math.max(72, 140 - repair * 10))) {
+                break;
+              }
+            }
+          }
         }
+        enforceDocumentSectionOrder(pages);
       }
 
+      enforceDocumentSectionOrder(pages);
       const pagesHtml = renderPagesHtml(pages, parts, layout);
       const draftHtml = wrapPoHtmlDocument(
         pagesHtml,

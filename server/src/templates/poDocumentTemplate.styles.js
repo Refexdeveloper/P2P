@@ -836,11 +836,24 @@ export const PO_STYLES = `
   .annexure-ii-body h3 { margin: 10px 0 6px; font-weight: 700; }
   .annexure-ii-body img {
     max-width: 100%;
+    max-height: 180px;
     height: auto;
     display: block;
     margin: 10px auto;
     page-break-inside: avoid;
     break-inside: avoid;
+    object-fit: contain;
+  }
+  body.po-document-pdf-pages .annexure-ii-body img {
+    max-height: 140px !important;
+    max-width: 100% !important;
+    height: auto !important;
+    width: auto !important;
+    object-fit: contain !important;
+  }
+  body.po-document-pdf-pages .annexure-ii {
+    overflow: hidden;
+    max-height: 100%;
   }
   .annexure-ii-body figure {
     margin: 12px 0;
