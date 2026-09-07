@@ -618,7 +618,7 @@ router.get('/:id/fulfillment', canReadPo, async (req, res) => {
   }
 });
 
-router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer'), async (req, res) => {
+router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), async (req, res) => {
   try {
     const po = await buildPoPreviewForPo(req.user, Number(req.params.id), req.body);
     const { buildSignatureRenderOptions } = await import('../services/signatureService.js');
@@ -630,7 +630,7 @@ router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer'), a
   }
 });
 
-router.post('/:id/preview-pdf', requireRoles('SCM Manager', 'SCM Buyer'), async (req, res) => {
+router.post('/:id/preview-pdf', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), async (req, res) => {
   try {
     // Same PO payload + HTML path as preview-document → PDF matches preview exactly
     const po = await buildPoPreviewForPo(req.user, Number(req.params.id), req.body);
@@ -644,7 +644,7 @@ router.post('/:id/preview-pdf', requireRoles('SCM Manager', 'SCM Buyer'), async 
   }
 });
 
-router.put('/:id', requireRoles('SCM Manager', 'SCM Buyer'), async (req, res) => {
+router.put('/:id', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), async (req, res) => {
   try {
     const data = await updatePurchaseOrder(req.user, Number(req.params.id), req.body);
     res.json({ data, message: `PO ${data.poNumber} updated successfully` });

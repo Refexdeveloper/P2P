@@ -59,7 +59,7 @@ export const SEND_BACK_TARGET_DEFS = {
   },
   CFO_PRE: {
     key: 'CFO_PRE',
-    label: 'CFO (PR Approval)',
+    label: 'Mugesh (PR Approval)',
     status: PR_STATUS.PENDING_CFO_APPROVAL,
     stage: STAGE.CFO_REVIEW,
     taskType: 'PR_APPROVAL',
@@ -89,7 +89,7 @@ export const SEND_BACK_TARGET_DEFS = {
   },
   CFO_VENDOR: {
     key: 'CFO_VENDOR',
-    label: 'CFO (Vendor Approval)',
+    label: 'Mugesh (Vendor Approval)',
     status: PR_STATUS.PENDING_RFQ_CFO_APPROVAL,
     stage: STAGE.RFQ_CFO_REVIEW,
     taskType: 'RFQ_POST_APPROVAL',

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import PriorityBadge from '../../../../components/base/PriorityBadge';
 import ApprovalModal from '../../../tasks/components/ApprovalModal';
 import { prApi } from '../../../../services/api';
+import { formatPersonRoleSuffix } from '../../../../utils/roleDisplay';
 
 interface LineItem {
   id: string;
@@ -176,7 +177,7 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
                 {pr.isHighValue && (
                   <div className="flex items-center gap-2 px-3 py-2 bg-red-50 rounded-lg">
                     <i className="ri-vip-crown-line text-red-600"></i>
-                    <span className="text-sm font-medium text-red-700">High Value PR - CFO Approval Required</span>
+                    <span className="text-sm font-medium text-red-700">High Value PR - Approval Required</span>
                   </div>
                 )}
               </div>
@@ -277,7 +278,10 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <p className="font-semibold text-gray-900">{item.stage}</p>
-                      <p className="text-sm text-gray-600">{item.approver} • {item.role}</p>
+                      <p className="text-sm text-gray-600">
+                        {item.approver}
+                        {formatPersonRoleSuffix(item.role, item.approver, ' • ')}
+                      </p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getActionColor(item.action)}`}>
                       {item.action}
@@ -313,7 +317,7 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
                 : approvalAction === 'return'
                   ? 'return'
                   : 'reject';
-            await prApi.approve(pr.prId, apiAction, remarks || 'CFO action', {
+            await prApi.approve(pr.prId, apiAction, remarks || 'Approval action', {
               ...(returnTo ? { returnTo } : {}),
               ...(invoice ? { invoice } : {}),
             });

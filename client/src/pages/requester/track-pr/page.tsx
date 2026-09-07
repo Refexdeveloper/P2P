@@ -243,10 +243,11 @@ function normalizeTimelineStageName(stageName: string): string {
   if ((s.includes('pr manager') || s.includes('l2')) && !s.includes('vendor') && !s.includes('rfq')) {
     return 'L2 Manager Approval';
   }
-  if (s.includes('cfo') && (s.includes('post') || s.includes('vendor') || s.includes('rfq'))) {
-    return 'CFO Approval (Post-RFQ)';
+  if (s.includes('mugesh') && s.includes('invoice')) return 'Mugesh Invoice Upload';
+  if (s.includes('mugesh') || s.includes('cfo')) {
+    if (s.includes('post') || s.includes('vendor') || s.includes('rfq')) return 'Mugesh Approval';
+    return 'Mugesh Approval';
   }
-  if (s.includes('cfo')) return 'CFO Approval';
   if (s.includes('vendor final') && (s.includes('hod') || s.includes('l1') || s.includes('manager'))) {
     return 'L1 Vendor Final';
   }
@@ -283,10 +284,11 @@ function normalizeTimelineStageName(stageName: string): string {
 function currentStageLabel(rawStatus: string, statusUI: string): string | null {
   if (rawStatus === 'PENDING_HOD_APPROVAL') return 'L1 Manager Approval';
   if (rawStatus === 'PENDING_PR_MANAGER_APPROVAL') return 'L2 Manager Approval';
-  if (rawStatus === 'PENDING_CFO_APPROVAL') return 'CFO Approval';
+  if (rawStatus === 'PENDING_CFO_APPROVAL') return 'Mugesh Approval';
   if (rawStatus === 'PENDING_RFQ_MANAGER_APPROVAL') return 'L1 Vendor Final';
   if (rawStatus === 'PENDING_RFQ_L2_APPROVAL') return 'L2 Manager Approval';
-  if (rawStatus === 'PENDING_RFQ_CFO_APPROVAL') return 'CFO Approval (Post-RFQ)';
+  if (rawStatus === 'PENDING_RFQ_CFO_APPROVAL') return 'Mugesh Approval';
+  if (rawStatus === 'AWAITING_INVOICE') return 'Mugesh Invoice Upload';
   if (rawStatus === 'PENDING_SCM_PO') return 'PO Create';
   if (rawStatus === 'PENDING_BUSINESS_APPROVAL') return 'SCM Manager Approval';
   if (rawStatus === 'RETURNED') return 'Returned for Rework';

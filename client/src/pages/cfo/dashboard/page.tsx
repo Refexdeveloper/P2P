@@ -106,7 +106,7 @@ export default function CFODashboardPage() {
       setBusinessEntities([]);
       setHighValueAlerts([]);
       setRecentActivity([]);
-      setLoadError(err instanceof Error ? err.message : 'Failed to load CFO dashboard');
+      setLoadError(err instanceof Error ? err.message : 'Failed to load approvals dashboard');
     } finally {
       setLoading(false);
     }
@@ -184,7 +184,7 @@ export default function CFODashboardPage() {
           <div className="p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">CFO Dashboard</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Approvals Dashboard</h1>
                 <p className="text-sm text-gray-500 mt-0.5">
                   Entity-wise business approvals &amp; spend oversight
                 </p>
@@ -205,7 +205,7 @@ export default function CFODashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               {businessEntities.length === 0 && !loading && (
                 <div className="col-span-full bg-white rounded-lg border border-gray-200 p-6 text-sm text-gray-500">
-                  No active entities found. Pending CFO PRs still appear in the table below.
+                  No active entities found. Pending approvals still appear in the table below.
                 </div>
               )}
               {businessEntities.map((entity) => (

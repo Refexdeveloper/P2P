@@ -430,11 +430,11 @@ function formatPrApprovalStage(stage, prFlow = 'standard', purchaseType = 'purch
     SUBMITTED: 'PR Submitted',
     HOD_REVIEW: 'L1 Manager Approval',
     PR_MANAGER_REVIEW: 'L2 Manager Approval',
-    CFO_REVIEW: 'CFO Approval',
+    CFO_REVIEW: 'Mugesh Approval',
     RFQ_REQUESTER_SUBMIT: 'RFQ Submitted — Vendor Final',
     RFQ_MANAGER_REVIEW: 'Vendor Final Approval (Manager)',
     RFQ_L2_REVIEW: 'Vendor Final — L2 Manager',
-    RFQ_CFO_REVIEW: 'Vendor Final — CFO Approval',
+    RFQ_CFO_REVIEW: 'Vendor Final — Mugesh Approval',
     RFQ_SCM_BUYER_SELECTION: 'SCM Vendor Selection',
     BUSINESS_REVIEW: 'SCM Manager Approval',
     SCM_PO_CREATE: 'PO Create',
@@ -459,22 +459,31 @@ function formatPrApprovalStage(stage, prFlow = 'standard', purchaseType = 'purch
 
 async function getApprovalHistory(prId, prFlow = 'functional', purchaseType = 'purchase_order') {
   const [rows] = await pool.query(
-    `SELECT pa.*, u.name AS approver_name, u.role AS approver_role
+    `SELECT pa.*, u.name AS approver_name, u.role AS approver_role, u.email AS approver_email
      FROM pr_approvals pa
      LEFT JOIN users u ON u.id = pa.approver_id
      WHERE pa.pr_id = ?
      ORDER BY pa.created_at ASC`,
     [prId]
   );
-  const history = rows.map((r) => ({
-    stage: formatPrApprovalStage(r.stage, prFlow, purchaseType),
-    user: r.approver_name || 'System',
-    role: r.approver_role || formatPrApprovalStage(r.stage, prFlow, purchaseType),
-    date: formatDateTime(r.created_at),
-    status: r.action === 'submitted' ? 'Completed' : r.action.charAt(0).toUpperCase() + r.action.slice(1),
-    remarks: r.remarks || '',
-    sortAt: new Date(r.created_at).getTime(),
-  }));
+  const history = rows.map((r) => {
+    const stageLabel = formatPrApprovalStage(r.stage, prFlow, purchaseType);
+    const isMugeshActor =
+      isSassMugeshRequester({ email: r.approver_email, name: r.approver_name }) ||
+      (isSassPurchaseType(purchaseType) &&
+        (r.stage === STAGE.CFO_REVIEW || r.stage === STAGE.SASS_INVOICE_UPLOAD));
+    // Mugesh is not CFO — never expose designation (CFO / Group CEO) in history UI
+    const role = isMugeshActor ? '' : r.approver_role || stageLabel;
+    return {
+      stage: stageLabel,
+      user: r.approver_name || 'System',
+      role,
+      date: formatDateTime(r.created_at),
+      status: r.action === 'submitted' ? 'Completed' : r.action.charAt(0).toUpperCase() + r.action.slice(1),
+      remarks: r.remarks || '',
+      sortAt: new Date(r.created_at).getTime(),
+    };
+  });
 
   const stages = new Set(rows.map((r) => r.stage));
   const [cfgRows] = await pool.query(
@@ -614,7 +623,16 @@ async function getTimelineAssignees(prId, requesterId, prStatus = null) {
 
   return {
     currentApprover: currentApproverName
-      ? { name: currentApproverName, email: currentApproverEmail, role: pendingTask?.assigned_role || null }
+      ? {
+          name: currentApproverName,
+          email: currentApproverEmail,
+          // Never surface CFO designation for Mugesh (or CFO queue assignee) in timeline UIs
+          role:
+            isSassMugeshRequester({ email: currentApproverEmail, name: currentApproverName }) ||
+            String(pendingTask?.assigned_role || '') === 'CFO'
+              ? ''
+              : pendingTask?.assigned_role || null,
+        }
       : null,
     l1Manager: l1Name || l1Email ? { name: l1Name, email: l1Email } : null,
     scmBuyer: scmName || scmEmail ? { name: scmName, email: scmEmail } : null,
@@ -1034,7 +1052,7 @@ function approvalStepDisplayLabel(actingAsHod, actingRole, isFunctional = false)
   if (isFunctional) return 'User Approval';
   if (actingAsHod) return 'L1 Manager Approval';
   if (actingRole === 'PR Manager') return 'L2 Manager Approval';
-  if (actingRole === 'CFO') return 'CFO Approval';
+  if (actingRole === 'CFO') return 'Mugesh Approval';
   return `${actingRole} Approval`;
 }
 

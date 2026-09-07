@@ -3770,9 +3770,15 @@ export async function updatePurchaseOrder(user, poId, body) {
   const canBuyerEdit = user.role === 'SCM Buyer' && existing.status === 'pending_buyer_verify';
   const canBuyerRevise =
     (user.role === 'SCM Buyer' || user.role === 'Super Admin') && existing.status === 'draft';
-  if (!canManagerEdit && !canBuyerEdit && !canBuyerRevise) {
+  // Track PO / admin correction: edit existing PO without changing workflow status
+  const canAdminEdit =
+    existing.status !== 'cancelled' &&
+    (user.role === 'Super Admin' || user.role === 'SCM Manager' || user.role === 'SCM Buyer');
+  if (!canManagerEdit && !canBuyerEdit && !canBuyerRevise && !canAdminEdit) {
     throw new Error('You are not allowed to edit this purchase order');
   }
+  // Prefer workflow-aware paths when they apply; otherwise treat as admin content edit
+  const isAdminContentEdit = canAdminEdit && !canManagerEdit && !canBuyerEdit && !canBuyerRevise;
 
   const draft = existing.pr_id
     ? await resolvePoDraftContent(existing.pr_id, {
@@ -3829,11 +3835,13 @@ export async function updatePurchaseOrder(user, poId, body) {
 
   const changeSummary =
     body.changeSummary?.trim() ||
-    (canBuyerRevise
-      ? 'PO revised by SCM Buyer after manager send-back — resubmitted for sign'
-      : canBuyerEdit
-        ? 'PO updated by SCM Buyer during final verify'
-        : 'PO updated by SCM Manager before approval');
+    (isAdminContentEdit
+      ? `PO updated by ${user.role || 'admin'} from Track PO`
+      : canBuyerRevise
+        ? 'PO revised by SCM Buyer after manager send-back — resubmitted for sign'
+        : canBuyerEdit
+          ? 'PO updated by SCM Buyer during final verify'
+          : 'PO updated by SCM Manager before approval');
 
   const conn = await pool.getConnection();
   try {
@@ -3960,8 +3968,11 @@ export async function updatePurchaseOrder(user, poId, body) {
 
   const updatedPo = await getPurchaseOrderById(poId);
 
-  // Buyer edits after Manager sign: refresh draft + re-embed existing signature into signed PDF
-  if (canBuyerEdit && (existing.signed_at || existing.signature_image_path || existing.signature_image_data)) {
+  // Buyer edits after Manager sign, or admin Track PO edits of signed POs: refresh signed PDF
+  const shouldRefreshSignedPdf =
+    (canBuyerEdit || isAdminContentEdit) &&
+    (existing.signed_at || existing.signature_image_path || existing.signature_image_data);
+  if (shouldRefreshSignedPdf) {
     const signedFileName = `${updatedPo.poNumber}_signed.pdf`;
     const { fileName } = await generatePoPdf(updatedPo, {
       fileName: signedFileName,

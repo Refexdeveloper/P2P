@@ -93,7 +93,11 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
               <p className="text-sm font-medium text-gray-900 whitespace-nowrap max-w-[8rem] truncate">
                 {user?.name || 'User'}
               </p>
-              <p className="text-xs text-gray-500 whitespace-nowrap max-w-[8rem] truncate">{user?.role || 'Role'}</p>
+              {formatRoleDisplayName(user?.role, user) ? (
+                <p className="text-xs text-gray-500 whitespace-nowrap max-w-[8rem] truncate">
+                  {formatRoleDisplayName(user?.role, user)}
+                </p>
+              ) : null}
             </div>
             <i className="ri-arrow-down-s-line text-gray-600 hidden sm:inline"></i>
           </button>
@@ -105,9 +109,11 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                 <div className="p-4 border-b border-gray-200">
                   <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
                   <p className="text-xs text-gray-500 mt-1 truncate">{user?.email}</p>
-                  <p className="text-xs text-sky-600 font-medium mt-1">
-                    {formatRoleDisplayName(user?.role)}
-                  </p>
+                  {formatRoleDisplayName(user?.role, user) ? (
+                    <p className="text-xs text-sky-600 font-medium mt-1">
+                      {formatRoleDisplayName(user?.role, user)}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="p-2">
                   <button

@@ -60,7 +60,7 @@ export default function ActivityTimeline({ activities }: ActivityTimelineProps) 
       </h3>
       <div className="space-y-4">
         {activities.length === 0 ? (
-          <p className="text-sm text-gray-500 py-2">No recent CFO activity yet.</p>
+          <p className="text-sm text-gray-500 py-2">No recent activity yet.</p>
         ) : (
           activities.map((activity, index) => {
             const href = poDetailPath(activity);

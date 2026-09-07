@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { poData } from '../../../../mocks/po-data';
+import { formatPersonRoleSuffix } from '../../../../utils/roleDisplay';
 
 interface PODetailDrawerProps {
   isOpen: boolean;
@@ -274,7 +275,8 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
                         <div>
                           <h4 className="text-sm font-semibold text-gray-900">{item.stage}</h4>
                           <p className="text-sm text-gray-600 mt-1">
-                            {item.approver} <span className="text-gray-400">•</span> {item.role}
+                            {item.approver}
+                            {formatPersonRoleSuffix(item.role, item.approver, ' • ')}
                           </p>
                         </div>
                         <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${

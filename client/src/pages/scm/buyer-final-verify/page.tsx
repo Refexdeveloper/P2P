@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { poApi } from '../../../services/api';
+import { formatPersonRoleSuffix } from '../../../utils/roleDisplay';
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
@@ -398,7 +399,8 @@ export default function BuyerFinalVerifyPage() {
                                             <div>
                                               <p className="text-sm font-semibold text-gray-900">{item.stage}</p>
                                               <p className="text-xs text-gray-500 mt-0.5">
-                                                {item.approver} · {item.role}
+                                                {item.approver}
+                                                {formatPersonRoleSuffix(item.role, item.approver)}
                                               </p>
                                             </div>
                                             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-white border border-gray-200 text-gray-600">

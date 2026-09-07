@@ -3079,7 +3079,7 @@ export default function CreatePRPage() {
               </select>
               <p className="text-xs text-gray-500 mt-1.5">
                 {prFlow === 'standard'
-                  ? 'Standard: current L1 / L2 / CFO / RFQ path (Own vendor or SCM vendor).'
+                  ? 'Standard: current L1 / L2 / Mugesh / RFQ path (Own vendor or SCM vendor).'
                   : 'Functional: shortened path — quotes on Create PR for Own vendor, selected user approval, then SCM RFQ / Final RFQ.'}
               </p>
             </div>
@@ -3099,8 +3099,8 @@ export default function CreatePRPage() {
               <p className="text-xs text-gray-500 mt-1.5">
                 {prFlow === 'standard'
                   ? vendorSelection === 'own'
-                    ? 'L1 → your RFQ entry (billing & delivery are asked there) → L1 vendor final → L2 → (optional CFO) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
-                    : 'L1 → L2 → CFO → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off. Billing & delivery are filled on this page.'
+                    ? 'L1 → your RFQ entry (billing & delivery are asked there) → L1 vendor final → L2 → (optional Mugesh) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
+                    : 'L1 → L2 → Mugesh → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off. Billing & delivery are filled on this page.'
                   : vendorSelection === 'own'
                     ? 'Enter vendor quotes on this page, pick approvers in order, then SCM Final RFQ → Buyer Final Verify → Create PO → SCM Manager approval.'
                     : 'No inline RFQ. Pick approvers in order; then SCM RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval. Billing & delivery are filled on this page.'}

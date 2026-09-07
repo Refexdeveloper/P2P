@@ -6,6 +6,7 @@ import { prApi } from '../../../../services/api';
 import { useAuth } from '../../../../contexts/AuthContext';
 import PrVendorQuotationsPanel from '../../../../components/feature/PrVendorQuotationsPanel';
 import { collapsePrAdminEditHistory } from '../../../../components/feature/ApprovalHistoryPanel';
+import { formatPersonRoleSuffix } from '../../../../utils/roleDisplay';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -465,7 +466,10 @@ export default function PRDetailDrawer({
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="text-sm font-semibold text-gray-900">{item.stage}</p>
-                              <p className="text-xs text-gray-500">{item.user} · {item.role}</p>
+                              <p className="text-xs text-gray-500">
+                                {item.user}
+                                {formatPersonRoleSuffix(item.role, item.user)}
+                              </p>
                             </div>
                             <span className="text-xs text-gray-400 whitespace-nowrap">{item.date}</span>
                           </div>

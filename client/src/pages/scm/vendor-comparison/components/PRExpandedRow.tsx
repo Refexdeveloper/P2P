@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import RFQRoundsPanel from './RFQRoundsPanel';
 import { vendorComparisonData } from '../../../../mocks/vendor-comparison-data';
+import { formatPersonRoleSuffix } from '../../../../utils/roleDisplay';
 
 interface LineItem {
   id: number;
@@ -387,7 +388,10 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
                       <div className="flex items-start justify-between mb-1">
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{item.stage}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">{item.approver} · {item.role}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {item.approver}
+                            {formatPersonRoleSuffix(item.role, item.approver)}
+                          </p>
                         </div>
                         <span className={`px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap ${actionColor[item.action] || 'bg-gray-100 text-gray-600'}`}>
                           {item.action}

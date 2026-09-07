@@ -1,4 +1,15 @@
-import { formatRoleDisplayName } from '../../utils/roleDisplay';
+import { formatRoleDisplayName, isMugeshUser } from '../../utils/roleDisplay';
+
+function roleLabelForEntry(entry: ApprovalHistoryEntry): string {
+  const who = entry.approver || entry.user;
+  if (isMugeshUser(who) || isMugeshUser({ name: who })) return '';
+  // Cloud Subscription Mugesh steps are labeled by stage — never show CFO designation
+  const stage = String(entry.stage || '').toLowerCase();
+  if (stage.includes('mugesh')) return '';
+  const role = String(entry.role || '');
+  if (/^cfo$/i.test(role) && (stage.includes('mugesh') || isMugeshUser({ name: who }))) return '';
+  return formatRoleDisplayName(role, { name: who });
+}
 
 export type ApprovalHistoryEntry = {
   stage: string;
@@ -114,7 +125,7 @@ export function ManagerL2CommentsHighlight({
             </p>
             <p className="text-xs text-amber-700/80 mt-2">
               {manager.approver || manager.user || 'Manager'}
-              {manager.role ? ` · ${formatRoleDisplayName(manager.role)}` : ''}
+              {roleLabelForEntry(manager) ? ` · ${roleLabelForEntry(manager)}` : ''}
               {manager.date ? ` · ${manager.date}` : ''}
             </p>
           </>
@@ -135,7 +146,7 @@ export function ManagerL2CommentsHighlight({
             </p>
             <p className="text-xs text-violet-700/80 mt-2">
               {l2.approver || l2.user || 'L2 Manager'}
-              {l2.role ? ` · ${formatRoleDisplayName(l2.role)}` : ''}
+              {roleLabelForEntry(l2) ? ` · ${roleLabelForEntry(l2)}` : ''}
               {l2.date ? ` · ${l2.date}` : ''}
             </p>
           </>
@@ -230,7 +241,7 @@ export default function ApprovalHistoryPanel({
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {who}
-                    {item.role ? ` · ${formatRoleDisplayName(item.role)}` : ''}
+                    {roleLabelForEntry(item) ? ` · ${roleLabelForEntry(item)}` : ''}
                   </p>
                 </div>
                 <span

@@ -404,9 +404,11 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{user?.name || 'User'}</p>
-              <p className="text-xs text-gray-500 truncate">
-                {formatRoleDisplayName(user?.role) || 'Role'}
-              </p>
+              {formatRoleDisplayName(user?.role, user) ? (
+                <p className="text-xs text-gray-500 truncate">
+                  {formatRoleDisplayName(user?.role, user)}
+                </p>
+              ) : null}
             </div>
             <button
               onClick={logout}

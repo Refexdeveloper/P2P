@@ -456,7 +456,9 @@ export default function Dashboard({
               {greetingForNow()}, {user?.name || 'User'}
             </h1>
             <p className="text-sm text-slate-500 mt-2">
-              Financial Insights · {formatRoleDisplayName(user?.role) || 'Group CEO'}
+              {formatRoleDisplayName(user?.role, user)
+                ? `Financial Insights · ${formatRoleDisplayName(user?.role, user)}`
+                : 'Financial Insights'}
             </p>
           </div>
           <div className="flex items-center gap-2 relative" ref={customizeRef}>

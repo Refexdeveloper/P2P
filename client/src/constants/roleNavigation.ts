@@ -70,14 +70,14 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     label: 'Dashboard',
     path: '/dashboard',
     icon: 'ri-dashboard-line',
-    group: 'CFO',
+    group: 'Approvals',
   },
   'nav.cfo_dashboard': {
     code: 'nav.cfo_dashboard',
     label: 'PR Approvals',
     path: '/cfo/dashboard',
     icon: 'ri-checkbox-circle-line',
-    group: 'CFO',
+    group: 'Approvals',
   },
   'nav.purchase_requests': {
     code: 'nav.purchase_requests',

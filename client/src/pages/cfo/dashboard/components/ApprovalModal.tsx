@@ -96,7 +96,7 @@ export default function ApprovalModal({ isOpen, onClose, pr, onApprove, onReject
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Status</span>
                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${actionType === 'approve' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                  {actionType === 'approve' ? 'CFO Approved' : 'CFO Rejected'}
+                  {actionType === 'approve' ? 'Approved' : 'Rejected'}
                 </span>
               </div>
             </div>
@@ -130,7 +130,7 @@ export default function ApprovalModal({ isOpen, onClose, pr, onApprove, onReject
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl my-8">
         <div className={`bg-gradient-to-r ${entityColors[pr.entity] || 'from-gray-500 to-gray-600'} p-6 rounded-t-xl`}>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-white">CFO Approval Required</h2>
+            <h2 className="text-2xl font-bold text-white">Approval Required</h2>
             <button
               onClick={handleClose}
               className="w-8 h-8 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-lg transition-colors whitespace-nowrap"
@@ -178,11 +178,11 @@ export default function ApprovalModal({ isOpen, onClose, pr, onApprove, onReject
             </div>
           </div>
 
-          {/* CFO Checklist */}
+          {/* Verification Checklist */}
           <div className="space-y-3">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2">
               <i className="ri-checkbox-circle-line text-lg text-emerald-600"></i>
-              CFO Verification Checklist
+              Verification Checklist
             </h3>
             <div className="space-y-2">
               {[

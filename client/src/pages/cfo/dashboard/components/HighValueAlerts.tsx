@@ -37,7 +37,7 @@ export default function HighValueAlerts({ alerts }: HighValueAlertsProps) {
       </div>
       <div className="space-y-3">
         {alerts.length === 0 ? (
-          <p className="text-sm text-gray-500 py-2">No high-value PRs pending CFO approval.</p>
+          <p className="text-sm text-gray-500 py-2">No high-value PRs pending approval.</p>
         ) : (
           alerts.map(alert => (
           <div

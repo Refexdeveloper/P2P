@@ -164,6 +164,11 @@ export default function TrackPoPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
+  const isAdminEditor = Boolean(
+    isSuperAdmin ||
+      user?.role === 'SCM Manager' ||
+      user?.role === 'SCM Buyer'
+  );
   const csvFileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<TrackRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -407,6 +412,10 @@ export default function TrackPoPage() {
 
   const openEditDraft = (poId: number) => {
     navigate(`/scm/create-po?poId=${poId}&from=create-po`);
+  };
+
+  const openAdminEditPo = (poId: number) => {
+    navigate(`/scm/create-po?poId=${poId}&from=track-po`);
   };
 
   const handleRetrieveCancelled = async (row: TrackRow) => {
@@ -746,6 +755,19 @@ export default function TrackPoPage() {
                                   Edit Draft
                                 </button>
                               )}
+                              {isAdminEditor &&
+                                row.poId &&
+                                row.status !== 'draft' &&
+                                row.status !== 'cancelled' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openAdminEditPo(row.poId!)}
+                                    className="px-3 py-1.5 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-50"
+                                    title="Edit this purchase order"
+                                  >
+                                    Edit
+                                  </button>
+                                )}
                               {row.status === 'cancelled' && row.poId && (
                                 <button
                                   type="button"

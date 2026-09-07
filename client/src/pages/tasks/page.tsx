@@ -15,14 +15,15 @@ const STAGE_LABELS: Record<string, string> = {
   SUBMITTED: 'PR Submitted',
   HOD_REVIEW: 'L1 Manager Review',
   PR_MANAGER_REVIEW: 'L2 Manager Review',
-  CFO_REVIEW: 'CFO Review',
+  CFO_REVIEW: 'Mugesh Approval',
   RFQ_MANAGER_REVIEW: 'L1 Vendor Final',
   RFQ_L2_REVIEW: 'L2 Manager Review',
-  RFQ_CFO_REVIEW: 'CFO Review',
+  RFQ_CFO_REVIEW: 'Mugesh Approval',
   RFQ_SCM_BUYER_SELECTION: 'SCM RFQ',
   BUSINESS_REVIEW: 'SCM Manager Review',
   SCM_PO_CREATE: 'Create PO',
   PO_CREATED: 'PO Created',
+  SASS_INVOICE_UPLOAD: 'Mugesh Invoice Upload',
 };
 
 function formatApproverStage(pr: Record<string, unknown>, task: { status: string; currentApprover: string }) {

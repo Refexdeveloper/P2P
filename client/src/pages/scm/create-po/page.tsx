@@ -957,11 +957,13 @@ export default function CreatePOPage() {
       ? '/scm/buyer-final-verify'
       : fromParam === 'tasks'
         ? '/tasks'
-        : fromParam === 'purchase-requests' || fromParam === 'create-po' || fromParam === 'csv'
-          ? '/scm/create-po'
-          : fromParam === 'po-approval'
-            ? '/scm/po-approval'
-            : '/scm/po-approval';
+        : fromParam === 'track-po'
+          ? '/scm/track-po'
+          : fromParam === 'purchase-requests' || fromParam === 'create-po' || fromParam === 'csv'
+            ? '/scm/create-po'
+            : fromParam === 'po-approval'
+              ? '/scm/po-approval'
+              : '/scm/po-approval';
   const isBuyerVerifyEdit = searchParams.get('from') === 'buyer-verify';
 
   const [loading, setLoading] = useState(true);
@@ -4852,6 +4854,8 @@ export default function CreatePOPage() {
                       {isEditMode
                         ? isBuyerVerifyEdit
                           ? 'Changes update the signed PO before you verify and send to vendor'
+                          : fromParam === 'track-po' && poEditStatus && poEditStatus !== 'draft'
+                            ? 'Admin edit — saves document changes without changing approval status'
                           : poEditStatus === 'draft'
                             ? `Saving will send this draft to SCM Manager${scmManager?.name ? ` (${scmManager.name})` : ''} for approval`
                             : 'Updated PO stays pending until you sign from PO Approval'

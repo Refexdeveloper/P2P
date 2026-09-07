@@ -68,7 +68,7 @@ export const POST_RFQ_ROLE_MAP = {
     nextRole: null,
     nextStatus: PR_STATUS.APPROVED,
     nextStage: null,
-    label: 'CFO Approval',
+    label: 'Mugesh Approval',
     showFullNegotiation: true,
   },
   'SCM Manager': {
@@ -324,10 +324,10 @@ export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelectio
   const map = {
     [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending L1 Manager Approval',
     [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: 'Pending L2 Manager Approval',
-    [PR_STATUS.PENDING_CFO_APPROVAL]: 'Pending CFO Approval',
+    [PR_STATUS.PENDING_CFO_APPROVAL]: 'Pending Mugesh Approval',
     [PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL]: 'Pending L1 Vendor Final',
     [PR_STATUS.PENDING_RFQ_L2_APPROVAL]: 'Pending L2 Manager Approval',
-    [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: 'Pending RFQ CFO Approval',
+    [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: 'Pending Mugesh Approval',
     [PR_STATUS.PENDING_BUSINESS_APPROVAL]: 'Pending SCM Manager Vendor Approval',
     [PR_STATUS.PENDING_SCM_PO]: 'Pending SCM Buyer Create PO',
     [PR_STATUS.AWAITING_INVOICE]: 'Awaiting Invoice Upload',
