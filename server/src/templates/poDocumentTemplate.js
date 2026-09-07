@@ -1059,6 +1059,11 @@ function normalizeAnnexureIiBodyHtml(html) {
       return kept.length ? `style=${q1}${kept.join(';')}${q2}` : '';
     });
 
+  // Excel/Word dual-paste: keep the real <table>, drop sibling screenshot images.
+  if (/<table\b/i.test(out)) {
+    out = stripImagesOutsideTables(out);
+  }
+
   // Mark pasted tables for consistent PDF layout.
   out = out.replace(/<table\b([^>]*)>/gi, (_m, attrs) => {
     const a = String(attrs || '');
@@ -1069,6 +1074,33 @@ function normalizeAnnexureIiBodyHtml(html) {
   });
 
   return out;
+}
+
+/** Remove figures/images that sit outside <table> (clipboard bitmaps of the same table). */
+function stripImagesOutsideTables(html) {
+  const raw = String(html || '');
+  if (!raw) return '';
+  const parts = [];
+  const re = /<table\b[\s\S]*?<\/table>/gi;
+  let cursor = 0;
+  let match;
+  while ((match = re.exec(raw)) !== null) {
+    const before = raw.slice(cursor, match.index);
+    parts.push(
+      before
+        .replace(/<figure\b[^>]*>[\s\S]*?<\/figure>/gi, '')
+        .replace(/<img\b[^>]*\/?>/gi, '')
+    );
+    parts.push(match[0]);
+    cursor = match.index + match[0].length;
+  }
+  parts.push(
+    raw
+      .slice(cursor)
+      .replace(/<figure\b[^>]*>[\s\S]*?<\/figure>/gi, '')
+      .replace(/<img\b[^>]*\/?>/gi, '')
+  );
+  return parts.join('').trim();
 }
 
 /**
@@ -1239,7 +1271,7 @@ export function buildAnnexureIiPdfBlocks(rows) {
 
     galleryImages.forEach((img, imgIdx) => {
       const caption = String(img.caption || '').trim();
-      const figure = `<figure class="annexure-figure"><img src="${safeImgSrc(img.src)}" alt="" style="max-height:140px;max-width:100%;height:auto;object-fit:contain;" />${
+      const figure = `<figure class="annexure-figure"><img src="${safeImgSrc(img.src)}" alt="" style="max-width:100%;height:auto;object-fit:contain;" />${
         caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''
       }</figure>`;
       const firstBlock = !continued && imgIdx === 0;

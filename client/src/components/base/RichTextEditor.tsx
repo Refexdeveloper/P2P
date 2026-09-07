@@ -132,12 +132,18 @@ function sanitizePastedHtml(raw: string, allowImages = false) {
   const doc = new DOMParser().parseFromString(fragment, 'text/html');
   doc.querySelectorAll('script,style,meta,link,noscript,iframe,object,embed,xml,head').forEach((n) => n.remove());
 
+  const hasTable = Boolean(doc.body.querySelector('table'));
+  // Excel/Word often paste a bitmap of the table alongside HTML — drop it when a real table exists.
+  if (hasTable) {
+    doc.querySelectorAll('img').forEach((n) => n.remove());
+  }
+
   const nodes = Array.from(doc.body.querySelectorAll('*'));
   for (const node of nodes) {
     const el = node as HTMLElement;
     const tag = el.tagName;
     if (tag === 'IMG') {
-      if (!allowImages) {
+      if (!allowImages || hasTable) {
         unwrapElement(el);
         continue;
       }
@@ -287,28 +293,32 @@ export default function RichTextEditor({
   const handleInput = () => emitHtml();
 
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     const items = e.clipboardData?.items;
+    const html = e.clipboardData?.getData('text/html') || '';
+
+    // Prefer real HTML tables/text from Excel/Word. Clipboard often also includes a
+    // screenshot image of the selection — do not insert that when table HTML exists.
+    if (!plainTextOnly) {
+      const hasTable = /<table\b/i.test(html);
+      const sanitized = sanitizePastedHtml(html, allowImages && !hasTable);
+      if (sanitized && (hasTable || htmlToPlainText(sanitized).trim())) {
+        document.execCommand('insertHTML', false, sanitized);
+        emitHtml();
+        return;
+      }
+    }
+
+    // Image-only paste (no HTML table/text) — allow when editor supports images.
     if (allowImages && !plainTextOnly && items) {
       for (const item of Array.from(items)) {
         if (item.type.startsWith('image/')) {
-          e.preventDefault();
           const file = item.getAsFile();
           if (file) insertImageFile(file);
           return;
         }
-      }
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!plainTextOnly) {
-      const html = e.clipboardData?.getData('text/html') || '';
-      const sanitized = sanitizePastedHtml(html, allowImages);
-      if (sanitized && htmlToPlainText(sanitized).trim()) {
-        document.execCommand('insertHTML', false, sanitized);
-        emitHtml();
-        return;
       }
     }
 

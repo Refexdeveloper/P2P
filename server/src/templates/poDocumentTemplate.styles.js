@@ -836,24 +836,38 @@ export const PO_STYLES = `
   .annexure-ii-body h3 { margin: 10px 0 6px; font-weight: 700; }
   .annexure-ii-body img {
     max-width: 100%;
-    max-height: 180px;
+    max-height: none;
     height: auto;
     display: block;
-    margin: 10px auto;
+    margin: 10px 0;
     page-break-inside: avoid;
     break-inside: avoid;
     object-fit: contain;
   }
   body.po-document-pdf-pages .annexure-ii-body img {
-    max-height: 140px !important;
     max-width: 100% !important;
-    height: auto !important;
     width: auto !important;
+    height: auto !important;
+    max-height: none !important;
     object-fit: contain !important;
+  }
+  /* Legacy Excel screenshot-only annexure: use full content width, not a tiny centered thumb */
+  body.po-document-pdf-pages .annexure-ii-body > figure:only-child,
+  body.po-document-pdf-pages .annexure-ii-body > p:only-child {
+    margin: 0;
+    text-align: left;
+    width: 100%;
+  }
+  body.po-document-pdf-pages .annexure-ii-body > figure:only-child img,
+  body.po-document-pdf-pages .annexure-ii-body > p:only-child > img:only-child {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
   }
   .annexure-ii-body figure {
     margin: 12px 0;
-    text-align: center;
+    text-align: left;
+    width: 100%;
     page-break-inside: avoid;
     break-inside: avoid;
   }
