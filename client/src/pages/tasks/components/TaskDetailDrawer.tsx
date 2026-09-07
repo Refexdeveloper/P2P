@@ -146,8 +146,11 @@ export default function TaskDetailDrawer({
               <h3 className="text-base font-semibold text-gray-900">{task.title}</h3>
               {isSass && (
                 <p className="text-xs text-teal-800 mt-1 font-medium">
-                  Cloud Subscription path: L1 → Srivaths → Mugesh (approve + invoice) → Accounts (SCM
-                  skipped)
+                  {String(task.requesterEmail || task.requester || '')
+                    .toLowerCase()
+                    .includes('mugesh')
+                    ? 'Cloud Subscription path: L1 → Mugesh Invoice Upload → Accounts (Mugesh self-approval & Srivaths L2 skipped; SCM skipped)'
+                    : 'Cloud Subscription path: L1 → Mugesh → Srivaths (L2; skipped if L1 was Srivaths) → Mugesh Invoice → Accounts (SCM skipped)'}
                 </p>
               )}
             </div>

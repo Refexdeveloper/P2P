@@ -1513,13 +1513,16 @@ export async function htmlToPdf(html, filePath) {
 export async function generatePoPdf(po, options = {}) {
   ensurePoDir();
   options = withResolvedSignature(po, options);
-  const baseName = options.fileName || `${po.poNumber}_${options.signed ? 'signed' : 'draft'}`;
+  const poNumber = String(po.poNumber || po.po_number || '').trim() || 'PO';
+  const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_') || 'PO';
+  const branded = await inlinePoBranding({ ...po, poNumber });
+  const baseName =
+    options.fileName || `${safePoNumber}_${options.signed ? 'signed' : 'draft'}`;
   const fileName = baseName.endsWith('.pdf') ? baseName : `${baseName}.pdf`;
   const htmlFileName = fileName.replace(/\.pdf$/i, '.html');
   const filePath = path.join(PO_UPLOAD_DIR, fileName);
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
 
-  const branded = await inlinePoBranding(po);
   const executablePath = resolveBrowserExecutable();
   if (!executablePath) {
     const html = buildPoHtml(branded, { ...options, forPdf: false });
@@ -1614,6 +1617,19 @@ function looksLikePdfFile(filePath) {
   }
 }
 
+/** True when stored PDF filename still reflects the current PO/WO number. */
+function pdfFileMatchesPoNumber(fileName, poNumber) {
+  const n = String(poNumber || '').trim();
+  if (!n) return true;
+  const base = path.basename(String(fileName || ''));
+  if (!base) return false;
+  if (base.toUpperCase().startsWith('DRAFT-') && !n.toUpperCase().startsWith('DRAFT-')) {
+    return false;
+  }
+  const safe = n.replace(/[^\w.-]+/g, '_');
+  return base.includes(n) || base.startsWith(safe);
+}
+
 /**
  * Ensure a real PDF file exists for the PO (regenerate from HTML/template if needed).
  * When the PO is digitally signed, re-embeds the SCM Manager signature image.
@@ -1621,24 +1637,34 @@ function looksLikePdfFile(filePath) {
 export async function ensurePoPdf(po, options = {}) {
   const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || options.signed);
   const isDraft = String(po.statusRaw || po.status || '').toLowerCase() === 'draft';
+  const poNumber = String(po.poNumber || po.po_number || '').trim() || `PO-${po.id || 'draft'}`;
+  const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
   const preferredName =
     options.fileName ||
     (isSigned ? po.signedPdfPath : null) ||
     po.pdfPath ||
-    `${po.poNumber || 'PO'}_draft.pdf`;
-  const pdfName = String(preferredName).replace(/\.html$/i, '.pdf');
+    `${safePoNumber}_${isSigned ? 'signed' : 'draft'}.pdf`;
+  let pdfName = String(preferredName).replace(/\.html$/i, '.pdf');
+
+  // Always store/serve under the current PO number so SCM Manager View PDF is not a stale DRAFT file.
+  if (!pdfFileMatchesPoNumber(pdfName, poNumber)) {
+    pdfName = `${safePoNumber}_${isSigned ? 'signed' : 'draft'}.pdf`;
+  }
+
   const pdfPath = path.join(PO_UPLOAD_DIR, path.basename(pdfName));
 
   const pdfMtime = fs.existsSync(pdfPath) ? fs.statSync(pdfPath).mtimeMs : 0;
   const poUpdatedMs = Number(po.updatedAtMs || 0);
   const pdfStale = poUpdatedMs > 0 && pdfMtime > 0 && poUpdatedMs > pdfMtime + 500;
+  const nameMismatch = !pdfFileMatchesPoNumber(pdfName, poNumber);
 
   if (
     fs.existsSync(pdfPath) &&
     looksLikePdfFile(pdfPath) &&
     !options.forceRegenerate &&
     !isDraft &&
-    !pdfStale
+    !pdfStale &&
+    !nameMismatch
   ) {
     return { fullPath: pdfPath, fileName: path.basename(pdfName), isHtml: false };
   }
@@ -1647,12 +1673,15 @@ export async function ensurePoPdf(po, options = {}) {
     options.signature ||
     (isSigned ? buildSignatureRenderOptions(po) : undefined);
 
-  const generated = await generatePoPdf(po, {
-    ...options,
-    fileName: path.basename(pdfName),
-    signed: isSigned,
-    signature,
-  });
+  const generated = await generatePoPdf(
+    { ...po, poNumber },
+    {
+      ...options,
+      fileName: path.basename(pdfName),
+      signed: isSigned,
+      signature,
+    }
+  );
 
   if (generated.htmlOnly || !looksLikePdfFile(generated.filePath)) {
     throw new Error(

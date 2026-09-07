@@ -3135,6 +3135,9 @@ export default function CreatePOPage() {
         return;
       }
 
+      // After Save Draft, send must promote that draft and only then assign official PO number
+      if (createdPoId) payload.poId = createdPoId;
+
       const res = isManualPoFlow && !isEditMode
         ? await poApi.createManual(payload)
         : await poApi.create(numericPrId!, payload);

@@ -722,6 +722,7 @@ export async function runStartupMigrations() {
       rewriteConsumedCloudSubscriptionPoNumbers,
       rerouteMugeshRequesterSassToInvoiceUpload,
       clearStaleSassPrApprovalTasks,
+      skipRedundantSassL2WhenL1WasSrivaths,
     } = await import('./sassWorkflow.js');
     const result = await rewriteConsumedCloudSubscriptionPoNumbers();
     console.log(
@@ -736,6 +737,12 @@ export async function runStartupMigrations() {
     const staleFix = await clearStaleSassPrApprovalTasks();
     if (staleFix.cleared) {
       console.log(`Cloud Subscription stale PR approval tasks cleared: ${staleFix.cleared}`);
+    }
+    const l2Skip = await skipRedundantSassL2WhenL1WasSrivaths();
+    if (l2Skip.skipped) {
+      console.log(
+        `Cloud Subscription L2 skip (L1 was Srivaths): scanned=${l2Skip.scanned}, skipped=${l2Skip.skipped}`
+      );
     }
   } catch (err) {
     console.warn('Cloud Subscription PO number rewrite skipped:', err.message);

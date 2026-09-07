@@ -11,7 +11,7 @@ import {
   queueApproverActionConfirmationForUser,
   queueCloudSubscriptionReminderNotification,
 } from './emailService.js';
-import { isSassMugeshRequester } from './sassWorkflow.js';
+import { isSassMugeshRequester, isSassL2Person, sassL1WasSrivaths } from './sassWorkflow.js';
 
 const NOTIFICATION_TYPES = {
   EXPIRY_7_DAYS: { daysBeforeExpiry: 7 },
@@ -645,8 +645,12 @@ export async function processSubscriptionRenewalApproval(user, renewalId, action
       requester_email: reqUser[0]?.email,
       requester_name: reqUser[0]?.name,
     });
+    const l1IsSrivaths = isSassL2Person(user);
 
-    if (mugeshIsRequester) {
+    if (mugeshIsRequester && l1IsSrivaths) {
+      // Mugesh requester + Srivaths as L1 — already approved once; skip L2 and complete.
+      await completeSubscriptionRenewal(renewal.id);
+    } else if (mugeshIsRequester) {
       const { resolveSassL2Assignment } = await import('./sassWorkflow.js');
       const a = await resolveSassL2Assignment(pr.department_id);
       await pool.query(
@@ -678,20 +682,28 @@ export async function processSubscriptionRenewalApproval(user, renewalId, action
       );
     }
   } else if (stage === 'CFO') {
-    const { resolveSassL2Assignment } = await import('./sassWorkflow.js');
-    const a = await resolveSassL2Assignment(pr.department_id);
-    await pool.query(
-      `INSERT INTO workflow_tasks
-       (pr_id, task_type, assigned_role, assigned_user_id, status, due_date, subscription_renewal_id)
-       VALUES (?, 'SUBSCRIPTION_RENEWAL', 'PR Manager', ?, 'pending', ?, ?)`,
-      [renewal.original_purchase_request_id, a.userId, dueStr, renewal.id]
-    );
-    await pool.query(
-      `UPDATE subscription_renewals
-       SET status = 'APPROVAL_IN_PROGRESS', current_stage = 'PR_MANAGER_REVIEW', updated_at = NOW()
-       WHERE id = ?`,
-      [renewal.id]
-    );
+    // After Mugesh: skip L2 when L1 was already Srivaths
+    const l1WasSrivaths =
+      (await sassL1WasSrivaths(renewal.original_purchase_request_id)) ||
+      (await renewalL1WasSrivaths(renewal.id));
+    if (l1WasSrivaths) {
+      await completeSubscriptionRenewal(renewal.id);
+    } else {
+      const { resolveSassL2Assignment } = await import('./sassWorkflow.js');
+      const a = await resolveSassL2Assignment(pr.department_id);
+      await pool.query(
+        `INSERT INTO workflow_tasks
+         (pr_id, task_type, assigned_role, assigned_user_id, status, due_date, subscription_renewal_id)
+         VALUES (?, 'SUBSCRIPTION_RENEWAL', 'PR Manager', ?, 'pending', ?, ?)`,
+        [renewal.original_purchase_request_id, a.userId, dueStr, renewal.id]
+      );
+      await pool.query(
+        `UPDATE subscription_renewals
+         SET status = 'APPROVAL_IN_PROGRESS', current_stage = 'PR_MANAGER_REVIEW', updated_at = NOW()
+         WHERE id = ?`,
+        [renewal.id]
+      );
+    }
   } else if (stage === 'PR Manager') {
     await completeSubscriptionRenewal(renewal.id);
   } else {
@@ -705,6 +717,23 @@ export async function processSubscriptionRenewalApproval(user, renewalId, action
     { remarks, approverRole: stage }
   );
   return getRenewalById(renewal.id);
+}
+
+/** Renewal L1 assignee was Srivaths (from completed HOD renewal task). */
+async function renewalL1WasSrivaths(renewalId) {
+  const [rows] = await pool.query(
+    `SELECT u.email, u.name
+     FROM workflow_tasks wt
+     LEFT JOIN users u ON u.id = wt.assigned_user_id
+     WHERE wt.subscription_renewal_id = ?
+       AND wt.task_type = 'SUBSCRIPTION_RENEWAL'
+       AND wt.assigned_role = 'HOD Approver'
+       AND wt.status = 'completed'
+     ORDER BY wt.id DESC
+     LIMIT 1`,
+    [Number(renewalId)]
+  );
+  return isSassL2Person(rows[0] || {});
 }
 
 async function completeSubscriptionRenewal(renewalId) {

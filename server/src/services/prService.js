@@ -44,6 +44,7 @@ import {
   isSassPr,
   isSassPurchaseType,
   isSassMugeshRequester,
+  sassL1WasSrivaths,
   createSassL2ApprovalTask,
   createSassMugeshApprovalTask,
   openSassInvoiceStage,
@@ -1904,8 +1905,29 @@ export async function listPurchaseRequests(user, filters = {}) {
     }
   } else if (user.role === 'CFO') {
     if (filters.pendingOnly) {
-      sql += ' AND pr.status IN (?, ?)';
-      params.push(PR_STATUS.PENDING_CFO_APPROVAL, PR_STATUS.PENDING_RFQ_CFO_APPROVAL);
+      // Only PRs assigned to this CFO (Mugesh for Cloud Subscription) — never dump
+      // every pending CFO queue onto every CFO / wrong login.
+      const cfoEmail = String(user.email || '').toLowerCase().trim();
+      sql += ` AND pr.status IN (?, ?)
+        AND EXISTS (
+          SELECT 1 FROM workflow_tasks wt
+          LEFT JOIN users au ON au.id = wt.assigned_user_id
+          WHERE wt.pr_id = pr.id
+            AND wt.status = 'pending'
+            AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
+            AND wt.assigned_role = 'CFO'
+            AND (
+              wt.assigned_user_id = ?
+              OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+            )
+        )`;
+      params.push(
+        PR_STATUS.PENDING_CFO_APPROVAL,
+        PR_STATUS.PENDING_RFQ_CFO_APPROVAL,
+        user.id,
+        cfoEmail,
+        cfoEmail
+      );
     }
   } else if (user.role === 'SCM Manager') {
     if (filters.pendingOnly) {
@@ -2610,11 +2632,20 @@ export async function processApproval(user, prId, action, remarks, options = {})
         }
       } else if (actingRole === 'CFO') {
         if (isSass) {
-          // Mugesh approve → Srivaths (L2); invoice is a later assigned task
-          newStatus = PR_STATUS.PENDING_PR_MANAGER_APPROVAL;
-          newStage = STAGE.PR_MANAGER_REVIEW;
-          nextRole = 'PR Manager';
-          skipToScmRfq = false;
+          // Mugesh approve → Srivaths (L2), unless L1 was already Srivaths (skip duplicate)
+          const l1WasSrivaths = await sassL1WasSrivaths(prId, conn);
+          if (l1WasSrivaths) {
+            newStatus = PR_STATUS.AWAITING_INVOICE;
+            newStage = STAGE.SASS_INVOICE_UPLOAD;
+            nextRole = null;
+            skipToScmRfq = false;
+            remarks = `${remarks.trim()} [Cloud Subscription · L1 was Srivaths — L2 skipped]`;
+          } else {
+            newStatus = PR_STATUS.PENDING_PR_MANAGER_APPROVAL;
+            newStage = STAGE.PR_MANAGER_REVIEW;
+            nextRole = 'PR Manager';
+            skipToScmRfq = false;
+          }
         } else {
           // SCM path only (pre-RFQ): after CFO → SCM RFQ queue
           newStatus = PR_STATUS.APPROVED;
@@ -2709,27 +2740,29 @@ export async function processApproval(user, prId, action, remarks, options = {})
     }
 
     let sassInvoiceStageMeta = null;
-    if (
+    const openSassInvoice =
       isSass &&
       action === 'approve' &&
+      newStatus === PR_STATUS.AWAITING_INVOICE &&
       ((actingRole === 'PR Manager') ||
-        (actingAsHod && sassRequesterIsMugesh && newStatus === PR_STATUS.AWAITING_INVOICE))
-    ) {
+        (actingAsHod && sassRequesterIsMugesh) ||
+        (actingRole === 'CFO'));
+    if (openSassInvoice) {
       sassInvoiceStageMeta = await openSassInvoiceStage(conn, pr, user, {
         createMugeshInvoiceTask: true,
       });
       nextAssignee = sassInvoiceStageMeta?.mugeshAssignee || nextAssignee;
+      let routeRemark = 'Routed to Mugesh for invoice upload (SCM skipped)';
+      if (sassRequesterIsMugesh && actingAsHod) {
+        routeRemark =
+          'Routed to Mugesh for invoice upload (Mugesh requester — L2/Mugesh approval skipped)';
+      } else if (actingRole === 'CFO') {
+        routeRemark =
+          'Routed to Mugesh for invoice upload (L1 was Srivaths — L2 skipped)';
+      }
       await conn.query(
         `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
-        [
-          prId,
-          STAGE.SASS_INVOICE_UPLOAD,
-          user.id,
-          'routed',
-          sassRequesterIsMugesh && actingAsHod
-            ? 'Routed to Mugesh for invoice upload (Mugesh requester — L2/Mugesh approval skipped)'
-            : 'Routed to Mugesh for invoice upload (SCM skipped)',
-        ]
+        [prId, STAGE.SASS_INVOICE_UPLOAD, user.id, 'routed', routeRemark]
       );
     }
 
@@ -3013,9 +3046,13 @@ export async function processApproval(user, prId, action, remarks, options = {})
     } else if (
       isSass &&
       action === 'approve' &&
-      ((actingRole === 'PR Manager') || (actingAsHod && sassRequesterIsMugesh))
+      updatedPr.status === PR_STATUS.AWAITING_INVOICE &&
+      ((actingRole === 'PR Manager') ||
+        (actingAsHod && sassRequesterIsMugesh) ||
+        actingRole === 'CFO')
     ) {
-      // Routed to Mugesh invoice upload (after Srivaths, or after L1 when Mugesh is requester)
+      // Routed to Mugesh invoice upload (after Srivaths, after L1 when Mugesh is requester,
+      // or after Mugesh when L1 was already Srivaths)
       queuePrApprovalPendingNotification(
         updatedPr,
         'CFO',
@@ -3032,7 +3069,11 @@ export async function processApproval(user, prId, action, remarks, options = {})
       );
       notifyWorkflowStepProgress(
         'Mugesh Invoice Upload',
-        actingAsHod && sassRequesterIsMugesh ? 'User Approval' : 'L2 Manager Approval'
+        actingAsHod && sassRequesterIsMugesh
+          ? 'User Approval'
+          : actingRole === 'CFO'
+            ? 'Mugesh Approval'
+            : 'L2 Manager Approval'
       );
     } else if (isSass && actingRole === 'CFO' && action === 'approve') {
       notifyWorkflowStepProgress('L2 Manager Approval', 'Mugesh Approval');
@@ -4356,7 +4397,8 @@ export async function listTasks(user) {
   // Match by user id or email (SSO / re-synced user rows).
   const userEmail = String(user.email || '').toLowerCase().trim();
   const [assignedRows] = await pool.query(
-    `SELECT DISTINCT pr.id, wt.task_type, wt.assigned_role, pr.status AS pr_status
+    `SELECT DISTINCT pr.id, wt.task_type, wt.assigned_role, pr.status AS pr_status,
+            pr.purchase_type, wt.assigned_user_id, au.email AS assigned_email
      FROM purchase_requests pr
      JOIN workflow_tasks wt ON wt.pr_id = pr.id
      LEFT JOIN users au ON au.id = wt.assigned_user_id
@@ -4364,8 +4406,16 @@ export async function listTasks(user) {
        AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
        AND (
          wt.assigned_user_id = ?
-         OR (wt.assigned_user_id IS NULL AND wt.assigned_role = ?)
          OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+         OR (
+           wt.assigned_user_id IS NULL
+           AND wt.assigned_role = ?
+           -- Cloud Subscription CFO/Mugesh steps are never an open role-queue for others
+           AND NOT (
+             wt.assigned_role = 'CFO'
+             AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription')
+           )
+         )
        )
        AND (
          wt.task_type = 'RFQ_POST_APPROVAL'
@@ -4387,9 +4437,9 @@ export async function listTasks(user) {
        )`,
     [
       user.id,
+      userEmail,
+      userEmail,
       user.role,
-      userEmail,
-      userEmail,
       PR_STATUS.PENDING_HOD_APPROVAL,
       PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
       PR_STATUS.PENDING_RFQ_L2_APPROVAL,
@@ -4397,10 +4447,26 @@ export async function listTasks(user) {
       PR_STATUS.PENDING_RFQ_CFO_APPROVAL,
     ]
   );
+
+  // Drop Mugesh-only Cloud Subscription assignments from other logins (e.g. Srivaths).
+  const mugeshEmail = SASS_MUGESH_EMAIL.toLowerCase();
+  const viewerIsMugesh = isSassMugeshRequester(user);
+  const filteredAssignedRows = assignedRows.filter((row) => {
+    const purchaseType = String(row.purchase_type || '').toLowerCase();
+    const isSass =
+      purchaseType === 'sass' || purchaseType === 'saas' || purchaseType === 'cloud_subscription';
+    if (!isSass) return true;
+    const role = String(row.assigned_role || '');
+    // CFO / Mugesh approval — never show on Srivaths (L2) or any non-Mugesh login
+    if (role === 'CFO') {
+      return viewerIsMugesh || userEmail === mugeshEmail;
+    }
+    return true;
+  });
   const pendingIds = new Set(prs.map((p) => p.id));
   // Only RFQ_POST_APPROVAL (or post-RFQ statuses) count as post-RFQ — not every assigned PR
   const assignedPostRfqIds = new Set(
-    assignedRows
+    filteredAssignedRows
       .filter(
         (r) =>
           r.task_type === 'RFQ_POST_APPROVAL' ||
@@ -4409,8 +4475,8 @@ export async function listTasks(user) {
       .map((r) => r.id)
   );
   /** Real open assignments for this user — source of truth for Pending vs Approved. */
-  const assignedPendingIds = new Set(assignedRows.map((r) => Number(r.id)));
-  for (const row of assignedRows) {
+  const assignedPendingIds = new Set(filteredAssignedRows.map((r) => Number(r.id)));
+  for (const row of filteredAssignedRows) {
     if (!pendingIds.has(row.id)) {
       const pr = await getPurchaseRequestById(row.id);
       if (pr) {
@@ -4654,7 +4720,7 @@ export async function listTasks(user) {
     }
   }
 
-  // Cloud Subscription — Mugesh invoice upload assigned tasks
+  // Cloud Subscription — Mugesh invoice upload (Mugesh only — never L2 / Srivaths)
   {
     const [invoiceTaskRows] = await pool.query(
       `SELECT wt.id AS task_id, wt.pr_id, wt.created_at AS task_created_at, wt.due_date,
@@ -4662,7 +4728,7 @@ export async function listTasks(user) {
               pr.currency, pr.purchase_type, pr.status AS pr_status,
               d.name AS department_name, u.name AS requester_name,
               e.id AS entity_id, e.name AS entity_name, e.code AS entity_code,
-              i.id AS invoice_id
+              i.id AS invoice_id, au.email AS assigned_email
        FROM workflow_tasks wt
        JOIN purchase_requests pr ON pr.id = wt.pr_id
        JOIN departments d ON d.id = pr.department_id
@@ -4677,16 +4743,21 @@ export async function listTasks(user) {
          AND (
            wt.assigned_user_id = ?
            OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
-           OR (wt.assigned_role = 'CFO' AND ? = 'CFO')
          )
        ORDER BY wt.created_at DESC`,
-      [PR_STATUS.AWAITING_INVOICE, user.id, userEmail, userEmail, user.role]
+      [PR_STATUS.AWAITING_INVOICE, user.id, userEmail, userEmail]
     );
     const seenInvoicePr = new Set(
       tasks.filter((t) => t.isSassInvoiceUpload).map((t) => Number(t.prId)).filter(Boolean)
     );
     for (const row of invoiceTaskRows) {
       if (seenInvoicePr.has(Number(row.pr_id))) continue;
+      const assignedEmail = String(row.assigned_email || '').toLowerCase().trim();
+      // Strict: Mugesh invoice upload only for Mugesh login
+      const allowed = viewerIsMugesh || userEmail === mugeshEmail;
+      if (!allowed) continue;
+      // Extra guard if assignee email is present and is not Mugesh
+      if (assignedEmail && assignedEmail !== mugeshEmail && assignedEmail !== userEmail) continue;
       seenInvoicePr.add(Number(row.pr_id));
       const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS * 2);
       // Insert pending invoice tasks at the front so Mugesh sees them with other open work
@@ -4762,6 +4833,14 @@ export async function listTasks(user) {
     for (const row of renewalTaskRows) {
       const renewalId = Number(row.subscription_renewal_id);
       if (!renewalId || seenRenewal.has(renewalId)) continue;
+      // Mugesh (CFO) renewal steps must not appear on Srivaths / L2 login
+      if (String(row.assigned_role || '') === 'CFO' && !(viewerIsMugesh || userEmail === mugeshEmail)) {
+        continue;
+      }
+      // L2 renewal steps must not appear on Mugesh login
+      if (String(row.assigned_role || '') === 'PR Manager' && (viewerIsMugesh || userEmail === mugeshEmail)) {
+        continue;
+      }
       seenRenewal.add(renewalId);
       const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date);
       const label = row.renewal_number_label || `REN-${String(row.renewal_number || 0).padStart(4, '0')}`;
@@ -4808,7 +4887,19 @@ export async function listTasks(user) {
     }
   }
 
-  return tasks;
+  // Final guard: Mugesh-only Cloud Subscription tasks never leak to Srivaths / other users
+  const mugeshOnlyViewer = viewerIsMugesh || userEmail === mugeshEmail;
+  return tasks.filter((t) => {
+    if (t?.isSassInvoiceUpload && !mugeshOnlyViewer) return false;
+    if (
+      t?.isSubscriptionRenewal &&
+      String(t.statusUI || '').toLowerCase().includes('cfo') &&
+      !mugeshOnlyViewer
+    ) {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function toRequesterDashboardFormat(pr) {

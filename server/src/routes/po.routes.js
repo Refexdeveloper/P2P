@@ -549,18 +549,28 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
         : await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
     const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || po.signedAt);
+    const poNumber = String(po.poNumber || '').trim() || `PO-${po.id}`;
+    const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
     const preferredName = isSigned
-      ? po.signedPdfPath || `${po.poNumber || `PO-${po.id}`}_signed.pdf`
-      : po.pdfPath || `${po.poNumber || `PO-${po.id}`}_draft.pdf`;
+      ? po.signedPdfPath || `${safePoNumber}_signed.pdf`
+      : `${safePoNumber}_draft.pdf`;
     const { buildSignatureRenderOptions } = await import('../services/signatureService.js');
     const signatureOpts = buildSignatureRenderOptions(po);
+    const storedLooksStale =
+      Boolean(po.pdfPath) &&
+      !String(po.pdfPath).includes(poNumber) &&
+      !String(po.pdfPath).startsWith(safePoNumber);
     const { fullPath, fileName } = await ensurePoPdf(po, {
       fileName: preferredName,
       signed: isSigned,
       signature: signatureOpts,
-      forceRegenerate: isSigned || String(po.statusRaw || po.status || '').toLowerCase() === 'draft',
+      // Always refresh when draft, signed, or stored PDF was built under an old DRAFT number
+      forceRegenerate:
+        isSigned ||
+        String(po.statusRaw || po.status || '').toLowerCase() === 'draft' ||
+        storedLooksStale,
     });
-    // Persist regenerated PDF path when previous value was HTML-only
+    // Persist regenerated PDF path when previous value was HTML-only or mismatched
     if (!isSigned && po.pdfPath !== fileName) {
       try {
         const pool = (await import('../config/db.js')).default;
@@ -570,13 +580,10 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
       }
     }
     res.setHeader('Content-Type', 'application/pdf');
-    const downloadBase = String(po.poNumber || `PO-${po.id}`)
-      .trim()
-      .replace(/[^\w.-]+/g, '_')
-      .replace(/_+/g, '_') || `PO-${po.id}`;
+    const downloadBase = safePoNumber || `PO-${po.id}`;
     const downloadName = `${downloadBase}${isSigned ? '_signed' : ''}.pdf`;
     res.setHeader('Content-Disposition', `inline; filename="${downloadName}"`);
-    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Cache-Control', 'private, no-store');
     fs.createReadStream(fullPath).pipe(res);
   } catch (err) {
     res.status(400).json({ message: err.message });

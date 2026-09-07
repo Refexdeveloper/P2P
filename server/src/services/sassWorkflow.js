@@ -3,6 +3,7 @@
  * Default chain: Requester → selected user approvals (L1) → Mugesh (approve) → Srivaths (L2) → Mugesh (invoice upload) → Accounts.
  * When Mugesh is the requester: Requester (Mugesh) → L1 → Mugesh invoice upload → Accounts
  *   (skips Mugesh self-approval and Srivaths L2).
+ * When Srivaths is L1: after Mugesh approve, skip Srivaths L2 (already approved once) → Mugesh invoice.
  * SCM is never involved.
  */
 import fs from 'fs';
@@ -10,7 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
 import { ensureApproverUser } from './refexOneService.js';
-import { formatDateTime } from '../utils/constants.js';
+import { formatDateTime, STAGE } from '../utils/constants.js';
 import { uploadToGcs, gcsEnabled } from './gcsStorage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +33,58 @@ export function isSassPurchaseType(value) {
 
 export function isSassPr(pr = {}) {
   return isSassPurchaseType(pr.purchase_type || pr.purchaseType);
+}
+
+/** True when the person is Srivaths (Cloud Subscription L2) — used to skip duplicate L2. */
+export function isSassL2Person(userOr = {}) {
+  const email = String(
+    userOr.email ||
+      userOr.approver_email ||
+      userOr.requester_email ||
+      userOr.requesterEmail ||
+      ''
+  )
+    .trim()
+    .toLowerCase();
+  if (email && email === SASS_L2_EMAIL.toLowerCase()) return true;
+  const name = String(
+    userOr.name || userOr.approver_name || userOr.requester_name || userOr.requesterName || ''
+  )
+    .trim()
+    .toLowerCase();
+  if (!email && name && (name === 'srivaths' || name.startsWith('srivaths '))) return true;
+  return false;
+}
+
+/**
+ * Whether Cloud Subscription L1 (HOD_REVIEW) was already performed by Srivaths.
+ * If so, L2 (same person) must be skipped.
+ */
+export async function sassL1WasSrivaths(prId, connOrPool = null) {
+  const db = connOrPool || pool;
+  const [rows] = await db.query(
+    `SELECT u.email, u.name
+     FROM pr_approvals pa
+     JOIN users u ON u.id = pa.approver_id
+     WHERE pa.pr_id = ?
+       AND pa.stage = ?
+       AND pa.action = 'approve'
+     ORDER BY pa.id DESC
+     LIMIT 1`,
+    [Number(prId), STAGE.HOD_REVIEW]
+  );
+  if (rows[0] && isSassL2Person(rows[0])) return true;
+
+  // Fallback: selected L1 user on the PR (before/without approval row edge cases)
+  const [prRows] = await db.query(
+    `SELECT u.email, u.name
+     FROM purchase_requests pr
+     LEFT JOIN users u ON u.id = pr.approval_user_id
+     WHERE pr.id = ?
+     LIMIT 1`,
+    [Number(prId)]
+  );
+  return isSassL2Person(prRows[0] || {});
 }
 
 /** True when the PR requester is Mugesh (Cloud Subscription self-request shortcut). */
@@ -742,4 +795,77 @@ export async function clearStaleSassPrApprovalTasks() {
        )`
   );
   return { cleared: result?.affectedRows || 0 };
+}
+
+/**
+ * If L1 was already Srivaths but PR is stuck on L2, skip L2 → Mugesh invoice upload.
+ */
+export async function skipRedundantSassL2WhenL1WasSrivaths() {
+  const [rows] = await pool.query(
+    `SELECT pr.id, pr.pr_number, pr.department_id, pr.total_amount, pr.requester_id,
+            pr.entity_id, pr.currency, pr.title
+     FROM purchase_requests pr
+     WHERE pr.purchase_type IN ('sass', 'saas', 'cloud_subscription')
+       AND pr.status = 'PENDING_PR_MANAGER_APPROVAL'`
+  );
+  let skipped = 0;
+  for (const row of rows) {
+    try {
+      const was = await sassL1WasSrivaths(row.id);
+      if (!was) continue;
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        await conn.query(
+          `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+           WHERE pr_id = ? AND status = 'pending' AND task_type = 'PR_APPROVAL'`,
+          [row.id]
+        );
+        await conn.query(
+          `UPDATE purchase_requests
+           SET status = 'AWAITING_INVOICE', current_stage = 'SASS_INVOICE_UPLOAD', updated_at = NOW()
+           WHERE id = ?`,
+          [row.id]
+        );
+        await openSassInvoiceStage(conn, row, { id: null, name: 'System' }, {
+          createMugeshInvoiceTask: true,
+        });
+        const [l1Rows] = await conn.query(
+          `SELECT approver_id FROM pr_approvals
+           WHERE pr_id = ? AND stage = ? AND action = 'approve'
+           ORDER BY id DESC LIMIT 1`,
+          [row.id, STAGE.HOD_REVIEW]
+        );
+        const actorId = l1Rows[0]?.approver_id || row.requester_id || null;
+        if (actorId) {
+          await conn.query(
+            `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
+            [
+              row.id,
+              STAGE.SASS_INVOICE_UPLOAD,
+              actorId,
+              'routed',
+              'Auto-routed to Mugesh invoice upload (L1 was Srivaths — L2 skipped)',
+            ]
+          );
+        }
+        await conn.commit();
+        skipped += 1;
+        console.log(
+          `Cloud Subscription L2 skipped (L1 was Srivaths): ${row.pr_number || row.id}`
+        );
+      } catch (err) {
+        await conn.rollback();
+        throw err;
+      } finally {
+        conn.release();
+      }
+    } catch (err) {
+      console.warn(
+        `Cloud Subscription L2 skip heal failed id=${row.id}:`,
+        err.message
+      );
+    }
+  }
+  return { scanned: rows.length, skipped };
 }

@@ -3028,8 +3028,9 @@ export default function CreatePRPage() {
                     ) : (
                       <>
                         Add vendors &amp; quotes below, pick one recommended vendor, select L1 →
-                        Mugesh approves → Srivaths (L2) → Mugesh Invoice Upload → Accounts. SCM RFQ
-                        is skipped.
+                        Mugesh approves → Srivaths (L2) → Mugesh Invoice Upload → Accounts. If
+                        Srivaths is selected as L1, L2 is skipped (same person already approved
+                        once). SCM RFQ is skipped.
                       </>
                     )}
                   </p>
@@ -3054,7 +3055,7 @@ export default function CreatePRPage() {
                       .trim()
                       .toLowerCase() === 'mugesh.m@refex.co.in'
                       ? 'After L1 approves, you get an assigned My Task to upload the invoice. Do not select yourself as L1.'
-                      : 'After L1: Mugesh (mugesh.m@refex.co.in) approves, then Srivaths, then Mugesh Invoice Upload. Do not select Srivaths as L1 unless that person is intentionally your L1.'}
+                      : 'After L1: Mugesh (mugesh.m@refex.co.in) approves, then Srivaths (L2), then Mugesh Invoice Upload. If you select Srivaths as L1, L2 is skipped automatically.'}
                   </p>
                 </div>
               </>

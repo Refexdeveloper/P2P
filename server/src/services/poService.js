@@ -1561,11 +1561,28 @@ export async function createPurchaseOrder(user, prId, body) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
 
-  const [existing] = await pool.query(
-    `SELECT id FROM purchase_orders WHERE pr_id = ? AND status IN ('draft', 'pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')`,
+  const [existingRows] = await pool.query(
+    `SELECT id, status, created_by FROM purchase_orders
+     WHERE pr_id = ?
+       AND status IN ('draft', 'pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')
+     ORDER BY id DESC`,
     [prId]
   );
-  if (existing.length) throw new Error('A purchase order already exists for this PR');
+  const existingNonDraft = existingRows.find((r) => String(r.status) !== 'draft');
+  if (existingNonDraft) throw new Error('A purchase order already exists for this PR');
+
+  // Save Draft first → Save & Send: promote the draft and assign official PO number now.
+  const existingDraft = existingRows.find((r) => String(r.status) === 'draft');
+  if (existingDraft) {
+    if (
+      user.role === 'SCM Buyer' &&
+      Number(existingDraft.created_by) !== Number(user.id) &&
+      !canEditAnyScmPurchaseOrder(user)
+    ) {
+      throw new Error('You can only send your own draft POs');
+    }
+    return updatePurchaseOrder(user, existingDraft.id, body || {});
+  }
 
   // Old / historical PO import: create only — no manager approval workflow
   const skipApproval = Boolean(body?.skipApproval || body?.legacyImport || body?.oldPoImport);
@@ -1772,6 +1789,39 @@ export async function createPurchaseOrder(user, prId, body) {
 export async function createManualPurchaseOrder(user, body = {}) {
   if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
     throw new Error('Only SCM Buyer can create purchase orders');
+  }
+
+  // Save Draft first → Save & Send: promote draft, assign official PO number now.
+  const draftPoId = Number(body.poId || body.id || 0) || null;
+  if (draftPoId) {
+    const [draftRows] = await pool.query(
+      `SELECT id, status, created_by, pr_id FROM purchase_orders WHERE id = ? LIMIT 1`,
+      [draftPoId]
+    );
+    const draftRow = draftRows[0];
+    if (draftRow && String(draftRow.status) === 'draft' && !draftRow.pr_id) {
+      if (
+        user.role === 'SCM Buyer' &&
+        Number(draftRow.created_by) !== Number(user.id) &&
+        !canEditAnyScmPurchaseOrder(user)
+      ) {
+        throw new Error('You can only send your own draft POs');
+      }
+      const promoted = await updatePurchaseOrder(user, draftPoId, body || {});
+      await pool.query(
+        `UPDATE purchase_orders SET status = 'approved', updated_at = NOW() WHERE id = ?`,
+        [draftPoId]
+      );
+      const po = await getPurchaseOrderById(draftPoId);
+      try {
+        const { fileName } = await generatePoPdf(po, { fileName: `${po.poNumber}_draft.pdf` });
+        await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, draftPoId]);
+        po.pdfPath = fileName;
+      } catch {
+        /* non-fatal */
+      }
+      return po || promoted;
+    }
   }
 
   const manualContextInput = normalizeManualContextInput(body);
@@ -2219,25 +2269,11 @@ export async function savePurchaseOrderDraft(user, body = {}) {
   try {
     await conn.beginTransaction();
 
-    const docLabel = purchaseTypeLabel(purchaseType);
     let poNumber = existing?.po_number || null;
-    // Drafts never consume PO/WO sequence — keep or assign DRAFT-{id}
-    const forceDraftPlaceholder = true;
+    // Save Draft always keeps DRAFT-{id}. Official PO/WO number is assigned only on Save & Send.
 
     if (existing) {
-      if (forceDraftPlaceholder) {
-        poNumber = stableDraftPoNumber(existing.id);
-      } else {
-        poNumber = await resolvePersistedPoNumber({
-          requested: body.poNumber || body.existingPoNumber,
-          existingNumber: existing.po_number,
-          entityId: entityIdForNumber || existing.entity_id,
-          purchaseType,
-          excludeId: existing.id,
-          connection: conn,
-          docLabel,
-        });
-      }
+      poNumber = stableDraftPoNumber(existing.id);
       await conn.query(
         `UPDATE purchase_orders SET
           po_number = ?,
@@ -2284,7 +2320,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     } else if (prId) {
       const pr = await getPurchaseRequestById(prId);
       if (!pr) throw new Error('PR not found');
-      const prEntityId = Number(pr.entityId || body.entityId || 0);
+      const prEntityId = Number(pr.entityId || body.entityId || entityIdForNumber || 0);
       if (!prEntityId) throw new Error('PR has no entity. Set entity on the PR before saving a draft.');
 
       poNumber = tempDraftPoNumber(user.id);
@@ -2333,6 +2369,9 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       await conn.query(`UPDATE purchase_orders SET po_number = ? WHERE id = ?`, [poNumber, savedPoId]);
       await persistDraftLineItems(conn, savedPoId, lineItems);
     } else {
+      if (!entityIdForNumber) {
+        throw new Error('Select an entity before saving a manual PO draft');
+      }
       poNumber = tempDraftPoNumber(user.id);
       const [result] = await conn.query(
         `INSERT INTO purchase_orders
@@ -2433,15 +2472,16 @@ export async function savePurchaseOrderDraft(user, body = {}) {
 }
 
 /**
- * Convert draft POs that already consumed official PO-#### numbers back to DRAFT-{id}
- * and realign document sequences.
+ * Convert draft POs that already consumed official PO/WO numbers back to DRAFT-{id}
+ * and realign document sequences. Official numbers are assigned only on Save & Send.
  */
 export async function rewriteDraftPoNumbersToPlaceholders(connection = pool) {
   const [rows] = await connection.query(
     `SELECT id, po_number, entity_id
      FROM purchase_orders
      WHERE status = 'draft'
-       AND po_number LIKE 'PO-%'
+       AND po_number NOT LIKE 'DRAFT-%'
+       AND po_number NOT LIKE 'CS-%'
        AND COALESCE(purchase_type, 'purchase_order') <> 'sass'`
   );
 
