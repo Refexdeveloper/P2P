@@ -855,6 +855,47 @@ function buildDescriptionOverflowChunks(descHtml, maxListItems = 25) {
   const raw = String(descHtml || '').trim();
   if (!raw) return [''];
 
+  // Always isolate images/figures so a tall upload cannot clip the preceding text into the footer.
+  const imageSplit = splitDescriptionAroundImages(raw);
+  if (imageSplit.length > 1) {
+    const nested = [];
+    for (const piece of imageSplit) {
+      if (/<img\b/i.test(piece) || /<figure\b/i.test(piece)) {
+        nested.push(piece);
+      } else {
+        nested.push(...buildDescriptionOverflowChunksWithoutImages(piece, maxListItems));
+      }
+    }
+    return nested.filter((c) => String(c || '').trim());
+  }
+
+  return buildDescriptionOverflowChunksWithoutImages(raw, maxListItems);
+}
+
+/** Split HTML so each <img>/<figure> is its own paginable chunk (text before/after separate). */
+function splitDescriptionAroundImages(html) {
+  const raw = String(html || '').trim();
+  if (!raw || (!/<img\b/i.test(raw) && !/<figure\b/i.test(raw))) return [raw];
+
+  const parts = [];
+  const re = /<figure\b[^>]*>[\s\S]*?<\/figure>|<img\b[^>]*\/?>/gi;
+  let cursor = 0;
+  let match;
+  while ((match = re.exec(raw)) !== null) {
+    const before = raw.slice(cursor, match.index).trim();
+    if (before) parts.push(before);
+    parts.push(match[0]);
+    cursor = match.index + match[0].length;
+  }
+  const after = raw.slice(cursor).trim();
+  if (after) parts.push(after);
+  return parts.length ? parts : [raw];
+}
+
+function buildDescriptionOverflowChunksWithoutImages(descHtml, maxListItems = 25) {
+  const raw = String(descHtml || '').trim();
+  if (!raw) return [''];
+
   const lis = [...raw.matchAll(/<li\b[^>]*>[\s\S]*?<\/li>/gi)];
   if (lis.length > maxListItems) {
     return chunkLargeListHtml(raw, maxListItems);

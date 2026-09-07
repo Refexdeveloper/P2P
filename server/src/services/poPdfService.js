@@ -160,6 +160,33 @@ async function inlinePoBranding(po = {}) {
       ? await inlineHtmlImages(footer)
       : await inlineImageSrc(footer);
   }
+
+  // Inline images inside Annexure-I / Terms clause HTML so Puppeteer can measure height.
+  if (Array.isArray(po.annexureClauses) && po.annexureClauses.length) {
+    next.annexureClauses = [];
+    for (const clause of po.annexureClauses) {
+      next.annexureClauses.push({
+        ...clause,
+        termsDescription: await inlineHtmlImages(
+          clause.termsDescription || clause.terms_description || ''
+        ),
+        terms_description: undefined,
+      });
+    }
+  }
+  if (Array.isArray(po.termsClauses) && po.termsClauses.length) {
+    next.termsClauses = [];
+    for (const clause of po.termsClauses) {
+      next.termsClauses.push({
+        ...clause,
+        termsDescription: await inlineHtmlImages(
+          clause.termsDescription || clause.terms_description || ''
+        ),
+        terms_description: undefined,
+      });
+    }
+  }
+
   const annexureRows = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '');
   if (annexureRows.length) {
     const inlined = [];
@@ -265,7 +292,7 @@ function renderTableBlock(block, parts) {
 function renderPageBlocks(blocks, parts) {
   return blocks
     .map((block) => {
-      if (block.type === 'html') return block.html;
+      if (block.html != null) return block.html;
       return renderTableBlock(block, parts);
     })
     .join('\n');
@@ -282,7 +309,7 @@ function renderPagesHtml(pages, parts, layout) {
 
 function pageHasContent(blocks) {
   for (const block of blocks || []) {
-    if (block.type === 'html') {
+    if (block.html != null) {
       const text = String(block.html || '')
         .replace(/<style[\s\S]*?<\/style>/gi, '')
         .replace(/<[^>]+>/g, ' ')
@@ -299,12 +326,36 @@ function pageHasContent(blocks) {
 function clonePages(pages) {
   return pages.map((page) =>
     page.map((block) => {
-      if (block.type === 'html') return { ...block };
+      if (block.html != null) return { ...block };
       return { ...block, rows: [...block.rows] };
     })
   );
 }
 
+/**
+ * Document section order for PDF packing / overflow repair.
+ * Annexure-II must stay before manager sign (notes) and vendor acceptance (ack).
+ */
+const SECTION_ORDER = {
+  details: 0,
+  'price-table': 1,
+  'terms-table': 2,
+  'annexure-table': 3,
+  'annexure-ii': 4,
+  notes: 5,
+  ack: 6,
+  html: 4,
+};
+
+function sectionOrder(type) {
+  return SECTION_ORDER[type] ?? 4;
+}
+
+function nextPageHasLaterSection(nextPage, unitType) {
+  if (!nextPage?.length) return false;
+  const unitOrder = sectionOrder(unitType);
+  return nextPage.some((block) => sectionOrder(block.type) > unitOrder);
+}
 
 /** Move the last packable unit off an overflowing page onto the next page. */
 function shiftLastUnitFromPage(pages, pageIndex) {
@@ -314,32 +365,45 @@ function shiftLastUnitFromPage(pages, pageIndex) {
 
   const lastBlock = page[page.length - 1];
   let unit;
+  const splittingTableRow =
+    lastBlock.html == null && lastBlock.rows && lastBlock.rows.length > 1;
 
-  if (lastBlock.type !== 'html' && lastBlock.rows.length > 1) {
+  if (splittingTableRow) {
     unit = { type: lastBlock.type, continued: true, rows: [lastBlock.rows.pop()] };
     if (!lastBlock.rows.length) page.pop();
   } else {
     unit = page.pop();
-    if (unit.type !== 'html') unit = { ...unit, continued: true };
+    if (unit.html == null) unit = { ...unit, continued: true };
   }
 
+  const wasAloneAfterPop = page.length === 0;
   if (!page.length) pages.splice(pageIndex, 1);
 
   const nextIdx = pageIndex >= pages.length ? pages.length : pageIndex + 1;
   if (!pages[nextIdx]) pages.splice(nextIdx, 0, []);
   const nextPage = pages[nextIdx];
 
-  if (unit.type === 'html') {
-    nextPage.unshift(unit);
-  } else if (nextPageHasLaterSection(nextPage, unit.type)) {
+  // Never push Annexure-II (or any earlier section) past manager sign / vendor acceptance.
+  if (nextPageHasLaterSection(nextPage, unit.type)) {
     pages.splice(nextIdx, 0, [unit]);
+    // Alone oversized block cannot be fixed by moving past later sections — stop repair.
+    return !wasAloneAfterPop;
+  }
+
+  if (unit.html != null) {
+    nextPage.unshift(unit);
   } else {
-    const nextFirstTable = nextPage.find((b) => b.type !== 'html');
+    // Alone table row on the last page: open a fresh page for it instead of clipping into the footer.
+    if (wasAloneAfterPop && !nextPage.length) {
+      nextPage.push(unit);
+      return true;
+    }
+    const nextFirstTable = nextPage.find((b) => b.html == null);
     if (nextFirstTable && nextFirstTable.type !== unit.type) {
       pages.splice(nextIdx, 0, [unit]);
       return true;
     }
-    const peer = nextPage.find((b) => b.type === unit.type);
+    const peer = nextPage.find((b) => b.type === unit.type && b.html == null);
     if (peer) {
       peer.rows.unshift(...unit.rows);
       peer.continued = true;
@@ -348,6 +412,76 @@ function shiftLastUnitFromPage(pages, pageIndex) {
     }
   }
   return true;
+}
+
+/**
+ * Last-resort split: if a single annexure/terms row still overflows (usually text + image),
+ * peel the trailing <img>/<figure> onto the next page as a continued row.
+ */
+function splitTrailingImageFromOverflowRow(pages, pageIndex) {
+  if (pageIndex < 0 || pageIndex >= pages.length) return false;
+  const page = pages[pageIndex];
+  if (!page?.length) return false;
+
+  for (let bi = page.length - 1; bi >= 0; bi -= 1) {
+    const block = page[bi];
+    if (!block?.rows?.length) continue;
+    if (block.type !== 'annexure-table' && block.type !== 'terms-table') continue;
+
+    const rowHtml = block.rows[block.rows.length - 1];
+    if (!/<img\b/i.test(rowHtml) && !/<figure\b/i.test(rowHtml)) continue;
+
+    const tdMatch = rowHtml.match(/<td>([\s\S]*)<\/td>\s*<\/tr>/i);
+    if (!tdMatch) continue;
+    const cellHtml = tdMatch[1];
+    const imgRe = /(<figure\b[^>]*>[\s\S]*?<\/figure>|<img\b[^>]*\/?>)\s*$/i;
+    const imgMatch = cellHtml.match(imgRe);
+    if (!imgMatch) continue;
+
+    const before = cellHtml.slice(0, imgMatch.index).trim();
+    const imagePart = imgMatch[1];
+    if (!before) continue; // image-only row — cannot peel further
+
+    const annexIdx = rowHtml.match(/data-annexure="(\d+)"/)?.[1];
+    const termIdx = rowHtml.match(/data-term="(\d+)"/)?.[1];
+    const baseId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || 'row';
+    const contId = `${baseId}-img`;
+    const attr =
+      annexIdx != null
+        ? `data-annexure="${annexIdx}"`
+        : termIdx != null
+          ? `data-term="${termIdx}"`
+          : '';
+
+    const snoTd = block.type === 'annexure-table' ? `<td class="sno-col"></td>` : '';
+    const headTd =
+      block.type === 'annexure-table'
+        ? `<td class="head-col"></td>`
+        : `<th class="head-col terms-head-continued"></th>`;
+
+    const keptRow = rowHtml.replace(tdMatch[1], before);
+    const contRow = `
+      <tr class="terms-row terms-row-continued" data-block="${contId}" ${attr}>
+        ${snoTd}
+        ${headTd}
+        <td>${imagePart}</td>
+      </tr>`;
+
+    block.rows[block.rows.length - 1] = keptRow;
+
+    const nextIdx = pageIndex + 1;
+    if (!pages[nextIdx]) pages.splice(nextIdx, 0, []);
+    const nextPage = pages[nextIdx];
+    const peer = nextPage.find((b) => b.type === block.type && b.html == null);
+    if (peer) {
+      peer.rows.unshift(contRow);
+      peer.continued = true;
+    } else {
+      nextPage.unshift({ type: block.type, continued: true, rows: [contRow] });
+    }
+    return true;
+  }
+  return false;
 }
 
 function buildMeasureHtml(parts) {
@@ -420,15 +554,7 @@ function collectMeasureRows(simpleRows, packRows) {
   return [...byBlock.values()];
 }
 
-const SECTION_ORDER = { 'price-table': 0, 'terms-table': 1, 'annexure-table': 2, html: 3 };
-
-function nextPageHasLaterSection(nextPage, unitType) {
-  if (!nextPage?.length) return false;
-  const unitOrder = SECTION_ORDER[unitType] ?? 1;
-  return nextPage.some((block) => (SECTION_ORDER[block.type] ?? 3) > unitOrder);
-}
-
-/** One row per clause; split only when a row exceeds one page height. */
+/** One row per clause; split when a row exceeds one page height, or when it contains images. */
 function resolveFlowableRows(simpleRows, overflowRows, heights, contentMaxPx, scale = 1, _attrName = 'data-term') {
   if (!simpleRows?.length) return [];
   const footerSlack = Math.ceil((8 * 96) / 25.4) * scale;
@@ -441,7 +567,9 @@ function resolveFlowableRows(simpleRows, overflowRows, heights, contentMaxPx, sc
     const idx = simple.match(/data-(?:term|annexure)="(\d+)"/)?.[1] ?? String(i);
     const rowAttr = simple.includes('data-annexure=') ? 'data-annexure' : 'data-term';
     const expanded = (overflowRows || []).filter((r) => r.includes(`${rowAttr}="${idx}"`));
-    if (expanded.length > 1 && rowH > maxRowH * 0.65) {
+    const hasImage = /<img\b/i.test(simple) || /<figure\b/i.test(simple);
+    // Prefer pre-split chunks when images are present or the measured row is tall.
+    if (expanded.length > 1 && (hasImage || rowH > maxRowH * 0.55)) {
       out.push(...expanded);
     } else {
       out.push(simple);
@@ -476,12 +604,12 @@ function packPoPages(parts, heights, scale = 1) {
 
   const canFit = (extra) => used + extra <= contentH - slack;
 
-  const addHtml = (html, h, forceNew = false) => {
+  const addHtml = (html, h, forceNew = false, type = 'html') => {
     if (!html || !String(html).trim()) return;
     if (forceNew) startNewSection();
     const need = Math.max(h, 8);
     if (used > 0 && !canFit(need)) flush();
-    current.push({ type: 'html', html });
+    current.push({ type, html });
     used += need;
   };
 
@@ -531,7 +659,7 @@ function packPoPages(parts, heights, scale = 1) {
   };
 
   // —— Page 1+: Header + line items ——
-  addHtml(parts.detailsHtml, heights.details || 0, false);
+  addHtml(parts.detailsHtml, heights.details || 0, false, 'details');
 
   const theadH = heights.priceThead || 52;
   const totalsH = heights.totals || 72;
@@ -610,7 +738,12 @@ function packPoPages(parts, heights, scale = 1) {
   }
 
   parts.annexureIiBlocks.forEach((_, i) => {
-    addHtml(parts.annexureIiBlocks[i], packRowHeight(heights, `annexure-ii-${i}`, 180, scale), true);
+    addHtml(
+      parts.annexureIiBlocks[i],
+      packRowHeight(heights, `annexure-ii-${i}`, 180, scale),
+      true,
+      'annexure-ii'
+    );
   });
 
   const notesHtml = String(parts.notesHtml || '').trim();
@@ -618,11 +751,11 @@ function packPoPages(parts, heights, scale = 1) {
 
   if (notesHtml) {
     startNewSection();
-    addHtml(notesHtml, packRowHeight(heights, 'notes', 120, scale), false);
+    addHtml(notesHtml, packRowHeight(heights, 'notes', 120, scale), false, 'notes');
   }
   if (ackHtml) {
     startNewSection();
-    addHtml(ackHtml, packRowHeight(heights, 'ack', 100, scale), false);
+    addHtml(ackHtml, packRowHeight(heights, 'ack', 100, scale), false, 'ack');
   }
 
   flush();
@@ -806,7 +939,9 @@ async function paginatePoHtml(browser, po, options) {
           (max, c) => (c.pageIndex > max ? c.pageIndex : max),
           collisions[0].pageIndex
         );
-        if (!shiftLastUnitFromPage(pages, worstPage)) break;
+        if (!shiftLastUnitFromPage(pages, worstPage)) {
+          if (!splitTrailingImageFromOverflowRow(pages, worstPage)) break;
+        }
       }
 
       const pagesHtml = renderPagesHtml(pages, parts, layout);

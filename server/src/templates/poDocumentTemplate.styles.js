@@ -998,6 +998,28 @@ export const PO_STYLES = `
     margin: 3px 0 0;
   }
 
+  /* Uploaded images inside Annexure-I / Terms cells — keep paginable, never blow past footer */
+  body.po-document-pdf-pages table.terms td img,
+  body.po-document-pdf-pages table.annexure-table td img,
+  body.po-document-pdf-pages table.terms-compact td img {
+    max-width: 100% !important;
+    max-height: 160px !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain;
+    display: block;
+    margin: 6px 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  body.po-document-pdf-pages table.terms td figure,
+  body.po-document-pdf-pages table.annexure-table td figure {
+    margin: 6px 0;
+    max-width: 100%;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
   /* Preview / draft PDF — moderately compact PO header / vendor details */
   body.po-document-preview .title,
   body.po-document-pdf .title {
