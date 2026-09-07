@@ -5,6 +5,7 @@ import StatusBadge from '../../../components/base/StatusBadge';
 import PriorityBadge from '../../../components/base/PriorityBadge';
 import { prApi, RequesterPrListMeta } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
+import CloudSubscriptionPanel from './CloudSubscriptionPanel';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -1380,6 +1381,13 @@ export default function TrackPRPage() {
                                           </p>
                                         </div>
                                       </div>
+
+                                      {(String(pr.purchaseType || '').toLowerCase() === 'sass' ||
+                                        String(pr.purchaseType || '').toLowerCase() === 'saas' ||
+                                        String(pr.purchaseType || '')
+                                          .toLowerCase()
+                                          .replace(/[\s-]+/g, '_') === 'cloud_subscription') &&
+                                        pr.prId && <CloudSubscriptionPanel prId={Number(pr.prId)} />}
 
                                       <div className="bg-white rounded-lg border border-gray-200 p-4">
                                         <h3 className="text-sm font-semibold text-gray-900 mb-3">

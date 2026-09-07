@@ -14,6 +14,9 @@ const FinancialEntityDetailPage = lazy(() => import('../pages/dashboard/entity-d
 const RequesterDashboardPage = lazy(() => import('../pages/requester/dashboard/page'));
 const CreatePRPage = lazy(() => import('../pages/requester/create-pr/page'));
 const TrackPRPage = lazy(() => import('../pages/requester/track-pr/page'));
+const RenewCloudSubscriptionPage = lazy(
+  () => import('../pages/requester/cloud-subscriptions/renew-page')
+);
 const EvaluatePRPage = lazy(() => import('../pages/functional/evaluate-pr/page'));
 const VendorMasterPage = lazy(() => import('../pages/scm/vendor-master/page'));
 const ItemMasterPage = lazy(() => import('../pages/scm/item-master/page'));
@@ -127,6 +130,10 @@ const routes: RouteObject[] = [
   {
     path: '/requester/edit-pr/:prId',
     element: <ProtectedRoute><CreatePRPage /></ProtectedRoute>,
+  },
+  {
+    path: '/requester/cloud-subscriptions/:id/renew',
+    element: <ProtectedRoute><RenewCloudSubscriptionPage /></ProtectedRoute>,
   },
   {
     path: '/requester/track-pr',

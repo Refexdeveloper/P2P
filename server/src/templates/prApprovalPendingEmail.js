@@ -59,7 +59,7 @@ function listVendorQuotationFiles(vendor) {
 
 const ROLE_PORTAL_PATH = {
   'HOD Approver': '/tasks',
-  'PR Manager': '/pr-manager/dashboard',
+  'PR Manager': '/tasks',
   CFO: '/cfo/dashboard',
   Requester: '/requester/rfq-entry',
   'SCM Buyer': '/scm/rfq-entry',

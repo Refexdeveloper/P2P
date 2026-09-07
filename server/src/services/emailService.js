@@ -14,6 +14,7 @@ import { buildPoVendorEmail } from '../templates/poVendorEmail.js';
 import { buildPoWorkflowEmail } from '../templates/poWorkflowEmail.js';
 import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceRequestEmail.js';
 import { buildSassInvoiceUploadedEmail } from '../templates/sassInvoiceUploadedEmail.js';
+import { buildCloudSubscriptionReminderEmail } from '../templates/cloudSubscriptionReminderEmail.js';
 import { resolveScmBuyerUsers, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
 import { formatRoleDisplayName, withEmailLogo } from '../templates/emailUtils.js';
 import {
@@ -177,7 +178,7 @@ function buildWorkflowPortalUrl(pr, assignedRole, options = {}) {
   } else if (assignedRole === 'SCM Manager' && postRfq) url = `${base}/rfq-approval/${prId}`;
   else if (postRfq) url = `${base}/rfq-approval/${prId}`;
   else if (assignedRole === 'CFO') url = `${base}/cfo/dashboard?prId=${prId}`;
-  else if (assignedRole === 'PR Manager') url = `${base}/pr-manager/dashboard?prId=${prId}`;
+  else if (assignedRole === 'PR Manager') url = `${base}/tasks?prId=${prId}`;
   else if (assignedRole === 'SCM Manager') url = `${base}/scm/po-approval`;
   return wrapPortalUrlWithSso(url);
 }
@@ -1436,6 +1437,43 @@ export async function sendSassInvoiceUploadedNotification({
 export function queueSassInvoiceUploadedNotification(payload) {
   enqueueMail(() => sendSassInvoiceUploadedNotification(payload)).catch((err) => {
     console.error('Email send failure (Cloud Subscription invoice uploaded):', err.message);
+  });
+}
+
+export async function sendCloudSubscriptionReminderNotification({
+  toEmail,
+  subscription,
+  notificationType,
+  requesterName,
+  renewUrl,
+  prId = null,
+}) {
+  if (!EMAIL_SEND_ENABLED) {
+    console.log('Email send skipped (cloud subscription reminder): EMAIL_SEND_ENABLED=false');
+    return null;
+  }
+  if (!toEmail) return null;
+  const { subject, html, text } = buildCloudSubscriptionReminderEmail({
+    subscription,
+    notificationType,
+    requesterName,
+    renewUrl,
+  });
+  return sendMailToRecipients([toEmail], subject, html, text, [], {
+    emailType: `cloud_subscription_${String(notificationType || '').toLowerCase()}`,
+    prId,
+    meta: {
+      subscriptionId: subscription?.id,
+      notificationType,
+      subscriptionNumber: subscription?.subscriptionNumber,
+    },
+  });
+}
+
+export function queueCloudSubscriptionReminderNotification(payload) {
+  return enqueueMail(() => sendCloudSubscriptionReminderNotification(payload)).catch((err) => {
+    console.error('Email send failure (cloud subscription reminder):', err.message);
+    throw err;
   });
 }
 

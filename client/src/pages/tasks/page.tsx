@@ -6,7 +6,7 @@ import StatusBadge from '../../components/base/StatusBadge';
 import PriorityBadge from '../../components/base/PriorityBadge';
 import ApprovalModal from './components/ApprovalModal';
 import TaskDetailDrawer from './components/TaskDetailDrawer';
-import { taskApi, prApi, poApi } from '../../services/api';
+import { taskApi, prApi, poApi, cloudSubscriptionApi } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate } from '../../utils/formatDate';
 import { formatMoney, normalizeCurrency } from '../../constants/currency';
@@ -74,6 +74,8 @@ interface TaskItem {
   purchaseTypeLabel?: string;
   isSass?: boolean;
   isSassInvoiceUpload?: boolean;
+  isSubscriptionRenewal?: boolean;
+  renewalId?: number;
   invoiceId?: number;
 }
 
@@ -148,6 +150,8 @@ export default function TasksPage() {
           purchaseTypeLabel: t.purchaseTypeLabel ? String(t.purchaseTypeLabel) : undefined,
           isSass: Boolean(t.isSass),
           isSassInvoiceUpload: Boolean(t.isSassInvoiceUpload),
+          isSubscriptionRenewal: Boolean(t.isSubscriptionRenewal),
+          renewalId: t.renewalId != null ? Number(t.renewalId) : undefined,
           invoiceId: t.invoiceId != null ? Number(t.invoiceId) : undefined,
         };
       });
@@ -167,17 +171,19 @@ export default function TasksPage() {
   useEffect(() => {
     if (loading || deepLinkHandled.current) return;
     const prId = searchParams.get('prId');
-    const action = searchParams.get('action');
+    const rawAction = searchParams.get('action');
     if (!prId) return;
     const task = tasks.find((t) => t.prId === Number(prId));
     if (!task || task.status !== 'pending_approval') return;
 
-    if (!action) {
-      deepLinkHandled.current = true;
-      setSelectedTask(task.id);
-      setSearchParams({}, { replace: true });
-      return;
-    }
+    // Emails may send action=rework for L2 send-back; treat as return modal
+    const action =
+      !rawAction || rawAction === 'approve'
+        ? 'approve'
+        : rawAction === 'rework'
+          ? 'return'
+          : rawAction;
+
     if (!['approve', 'reject', 'return'].includes(action)) return;
 
     if (task.isPostRfq) {
@@ -188,6 +194,7 @@ export default function TasksPage() {
     }
 
     deepLinkHandled.current = true;
+    setSelectedTask(task.id);
     setModalState({
       isOpen: true,
       type: action as 'approve' | 'reject' | 'return',
@@ -515,6 +522,15 @@ export default function TasksPage() {
           invoiceDate: invoice.invoiceDate,
           remarks,
         });
+      } else if (task.isSubscriptionRenewal && task.renewalId) {
+        if (type === 'return') {
+          throw new Error('Send-back is not available for subscription renewals — approve or reject');
+        }
+        await cloudSubscriptionApi.approveRenewal(
+          task.renewalId,
+          type === 'approve' ? 'approve' : 'reject',
+          remarks
+        );
       } else {
         await prApi.approve(task.prId, action, remarks, {
           ...(type === 'return' && returnTo ? { returnTo } : {}),
@@ -761,7 +777,9 @@ export default function TasksPage() {
               }
             ></i>
           </button>
-          {!task.actionPath?.includes('/scm/buyer-final-verify') && !task.isSassInvoiceUpload && (
+          {!task.actionPath?.includes('/scm/buyer-final-verify') &&
+            !task.isSassInvoiceUpload &&
+            !task.isSubscriptionRenewal && (
             <>
               <button
                 onClick={() => openModal(task.id, 'return')}

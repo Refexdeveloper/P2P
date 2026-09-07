@@ -1,6 +1,8 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 
-/** PR Manager / L2 home — use the shared My Tasks experience. */
+/** PR Manager / L2 home — use the shared My Tasks experience (keep email deep-link query). */
 export default function PRManagerDashboard() {
-  return <Navigate to="/tasks" replace />;
+  const location = useLocation();
+  const search = location.search || '';
+  return <Navigate to={`/tasks${search}`} replace />;
 }

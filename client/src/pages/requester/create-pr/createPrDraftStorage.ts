@@ -13,6 +13,10 @@ export type CreatePrDraftSnapshot = {
   entityId: number | '';
   requestType: 'Capex' | 'Opex' | 'Service';
   purchaseType: 'purchase_order' | 'work_order' | 'sass';
+  /** Cloud Subscription: one_time | recurring */
+  sassSubscriptionMode?: 'one_time' | 'recurring' | null;
+  sassBillingFrequency?: 'monthly' | 'quarterly' | 'yearly' | null;
+  sassSubscriptionStartDate?: string;
   vendorSelection: 'own' | 'scm';
   /** SASS — vendor known on Create PR (no RFQ). */
   sassVendorId?: string | null;

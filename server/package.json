@@ -8,7 +8,9 @@
     "start": "node src/index.js",
     "build:client": "npm run build --prefix ../client",
     "start:prod": "npm run build:client && node src/index.js",
-    "db:init": "node db/init.js"
+    "db:init": "node db/init.js",
+    "test": "node --test src/services/cloudSubscriptionService.test.js",
+    "test:cloud-sub": "node --test src/services/cloudSubscriptionService.test.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.0.1",

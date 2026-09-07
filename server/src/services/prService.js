@@ -726,6 +726,9 @@ async function enrichPR(row) {
     vendorId: row.vendor_id || null,
     vendorName: row.vendor_name || '',
     vendorEmail: row.vendor_email || '',
+    sassSubscriptionMode: row.sass_subscription_mode || null,
+    sassBillingFrequency: row.sass_billing_frequency || null,
+    sassSubscriptionStartDate: formatDate(row.sass_subscription_start_date) || null,
     recommendedVendor: row.vendor_name || vendorRows[0]?.vendor_name || '',
     currentStage: row.current_stage,
     currentApprover: assignees.currentApprover,
@@ -1252,6 +1255,35 @@ export async function createPurchaseRequest(user, body) {
   if (isSass && selectedApprovers.length > 1) {
     selectedApprovers = [selectedApprovers[0]];
   }
+
+  // Cloud Subscription: One-Time (default) vs Recurring + frequency
+  let sassSubscriptionMode = null;
+  let sassBillingFrequency = null;
+  let sassSubscriptionStartDate = null;
+  if (isSass) {
+    const { normalizeSubscriptionMode, normalizeBillingFrequency } = await import(
+      './cloudSubscriptionService.js'
+    );
+    sassSubscriptionMode =
+      normalizeSubscriptionMode(body.sassSubscriptionMode || body.subscriptionMode) || 'one_time';
+    if (sassSubscriptionMode === 'recurring') {
+      sassBillingFrequency = normalizeBillingFrequency(
+        body.sassBillingFrequency || body.billingFrequency
+      );
+      sassSubscriptionStartDate =
+        String(body.sassSubscriptionStartDate || body.subscriptionStartDate || '')
+          .trim()
+          .slice(0, 10) || null;
+      if (submit) {
+        if (!sassBillingFrequency) {
+          throw new Error('Select subscription frequency (Monthly / Quarterly / Yearly)');
+        }
+        if (!sassSubscriptionStartDate) {
+          throw new Error('Subscription start date is required for recurring Cloud Subscription');
+        }
+      }
+    }
+  }
   const selectedApprover = selectedApprovers[0] || null;
   const selectedApproverIds = selectedApprovers.map((u) => u.id);
   if (prFlow === 'functional' && submit && vendorMode === 'own' && !isSass) {
@@ -1468,6 +1500,44 @@ export async function createPurchaseRequest(user, body) {
             [hodAssignment.hodEmail, hodAssignment.hodName, user.id]
           );
         }
+      }
+    }
+
+    if (isSass) {
+      try {
+        await conn.query(
+          `UPDATE purchase_requests
+           SET sass_subscription_mode = ?, sass_billing_frequency = ?, sass_subscription_start_date = ?
+           WHERE id = ?`,
+          [sassSubscriptionMode, sassBillingFrequency, sassSubscriptionStartDate, prId]
+        );
+      } catch (err) {
+        if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      }
+      if (
+        sassSubscriptionMode === 'recurring' &&
+        sassBillingFrequency &&
+        sassSubscriptionStartDate
+      ) {
+        const { upsertPendingCloudSubscription } = await import('./cloudSubscriptionService.js');
+        await upsertPendingCloudSubscription(
+          conn,
+          {
+            id: prId,
+            requester_id: user.id,
+            title: prTitle,
+            vendor_name: sassVendor?.vendorName || body.vendorName,
+            vendor_id: sassVendor?.vendorId || body.vendorId,
+          },
+          {
+            subscriptionMode: sassSubscriptionMode,
+            billingFrequency: sassBillingFrequency,
+            subscriptionStartDate: sassSubscriptionStartDate,
+            title: prTitle,
+            vendorName: sassVendor?.vendorName || body.vendorName,
+            vendorId: sassVendor?.vendorId || body.vendorId,
+          }
+        );
       }
     }
 
@@ -3118,6 +3188,14 @@ export async function submitSassInvoiceUpload(user, prId, invoiceBody = {}) {
     console.warn('Cloud Subscription Mugesh invoice mail failed:', mailErr.message);
   }
 
+  // Activate recurring Cloud Subscription (if configured on this PR)
+  try {
+    const { activateCloudSubscriptionForPr } = await import('./cloudSubscriptionService.js');
+    await activateCloudSubscriptionForPr(id);
+  } catch (subErr) {
+    console.warn('Cloud Subscription activation skipped:', subErr.message);
+  }
+
   // Confirmation to Mugesh (the person who uploaded / completed this step)
   queueApproverActionConfirmationForUser(updatedPr || id, user, 'submitted', {
     remarks: invoiceBody.remarks || 'Invoice uploaded — Cloud Subscription completed',
@@ -3368,6 +3446,59 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
       );
     } catch (err) {
       if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
+    }
+
+    if (normalizedPurchaseType === 'sass') {
+      const { normalizeSubscriptionMode, normalizeBillingFrequency, upsertPendingCloudSubscription } =
+        await import('./cloudSubscriptionService.js');
+      const mode =
+        normalizeSubscriptionMode(body.sassSubscriptionMode || body.subscriptionMode) ||
+        normalizeSubscriptionMode(pr.sass_subscription_mode) ||
+        'one_time';
+      let frequency = null;
+      let startDate = null;
+      if (mode === 'recurring') {
+        frequency =
+          normalizeBillingFrequency(body.sassBillingFrequency || body.billingFrequency) ||
+          normalizeBillingFrequency(pr.sass_billing_frequency);
+        startDate =
+          String(body.sassSubscriptionStartDate || body.subscriptionStartDate || '')
+            .trim()
+            .slice(0, 10) ||
+          (pr.sass_subscription_start_date
+            ? String(pr.sass_subscription_start_date).slice(0, 10)
+            : null);
+      }
+      try {
+        await db.query(
+          `UPDATE purchase_requests
+           SET sass_subscription_mode = ?, sass_billing_frequency = ?, sass_subscription_start_date = ?
+           WHERE id = ?`,
+          [mode, frequency, startDate, prId]
+        );
+      } catch (err) {
+        if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      }
+      if (mode === 'recurring' && frequency && startDate) {
+        await upsertPendingCloudSubscription(
+          db,
+          {
+            id: prId,
+            requester_id: pr.requester_id,
+            title: nextTitle,
+            vendor_name: pr.vendor_name,
+            vendor_id: pr.vendor_id,
+          },
+          {
+            subscriptionMode: mode,
+            billingFrequency: frequency,
+            subscriptionStartDate: startDate,
+            title: nextTitle,
+            vendorName: pr.vendor_name,
+            vendorId: pr.vendor_id,
+          }
+        );
+      }
     }
   };
 
@@ -4524,6 +4655,87 @@ export async function listTasks(user) {
         purchaseTypeLabel: 'Cloud Subscription',
         currency: row.currency || 'INR',
         vendorSelection: 'own',
+      });
+    }
+  }
+
+  // Cloud Subscription renewals — direct L1 / subsequent approvers (no new PR)
+  {
+    const [renewalTaskRows] = await pool.query(
+      `SELECT wt.id AS task_id, wt.pr_id, wt.created_at AS task_created_at, wt.due_date,
+              wt.subscription_renewal_id, wt.assigned_role,
+              pr.pr_number, pr.title, pr.total_amount, pr.priority, pr.justification,
+              pr.currency, pr.purchase_type,
+              d.name AS department_name, u.name AS requester_name,
+              e.id AS entity_id, e.name AS entity_name, e.code AS entity_code,
+              sr.renewal_number_label, sr.renewal_number, sr.status AS renewal_status,
+              sr.new_start_date, sr.new_expiry_date, sr.billing_frequency,
+              cs.subscription_number, cs.id AS subscription_id
+       FROM workflow_tasks wt
+       JOIN purchase_requests pr ON pr.id = wt.pr_id
+       JOIN departments d ON d.id = pr.department_id
+       JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN entity_masters e ON e.id = pr.entity_id
+       LEFT JOIN users au ON au.id = wt.assigned_user_id
+       LEFT JOIN subscription_renewals sr ON sr.id = wt.subscription_renewal_id
+       LEFT JOIN cloud_subscriptions cs ON cs.id = sr.subscription_id
+       WHERE wt.status = 'pending'
+         AND wt.task_type = 'SUBSCRIPTION_RENEWAL'
+         AND (
+           wt.assigned_user_id = ?
+           OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+         )
+       ORDER BY wt.created_at DESC`,
+      [user.id, userEmail, userEmail]
+    );
+    const seenRenewal = new Set(
+      tasks.filter((t) => t.isSubscriptionRenewal).map((t) => Number(t.renewalId)).filter(Boolean)
+    );
+    for (const row of renewalTaskRows) {
+      const renewalId = Number(row.subscription_renewal_id);
+      if (!renewalId || seenRenewal.has(renewalId)) continue;
+      seenRenewal.add(renewalId);
+      const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date);
+      const label = row.renewal_number_label || `REN-${String(row.renewal_number || 0).padStart(4, '0')}`;
+      tasks.unshift({
+        id: `sub-renewal-${renewalId}`,
+        taskId: row.task_id,
+        prId: row.pr_id,
+        renewalId,
+        subscriptionId: row.subscription_id || null,
+        prNumber: `${row.pr_number} · ${label}`,
+        title: `${row.title || 'Cloud Subscription'} — Renewal ${label}`,
+        requester: row.requester_name,
+        department: row.department_name,
+        entityId: row.entity_id || null,
+        entityName: row.entity_name || '',
+        entityCode: row.entity_code || '',
+        totalAmount: Number(row.total_amount) || 0,
+        priority: mapPriorityToFrontend(row.priority),
+        status: 'pending_approval',
+        statusUI: `Renewal · ${row.assigned_role || 'Approval'} Pending`,
+        submittedDate: sla.submittedDate,
+        dueDate: sla.dueDate,
+        slaRemaining: sla.slaRemaining,
+        isOverdue: sla.isOverdue,
+        lineItems: 0,
+        requestType: 'Cloud Subscription Renewal',
+        requesterRole: 'Requester',
+        requesterAvatar: (row.requester_name || 'R').charAt(0).toUpperCase(),
+        justification: row.justification || '',
+        isPostRfq: false,
+        isSass: true,
+        isSubscriptionRenewal: true,
+        purchaseType: row.purchase_type || 'sass',
+        purchaseTypeLabel: 'Cloud Subscription',
+        currency: row.currency || 'INR',
+        vendorSelection: 'own',
+        billingFrequency: row.billing_frequency || '',
+        subscriptionNumber: row.subscription_number || '',
+        renewalPeriod:
+          row.new_start_date && row.new_expiry_date
+            ? `${String(row.new_start_date).slice(0, 10)} → ${String(row.new_expiry_date).slice(0, 10)}`
+            : '',
       });
     }
   }

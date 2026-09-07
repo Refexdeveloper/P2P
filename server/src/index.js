@@ -13,10 +13,12 @@ import vendorRoutes from './routes/vendor.routes.js';
 import masterRoutes from './routes/master.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import accountsRoutes from './routes/accounts.routes.js';
+import cloudSubscriptionRoutes from './routes/cloudSubscription.routes.js';
 import { runStartupMigrations } from './services/dbMigrate.js';
 import { testSmtpConnection, sendTestEmail } from './services/emailService.js';
 import { sendWhatsAppHsm, buildWorkflowWhatsAppParams, normalizeWhatsAppTo, getWhatsAppPublicBaseUrl } from './services/whatsappService.js';
 import { startSlaBreachScheduler } from './services/slaBreachService.js';
+import { startCloudSubscriptionScheduler } from './services/cloudSubscriptionService.js';
 import { pingDatabase } from './config/db.js';
 import { authenticate } from './middleware/auth.js';
 import { attachUserFromToken, auditUserActivity } from './middleware/activityAudit.js';
@@ -177,6 +179,7 @@ app.use('/api/vendors', vendorRoutes);
 app.use('/api/masters', masterRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/accounts', accountsRoutes);
+app.use('/api/cloud-subscriptions', cloudSubscriptionRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
@@ -217,6 +220,12 @@ async function start() {
       startSlaBreachScheduler();
     } catch (err) {
       console.error('SLA breach scheduler failed to start:', err.message);
+    }
+
+    try {
+      startCloudSubscriptionScheduler();
+    } catch (err) {
+      console.error('Cloud subscription scheduler failed to start:', err.message);
     }
 
     console.log(`P2P API server running on http://localhost:${PORT}`);

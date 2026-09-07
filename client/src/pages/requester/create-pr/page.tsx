@@ -161,6 +161,20 @@ export default function CreatePRPage() {
   const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order' | 'sass'>(
     'purchase_order'
   );
+  const [sassSubscriptionMode, setSassSubscriptionMode] = useState<'one_time' | 'recurring' | null>(
+    null
+  );
+  const [sassBillingFrequency, setSassBillingFrequency] = useState<
+    'monthly' | 'quarterly' | 'yearly' | null
+  >(null);
+  const [sassSubscriptionStartDate, setSassSubscriptionStartDate] = useState('');
+  const [sassSubscriptionModalOpen, setSassSubscriptionModalOpen] = useState(false);
+  const [sassSubscriptionModalStep, setSassSubscriptionModalStep] = useState<'mode' | 'frequency'>(
+    'mode'
+  );
+  const [previousPurchaseType, setPreviousPurchaseType] = useState<
+    'purchase_order' | 'work_order' | 'sass'
+  >('purchase_order');
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
   const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
   const [approvalUserIds, setApprovalUserIds] = useState<number[]>([]);
@@ -316,6 +330,23 @@ export default function CreatePRPage() {
           ? 'sass'
           : 'purchase_order'
     );
+    setSassSubscriptionMode(
+      draft.sassSubscriptionMode === 'recurring'
+        ? 'recurring'
+        : draft.sassSubscriptionMode === 'one_time'
+          ? 'one_time'
+          : draft.purchaseType === 'sass'
+            ? 'one_time'
+            : null
+    );
+    setSassBillingFrequency(
+      draft.sassBillingFrequency === 'monthly' ||
+        draft.sassBillingFrequency === 'quarterly' ||
+        draft.sassBillingFrequency === 'yearly'
+        ? draft.sassBillingFrequency
+        : null
+    );
+    setSassSubscriptionStartDate(draft.sassSubscriptionStartDate || '');
     setVendorSelection(draft.vendorSelection === 'own' ? 'own' : 'scm');
     setPrFlow(draft.prFlow === 'functional' ? 'functional' : 'standard');
     setApprovalUserIds(Array.isArray(draft.approvalUserIds) ? draft.approvalUserIds : []);
@@ -516,6 +547,38 @@ export default function CreatePRPage() {
               ? 'sass'
               : 'purchase_order';
         setPurchaseType(loadedPurchaseType);
+        if (loadedPurchaseType === 'sass') {
+          const mode =
+            (pr as { sassSubscriptionMode?: string; sass_subscription_mode?: string })
+              .sassSubscriptionMode === 'recurring' ||
+            (pr as { sass_subscription_mode?: string }).sass_subscription_mode === 'recurring'
+              ? 'recurring'
+              : 'one_time';
+          setSassSubscriptionMode(mode);
+          const freq = String(
+            (pr as { sassBillingFrequency?: string; sass_billing_frequency?: string })
+              .sassBillingFrequency ||
+              (pr as { sass_billing_frequency?: string }).sass_billing_frequency ||
+              ''
+          ).toLowerCase();
+          setSassBillingFrequency(
+            freq === 'monthly' || freq === 'quarterly' || freq === 'yearly'
+              ? (freq as 'monthly' | 'quarterly' | 'yearly')
+              : null
+          );
+          const startRaw =
+            (pr as { sassSubscriptionStartDate?: string; sass_subscription_start_date?: string })
+              .sassSubscriptionStartDate ||
+            (pr as { sass_subscription_start_date?: string }).sass_subscription_start_date ||
+            '';
+          setSassSubscriptionStartDate(
+            typeof startRaw === 'string' && startRaw ? startRaw.slice(0, 10) : ''
+          );
+        } else {
+          setSassSubscriptionMode(null);
+          setSassBillingFrequency(null);
+          setSassSubscriptionStartDate('');
+        }
         // Service is only allowed for Work Order
         setRequestType(
           loadedPurchaseType === 'purchase_order' && pr.requestType === 'Service'
@@ -821,6 +884,9 @@ export default function CreatePRPage() {
       entityId,
       requestType,
       purchaseType,
+      sassSubscriptionMode,
+      sassBillingFrequency,
+      sassSubscriptionStartDate,
       requestCategory,
       projectDetail,
       specialNotes,
@@ -897,6 +963,9 @@ export default function CreatePRPage() {
     entityId,
     requestType,
     purchaseType,
+    sassSubscriptionMode,
+    sassBillingFrequency,
+    sassSubscriptionStartDate,
     requestCategory,
     projectDetail,
     specialNotes,
@@ -1035,6 +1104,9 @@ export default function CreatePRPage() {
     entityId,
     requestType,
     purchaseType,
+    sassSubscriptionMode,
+    sassBillingFrequency,
+    sassSubscriptionStartDate,
     requestCategory,
     projectDetail,
     specialNotes,
@@ -1580,6 +1652,17 @@ export default function CreatePRPage() {
     if (purchaseType === 'sass' && approvalUserIds.length > 1) {
       newErrors.approvalUserId = 'Select exactly one L1 Manager / User Approver for Cloud Subscription';
     }
+    if (purchaseType === 'sass' && !sassSubscriptionMode) {
+      newErrors.sassSubscriptionMode = 'Select One-Time or Recurring for Cloud Subscription';
+    }
+    if (purchaseType === 'sass' && sassSubscriptionMode === 'recurring') {
+      if (!sassBillingFrequency) {
+        newErrors.sassBillingFrequency = 'Select Monthly, Quarterly, or Yearly frequency';
+      }
+      if (!sassSubscriptionStartDate) {
+        newErrors.sassSubscriptionStartDate = 'Subscription start date is required';
+      }
+    }
     if (showInlineVendorQuotes) {
       const hasRound1 = rfqVendors.some((row) => {
         const round1 = row.quotes.find((q) => q.round === 1);
@@ -1775,6 +1858,15 @@ export default function CreatePRPage() {
     vendorId:
       purchaseType === 'sass' && rfqRecommendedMeta.vendorId
         ? Number(rfqRecommendedMeta.vendorId)
+        : undefined,
+    sassSubscriptionMode: purchaseType === 'sass' ? sassSubscriptionMode || 'one_time' : undefined,
+    sassBillingFrequency:
+      purchaseType === 'sass' && sassSubscriptionMode === 'recurring'
+        ? sassBillingFrequency || undefined
+        : undefined,
+    sassSubscriptionStartDate:
+      purchaseType === 'sass' && sassSubscriptionMode === 'recurring'
+        ? sassSubscriptionStartDate || undefined
         : undefined,
     justification: businessJustification,
     requiredDate: requiredDate || undefined,
@@ -2602,19 +2694,23 @@ export default function CreatePRPage() {
                     key={opt.id}
                     type="button"
                     onClick={() => {
+                      if (opt.id === 'sass') {
+                        setPreviousPurchaseType(purchaseType);
+                        setSassSubscriptionModalStep('mode');
+                        setSassSubscriptionModalOpen(true);
+                        return;
+                      }
                       setPurchaseType(opt.id);
+                      setSassSubscriptionMode(null);
+                      setSassBillingFrequency(null);
+                      setSassSubscriptionStartDate('');
                       // Service is only valid for Work Order
                       if (opt.id === 'purchase_order' && requestType === 'Service') {
                         setRequestType('Opex');
                       }
-                      if (opt.id === 'purchase_order' || opt.id === 'sass') {
+                      if (opt.id === 'purchase_order') {
                         setWorkStartDate('');
                         setWorkEndDate('');
-                      }
-                      if (opt.id === 'sass') {
-                        setPrFlow('standard');
-                        setVendorSelection('own');
-                        setApprovalUserIds((prev) => prev.slice(0, 1));
                       }
                     }}
                     className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
@@ -2630,6 +2726,42 @@ export default function CreatePRPage() {
                   </button>
                 ))}
               </div>
+              {purchaseType === 'sass' && (
+                <div className="mt-3 rounded-xl border border-teal-200 bg-teal-50/80 px-4 py-3 text-sm text-teal-900">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">
+                      {sassSubscriptionMode === 'recurring' ? 'Recurring' : 'One-Time'} Cloud Subscription
+                    </span>
+                    {sassSubscriptionMode === 'recurring' && sassBillingFrequency && (
+                      <span className="text-xs font-medium uppercase tracking-wide bg-white/80 border border-teal-200 px-2 py-0.5 rounded-lg">
+                        {sassBillingFrequency}
+                      </span>
+                    )}
+                    {sassSubscriptionMode === 'recurring' && sassSubscriptionStartDate && (
+                      <span className="text-xs text-teal-800">Start: {sassSubscriptionStartDate}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="ml-auto text-xs font-semibold text-teal-700 underline"
+                      onClick={() => {
+                        setSassSubscriptionModalStep('mode');
+                        setSassSubscriptionModalOpen(true);
+                      }}
+                    >
+                      Change
+                    </button>
+                  </div>
+                  {(errors.sassSubscriptionMode ||
+                    errors.sassBillingFrequency ||
+                    errors.sassSubscriptionStartDate) && (
+                    <p className="text-xs text-red-600 mt-2">
+                      {errors.sassSubscriptionMode ||
+                        errors.sassBillingFrequency ||
+                        errors.sassSubscriptionStartDate}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Department */}
@@ -3674,6 +3806,143 @@ export default function CreatePRPage() {
         </div>
       )}
       </>
+      )}
+
+      {sassSubscriptionModalOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 bg-teal-50">
+              <h3 className="text-base font-bold text-teal-900">Cloud Subscription</h3>
+              <p className="text-xs text-teal-700 mt-1">
+                {sassSubscriptionModalStep === 'mode'
+                  ? 'What type of subscription is this?'
+                  : 'Select Subscription Frequency'}
+              </p>
+            </div>
+            <div className="p-5 space-y-3">
+              {sassSubscriptionModalStep === 'mode' ? (
+                <>
+                  {(
+                    [
+                      {
+                        id: 'one_time' as const,
+                        label: 'One-Time',
+                        hint: 'Existing Purchase Request flow — no renewals',
+                      },
+                      {
+                        id: 'recurring' as const,
+                        label: 'Recurring',
+                        hint: 'Monthly / Quarterly / Yearly with reminders & renewals',
+                      },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        if (opt.id === 'one_time') {
+                          setPurchaseType('sass');
+                          setSassSubscriptionMode('one_time');
+                          setSassBillingFrequency(null);
+                          setSassSubscriptionStartDate('');
+                          setPrFlow('standard');
+                          setVendorSelection('own');
+                          setApprovalUserIds((prev) => prev.slice(0, 1));
+                          setWorkStartDate('');
+                          setWorkEndDate('');
+                          setSassSubscriptionModalOpen(false);
+                          return;
+                        }
+                        setSassSubscriptionMode('recurring');
+                        setSassSubscriptionModalStep('frequency');
+                      }}
+                      className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-teal-400 hover:bg-teal-50/50 transition-colors"
+                    >
+                      <span className="block text-sm font-semibold text-gray-900">{opt.label}</span>
+                      <span className="block text-xs text-gray-500 mt-0.5">{opt.hint}</span>
+                    </button>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {(
+                    [
+                      { id: 'monthly' as const, label: 'Monthly' },
+                      { id: 'quarterly' as const, label: 'Quarterly' },
+                      { id: 'yearly' as const, label: 'Yearly' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSassBillingFrequency(opt.id)}
+                      className={`w-full text-left px-4 py-3 rounded-xl border transition-colors ${
+                        sassBillingFrequency === opt.id
+                          ? 'border-teal-500 bg-teal-50'
+                          : 'border-gray-200 hover:border-teal-300'
+                      }`}
+                    >
+                      <span className="text-sm font-semibold text-gray-900">{opt.label}</span>
+                    </button>
+                  ))}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">
+                      Subscription Start Date
+                    </label>
+                    <input
+                      type="date"
+                      value={sassSubscriptionStartDate}
+                      onChange={(e) => setSassSubscriptionStartDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!sassBillingFrequency || !sassSubscriptionStartDate}
+                    onClick={() => {
+                      setPurchaseType('sass');
+                      setSassSubscriptionMode('recurring');
+                      setPrFlow('standard');
+                      setVendorSelection('own');
+                      setApprovalUserIds((prev) => prev.slice(0, 1));
+                      setWorkStartDate('');
+                      setWorkEndDate('');
+                      setSassSubscriptionModalOpen(false);
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold disabled:opacity-40"
+                  >
+                    Continue
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-between gap-2">
+              {sassSubscriptionModalStep === 'frequency' ? (
+                <button
+                  type="button"
+                  className="text-sm text-gray-600 font-medium"
+                  onClick={() => setSassSubscriptionModalStep('mode')}
+                >
+                  Back
+                </button>
+              ) : (
+                <span />
+              )}
+              <button
+                type="button"
+                className="text-sm text-gray-600 font-medium"
+                onClick={() => {
+                  setSassSubscriptionModalOpen(false);
+                  if (purchaseType !== 'sass') {
+                    setPurchaseType(previousPurchaseType === 'sass' ? 'purchase_order' : previousPurchaseType);
+                  }
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </DashboardLayout>
   );

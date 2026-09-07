@@ -479,6 +479,37 @@ export const taskApi = {
     }),
 };
 
+export const cloudSubscriptionApi = {
+  list: (status?: string) =>
+    request<{ data: unknown[] }>(
+      `/api/cloud-subscriptions${status ? `?status=${encodeURIComponent(status)}` : ''}`
+    ),
+  get: (id: number) => request<{ data: unknown }>(`/api/cloud-subscriptions/${id}`),
+  byPr: (prId: number) => request<{ data: unknown }>(`/api/cloud-subscriptions/by-pr/${prId}`),
+  history: (id: number) =>
+    request<{ data: { subscription: unknown; history: unknown[] } }>(
+      `/api/cloud-subscriptions/${id}/history`
+    ),
+  renew: (id: number) =>
+    request<{ data: unknown; message: string }>(`/api/cloud-subscriptions/${id}/renew`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  approveRenewal: (renewalId: number, action: 'approve' | 'reject', remarks: string) =>
+    request<{ data: unknown; message: string }>(
+      `/api/cloud-subscriptions/renewals/${renewalId}/approve`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ action, remarks }),
+      }
+    ),
+  previewExpiry: (startDate: string, frequency: string) =>
+    request<{ data: { expiryDate: string } }>('/api/cloud-subscriptions/preview-expiry', {
+      method: 'POST',
+      body: JSON.stringify({ startDate, frequency }),
+    }),
+};
+
 export interface RfqFieldDefinition {
   id: string;
   label: string;
