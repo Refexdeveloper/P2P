@@ -713,3 +713,31 @@ export async function rerouteMugeshRequesterSassToInvoiceUpload(connection = poo
 
   return { scanned: rows.length, rerouted, tasksEnsured };
 }
+
+/**
+ * Close leftover pending PR_APPROVAL tasks when the PR has already moved past that stage.
+ * Fixes My Tasks still showing Pending for prior approvers (e.g. after Mugesh approved and
+ * Srivaths L2 is pending / after Srivaths approved).
+ */
+export async function clearStaleSassPrApprovalTasks() {
+  const [result] = await pool.query(
+    `UPDATE workflow_tasks wt
+     JOIN purchase_requests pr ON pr.id = wt.pr_id
+     SET wt.status = 'completed', wt.completed_at = COALESCE(wt.completed_at, NOW())
+     WHERE wt.status = 'pending'
+       AND wt.task_type = 'PR_APPROVAL'
+       AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription')
+       AND (
+         (wt.assigned_role = 'HOD Approver' AND pr.status <> 'PENDING_HOD_APPROVAL')
+         OR (
+           wt.assigned_role = 'CFO'
+           AND pr.status NOT IN ('PENDING_CFO_APPROVAL', 'PENDING_RFQ_CFO_APPROVAL')
+         )
+         OR (
+           wt.assigned_role = 'PR Manager'
+           AND pr.status NOT IN ('PENDING_PR_MANAGER_APPROVAL', 'PENDING_RFQ_L2_APPROVAL')
+         )
+       )`
+  );
+  return { cleared: result?.affectedRows || 0 };
+}

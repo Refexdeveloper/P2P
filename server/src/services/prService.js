@@ -2658,11 +2658,13 @@ export async function processApproval(user, prId, action, remarks, options = {})
       ]
     );
 
+    // Close every pending PR approval task for this PR before creating the next stage.
+    // Matching only by current user id/role left stale tasks (SSO duplicate users / prior
+    // stage) so Mugesh/L1 still saw "Pending" after the PR moved to Srivaths (L2).
     await conn.query(
       `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-       WHERE pr_id = ? AND status = 'pending' AND task_type = 'PR_APPROVAL'
-         AND (assigned_user_id = ? OR assigned_role = ?)`,
-      [prId, user.id, actingAsHod ? 'HOD Approver' : actingRole]
+       WHERE pr_id = ? AND status = 'pending' AND task_type = 'PR_APPROVAL'`,
+      [prId]
     );
 
     if (nextFunctionalApprover && action === 'approve') {
@@ -4343,7 +4345,7 @@ export async function listTasks(user) {
   // Match by user id or email (SSO / re-synced user rows).
   const userEmail = String(user.email || '').toLowerCase().trim();
   const [assignedRows] = await pool.query(
-    `SELECT DISTINCT pr.id, wt.task_type, pr.status AS pr_status
+    `SELECT DISTINCT pr.id, wt.task_type, wt.assigned_role, pr.status AS pr_status
      FROM purchase_requests pr
      JOIN workflow_tasks wt ON wt.pr_id = pr.id
      LEFT JOIN users au ON au.id = wt.assigned_user_id
@@ -4353,8 +4355,36 @@ export async function listTasks(user) {
          wt.assigned_user_id = ?
          OR (wt.assigned_user_id IS NULL AND wt.assigned_role = ?)
          OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+       )
+       AND (
+         wt.task_type = 'RFQ_POST_APPROVAL'
+         OR (
+           wt.assigned_role = 'HOD Approver'
+           AND pr.status = ?
+         )
+         OR (
+           wt.assigned_role = 'PR Manager'
+           AND pr.status IN (?, ?)
+         )
+         OR (
+           wt.assigned_role = 'CFO'
+           AND pr.status IN (?, ?)
+         )
+         OR (
+           wt.assigned_role NOT IN ('HOD Approver', 'PR Manager', 'CFO')
+         )
        )`,
-    [user.id, user.role, userEmail, userEmail]
+    [
+      user.id,
+      user.role,
+      userEmail,
+      userEmail,
+      PR_STATUS.PENDING_HOD_APPROVAL,
+      PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
+      PR_STATUS.PENDING_RFQ_L2_APPROVAL,
+      PR_STATUS.PENDING_CFO_APPROVAL,
+      PR_STATUS.PENDING_RFQ_CFO_APPROVAL,
+    ]
   );
   const pendingIds = new Set(prs.map((p) => p.id));
   // Only RFQ_POST_APPROVAL (or post-RFQ statuses) count as post-RFQ — not every assigned PR
