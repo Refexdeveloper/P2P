@@ -1194,66 +1194,8 @@ function annexureIiItemHtml(row, opts = {}) {
 }
 
 /**
- * Split a tall Annexure-II HTML card into ordered page chunks.
- * Title appears only on the first chunk; table rows stay in Sr No. order.
- */
-function chunkAnnexureIiHtmlForPdf(fullHtml, idx) {
-  const html = String(fullHtml || '').trim();
-  if (!html) return [];
-
-  const tableMatch = html.match(/<table\b[\s\S]*?<\/table>/i);
-  if (!tableMatch) {
-    return [{ key: `annexure-ii-${idx}`, html }];
-  }
-
-  const tableHtml = tableMatch[0];
-  const rowMatches = [...tableHtml.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)].map((m) => m[0]);
-  const ROWS_PER_PAGE = 11;
-  if (rowMatches.length <= ROWS_PER_PAGE) {
-    return [{ key: `annexure-ii-${idx}`, html }];
-  }
-
-  const openTable = tableHtml.match(/^<table\b[^>]*>/i)?.[0] || '<table class="annexure-ii-table">';
-  const hasHeaderRow = /<th\b/i.test(rowMatches[0] || '');
-  const headerRow = hasHeaderRow ? rowMatches[0] : '';
-  const dataRows = hasHeaderRow ? rowMatches.slice(1) : rowMatches;
-  const afterAll = html.slice(tableMatch.index + tableHtml.length);
-  const afterBody = afterAll.replace(/<\/div>\s*<\/div>\s*$/i, '');
-
-  const blocks = [];
-  const step = Math.max(6, ROWS_PER_PAGE - (hasHeaderRow ? 1 : 0));
-
-  for (let start = 0, part = 0; start < dataRows.length; start += step, part += 1) {
-    const slice = dataRows.slice(start, start + step);
-    const isFirst = part === 0;
-    const isLast = start + step >= dataRows.length;
-    const rowsHtml = `${hasHeaderRow ? headerRow : ''}${slice.join('')}`;
-    const table = `${openTable}${rowsHtml}</table>`;
-
-    if (isFirst) {
-      let firstHtml = html.replace(tableHtml, table);
-      if (!isLast && afterBody) {
-        firstHtml = firstHtml.replace(afterBody, '');
-      }
-      blocks.push({ key: `annexure-ii-${idx}-p${part}`, html: firstHtml });
-    } else {
-      const body = `${table}${isLast ? afterBody : ''}`;
-      blocks.push({
-        key: `annexure-ii-${idx}-p${part}`,
-        html: `
-      <div class="annexure-ii annexure-ii-cont">
-        <div class="annexure-ii-body">${body}</div>
-      </div>`,
-      });
-    }
-  }
-
-  return blocks.length ? blocks : [{ key: `annexure-ii-${idx}`, html }];
-}
-
-/**
- * Build Annexure-II PDF blocks in document order.
- * Long Excel tables are pre-split into sequential pages (title once, rows in order).
+ * Build Annexure-II PDF blocks — one card per editor row (full table, in order).
+ * Page packing fills space; overflow repair splits tables only when needed.
  */
 export function buildAnnexureIiPdfBlocks(rows) {
   const list = Array.isArray(rows) ? rows : [];
@@ -1262,7 +1204,10 @@ export function buildAnnexureIiPdfBlocks(rows) {
   list.forEach((row, idx) => {
     const html = annexureIiItemHtml(row);
     if (!html || !String(html).trim()) return;
-    blocks.push(...chunkAnnexureIiHtmlForPdf(html, idx));
+    blocks.push({
+      key: `annexure-ii-${idx}`,
+      html,
+    });
   });
 
   return blocks;
@@ -1274,9 +1219,9 @@ function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
   );
   if (!rows.length) return '';
 
-  // Same ordered chunks as PDF packing (title once, rows in sequence).
-  return buildAnnexureIiPdfBlocks(rows)
-    .map((block) => wrapSheet(block.html, 'page-annexure-ii', po, forPdf))
+  // One sheet per editor row (full table) — packing handles page breaks.
+  return rows
+    .map((row) => wrapSheet(annexureIiItemHtml(row), 'page-annexure-ii', po, forPdf))
     .join('');
 }
 

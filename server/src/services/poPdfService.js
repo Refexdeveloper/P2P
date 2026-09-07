@@ -555,7 +555,7 @@ function splitTrailingImageFromOverflowRow(pages, pageIndex) {
 
 /**
  * If a tall Annexure-II table overflows, move trailing rows to the next page.
- * Never re-insert an "ANNEXURE-II" heading in the middle of the table.
+ * Keep as much as possible on the current page to avoid long mostly-blank PDFs.
  */
 function splitOverflowingAnnexureIiTable(pages, pageIndex) {
   if (pageIndex < 0 || pageIndex >= pages.length) return false;
@@ -566,7 +566,7 @@ function splitOverflowingAnnexureIiTable(pages, pageIndex) {
     const block = page[bi];
     if (!blockLooksLikeAnnexureIi(block) || block.html == null) continue;
     const html = String(block.html || '');
-    if (isAnnexureIiTitleOnly(html)) {
+    if (isAnnexureIiTitleOnly(html) || isAnnexureIiSparse(html)) {
       page.splice(bi, 1);
       if (!page.length) pages.splice(pageIndex, 1);
       return true;
@@ -577,11 +577,12 @@ function splitOverflowingAnnexureIiTable(pages, pageIndex) {
 
     const tableHtml = tableMatch[0];
     const rowMatches = [...tableHtml.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)].map((m) => m[0]);
-    if (rowMatches.length < 3) continue;
+    if (rowMatches.length < 5) continue;
 
-    // Keep header row(s) + first half on this page; move the rest.
-    const keepCount = Math.max(2, Math.ceil(rowMatches.length * 0.55));
-    if (keepCount >= rowMatches.length) continue;
+    // Keep most rows here; only spill when enough remain for a real next page.
+    const keepCount = Math.max(3, Math.ceil(rowMatches.length * 0.78));
+    const remaining = rowMatches.length - keepCount;
+    if (remaining < 3) return false;
 
     const headRows = rowMatches.slice(0, keepCount).join('');
     const tailRows = rowMatches.slice(keepCount).join('');
@@ -589,7 +590,6 @@ function splitOverflowingAnnexureIiTable(pages, pageIndex) {
     const keptTable = `${openTable}${headRows}</table>`;
     const contTable = `${openTable}${tailRows}</table>`;
 
-    // Only keep the ANNEXURE-II title on the first card — never mid-table.
     const alreadyCont =
       /annexure-ii-cont/i.test(html) || !/<div class="annexure-ii-title">/i.test(html);
     const titleHtml = alreadyCont ? '' : `<div class="annexure-ii-title">ANNEXURE-II</div>`;
@@ -611,13 +611,13 @@ function splitOverflowingAnnexureIiTable(pages, pageIndex) {
       <div class="annexure-ii${alreadyCont ? ' annexure-ii-cont' : ''}">
         ${titleHtml}
         ${headerHtml}
-        <div class="annexure-ii-body">${beforeBody}${keptTable}${afterBody}</div>
+        <div class="annexure-ii-body">${beforeBody}${keptTable}</div>
       </div>`,
     };
 
     const contHtml = `
       <div class="annexure-ii annexure-ii-cont">
-        <div class="annexure-ii-body">${contTable}</div>
+        <div class="annexure-ii-body">${contTable}${afterBody}</div>
       </div>`;
 
     const nextIdx = pageIndex + 1;
@@ -627,7 +627,6 @@ function splitOverflowingAnnexureIiTable(pages, pageIndex) {
       nextPage.some((b) => blockLooksLikeAnnexureIi(b)) ||
       nextPageHasLaterSection(nextPage, 'annexure-ii');
 
-    // Own page for continuation — avoids [table rows][ANNEXURE-II title][more rows] on one page.
     if (nextBusy) {
       pages.splice(nextIdx, 0, [{ type: 'annexure-ii', html: contHtml }]);
     } else {
@@ -636,6 +635,62 @@ function splitOverflowingAnnexureIiTable(pages, pageIndex) {
     return true;
   }
   return false;
+}
+
+/** True when Annexure-II body is empty or only 0–2 tiny table rows (wasteful blank page). */
+function isAnnexureIiSparse(html) {
+  const h = String(html || '');
+  if (!/annexure-ii/i.test(h)) return false;
+  if (isAnnexureIiTitleOnly(h)) return true;
+  const bodyMatch = h.match(/<div class="annexure-ii-body">([\s\S]*?)<\/div>\s*<\/div>\s*$/i);
+  const body = bodyMatch ? bodyMatch[1] : h;
+  const rows = [...body.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)];
+  const dataRows = rows.filter((m) => !/<th\b/i.test(m[0]));
+  if (dataRows.length > 2) return false;
+  const text = body
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return dataRows.length <= 2 && text.length < 80;
+}
+
+function countAnnexureIiDataRows(html) {
+  const rows = [...String(html || '').matchAll(/<tr\b[\s\S]*?<\/tr>/gi)];
+  return rows.filter((m) => !/<th\b/i.test(m[0])).length;
+}
+
+/**
+ * Merge sparse Annexure-II continuation pages into the previous page to cut blank pages.
+ */
+function mergeSparseAnnexureIiPages(pages) {
+  if (!Array.isArray(pages)) return pages;
+  for (let i = pages.length - 1; i > 0; i -= 1) {
+    const page = pages[i];
+    if (!page?.length) continue;
+    if (!page.every((b) => blockLooksLikeAnnexureIi(b))) continue;
+
+    const html = page.map((b) => b.html || '').join('');
+    if (!isAnnexureIiSparse(html) && countAnnexureIiDataRows(html) > 2) continue;
+
+    const prev = pages[i - 1];
+    if (!prev?.length) continue;
+    const prevLast = prev[prev.length - 1];
+    if (!blockLooksLikeAnnexureIi(prevLast) || prevLast.html == null) continue;
+
+    // Append continuation tables into previous annexure body.
+    for (const block of page) {
+      const contTable = String(block.html || '').match(/<table\b[\s\S]*?<\/table>/i);
+      if (!contTable) continue;
+      const contRows = [...contTable[0].matchAll(/<tr\b[\s\S]*?<\/tr>/gi)]
+        .map((m) => m[0])
+        .filter((r) => !/<th\b/i.test(r));
+      if (!contRows.length) continue;
+      prevLast.html = String(prevLast.html).replace(/<\/table>/i, `${contRows.join('')}</table>`);
+    }
+    pages.splice(i, 1);
+  }
+  return pages;
 }
 
 /**
@@ -661,7 +716,7 @@ function fixAnnexureIiHeadingOrder(pages) {
   return pages;
 }
 
-/** Remove blank Annexure-II heading pages and empty pages. */
+/** Remove blank / sparse Annexure-II pages and empty pages. */
 function pruneEmptyPages(pages) {
   if (!Array.isArray(pages)) return pages;
   for (let i = pages.length - 1; i >= 0; i -= 1) {
@@ -672,8 +727,11 @@ function pruneEmptyPages(pages) {
     }
     for (let bi = page.length - 1; bi >= 0; bi -= 1) {
       const block = page[bi];
-      if (block?.html != null && isAnnexureIiTitleOnly(block.html)) {
-        page.splice(bi, 1);
+      if (block?.html != null && (isAnnexureIiTitleOnly(block.html) || isAnnexureIiSparse(block.html))) {
+        // Keep sparse block only if it's the sole content and previous merge failed.
+        if (page.length > 1 || isAnnexureIiTitleOnly(block.html)) {
+          page.splice(bi, 1);
+        }
       }
     }
     if (!page.length || !pageHasContent(page)) pages.splice(i, 1);
@@ -980,11 +1038,16 @@ function packPoPages(parts, heights, scale = 1) {
     });
   }
 
+  let prevAnnexureIiRow = -1;
   (parts.annexureIiBlocks || []).forEach((block, i) => {
     const html = typeof block === 'string' ? block : block.html;
     const key = typeof block === 'string' ? `annexure-ii-${i}` : block.key || `annexure-ii-${i}`;
-    // Each pre-split Annexure-II chunk gets its own page, in order.
-    addHtml(html, packRowHeight(heights, key, 220, scale), true, 'annexure-ii');
+    const rowIdx = Number(String(key).match(/^annexure-ii-(\d+)/)?.[1] ?? i);
+    // New editor row starts a section; do NOT force a new page for every small leftover.
+    const forceNew = i === 0 || rowIdx !== prevAnnexureIiRow;
+    prevAnnexureIiRow = rowIdx;
+    const estimated = packRowHeight(heights, key, 160, scale);
+    addHtml(html, estimated, forceNew, 'annexure-ii');
   });
 
   const notesHtml = String(parts.notesHtml || '').trim();
@@ -1003,6 +1066,7 @@ function packPoPages(parts, heights, scale = 1) {
   const packed = pages.filter((page) => Array.isArray(page) && pageHasContent(page));
   enforceDocumentSectionOrder(packed);
   fixAnnexureIiHeadingOrder(packed);
+  mergeSparseAnnexureIiPages(packed);
   pruneEmptyPages(packed);
   return packed;
 }
@@ -1200,19 +1264,22 @@ async function paginatePoHtml(browser, po, options) {
         );
         if (!shiftLastUnitFromPage(pages, worstPage)) {
           if (!splitTrailingImageFromOverflowRow(pages, worstPage)) {
-            // Do not re-split Annexure-II tables here — row order is fixed in buildAnnexureIiPdfBlocks.
-            if (!shrinkOverflowImagesOnPage(pages, worstPage, Math.max(90, 160 - repair * 12))) {
-              break;
+            if (!splitOverflowingAnnexureIiTable(pages, worstPage)) {
+              if (!shrinkOverflowImagesOnPage(pages, worstPage, Math.max(90, 160 - repair * 12))) {
+                break;
+              }
             }
           }
         }
         enforceDocumentSectionOrder(pages);
         fixAnnexureIiHeadingOrder(pages);
+        mergeSparseAnnexureIiPages(pages);
         pruneEmptyPages(pages);
       }
 
       enforceDocumentSectionOrder(pages);
       fixAnnexureIiHeadingOrder(pages);
+      mergeSparseAnnexureIiPages(pages);
       pruneEmptyPages(pages);
       const pagesHtml = renderPagesHtml(pages, parts, layout);
       const draftHtml = wrapPoHtmlDocument(

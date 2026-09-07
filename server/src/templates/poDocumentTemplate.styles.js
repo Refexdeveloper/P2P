@@ -94,11 +94,15 @@ export const PO_STYLES = `
     overflow: hidden;
     display: block;
     position: relative;
+    align-content: start;
   }
   .pdf-content > * {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    /* Do not stretch Annexure boxes to fill leftover page height (causes huge blank frames). */
+    height: auto;
+    max-height: none;
   }
   .pdf-content .table-frame {
     width: 100%;
@@ -795,6 +799,9 @@ export const PO_STYLES = `
     background: #fff;
     page-break-inside: auto;
     break-inside: auto;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none;
   }
   .annexure-ii-title {
     border-bottom: 1px solid #000;
