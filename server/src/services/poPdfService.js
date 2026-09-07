@@ -369,34 +369,32 @@ function blockLooksLikeAnnexureIi(block) {
 
 /**
  * Hard guarantee: Annexure-II (all pages) → SCM manager sign → vendor acceptance.
- * Overflow repair must never leave images / annexure-ii after notes/ack.
+ * Keep packed Annexure-II page groups intact (important for pasted tables).
  */
 function enforceDocumentSectionOrder(pages) {
   if (!Array.isArray(pages) || !pages.length) return pages;
 
   const early = [];
-  const annexureIi = [];
+  const annexureIiPages = [];
   const notes = [];
   const ack = [];
 
   for (const page of pages) {
     const earlyPage = [];
+    const iiPage = [];
     for (const block of page || []) {
       const t = block?.type;
       if (blockLooksLikeAnnexureIi(block)) {
-        // Normalize type so later repairs keep section order.
-        annexureIi.push({ ...block, type: 'annexure-ii' });
+        iiPage.push({ ...block, type: 'annexure-ii' });
       } else if (t === 'notes') notes.push(block);
       else if (t === 'ack') ack.push(block);
       else earlyPage.push(block);
     }
     if (earlyPage.length && pageHasContent(earlyPage)) early.push(earlyPage);
+    if (iiPage.length && pageHasContent(iiPage)) annexureIiPages.push(iiPage);
   }
 
-  const out = [...early];
-  for (const block of annexureIi) {
-    out.push([block]);
-  }
+  const out = [...early, ...annexureIiPages];
   if (notes.length) out.push(notes);
   if (ack.length) out.push(ack);
 
@@ -901,10 +899,17 @@ function packPoPages(parts, heights, scale = 1) {
     });
   }
 
+  let prevAnnexureIiRow = -1;
   (parts.annexureIiBlocks || []).forEach((block, i) => {
     const html = typeof block === 'string' ? block : block.html;
     const key = typeof block === 'string' ? `annexure-ii-${i}` : block.key || `annexure-ii-${i}`;
-    addHtml(html, packRowHeight(heights, key, 180, scale), true, 'annexure-ii');
+    const rowIdx = Number(String(key).match(/^annexure-ii-(\d+)/)?.[1] ?? i);
+    const isStandaloneMedia = /-(?:g|e)\d+/i.test(String(key));
+    // Keep pasted table + surrounding text on the same page when they fit.
+    // New editor row or standalone image starts a fresh page.
+    const forceNew = i === 0 || isStandaloneMedia || rowIdx !== prevAnnexureIiRow;
+    prevAnnexureIiRow = rowIdx;
+    addHtml(html, packRowHeight(heights, key, 180, scale), forceNew, 'annexure-ii');
   });
 
   const notesHtml = String(parts.notesHtml || '').trim();

@@ -851,10 +851,6 @@ export const PO_STYLES = `
     width: auto !important;
     object-fit: contain !important;
   }
-  body.po-document-pdf-pages .annexure-ii {
-    overflow: hidden;
-    max-height: 100%;
-  }
   .annexure-ii-body figure {
     margin: 12px 0;
     text-align: center;
@@ -866,16 +862,50 @@ export const PO_STYLES = `
     color: #333;
     margin-top: 4px;
   }
-  .annexure-ii-body table {
-    width: 100%;
+  .annexure-ii-body table,
+  .annexure-ii-body table.annexure-ii-table {
+    width: 100% !important;
+    max-width: 100% !important;
     border-collapse: collapse;
+    table-layout: fixed;
     margin: 8px 0;
+    page-break-inside: auto;
+    break-inside: auto;
   }
   .annexure-ii-body table td,
-  .annexure-ii-body table th {
+  .annexure-ii-body table th,
+  .annexure-ii-body table.annexure-ii-table td,
+  .annexure-ii-body table.annexure-ii-table th {
     border: 1px solid #000;
     padding: 5px 7px;
     font-size: 11px;
+    vertical-align: top;
+    text-align: left;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .annexure-ii-body table th,
+  .annexure-ii-body table.annexure-ii-table th {
+    background: #f2f2f2;
+    font-weight: 700;
+    text-align: center;
+  }
+  body.po-document-pdf-pages .annexure-ii-body table,
+  body.po-document-pdf-pages .annexure-ii-body table.annexure-ii-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+  }
+  body.po-document-pdf-pages .annexure-ii-body table td,
+  body.po-document-pdf-pages .annexure-ii-body table th {
+    font-size: 10px;
+    line-height: 1.3;
+    padding: 4px 5px;
+  }
+  body.po-document-pdf-pages .annexure-ii {
+    max-height: none;
+    overflow: visible;
   }
   table.terms-compact th,
   table.terms-compact td { padding: 5px 7px; font-size: 11px; }

@@ -1020,9 +1020,103 @@ function sanitizeAnnexureHtml(html) {
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
 }
 
+/** Normalize pasted Word/Excel tables so PDF columns stay aligned. */
+function normalizeAnnexureIiBodyHtml(html) {
+  let out = sanitizeAnnexureHtml(html);
+  if (!out) return '';
+
+  // Drop fixed Word widths that overflow A4 and break column alignment.
+  out = out
+    .replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/style\s*=\s*(")([^"]*)(")/gi, (_m, q1, style, q2) => {
+      const kept = String(style || '')
+        .split(';')
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .filter((p) => {
+          const key = p.split(':')[0].trim().toLowerCase();
+          if (!key) return false;
+          if (/^mso-/i.test(key)) return false;
+          if (key === 'width' || key === 'height' || key === 'min-width' || key === 'max-width') return false;
+          if (key === 'position' || key === 'left' || key === 'top' || key === 'float') return false;
+          return [
+            'text-align',
+            'font-weight',
+            'font-style',
+            'text-decoration',
+            'vertical-align',
+            'background',
+            'background-color',
+            'color',
+            'border',
+            'border-top',
+            'border-right',
+            'border-bottom',
+            'border-left',
+            'padding',
+          ].includes(key);
+        });
+      return kept.length ? `style=${q1}${kept.join(';')}${q2}` : '';
+    });
+
+  // Mark pasted tables for consistent PDF layout.
+  out = out.replace(/<table\b([^>]*)>/gi, (_m, attrs) => {
+    const a = String(attrs || '');
+    if (/class\s*=/i.test(a)) {
+      return `<table${a.replace(/class\s*=\s*("|')([^"']*)\1/i, (_cm, q, cls) => `class=${q}${cls} annexure-ii-table${q}`)}>`;
+    }
+    return `<table class="annexure-ii-table"${a}>`;
+  });
+
+  return out;
+}
+
+/**
+ * Split Annexure-II description for PDF without breaking pasted tables.
+ * Images inside a <table> stay with the table (alignment preserved).
+ * Standalone images outside tables become following pages.
+ */
+function splitAnnexureIiDescriptionPieces(descHtml) {
+  const raw = String(descHtml || '').trim();
+  if (!raw) return [];
+
+  // Keep whole table payloads intact — splitting on <img> inside cells breaks columns.
+  if (/<table\b/i.test(raw)) {
+    const parts = [];
+    const re = /<table\b[\s\S]*?<\/table>/gi;
+    let cursor = 0;
+    let match;
+    while ((match = re.exec(raw)) !== null) {
+      const before = raw.slice(cursor, match.index).trim();
+      if (before) {
+        // Before-table text may still have standalone images.
+        parts.push(...splitStandaloneMediaPieces(before));
+      }
+      parts.push(match[0]);
+      cursor = match.index + match[0].length;
+    }
+    const after = raw.slice(cursor).trim();
+    if (after) parts.push(...splitStandaloneMediaPieces(after));
+    return parts.length ? parts : [raw];
+  }
+
+  return splitStandaloneMediaPieces(raw);
+}
+
+function splitStandaloneMediaPieces(html) {
+  const raw = String(html || '').trim();
+  if (!raw) return [];
+  if (!/<img\b|<figure\b/i.test(raw)) return [raw];
+  return raw
+    .split(/(?=<figure\b|<img\b)/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
 function annexureHtmlIsEmpty(html) {
   return !sanitizeAnnexureHtml(html)
     .replace(/<img\b[^>]*>/gi, 'IMG')
+    .replace(/<table\b[\s\S]*?<\/table>/gi, 'TABLE')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/\s+/g, ' ')
@@ -1033,7 +1127,7 @@ function annexureIiItemHtml(row, opts = {}) {
   const { includeTitle = true, includeHeader = true, includeBody = true, includeImages = true, includeComments = true } =
     opts;
   const headerHtml = sanitizeAnnexureHtml(row.header || '');
-  const bodyHtml = includeBody ? sanitizeAnnexureHtml(row.description || '') : '';
+  const bodyHtml = includeBody ? normalizeAnnexureIiBodyHtml(row.description || '') : '';
   const extraImages = includeImages
     ? (row.images || [])
         .map((img) => {
@@ -1066,8 +1160,9 @@ function annexureIiItemHtml(row, opts = {}) {
 }
 
 /**
- * Build Annexure-II PDF blocks with images on following pages so tall uploads
- * finish before SCM manager sign / vendor acceptance.
+ * Build Annexure-II PDF blocks.
+ * Pasted tables stay whole (column alignment). Standalone images follow after.
+ * All Annexure-II blocks are packed before SCM sign / vendor acceptance.
  */
 export function buildAnnexureIiPdfBlocks(rows) {
   const list = Array.isArray(rows) ? rows : [];
@@ -1075,7 +1170,7 @@ export function buildAnnexureIiPdfBlocks(rows) {
 
   list.forEach((row, idx) => {
     const galleryImages = (row.images || []).filter((img) => String(img?.src || '').trim());
-    const desc = sanitizeAnnexureHtml(row.description || '');
+    const desc = normalizeAnnexureIiBodyHtml(row.description || '');
     const headerHtml = sanitizeAnnexureHtml(row.header || '');
     const comments = String(row.comments || '').trim();
     const hasHeader = Boolean(headerHtml && !annexureHtmlIsEmpty(headerHtml));
@@ -1094,14 +1189,7 @@ export function buildAnnexureIiPdfBlocks(rows) {
       });
     };
 
-    const pieces = /<img\b|<figure\b/i.test(desc)
-      ? desc
-          .split(/(?=<figure\b|<img\b)/i)
-          .map((p) => p.trim())
-          .filter(Boolean)
-      : desc.trim()
-        ? [desc.trim()]
-        : [];
+    const pieces = splitAnnexureIiDescriptionPieces(desc);
 
     let continued = false;
     let headerUsed = false;
@@ -1124,7 +1212,13 @@ export function buildAnnexureIiPdfBlocks(rows) {
       headerUsed = true;
     } else {
       for (const piece of pieces) {
-        if (/^<(?:figure|img)\b/i.test(piece)) {
+        // Keep full tables (and any images inside them) on one block.
+        if (/^<table\b/i.test(piece)) {
+          flushText();
+          push(`annexure-ii-${idx}-tbl${blocks.length}`, continued, piece, !headerUsed);
+          headerUsed = true;
+          continued = true;
+        } else if (/^<(?:figure|img)\b/i.test(piece)) {
           flushText();
           push(`annexure-ii-${idx}-e${blocks.length}`, true, piece, !headerUsed);
           headerUsed = true;
@@ -1164,11 +1258,9 @@ function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
   );
   if (!rows.length) return '';
 
-  // Preview: one sheet per PDF block so images finish before notes / vendor acceptance.
-  const blocks = buildAnnexureIiPdfBlocks(rows);
-  if (!blocks.length) return '';
-  return blocks
-    .map((block) => wrapSheet(block.html, 'page-annexure-ii', po, forPdf))
+  // Preview: one sheet per Annexure-II row so pasted tables keep column alignment.
+  return rows
+    .map((row) => wrapSheet(annexureIiItemHtml(row), 'page-annexure-ii', po, forPdf))
     .join('');
 }
 

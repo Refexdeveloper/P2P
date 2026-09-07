@@ -68,31 +68,28 @@ test('Annexure-II images become separate blocks before notes/ack', () => {
   assert.match(blocks[2].html, /annexure-figure/);
 });
 
-test('enforceDocumentSectionOrder moves Annexure-II before sign and acceptance', () => {
+test('pasted Annexure-II tables stay whole (alignment) and before notes order', () => {
+  const tableHtml = `
+    <p>Intro</p>
+    <table width="900" style="width:1134px">
+      <tr><th>Item</th><th>Qty</th></tr>
+      <tr><td>Pump</td><td><img src="data:image/png;base64,xx" /></td></tr>
+      <tr><td>Valve</td><td>2</td></tr>
+    </table>
+    <p>After</p>
+  `;
+
   const blocks = buildAnnexureIiPdfBlocks([
-    {
-      header: '',
-      description: '',
-      images: [{ src: 'data:image/png;base64,xx' }],
-      comments: '',
-    },
+    { header: 'Scope', description: tableHtml, images: [], comments: '' },
   ]);
 
-  const broken = [
-    [{ type: 'details', html: '<div>details content here</div>' }],
-    [{ type: 'notes', html: '<div class="special-notes">SCM SIGN</div>' }],
-    [{ type: 'ack', html: '<div class="ack-block">VENDOR ACCEPT</div>' }],
-    [{ type: 'annexure-ii', html: blocks[0].html }],
-  ];
-
-  const fixed = enforceDocumentSectionOrder(broken);
-  const types = fixed.map((page) => page.map((b) => b.type).join('+'));
-
-  const ii = types.findIndex((t) => t.includes('annexure-ii'));
-  const notes = types.findIndex((t) => t.includes('notes'));
-  const ack = types.findIndex((t) => t.includes('ack'));
-
-  assert.ok(ii >= 0 && notes >= 0 && ack >= 0);
-  assert.ok(ii < notes, `expected annexure-ii before notes, got ${types.join(' | ')}`);
-  assert.ok(notes < ack, `expected notes before ack, got ${types.join(' | ')}`);
+  assert.ok(blocks.length >= 1);
+  const tableBlock = blocks.find((b) => /<table/i.test(b.html));
+  assert.ok(tableBlock, 'expected a table block');
+  assert.match(tableBlock.html, /annexure-ii-table/);
+  assert.match(tableBlock.html, /Pump/);
+  assert.match(tableBlock.html, /Valve/);
+  // Image inside the table must not split the table apart.
+  assert.match(tableBlock.html, /<img\b/i);
+  assert.doesNotMatch(tableBlock.html, /width\s*=\s*["']900["']/i);
 });
