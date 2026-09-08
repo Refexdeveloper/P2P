@@ -607,7 +607,11 @@ export function buildPrApprovalPendingEmail({
     stageLower.includes('create po') ||
     (postRfq && assignedRole === 'SCM Buyer' && !isScmRfqEntry);
   const isRfqEntryStep = (isRequesterStep || isScmRfqEntry) && !isCreatePoStep;
-  const roleDisplayName = roleDisplayNameOverride || formatRoleDisplayName(assignedRole);
+  const roleDisplayName =
+    roleDisplayNameOverride ||
+    formatRoleDisplayName(assignedRole, approverName) ||
+    (assignedRole === 'CFO' ? '' : assignedRole) ||
+    '';
   const stageText =
     stageLabel ||
     (isCreatePoStep
@@ -682,8 +686,8 @@ export function buildPrApprovalPendingEmail({
 
   const rfqEntryHint = isScmRfqEntry
     ? stageLabel?.toLowerCase().includes('final')
-      ? 'CFO approved vendor selection — complete SCM Final RFQ to continue to Create PO.'
-      : 'CFO approved this PR — open SCM RFQ Entry to invite vendors and collect quotations.'
+      ? 'Mugesh approved vendor selection — complete SCM Final RFQ to continue to Create PO.'
+      : 'Mugesh approved this PR — open SCM RFQ Entry to invite vendors and collect quotations.'
     : 'HOD approved your PR — enter vendor quotations to continue.';
 
   const actionButtons = isCreatePoStep
@@ -805,7 +809,9 @@ export function buildPrApprovalPendingEmail({
   const headerSub =
     isScmRfqEntry && !isSassRequest
       ? `${escapeHtml(pr.prNumber || '')}${entityLabel && entityLabel !== '—' ? ` — ${escapeHtml(entityLabel)}` : ''}${entityLocationLabel ? ` - ${escapeHtml(entityLocationLabel)}` : ''}`
-      : `Hello ${escapeHtml(approverName || 'Approver')}, a PR needs your review as <strong>${escapeHtml(roleDisplayName)}</strong>.`;
+      : roleDisplayName
+        ? `Hello ${escapeHtml(approverName || 'Approver')}, a PR needs your review as <strong>${escapeHtml(roleDisplayName)}</strong>.`
+        : `Hello ${escapeHtml(approverName || 'Approver')}, a PR needs your review.`;
 
   const html = `
 <!DOCTYPE html>

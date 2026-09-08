@@ -71,13 +71,68 @@ export function escapeHtml(value) {
 }
 
 /** Friendly role labels for emails (keep system role codes unchanged) */
-export function formatRoleDisplayName(role) {
+const MUGESH_EMAIL = 'mugesh.m@refex.co.in';
+
+export function isMugeshActor(actorOrEmail) {
+  if (!actorOrEmail) return false;
+  if (typeof actorOrEmail === 'string') {
+    const s = actorOrEmail.trim().toLowerCase();
+    if (!s) return false;
+    if (s === MUGESH_EMAIL || s.includes('mugesh.m@')) return true;
+    if (s === 'mugesh' || s.startsWith('mugesh ') || s.startsWith('mugesh.')) return true;
+    return false;
+  }
+  const email = String(actorOrEmail.email || '').trim().toLowerCase();
+  const name = String(actorOrEmail.name || actorOrEmail.actorName || '').trim().toLowerCase();
+  if (email && (email === MUGESH_EMAIL || email.includes('mugesh.m@'))) return true;
+  if (name && (name === 'mugesh' || name.startsWith('mugesh ') || name.startsWith('mugesh.'))) return true;
+  return false;
+}
+
+/**
+ * Display label for a system role in emails.
+ * Never print "CFO" — use Mugesh (or blank next to a person name).
+ */
+export function formatRoleDisplayName(role, actorOrEmail = null) {
+  if (isMugeshActor(actorOrEmail)) return '';
+  const raw = String(role || '').trim();
+  if (!raw) return '';
+  if (/^cfo$/i.test(raw)) return 'Mugesh';
   const map = {
     'HOD Approver': 'L1 Manager',
     'PR Manager': 'L2 Manager',
   };
-  return map[role] || role || 'Approver';
+  return map[raw] || raw;
 }
+
+/** "Name (Role)" for mail intros — never append CFO / Mugesh designation beside a person. */
+export function formatActorWithRole(actorName, actorRole) {
+  const name = String(actorName || '').trim();
+  const roleRaw = String(actorRole || '').trim();
+  if (/^cfo$/i.test(roleRaw) || isMugeshActor(name)) {
+    return name || 'Mugesh';
+  }
+  const roleDisplay = formatRoleDisplayName(roleRaw, name || null);
+  if (name && roleDisplay) return `${name} (${roleDisplay})`;
+  if (name) return name;
+  return roleDisplay || 'Approver';
+}
+
+/**
+ * Strip every "CFO" / "Group CEO" mention from outbound email copy.
+ * System role codes stay unchanged in auth/workflow — this is display-only.
+ */
+export function sanitizeEmailCfoMentions(value) {
+  if (value == null || typeof value !== 'string' || !value) return value;
+  return value
+    // Drop designation in parentheses first: "mugesh.m (CFO)" → "mugesh.m"
+    .replace(/\s*\(\s*Group\s*CEO\s*\)/gi, '')
+    .replace(/\s*\(\s*CFO\s*\)/gi, '')
+    // Remaining standalone labels: "CFO Approval" → "Mugesh Approval"
+    .replace(/\bGroup\s*CEO\b/gi, 'Mugesh')
+    .replace(/\bCFO\b/gi, 'Mugesh');
+}
+
 
 /** Display entity name (+ code) for email templates */
 export function formatEntity(prOrPo) {

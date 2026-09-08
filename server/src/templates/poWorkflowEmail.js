@@ -48,7 +48,7 @@ export function buildPoWorkflowEmail({
   const prNumber = po.prNumber || po.pr_number || '';
   const title = po.prTitle || po.title || poNumber;
   const amount = po.grandTotal ?? po.totalAmount ?? 0;
-  const roleDisplay = formatRoleDisplayName(actorRole || '');
+  const roleDisplay = formatRoleDisplayName(actorRole || '', actorName || null);
   const stage = stageLabel || 'PO Workflow';
   const ssoPortalUrl = wrapPortalUrlWithSso(portalUrl);
 

@@ -16,7 +16,7 @@ import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceReques
 import { buildSassInvoiceUploadedEmail } from '../templates/sassInvoiceUploadedEmail.js';
 import { buildCloudSubscriptionReminderEmail } from '../templates/cloudSubscriptionReminderEmail.js';
 import { resolveScmBuyerUsers, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
-import { formatRoleDisplayName, withEmailLogo } from '../templates/emailUtils.js';
+import { formatRoleDisplayName, sanitizeEmailCfoMentions, withEmailLogo } from '../templates/emailUtils.js';
 import {
   buildWorkflowWhatsAppParams,
   queueWorkflowWhatsApp,
@@ -439,7 +439,10 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
     return null;
   }
 
-  html = withEmailLogo(html);
+  // Never mention CFO / Group CEO in any outbound mail (Mugesh is not CFO)
+  subject = sanitizeEmailCfoMentions(subject);
+  html = sanitizeEmailCfoMentions(withEmailLogo(html));
+  text = sanitizeEmailCfoMentions(text);
 
   const toList = (recipients || []).filter(Boolean);
   const logCtx = {

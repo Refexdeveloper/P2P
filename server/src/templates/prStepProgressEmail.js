@@ -2,7 +2,7 @@ import {
   escapeHtml,
   formatCurrency,
   formatEntity,
-  formatRoleDisplayName,
+  formatActorWithRole,
 } from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
@@ -26,8 +26,7 @@ export function buildPrStepProgressEmail({
   const trackUrl = wrapPortalUrlWithSso(`${base}/requester/track-pr`);
   const ctaUrl = actionUrl ? wrapPortalUrlWithSso(actionUrl) : trackUrl;
   const entityLabel = formatEntity(pr);
-  const roleDisplay = formatRoleDisplayName(actorRole) || actorRole || 'Approver';
-  const actorLine = actorName ? `${actorName} (${roleDisplay})` : roleDisplay;
+  const actorLine = formatActorWithRole(actorName, actorRole);
   const recipientName = requesterName || 'Requester';
   const perspective = recipientPerspective || 'requester';
 

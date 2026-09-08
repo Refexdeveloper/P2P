@@ -2484,7 +2484,7 @@ async function notifyScmBuyerForFinalRfq(prId) {
   queueRequesterStepProgressNotification(pr, {
     action: 'approve',
     actorRole: 'CFO',
-    completedStepLabel: 'CFO Vendor Final Approval',
+    completedStepLabel: 'Mugesh Vendor Final Approval',
     nextStepLabel: 'SCM Final RFQ',
     requesterName: pr.requester,
   });

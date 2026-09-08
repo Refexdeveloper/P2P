@@ -1,4 +1,4 @@
-import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
+import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName, sanitizeEmailCfoMentions } from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 export function buildPostRfqActionEmail({
@@ -22,7 +22,11 @@ export function buildPostRfqActionEmail({
         : `${base}/requester/rfq-entry/${pr.id}`
   );
   const entityLabel = formatEntity(pr);
-  const roleDisplayName = formatRoleDisplayName(approverRole);
+  const roleDisplayName =
+    formatRoleDisplayName(approverRole) ||
+    (/^cfo$/i.test(String(approverRole || '')) ? 'Mugesh' : approverRole) ||
+    'Approver';
+  const reviewerLabel = sanitizeEmailCfoMentions(roleDisplayName) || 'Mugesh';
   const ctaLabel = isReject
     ? 'View PR Status'
     : editPr
@@ -39,7 +43,7 @@ export function buildPostRfqActionEmail({
     <tr>
       <td style="padding:24px 28px;background:${isReject ? '#dc2626' : '#ea580c'};">
         <div style="color:#fff;font-size:20px;font-weight:800;">${escapeHtml(headerTitle)}</div>
-        <div style="color:#fff;font-size:14px;margin-top:6px;opacity:0.9;">Hello ${escapeHtml(requesterName || 'Requester')}, your request was reviewed by ${escapeHtml(roleDisplayName)}.</div>
+        <div style="color:#fff;font-size:14px;margin-top:6px;opacity:0.9;">Hello ${escapeHtml(requesterName || 'Requester')}, your request was reviewed by ${escapeHtml(reviewerLabel)}.</div>
       </td>
     </tr>
     <tr>
