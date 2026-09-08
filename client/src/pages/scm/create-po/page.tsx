@@ -965,6 +965,12 @@ export default function CreatePOPage() {
               ? '/scm/po-approval'
               : '/scm/po-approval';
   const isBuyerVerifyEdit = searchParams.get('from') === 'buyer-verify';
+  const isAdminPoEditor = Boolean(
+    user?.isSuperAdmin ||
+      user?.role === 'Super Admin' ||
+      user?.role === 'SCM Manager' ||
+      user?.role === 'SCM Buyer'
+  );
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -1686,8 +1692,14 @@ export default function CreatePOPage() {
         statusRaw === 'pending_buyerverify' ||
         statusRaw.includes('buyer_verify');
       const allowBuyerVerifyEdit = fromBuyerVerify && isBuyerVerifyStatus;
-      if (!isPendingApproval && !allowBuyerVerifyEdit && !isBuyerVerifyStatus && !isDraft) {
-        setLoadError('Only draft, pending, or buyer-verify POs can be edited');
+      const isCancelled = statusRaw === 'cancelled' || statusRaw === 'canceled';
+      const allowAdminAnyEdit = isAdminPoEditor && !isCancelled;
+      if (!isPendingApproval && !allowBuyerVerifyEdit && !isBuyerVerifyStatus && !isDraft && !allowAdminAnyEdit) {
+        setLoadError(
+          isCancelled
+            ? 'Cancelled POs cannot be edited. Retrieve the PO as a draft first.'
+            : 'Only draft, pending, or buyer-verify POs can be edited'
+        );
         setPr(null);
         return;
       }
@@ -1859,7 +1871,7 @@ export default function CreatePOPage() {
     } finally {
       setLoading(false);
     }
-  }, [isEditMode, editPoId, searchParams]);
+  }, [isEditMode, editPoId, searchParams, isAdminPoEditor]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -3132,6 +3144,10 @@ export default function CreatePOPage() {
       }
 
       if (isEditMode && editPoId) {
+        if (fromParam === 'track-po' && poEditStatus && poEditStatus !== 'draft') {
+          payload.adminEdit = true;
+          payload.changeSummary = payload.changeSummary || `PO updated by ${user?.role || 'admin'} from Track PO`;
+        }
         await poApi.update(editPoId, payload);
         navigate(editReturnPath);
         return;

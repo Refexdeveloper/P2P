@@ -1507,7 +1507,7 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
 }
 
 export async function buildPoPreviewDocument(user, prId, body) {
-  if (user.role !== 'SCM Buyer' && user.role !== 'SCM Manager') {
+  if (user.role !== 'SCM Buyer' && user.role !== 'SCM Manager' && user.role !== 'Super Admin') {
     throw new Error('Unauthorized to preview purchase orders');
   }
   if (!body?.lineItems?.length) throw new Error('At least one line item is required for preview');
@@ -1515,7 +1515,7 @@ export async function buildPoPreviewDocument(user, prId, body) {
 }
 
 export async function buildPoPreviewForPo(user, poId, body) {
-  if (user.role !== 'SCM Manager' && user.role !== 'SCM Buyer') {
+  if (user.role !== 'SCM Manager' && user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
     throw new Error('Unauthorized to preview PO edits');
   }
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
@@ -3777,8 +3777,12 @@ export async function updatePurchaseOrder(user, poId, body) {
   if (!canManagerEdit && !canBuyerEdit && !canBuyerRevise && !canAdminEdit) {
     throw new Error('You are not allowed to edit this purchase order');
   }
+  const forceAdminContentEdit =
+    Boolean(body?.adminEdit) && existing.status !== 'draft' && existing.status !== 'cancelled';
   // Prefer workflow-aware paths when they apply; otherwise treat as admin content edit
-  const isAdminContentEdit = canAdminEdit && !canManagerEdit && !canBuyerEdit && !canBuyerRevise;
+  const isAdminContentEdit =
+    forceAdminContentEdit ||
+    (canAdminEdit && !canManagerEdit && !canBuyerEdit && !canBuyerRevise);
 
   const draft = existing.pr_id
     ? await resolvePoDraftContent(existing.pr_id, {
