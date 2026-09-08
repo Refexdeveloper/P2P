@@ -3898,12 +3898,8 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
     if (!prRows.length) throw new Error('PR not found');
     const pr = prRows[0];
 
-    if (
-      pr.status === PR_STATUS.DRAFT ||
-      pr.status === PR_STATUS.REJECTED ||
-      pr.status === PR_STATUS.RETURNED
-    ) {
-      throw new Error('Cannot send back a draft, rejected, or already-returned PR from Track PR');
+    if (pr.status === PR_STATUS.DRAFT) {
+      throw new Error('Cannot send back a draft PR. Submit it first, or edit the draft.');
     }
 
     const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarksText, user, {
@@ -3917,7 +3913,8 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
            cancelled_by = ?,
            cancelled_at = NOW(),
            updated_at = NOW()
-       WHERE pr_id = ? AND status IN ('draft', 'pending_approval')`,
+       WHERE pr_id = ?
+         AND status NOT IN ('cancelled', 'rejected')`,
       [`Send-back from workflow: ${remarksText.slice(0, 450)}`, user.id, prId]
     );
 

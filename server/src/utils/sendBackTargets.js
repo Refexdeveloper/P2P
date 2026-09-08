@@ -135,8 +135,8 @@ const PREVIOUS_BY_STATUS = {
   [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: ['REQUESTER', 'REQUESTER_RFQ', 'HOD_PRE', 'HOD_VENDOR', 'L2_VENDOR'],
 
   // SCM Manager vendor approval — default first target is SCM RFQ Entry
-  [PR_STATUS.PENDING_BUSINESS_APPROVAL]: ['SCM_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
-  [PR_STATUS.PENDING_SCM_PO]: ['SCM_MANAGER', 'SCM_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
+  [PR_STATUS.PENDING_BUSINESS_APPROVAL]: ['SCM_RFQ', 'REQUESTER_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
+  [PR_STATUS.PENDING_SCM_PO]: ['SCM_MANAGER', 'SCM_RFQ', 'REQUESTER_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
 
   // During / after RFQ entry (status APPROVED until post-RFQ queue starts)
   [PR_STATUS.APPROVED]: ['REQUESTER', 'REQUESTER_RFQ', 'SCM_RFQ', 'HOD_PRE', 'L2_PRE', 'CFO_PRE', 'HOD_VENDOR', 'L2_VENDOR', 'CFO_VENDOR'],
@@ -154,6 +154,7 @@ const ADMIN_OWN_KEYS = [
 ];
 const ADMIN_SCM_KEYS = [
   'REQUESTER',
+  'REQUESTER_RFQ',
   'HOD_PRE',
   'L2_PRE',
   'CFO_PRE',
@@ -194,20 +195,20 @@ export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 's
 
 /**
  * Admin: every prior stage for this vendor path (not limited to immediate predecessors).
- * Excludes targets that would leave the PR at the same status.
+ * Always includes Requester RFQ Entry so admin can reopen quotes after Create PO / send-back.
  */
 export function listAdminSendBackTargets(status, vendorSelection = 'scm', prFlow = 'standard') {
   if (prFlow === 'functional') {
     return ADMIN_FUNCTIONAL_KEYS
       .map((key) => withFunctionalLabels(SEND_BACK_TARGET_DEFS[key]))
-      .filter((def) => def && def.status !== status)
+      .filter(Boolean)
       .map((def) => ({ key: def.key, label: def.label }));
   }
   const isOwn = vendorSelection === 'own';
   const keys = isOwn ? ADMIN_OWN_KEYS : ADMIN_SCM_KEYS;
   return keys
     .map((key) => SEND_BACK_TARGET_DEFS[key])
-    .filter((def) => def && def.status !== status)
+    .filter(Boolean)
     .map((def) => ({ key: def.key, label: def.label }));
 }
 
