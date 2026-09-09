@@ -72,29 +72,43 @@ export function escapeHtml(value) {
 
 /** Friendly role labels for emails (keep system role codes unchanged) */
 const MUGESH_EMAIL = 'mugesh.m@refex.co.in';
+const SRIVATHS_EMAIL = 'srivaths.varadharajan@refex.co.in';
 
-export function isMugeshActor(actorOrEmail) {
-  if (!actorOrEmail) return false;
+function actorEmailAndName(actorOrEmail) {
+  if (!actorOrEmail) return { email: '', name: '' };
   if (typeof actorOrEmail === 'string') {
     const s = actorOrEmail.trim().toLowerCase();
-    if (!s) return false;
-    if (s === MUGESH_EMAIL || s.includes('mugesh.m@')) return true;
-    if (s === 'mugesh' || s.startsWith('mugesh ') || s.startsWith('mugesh.')) return true;
-    return false;
+    return { email: s.includes('@') ? s : '', name: s };
   }
-  const email = String(actorOrEmail.email || '').trim().toLowerCase();
-  const name = String(actorOrEmail.name || actorOrEmail.actorName || '').trim().toLowerCase();
+  return {
+    email: String(actorOrEmail.email || '').trim().toLowerCase(),
+    name: String(actorOrEmail.name || actorOrEmail.actorName || '').trim().toLowerCase(),
+  };
+}
+
+export function isMugeshActor(actorOrEmail) {
+  const { email, name } = actorEmailAndName(actorOrEmail);
   if (email && (email === MUGESH_EMAIL || email.includes('mugesh.m@'))) return true;
   if (name && (name === 'mugesh' || name.startsWith('mugesh ') || name.startsWith('mugesh.'))) return true;
   return false;
 }
 
+export function isSrivathsActor(actorOrEmail) {
+  const { email, name } = actorEmailAndName(actorOrEmail);
+  if (email && (email === SRIVATHS_EMAIL || email.includes('srivaths.varadharajan@'))) return true;
+  if (name && (name === 'srivaths' || name.startsWith('srivaths ') || name.startsWith('srivaths.'))) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Display label for a system role in emails.
- * Never print "CFO" — use Mugesh (or blank next to a person name).
+ * Never print "CFO" — Mugesh has no designation; Srivaths is CTO.
  */
 export function formatRoleDisplayName(role, actorOrEmail = null) {
   if (isMugeshActor(actorOrEmail)) return '';
+  if (isSrivathsActor(actorOrEmail)) return 'CTO';
   const raw = String(role || '').trim();
   if (!raw) return '';
   if (/^cfo$/i.test(raw)) return 'Mugesh';
@@ -105,14 +119,14 @@ export function formatRoleDisplayName(role, actorOrEmail = null) {
   return map[raw] || raw;
 }
 
-/** "Name (Role)" for mail intros — never append CFO / Mugesh designation beside a person. */
+/** "Name (Role)" for mail intros — Srivaths is CTO; Mugesh has no designation. */
 export function formatActorWithRole(actorName, actorRole) {
   const name = String(actorName || '').trim();
-  const roleRaw = String(actorRole || '').trim();
-  if (/^cfo$/i.test(roleRaw) || isMugeshActor(name)) {
+  if (isSrivathsActor(name)) return name ? `${name} (CTO)` : 'CTO';
+  if (isMugeshActor(name) || /^cfo$/i.test(String(actorRole || '').trim())) {
     return name || 'Mugesh';
   }
-  const roleDisplay = formatRoleDisplayName(roleRaw, name || null);
+  const roleDisplay = formatRoleDisplayName(actorRole, name || null);
   if (name && roleDisplay) return `${name} (${roleDisplay})`;
   if (name) return name;
   return roleDisplay || 'Approver';
@@ -125,6 +139,7 @@ export function formatActorWithRole(actorName, actorRole) {
 export function sanitizeEmailCfoMentions(value) {
   if (value == null || typeof value !== 'string' || !value) return value;
   return value
+    .replace(/\b(srivaths[^(\n<]*)\s*\(\s*(?:CFO|Group\s*CEO)\s*\)/gi, '$1 (CTO)')
     // Drop designation in parentheses first: "mugesh.m (CFO)" → "mugesh.m"
     .replace(/\s*\(\s*Group\s*CEO\s*\)/gi, '')
     .replace(/\s*\(\s*CFO\s*\)/gi, '')

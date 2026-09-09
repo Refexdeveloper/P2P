@@ -675,6 +675,20 @@ export default function RfqEntryDetailPage() {
     try {
       const res = await rfqApi.getByPr(Number(prId));
       const data = res.data;
+      const purchaseType = String(
+        (data.pr as { purchaseType?: string; purchase_type?: string })?.purchaseType ||
+          (data.pr as { purchase_type?: string })?.purchase_type ||
+          ''
+      )
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_');
+      if (
+        isScm &&
+        (purchaseType === 'sass' || purchaseType === 'saas' || purchaseType === 'cloud_subscription')
+      ) {
+        navigate('/scm/rfq-entry', { replace: true });
+        return;
+      }
       setPr(data.pr as typeof pr);
       const loaded = data.pr as {
         billingLocationId?: number | null;
@@ -728,11 +742,16 @@ export default function RfqEntryDetailPage() {
         setPreviewRound(Math.max(1, ...rounds));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load RFQ');
+      const msg = err instanceof Error ? err.message : 'Failed to load RFQ';
+      if (isScm && /cloud subscription/i.test(msg)) {
+        navigate('/scm/rfq-entry', { replace: true });
+        return;
+      }
+      setError(msg);
     } finally {
       if (!soft) setLoading(false);
     }
-  }, [prId]);
+  }, [prId, isScm, navigate]);
 
   useEffect(() => {
     loadRfq();

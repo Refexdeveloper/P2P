@@ -6,35 +6,64 @@ const ROLE_DISPLAY_NAMES: Record<string, string> = {
 };
 
 const MUGESH_EMAIL = 'mugesh.m@refex.co.in';
+const SRIVATHS_EMAIL = 'srivaths.varadharajan@refex.co.in';
+
+function personEmail(userOrEmail?: { email?: string | null; name?: string | null } | string | null): string {
+  if (!userOrEmail) return '';
+  return typeof userOrEmail === 'string'
+    ? userOrEmail.trim().toLowerCase()
+    : String(userOrEmail.email || '')
+        .trim()
+        .toLowerCase();
+}
+
+function personName(userOrEmail?: { email?: string | null; name?: string | null } | string | null): string {
+  if (!userOrEmail || typeof userOrEmail === 'string') return '';
+  return String(userOrEmail.name || '')
+    .trim()
+    .toLowerCase();
+}
 
 /** True when this user is Mugesh (Cloud Subscription actor — no designation in UI). */
 export function isMugeshUser(userOrEmail?: { email?: string | null; name?: string | null } | string | null): boolean {
   if (!userOrEmail) return false;
-  const email =
-    typeof userOrEmail === 'string'
-      ? userOrEmail
-      : String(userOrEmail.email || '').trim().toLowerCase();
-  if (email && email === MUGESH_EMAIL) return true;
-  if (typeof userOrEmail !== 'string') {
-    const name = String(userOrEmail.name || '')
-      .trim()
-      .toLowerCase();
-    if (!email && name && (name === 'mugesh' || name.startsWith('mugesh '))) return true;
+  const email = personEmail(userOrEmail);
+  if (email && (email === MUGESH_EMAIL || email.includes('mugesh.m@'))) return true;
+  if (typeof userOrEmail === 'string') {
+    const s = userOrEmail.trim().toLowerCase();
+    return s === 'mugesh' || s.startsWith('mugesh ') || s.startsWith('mugesh.');
   }
+  const name = personName(userOrEmail);
+  if (!email && name && (name === 'mugesh' || name.startsWith('mugesh '))) return true;
+  return false;
+}
+
+/** True when this user is Srivaths (L2) — show CTO, never CFO. */
+export function isSrivathsUser(
+  userOrEmail?: { email?: string | null; name?: string | null } | string | null
+): boolean {
+  if (!userOrEmail) return false;
+  const email = personEmail(userOrEmail);
+  if (email && (email === SRIVATHS_EMAIL || email.includes('srivaths.varadharajan@'))) return true;
+  const raw =
+    typeof userOrEmail === 'string'
+      ? userOrEmail.trim().toLowerCase()
+      : personName(userOrEmail);
+  if (raw && (raw === 'srivaths' || raw.startsWith('srivaths ') || raw.startsWith('srivaths.'))) return true;
   return false;
 }
 
 /**
  * Display label for a system role.
- * Mugesh must not show CFO / Group CEO (or any designation) on any page.
+ * Mugesh: no designation. Srivaths: CTO (system role may still be CFO).
  */
 export function formatRoleDisplayName(
   role?: string | null,
   userOrEmail?: { email?: string | null; name?: string | null } | string | null
 ): string {
   if (isMugeshUser(userOrEmail)) return '';
+  if (isSrivathsUser(userOrEmail)) return 'CTO';
   if (!role) return '';
-  // History rows may pass role "CFO" with Mugesh as the person — callers should pass email.
   return ROLE_DISPLAY_NAMES[role] || role;
 }
 
@@ -45,7 +74,7 @@ export function formatPersonRoleSuffix(
   separator = ' · '
 ): string {
   if (isMugeshUser(personNameOrEmail) || isMugeshUser({ name: personNameOrEmail })) return '';
-  const label = formatRoleDisplayName(role, personNameOrEmail ? { name: personNameOrEmail } : null);
+  const label = formatRoleDisplayName(role, personNameOrEmail ? { name: personNameOrEmail, email: personNameOrEmail } : null);
   return label ? `${separator}${label}` : '';
 }
 

@@ -26,6 +26,7 @@ import {
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 import { formatCurrency, normalizeEmailCurrency } from '../templates/emailUtils.js';
+import { isSassPurchaseType } from './sassWorkflow.js';
 
 function currencySymbolForCode(currency) {
   const code = normalizeEmailCurrency(currency);
@@ -1436,6 +1437,10 @@ export async function getRfqByPrId(user, prId) {
   if (!pr) throw new Error('PR not found');
   if (!(await userCanViewPrQuotes(user, pr))) {
     throw new Error('Unauthorized');
+  }
+  const isScmViewer = ['SCM Buyer', 'SCM Manager'].includes(user.role);
+  if (isScmViewer && isSassPurchaseType(pr.purchaseType || pr.purchase_type)) {
+    throw new Error('Cloud Subscription requests are not handled in SCM RFQ Entry');
   }
   const config = await getOrCreateRfqConfig(prId);
   const invitations = await getInvitationsWithSubmissions(prId);
@@ -2877,6 +2882,8 @@ export async function listScmRfqEntryPrs(user) {
      JOIN users u ON u.id = pr.requester_id
      LEFT JOIN rfq_configs rc ON rc.pr_id = pr.id
      WHERE pr.status = ?
+       AND LOWER(REPLACE(REPLACE(COALESCE(pr.purchase_type, ''), '-', '_'), ' ', '_'))
+           NOT IN ('sass', 'saas', 'cloud_subscription')
        AND (rc.finalized_at IS NULL)
        AND (
          COALESCE(pr.vendor_selection, 'scm') = 'scm'
@@ -2925,6 +2932,8 @@ export async function listPostRfqPending(user) {
      JOIN workflow_tasks wt ON wt.pr_id = pr.id
      WHERE wt.task_type = 'RFQ_POST_APPROVAL'
        AND wt.status = 'pending'
+       AND LOWER(REPLACE(REPLACE(COALESCE(pr.purchase_type, ''), '-', '_'), ' ', '_'))
+           NOT IN ('sass', 'saas', 'cloud_subscription')
        AND (
          wt.assigned_user_id = ?
          OR (wt.assigned_user_id IS NULL AND wt.assigned_role = ?)
@@ -2942,7 +2951,10 @@ export async function listPostRfqPending(user) {
   const idSet = new Set(assignedRows.map((r) => r.id));
   if (ROLE_QUEUED_POST_RFQ.has(user.role) && userRoleConfig?.status) {
     const [statusRows] = await pool.query(
-      `SELECT id FROM purchase_requests WHERE status = ?
+      `SELECT id FROM purchase_requests
+       WHERE status = ?
+         AND LOWER(REPLACE(REPLACE(COALESCE(purchase_type, ''), '-', '_'), ' ', '_'))
+             NOT IN ('sass', 'saas', 'cloud_subscription')
        ORDER BY COALESCE(submitted_at, created_at, updated_at) DESC, id DESC`,
       [userRoleConfig.status]
     );
@@ -2958,6 +2970,8 @@ export async function listPostRfqPending(user) {
        FROM purchase_requests pr
        JOIN rfq_configs rc ON rc.pr_id = pr.id AND rc.finalized_at IS NOT NULL
        WHERE pr.status = ?
+         AND LOWER(REPLACE(REPLACE(COALESCE(pr.purchase_type, ''), '-', '_'), ' ', '_'))
+             NOT IN ('sass', 'saas', 'cloud_subscription')
          AND NOT EXISTS (
            SELECT 1 FROM purchase_orders po WHERE po.pr_id = pr.id
          )
@@ -2968,7 +2982,10 @@ export async function listPostRfqPending(user) {
 
     // Also show RFQs still waiting on SCM Manager vendor approval
     const [pendingMgrRows] = await pool.query(
-      `SELECT id FROM purchase_requests WHERE status = ?
+      `SELECT id FROM purchase_requests
+       WHERE status = ?
+         AND LOWER(REPLACE(REPLACE(COALESCE(purchase_type, ''), '-', '_'), ' ', '_'))
+             NOT IN ('sass', 'saas', 'cloud_subscription')
        ORDER BY COALESCE(submitted_at, created_at, updated_at) DESC, id DESC`,
       [PR_STATUS.PENDING_BUSINESS_APPROVAL]
     );

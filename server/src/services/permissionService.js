@@ -2,7 +2,7 @@ import pool from '../config/db.js';
 
 export const SUPER_ADMIN_ROLE = 'Super Admin';
 
-/** Known users who must always resolve to a specific P2P role (e.g. Group CEO / CFO). */
+/** Known users who must always resolve to a specific P2P role (Srivaths = CTO in UI; system role CFO). */
 const EMAIL_ROLE_OVERRIDES = {
   'srivaths.varadharajan@refex.co.in': 'CFO',
 };
