@@ -10,6 +10,17 @@ interface CreateGRNModalProps {
   initialPoId?: number;
 }
 
+const GRN_LINE_ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx';
+const MAX_GRN_LINE_FILES = 5;
+const MAX_GRN_LINE_FILE_BYTES = 10 * 1024 * 1024;
+
+function formatFileSize(bytes: number) {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export interface NewGRNLineItem {
   id: string;
   description: string;
@@ -18,6 +29,7 @@ export interface NewGRNLineItem {
   unitPrice: number;
   condition: 'Good' | 'Damaged' | 'Pending Inspection';
   remarks: string;
+  attachments: File[];
 }
 
 export interface NewGRNData {
@@ -173,6 +185,7 @@ export default function CreateGRNModal({
         unitPrice: item.unitPrice,
         condition: 'Good' as const,
         remarks: '',
+        attachments: [],
       }))
     );
   }, []);
@@ -367,12 +380,58 @@ export default function CreateGRNModal({
 
   const handleLineItemChange = (
     idx: number,
-    field: keyof NewGRNLineItem,
+    field: Exclude<keyof NewGRNLineItem, 'attachments'>,
     value: string | number
   ) => {
     setLineItems((prev) =>
       prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item))
     );
+  };
+
+  const addLineItemFiles = (idx: number, files: FileList | null) => {
+    if (!files?.length) return;
+    const incoming = Array.from(files);
+    setLineItems((prev) => {
+      const current = prev[idx];
+      if (!current) return prev;
+      const next = [...(current.attachments || [])];
+      const tooLarge: string[] = [];
+      let skippedMax = false;
+      for (const file of incoming) {
+        if (file.size > MAX_GRN_LINE_FILE_BYTES) {
+          tooLarge.push(file.name);
+          continue;
+        }
+        if (next.length >= MAX_GRN_LINE_FILES) {
+          skippedMax = true;
+          break;
+        }
+        next.push(file);
+      }
+      setErrors((errs) => {
+        const copy = { ...errs };
+        if (tooLarge.length) copy[`att_${idx}`] = `${tooLarge.join(', ')} exceed 10 MB`;
+        else if (skippedMax) copy[`att_${idx}`] = `Maximum ${MAX_GRN_LINE_FILES} files per line`;
+        else delete copy[`att_${idx}`];
+        return copy;
+      });
+      return prev.map((item, i) => (i === idx ? { ...item, attachments: next } : item));
+    });
+  };
+
+  const removeLineItemFile = (idx: number, fileIdx: number) => {
+    setLineItems((prev) =>
+      prev.map((item, i) =>
+        i === idx
+          ? { ...item, attachments: item.attachments.filter((_, j) => j !== fileIdx) }
+          : item
+      )
+    );
+    setErrors((errs) => {
+      const copy = { ...errs };
+      delete copy[`att_${idx}`];
+      return copy;
+    });
   };
 
   const computedSubtotal = useMemo(
@@ -754,7 +813,7 @@ export default function CreateGRNModal({
             <div>
               <h3 className="text-base font-bold text-gray-900 mb-1">Line Items Receipt</h3>
               <p className="text-sm text-gray-500 mb-5">
-                Quantities are prefilled from the original PO. Adjust received qty if needed.
+                Quantities are prefilled from the original PO. Attach photos or delivery documents on each line if needed.
               </p>
               {selectedPOData && <OriginalPoPanel po={selectedPOData} />}
 
@@ -820,6 +879,57 @@ export default function CreateGRNModal({
                         />
                       </div>
                     </div>
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <label className="text-xs font-semibold text-gray-600">
+                          Attachments
+                          <span className="font-normal text-gray-400 ml-1">
+                            (optional · max {MAX_GRN_LINE_FILES} · 10 MB each)
+                          </span>
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg cursor-pointer hover:bg-teal-100">
+                          <i className="ri-attachment-2"></i>
+                          Add files
+                          <input
+                            type="file"
+                            multiple
+                            accept={GRN_LINE_ACCEPT}
+                            className="hidden"
+                            onChange={(e) => {
+                              addLineItemFiles(idx, e.target.files);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {item.attachments.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {item.attachments.map((file, fileIdx) => (
+                            <span
+                              key={`${file.name}-${file.size}-${fileIdx}`}
+                              className="inline-flex items-center gap-1.5 max-w-full px-2 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700"
+                            >
+                              <i className="ri-file-line text-gray-400"></i>
+                              <span className="truncate">{file.name}</span>
+                              <span className="text-gray-400">{formatFileSize(file.size)}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeLineItemFile(idx, fileIdx)}
+                                className="text-gray-400 hover:text-red-600 cursor-pointer"
+                                aria-label={`Remove ${file.name}`}
+                              >
+                                <i className="ri-close-line"></i>
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400">No files attached for this item</p>
+                      )}
+                      {errors[`att_${idx}`] && (
+                        <p className="text-xs text-red-500 mt-1">{errors[`att_${idx}`]}</p>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {!lineItems.length && (
@@ -866,6 +976,7 @@ export default function CreateGRNModal({
                       <th className="px-3 py-2 text-left text-xs text-gray-500">Ordered</th>
                       <th className="px-3 py-2 text-left text-xs text-gray-500">Received</th>
                       <th className="px-3 py-2 text-left text-xs text-gray-500">Condition</th>
+                      <th className="px-3 py-2 text-left text-xs text-gray-500">Attachments</th>
                       <th className="px-3 py-2 text-right text-xs text-gray-500">Amount</th>
                     </tr>
                   </thead>
@@ -876,6 +987,11 @@ export default function CreateGRNModal({
                         <td className="px-3 py-2">{item.orderedQty}</td>
                         <td className="px-3 py-2 font-semibold">{item.receivedQty}</td>
                         <td className="px-3 py-2">{item.condition}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">
+                          {item.attachments.length
+                            ? item.attachments.map((f) => f.name).join(', ')
+                            : '—'}
+                        </td>
                         <td className="px-3 py-2 text-right font-semibold">
                           {formatCurrency(item.receivedQty * item.unitPrice)}
                         </td>

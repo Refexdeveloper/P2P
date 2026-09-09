@@ -1,5 +1,12 @@
 export type GRNStatus = 'Pending Receipt' | 'Partially Received' | 'Fully Received' | 'Quality Rejected';
 
+export interface GRNLineAttachment {
+  id: number;
+  fileName: string;
+  size?: number;
+  mimeType?: string | null;
+}
+
 export interface GRNLineItem {
   id: string;
   description: string;
@@ -9,6 +16,7 @@ export interface GRNLineItem {
   unitPrice: number;
   total: number;
   condition: 'Good' | 'Damaged' | 'Pending Inspection';
+  attachments?: GRNLineAttachment[];
 }
 
 export interface GRNData {

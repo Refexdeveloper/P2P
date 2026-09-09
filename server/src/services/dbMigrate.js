@@ -351,6 +351,17 @@ const MIGRATIONS = [
     FOREIGN KEY (grn_id) REFERENCES grn_headers(id) ON DELETE CASCADE,
     INDEX idx_grn_line_grn (grn_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS grn_line_attachments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    grn_line_item_id INT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_size INT NOT NULL DEFAULT 0,
+    mime_type VARCHAR(120) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (grn_line_item_id) REFERENCES grn_line_items(id) ON DELETE CASCADE,
+    INDEX idx_grn_line_att_line (grn_line_item_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS invoices (
     id INT AUTO_INCREMENT PRIMARY KEY,
     invoice_number VARCHAR(80) NULL,

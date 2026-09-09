@@ -31,6 +31,19 @@ async function deletePoDependents(conn, poIds) {
   const [grns] = await tryQuery(conn, `SELECT id FROM grn_headers WHERE po_id IN (${ph})`, ids);
   const grnIds = (grns || []).map((g) => Number(g.id)).filter((n) => n > 0);
   if (grnIds.length) {
+    const [grnLines] = await tryQuery(
+      conn,
+      `SELECT id FROM grn_line_items WHERE grn_id IN (${inList(grnIds)})`,
+      grnIds
+    );
+    const lineIds = (grnLines || []).map((r) => Number(r.id)).filter((n) => n > 0);
+    if (lineIds.length) {
+      await tryQuery(
+        conn,
+        `DELETE FROM grn_line_attachments WHERE grn_line_item_id IN (${inList(lineIds)})`,
+        lineIds
+      );
+    }
     await tryQuery(conn, `DELETE FROM grn_line_items WHERE grn_id IN (${inList(grnIds)})`, grnIds);
     await tryQuery(conn, `DELETE FROM grn_headers WHERE po_id IN (${ph})`, ids);
   }

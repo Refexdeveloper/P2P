@@ -193,6 +193,8 @@ export default function VendorInvoicePage() {
       setBusyId(null);
     }
   };
+
+  const submitManual = async () => {
     if (!uploadRow) return;
     if (!form.invoiceNumber.trim() || !form.file) {
       showToast('Invoice number and file are required');

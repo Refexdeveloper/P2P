@@ -165,6 +165,12 @@ type FulfillmentGrn = {
     unitPrice?: number;
     total?: number;
     condition?: string;
+    attachments?: Array<{
+      id: number;
+      fileName: string;
+      size?: number;
+      mimeType?: string | null;
+    }>;
   }>;
 };
 
@@ -926,7 +932,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                     <p className="text-sm text-gray-500 text-center py-4">No GRN lines</p>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[640px] text-sm">
+                      <table className="w-full min-w-[760px] text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">
                           <tr>
                             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Item</th>
@@ -934,6 +940,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                             <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Received</th>
                             <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Condition</th>
                             <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Total</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Attachments</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -945,6 +952,35 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                               <td className="px-3 py-2">{li.condition || '—'}</td>
                               <td className="px-3 py-2 text-right tabular-nums">
                                 {formatCurrency(Number(li.total || 0))}
+                              </td>
+                              <td className="px-3 py-2">
+                                {(li.attachments || []).length === 0 ? (
+                                  <span className="text-xs text-gray-400">—</span>
+                                ) : (
+                                  <div className="flex flex-col gap-1.5">
+                                    {(li.attachments || []).map((file) => (
+                                      <button
+                                        key={file.id}
+                                        type="button"
+                                        disabled={openingKey === `grn-att-${file.id}`}
+                                        onClick={() =>
+                                          void handleOpenFile({
+                                            key: `grn-att-${file.id}`,
+                                            kind: 'GRN Attachment',
+                                            name: file.fileName,
+                                            fileName: file.fileName,
+                                            url: accountsApi.grnLineAttachmentUrl(file.id),
+                                          })
+                                        }
+                                        className="text-left text-xs font-semibold text-teal-700 hover:underline disabled:opacity-50 cursor-pointer"
+                                      >
+                                        {openingKey === `grn-att-${file.id}`
+                                          ? 'Opening…'
+                                          : file.fileName}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           ))}

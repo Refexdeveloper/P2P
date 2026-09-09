@@ -12,6 +12,7 @@ import {
   uploadPayment,
   getAccountsDashboard,
   resolveInvoiceFile,
+  resolveGrnLineAttachmentFile,
   getInvoiceById,
   sendVendorInvoiceMail,
   getInvoiceByToken,
@@ -90,6 +91,23 @@ router.post('/grn', requireRoles(...GRN_ROLES), async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
+
+router.get(
+  '/grn/line-attachments/:id/file',
+  requireRolesOrPermissions(
+    [...GRN_ROLES, ...ACCOUNTS_ROLES, 'CFO', 'PR Manager', 'HOD Approver'],
+    ['nav.track_po', 'nav.grn', 'nav.invoice_verification']
+  ),
+  async (req, res) => {
+    try {
+      const file = await resolveGrnLineAttachmentFile(Number(req.params.id));
+      if (!file) return res.status(404).json({ message: 'GRN attachment not found' });
+      return sendStoredFile(res, file);
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
 
 router.get('/invoices', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer', 'Requester'), async (req, res) => {
   try {

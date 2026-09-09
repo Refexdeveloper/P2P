@@ -10,6 +10,7 @@
  *   vendor-kyc/         ← vendor KYC documents
  *   purchase-orders/    ← PO PDFs, vendor acceptance, cancellation docs
  *   invoices/           ← accounts invoice files
+ *   grn-attachments/    ← GRN line-item receipt / inspection files
  *   rfq-attachments/    ← vendor quotation uploads
  *   signatures/         ← SCM manager signatures
  *   pr-attachments/     ← FSD / PR attachment files

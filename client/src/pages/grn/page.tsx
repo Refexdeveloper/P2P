@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useCallback, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import { GRNData, GRNStatus } from '../../mocks/grn-data';
-import { accountsApi } from '../../services/api';
+import { accountsApi, fileToAttachmentPayload } from '../../services/api';
 import CreateGRNModal, { NewGRNData } from './components/CreateGRNModal';
 import GRNApprovalModal from './components/GRNApprovalModal';
 
@@ -232,6 +233,149 @@ function ReceiptModal({ isOpen, grn, onConfirm, onClose }: ReceiptModalProps) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function formatFileSize(bytes?: number) {
+  const n = Number(bytes) || 0;
+  if (!n) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function GrnLineAttachments({
+  attachments,
+}: {
+  attachments?: Array<{ id: number; fileName: string; size?: number }>;
+}) {
+  const [openingKey, setOpeningKey] = useState('');
+  const [error, setError] = useState('');
+  const [preview, setPreview] = useState<{ url: string; fileName: string; kind: 'pdf' | 'image' | 'other' } | null>(
+    null
+  );
+
+  useEffect(() => {
+    return () => {
+      if (preview?.url) URL.revokeObjectURL(preview.url);
+    };
+  }, [preview]);
+
+  const sniffKind = (blob: Blob, fileName: string): 'pdf' | 'image' | 'other' => {
+    const type = String(blob.type || '').toLowerCase();
+    const name = String(fileName || '').toLowerCase();
+    if (type.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
+    if (type.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(name)) return 'image';
+    return 'other';
+  };
+
+  const openFile = async (
+    file: { id: number; fileName: string },
+    download = false
+  ) => {
+    setError('');
+    setOpeningKey(download ? `dl-${file.id}` : String(file.id));
+    try {
+      const blob = await accountsApi.fetchAuthFile(accountsApi.grnLineAttachmentUrl(file.id));
+      const url = URL.createObjectURL(blob);
+      if (download) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.fileName || 'grn-attachment';
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
+      if (preview?.url) URL.revokeObjectURL(preview.url);
+      setPreview({ url, fileName: file.fileName, kind: sniffKind(blob, file.fileName) });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Could not open ${file.fileName}`);
+    } finally {
+      setOpeningKey('');
+    }
+  };
+
+  if (!attachments?.length) {
+    return <span className="text-xs text-gray-400">—</span>;
+  }
+
+  return (
+    <div className="space-y-1.5 min-w-[160px]">
+      {error ? <p className="text-xs text-red-600">{error}</p> : null}
+      {attachments.map((file) => (
+        <div key={file.id} className="flex items-center gap-2">
+          <i className="ri-attachment-2 text-gray-400"></i>
+          <span className="text-xs text-gray-800 truncate max-w-[140px]" title={file.fileName}>
+            {file.fileName}
+          </span>
+          {file.size ? (
+            <span className="text-[10px] text-gray-400 whitespace-nowrap">{formatFileSize(file.size)}</span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void openFile(file)}
+            disabled={openingKey === String(file.id)}
+            className="text-xs font-semibold text-teal-700 hover:underline disabled:opacity-50 cursor-pointer"
+          >
+            {openingKey === String(file.id) ? 'Opening…' : 'View'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void openFile(file, true)}
+            disabled={openingKey === `dl-${file.id}`}
+            className="text-xs font-semibold text-gray-600 hover:underline disabled:opacity-50 cursor-pointer"
+          >
+            {openingKey === `dl-${file.id}` ? '…' : 'Download'}
+          </button>
+        </div>
+      ))}
+      {preview &&
+        createPortal(
+          <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <p className="text-sm font-semibold text-gray-900 truncate pr-4">{preview.fileName}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    URL.revokeObjectURL(preview.url);
+                    setPreview(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-800 cursor-pointer"
+                >
+                  <i className="ri-close-line text-xl"></i>
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 bg-gray-100">
+                {preview.kind === 'pdf' ? (
+                  <iframe title={preview.fileName} src={preview.url} className="w-full h-[70vh]" />
+                ) : preview.kind === 'image' ? (
+                  <div className="h-[70vh] overflow-auto flex items-center justify-center p-4">
+                    <img src={preview.url} alt={preview.fileName} className="max-w-full max-h-full object-contain" />
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-sm text-gray-600">
+                    Preview is not available for this file type.{' '}
+                    <button
+                      type="button"
+                      className="text-teal-700 font-semibold hover:underline cursor-pointer"
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = preview.url;
+                        a.download = preview.fileName;
+                        a.click();
+                      }}
+                    >
+                      Download
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -505,7 +649,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      {['#', 'Item Description', 'Ordered Qty', 'Received Qty', 'Pending Qty', 'Unit Price', 'Total', 'Condition'].map((h) => (
+                      {['#', 'Item Description', 'Ordered Qty', 'Received Qty', 'Pending Qty', 'Unit Price', 'Total', 'Condition', 'Attachments'].map((h) => (
                         <th
                           key={h}
                           className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap ${
@@ -534,6 +678,9 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                         <td className="px-4 py-3 text-right">
                           <ConditionBadge condition={item.condition} />
                         </td>
+                        <td className="px-4 py-3">
+                          <GrnLineAttachments attachments={item.attachments} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -541,17 +688,17 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                     <tr>
                       <td colSpan={5} className="px-4 py-3 text-sm font-bold text-gray-700 text-right">Subtotal</td>
                       <td colSpan={2} className="px-4 py-3 text-sm font-bold text-gray-900 text-right">{formatCurrency(grn.subtotal)}</td>
-                      <td></td>
+                      <td colSpan={2}></td>
                     </tr>
                     <tr>
                       <td colSpan={5} className="px-4 py-2 text-sm text-gray-600 text-right">GST ({grn.gstPercentage}%)</td>
                       <td colSpan={2} className="px-4 py-2 text-sm text-gray-700 text-right">{formatCurrency(grn.taxAmount)}</td>
-                      <td></td>
+                      <td colSpan={2}></td>
                     </tr>
                     <tr>
                       <td colSpan={5} className="px-4 py-3 text-base font-bold text-gray-900 text-right">Grand Total</td>
                       <td colSpan={2} className="px-4 py-3 text-base font-bold text-teal-600 text-right">{formatCurrency(grn.grandTotal)}</td>
-                      <td></td>
+                      <td colSpan={2}></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -741,15 +888,28 @@ export default function GRNPage() {
         receivedBy: data.receivedBy,
         inspectedBy: data.inspectedBy,
         remarks: data.remarks,
-        lineItems: data.lineItems.map((item) => ({
-          id: item.id,
-          poLineItemId: item.id,
-          description: item.description,
-          orderedQty: item.orderedQty,
-          receivedQty: item.receivedQty,
-          unitPrice: item.unitPrice,
-          condition: item.condition,
-        })),
+        lineItems: await Promise.all(
+          data.lineItems.map(async (item) => ({
+            id: item.id,
+            poLineItemId: item.id,
+            description: item.description,
+            orderedQty: item.orderedQty,
+            receivedQty: item.receivedQty,
+            unitPrice: item.unitPrice,
+            condition: item.condition,
+            remarks: item.remarks,
+            attachments: await Promise.all(
+              (item.attachments || []).map(async (file) => {
+                const payload = await fileToAttachmentPayload(file);
+                return {
+                  fileName: payload.fileName,
+                  fileData: payload.data,
+                  mimeType: payload.mimeType,
+                };
+              })
+            ),
+          }))
+        ),
       });
       setCreateGRNOpen(false);
       setPrefillPoId(undefined);

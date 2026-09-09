@@ -14,8 +14,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_ROOT = path.resolve(__dirname, '../../uploads');
 const INVOICE_DIR = path.join(UPLOAD_ROOT, 'invoices');
 const PAYMENT_DIR = path.join(UPLOAD_ROOT, 'payments');
+const GRN_DIR = path.join(UPLOAD_ROOT, 'grn-attachments');
+const MAX_GRN_LINE_ATTACHMENTS = 5;
+const MAX_GRN_LINE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
-for (const dir of [INVOICE_DIR, PAYMENT_DIR]) {
+for (const dir of [INVOICE_DIR, PAYMENT_DIR, GRN_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -37,6 +40,67 @@ const GRN_STATUS_UI = {
   partially_received: 'Partially Received',
   rejected: 'Quality Rejected',
 };
+
+function mapGrnAttachmentRow(row) {
+  return {
+    id: row.id,
+    fileName: row.file_name,
+    size: Number(row.file_size) || 0,
+    mimeType: row.mime_type || null,
+  };
+}
+
+async function loadAttachmentsByLineIds(lineIds) {
+  const ids = [...new Set((lineIds || []).map(Number).filter((n) => n > 0))];
+  if (!ids.length) return {};
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, grn_line_item_id, file_name, file_size, mime_type
+       FROM grn_line_attachments
+       WHERE grn_line_item_id IN (${ids.map(() => '?').join(',')})
+       ORDER BY id ASC`,
+      ids
+    );
+    const map = {};
+    for (const row of rows) {
+      const key = String(row.grn_line_item_id);
+      if (!map[key]) map[key] = [];
+      map[key].push(mapGrnAttachmentRow(row));
+    }
+    return map;
+  } catch (err) {
+    if (String(err?.code || '') === 'ER_NO_SUCH_TABLE') return {};
+    throw err;
+  }
+}
+
+async function saveGrnLineAttachments(conn, lineId, attachments) {
+  const list = Array.isArray(attachments) ? attachments.slice(0, MAX_GRN_LINE_ATTACHMENTS) : [];
+  for (const att of list) {
+    const fileName = att?.fileName || att?.name;
+    const fileData = att?.fileData || att?.data;
+    if (!fileName || !fileData) continue;
+    const raw = String(fileData).includes(',') ? String(fileData).split(',')[1] : String(fileData);
+    const buffer = Buffer.from(raw, 'base64');
+    if (buffer.length > MAX_GRN_LINE_ATTACHMENT_BYTES) {
+      throw new Error(`Attachment ${fileName} exceeds 10 MB`);
+    }
+    const saved = await saveBase64File(
+      GRN_DIR,
+      `grn_line_${lineId}`,
+      fileName,
+      fileData,
+      'grn-attachments'
+    );
+    if (!saved.filePath) continue;
+    await conn.query(
+      `INSERT INTO grn_line_attachments
+       (grn_line_item_id, file_name, file_path, file_size, mime_type)
+       VALUES (?, ?, ?, ?, ?)`,
+      [lineId, saved.fileName || fileName, saved.filePath, buffer.length, att.mimeType || null]
+    );
+  }
+}
 
 function parseHistory(raw) {
   if (!raw) return [];
@@ -394,6 +458,7 @@ export async function listGrns(user = null) {
       `SELECT * FROM grn_line_items WHERE grn_id = ? ORDER BY id ASC`,
       [row.id]
     );
+    const attMap = await loadAttachmentsByLineIds(lines.map((li) => li.id));
     result.push({
       id: row.id,
       grnNumber: row.grn_number,
@@ -428,6 +493,7 @@ export async function listGrns(user = null) {
         unitPrice: Number(li.unit_price) || 0,
         total: Number(li.line_total) || 0,
         condition: li.condition_label || 'Good',
+        attachments: attMap[String(li.id)] || [],
       })),
       receiptHistory: [
         {
@@ -517,7 +583,7 @@ export async function submitGrn(user, body) {
       const ordered = Number(item.orderedQty) || 0;
       const received = Number(item.receivedQty) || 0;
       const unitPrice = Number(item.unitPrice) || 0;
-      await conn.query(
+      const [lineResult] = await conn.query(
         `INSERT INTO grn_line_items
          (grn_id, po_line_item_id, description, ordered_qty, received_qty, unit_price, line_total, condition_label)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -532,6 +598,7 @@ export async function submitGrn(user, body) {
           item.condition || 'Good',
         ]
       );
+      await saveGrnLineAttachments(conn, lineResult.insertId, item.attachments);
     }
 
     const history = [
@@ -1265,6 +1332,41 @@ export async function submitInvoiceByToken(token, body = {}) {
   );
 }
 
+export async function resolveGrnLineAttachmentFile(attachmentId) {
+  const id = Number(attachmentId);
+  if (!id) return null;
+  let rows;
+  try {
+    [rows] = await pool.query(
+      `SELECT file_name, file_path, mime_type FROM grn_line_attachments WHERE id = ?`,
+      [id]
+    );
+  } catch (err) {
+    if (String(err?.code || '') === 'ER_NO_SUCH_TABLE') return null;
+    throw err;
+  }
+  if (!rows.length || !rows[0].file_path) return null;
+  const fileName = rows[0].file_name || 'grn-attachment';
+  const stored = String(rows[0].file_path).replace(/\\/g, '/');
+  const base = path.basename(stored);
+  const diskCandidates = [
+    path.isAbsolute(stored) ? stored : null,
+    path.join(GRN_DIR, stored),
+    path.join(GRN_DIR, base),
+  ].filter(Boolean);
+  for (const fullPath of diskCandidates) {
+    if (fs.existsSync(fullPath)) return { fullPath, fileName, buffer: null };
+  }
+  if (gcsEnabled()) {
+    const keys = [...new Set([gcsFolderSafe(stored, 'grn-attachments'), `grn-attachments/${base}`, stored, base])];
+    for (const key of keys) {
+      const buf = await downloadFromGcs(key);
+      if (buf?.length) return { fullPath: null, fileName, buffer: buf };
+    }
+  }
+  return null;
+}
+
 export async function resolveInvoiceFile(invoiceId) {
   const [rows] = await pool.query(
     `SELECT invoice_file_name, invoice_file_path FROM invoices WHERE id = ?`,
@@ -1320,6 +1422,7 @@ export async function getPoFulfillmentSummary(poId) {
       `SELECT * FROM grn_line_items WHERE grn_id = ? ORDER BY id ASC`,
       [row.id]
     );
+    const attMap = await loadAttachmentsByLineIds(lines.map((li) => li.id));
     const statusRaw = String(row.status || '');
     const finished = ['submitted', 'fully_received', 'partially_received'].includes(statusRaw);
     if (finished) {
@@ -1344,6 +1447,7 @@ export async function getPoFulfillmentSummary(poId) {
           unitPrice: Number(li.unit_price) || 0,
           total: Number(li.line_total) || 0,
           condition: li.condition_label || 'Good',
+          attachments: attMap[String(li.id)] || [],
         })),
       };
     }

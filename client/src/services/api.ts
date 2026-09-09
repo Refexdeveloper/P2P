@@ -2035,6 +2035,7 @@ export const accountsApi = {
       body: JSON.stringify(body),
     }),
   invoiceFileUrl: (id: number) => `${API_URL}/api/accounts/invoices/${id}/file`,
+  grnLineAttachmentUrl: (id: number) => `${API_URL}/api/accounts/grn/line-attachments/${id}/file`,
   downloadInvoiceFile: async (id: number, fileName?: string) => {
     const token = getToken();
     const res = await fetch(`${API_URL}/api/accounts/invoices/${id}/file`, {
