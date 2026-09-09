@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import PeriodPicker from './PeriodPicker';
+import FilterSheetSelect from './FilterSheetSelect';
 import { defaultFyFilter } from '../fyPeriod';
 
 export type DashboardFiltersValue = {
@@ -28,6 +30,31 @@ const EMPTY: DashboardFiltersValue = {
 const fieldClass =
   'h-11 px-3 border border-[#E6E8F0] rounded-2xl bg-white text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400';
 
+const PO_STATUSES = [
+  { value: '', label: 'All statuses' },
+  { value: 'Approved', label: 'Approved' },
+  { value: 'Pending Approval', label: 'Pending' },
+  { value: 'Rejected', label: 'Rejected' },
+];
+
+function countActiveFilters(
+  value: DashboardFiltersValue,
+  resetValue: DashboardFiltersValue,
+  lockEntity: boolean
+) {
+  const base = resetValue || EMPTY;
+  let n = 0;
+  if (!lockEntity && value.entityId && value.entityId !== (base.entityId || '')) n += 1;
+  if (value.department) n += 1;
+  if (value.category) n += 1;
+  if (value.vendor) n += 1;
+  if (value.poStatus) n += 1;
+  if (value.amountMin) n += 1;
+  if (value.amountMax) n += 1;
+  if (value.dateFrom !== base.dateFrom || value.dateTo !== base.dateTo) n += 1;
+  return n;
+}
+
 export default function DashboardFilters({
   value,
   entities,
@@ -52,6 +79,8 @@ export default function DashboardFilters({
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState(value);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetDraft, setSheetDraft] = useState(value);
 
   useEffect(() => {
     setDraft(value);
@@ -65,11 +94,211 @@ export default function DashboardFilters({
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
+  useEffect(() => {
+    if (!sheetOpen) return;
+    setSheetDraft(value);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSheetOpen(false);
+    };
+    const onResize = () => {
+      if (window.innerWidth >= 992) setSheetOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+    };
+    // Snapshot filters only when the sheet opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetOpen]);
+
   const extraCount = [value.vendor, value.poStatus, value.amountMin, value.amountMax].filter(Boolean).length;
   const clearTo = resetValue || EMPTY;
+  const activeCount = countActiveFilters(value, clearTo, lockEntity);
+
+  const companyOptions = useMemo(
+    () => [
+      { value: '', label: lockEntity ? lockedEntityLabel || 'Assigned entity' : 'All Companies' },
+      ...entities.map((e) => ({ value: e.id, label: e.name })),
+    ],
+    [entities, lockEntity, lockedEntityLabel]
+  );
+  const departmentOptions = useMemo(
+    () => [{ value: '', label: 'All Departments' }, ...departments.map((d) => ({ value: d, label: d }))],
+    [departments]
+  );
+  const categoryOptions = useMemo(
+    () => [{ value: '', label: 'All Categories' }, ...categories.map((c) => ({ value: c, label: c }))],
+    [categories]
+  );
+  const vendorOptions = useMemo(
+    () => [{ value: '', label: 'All Vendors' }, ...vendors.map((v) => ({ value: v, label: v }))],
+    [vendors]
+  );
+
+  const closeSheet = () => setSheetOpen(false);
+  const applySheet = () => {
+    onChange(sheetDraft);
+    setSheetOpen(false);
+  };
+  const clearSheet = () => {
+    onChange(clearTo);
+    setSheetDraft(clearTo);
+    setSheetOpen(false);
+  };
+
+  const sheet =
+    sheetOpen && typeof document !== 'undefined'
+      ? createPortal(
+          <div className="min-[992px]:hidden" role="presentation">
+            <button
+              type="button"
+              aria-label="Close filters"
+              className="fixed inset-0 z-[10040] bg-slate-900/40"
+              onClick={closeSheet}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="dashboard-filter-sheet-title"
+              className="animate-sheet-up fixed inset-x-0 bottom-0 z-[10041] flex max-h-[88vh] flex-col rounded-t-3xl bg-white shadow-[0_-12px_40px_rgba(16,24,40,0.18)]"
+            >
+              <div className="h-1 shrink-0 rounded-t-3xl bg-teal-600" />
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#EEF0F5] bg-white px-4 py-3">
+                <h2 id="dashboard-filter-sheet-title" className="text-base font-semibold text-slate-900">
+                  Filters
+                </h2>
+                <button
+                  type="button"
+                  onClick={closeSheet}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+                  aria-label="Close"
+                >
+                  <i className="ri-close-line text-xl"></i>
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
+                <PeriodPicker
+                  dateFrom={sheetDraft.dateFrom}
+                  dateTo={sheetDraft.dateTo}
+                  onChange={({ dateFrom, dateTo }) => setSheetDraft((prev) => ({ ...prev, dateFrom, dateTo }))}
+                  fullWidth
+                  portalZIndex={10060}
+                  themeAccent
+                />
+                <FilterSheetSelect
+                  label="Company"
+                  value={sheetDraft.entityId}
+                  options={companyOptions}
+                  placeholder="All Companies"
+                  disabled={lockEntity}
+                  onChange={(entityId) => setSheetDraft((prev) => ({ ...prev, entityId }))}
+                />
+                <FilterSheetSelect
+                  label="Department"
+                  value={sheetDraft.department}
+                  options={departmentOptions}
+                  placeholder="All Departments"
+                  onChange={(department) => setSheetDraft((prev) => ({ ...prev, department }))}
+                />
+                <FilterSheetSelect
+                  label="Category"
+                  value={sheetDraft.category}
+                  options={categoryOptions}
+                  placeholder="All Categories"
+                  onChange={(category) => setSheetDraft((prev) => ({ ...prev, category }))}
+                />
+                <FilterSheetSelect
+                  label="Vendor"
+                  value={sheetDraft.vendor}
+                  options={vendorOptions}
+                  placeholder="All Vendors"
+                  onChange={(vendor) => setSheetDraft((prev) => ({ ...prev, vendor }))}
+                />
+                <FilterSheetSelect
+                  label="PO Status"
+                  value={sheetDraft.poStatus}
+                  options={PO_STATUSES}
+                  placeholder="All statuses"
+                  onChange={(poStatus) => setSheetDraft((prev) => ({ ...prev, poStatus }))}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Min amount
+                    </p>
+                    <input
+                      type="number"
+                      min="0"
+                      value={sheetDraft.amountMin}
+                      onChange={(e) => setSheetDraft((prev) => ({ ...prev, amountMin: e.target.value }))}
+                      className="h-11 w-full rounded-2xl border border-[#E6E8F0] bg-white px-3 text-[13px] text-slate-700"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Max amount
+                    </p>
+                    <input
+                      type="number"
+                      min="0"
+                      value={sheetDraft.amountMax}
+                      onChange={(e) => setSheetDraft((prev) => ({ ...prev, amountMax: e.target.value }))}
+                      className="h-11 w-full rounded-2xl border border-[#E6E8F0] bg-white px-3 text-[13px] text-slate-700"
+                      placeholder="Any"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="sticky bottom-0 z-10 flex gap-3 border-t border-[#EEF0F5] bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <button
+                  type="button"
+                  onClick={clearSheet}
+                  className="h-11 flex-1 rounded-xl border border-[#E6E8F0] text-[13px] font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={applySheet}
+                  className="h-11 flex-1 rounded-xl bg-teal-600 text-[13px] font-semibold text-white hover:bg-teal-700"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
-    <div className="bg-white border border-[#EEF0F5] rounded-[16px] px-4 py-3 mb-5 overflow-visible">
+    <>
+      <div className="mb-5 min-[992px]:hidden">
+        <button
+          type="button"
+          onClick={() => setSheetOpen(true)}
+          className={`flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold ${
+            activeCount
+              ? 'bg-teal-600 text-white shadow-sm'
+              : 'border border-[#E6E8F0] bg-white text-slate-800'
+          }`}
+        >
+          <i className="ri-filter-3-line text-lg"></i>
+          Filters{activeCount ? ` (${activeCount})` : ''}
+        </button>
+      </div>
+
+      {sheet}
+
+      <div className="mb-5 hidden overflow-visible rounded-[16px] border border-[#EEF0F5] bg-white px-4 py-3 min-[992px]:block">
       <div className="flex items-end gap-3 flex-wrap">
         <PeriodPicker
           dateFrom={value.dateFrom}
@@ -217,7 +446,8 @@ export default function DashboardFilters({
           ) : null}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

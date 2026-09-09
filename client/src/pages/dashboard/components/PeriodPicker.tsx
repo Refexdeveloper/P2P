@@ -29,16 +29,26 @@ export default function PeriodPicker({
   dateFrom,
   dateTo,
   onChange,
+  fullWidth = false,
+  portalZIndex = 9999,
+  themeAccent = false,
 }: {
   dateFrom: string;
   dateTo: string;
   onChange: (next: { dateFrom: string; dateTo: string }) => void;
+  fullWidth?: boolean;
+  portalZIndex?: number;
+  themeAccent?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [panelPos, setPanelPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number; maxHeight: number }>({
+    top: 0,
+    left: 0,
+    maxHeight: 420,
+  });
   const [kind, setKind] = useState<PeriodKind>('this_fy');
   const [grain, setGrain] = useState<Granularity>('year');
   const [customFrom, setCustomFrom] = useState(dateFrom);
@@ -63,7 +73,12 @@ export default function PeriodPicker({
       if (left + width > window.innerWidth - 8) {
         left = Math.max(8, window.innerWidth - width - 8);
       }
-      setPanelPos({ top: rect.bottom + 8, left });
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const spaceAbove = rect.top - 8;
+      const openUp = spaceBelow < 260 && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(180, Math.min(420, openUp ? spaceAbove : spaceBelow));
+      const top = openUp ? Math.max(8, rect.top - maxHeight - 8) : rect.bottom + 8;
+      setPanelPos({ top, left, maxHeight });
     };
     place();
     window.addEventListener('resize', place);
@@ -137,8 +152,14 @@ export default function PeriodPicker({
       ? createPortal(
           <div
             ref={panelRef}
-            style={{ position: 'fixed', top: panelPos.top, left: panelPos.left, zIndex: 9999 }}
-            className="w-[360px] max-w-[calc(100vw-2rem)] bg-white border border-[#EEF0F5] rounded-2xl shadow-[0_12px_40px_rgba(16,24,40,0.18)] p-4"
+            style={{
+              position: 'fixed',
+              top: panelPos.top,
+              left: panelPos.left,
+              zIndex: portalZIndex,
+              maxHeight: panelPos.maxHeight,
+            }}
+            className="flex w-[360px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden bg-white border border-[#EEF0F5] rounded-2xl shadow-[0_12px_40px_rgba(16,24,40,0.18)] p-4"
           >
             <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-2">
               Choose period type
@@ -153,7 +174,9 @@ export default function PeriodPicker({
                     onClick={() => pickKind(k.id)}
                     className={`h-8 px-3 rounded-full text-[12px] font-medium ${
                       active
-                        ? 'bg-[#E8F0FE] text-slate-800 border border-sky-200'
+                        ? themeAccent
+                          ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                          : 'bg-[#E8F0FE] text-slate-800 border border-sky-200'
                         : 'bg-slate-100 text-slate-700 border border-transparent hover:bg-slate-200'
                     }`}
                   >
@@ -173,7 +196,9 @@ export default function PeriodPicker({
                     onClick={() => pickGrain(g.id)}
                     className={`flex-1 h-8 rounded-full text-[12px] font-medium ${
                       active
-                        ? 'bg-white text-slate-800 shadow-sm border border-sky-200'
+                        ? themeAccent
+                          ? 'bg-white text-teal-800 shadow-sm border border-teal-200'
+                          : 'bg-white text-slate-800 shadow-sm border border-sky-200'
                         : 'text-slate-600'
                     }`}
                   >
@@ -193,7 +218,7 @@ export default function PeriodPicker({
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">From</label>
+                    <p className="mb-1 text-[11px] text-slate-400">From</p>
                     <input
                       type="date"
                       value={customFrom}
@@ -202,7 +227,7 @@ export default function PeriodPicker({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">To</label>
+                    <p className="mb-1 text-[11px] text-slate-400">To</p>
                     <input
                       type="date"
                       value={customTo}
@@ -219,13 +244,18 @@ export default function PeriodPicker({
                       setOpen(false);
                     }
                   }}
-                  className="w-full h-9 rounded-xl text-[12px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
+                  className={`w-full h-9 rounded-xl text-[12px] font-semibold text-white ${
+                    themeAccent ? 'bg-teal-600 hover:bg-teal-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
                 >
                   Apply custom range
                 </button>
               </div>
             ) : (
-              <div className="max-h-[240px] overflow-y-auto pr-1 space-y-2">
+              <div
+                className="overflow-y-auto pr-1 space-y-2"
+                style={{ maxHeight: Math.max(140, panelPos.maxHeight - 160) }}
+              >
                 {list.map((item) => {
                   const selected = dateFrom === item.from && dateTo === item.to;
                   return (
@@ -267,17 +297,23 @@ export default function PeriodPicker({
       : null;
 
   return (
-    <div className="relative shrink-0" ref={rootRef}>
+    <div className={`relative shrink-0 ${fullWidth ? 'w-full' : ''}`} ref={rootRef}>
       <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Period</p>
       <button
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="h-11 min-w-[168px] px-2.5 inline-flex items-center gap-2 bg-white border border-[#E6E8F0] rounded-2xl text-[13px] font-medium text-slate-800 hover:border-indigo-200"
+        className={`h-11 ${fullWidth ? 'w-full' : 'min-w-[168px]'} px-2.5 inline-flex items-center gap-2 bg-white border border-[#E6E8F0] rounded-2xl text-[13px] font-medium text-slate-800 ${
+          themeAccent ? 'hover:border-teal-300' : 'hover:border-indigo-200'
+        }`}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <span className="w-8 h-8 rounded-lg bg-[#EEF3FF] text-indigo-600 flex items-center justify-center shrink-0">
+        <span
+          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+            themeAccent ? 'bg-teal-50 text-teal-600' : 'bg-[#EEF3FF] text-indigo-600'
+          }`}
+        >
           <i className="ri-calendar-line text-base"></i>
         </span>
         <span className="truncate">{label}</span>

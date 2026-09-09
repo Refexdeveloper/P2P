@@ -32,6 +32,15 @@ body,
   }
 }
 
-.animate-slide-in-right {
-  animation: slide-in-right 0.25s ease-out;
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-sheet-up {
+  animation: sheet-up 0.28s ease-out;
 }
