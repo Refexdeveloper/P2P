@@ -2,9 +2,9 @@
  * GCS Storage helper — new uploads go to GCS only (no MySQL LONGBLOB).
  * Existing MySQL blob files are still served for legacy records.
  *
- * Required env var: GCS_BUCKET_NAME=p2p-app-storage-master-diorama-489103-u2
- * Optional:         GOOGLE_APPLICATION_CREDENTIALS=<path-to-service-account-json>
- *                   (not needed when running on GCP with a service account)
+ * Bucket is hardcoded so Cloud Run / local still work if GCS_BUCKET_NAME is missing.
+ * Optional: GOOGLE_APPLICATION_CREDENTIALS=<path-to-service-account-json>
+ *           (not needed when running on GCP with a service account)
  *
  * GCS prefix layout
  *   vendor-kyc/         ← vendor KYC documents
@@ -16,13 +16,19 @@
  *   pr-attachments/     ← FSD / PR attachment files
  */
 
+const DEFAULT_GCS_BUCKET_NAME = 'p2p-app-storage-master-diorama-489103-u2';
+
 let _Storage = null;
 let _bucket = null;
 
+function getBucketName() {
+  return String(process.env.GCS_BUCKET_NAME || DEFAULT_GCS_BUCKET_NAME).trim();
+}
+
 function getStorage() {
   if (_bucket) return _bucket;
-  const bucketName = process.env.GCS_BUCKET_NAME;
-  if (!bucketName) return null; // GCS not configured — fall through to disk
+  const bucketName = getBucketName();
+  if (!bucketName) return null;
   try {
     if (!_Storage) {
       // Lazy import so the server starts fine without the package installed
@@ -74,6 +80,24 @@ export async function downloadFromGcs(gcsPath) {
 }
 
 /**
+ * List object keys under a prefix (used to recover files stored under a renamed path).
+ * @param {string} prefix
+ * @param {number} [maxResults]
+ * @returns {Promise<string[]>}
+ */
+export async function listGcsKeys(prefix, maxResults = 50) {
+  const bucket = getStorage();
+  if (!bucket || !prefix) return [];
+  try {
+    const [files] = await bucket.getFiles({ prefix, maxResults });
+    return (files || []).map((f) => f.name).filter(Boolean);
+  } catch (err) {
+    console.warn('[GCS] list failed for', prefix, ':', err.message);
+    return [];
+  }
+}
+
+/**
  * Generate a short-lived signed URL (15 min) for direct browser download.
  * @param {string} gcsPath
  * @param {string} [fileName]  content-disposition filename
@@ -100,10 +124,10 @@ export async function signedDownloadUrl(gcsPath, fileName) {
 }
 
 /**
- * Whether GCS is enabled (bucket name env var is present).
+ * Whether GCS is enabled (hardcoded bucket, or GCS_BUCKET_NAME override).
  */
 export function gcsEnabled() {
-  return Boolean(process.env.GCS_BUCKET_NAME);
+  return Boolean(getBucketName());
 }
 
 /** New uploads go to GCS only (no MySQL LONGBLOB). */

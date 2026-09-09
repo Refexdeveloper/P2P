@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadFromGcs, gcsEnabled } from './gcsStorage.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, listGcsKeys } from './gcsStorage.js';
 import { getPurchaseRequestById } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath, ensurePoPdf } from './poPdfService.js';
 import { sendPoVendorNotification, queuePoWorkflowNotification, queueApproverActionConfirmationForUser } from './emailService.js';
@@ -269,7 +269,21 @@ function ensurePoUploadDir() {
   }
 }
 
-function saveVendorAcceptanceFile(poId, fileName, base64Data) {
+function uniquePaths(values) {
+  return [...new Set((values || []).filter(Boolean))];
+}
+
+function poUploadSearchDirs() {
+  return uniquePaths([
+    PO_UPLOAD_DIR,
+    path.join(path.dirname(PO_UPLOAD_DIR), 'vendor-acceptance'),
+    path.join(path.dirname(PO_UPLOAD_DIR), 'purchase-orders'),
+    path.resolve(process.cwd(), 'uploads/po'),
+    path.resolve(process.cwd(), 'server/uploads/po'),
+  ]);
+}
+
+async function saveVendorAcceptanceFile(poId, fileName, base64Data) {
   if (!base64Data || !fileName) return { fileName: null, filePath: null };
   ensurePoUploadDir();
   const safeName = path.basename(String(fileName)).replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -279,8 +293,11 @@ function saveVendorAcceptanceFile(poId, fileName, base64Data) {
   const buffer = Buffer.from(raw, 'base64');
   fs.writeFileSync(fullPath, buffer);
   if (gcsEnabled()) {
-    uploadToGcs(`purchase-orders/${storedName}`, buffer)
-      .catch((e) => console.warn('[GCS] vendor-acceptance upload failed:', e.message));
+    try {
+      await uploadToGcs(`purchase-orders/${storedName}`, buffer);
+    } catch (e) {
+      console.warn('[GCS] vendor-acceptance upload failed:', e.message);
+    }
   }
   return { fileName: safeName, filePath: storedName };
 }
@@ -4306,7 +4323,7 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
   const remarks = String(body.remarks || '').trim();
   if (!remarks) throw new Error('Remarks are required');
 
-  const fileInfo = saveVendorAcceptanceFile(poId, body.fileName, body.fileData);
+  const fileInfo = await saveVendorAcceptanceFile(poId, body.fileName, body.fileData);
   if (acceptanceStatus === 'accepted' && !fileInfo.filePath) {
     throw new Error('Please upload the vendor acceptance / signed document');
   }
@@ -4410,7 +4427,7 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
   const remarks = String(body.remarks || '').trim();
   if (!remarks) throw new Error('Remarks are required');
 
-  const fileInfo = saveVendorAcceptanceFile(row.id, body.fileName, body.fileData);
+  const fileInfo = await saveVendorAcceptanceFile(row.id, body.fileName, body.fileData);
   if (acceptanceStatus !== 'rejected' && !fileInfo.filePath) {
     throw new Error('Please upload the signed / acceptance document');
   }
@@ -4454,33 +4471,93 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
 }
 
 export async function resolveVendorAcceptanceFile(poRowOrPath) {
+  const po = typeof poRowOrPath === 'string' ? null : poRowOrPath || {};
   const filePath =
     typeof poRowOrPath === 'string'
       ? poRowOrPath
-      : poRowOrPath?.vendor_acceptance_file_path || poRowOrPath?.vendorAcceptanceFilePath;
-  if (!filePath) throw new Error('Acceptance file not found');
-  const stored = String(filePath).replace(/\\/g, '/');
-  const baseName = path.basename(stored);
-  const diskCandidates = [
-    path.isAbsolute(stored) ? stored : null,
-    path.join(PO_UPLOAD_DIR, stored),
-    path.join(PO_UPLOAD_DIR, baseName),
-  ].filter(Boolean);
-  for (const fullPath of diskCandidates) {
-    if (fs.existsSync(fullPath)) return { fullPath, fileName: baseName, buffer: null };
-  }
-  if (gcsEnabled()) {
-    const keys = [...new Set([
-      stored.startsWith('purchase-orders/') ? stored : `purchase-orders/${baseName}`,
-      `purchase-orders/${baseName}`,
-      stored,
-      baseName,
-    ])];
-    for (const key of keys) {
-      const buf = await downloadFromGcs(key);
-      if (buf?.length) return { buffer: buf, fileName: baseName, fullPath: null };
+      : po.vendor_acceptance_file_path || po.vendorAcceptanceFilePath || '';
+  const origName = String(
+    po?.vendor_acceptance_file_name || po?.vendorAcceptanceFileName || ''
+  )
+    .replace(/\\/g, '/')
+    .trim();
+  const origBase = origName ? path.basename(origName) : '';
+  const poId = Number(po?.id || po?.poId) || 0;
+  const stored = String(filePath || '').replace(/\\/g, '/').trim();
+  const baseName = stored ? path.basename(stored) : origBase;
+
+  if (!stored && !origBase && !poId) throw new Error('Acceptance file not found');
+
+  const diskCandidates = [];
+  if (stored && path.isAbsolute(filePath || stored)) diskCandidates.push(filePath || stored);
+  for (const dir of poUploadSearchDirs()) {
+    if (stored) {
+      diskCandidates.push(path.join(dir, stored));
+      if (baseName) diskCandidates.push(path.join(dir, baseName));
+    }
+    if (origBase) diskCandidates.push(path.join(dir, origBase));
+    if (poId && fs.existsSync(dir)) {
+      try {
+        for (const name of fs.readdirSync(dir)) {
+          if (String(name).startsWith(`po-${poId}-vendor-acceptance-`)) {
+            diskCandidates.push(path.join(dir, name));
+          }
+        }
+      } catch {
+        /* ignore unreadable dirs */
+      }
     }
   }
+
+  for (const fullPath of uniquePaths(diskCandidates)) {
+    try {
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+        return { fullPath, fileName: origBase || path.basename(fullPath), buffer: null };
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (gcsEnabled()) {
+    const keys = uniquePaths([
+      stored.startsWith('purchase-orders/') ? stored : '',
+      stored ? `purchase-orders/${baseName}` : '',
+      stored ? `purchase-orders/${stored.replace(/^\/+/, '')}` : '',
+      origBase ? `purchase-orders/${origBase}` : '',
+      stored,
+      baseName,
+      origBase,
+    ]);
+    for (const key of keys) {
+      const buf = await downloadFromGcs(key);
+      if (buf?.length) {
+        return { buffer: buf, fileName: origBase || baseName || 'vendor-acceptance.pdf', fullPath: null };
+      }
+    }
+
+    if (poId) {
+      const prefixes = [
+        `purchase-orders/po-${poId}-vendor-acceptance-`,
+        `po-${poId}-vendor-acceptance-`,
+        `vendor-acceptance/po-${poId}-`,
+      ];
+      for (const prefix of prefixes) {
+        const listed = (await listGcsKeys(prefix, 30)).sort();
+        const pick = listed[listed.length - 1];
+        if (!pick) continue;
+        const buf = await downloadFromGcs(pick);
+        if (buf?.length) {
+          return {
+            buffer: buf,
+            fileName: origBase || path.basename(pick),
+            fullPath: null,
+          };
+        }
+      }
+    }
+  }
+
   throw new Error('Acceptance file missing on server');
 }
 

@@ -780,12 +780,27 @@ router.post('/:id/vendor-acceptance/manual', requireRoles('Requester', 'SCM Buye
 
 router.get('/:id/vendor-acceptance/file', canReadPo, async (req, res) => {
   try {
-    const po = await getPurchaseOrderById(Number(req.params.id));
+    const poId = Number(req.params.id);
+    const po = await getPurchaseOrderById(poId);
     if (!po) return res.status(404).json({ message: 'PO not found' });
-    const result = await resolveVendorAcceptanceFile(po);
+    const pool = (await import('../config/db.js')).default;
+    const [rows] = await pool.query(
+      `SELECT id, vendor_acceptance_file_name, vendor_acceptance_file_path
+       FROM purchase_orders WHERE id = ? LIMIT 1`,
+      [poId]
+    );
+    const result = await resolveVendorAcceptanceFile({
+      ...po,
+      id: poId,
+      ...(rows[0] || {}),
+    });
     return sendStoredFile(res, typeof result === 'string' ? { fullPath: result, fileName: po.vendorAcceptanceFileName } : {
       ...result,
-      fileName: po.vendorAcceptanceFileName || result.fileName || 'vendor-acceptance.pdf',
+      fileName:
+        po.vendorAcceptanceFileName ||
+        rows[0]?.vendor_acceptance_file_name ||
+        result.fileName ||
+        'vendor-acceptance.pdf',
     });
   } catch (err) {
     res.status(400).json({ message: err.message });
