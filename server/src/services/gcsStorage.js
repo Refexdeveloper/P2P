@@ -1,10 +1,8 @@
 /**
- * GCS Storage helper — new uploads go to GCS only (no MySQL LONGBLOB).
- * Existing MySQL blob files are still served for legacy records.
+ * GCS Storage helper — new uploads go to GCS (disk is a local fallback).
  *
- * Bucket is hardcoded so Cloud Run / local still work if GCS_BUCKET_NAME is missing.
- * Optional: GOOGLE_APPLICATION_CREDENTIALS=<path-to-service-account-json>
- *           (not needed when running on GCP with a service account)
+ * Bucket and service-account key are set in this file so local + Cloud Run work
+ * without GCS_BUCKET_NAME / GOOGLE_APPLICATION_CREDENTIALS.
  *
  * GCS prefix layout
  *   vendor-kyc/         ← vendor KYC documents
@@ -16,13 +14,61 @@
  *   pr-attachments/     ← FSD / PR attachment files
  */
 
-const DEFAULT_GCS_BUCKET_NAME = 'p2p-app-storage-master-diorama-489103-u2';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { Storage } from '@google-cloud/storage';
 
-let _Storage = null;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const DEFAULT_GCS_BUCKET_NAME = 'p2p-app-storage-master-diorama-489103-u2';
+const DEFAULT_GCS_PROJECT_ID = 'master-diorama-489103-u2';
+
+/** Service-account key — used when ADC / env key file is not available. */
+const GCS_SERVICE_ACCOUNT = {
+  type: 'service_account',
+  project_id: 'master-diorama-489103-u2',
+  private_key_id: '4578ba92e8e4f622ce5eead8fcb80089de06b023',
+  private_key:
+    '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC5nMjWRhlIaULu\nK98YTdQKxo9EJTNsBHj2SWUZkWU2t6Ikkq6tZiJh99s1pgbHrNJqC+dvDIUGzwb8\nH+JhoA/bDUuKYmVoKzexIlgHI8r7DNILr1YYWw1yX+jSv4/I5pfnoKWuCpp31r8b\nCmxRGYsnCYaZlg3FXYkqqEX8bCVmZxjHv3EQrtglODWjAH7lDkZXfOSabhT95Jpp\n2nQXT6+9xjNTD650WAIMJFc2CoEliaIZ17BkOm9ntfxR0TGbrMNqvjOOrRqily5I\nf+a8t5lcwBl1sGNKjny0yrkmP38hd0pXT0yqRVCW4lRJb4hnkgSFx5IkubOJRuZu\nb44x3et5AgMBAAECggEAGhx7xmUDHoQsVbwXPOCKAWAQfHotQzdX2vHVRqUFE47+\nwN1ftGYHVTfcfy4VixZ9XUzCaIVe22fZaDOGEczGHj8/Dr8r290kjwcxUgPPhMS3\nccxfNLruZ9YlNyyaqh0CZqPbWuID+/LaXI/5T+ljgYDeDhIlasvvRXB5s/p0wnRl\nzaZlIkebE+lFnySV5iz+X27yXsooeXaI2T/236ljyqJNHfSyUrX82MrnVt8C1Zoh\nZ0fL/rJRciXGS/0QX1J+TfBc0i0yUs1cC/QilFazD2VaLHJkORJkds2D20dqlby5\noC+obAXASMYYMJe8pmeCOq20FqGuoU1DmpNDOp9R1wKBgQDw1rtgMDlF517qJvKa\njV6Esr2iIJqC33TPh1LrKZDUnc5Mm3CGMwTRX8yLapAlsm9J1R88amQ1crFPjigw\n/hWtpzB0XoyjAOsX0PotYVW5WWwlPIUpre4Hj+CRCkVp8KDSjx13GFYxjc6tFwfi\n2PB/8u83LxcPC46GaePPcLnN3wKBgQDFTAuVPQPB4DU+wXPkyx4vc3qqinjcnXGa\nRTu2iGpjq2mvNBRh/F7LlC2ygVDad7olIza7Eviq7dWVSy6YLBv2KqmlS0FCqmLT\n/1AeVU60X8gIcYVIiaiXp0hMC7m43EcmsLWn/DHIJq4U4tqRjAQy6zroXmTBiTuQ\nYPyYuv1BpwKBgQDnV81ry0bowCSrVbhK/6sgWrXQC/N/7Xg+dSYQYMAPjHqDmfiP\n4GgrWxOXhEhs/abrTD6SATy7Hq311n8C+L8ILQZdcgkz9wjcus/mUY5P2fcJGcZs\nT/fK6cj0aeJdrlg9il3qbcU2GprCJ9JadLsonMpuvtwuhpJkyUiclhLVDwKBgEJS\n2QX3N98hzuRkxd/gxCnxaQgReqW3K6xPn84xt4n/4owqNrvlybwn+OCsBhEa9HFt\nkAV9UCitwQHp/yTalx++ob7WOH7/pi9cAYPg649JL4ZfGw4ScKFic7RUsL9LFYQV\nHUv2RInjLtwIkq8g4Xx4hRn+OWKyDlrvr5psKZy7AoGAQV0/HOioTr5Jhv6jGNmR\nNJd55IuXyqI4g8/P3wgVhgjU0D7qvFoo28ftsLcY+OsiAxieEx5G/NnknAp77R1O\niDDHgi2EUHY/gLz9VbyPPI99tbZl0GEkD5Umx+25DvnwS7ODjw535CD/VcnGmNCd\ncGa6j7OUbIYh0EDzbkvswbA=\n-----END PRIVATE KEY-----\n',
+  client_email: 'p2p-app-sa@master-diorama-489103-u2.iam.gserviceaccount.com',
+  client_id: '105072988660378389770',
+  universe_domain: 'googleapis.com',
+};
+
 let _bucket = null;
+let _initError = '';
 
 function getBucketName() {
   return String(process.env.GCS_BUCKET_NAME || DEFAULT_GCS_BUCKET_NAME).trim();
+}
+
+function getProjectId() {
+  return String(
+    process.env.GOOGLE_CLOUD_PROJECT ||
+      process.env.GCLOUD_PROJECT ||
+      process.env.GCP_PROJECT ||
+      DEFAULT_GCS_PROJECT_ID
+  ).trim();
+}
+
+function loadServiceAccount() {
+  const candidates = [
+    String(process.env.GOOGLE_APPLICATION_CREDENTIALS || '').trim(),
+    path.resolve(__dirname, '../../p2p-app-sa-key.json'),
+    path.resolve(__dirname, '../p2p-app-sa-key.json'),
+  ].filter(Boolean);
+  for (const file of candidates) {
+    try {
+      if (fs.existsSync(file)) {
+        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (parsed?.client_email && parsed?.private_key) return parsed;
+      }
+    } catch {
+      /* try next */
+    }
+  }
+  return GCS_SERVICE_ACCOUNT;
 }
 
 function getStorage() {
@@ -30,16 +76,17 @@ function getStorage() {
   const bucketName = getBucketName();
   if (!bucketName) return null;
   try {
-    if (!_Storage) {
-      // Lazy import so the server starts fine without the package installed
-      const { Storage } = require('@google-cloud/storage');
-      _Storage = Storage;
-    }
-    const storage = new _Storage();
+    const credentials = loadServiceAccount();
+    const storage = new Storage({
+      projectId: credentials.project_id || getProjectId(),
+      credentials,
+    });
     _bucket = storage.bucket(bucketName);
+    _initError = '';
     return _bucket;
   } catch (err) {
-    console.warn('[GCS] @google-cloud/storage not available or failed to init:', err.message);
+    _initError = err.message;
+    console.warn('[GCS] client init failed:', err.message);
     return null;
   }
 }
@@ -52,14 +99,23 @@ function getStorage() {
  * @returns {Promise<string|null>} the gcsPath on success, null if GCS is not configured
  */
 export async function uploadToGcs(gcsPath, buffer, contentType = 'application/octet-stream') {
+  if (!gcsPath || !buffer) return null;
   const bucket = getStorage();
-  if (!bucket) return null;
-  const file = bucket.file(gcsPath);
-  await file.save(buffer, {
-    metadata: { contentType },
-    resumable: false,
-  });
-  return gcsPath;
+  if (!bucket) {
+    console.warn('[GCS] upload skipped (client not initialized):', gcsPath, _initError || '');
+    return null;
+  }
+  try {
+    await bucket.file(gcsPath).save(buffer, {
+      metadata: { contentType },
+      resumable: false,
+    });
+    console.log('[GCS] uploaded', gcsPath);
+    return gcsPath;
+  } catch (err) {
+    console.warn('[GCS] upload failed for', gcsPath, ':', err.message);
+    throw err;
+  }
 }
 
 /**
@@ -133,4 +189,27 @@ export function gcsEnabled() {
 /** New uploads go to GCS only (no MySQL LONGBLOB). */
 export function useGcsForNewUploads() {
   return gcsEnabled();
+}
+
+/** Startup check: confirm object upload/download works (SA may lack buckets.get). */
+export async function pingGcs() {
+  const bucketName = getBucketName();
+  const bucket = getStorage();
+  if (!bucket) {
+    console.warn(`[GCS] not initialized for bucket ${bucketName}${_initError ? `: ${_initError}` : ''}`);
+    return false;
+  }
+  try {
+    const probe = `_health/p2p-gcs-ping.txt`;
+    const uploaded = await uploadToGcs(probe, Buffer.from('ok'), 'text/plain');
+    if (!uploaded) {
+      console.warn(`[GCS] upload probe failed for gs://${bucketName}`);
+      return false;
+    }
+    console.log(`[GCS] connected to gs://${bucketName} as ${loadServiceAccount().client_email}`);
+    return true;
+  } catch (err) {
+    console.warn(`[GCS] ping failed for gs://${bucketName}:`, err.message);
+    return false;
+  }
 }

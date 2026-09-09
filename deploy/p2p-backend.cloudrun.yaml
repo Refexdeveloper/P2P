@@ -67,6 +67,10 @@ spec:
               value: '*'
             - name: REFEXONE_LOGIN_ENABLED
               value: 'false'
+            - name: GCS_BUCKET_NAME
+              value: p2p-app-storage-master-diorama-489103-u2
+            - name: GOOGLE_CLOUD_PROJECT
+              value: master-diorama-489103-u2
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:

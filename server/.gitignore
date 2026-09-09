@@ -16,6 +16,8 @@ build/
 server/.env
 server/.env.*
 !server/.env.example
+p2p-app-sa-key.json
+**/p2p-app-sa-key.json
 
 # Logs
 *.log

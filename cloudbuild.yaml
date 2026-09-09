@@ -21,7 +21,7 @@ steps:
       - --memory=2Gi
       - --timeout=300
       - --max-instances=5
-      - --set-env-vars=NODE_ENV=production,SERVE_CLIENT=true,DB_NAME=p2p_system,DB_USER=p2p_app,INSTANCE_CONNECTION_NAME=$_INSTANCE_CONNECTION_NAME,CORS_ORIGIN=*,REFEXONE_LOGIN_ENABLED=false,SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,SMTP_SECURE=false
+      - --set-env-vars=NODE_ENV=production,SERVE_CLIENT=true,DB_NAME=p2p_system,DB_USER=p2p_app,INSTANCE_CONNECTION_NAME=$_INSTANCE_CONNECTION_NAME,CORS_ORIGIN=*,REFEXONE_LOGIN_ENABLED=false,SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,SMTP_SECURE=false,GCS_BUCKET_NAME=p2p-app-storage-master-diorama-489103-u2,GOOGLE_CLOUD_PROJECT=master-diorama-489103-u2
       - --set-secrets=DB_PASSWORD=p2p-db-password:latest,JWT_SECRET=p2p-jwt-secret:latest,SMTP_USER=SMTP_USER:latest,SMTP_PASSWORD=SMTP_PASSWORD:latest
       - --allow-unauthenticated
       - --quiet

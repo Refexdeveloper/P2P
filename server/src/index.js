@@ -20,6 +20,7 @@ import { sendWhatsAppHsm, buildWorkflowWhatsAppParams, normalizeWhatsAppTo, getW
 import { startSlaBreachScheduler } from './services/slaBreachService.js';
 import { startCloudSubscriptionScheduler } from './services/cloudSubscriptionService.js';
 import { pingDatabase } from './config/db.js';
+import { pingGcs } from './services/gcsStorage.js';
 import { authenticate } from './middleware/auth.js';
 import { attachUserFromToken, auditUserActivity } from './middleware/activityAudit.js';
 
@@ -215,6 +216,10 @@ async function start() {
     } catch (err) {
       console.error('SMTP connection test failed unexpectedly:', err.message);
     }
+
+    pingGcs().catch((err) => {
+      console.warn('GCS ping failed unexpectedly:', err.message);
+    });
 
     try {
       startSlaBreachScheduler();
