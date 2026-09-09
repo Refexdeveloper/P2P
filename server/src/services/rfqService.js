@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadFromGcs, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
+import { uploadToGcs, downloadStoredUpload, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
 import {
   getPurchaseRequestById,
   completeRequesterTask,
@@ -187,18 +187,22 @@ async function saveQuotationFile(invitationId, round, fileName, base64Data) {
     throw new Error('Quotation file must be under 10MB');
   }
 
-  if (useGcsForNewUploads()) {
-    await uploadToGcs(`rfq-attachments/${storedName}`, buffer);
-    return { fileName: safeName, filePath: storedName, buffer: null };
-  }
-
   try {
     ensureUploadDir();
     fs.writeFileSync(path.join(UPLOAD_DIR, storedName), buffer);
   } catch (err) {
     console.warn('Quotation disk write skipped (will keep DB copy):', err.message);
   }
-  return { fileName: safeName, filePath: storedName, buffer };
+  let gcsOk = false;
+  if (useGcsForNewUploads()) {
+    try {
+      await uploadToGcs(`rfq-attachments/${storedName}`, buffer);
+      gcsOk = true;
+    } catch (err) {
+      console.warn('[GCS] quotation upload failed, keeping disk/DB copy:', err.message);
+    }
+  }
+  return { fileName: safeName, filePath: storedName, buffer, gcsOk };
 }
 
 function bufferFromDiskPath(filePath) {
@@ -218,7 +222,7 @@ function bufferFromDiskPath(filePath) {
 async function bufferFromGcs(filePath) {
   if (!filePath || !gcsEnabled()) return null;
   try {
-    return await downloadFromGcs(`rfq-attachments/${path.basename(String(filePath))}`);
+    return await downloadStoredUpload(filePath, ['rfq-attachments']);
   } catch {
     return null;
   }
@@ -264,8 +268,9 @@ function hasStoredQuotationFile(row) {
   return Boolean(String(row?.quotation_file_path || row?.file_path || '').trim());
 }
 
-function quotationBlobForDb(buffer) {
-  return useGcsForNewUploads() ? null : buffer;
+function quotationBlobForDb(buffer, gcsOk = undefined) {
+  if (useGcsForNewUploads() && gcsOk !== false) return null;
+  return buffer;
 }
 
 async function persistPrimaryQuotationBlob(submissionId, buffer) {
@@ -315,7 +320,7 @@ async function insertExtraQuotationFiles(submissionId, invitationId, round, file
       await pool.query(
         `INSERT INTO vendor_quotation_files (submission_id, file_name, file_path, file_data, sort_order)
          VALUES (?, ?, ?, ?, ?)`,
-        [submissionId, info.fileName, info.filePath, useGcsForNewUploads() ? null : info.buffer, i]
+        [submissionId, info.fileName, info.filePath, quotationBlobForDb(info.buffer, info.gcsOk), i]
       );
       if (!useGcsForNewUploads()) {
         const [check] = await pool.query(
@@ -1056,7 +1061,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         }
         fileName = fileInfo.fileName;
         filePath = fileInfo.filePath;
-        fileBuffer = quotationBlobForDb(fileInfo.buffer);
+        fileBuffer = quotationBlobForDb(fileInfo.buffer, fileInfo.gcsOk);
       } else if (prev?.fileName) {
         fileName = prev.fileName;
         filePath = prev.filePath;
@@ -1565,7 +1570,7 @@ export async function submitVendorQuotation(token, body = {}) {
       core.deliveryTerms || '',
       fileInfo.fileName,
       fileInfo.filePath,
-      quotationBlobForDb(fileInfo.buffer),
+      quotationBlobForDb(fileInfo.buffer, fileInfo.gcsOk),
       JSON.stringify(customFields),
     ]
   );
@@ -1704,7 +1709,7 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
       core.deliveryTerms || '',
       fileInfo.fileName,
       fileInfo.filePath,
-      quotationBlobForDb(fileInfo.buffer),
+      quotationBlobForDb(fileInfo.buffer, fileInfo.gcsOk),
       JSON.stringify(customFields),
       JSON.stringify(requesterFields),
     ]
@@ -2238,9 +2243,10 @@ async function nodemailerAttachment(filename, row) {
   if (fromDb?.length) {
     return { filename, content: fromDb };
   }
-  const gcsBuf = await bufferFromGcs(row.quotation_file_path || row.file_path);
+  const stored = row.quotation_file_path || row.file_path;
+  const gcsBuf = await bufferFromGcs(stored);
   if (gcsBuf?.length) return { filename, content: gcsBuf };
-  const diskBuf = bufferFromDiskPath(row.quotation_file_path || row.file_path);
+  const diskBuf = bufferFromDiskPath(stored);
   if (diskBuf?.length) return { filename, content: diskBuf };
   return null;
 }
@@ -2269,7 +2275,7 @@ async function loadQuotationMailAttachments(prId) {
     const attachment = await nodemailerAttachment(filename, row);
     if (!attachment) {
       console.warn(
-        `Quotation attachment missing for PR ${prId} submission ${row.id} (${filename}) — no disk file and no DB blob`
+        `Quotation attachment missing for PR ${prId} submission ${row.id} (${filename}) — no GCS object, disk file, or DB blob`
       );
       continue;
     }
@@ -2299,11 +2305,16 @@ async function loadQuotationMailAttachments(prId) {
         const safeVendor = String(extra.vendor_name || 'vendor').replace(/[^a-zA-Z0-9._-]/g, '_');
         const safeFile = String(extra.file_name || 'quotation.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
         const filename = `${safeVendor}_R${extra.round}_${safeFile}`;
-        const attachment = nodemailerAttachment(filename, {
+        const attachment = await nodemailerAttachment(filename, {
           quotation_file_data: extra.file_data,
           quotation_file_path: extra.file_path,
         });
-        if (!attachment) continue;
+        if (!attachment) {
+          console.warn(
+            `Extra quotation attachment missing for PR ${prId} (${filename}) — no GCS object, disk file, or DB blob`
+          );
+          continue;
+        }
         let uniqueName = filename;
         let n = 2;
         while (seen.has(uniqueName.toLowerCase())) {
@@ -2353,6 +2364,9 @@ export async function getRfqEmailPack(prId) {
     merged.push({ ...doc, filename });
   }
 
+  console.log(
+    `Mail file pack for PR ${prId}: ${quoteAttachments.length} quotation + ${prDocs.length} PR/FSD = ${merged.length}`
+  );
   return {
     rfqSummary,
     attachments: merged,
@@ -3441,7 +3455,7 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
     }
     fileName = fileInfo.fileName;
     filePath = fileInfo.filePath;
-    fileBuffer = quotationBlobForDb(fileInfo.buffer);
+    fileBuffer = quotationBlobForDb(fileInfo.buffer, fileInfo.gcsOk);
     replaceFile = true;
   }
 
@@ -3596,7 +3610,7 @@ export async function attachQuotationFileToSubmission(user, submissionId, body) 
     `UPDATE vendor_quotation_submissions
      SET quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?
      WHERE id = ?`,
-    [fileInfo.fileName, fileInfo.filePath, quotationBlobForDb(fileInfo.buffer), submissionId]
+    [fileInfo.fileName, fileInfo.filePath, quotationBlobForDb(fileInfo.buffer, fileInfo.gcsOk), submissionId]
   );
   if (!useGcsForNewUploads()) await persistPrimaryQuotationBlob(submissionId, fileInfo.buffer);
 

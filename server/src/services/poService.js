@@ -312,10 +312,33 @@ function savePoAttachment(poId, prefix, fileName, base64Data) {
   const buffer = Buffer.from(raw, 'base64');
   fs.writeFileSync(fullPath, buffer);
   if (gcsEnabled()) {
-    uploadToGcs(`purchase-orders/${storedName}`, buffer)
-      .catch((e) => console.warn('[GCS] PO attachment upload failed:', e.message));
+    uploadToGcs(`purchase-orders/${storedName}`, buffer).catch((e) =>
+      console.warn('[GCS] PO attachment upload failed:', e.message)
+    );
   }
   return { fileName: safeName, filePath: storedName };
+}
+
+async function poPdfMailAttachment(po, { signed = false } = {}) {
+  if (!po) return [];
+  try {
+    const filename = signed
+      ? `${po.poNumber || 'PO'}_signed.pdf`
+      : `${po.poNumber || 'PO'}_draft.pdf`;
+    const doc = await resolvePoDocumentPath({
+      signedPdfPath: signed ? po.signedPdfPath || filename : po.signedPdfPath,
+      pdfPath: signed ? po.pdfPath : po.pdfPath || filename,
+    });
+    if (doc?.buffer?.length) {
+      return [{ filename, content: doc.buffer, contentType: 'application/pdf' }];
+    }
+    if (doc?.fullPath && fs.existsSync(doc.fullPath) && !doc.isHtml) {
+      return [{ filename, path: doc.fullPath, contentType: 'application/pdf' }];
+    }
+  } catch (err) {
+    console.warn('PO PDF mail attachment skipped:', err.message);
+  }
+  return [];
 }
 
 function parseManualContextJson(value) {
@@ -415,14 +438,16 @@ function persistManualVendorQuoteFiles(poId, vendorQuotes = []) {
     const fileRows = [];
     for (const file of row.files || []) {
       if (!file?.fileName) continue;
-      if (file.storedName && !file.data && !file.dataBase64) {
+      const storedName = String(file.storedName || file.filePath || '').trim();
+      if (storedName) {
         fileRows.push({
-          fileName: file.fileName,
-          storedName: file.storedName,
+          fileName: file.fileName || path.basename(storedName),
+          storedName,
           mimeType: file.mimeType || null,
         });
         continue;
       }
+      if (!file.data && !file.dataBase64) continue;
       const saved = savePoAttachment(poId, 'manual-quote', file.fileName, file.data || file.dataBase64);
       if (saved.fileName) {
         fileRows.push({
@@ -1780,6 +1805,7 @@ export async function createPurchaseOrder(user, prId, body) {
 
     if (!skipApproval) {
       const managers = await resolveRoleEmails('SCM Manager');
+      const attachments = await poPdfMailAttachment(po);
       queuePoWorkflowNotification(po, {
         action: 'assign',
         stageLabel: 'SCM Manager PO Approval',
@@ -1790,6 +1816,7 @@ export async function createPurchaseOrder(user, prId, body) {
         remarks: `PO ${poNumber} created and sent for approval`,
         portalUrl: poPortalUrl('/scm/po-approval'),
         ctaLabel: 'Open PO Approval',
+        attachments,
       });
     }
 
@@ -2291,6 +2318,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
 
     if (existing) {
       poNumber = stableDraftPoNumber(existing.id);
+      savedPoId = existing.id;
       await conn.query(
         `UPDATE purchase_orders SET
           po_number = ?,
@@ -2478,13 +2506,6 @@ export async function savePurchaseOrderDraft(user, body = {}) {
   }
 
   const po = await getPurchaseOrderById(savedPoId);
-  try {
-    const { fileName } = await generatePoPdf(po, { fileName: `${po.poNumber}_draft.pdf` });
-    await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, savedPoId]);
-    po.pdfPath = fileName;
-  } catch {
-    /* draft PDF optional while form is incomplete */
-  }
   return po;
 }
 
@@ -3029,7 +3050,7 @@ async function signedPoPdfMailAttachment(po) {
     const signature = buildSignatureRenderOptions(po);
     const preferred =
       po.signedPdfPath || po.signed_pdf_path || `${po.poNumber || 'PO'}_signed.pdf`;
-    const { fullPath, fileName } = await ensurePoPdf(po, {
+    const { fullPath, fileName, buffer } = await ensurePoPdf(po, {
       fileName: String(preferred).replace(/\.html$/i, '.pdf'),
       signed: true,
       signature,
@@ -3038,13 +3059,25 @@ async function signedPoPdfMailAttachment(po) {
     if (po.id && fileName && fileName !== po.signedPdfPath) {
       await pool.query(`UPDATE purchase_orders SET signed_pdf_path = ? WHERE id = ?`, [fileName, po.id]);
     }
-    return [
-      {
-        filename: `${po.poNumber || 'PO'}_signed.pdf`,
-        path: fullPath,
-        contentType: 'application/pdf',
-      },
-    ];
+    if (buffer?.length) {
+      return [
+        {
+          filename: `${po.poNumber || 'PO'}_signed.pdf`,
+          content: buffer,
+          contentType: 'application/pdf',
+        },
+      ];
+    }
+    if (fullPath && fs.existsSync(fullPath)) {
+      return [
+        {
+          filename: `${po.poNumber || 'PO'}_signed.pdf`,
+          path: fullPath,
+          contentType: 'application/pdf',
+        },
+      ];
+    }
+    return [];
   } catch (err) {
     console.warn('Signed PO PDF attachment skipped:', err.message);
     return [];

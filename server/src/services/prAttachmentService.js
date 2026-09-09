@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadFromGcs, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
+import { uploadToGcs, downloadStoredUpload, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PR_UPLOAD_DIR = path.join(__dirname, '../../uploads/pr-attachments');
@@ -71,22 +71,27 @@ export async function savePrAttachments(prId, userId, files, db = pool) {
     const { fileName, buffer, mimeType, size } = normalizeIncomingFile(file);
     const storedName = `${prId}_${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
+    let gcsOk = false;
     if (useGcsForNewUploads()) {
-      await uploadToGcs(`pr-attachments/${storedName}`, buffer, mimeType || 'application/octet-stream');
-    } else {
       try {
-        ensureUploadDir();
-        fs.writeFileSync(path.join(PR_UPLOAD_DIR, storedName), buffer);
+        await uploadToGcs(`pr-attachments/${storedName}`, buffer, mimeType || 'application/octet-stream');
+        gcsOk = true;
       } catch (err) {
-        console.warn('PR attachment disk write skipped (will keep DB copy):', err.message);
+        console.warn('[GCS] PR attachment upload failed, keeping disk/DB copy:', err.message);
       }
+    }
+    try {
+      ensureUploadDir();
+      fs.writeFileSync(path.join(PR_UPLOAD_DIR, storedName), buffer);
+    } catch (err) {
+      console.warn('PR attachment disk write skipped (will keep DB copy):', err.message);
     }
 
     const [result] = await db.query(
       `INSERT INTO pr_attachments
        (pr_id, file_name, file_path, file_size, mime_type, file_data, uploaded_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [prId, fileName, storedName, size, mimeType, useGcsForNewUploads() ? null : buffer, userId || null]
+      [prId, fileName, storedName, size, mimeType, gcsOk ? null : buffer, userId || null]
     );
 
     saved.push({
@@ -130,8 +135,8 @@ export async function getPrAttachmentFile(prId, attachmentId) {
 
   // New uploads in GCS
   if (gcsEnabled() && row.file_path) {
-    const buf = await downloadFromGcs(`pr-attachments/${path.basename(row.file_path)}`);
-    if (buf) return { fileName, mimeType, buffer: buf };
+    const buf = await downloadStoredUpload(row.file_path, ['pr-attachments']);
+    if (buf?.length) return { fileName, mimeType, buffer: buf };
   }
 
   const fullPath = path.join(PR_UPLOAD_DIR, row.file_path || '');
@@ -188,7 +193,7 @@ export async function loadPrAttachmentsForMail(prId) {
     if (!content?.length && row.file_path) {
       try {
         if (gcsEnabled()) {
-          const buf = await downloadFromGcs(`pr-attachments/${path.basename(String(row.file_path))}`);
+          const buf = await downloadStoredUpload(row.file_path, ['pr-attachments']);
           if (buf?.length) content = buf;
         }
         if (!content?.length) {
@@ -200,12 +205,12 @@ export async function loadPrAttachmentsForMail(prId) {
             if (buf.length) content = buf;
           }
         }
-      } catch {
-        /* skip missing file */
+      } catch (err) {
+        console.warn(`PR attachment ${row.id} GCS/disk load failed:`, err.message);
       }
     }
     if (!content?.length) {
-      console.warn(`PR attachment ${row.id} for PR ${prId} missing blob/disk (${safeFile})`);
+      console.warn(`PR attachment ${row.id} for PR ${prId} missing blob/GCS/disk (${safeFile})`);
       continue;
     }
 
@@ -223,6 +228,11 @@ export async function loadPrAttachmentsForMail(prId) {
       content,
       contentType: row.mime_type || undefined,
     });
+  }
+  if (rows.length) {
+    console.log(
+      `PR mail attachments for PR ${prId}: ${attachments.length}/${rows.length} file(s) loaded`
+    );
   }
   return attachments;
 }

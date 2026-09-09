@@ -433,6 +433,37 @@ async function getApproverRecipients(role, departmentId = null) {
   return rows;
 }
 
+function normalizeMailAttachments(attachments) {
+  if (!Array.isArray(attachments) || !attachments.length) return [];
+  const out = [];
+  for (const item of attachments) {
+    if (!item || typeof item.then === 'function') {
+      console.warn('Mail attachment skipped (file was not loaded from GCS/disk)');
+      continue;
+    }
+    const filename =
+      String(item.filename || 'attachment').replace(/[^\w.\- ()[\]]+/g, '_').trim() || 'attachment';
+    let content = item.content;
+    if (content && !Buffer.isBuffer(content)) {
+      if (content instanceof Uint8Array) content = Buffer.from(content);
+    }
+    if (Buffer.isBuffer(content) && content.length) {
+      out.push({
+        filename,
+        content,
+        contentType: item.contentType || undefined,
+      });
+      continue;
+    }
+    if (item.path) {
+      out.push({ filename, path: item.path, contentType: item.contentType || undefined });
+      continue;
+    }
+    console.warn(`Mail attachment skipped (empty content): ${filename}`);
+  }
+  return out;
+}
+
 async function sendMailToRecipients(recipients, subject, html, text, attachments = [], mailOptions = {}) {
   if (!EMAIL_SEND_ENABLED) {
     console.log('Email send skipped (EMAIL_SEND_ENABLED=false):', subject);
@@ -478,10 +509,11 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
   });
 
   const { host, user, pass } = getSmtpConfig();
+  const mailAttachments = normalizeMailAttachments(attachments);
   if (!host || !user || !pass) {
     console.log('Email NOT sent (SMTP missing):', subject, '→', toList.join(', '));
-    if (attachments?.length) {
-      console.log(`  Attachments skipped (${attachments.length}):`, attachments.map((a) => a.filename).join(', '));
+    if (mailAttachments?.length) {
+      console.log(`  Attachments skipped (${mailAttachments.length}):`, mailAttachments.map((a) => a.filename).join(', '));
     }
     await updateEmailLog(logId, {
       status: 'skipped',
@@ -504,7 +536,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
       subject,
       text,
       html,
-      attachments: attachments?.length ? attachments : undefined,
+      attachments: mailAttachments?.length ? mailAttachments : undefined,
     });
     await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
     console.log(
@@ -525,7 +557,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
         subject,
         text,
         html,
-        attachments: attachments?.length ? attachments : undefined,
+        attachments: mailAttachments?.length ? mailAttachments : undefined,
       });
       await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
       console.log(`Email sent (retry) to ${toList.join(', ')} — ${info.messageId}`);
@@ -1624,18 +1656,22 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       }
     }
     let rfqSummary = null;
-    // Rebuild quotation summary + file attachments whenever this step had RFQ detail
-    if (
-      pr.id &&
-      (meta.includeRfqDetail || meta.postRfq || meta.rfqEntry || meta.createPo || assignedRole === 'SCM Buyer')
-    ) {
-      try {
-        const { getRfqEmailPack } = await import('./rfqService.js');
-        const pack = await getRfqEmailPack(pr.id);
+    try {
+      const { getRfqEmailPack } = await import('./rfqService.js');
+      const pack = await getRfqEmailPack(pr.id);
+      if (meta.includeRfqDetail || meta.postRfq || meta.rfqEntry || meta.createPo || assignedRole === 'SCM Buyer') {
         rfqSummary = pack.rfqSummary;
-        attachments = pack.attachments || [];
+      }
+      attachments = pack.attachments || [];
+    } catch (err) {
+      console.warn('RFQ pack for resend failed:', err.message);
+    }
+    if (!attachments.length) {
+      try {
+        const { loadPrAttachmentsForMail } = await import('./prAttachmentService.js');
+        attachments = await loadPrAttachmentsForMail(pr.id);
       } catch (err) {
-        console.warn('RFQ pack for resend failed:', err.message);
+        console.warn('PR attachments for resend skipped:', err.message);
       }
     }
     const built = buildPrApprovalPendingEmail({

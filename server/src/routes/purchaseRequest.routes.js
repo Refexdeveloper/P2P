@@ -207,9 +207,9 @@ router.post('/:id/attachments', canCreatePr, async (req, res) => {
   try {
     const pr = await getPurchaseRequestById(req.params.id);
     if (!pr) return res.status(404).json({ message: 'PR not found' });
-    // Requesters / menu-only users may only attach to their own PRs
+    const isOwner = Number(pr.requesterId) === Number(req.user.id);
     if (
-      pr.requesterId !== req.user.id &&
+      !isOwner &&
       req.user.role !== 'Super Admin' &&
       (req.user.role === 'Requester' || !CREATE_PR_ROLES.includes(req.user.role))
     ) {

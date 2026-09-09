@@ -1854,17 +1854,20 @@ export default function CreatePOPage() {
         compliance: 'Yes',
       });
       setLoadError('');
-      void (async () => {
-        try {
-          const blob = await poApi.fetchPdfBlob(editPoId);
-          setPdfPreviewUrl((prev) => {
-            if (prev) URL.revokeObjectURL(prev);
-            return URL.createObjectURL(blob);
-          });
-        } catch {
-          /* PDF loads on demand from Preview tab if generation is still running */
-        }
-      })();
+      const poStatus = String(po.statusRaw || po.status || '').toLowerCase();
+      if (poStatus && poStatus !== 'draft') {
+        void (async () => {
+          try {
+            const blob = await poApi.fetchPdfBlob(editPoId);
+            setPdfPreviewUrl((prev) => {
+              if (prev) URL.revokeObjectURL(prev);
+              return URL.createObjectURL(blob);
+            });
+          } catch {
+            /* PDF loads on demand from Preview tab if generation is still running */
+          }
+        })();
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load PO');
       setPr(null);
@@ -2728,17 +2731,35 @@ export default function CreatePOPage() {
         );
       }
 
-      if (editPoId || createdPoId) payload.poId = editPoId || createdPoId;
+      const existingDraftId = Number(editPoId || createdPoId || createdPoIdRef.current || 0) || null;
+      if (existingDraftId) payload.poId = existingDraftId;
       else if (numericPrId) payload.prId = numericPrId;
 
       const res = await poApi.saveDraft(payload);
-      const savedId = Number((res.data as { id?: number }).id);
-      const savedPoNumber = String((res.data as { poNumber?: string }).poNumber || '');
+      const data = (res.data || {}) as {
+        id?: number;
+        poNumber?: string;
+        manualContext?: {
+          comparisonRounds?: Array<Record<string, unknown>>;
+          vendorQuotes?: Array<Record<string, unknown>>;
+        };
+      };
+      const savedId = Number(data.id);
+      const savedPoNumber = String(data.poNumber || '');
       if (savedId) {
         createdPoIdRef.current = savedId;
         setCreatedPoId(savedId);
       }
       if (savedPoNumber) setPoNumber(savedPoNumber);
+      if (data.manualContext) {
+        const hydratedRounds = hydrateComparisonRoundsFromStored(
+          (data.manualContext.comparisonRounds || []) as Parameters<
+            typeof hydrateComparisonRoundsFromStored
+          >[0],
+          (data.manualContext.vendorQuotes || []) as Parameters<typeof hydrateComparisonRoundsFromStored>[1]
+        );
+        if (hydratedRounds.length) setManualComparisonRounds(hydratedRounds);
+      }
       skipNextLetterheadLoad.current = true;
       letterheadLoadSeq.current += 1;
       contextLoadSeq.current += 1;
@@ -2754,21 +2775,6 @@ export default function CreatePOPage() {
         navigate(`/scm/create-po?${params.toString()}`, { replace: true });
       }
       setPoEditStatus('draft');
-      const refreshPoId = savedId || editPoId || createdPoId;
-      if (refreshPoId) {
-        void (async () => {
-          try {
-            const payload = await applyMasterVendorToPayload(buildPreviewPayload());
-            const blob = await poApi.previewPdfBlobByPoId(refreshPoId, payload);
-            setPdfPreviewUrl((prev) => {
-              if (prev) URL.revokeObjectURL(prev);
-              return URL.createObjectURL(blob);
-            });
-          } catch {
-            /* preview PDF optional */
-          }
-        })();
-      }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Could not save draft');
     } finally {
@@ -3128,7 +3134,14 @@ export default function CreatePOPage() {
                 recommended: row.recommended,
                 round: round.round,
                 sortOrder: idx,
-                files: await Promise.all(row.files.map((file) => fileToAttachmentPayload(file))),
+                files: [
+                  ...(row.storedFiles || []).map((f) => ({
+                    fileName: f.fileName,
+                    mimeType: f.mimeType || null,
+                    storedName: f.storedName,
+                  })),
+                  ...(await Promise.all(row.files.map((file) => fileToAttachmentPayload(file)))),
+                ],
               }))
             ),
           }))

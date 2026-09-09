@@ -561,7 +561,7 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
       Boolean(po.pdfPath) &&
       !String(po.pdfPath).includes(poNumber) &&
       !String(po.pdfPath).startsWith(safePoNumber);
-    const { fullPath, fileName } = await ensurePoPdf(po, {
+    const { fullPath, fileName, buffer } = await ensurePoPdf(po, {
       fileName: preferredName,
       signed: isSigned,
       signature: signatureOpts,
@@ -585,6 +585,13 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
     const downloadName = `${downloadBase}${isSigned ? '_signed' : ''}.pdf`;
     res.setHeader('Content-Disposition', `inline; filename="${downloadName}"`);
     res.setHeader('Cache-Control', 'private, no-store');
+    if (buffer?.length) {
+      res.setHeader('Content-Length', buffer.length);
+      return res.end(buffer);
+    }
+    if (!fullPath || !fs.existsSync(fullPath)) {
+      return res.status(404).json({ message: 'PO PDF not found' });
+    }
     fs.createReadStream(fullPath).pipe(res);
   } catch (err) {
     res.status(400).json({ message: err.message });

@@ -50,6 +50,14 @@ const CHROME_PATHS = {
   ],
 };
 
+function shouldUploadPoPdfToGcs(fileName) {
+  const name = String(fileName || '');
+  if (!name) return false;
+  if (/_preview\.pdf$/i.test(name)) return false;
+  if (/^DRAFT[-_]/i.test(name)) return false;
+  return true;
+}
+
 function ensurePoDir() {
   if (!fs.existsSync(PO_UPLOAD_DIR)) {
     fs.mkdirSync(PO_UPLOAD_DIR, { recursive: true });
@@ -1558,11 +1566,17 @@ export async function generatePoPdf(po, options = {}) {
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
       displayHeaderFooter: false,
     });
-    // Upload PDF to GCS
-    if (gcsEnabled() && fs.existsSync(filePath)) {
-      const buf = fs.readFileSync(filePath);
-      uploadToGcs(`purchase-orders/${fileName}`, buf, 'application/pdf')
-        .catch((e) => console.warn('[GCS] PO PDF upload failed:', e.message));
+    const skipGcs =
+      options.skipGcs === true ||
+      !shouldUploadPoPdfToGcs(fileName) ||
+      /^DRAFT[-_]/i.test(poNumber);
+    if (gcsEnabled() && fs.existsSync(filePath) && !skipGcs) {
+      try {
+        const buf = fs.readFileSync(filePath);
+        await uploadToGcs(`purchase-orders/${fileName}`, buf, 'application/pdf');
+      } catch (e) {
+        console.warn('[GCS] PO PDF upload failed:', e.message);
+      }
     }
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
@@ -1652,21 +1666,35 @@ export async function ensurePoPdf(po, options = {}) {
   }
 
   const pdfPath = path.join(PO_UPLOAD_DIR, path.basename(pdfName));
+  const gcsKey = `purchase-orders/${path.basename(pdfName)}`;
 
   const pdfMtime = fs.existsSync(pdfPath) ? fs.statSync(pdfPath).mtimeMs : 0;
   const poUpdatedMs = Number(po.updatedAtMs || 0);
   const pdfStale = poUpdatedMs > 0 && pdfMtime > 0 && poUpdatedMs > pdfMtime + 500;
   const nameMismatch = !pdfFileMatchesPoNumber(pdfName, poNumber);
+  const canReuse =
+    !options.forceRegenerate && !isDraft && !pdfStale && !nameMismatch;
 
-  if (
-    fs.existsSync(pdfPath) &&
-    looksLikePdfFile(pdfPath) &&
-    !options.forceRegenerate &&
-    !isDraft &&
-    !pdfStale &&
-    !nameMismatch
-  ) {
+  if (fs.existsSync(pdfPath) && looksLikePdfFile(pdfPath) && canReuse) {
     return { fullPath: pdfPath, fileName: path.basename(pdfName), isHtml: false };
+  }
+
+  if (canReuse && gcsEnabled() && !fs.existsSync(pdfPath)) {
+    const buf = await downloadFromGcs(gcsKey);
+    if (buf?.length) {
+      try {
+        ensurePoDir();
+        fs.writeFileSync(pdfPath, buf);
+      } catch {
+        /* ephemeral disk may be read-only; still return buffer */
+      }
+      return {
+        fullPath: fs.existsSync(pdfPath) ? pdfPath : null,
+        fileName: path.basename(pdfName),
+        isHtml: false,
+        buffer: buf,
+      };
+    }
   }
 
   const signature =

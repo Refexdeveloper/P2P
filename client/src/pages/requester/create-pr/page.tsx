@@ -1920,36 +1920,44 @@ export default function CreatePRPage() {
 
   const uploadNewAttachments = async (prId: number) => {
     const pending = attachedFiles.filter((item) => item.file);
+    if (!pending.length) return;
     const uploaded: AttachedFile[] = [];
+    const failed: string[] = [];
     for (const item of pending) {
-      const filePayload = await fileToAttachmentPayload(item.file as File);
-      const res = await prApi.uploadAttachment(prId, filePayload);
-      const rec = res.data;
-      if (rec?.id) {
-        uploaded.push({
-          id: `existing-${rec.id}`,
-          name: rec.fileName || item.name,
-          size: Number(rec.size) || item.size,
-          existingId: Number(rec.id),
-        });
+      try {
+        const filePayload = await fileToAttachmentPayload(item.file as File);
+        const res = await prApi.uploadAttachment(prId, filePayload);
+        const rec = res.data;
+        if (rec?.id) {
+          uploaded.push({
+            id: `existing-${rec.id}`,
+            name: rec.fileName || item.name,
+            size: Number(rec.size) || item.size,
+            existingId: Number(rec.id),
+          });
+        }
+      } catch (err) {
+        failed.push(item.name);
+        console.warn('PR attachment upload failed:', err);
       }
     }
     let next = mergeAttachedFiles(
-      attachedFiles.filter((item) => !item.file),
+      attachedFiles.filter((item) => !item.file || failed.includes(item.name)),
       uploaded
     );
-    if (pending.length) {
-      try {
-        const res = await prApi.get(prId);
-        const fromServer = mapServerAttachments(
-          (res.data as { attachments?: PrAttachmentRecord[] })?.attachments
-        );
-        if (fromServer.length) next = mergeAttachedFiles(next, fromServer);
-      } catch {
-        /* keep upload-response ids */
-      }
-      setAttachedFiles(next);
-      persistAttachedFilesSnapshot(prId, next);
+    try {
+      const res = await prApi.get(prId);
+      const fromServer = mapServerAttachments(
+        (res.data as { attachments?: PrAttachmentRecord[] })?.attachments
+      );
+      if (fromServer.length) next = mergeAttachedFiles(next, fromServer);
+    } catch {
+      /* keep upload-response ids */
+    }
+    setAttachedFiles(next);
+    persistAttachedFilesSnapshot(prId, next);
+    if (failed.length) {
+      setSubmitError(`PR saved. Could not attach: ${failed.join(', ')}`);
     }
   };
 

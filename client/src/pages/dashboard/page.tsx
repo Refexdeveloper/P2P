@@ -234,7 +234,7 @@ export default function Dashboard({
 
   const selectedEntityName = useMemo(() => {
     if (!filters.entityId) return '';
-    return (
+  return (
       entities.find((e) => e.id === filters.entityId)?.name ||
       data.entityWisePOSummary.find((e) => String(e.entityId || '') === filters.entityId)?.entityName ||
       ''

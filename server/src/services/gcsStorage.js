@@ -125,14 +125,47 @@ export async function uploadToGcs(gcsPath, buffer, contentType = 'application/oc
  */
 export async function downloadFromGcs(gcsPath) {
   const bucket = getStorage();
-  if (!bucket) return null;
+  if (!bucket || !gcsPath) return null;
   try {
     const [data] = await bucket.file(gcsPath).download();
     return data;
   } catch (err) {
-    console.warn('[GCS] download failed for', gcsPath, ':', err.message);
+    const code = err?.code || err?.message || '';
+    if (!/404|No such object|not found/i.test(String(code))) {
+      console.warn('[GCS] download failed for', gcsPath, ':', err.message);
+    }
     return null;
   }
+}
+
+function gcsBasename(stored) {
+  const s = String(stored || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const i = s.lastIndexOf('/');
+  return i >= 0 ? s.slice(i + 1) : s;
+}
+
+/**
+ * Resolve a stored upload from GCS using common folder prefixes.
+ * @param {string} storedPath  DB file_path (basename or folder/name)
+ * @param {string[]} folders   e.g. ['pr-attachments']
+ */
+export async function downloadStoredUpload(storedPath, folders = []) {
+  const stored = String(storedPath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
+  if (!stored) return null;
+  const base = gcsBasename(stored);
+  const keys = [];
+  if (stored.includes('/')) keys.push(stored);
+  for (const folder of folders) {
+    if (!folder) continue;
+    keys.push(`${folder}/${base}`);
+    if (stored !== base) keys.push(`${folder}/${stored}`);
+  }
+  keys.push(base);
+  for (const key of [...new Set(keys.filter(Boolean))]) {
+    const buf = await downloadFromGcs(key);
+    if (buf?.length) return buf;
+  }
+  return null;
 }
 
 /**

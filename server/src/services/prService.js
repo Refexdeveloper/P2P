@@ -1032,17 +1032,22 @@ async function persistFunctionalOwnRfq(user, prId, body, { markSubmitted }) {
 }
 
 async function loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId, purchaseType = null) {
+  if (!prId) return { rfqSummary: null, attachments: [] };
   const wantsQuotes =
-    Boolean(prId) &&
-    (isSassPurchaseType(purchaseType) || (prFlow === 'functional' && vendorMode === 'own'));
-  if (!wantsQuotes) {
-    return { rfqSummary: null, attachments: [] };
+    isSassPurchaseType(purchaseType) || (prFlow === 'functional' && vendorMode === 'own');
+  if (wantsQuotes) {
+    try {
+      const { getRfqEmailPack } = await import('./rfqService.js');
+      return await getRfqEmailPack(prId);
+    } catch (err) {
+      console.warn('RFQ email pack failed:', err.message);
+    }
   }
   try {
-    const { getRfqEmailPack } = await import('./rfqService.js');
-    return await getRfqEmailPack(prId);
+    const { loadPrAttachmentsForMail } = await import('./prAttachmentService.js');
+    return { rfqSummary: null, attachments: await loadPrAttachmentsForMail(prId) };
   } catch (err) {
-    console.warn('RFQ email pack failed:', err.message);
+    console.warn('PR attachments for mail skipped:', err.message);
     return { rfqSummary: null, attachments: [] };
   }
 }
@@ -1563,7 +1568,12 @@ export async function createPurchaseRequest(user, body) {
 
     await conn.commit();
     if ((prFlow === 'functional' || isSass) && vendorMode === 'own') {
-      await persistFunctionalOwnRfq(user, prId, body, { markSubmitted: Boolean(submit) });
+      try {
+        await persistFunctionalOwnRfq(user, prId, body, { markSubmitted: Boolean(submit) });
+      } catch (err) {
+        console.warn('Own-vendor RFQ persist after PR save failed:', err.message);
+        if (submit) throw err;
+      }
     }
     const pr = await getPurchaseRequestById(prId);
     if (submit) {
