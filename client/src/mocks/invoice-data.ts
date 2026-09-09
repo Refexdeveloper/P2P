@@ -52,6 +52,27 @@ export interface InvoiceData {
   hasInvoiceFile?: boolean;
   invoiceFileName?: string | null;
   statusRaw?: string;
+  prRecordId?: number;
+  purchaseType?: string;
+  isSass?: boolean;
+  prAttachments?: Array<{
+    id: number;
+    prId?: number;
+    fileName: string;
+    size?: number;
+    mimeType?: string;
+    uploadedAt?: string;
+    kind?: string;
+  }>;
+  quotationFiles?: Array<{
+    id?: number | null;
+    extraFileId?: number | null;
+    submissionId?: number;
+    fileName: string;
+    vendorName?: string;
+    round?: number;
+    kind?: string;
+  }>;
   prId: string;
   prTitle: string;
   department: string;

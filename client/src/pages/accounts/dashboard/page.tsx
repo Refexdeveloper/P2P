@@ -163,7 +163,7 @@ export default function AccountsDashboardPage() {
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="text-base font-bold text-gray-900">Recent invoices</h2>
                 <Link to="/accounts/invoice-verification" className="text-sm font-semibold text-teal-600">
-                  Open verification →
+                  Open 3-way match →
                 </Link>
               </div>
               <div className="overflow-x-auto">

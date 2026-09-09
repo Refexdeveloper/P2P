@@ -49,6 +49,11 @@ function mapApiInvoice(raw: Record<string, unknown>): InvoiceData {
     paymentDetails: raw.paymentDetails as InvoiceData['paymentDetails'],
     hasInvoiceFile: Boolean(raw.hasInvoiceFile),
     invoiceFileName: (raw.invoiceFileName as string) || null,
+    prRecordId: Number(raw.prRecordId) || 0,
+    purchaseType: String(raw.purchaseType || ''),
+    isSass: Boolean(raw.isSass),
+    prAttachments: (raw.prAttachments as InvoiceData['prAttachments']) || [],
+    quotationFiles: (raw.quotationFiles as InvoiceData['quotationFiles']) || [],
     poStatus: String(raw.poStatus || ''),
   };
 }
@@ -111,7 +116,9 @@ export default function InvoiceVerificationPage() {
       inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       inv.vendor.toLowerCase().includes(searchTerm.toLowerCase()) ||
       inv.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inv.grnNumber.toLowerCase().includes(searchTerm.toLowerCase());
+      inv.grnNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      inv.prId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      inv.prTitle.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || inv.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -197,13 +204,13 @@ export default function InvoiceVerificationPage() {
 
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Invoice Verification</h1>
+            <h1 className="text-3xl font-bold text-gray-900">3-Way Match</h1>
             <div className="flex items-center gap-2 mt-2">
               <span className="px-3 py-1 bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-sm font-semibold rounded-full">
                 {isManager ? 'Accounts Manager' : 'Accounts Payable'}
               </span>
               <span className="text-gray-500 text-sm">
-                Original PO/GRN data + invoice upload → manager approval
+                Invoice vs PO vs GRN · open a row to review files in detail
               </span>
             </div>
           </div>
@@ -224,7 +231,7 @@ export default function InvoiceVerificationPage() {
               <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
               <input
                 type="text"
-                placeholder="Search by invoice, vendor, PO, or GRN..."
+                placeholder="Search by invoice, vendor, PO, GRN, or PR..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"

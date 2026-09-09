@@ -3,7 +3,7 @@ import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 /**
  * Mail after Mugesh uploads Cloud Subscription invoice.
- * To: Requester · Cc: L1, L2 (Srivaths), accounts_rgml_refexev@refex.co.in, itdev@refex.co.in
+ * To: Requester · Cc: L1, L2 (Srivaths), accounts_rgml_refexev@refex.co.in
  */
 export function buildSassInvoiceUploadedEmail({
   pr,

@@ -1,21 +1,263 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { InvoiceData } from '../../../../mocks/invoice-data';
+import { accountsApi, prApi, rfqApi } from '../../../../services/api';
 
 interface Props {
   invoice: InvoiceData;
   onAction: (type: 'approve' | 'hold' | 'reject' | 'manager_approve', invoice: InvoiceData) => void;
 }
 
-type TabKey = 'match' | 'lineitems' | 'history';
+type TabKey = 'match' | 'files' | 'lineitems' | 'history';
+
+type PreviewKind = 'pdf' | 'image' | 'other';
+
+type FilePreview = {
+  url: string;
+  fileName: string;
+  kind: PreviewKind;
+};
+
+type FileRow = {
+  key: string;
+  kind: 'invoice' | 'pr' | 'quotation';
+  label: string;
+  fileName: string;
+  extra?: string;
+  size?: number;
+  uploadedAt?: string;
+  url: string;
+  open?: () => Promise<void>;
+};
+
+function formatFileSize(bytes?: number) {
+  const n = Number(bytes) || 0;
+  if (!n) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function sniffPreview(blob: Blob, fileName: string): PreviewKind {
+  const type = String(blob.type || '').toLowerCase();
+  const name = String(fileName || '').toLowerCase();
+  if (type.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
+  if (type.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(name)) return 'image';
+  return 'other';
+}
+
+function kindMeta(kind: FileRow['kind']) {
+  if (kind === 'invoice') {
+    return { badge: 'Invoice', icon: 'ri-file-invoice-line', tone: 'teal' };
+  }
+  if (kind === 'quotation') {
+    return { badge: 'Quotation', icon: 'ri-file-paper-2-line', tone: 'amber' };
+  }
+  return { badge: 'PR document', icon: 'ri-file-list-3-line', tone: 'indigo' };
+}
 
 export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
   const [tab, setTab] = useState<TabKey>('match');
+  const [openingKey, setOpeningKey] = useState('');
+  const [fileError, setFileError] = useState('');
+  const [filePreview, setFilePreview] = useState<FilePreview | null>(null);
+
+  const isSass = Boolean(invoice.isSass);
+  const files = useMemo<FileRow[]>(() => {
+    const rows: FileRow[] = [];
+    if (invoice.hasInvoiceFile && invoice.id) {
+      rows.push({
+        key: `invoice-${invoice.id}`,
+        kind: 'invoice',
+        label: 'Vendor invoice',
+        fileName: invoice.invoiceFileName || `Invoice-${invoice.id}`,
+        extra: invoice.invoiceNumber,
+        url: accountsApi.invoiceFileUrl(invoice.id),
+      });
+    }
+    (invoice.prAttachments || []).forEach((file) => {
+      if (!file?.id || !file.fileName) return;
+      const prId = Number(file.prId || invoice.prRecordId) || 0;
+      rows.push({
+        key: `pr-${file.id}`,
+        kind: 'pr',
+        label: 'PR / FSD document',
+        fileName: file.fileName,
+        extra: file.uploadedAt || '',
+        size: file.size,
+        uploadedAt: file.uploadedAt,
+        url: prId ? prApi.attachmentFileUrl(prId, file.id) : '',
+      });
+    });
+    (invoice.quotationFiles || []).forEach((file, idx) => {
+      if (!file?.fileName) return;
+      const extraId = Number(file.extraFileId || file.id) || 0;
+      const submissionId = Number(file.submissionId) || 0;
+      rows.push({
+        key: `quote-${extraId || submissionId}-${idx}`,
+        kind: 'quotation',
+        label: 'Vendor quotation',
+        fileName: file.fileName,
+        extra: [file.vendorName, file.round ? `Round ${file.round}` : '']
+          .filter(Boolean)
+          .join(' · '),
+        url: extraId
+          ? rfqApi.quotationExtraFileUrl(extraId)
+          : submissionId
+            ? rfqApi.quotationFileUrl(submissionId)
+            : '',
+      });
+    });
+    return rows;
+  }, [invoice]);
+
+  useEffect(() => {
+    return () => {
+      if (filePreview?.url) URL.revokeObjectURL(filePreview.url);
+    };
+  }, [filePreview]);
+
+  const openFile = async (row: FileRow, download = false) => {
+    setFileError('');
+    setOpeningKey(download ? `dl-${row.key}` : row.key);
+    try {
+      if (row.open && (download || !row.url)) {
+        await row.open();
+        return;
+      }
+      if (!row.url) {
+        setFileError('File URL is not available');
+        return;
+      }
+      const blob = await accountsApi.fetchAuthFile(row.url);
+      if (download) {
+        const a = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        a.href = url;
+        a.download = row.fileName || 'document';
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
+      if (filePreview?.url) URL.revokeObjectURL(filePreview.url);
+      const url = URL.createObjectURL(blob);
+      setFilePreview({ url, fileName: row.fileName, kind: sniffPreview(blob, row.fileName) });
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : `Could not open ${row.fileName}`);
+    } finally {
+      setOpeningKey('');
+    }
+  };
 
   const tabs: { key: TabKey; label: string }[] = [
-    { key: 'match', label: '3-Way Match Summary' },
+    { key: 'match', label: isSass ? 'Match Summary' : '3-Way Match Summary' },
+    { key: 'files', label: `Files (${files.length})` },
     { key: 'lineitems', label: 'Line Items Comparison' },
     { key: 'history', label: 'Approval History' },
   ];
+
+  const filesPanel = (
+    <div className="space-y-3">
+      {fileError && (
+        <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+          {fileError}
+        </div>
+      )}
+      {files.length === 0 ? (
+        <div className="bg-white rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+          No invoice, PR, or quotation files attached yet.
+        </div>
+      ) : (
+        files.map((file) => {
+          const meta = kindMeta(file.kind);
+          const tone =
+            meta.tone === 'teal'
+              ? 'bg-teal-50 text-teal-700 border-teal-200'
+              : meta.tone === 'amber'
+                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                : 'bg-indigo-50 text-indigo-700 border-indigo-200';
+          return (
+            <div
+              key={file.key}
+              className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
+            >
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${tone}`}>
+                <i className={`${meta.icon} text-lg`} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${tone}`}>
+                    {meta.badge}
+                  </span>
+                  {file.extra ? <span className="text-[11px] text-gray-500">{file.extra}</span> : null}
+                </div>
+                <p className="text-sm font-semibold text-gray-900 break-all">{file.fileName}</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  {[file.label, formatFileSize(file.size), file.uploadedAt].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  disabled={openingKey === file.key}
+                  onClick={() => void openFile(file, false)}
+                  className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 disabled:opacity-50"
+                >
+                  {openingKey === file.key ? 'Opening…' : 'View'}
+                </button>
+                <button
+                  type="button"
+                  disabled={openingKey === `dl-${file.key}`}
+                  onClick={() => void openFile(file, true)}
+                  className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {openingKey === `dl-${file.key}` ? 'Saving…' : 'Download'}
+                </button>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+
+  const previewModal =
+    filePreview &&
+    createPortal(
+      <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50">
+        <div className="bg-white rounded-xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-xl">
+          <div className="p-4 border-b border-gray-200 flex justify-between items-center gap-3">
+            <span className="font-semibold text-gray-900 truncate">{filePreview.fileName}</span>
+            <button
+              type="button"
+              onClick={() => {
+                URL.revokeObjectURL(filePreview.url);
+                setFilePreview(null);
+              }}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xl cursor-pointer"
+            >
+              ×
+            </button>
+          </div>
+          <div className="p-4 flex-1 overflow-auto bg-slate-50">
+            {filePreview.kind === 'image' ? (
+              <img src={filePreview.url} alt={filePreview.fileName} className="max-h-[75vh] mx-auto rounded-lg" />
+            ) : filePreview.kind === 'other' ? (
+              <p className="text-sm text-gray-600 text-center py-10">
+                Preview is not available for this file type. Use Download.
+              </p>
+            ) : (
+              <iframe
+                title="Document preview"
+                src={filePreview.url}
+                className="w-full h-[75vh] border border-gray-200 rounded-lg bg-white"
+              />
+            )}
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
 
   return (
     <div className="p-5 space-y-4">
@@ -27,7 +269,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
           <p className="text-xs text-gray-400">{invoice.invoiceNumber}</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
-          <p className="text-xs text-gray-500 mb-1">PO Amount</p>
+          <p className="text-xs text-gray-500 mb-1">{isSass ? 'PR / Cloud Amount' : 'PO Amount'}</p>
           <p className={`text-base font-bold ${invoice.invoiceGrandTotal === invoice.poGrandTotal ? 'text-teal-600' : 'text-red-600'}`}>
             ₹{invoice.poGrandTotal.toLocaleString('en-IN')}
           </p>
@@ -35,10 +277,19 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <p className="text-xs text-gray-500 mb-1">GRN Received Value</p>
-          <p className={`text-base font-bold ${invoice.grnReceivedValue === invoice.invoiceGrandTotal ? 'text-teal-600' : 'text-red-600'}`}>
-            ₹{invoice.grnReceivedValue.toLocaleString('en-IN')}
-          </p>
-          <p className="text-xs text-gray-400">{invoice.grnNumber}</p>
+          {isSass ? (
+            <>
+              <p className="text-base font-bold text-gray-500">N/A</p>
+              <p className="text-xs text-gray-400">Cloud Subscription — no GRN</p>
+            </>
+          ) : (
+            <>
+              <p className={`text-base font-bold ${invoice.grnReceivedValue === invoice.invoiceGrandTotal ? 'text-teal-600' : 'text-red-600'}`}>
+                ₹{invoice.grnReceivedValue.toLocaleString('en-IN')}
+              </p>
+              <p className="text-xs text-gray-400">{invoice.grnNumber || '—'}</p>
+            </>
+          )}
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <p className="text-xs text-gray-500 mb-1">Overall Match</p>
@@ -63,7 +314,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1 w-fit">
+      <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -84,7 +335,11 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { label: 'PO Match', ok: invoice.matchStatus.poMatch, desc: 'Invoice vs Purchase Order' },
-              { label: 'GRN Match', ok: invoice.matchStatus.grnMatch, desc: 'Invoice vs Goods Receipt' },
+              {
+                label: 'GRN Match',
+                ok: invoice.matchStatus.grnMatch,
+                desc: isSass ? 'Not required for Cloud Subscription' : 'Invoice vs Goods Receipt',
+              },
               { label: 'Price Match', ok: invoice.matchStatus.priceMatch, desc: 'Unit prices verified' },
             ].map((check) => (
               <div
@@ -129,6 +384,24 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
               </ul>
             </div>
           )}
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Documents & files ({files.length})
+              </p>
+              {files.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTab('files')}
+                  className="text-xs font-semibold text-teal-700 hover:underline"
+                >
+                  Open files tab
+                </button>
+              )}
+            </div>
+            {filesPanel}
+          </div>
 
           {/* Vendor & Invoice Info */}
           <div className="grid grid-cols-2 gap-4">
@@ -233,6 +506,8 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
         </div>
       )}
 
+      {tab === 'files' && filesPanel}
+
       {tab === 'lineitems' && (
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
@@ -257,7 +532,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
                   <td className="px-3 py-3 text-center text-gray-700">{item.invoicedQty}</td>
                   <td className="px-3 py-3 text-center text-gray-700">{item.poQty}</td>
                   <td className={`px-3 py-3 text-center font-medium ${item.grnQty < item.invoicedQty ? 'text-red-600' : 'text-gray-700'}`}>
-                    {item.grnQty}
+                    {isSass ? 'N/A' : item.grnQty}
                   </td>
                   <td className={`px-3 py-3 text-right ${!item.priceMatch ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>
                     ₹{item.invoicedUnitPrice.toLocaleString('en-IN')}
@@ -288,7 +563,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
                   </td>
                   <td className="px-3 py-3 text-center">
                     <div className="flex justify-center">
-                      {item.grnMatch ? (
+                      {isSass || item.grnMatch ? (
                         <i className="ri-checkbox-circle-fill text-teal-500 text-base"></i>
                       ) : (
                         <i className="ri-close-circle-fill text-red-500 text-base"></i>
@@ -339,6 +614,8 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
           ))}
         </div>
       )}
+
+      {previewModal}
     </div>
   );
 }

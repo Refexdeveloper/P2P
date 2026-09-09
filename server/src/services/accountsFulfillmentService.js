@@ -7,6 +7,8 @@ import { uploadToGcs, downloadFromGcs, gcsEnabled } from './gcsStorage.js';
 import { formatDate, formatDateTime } from '../utils/constants.js';
 import { sendVendorInvoiceRequestNotification } from './emailService.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
+import { listPrAttachments } from './prAttachmentService.js';
+import { isSassPurchaseType } from './sassWorkflow.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_ROOT = path.resolve(__dirname, '../../uploads');
@@ -56,10 +58,14 @@ async function saveBase64File(dir, prefix, fileName, fileData, gcsFolder) {
   const buffer = Buffer.from(raw, 'base64');
   const safe = String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
   const stored = `${prefix}_${Date.now()}_${safe}`;
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, stored), buffer);
   if (gcsFolder && gcsEnabled()) {
-    await uploadToGcs(`${gcsFolder}/${stored}`, buffer);
-  } else {
-    fs.writeFileSync(path.join(dir, stored), buffer);
+    try {
+      await uploadToGcs(`${gcsFolder}/${stored}`, buffer);
+    } catch (err) {
+      console.warn(`[GCS] ${gcsFolder} upload failed, file kept on disk:`, err.message);
+    }
   }
   return { fileName: safe, filePath: stored };
 }
@@ -102,14 +108,94 @@ async function loadPoBundle(poId) {
   return { po: poRows[0], lineItems };
 }
 
-function mapInvoiceRow(row, lineItems = [], payment = null) {
+async function loadInvoiceRelatedFiles(prId) {
+  const id = Number(prId) || 0;
+  if (!id) return { prAttachments: [], quotationFiles: [] };
+
+  let prAttachments = [];
+  try {
+    prAttachments = (await listPrAttachments(id)).map((f) => ({
+      id: f.id,
+      prId: f.prId,
+      fileName: f.fileName,
+      size: Number(f.size) || 0,
+      mimeType: f.mimeType || '',
+      uploadedAt: f.uploadedAt ? formatDateTime(f.uploadedAt) : '',
+      kind: 'pr',
+    }));
+  } catch (err) {
+    console.warn('Invoice PR attachments skipped:', err.message);
+  }
+
+  const quotationFiles = [];
+  try {
+    const [subs] = await pool.query(
+      `SELECT vqs.id, vqs.round, vqs.quotation_file_name, ri.vendor_name
+       FROM vendor_quotation_submissions vqs
+       JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id
+       WHERE ri.pr_id = ?
+       ORDER BY vqs.round ASC, vqs.id ASC`,
+      [id]
+    );
+    for (const s of subs) {
+      if (String(s.quotation_file_name || '').trim()) {
+        quotationFiles.push({
+          id: null,
+          extraFileId: null,
+          submissionId: s.id,
+          fileName: s.quotation_file_name,
+          vendorName: s.vendor_name || '',
+          round: Number(s.round) || 1,
+          kind: 'quotation',
+        });
+      }
+    }
+    const subIds = subs.map((s) => Number(s.id)).filter((n) => n > 0);
+    if (subIds.length) {
+      const [extras] = await pool.query(
+        `SELECT vqf.id, vqf.submission_id, vqf.file_name, vqs.round, ri.vendor_name
+         FROM vendor_quotation_files vqf
+         JOIN vendor_quotation_submissions vqs ON vqs.id = vqf.submission_id
+         JOIN rfq_invitations ri ON ri.id = vqs.rfq_invitation_id
+         WHERE vqf.submission_id IN (${subIds.map(() => '?').join(',')})
+         ORDER BY vqf.sort_order ASC, vqf.id ASC`,
+        subIds
+      );
+      for (const e of extras) {
+        if (!String(e.file_name || '').trim()) continue;
+        quotationFiles.push({
+          id: e.id,
+          extraFileId: e.id,
+          submissionId: e.submission_id,
+          fileName: e.file_name,
+          vendorName: e.vendor_name || '',
+          round: Number(e.round) || 1,
+          kind: 'quotation',
+        });
+      }
+    }
+  } catch (err) {
+    if (String(err?.code || '') !== 'ER_NO_SUCH_TABLE') {
+      console.warn('Invoice quotation files skipped:', err.message);
+    }
+  }
+
+  return { prAttachments, quotationFiles };
+}
+
+function mapInvoiceRow(row, lineItems = [], payment = null, relatedFiles = null) {
   const history = parseHistory(row.approval_history);
+  const isSass = isSassPurchaseType(row.purchase_type);
   const poMatch = Number(row.invoice_grand_total) > 0
     ? Math.abs(Number(row.invoice_grand_total) - Number(row.po_grand_total)) < 1
     : true;
-  const grnMatch = Number(row.grn_received_value) > 0
-    ? Number(row.grn_received_value) <= Number(row.po_grand_total) + 1
-    : true;
+  const grnMatch = isSass
+    ? true
+    : Number(row.grn_received_value) > 0
+      ? Number(row.grn_received_value) <= Number(row.po_grand_total) + 1
+      : true;
+  const prAttachments = relatedFiles?.prAttachments || [];
+  const quotationFiles = relatedFiles?.quotationFiles || [];
 
   return {
     id: row.id,
@@ -157,6 +243,11 @@ function mapInvoiceRow(row, lineItems = [], payment = null) {
     approvalHistory: history,
     invoiceFileName: row.invoice_file_name || null,
     hasInvoiceFile: Boolean(row.invoice_file_path),
+    prRecordId: Number(row.pr_record_id || row.invoice_pr_id || row.po_pr_id || row.pr_id) || 0,
+    purchaseType: row.purchase_type || '',
+    isSass,
+    prAttachments,
+    quotationFiles,
     paymentStatus:
       row.status === 'paid'
         ? 'Paid'
@@ -524,7 +615,8 @@ export async function listInvoices(user, { forPayment = false } = {}) {
 
   const [rows] = await pool.query(
     `SELECT i.*, po.po_number, po.vendor_email, po.payment_terms, po.status AS po_status,
-            g.grn_number, pr.pr_number, pr.title AS pr_title,
+            po.purchase_type, po.pr_id AS po_pr_id,
+            g.grn_number, pr.id AS pr_record_id, pr.pr_number, pr.title AS pr_title,
             d.name AS department_name, u.name AS requester_name
      FROM invoices i
      JOIN purchase_orders po ON po.id = i.po_id
@@ -587,7 +679,9 @@ export async function listInvoices(user, { forPayment = false } = {}) {
       payment = payRows[0] || null;
     }
 
-    result.push(mapInvoiceRow(row, lineItems, payment));
+    const prRecordId = Number(row.pr_record_id || row.po_pr_id || row.pr_id) || 0;
+    const relatedFiles = await loadInvoiceRelatedFiles(prRecordId);
+    result.push(mapInvoiceRow(row, lineItems, payment, relatedFiles));
   }
   return result;
 }
@@ -1178,13 +1272,30 @@ export async function resolveInvoiceFile(invoiceId) {
   );
   if (!rows.length || !rows[0].invoice_file_path) return null;
   const fileName = rows[0].invoice_file_name || 'invoice.pdf';
-  if (gcsEnabled()) {
-    const buf = await downloadFromGcs(`invoices/${path.basename(rows[0].invoice_file_path)}`);
-    if (buf?.length) return { fullPath: null, fileName, buffer: buf };
+  const stored = String(rows[0].invoice_file_path).replace(/\\/g, '/');
+  const base = path.basename(stored);
+  const diskCandidates = [
+    path.isAbsolute(stored) ? stored : null,
+    path.join(INVOICE_DIR, stored),
+    path.join(INVOICE_DIR, base),
+  ].filter(Boolean);
+  for (const fullPath of diskCandidates) {
+    if (fs.existsSync(fullPath)) return { fullPath, fileName, buffer: null };
   }
-  const fullPath = path.join(INVOICE_DIR, rows[0].invoice_file_path);
-  if (fs.existsSync(fullPath)) return { fullPath, fileName };
+  if (gcsEnabled()) {
+    const keys = [...new Set([`${gcsFolderSafe(stored, 'invoices')}`, `invoices/${base}`, stored, base])];
+    for (const key of keys) {
+      const buf = await downloadFromGcs(key);
+      if (buf?.length) return { fullPath: null, fileName, buffer: buf };
+    }
+  }
   return null;
+}
+
+function gcsFolderSafe(stored, folder) {
+  const cleaned = String(stored || '').replace(/^\/+/, '');
+  if (cleaned.startsWith(`${folder}/`)) return cleaned;
+  return `${folder}/${path.basename(cleaned)}`;
 }
 
 /** Compact GRN + invoice snapshot for Track PO expand (finished-flow tabs). */

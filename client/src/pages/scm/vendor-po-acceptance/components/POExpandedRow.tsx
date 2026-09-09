@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { poApi } from '../../../../services/api';
+import { accountsApi, poApi } from '../../../../services/api';
 
 export type AcceptancePo = {
   id: number;
@@ -74,10 +74,27 @@ const formatCurrency = (amount: number) =>
 export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, busy }: Props) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'response' | 'history'>('details');
+  const [openingFile, setOpeningFile] = useState(false);
+  const [fileError, setFileError] = useState('');
   const pending = !po.vendorAcceptanceStatus || po.vendorAcceptanceStatus === 'pending';
   const accepted =
     po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
   const isWorkOrder = po.purchaseType === 'work_order';
+
+  const openAcceptanceFile = async () => {
+    setFileError('');
+    setOpeningFile(true);
+    try {
+      const blob = await accountsApi.fetchAuthFile(poApi.getVendorAcceptanceFileUrl(po.id));
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : 'Could not open acceptance file');
+    } finally {
+      setOpeningFile(false);
+    }
+  };
 
   return (
     <tr>
@@ -339,15 +356,18 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                 </div>
                 {po.vendorAcceptanceFileName ? (
                   <div className="sm:col-span-2">
-                    <a
-                      href={poApi.getVendorAcceptanceFileUrl(po.id)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-teal-700 text-sm font-semibold hover:underline"
+                    {fileError ? (
+                      <p className="text-xs text-red-600 mb-2">{fileError}</p>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={openingFile}
+                      onClick={() => void openAcceptanceFile()}
+                      className="text-teal-700 text-sm font-semibold hover:underline disabled:opacity-50"
                     >
                       <i className="ri-attachment-2 mr-1"></i>
-                      {po.vendorAcceptanceFileName}
-                    </a>
+                      {openingFile ? 'Opening…' : po.vendorAcceptanceFileName}
+                    </button>
                   </div>
                 ) : null}
               </div>

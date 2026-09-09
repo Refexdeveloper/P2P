@@ -368,6 +368,8 @@ export const prApi = {
     request<{ message: string }>(`/api/purchase-requests/${prId}/attachments/${attachmentId}`, {
       method: 'DELETE',
     }),
+  attachmentFileUrl: (prId: number, attachmentId: number) =>
+    `${API_URL}/api/purchase-requests/${prId}/attachments/${attachmentId}/file`,
   downloadAttachment: async (prId: number, attachmentId: number, fileName: string) => {
     const token = getToken();
     const res = await fetch(`${API_URL}/api/purchase-requests/${prId}/attachments/${attachmentId}/file`, {
@@ -2033,6 +2035,30 @@ export const accountsApi = {
       body: JSON.stringify(body),
     }),
   invoiceFileUrl: (id: number) => `${API_URL}/api/accounts/invoices/${id}/file`,
+  downloadInvoiceFile: async (id: number, fileName?: string) => {
+    const token = getToken();
+    const res = await fetch(`${API_URL}/api/accounts/invoices/${id}/file`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ApiError(res.status, errorMessageFromResponse(text, 'Could not download invoice file'));
+    }
+    const blob = await res.blob();
+    triggerBlobDownload(blob, fileName || `invoice-${id}.pdf`);
+    return blob;
+  },
+  fetchAuthFile: async (url: string) => {
+    const token = getToken();
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ApiError(res.status, errorMessageFromResponse(text, 'Could not open file'));
+    }
+    return res.blob();
+  },
   getVendorInvoiceByToken: (token: string) =>
     request<{ data: Record<string, unknown> }>(
       `/api/accounts/vendor-invoice/${encodeURIComponent(token)}`

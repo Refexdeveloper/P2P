@@ -561,6 +561,7 @@ export function buildPrApprovalPendingEmail({
   rfqSummary = null,
   rfqEntry = false,
   createPo = false,
+  slaBreach = false,
   appBaseUrl = null,
   roleDisplayName: roleDisplayNameOverride = null,
 }) {
@@ -596,9 +597,16 @@ export function buildPrApprovalPendingEmail({
     };
   }
   const isRequesterStep = assignedRole === 'Requester';
-  const isScmRfqEntry = rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq);
   const isSassRequest = isSassPrPayload(pr);
   const stageLower = String(stageLabel || '').toLowerCase();
+  const isSlaBreach = Boolean(slaBreach) || stageLower.includes('sla breach');
+  // "New PR request received" is ONLY the first SCM RFQ Entry mail — never SLA, Create PO, or buyer verify
+  const isScmRfqEntry =
+    !isSlaBreach &&
+    Boolean(rfqEntry) &&
+    assignedRole === 'SCM Buyer' &&
+    !postRfq &&
+    !createPo;
   const isUserApproval = stageLower.includes('user approval');
   const hasRfqVendors = Boolean(rfqSummary?.vendors?.length);
   const isCreatePoStep =
@@ -621,17 +629,19 @@ export function buildPrApprovalPendingEmail({
         : isRfqEntryStep
           ? 'RFQ Entry'
           : 'Purchase Request');
-  const baseSubject = isCreatePoStep
-    ? `Action Required: Create PO for ${pr.prNumber} — ${pr.title}`
-    : isScmRfqEntry
-      ? formatScmRfqEntrySubject(pr)
-      : isRfqEntryStep
-        ? `Action Required: RFQ Entry for ${pr.prNumber} — ${pr.title}`
-        : isUserApproval && hasRfqVendors
-          ? `Action Required: Approve PR ${pr.prNumber} — quotations & amount`
-          : postRfq
-            ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
-            : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
+  const baseSubject = isSlaBreach
+    ? `SLA Breached: ${pr.prNumber} — ${stageText}`
+    : isCreatePoStep
+      ? `Action Required: Create PO for ${pr.prNumber} — ${pr.title}`
+      : isScmRfqEntry
+        ? formatScmRfqEntrySubject(pr)
+        : isRfqEntryStep
+          ? `Action Required: RFQ Entry for ${pr.prNumber} — ${pr.title}`
+          : isUserApproval && hasRfqVendors
+            ? `Action Required: Approve PR ${pr.prNumber} — quotations & amount`
+            : postRfq
+              ? `RFQ Approval Required: ${pr.prNumber} — ${stageText}`
+              : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
   const subject =
     isSassRequest && !isScmRfqEntry
       ? `Cloud Subscription · ${baseSubject.replace(/^Action Required:\s*/i, '')}`
@@ -780,32 +790,36 @@ export function buildPrApprovalPendingEmail({
 
   const entityLabel = formatEntity(pr);
   const entityLocationLabel = formatEntityLocation(pr);
-  const headerEyebrow = isSassRequest
-    ? 'Cloud Subscription'
-    : isScmRfqEntry
-      ? 'New PR Request Received'
-      : isRfqEntryStep
-        ? 'RFQ Entry Required'
-        : isUserApproval
-          ? 'User Approval Required'
-          : postRfq
-            ? 'RFQ Approval Required'
-            : 'Approval Required';
-  const headerTitle = isSassRequest
-    ? isRfqEntryStep && !isScmRfqEntry
-      ? escapeHtml(stageText)
-      : 'Purchase request needs your review'
-    : isScmRfqEntry
-      ? 'New PR request received'
-      : isRfqEntryStep
+  const headerEyebrow = isSlaBreach
+    ? 'SLA Breached'
+    : isSassRequest
+      ? 'Cloud Subscription'
+      : isScmRfqEntry
+        ? 'New PR Request Received'
+        : isRfqEntryStep
+          ? 'RFQ Entry Required'
+          : isUserApproval
+            ? 'User Approval Required'
+            : postRfq
+              ? 'RFQ Approval Required'
+              : 'Approval Required';
+  const headerTitle = isSlaBreach
+    ? escapeHtml(stageText)
+    : isSassRequest
+      ? isRfqEntryStep && !isScmRfqEntry
         ? escapeHtml(stageText)
-        : isUserApproval && hasRfqVendors
-          ? 'Review quotations and approve this PR'
-          : postRfq
-            ? `${escapeHtml(stageText)} — Vendor Comparison`
-            : isUserApproval
-              ? 'Purchase Request Pending Your Action'
-              : 'Purchase Request Pending Your Action';
+        : 'Purchase request needs your review'
+      : isScmRfqEntry
+        ? 'New PR request received'
+        : isRfqEntryStep
+          ? escapeHtml(stageText)
+          : isUserApproval && hasRfqVendors
+            ? 'Review quotations and approve this PR'
+            : postRfq
+              ? `${escapeHtml(stageText)} — Vendor Comparison`
+              : isUserApproval
+                ? 'Purchase Request Pending Your Action'
+                : 'Purchase Request Pending Your Action';
   const headerSub =
     isScmRfqEntry && !isSassRequest
       ? `${escapeHtml(pr.prNumber || '')}${entityLabel && entityLabel !== '—' ? ` — ${escapeHtml(entityLabel)}` : ''}${entityLocationLabel ? ` - ${escapeHtml(entityLocationLabel)}` : ''}`
@@ -822,10 +836,16 @@ export function buildPrApprovalPendingEmail({
     <tr><td align="center">
       <table width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #dbe3ee;">
         <tr>
-          <td style="background:${isSassRequest ? 'linear-gradient(135deg,#0f766e,#0d9488)' : 'linear-gradient(135deg,#0c4a6e,#0369a1)'};padding:28px 32px;">
-            <div style="font-size:11px;color:${isSassRequest ? '#ccfbf1' : '#bae6fd'};letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">${headerEyebrow}</div>
+          <td style="background:${
+            isSlaBreach
+              ? 'linear-gradient(135deg,#9a3412,#c2410c)'
+              : isSassRequest
+                ? 'linear-gradient(135deg,#0f766e,#0d9488)'
+                : 'linear-gradient(135deg,#0c4a6e,#0369a1)'
+          };padding:28px 32px;">
+            <div style="font-size:11px;color:${isSlaBreach ? '#ffedd5' : isSassRequest ? '#ccfbf1' : '#bae6fd'};letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">${headerEyebrow}</div>
             <div style="font-size:24px;color:#fff;font-weight:800;margin-top:8px;">${headerTitle}</div>
-            <div style="font-size:14px;color:${isSassRequest ? '#ecfdf5' : '#e0f2fe'};margin-top:8px;">${headerSub}</div>
+            <div style="font-size:14px;color:${isSlaBreach ? '#ffedd5' : isSassRequest ? '#ecfdf5' : '#e0f2fe'};margin-top:8px;">${headerSub}</div>
           </td>
         </tr>
         <tr>

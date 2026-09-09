@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { InvoiceData } from '../../../../mocks/invoice-data';
 import InvoiceExpandedRow from './InvoiceExpandedRow';
 
@@ -12,6 +12,16 @@ interface Props {
 
 export default function InvoiceTable({ invoices, onAction }: Props) {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const didAutoExpand = useRef(false);
+
+  useEffect(() => {
+    if (didAutoExpand.current || !invoices.length) return;
+    didAutoExpand.current = true;
+    const first =
+      invoices.find((i) => i.status === 'Pending Verification' || i.status === 'Pending Manager Approval') ||
+      invoices[0];
+    setExpandedRow(first.invoiceNumber);
+  }, [invoices]);
 
   const getStatusBadge = (status: string) => {
     const styles = {
@@ -71,9 +81,8 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
         </thead>
         <tbody className="divide-y divide-gray-200">
           {invoices.map((invoice) => (
-            <>
+            <Fragment key={invoice.id || invoice.invoiceNumber}>
               <tr
-                key={invoice.invoiceNumber}
                 className="hover:bg-gray-50 cursor-pointer transition-colors"
                 onClick={() => setExpandedRow(expandedRow === invoice.invoiceNumber ? null : invoice.invoiceNumber)}
               >
@@ -173,11 +182,11 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
               {expandedRow === invoice.invoiceNumber && (
                 <tr>
                   <td colSpan={9} className="bg-gray-50 px-6 py-6">
-                    <InvoiceExpandedRow invoice={invoice} />
+                    <InvoiceExpandedRow invoice={invoice} onAction={onAction} />
                   </td>
                 </tr>
               )}
-            </>
+            </Fragment>
           ))}
         </tbody>
       </table>

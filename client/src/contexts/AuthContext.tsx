@@ -54,6 +54,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 /** Srivaths (CTO) login lands on Financial Insights dashboard */
 const EMAIL_HOME_OVERRIDES: Record<string, string> = {
   'srivaths.varadharajan@refex.co.in': '/dashboard',
+  'accounts_rgml_refexev@refex.co.in': '/accounts/invoice-verification',
 };
 
 /** Starting page for each role after login */
@@ -66,8 +67,8 @@ export const ROLE_HOME: Partial<Record<UserRole, string>> = {
   'HOD Approver': '/tasks',
   'SCM Buyer': '/scm/purchase-requests',
   'SCM Manager': '/scm/manager-dashboard',
-  'Accounts Payable': '/accounts/dashboard',
-  'Accounts Manager': '/accounts/dashboard',
+  'Accounts Payable': '/accounts/invoice-verification',
+  'Accounts Manager': '/accounts/invoice-verification',
   'Functional Team': '/functional/evaluate-pr',
   'QA Inspector': '/grn',
   Legal: '/tasks',

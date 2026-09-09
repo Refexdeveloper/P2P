@@ -4459,13 +4459,27 @@ export async function resolveVendorAcceptanceFile(poRowOrPath) {
       ? poRowOrPath
       : poRowOrPath?.vendor_acceptance_file_path || poRowOrPath?.vendorAcceptanceFilePath;
   if (!filePath) throw new Error('Acceptance file not found');
-  const baseName = path.basename(filePath);
-  const fullPath = path.join(PO_UPLOAD_DIR, baseName);
-  if (fs.existsSync(fullPath)) return fullPath;
-  // GCS fallback
+  const stored = String(filePath).replace(/\\/g, '/');
+  const baseName = path.basename(stored);
+  const diskCandidates = [
+    path.isAbsolute(stored) ? stored : null,
+    path.join(PO_UPLOAD_DIR, stored),
+    path.join(PO_UPLOAD_DIR, baseName),
+  ].filter(Boolean);
+  for (const fullPath of diskCandidates) {
+    if (fs.existsSync(fullPath)) return { fullPath, fileName: baseName, buffer: null };
+  }
   if (gcsEnabled()) {
-    const buf = await downloadFromGcs(`purchase-orders/${baseName}`);
-    if (buf?.length) return { buffer: buf, fileName: baseName };
+    const keys = [...new Set([
+      stored.startsWith('purchase-orders/') ? stored : `purchase-orders/${baseName}`,
+      `purchase-orders/${baseName}`,
+      stored,
+      baseName,
+    ])];
+    for (const key of keys) {
+      const buf = await downloadFromGcs(key);
+      if (buf?.length) return { buffer: buf, fileName: baseName, fullPath: null };
+    }
   }
   throw new Error('Acceptance file missing on server');
 }

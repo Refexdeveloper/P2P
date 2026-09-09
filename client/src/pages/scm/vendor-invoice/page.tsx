@@ -25,6 +25,7 @@ type Row = {
   poGrandTotal: number;
   grnReceivedValue: number;
   hasInvoiceFile: boolean;
+  invoiceFileName: string | null;
   invoiceDate: string;
   dueDate: string;
   vendorInvoiceMode: string | null;
@@ -63,6 +64,7 @@ function mapRow(raw: Record<string, unknown>): Row {
     poGrandTotal: Number(raw.poGrandTotal) || 0,
     grnReceivedValue: Number(raw.grnReceivedValue) || 0,
     hasInvoiceFile: Boolean(raw.hasInvoiceFile),
+    invoiceFileName: raw.invoiceFileName ? String(raw.invoiceFileName) : null,
     invoiceDate: String(raw.invoiceDate || ''),
     dueDate: String(raw.dueDate || ''),
     vendorInvoiceMode: raw.vendorInvoiceMode ? String(raw.vendorInvoiceMode) : null,
@@ -178,7 +180,19 @@ export default function VendorInvoicePage() {
     }
   };
 
-  const submitManual = async () => {
+  const handleViewInvoice = async (row: Row) => {
+    setBusyId(row.id);
+    try {
+      const blob = await accountsApi.fetchAuthFile(accountsApi.invoiceFileUrl(row.id));
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not open invoice file');
+    } finally {
+      setBusyId(null);
+    }
+  };
     if (!uploadRow) return;
     if (!form.invoiceNumber.trim() || !form.file) {
       showToast('Invoice number and file are required');
@@ -322,8 +336,17 @@ export default function VendorInvoicePage() {
                             </span>
                       </td>
                           <td className="px-4 py-3">
-                            {row.canSendMail || row.canManualEntry ? (
-                              <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-2">
+                                {row.hasInvoiceFile && (
+                                  <button
+                                    type="button"
+                                    disabled={busyId === row.id}
+                                    onClick={() => void handleViewInvoice(row)}
+                                    className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {busyId === row.id ? 'Opening…' : 'View file'}
+                                  </button>
+                                )}
                                 {row.canSendMail && (
                                   <button
                                     type="button"
@@ -341,13 +364,13 @@ export default function VendorInvoicePage() {
                                     onClick={() => openManual(row)}
                                     className="px-3 py-1.5 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer"
                                   >
-                                    Upload Invoice
+                                    {row.hasInvoiceFile ? 'Replace Invoice' : 'Upload Invoice'}
                           </button>
                                 )}
-                              </div>
-                            ) : (
+                                {!row.hasInvoiceFile && !row.canSendMail && !row.canManualEntry ? (
                               <span className="text-xs text-gray-400">Uploaded</span>
-                            )}
+                                ) : null}
+                            </div>
                           </td>
                         </tr>
                         {open && (
@@ -367,7 +390,21 @@ export default function VendorInvoicePage() {
                                   <p className="text-xs text-gray-500">Department</p>
                                   <p className="text-sm font-semibold">{row.department || '—'}</p>
                                 </div>
-                                {(row.canSendMail || row.canManualEntry) && (
+                                {row.hasInvoiceFile && (
+                                  <div className="md:col-span-3">
+                                    <button
+                                      type="button"
+                                      disabled={busyId === row.id}
+                                      onClick={() => void handleViewInvoice(row)}
+                                      className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
+                                    >
+                                      <i className="ri-file-invoice-line mr-1" />
+                                      {busyId === row.id
+                                        ? 'Opening…'
+                                        : `View invoice file${row.invoiceFileName ? ` (${row.invoiceFileName})` : ''}`}
+                                    </button>
+                                  </div>
+                                )}
                                   <div className="md:col-span-3 flex flex-wrap gap-2">
                                     {row.canSendMail && (
                             <button
@@ -389,7 +426,6 @@ export default function VendorInvoicePage() {
                             </button>
                           )}
                                   </div>
-                                )}
                                 <div className="md:col-span-3 border border-gray-200 rounded-lg overflow-hidden">
                                   <table className="w-full text-xs">
                                     <thead className="bg-gray-50 text-gray-500">

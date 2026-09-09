@@ -74,7 +74,7 @@ export const NAV_ITEMS = [
   { code: 'nav.vendor_invoice', label: 'Vendor Invoice', path: '/scm/vendor-invoice', icon: 'ri-file-invoice-line', group: 'SCM', sort: 72 },
   { code: 'nav.grn', label: 'GRN', path: '/grn', icon: 'ri-truck-line', group: 'SCM', sort: 73 },
   { code: 'nav.accounts_dashboard', label: 'Accounts Dashboard', path: '/accounts/dashboard', icon: 'ri-dashboard-line', group: 'Accounts', sort: 79 },
-  { code: 'nav.invoice_verification', label: 'Invoice Verification', path: '/accounts/invoice-verification', icon: 'ri-file-check-2-line', group: 'Accounts', sort: 80 },
+  { code: 'nav.invoice_verification', label: '3-Way Match', path: '/accounts/invoice-verification', icon: 'ri-file-check-2-line', group: 'Accounts', sort: 80 },
   { code: 'nav.payment', label: 'Payment', path: '/accounts/payment', icon: 'ri-money-rupee-circle-line', group: 'Accounts', sort: 81 },
   { code: 'nav.payment_authorization', label: 'Payment Authorization', path: '/accounts/scm-payment-approval', icon: 'ri-shield-check-line', group: 'SCM Manager', sort: 82 },
   { code: 'nav.functional_evaluate', label: 'Evaluate PR', path: '/functional/evaluate-pr', icon: 'ri-dashboard-line', group: 'Functional', sort: 90 },

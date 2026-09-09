@@ -367,10 +367,14 @@ async function saveSassInvoiceAttachment(invoiceId, fileName, fileData) {
   const buffer = Buffer.from(raw, 'base64');
   const safe = String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
   const stored = `inv_${invoiceId}_${Date.now()}_${safe}`;
+  if (!fs.existsSync(INVOICE_DIR)) fs.mkdirSync(INVOICE_DIR, { recursive: true });
+  fs.writeFileSync(path.join(INVOICE_DIR, stored), buffer);
   if (gcsEnabled()) {
-    await uploadToGcs(`invoices/${stored}`, buffer);
-  } else {
-    fs.writeFileSync(path.join(INVOICE_DIR, stored), buffer);
+    try {
+      await uploadToGcs(`invoices/${stored}`, buffer);
+    } catch (err) {
+      console.warn('[GCS] SASS invoice upload failed, file kept on disk:', err.message);
+    }
   }
   return { fileName: safe, filePath: stored, buffer };
 }
@@ -467,13 +471,12 @@ export async function completeSassInvoiceUploadTask(connOrPool, prId) {
   );
 }
 
-export const SASS_ITDEV_NOTIFY_EMAIL = 'itdev@refex.co.in';
 export const SASS_ACCOUNTS_NOTIFY_EMAIL = 'accounts_rgml_refexev@refex.co.in';
 
 /**
  * After Mugesh uploads invoice — notify:
  * To: Requester
- * Cc: L1 (user approver), L2 (Srivaths), Accounts (accounts_rgml_refexev), itdev
+ * Cc: L1 (user approver), L2 (Srivaths), Accounts (accounts_rgml_refexev)
  */
 export async function resolveSassInvoiceUploadedRecipients(prId) {
   const [prRows] = await pool.query(
@@ -547,10 +550,9 @@ export async function resolveSassInvoiceUploadedRecipients(prId) {
     }
   }
 
-  // Cc: L2 Srivaths, Accounts mailbox, IT Dev
+  // Cc: L2 Srivaths, Accounts mailbox
   pushCc(SASS_L2_EMAIL, SASS_L2_NAME);
   pushCc(SASS_ACCOUNTS_NOTIFY_EMAIL, 'Accounts');
-  pushCc(SASS_ITDEV_NOTIFY_EMAIL, 'IT Dev');
 
   const recipients = to ? [to, ...cc] : [...cc];
 

@@ -33,6 +33,7 @@ import {
   assertRequesterPoDocumentAccess,
 } from '../services/poService.js';
 import { getPoFulfillmentSummary } from '../services/accountsFulfillmentService.js';
+import { sendStoredFile } from '../utils/sendStoredFile.js';
 import { adminDeletePurchaseOrder } from '../services/adminDeleteService.js';
 import {
   resolveScmManagerUser,
@@ -781,15 +782,11 @@ router.get('/:id/vendor-acceptance/file', canReadPo, async (req, res) => {
   try {
     const po = await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
-    await assertVendorAcceptanceActor(req.user, { pr_id: po.prId, prId: po.prId, created_by: po.createdByUserId });
     const result = await resolveVendorAcceptanceFile(po);
-    if (result?.buffer) {
-      res.setHeader('Content-Disposition', `attachment; filename="${po.vendorAcceptanceFileName || 'vendor-acceptance.pdf'}"`);
-      res.setHeader('Content-Type', 'application/octet-stream');
-      return res.send(result.buffer);
-    }
-    const fullPath = typeof result === 'string' ? result : result?.fullPath;
-    res.download(fullPath, po.vendorAcceptanceFileName || 'vendor-acceptance.pdf');
+    return sendStoredFile(res, typeof result === 'string' ? { fullPath: result, fileName: po.vendorAcceptanceFileName } : {
+      ...result,
+      fileName: po.vendorAcceptanceFileName || result.fileName || 'vendor-acceptance.pdf',
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

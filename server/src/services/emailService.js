@@ -631,6 +631,7 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
     rfqSummary: options.rfqSummary || null,
     rfqEntry: options.rfqEntry || false,
     createPo: options.createPo || false,
+    slaBreach: options.slaBreach || false,
     appBaseUrl: getAppBaseUrl(),
     roleDisplayName: options.roleDisplayName || null,
   });
@@ -728,6 +729,7 @@ export async function sendSlaBreachNotification(pr, assignedRole, requester, dep
   const result = await sendPrApprovalPendingNotification(pr, assignedRole, requester, departmentId, {
     ...options,
     stageLabel,
+    slaBreach: true,
   });
 
   const emails = [
@@ -1361,7 +1363,7 @@ export async function sendVendorInvoiceRequestNotification(po, invoice, { portal
 
 /**
  * Cloud Subscription — after Mugesh uploads invoice.
- * One mail: To = Requester, Cc = L1 + L2 + Accounts + itdev.
+ * One mail: To = Requester, Cc = L1 + L2 + Accounts.
  */
 export async function sendSassInvoiceUploadedNotification({
   pr,

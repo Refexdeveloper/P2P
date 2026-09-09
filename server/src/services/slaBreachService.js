@@ -5,28 +5,60 @@ import {
 } from './emailService.js';
 import { getRecommendedQuotedAmounts, getPurchaseRequestById } from './prService.js';
 import { getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
-import { APPROVAL_SLA_HOURS, taskSlaBreachedSql, taskSlaBreachedBeforeCompleteSql } from '../utils/sla.js';
+import { APPROVAL_SLA_HOURS, taskSlaBreachedSql } from '../utils/sla.js';
 
 const SLA_CHECK_INTERVAL_MS = Number(process.env.SLA_CHECK_INTERVAL_MS) || 15 * 60 * 1000;
 
 let started = false;
 let running = false;
 
+const PR_PAST_RFQ_ENTRY = new Set([
+  'PENDING_SCM_PO',
+  'APPROVED',
+  'REJECTED',
+  'AWAITING_INVOICE',
+]);
+
+/** True when this pending task should not get SLA mail because the stage is already done. */
+async function slaWorkAlreadyFinished(row) {
+  const prStatus = String(row.pr_status || '').toUpperCase();
+  const taskType = String(row.task_type || '');
+
+  if (['REJECTED', 'RETURNED'].includes(prStatus)) return true;
+
+  if (taskType === 'RFQ_ENTRY') {
+    if (PR_PAST_RFQ_ENTRY.has(prStatus)) return true;
+  }
+
+  if (taskType === 'RFQ_ENTRY' || (taskType === 'RFQ_POST_APPROVAL' && row.assigned_role === 'SCM Buyer')) {
+    const [pos] = await pool.query(
+      `SELECT id FROM purchase_orders
+       WHERE pr_id = ?
+         AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'rejected', 'draft')
+       LIMIT 1`,
+      [row.pr_id]
+    );
+    if (pos.length) return true;
+  }
+
+  return false;
+}
+
 /**
  * Pending approval tasks past SLA for the current stage only.
  * SLA clock starts at workflow_tasks.created_at (new task = new SLA on stage change).
- * Also notifies completed/cancelled tasks that breached while pending but were never emailed.
- * Notifies assignee once per task via email + WhatsApp (sla_notified_at).
+ * Notifies the current assignee once per pending task (sla_notified_at).
+ * Never emails completed/cancelled work — that was re-sending "New PR request received"
+ * after SCM had already created the PO.
  */
 export async function processSlaBreaches() {
   if (running) return { skipped: true };
   running = true;
   try {
     const breachSql = taskSlaBreachedSql('wt', APPROVAL_SLA_HOURS);
-    const breachedBeforeCompleteSql = taskSlaBreachedBeforeCompleteSql('wt', APPROVAL_SLA_HOURS);
     const [rows] = await pool.query(
       `SELECT wt.id AS task_id, wt.pr_id, wt.task_type, wt.assigned_role, wt.assigned_user_id,
-              wt.due_date, wt.created_at AS task_created_at,
+              wt.due_date, wt.created_at AS task_created_at, wt.status AS task_status,
               pr.pr_number, pr.title, pr.total_amount, pr.priority, pr.status AS pr_status,
               pr.department_id,
               d.name AS department_name,
@@ -37,16 +69,13 @@ export async function processSlaBreaches() {
        JOIN departments d ON d.id = pr.department_id
        JOIN users req ON req.id = pr.requester_id
        LEFT JOIN users asg ON asg.id = wt.assigned_user_id
-       WHERE wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL', 'PO_APPROVAL', 'PO_BUYER_VERIFY', 'PO_REVISION')
+       WHERE wt.task_type IN (
+              'PR_APPROVAL', 'RFQ_ENTRY', 'RFQ_POST_APPROVAL',
+              'PO_APPROVAL', 'PO_BUYER_VERIFY', 'PO_REVISION'
+            )
+         AND wt.status = 'pending'
          AND wt.sla_notified_at IS NULL
-         AND (
-           (wt.status = 'pending' AND ${breachSql})
-           OR (
-             wt.status IN ('completed', 'cancelled')
-             AND wt.completed_at IS NOT NULL
-             AND ${breachedBeforeCompleteSql}
-           )
-         )
+         AND ${breachSql}
        ORDER BY wt.id ASC
        LIMIT 50`
     );
@@ -58,6 +87,25 @@ export async function processSlaBreaches() {
 
     for (const row of rows) {
       try {
+        const finished = await slaWorkAlreadyFinished(row);
+        if (finished) {
+          await pool.query(
+            `UPDATE workflow_tasks
+             SET sla_notified_at = NOW(),
+                 status = CASE WHEN status = 'pending' THEN 'completed' ELSE status END,
+                 completed_at = CASE
+                   WHEN status = 'pending' THEN COALESCE(completed_at, NOW())
+                   ELSE completed_at
+                 END
+             WHERE id = ? AND sla_notified_at IS NULL`,
+            [row.task_id]
+          );
+          console.log(
+            `SLA skip (work already finished): ${row.pr_number} task=${row.task_id} type=${row.task_type}`
+          );
+          continue;
+        }
+
         const isPostRfq = row.task_type === 'RFQ_POST_APPROVAL';
         const quote = quoteMap.get(Number(row.pr_id));
         const amount =
@@ -148,6 +196,9 @@ export async function processSlaBreaches() {
           approverEmails,
           approverName: approverName || roleLabel,
           postRfq: isPostRfq,
+          rfqEntry: row.task_type === 'RFQ_ENTRY',
+          createPo: isPostRfq && row.assigned_role === 'SCM Buyer',
+          slaBreach: true,
           stageLabel,
           taskId: row.task_id,
         });

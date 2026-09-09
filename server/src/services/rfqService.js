@@ -1417,7 +1417,16 @@ export async function removeRfqInvitation(user, invitationId) {
 
 async function userCanViewPrQuotes(user, pr) {
   if (!user || !pr) return false;
-  const privileged = ['Super Admin', 'SCM Buyer', 'SCM Manager', 'HOD Approver', 'PR Manager', 'CFO'];
+  const privileged = [
+    'Super Admin',
+    'SCM Buyer',
+    'SCM Manager',
+    'HOD Approver',
+    'PR Manager',
+    'CFO',
+    'Accounts Payable',
+    'Accounts Manager',
+  ];
   if (privileged.includes(user.role)) return true;
   if (Number(pr.requesterId) === Number(user.id)) return true;
   const chain = Array.isArray(pr.approvalUserIds) ? pr.approvalUserIds : [];

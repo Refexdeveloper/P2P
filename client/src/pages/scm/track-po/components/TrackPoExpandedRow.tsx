@@ -280,7 +280,17 @@ async function loadAuthPreview(doc: DocRow, poId: number | null): Promise<FilePr
   const res = await fetch(doc.url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error(`Could not open ${doc.fileName || 'file'}`);
+  if (!res.ok) {
+    const text = await res.text();
+    let message = `Could not open ${doc.fileName || 'file'}`;
+    try {
+      const parsed = JSON.parse(text) as { message?: string };
+      if (parsed?.message) message = parsed.message;
+    } catch {
+      if (text.trim()) message = text.slice(0, 180);
+    }
+    throw new Error(message);
+  }
   const buffer = await res.arrayBuffer();
   const sniffed = sniffPreview(buffer, res.headers.get('content-type') || '', doc.fileName);
   return { url: URL.createObjectURL(sniffed.blob), fileName: doc.fileName, kind: sniffed.kind };
@@ -472,8 +482,19 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
       });
     });
 
+    if (invoice?.hasInvoiceFile && invoice.id) {
+      docs.push({
+        key: `inv-${invoice.id}`,
+        kind: 'Invoice',
+        name: String(invoice.invoiceFileName || `Invoice-${invoice.id}`),
+        extra: String(invoice.invoiceNumber || ''),
+        fileName: String(invoice.invoiceFileName || `invoice-${invoice.id}.pdf`),
+        url: accountsApi.invoiceFileUrl(invoice.id),
+      });
+    }
+
     return docs;
-  }, [row.poId, row.poNumber, po, comparison]);
+  }, [row.poId, row.poNumber, po, comparison, invoice]);
 
   const detailFields = [
     ['PR Number', String(pr?.prNumber || row.prNumber || '—')],
@@ -647,6 +668,9 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
             {!loading && error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
             )}
+            {fileError && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{fileError}</div>
+            )}
 
             {!loading && !error && tab === 'details' && (
               <div className="space-y-5">
@@ -755,9 +779,6 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
 
             {!loading && !error && tab === 'documents' && (
               <div className="space-y-3">
-                {fileError && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{fileError}</div>
-                )}
                 {documents.length === 0 ? (
                   <p className="text-sm text-gray-500 py-8 text-center">
                     No documents yet. Vendor quotations appear after RFQ, and PO files appear after the PO is created.

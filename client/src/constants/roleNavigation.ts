@@ -235,7 +235,7 @@ const NAV_BY_CODE: Record<string, NavItem> = {
   },
   'nav.invoice_verification': {
     code: 'nav.invoice_verification',
-    label: 'Invoice Verification',
+    label: '3-Way Match',
     path: '/accounts/invoice-verification',
     icon: 'ri-file-check-2-line',
     group: 'Accounts',

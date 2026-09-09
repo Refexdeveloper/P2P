@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireRoles } from '../middleware/auth.js';
+import { authenticate, requireRoles, requireRolesOrPermissions } from '../middleware/auth.js';
 import {
   listPendingGrnPos,
   listGrnReceiverUsers,
@@ -17,6 +17,7 @@ import {
   getInvoiceByToken,
   submitInvoiceByToken,
 } from '../services/accountsFulfillmentService.js';
+import { sendStoredFile } from '../utils/sendStoredFile.js';
 
 const router = Router();
 
@@ -179,16 +180,17 @@ router.post('/invoices/:id/payment', requireRoles(...ACCOUNTS_ROLES), async (req
   }
 });
 
-router.get('/invoices/:id/file', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer'), async (req, res) => {
+router.get(
+  '/invoices/:id/file',
+  requireRolesOrPermissions(
+    [...ACCOUNTS_ROLES, 'SCM Buyer', 'CFO', 'PR Manager', 'HOD Approver', 'Requester'],
+    ['nav.track_po', 'nav.invoice_verification', 'nav.cfo_insights']
+  ),
+  async (req, res) => {
   try {
     const file = await resolveInvoiceFile(Number(req.params.id));
     if (!file) return res.status(404).json({ message: 'Invoice file not found' });
-    if (file.buffer) {
-      res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
-      res.setHeader('Content-Type', 'application/octet-stream');
-      return res.send(file.buffer);
-    }
-    res.download(file.fullPath, file.fileName);
+    return sendStoredFile(res, file);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
