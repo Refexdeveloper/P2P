@@ -225,6 +225,8 @@ export default function CreatePRPage() {
   const [submitAction, setSubmitAction] = useState<'draft' | 'submit'>('draft');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [toast, setToast] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const [createdPrNumber, setCreatedPrNumber] = useState('');
   const [nextStepLabel, setNextStepLabel] = useState('L1 Manager Approval');
   const [l1Manager, setL1Manager] = useState<{ name: string | null; email: string | null } | null>(null);
@@ -268,6 +270,20 @@ export default function CreatePRPage() {
       options?: { silent?: boolean; forceUploadFiles?: boolean; allowCreate?: boolean }
     ) => Promise<void>
   >(async () => undefined);
+
+  const showToast = (text: string, type: 'error' | 'success' = 'error') => {
+    const msg = String(text || '').trim();
+    if (!msg) return;
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    setToast({ text: msg, type });
+    toastTimerRef.current = window.setTimeout(() => setToast(null), type === 'error' ? 6000 : 3500);
+  };
+
+  const showSubmitError = (text: string) => {
+    const msg = String(text || '').trim() || 'Failed to save PR';
+    setSubmitError(msg);
+    showToast(msg, 'error');
+  };
 
   const bindSavedDraftId = (id: number | null) => {
     savedDraftIdRef.current = id && id > 0 ? id : null;
@@ -1610,6 +1626,7 @@ export default function CreatePRPage() {
         await prApi.deleteAttachment(persistPrId, target.existingId);
       } catch (err) {
         setSubmitError(err instanceof Error ? err.message : 'Failed to remove file');
+        showToast(err instanceof Error ? err.message : 'Failed to remove file', 'error');
         return;
       }
     }
@@ -1706,7 +1723,12 @@ export default function CreatePRPage() {
     });
     setErrors(newErrors);
     const ok = Object.keys(newErrors).length === 0;
-    if (!ok) scrollToFirstError(newErrors);
+    if (!ok) {
+      const firstMsg =
+        Object.values(newErrors).find(Boolean) || 'Please fill the required fields';
+      showToast(firstMsg, 'error');
+      scrollToFirstError(newErrors);
+    }
     return ok;
   };
 
@@ -1716,7 +1738,10 @@ export default function CreatePRPage() {
     if (!entityId) newErrors.entityId = 'Entity is required';
     setErrors(newErrors);
     const ok = Object.keys(newErrors).length === 0;
-    if (!ok) scrollToFirstError(newErrors);
+    if (!ok) {
+      showToast(Object.values(newErrors)[0] || 'Entity is required', 'error');
+      scrollToFirstError(newErrors);
+    }
     return ok;
   };
 
@@ -1957,7 +1982,7 @@ export default function CreatePRPage() {
     setAttachedFiles(next);
     persistAttachedFilesSnapshot(prId, next);
     if (failed.length) {
-      setSubmitError(`PR saved. Could not attach: ${failed.join(', ')}`);
+      showSubmitError(`PR saved. Could not attach: ${failed.join(', ')}`);
     }
   };
 
@@ -1968,7 +1993,8 @@ export default function CreatePRPage() {
     const silent = Boolean(options?.silent);
     const forceUploadFiles = Boolean(options?.forceUploadFiles);
     const allowCreate = Boolean(options?.allowCreate) || !silent;
-    if (!silent) setSubmitError('');
+      if (!silent) setSubmitError('');
+      if (!silent) setToast(null);
     if (!silent) setIsSubmitting(true);
     savingInFlightRef.current = true;
     if (submit) skipSoftSaveRef.current = true;
@@ -2310,7 +2336,7 @@ export default function CreatePRPage() {
       await createJob;
     } catch (err) {
       if (submit) skipSoftSaveRef.current = false;
-      if (!silent) setSubmitError(err instanceof Error ? err.message : 'Failed to save PR');
+      if (!silent) showSubmitError(err instanceof Error ? err.message : 'Failed to save PR');
     } finally {
       savingInFlightRef.current = false;
       if (!silent) setIsSubmitting(false);
@@ -2341,6 +2367,27 @@ export default function CreatePRPage() {
 
   return (
     <DashboardLayout>
+      {toast ? (
+        <div
+          className={`fixed top-4 right-4 z-[80] max-w-sm px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-start gap-2 ${
+            toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+          }`}
+          role="alert"
+        >
+          <i
+            className={`${toast.type === 'success' ? 'ri-checkbox-circle-line' : 'ri-error-warning-line'} text-base mt-0.5 shrink-0`}
+          ></i>
+          <span className="leading-snug">{toast.text}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="ml-1 shrink-0 opacity-80 hover:opacity-100"
+            aria-label="Dismiss"
+          >
+            <i className="ri-close-line text-lg"></i>
+          </button>
+        </div>
+      ) : null}
       {isLoadingPr ? (
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
