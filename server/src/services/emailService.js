@@ -15,6 +15,7 @@ import { buildPoWorkflowEmail } from '../templates/poWorkflowEmail.js';
 import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceRequestEmail.js';
 import { buildSassInvoiceUploadedEmail } from '../templates/sassInvoiceUploadedEmail.js';
 import { buildCloudSubscriptionReminderEmail } from '../templates/cloudSubscriptionReminderEmail.js';
+import { buildSlaBreachDailyEmail } from '../templates/slaBreachDailyEmail.js';
 import { resolveScmBuyerUsers, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
 import { formatRoleDisplayName, sanitizeEmailCfoMentions, withEmailLogo } from '../templates/emailUtils.js';
 import {
@@ -810,6 +811,66 @@ export function queueSlaBreachNotification(pr, assignedRole, requester, departme
     sendSlaBreachNotification(pr, assignedRole, requester, departmentId, options)
   ).catch((err) => {
     console.error('Email/WhatsApp send failure (SLA breach):', err.message);
+  });
+}
+
+/**
+ * Morning / evening SLA-breach reminder (User / L1 / L2 only).
+ * Does not send WhatsApp — email reminder only.
+ */
+export async function sendSlaBreachDailyReminder({
+  pr,
+  approverEmail,
+  approverName,
+  approvalType,
+  startDate,
+  slaDue,
+  waitingDays,
+  assignedRole,
+  taskId = null,
+  portalUrl = null,
+  notificationType = 'MORNING',
+}) {
+  const to = String(approverEmail || '').trim();
+  if (!to) {
+    console.warn('Daily SLA reminder skipped: no approver email');
+    return null;
+  }
+
+  const slot = String(notificationType || 'MORNING').toUpperCase() === 'EVENING' ? 'EVENING' : 'MORNING';
+
+  const { subject, html, text } = buildSlaBreachDailyEmail({
+    pr,
+    approverName,
+    approvalType,
+    startDate,
+    slaDue,
+    waitingDays,
+    portalUrl,
+    appBaseUrl: getAppBaseUrl(),
+  });
+
+  return sendMailToRecipients([to], subject, html, text, [], {
+    emailType: 'sla_breach_daily',
+    prId: pr?.id || pr?.prId || null,
+    prNumber: pr?.prNumber || pr?.pr_number || null,
+    meta: {
+      assignedRole,
+      approvalType,
+      taskId,
+      startDate,
+      slaDue,
+      waitingDays,
+      dailyReminder: true,
+      notificationType: slot,
+      notificationDate: new Date().toISOString().slice(0, 10),
+    },
+  });
+}
+
+export function queueSlaBreachDailyReminder(payload) {
+  enqueueMail(() => sendSlaBreachDailyReminder(payload)).catch((err) => {
+    console.error('Email send failure (daily SLA breach):', err.message);
   });
 }
 

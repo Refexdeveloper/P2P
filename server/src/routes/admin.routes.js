@@ -14,6 +14,12 @@ import { listEmailLogs } from '../services/emailLogService.js';
 import { listUserActivityLogs } from '../services/userActivityLogService.js';
 import { retriggerEmailLog } from '../services/emailService.js';
 import { listWhatsAppLogs } from '../services/whatsappLogService.js';
+import {
+  processDailySlaBreachReminders,
+  processDueSlaBreachReminderSlots,
+  processSlaBreaches,
+} from '../services/slaBreachService.js';
+import { SLA_REMINDER_SLOTS, normalizeSlaReminderSlot } from '../utils/sla.js';
 
 const router = Router();
 router.use(authenticate);
@@ -170,6 +176,40 @@ router.put('/scm-manager-signature', async (req, res) => {
         ? `Default signature updated and applied to ${data.backfilled} signed PO(s)`
         : 'Default SCM Manager signature updated',
     });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Manual trigger: one-time SLA breach mails (all roles, once via sla_notified_at). */
+router.post('/sla/process-breaches', async (_req, res) => {
+  try {
+    const data = await processSlaBreaches();
+    res.json({ data, message: 'SLA breach check processed' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/**
+ * Manual trigger: User/L1/L2 SLA breach reminders.
+ * Body: { force?: boolean, slot?: 'MORNING'|'EVENING'|'BOTH' }
+ * Default slot=BOTH with force=true. SCM Buyer / SCM Manager are never included.
+ */
+router.post('/sla/process-daily-reminders', async (req, res) => {
+  try {
+    const force = req.body?.force !== false;
+    const rawSlot = String(req.body?.slot || 'BOTH').trim().toUpperCase();
+    let data;
+    if (rawSlot === 'BOTH' || rawSlot === 'ALL') {
+      data = await processDueSlaBreachReminderSlots({ force });
+    } else {
+      data = await processDailySlaBreachReminders({
+        force,
+        slot: normalizeSlaReminderSlot(rawSlot),
+      });
+    }
+    res.json({ data, message: 'SLA morning/evening reminders processed' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

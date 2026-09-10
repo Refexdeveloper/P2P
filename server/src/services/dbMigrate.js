@@ -193,6 +193,10 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_requests ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE purchase_orders ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE workflow_tasks ADD COLUMN sla_notified_at TIMESTAMP NULL`,
+  // Last calendar day a MORNING SLA-breach reminder was sent (User / L1 / L2 only)
+  `ALTER TABLE workflow_tasks ADD COLUMN sla_daily_notified_on DATE NULL`,
+  // Last calendar day an EVENING SLA-breach reminder was sent (User / L1 / L2 only)
+  `ALTER TABLE workflow_tasks ADD COLUMN sla_evening_notified_on DATE NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN annexure_ii_html LONGTEXT NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN cancellation_reason TEXT NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN cancellation_attachments_json JSON NULL`,
