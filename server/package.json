@@ -11,7 +11,9 @@
     "db:init": "node db/init.js",
     "test": "node --test src/services/cloudSubscriptionService.test.js src/services/slaBreachService.test.js",
     "test:cloud-sub": "node --test src/services/cloudSubscriptionService.test.js",
-    "test:sla-daily": "node --test src/services/slaBreachService.test.js"
+    "test:sla-daily": "node --test src/services/slaBreachService.test.js",
+    "vendor:import-docs": "node scripts/import-vendor-documents.js",
+    "vendor:import-accounts": "node scripts/import-accounts-vendors.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.0.1",

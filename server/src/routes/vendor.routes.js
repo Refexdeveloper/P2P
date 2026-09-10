@@ -131,7 +131,13 @@ router.get('/:id/documents/:docType/file', canUseVendorsForPr, async (req, res) 
 router.post('/:id/documents', canUseVendorsForPr, async (req, res) => {
   try {
     const data = await uploadVendorDocument(Number(req.params.id), req.body || {});
-    res.json({ data, message: 'Document saved' });
+    const reused = Boolean(data?._uploadMeta?.reused);
+    if (data?._uploadMeta) delete data._uploadMeta;
+    res.json({
+      data,
+      reused,
+      message: reused ? 'Document linked from existing GCS object' : 'Document saved',
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

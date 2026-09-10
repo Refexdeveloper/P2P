@@ -96,9 +96,10 @@ function getStorage() {
  * @param {string} gcsPath  e.g. "pr-attachments/12345_file.pdf"
  * @param {Buffer} buffer
  * @param {string} [contentType]
+ * @param {{ skipIfExists?: boolean }} [opts]
  * @returns {Promise<string|null>} the gcsPath on success, null if GCS is not configured
  */
-export async function uploadToGcs(gcsPath, buffer, contentType = 'application/octet-stream') {
+export async function uploadToGcs(gcsPath, buffer, contentType = 'application/octet-stream', opts = {}) {
   if (!gcsPath || !buffer) return null;
   const bucket = getStorage();
   if (!bucket) {
@@ -106,15 +107,94 @@ export async function uploadToGcs(gcsPath, buffer, contentType = 'application/oc
     return null;
   }
   try {
+    if (opts.skipIfExists) {
+      const [exists] = await bucket.file(gcsPath).exists();
+      if (exists) {
+        console.log('[GCS] already exists, skip upload', gcsPath);
+        return gcsPath;
+      }
+    }
     await bucket.file(gcsPath).save(buffer, {
       metadata: { contentType },
       resumable: false,
     });
     console.log('[GCS] uploaded', gcsPath);
+    invalidateVendorKycIndex();
     return gcsPath;
   } catch (err) {
     console.warn('[GCS] upload failed for', gcsPath, ':', err.message);
     throw err;
+  }
+}
+
+/** @param {string} gcsPath */
+export async function gcsObjectExists(gcsPath) {
+  const bucket = getStorage();
+  if (!bucket || !gcsPath) return false;
+  try {
+    const [exists] = await bucket.file(gcsPath).exists();
+    return Boolean(exists);
+  } catch {
+    return false;
+  }
+}
+
+let _vendorKycIndex = null;
+let _vendorKycIndexAt = 0;
+const VENDOR_KYC_INDEX_TTL_MS = 5 * 60 * 1000;
+
+export function invalidateVendorKycIndex() {
+  _vendorKycIndex = null;
+  _vendorKycIndexAt = 0;
+}
+
+async function loadVendorKycIndex() {
+  const now = Date.now();
+  if (_vendorKycIndex && now - _vendorKycIndexAt < VENDOR_KYC_INDEX_TTL_MS) {
+    return _vendorKycIndex;
+  }
+  const keys = await listGcsKeys('vendor-kyc/', 20000);
+  const byBase = new Map();
+  const bySuffix = [];
+  for (const key of keys) {
+    const base = gcsBasename(key);
+    byBase.set(base.toLowerCase(), key);
+    bySuffix.push({ key, baseLower: base.toLowerCase() });
+  }
+  _vendorKycIndex = { byBase, bySuffix };
+  _vendorKycIndexAt = now;
+  return _vendorKycIndex;
+}
+
+/**
+ * Reuse a vendor-kyc object already in the bucket (no re-upload).
+ * @returns {Promise<string|null>} full key e.g. vendor-kyc/416_pan_x.pdf
+ */
+export async function findExistingVendorKycObject({ vendorId, docType, fileName }) {
+  const originalName = String(fileName || '').trim();
+  if (!originalName) return null;
+  const safeOriginal = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const type = String(docType || 'other').trim() || 'other';
+  const exactBase = `${vendorId}_${type}_${safeOriginal}`;
+  const exactKey = `vendor-kyc/${exactBase}`;
+
+  if (await gcsObjectExists(exactKey)) return exactKey;
+
+  try {
+    const index = await loadVendorKycIndex();
+    const hit = index.byBase.get(exactBase.toLowerCase());
+    if (hit) return hit;
+
+    const suffixA = `_${type}_${safeOriginal}`.toLowerCase();
+    const suffixB = `_${safeOriginal}`.toLowerCase();
+    const match =
+      index.bySuffix.find((x) => x.baseLower.endsWith(suffixA)) ||
+      index.bySuffix.find((x) => x.baseLower === safeOriginal.toLowerCase()) ||
+      index.bySuffix.find((x) => x.baseLower.endsWith(suffixB));
+    return match?.key || null;
+  } catch (err) {
+    console.warn('[GCS] vendor-kyc reuse lookup failed:', err.message);
+    return null;
   }
 }
 

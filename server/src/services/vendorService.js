@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadFromGcs, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, useGcsForNewUploads, findExistingVendorKycObject } from './gcsStorage.js';
 import { formatDate } from '../utils/constants.js';
 import { parseCsv, rowsToCsv, normalizeHeaderKey } from '../utils/csv.js';
 
@@ -162,26 +162,62 @@ function decodeVendorFile(base64Data) {
 }
 
 /**
- * Save vendor document — GCS for new uploads; legacy disk + MySQL blob when GCS is off.
+ * Save vendor document — GCS for new uploads; reuse existing GCS object when already in bucket.
+ * Legacy disk + MySQL blob when GCS is off.
  */
-async function saveVendorDocument(vendorId, docType, fileName, base64Data) {
-  if (!base64Data || !fileName) return null;
-
-  const originalName = path.basename(String(fileName)).trim();
+async function saveVendorDocument(vendorId, docType, fileName, base64Data, { linkOnly = false } = {}) {
+  const originalName = path.basename(String(fileName || '')).trim();
   if (!originalName) return null;
 
   const safeName = `${vendorId}_${docType}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+  if (useGcsForNewUploads()) {
+    const existingKey = await findExistingVendorKycObject({
+      vendorId,
+      docType,
+      fileName: originalName,
+    });
+    if (existingKey) {
+      const storedBase = path.basename(existingKey.replace(/^vendor-kyc\//, ''));
+      console.log(`[GCS] reuse vendor doc ${existingKey} → vendor #${vendorId}`);
+      return { fileName: originalName, filePath: storedBase, buffer: null, reused: true };
+    }
+
+    if (linkOnly) {
+      throw new Error(`GCS object not found for ${originalName} — upload required`);
+    }
+
+    if (!base64Data) {
+      throw new Error('File data is required when document is not already in GCS');
+    }
+
+    const buffer = decodeVendorFile(base64Data);
+    if (!buffer.length) {
+      throw new Error(`Vendor document ${originalName} is empty or invalid`);
+    }
+    if (buffer.length > MAX_VENDOR_DOC_BYTES) {
+      throw new Error(`Vendor document ${originalName} must be under 10MB`);
+    }
+
+    await uploadToGcs(`vendor-kyc/${safeName}`, buffer, 'application/octet-stream', {
+      skipIfExists: true,
+    });
+    return { fileName: originalName, filePath: safeName, buffer: null, reused: false };
+  }
+
+  if (linkOnly) {
+    throw new Error('GCS is disabled — cannot link-only without upload');
+  }
+  if (!base64Data) {
+    throw new Error('File and file name are required');
+  }
+
   const buffer = decodeVendorFile(base64Data);
   if (!buffer.length) {
     throw new Error(`Vendor document ${originalName} is empty or invalid`);
   }
   if (buffer.length > MAX_VENDOR_DOC_BYTES) {
     throw new Error(`Vendor document ${originalName} must be under 10MB`);
-  }
-
-  if (useGcsForNewUploads()) {
-    await uploadToGcs(`vendor-kyc/${safeName}`, buffer);
-    return { fileName: originalName, filePath: safeName, buffer: null };
   }
 
   try {
@@ -194,9 +230,9 @@ async function saveVendorDocument(vendorId, docType, fileName, base64Data) {
   return { fileName: originalName, filePath: safeName, buffer };
 }
 
-async function upsertVendorDocument(vendorId, docType, fileName, base64Data) {
-  const saved = await saveVendorDocument(vendorId, docType, fileName, base64Data);
-  if (!saved) return;
+async function upsertVendorDocument(vendorId, docType, fileName, base64Data, opts = {}) {
+  const saved = await saveVendorDocument(vendorId, docType, fileName, base64Data, opts);
+  if (!saved) return null;
 
   await ensureFileDataColumn();
   const sql = `INSERT INTO vendor_documents (vendor_id, doc_type, file_name, file_path, file_data)
@@ -212,12 +248,20 @@ async function upsertVendorDocument(vendorId, docType, fileName, base64Data) {
   } catch (err) {
     if (String(err.message || '').includes('Unknown column') && String(err.message || '').includes('file_data')) {
       fileDataColumnReady = false;
-      await ensureFileDataColumn();
-      await pool.query(sql, params);
-      return;
+      await pool.query(
+        `INSERT INTO vendor_documents (vendor_id, doc_type, file_name, file_path)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           file_name = VALUES(file_name),
+           file_path = VALUES(file_path),
+           uploaded_at = NOW()`,
+        [vendorId, docType, saved.fileName, saved.filePath]
+      );
+    } else {
+      throw err;
     }
-    throw err;
   }
+  return saved;
 }
 
 function collectFileFields(body) {
@@ -250,7 +294,13 @@ export async function uploadVendorDocument(vendorId, body = {}) {
   let docType = String(body.docType || '').trim();
   const fileName = body.fileName || body.name;
   const file = body.file || body.data || body.fileData || body.base64;
-  if (!file || !fileName) throw new Error('File and file name are required');
+  const linkOnly =
+    body.linkOnly === true ||
+    body.reuseGcs === true ||
+    String(body.linkOnly || '').trim() === '1';
+
+  if (!fileName) throw new Error('File name is required');
+  if (!linkOnly && !file) throw new Error('File and file name are required');
 
   if (!docType || docType === 'auto' || docType === 'all') {
     docType = inferVendorDocType(fileName);
@@ -260,8 +310,9 @@ export async function uploadVendorDocument(vendorId, body = {}) {
   const [rows] = await pool.query(`SELECT id FROM vendors WHERE id = ?`, [vendorId]);
   if (!rows.length) throw new Error('Vendor not found');
 
-  await upsertVendorDocument(vendorId, docType, fileName, file);
-  return getVendorById(vendorId);
+  const saved = await upsertVendorDocument(vendorId, docType, fileName, file, { linkOnly });
+  const vendor = await getVendorById(vendorId);
+  return { ...vendor, _uploadMeta: { reused: Boolean(saved?.reused), filePath: saved?.filePath } };
 }
 
 export async function listVendors({ search, includeInactive = false, page, limit } = {}) {
