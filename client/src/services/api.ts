@@ -1427,7 +1427,7 @@ export const letterheadBrandingApi = {
 
 export interface VendorDocument {
   id: number;
-  docType: 'gst' | 'pan' | 'cheque' | 'msme' | 'kyc' | 'msme_declaration';
+  docType: string;
   fileName: string;
   uploadedAt: string;
 }
@@ -1515,7 +1515,7 @@ export const vendorApi = {
       body: JSON.stringify({ csv }),
     }),
   getDocumentUrl: (vendorId: number, docType: string) =>
-    `${API_URL}/api/vendors/${vendorId}/documents/${docType}/file`,
+    `${API_URL}/api/vendors/${vendorId}/documents/${encodeURIComponent(docType)}/file`,
   uploadDocument: (vendorId: number, body: { docType: string; fileName: string; file: string }) =>
     request<{ data: VendorRecord; message: string }>(`/api/vendors/${vendorId}/documents`, {
       method: 'POST',
@@ -1523,9 +1523,12 @@ export const vendorApi = {
     }),
   fetchDocumentBlob: async (vendorId: number, docType: string) => {
     const token = getToken();
-    const res = await fetch(`${API_URL}/api/vendors/${vendorId}/documents/${docType}/file`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await fetch(
+      `${API_URL}/api/vendors/${vendorId}/documents/${encodeURIComponent(docType)}/file`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }
+    );
     if (!res.ok) {
       const text = await res.text();
       throw new ApiError(res.status, errorMessageFromResponse(text, 'Could not load document'));

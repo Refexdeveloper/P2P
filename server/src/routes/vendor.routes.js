@@ -100,9 +100,10 @@ function fileContentType(fileName) {
 
 router.get('/:id/documents/:docType/file', canUseVendorsForPr, async (req, res) => {
   try {
+    const docType = decodeURIComponent(String(req.params.docType || ''));
     const { fullPath, fileName, buffer } = await getVendorDocumentFile(
       Number(req.params.id),
-      req.params.docType
+      docType
     );
     const contentType = fileContentType(fileName);
     const safeName = String(fileName || 'document').replace(/"/g, '');

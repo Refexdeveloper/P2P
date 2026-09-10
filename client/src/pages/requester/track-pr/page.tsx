@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatusBadge from '../../../components/base/StatusBadge';
 import PriorityBadge from '../../../components/base/PriorityBadge';
-import { prApi, RequesterPrListMeta } from '../../../services/api';
+import PrDocumentsPanel from '../../../components/feature/PrDocumentsPanel';
+import { prApi, RequesterPrListMeta, accountsApi, type PrAttachmentRecord } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import CloudSubscriptionPanel from './CloudSubscriptionPanel';
 
@@ -72,6 +73,15 @@ interface TrackPR {
   poNumber?: string;
   poDocumentAvailable?: boolean;
   poSentBack?: boolean;
+  purchaseType?: string;
+  attachments: PrAttachmentRecord[];
+  sassInvoice?: {
+    id: number;
+    invoiceNumber?: string | null;
+    fileName?: string | null;
+    hasFile: boolean;
+    status?: string | null;
+  } | null;
 }
 
 const SLA_DAYS = 1;
@@ -607,6 +617,33 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     toDateOnly(pr.submittedDate) || toDateOnly(pr.date) || toDateOnly(pr.createdAt) || '';
   const prId = Number(pr.prId ?? pr.id);
   const prNumber = asText(pr.prNumber) || (Number.isNaN(prId) ? asText(pr.id) : '') || asText(pr.id);
+  const attachments = (Array.isArray(pr.attachments) ? pr.attachments : [])
+    .map((raw) => {
+      const a = raw as Record<string, unknown>;
+      return {
+        id: Number(a.id),
+        prId: a.prId != null ? Number(a.prId) : prId,
+        fileName: asText(a.fileName || a.file_name),
+        size: Number(a.size || a.fileSize || 0),
+        mimeType: asText(a.mimeType || a.mime_type) || undefined,
+        uploadedAt: asText(a.uploadedAt || a.uploaded_at) || undefined,
+      } as PrAttachmentRecord;
+    })
+    .filter((f) => f.id > 0 && f.fileName);
+
+  const rawSassInvoice =
+    pr.sassInvoice && typeof pr.sassInvoice === 'object'
+      ? (pr.sassInvoice as Record<string, unknown>)
+      : null;
+  const sassInvoice = rawSassInvoice
+    ? {
+        id: Number(rawSassInvoice.id) || 0,
+        invoiceNumber: asText(rawSassInvoice.invoiceNumber) || null,
+        fileName: asText(rawSassInvoice.fileName) || null,
+        hasFile: Boolean(rawSassInvoice.hasFile || rawSassInvoice.fileName),
+        status: asText(rawSassInvoice.status) || null,
+      }
+    : null;
 
   return {
     key: Number.isNaN(prId) ? prNumber : String(prId),
@@ -644,6 +681,9 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     poNumber: asText(pr.poNumber),
     poDocumentAvailable: Boolean(pr.poDocumentAvailable),
     poSentBack: Boolean(pr.poSentBack),
+    purchaseType: asText(pr.purchaseType || pr.purchase_type),
+    attachments,
+    sassInvoice: sassInvoice?.id ? sassInvoice : null,
   };
 }
 
@@ -755,6 +795,7 @@ export default function TrackPRPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [expandTab, setExpandTab] = useState<'overview' | 'documents'>('overview');
   const [expandLoadingKey, setExpandLoadingKey] = useState<string | null>(null);
   const [detailedKeys, setDetailedKeys] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
@@ -918,6 +959,7 @@ export default function TrackPRPage() {
       return;
     }
     setExpandedRow(id);
+    setExpandTab('overview');
     const row = rows.find((r) => r.key === id);
     if (!row?.prId || detailedKeys.has(id)) return;
 
@@ -1300,6 +1342,109 @@ export default function TrackPRPage() {
                                   <div className="px-6 py-3 text-xs text-gray-500">Loading PR details…</div>
                                 )}
                                 <div className="px-6 py-6">
+                                  {(() => {
+                                    const prDocCount = pr.attachments?.length || 0;
+                                    const hasSassInvoice = Boolean(pr.sassInvoice?.hasFile && pr.sassInvoice?.id);
+                                    const docCount = prDocCount + (hasSassInvoice ? 1 : 0);
+                                    const showDocumentsTab = docCount > 0;
+                                    const activeTab =
+                                      showDocumentsTab && expandTab === 'documents'
+                                        ? 'documents'
+                                        : 'overview';
+                                    return (
+                                      <>
+                                        {showDocumentsTab ? (
+                                          <div className="mb-4 flex border-b border-gray-200 bg-white rounded-t-lg overflow-x-auto">
+                                            <button
+                                              type="button"
+                                              onClick={() => setExpandTab('overview')}
+                                              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                                                activeTab === 'overview'
+                                                  ? 'border-teal-600 text-teal-700'
+                                                  : 'border-transparent text-gray-500 hover:text-gray-800'
+                                              }`}
+                                            >
+                                              <i className="ri-information-line"></i>
+                                              Overview
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setExpandTab('documents')}
+                                              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                                                activeTab === 'documents'
+                                                  ? 'border-teal-600 text-teal-700'
+                                                  : 'border-transparent text-gray-500 hover:text-gray-800'
+                                              }`}
+                                            >
+                                              <i className="ri-file-list-3-line"></i>
+                                              Documents ({docCount})
+                                            </button>
+                                          </div>
+                                        ) : null}
+
+                                        {activeTab === 'documents' && showDocumentsTab ? (
+                                          <div className="space-y-4">
+                                            {hasSassInvoice && pr.sassInvoice ? (
+                                              <div className="bg-white rounded-lg border border-teal-200 p-4">
+                                                <div className="flex items-start gap-3 mb-3">
+                                                  <div className="w-10 h-10 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
+                                                    <i className="ri-file-invoice-line text-xl text-teal-600"></i>
+                                                  </div>
+                                                  <div className="min-w-0">
+                                                    <h4 className="text-sm font-semibold text-gray-900">
+                                                      Cloud Subscription Invoice
+                                                    </h4>
+                                                    <p className="text-xs text-gray-500 mt-0.5">
+                                                      Uploaded by Mugesh after L2 approval
+                                                      {pr.sassInvoice.invoiceNumber
+                                                        ? ` · ${pr.sassInvoice.invoiceNumber}`
+                                                        : ''}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                                                  <div className="w-9 h-9 rounded-lg bg-white border border-gray-200 flex items-center justify-center shrink-0">
+                                                    <i className="ri-file-pdf-line text-teal-600"></i>
+                                                  </div>
+                                                  <div className="min-w-0 flex-1">
+                                                    <p className="text-sm font-medium text-gray-900 truncate">
+                                                      {pr.sassInvoice.fileName || `Invoice-${pr.sassInvoice.id}`}
+                                                    </p>
+                                                  </div>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      void accountsApi
+                                                        .downloadInvoiceFile(
+                                                          pr.sassInvoice!.id,
+                                                          pr.sassInvoice!.fileName || undefined
+                                                        )
+                                                        .catch((err) => {
+                                                          setToast(
+                                                            err instanceof Error
+                                                              ? err.message
+                                                              : 'Could not open invoice file'
+                                                          );
+                                                          window.setTimeout(() => setToast(''), 4000);
+                                                        });
+                                                    }}
+                                                    className="px-3 py-1.5 border border-teal-200 text-teal-700 bg-white rounded-lg text-xs font-semibold hover:bg-teal-50 whitespace-nowrap"
+                                                  >
+                                                    Open
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            ) : null}
+                                            {prDocCount > 0 ? (
+                                              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                                                <PrDocumentsPanel
+                                                  prId={pr.prId}
+                                                  attachments={pr.attachments}
+                                                />
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        ) : (
                                   <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                                     <div className="lg:col-span-2 space-y-4">
                                       <div className="bg-white rounded-lg border border-gray-200 p-4">
@@ -1389,7 +1534,12 @@ export default function TrackPRPage() {
                                         String(pr.purchaseType || '')
                                           .toLowerCase()
                                           .replace(/[\s-]+/g, '_') === 'cloud_subscription') &&
-                                        pr.prId && <CloudSubscriptionPanel prId={Number(pr.prId)} />}
+                                        pr.prId && (
+                                          <CloudSubscriptionPanel
+                                            prId={Number(pr.prId)}
+                                            sassInvoice={pr.sassInvoice || null}
+                                          />
+                                        )}
 
                                       <div className="bg-white rounded-lg border border-gray-200 p-4">
                                         <h3 className="text-sm font-semibold text-gray-900 mb-3">
@@ -1642,6 +1792,10 @@ export default function TrackPRPage() {
                                       </div>
                                     </div>
                                   </div>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               </td>
                             </tr>

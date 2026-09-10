@@ -118,10 +118,22 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
   const isEdit = Boolean(savedVendor);
   const [form, setForm] = useState<CreateVendorFormData>(vendor ? vendorToForm(vendor) : EMPTY_FORM);
   const [files, setFiles] = useState<Partial<Record<DocType, UploadedDoc>>>({});
+  const [allFiles, setAllFiles] = useState<UploadedDoc[]>([]);
   const [existingDocs, setExistingDocs] = useState<Partial<Record<DocType, string>>>(() => {
     if (!vendor?.documents) return {};
-    return Object.fromEntries(vendor.documents.map((d) => [d.docType, d.fileName]));
+    return Object.fromEntries(
+      vendor.documents
+        .filter((d) => DOC_UPLOAD_FIELDS.some((f) => f.type === d.docType))
+        .map((d) => [d.docType, d.fileName])
+    );
   });
+  const [existingOtherDocs, setExistingOtherDocs] = useState<
+    Array<{ docType: string; fileName: string }>
+  >(() =>
+    (vendor?.documents || [])
+      .filter((d) => String(d.docType || '').startsWith('other__'))
+      .map((d) => ({ docType: d.docType, fileName: d.fileName }))
+  );
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [categories, setCategories] = useState<CategoryRecord[]>([]);
@@ -189,6 +201,27 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
     }
   };
 
+  const handleAllFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = Array.from(e.target.files || []);
+    if (!list.length) return;
+    setAllFiles((prev) => {
+      const seen = new Set(prev.map((f) => `${f.name}:${f.file.size}`));
+      const next = [...prev];
+      for (const file of list) {
+        const key = `${file.name}:${file.size}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({ file, name: file.name });
+      }
+      return next;
+    });
+    e.target.value = '';
+  };
+
+  const removeAllFile = (index: number) => {
+    setAllFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const removeFile = (type: DocType) => {
     setFiles((prev) => {
       const next = { ...prev };
@@ -225,7 +258,26 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
       setSavedVendor(saved);
 
       const remainingFiles: Partial<Record<DocType, UploadedDoc>> = { ...files };
+      const remainingAll = [...allFiles];
       const uploadErrors: string[] = [];
+
+      // Multi-select "All documents" first (auto-maps GST/PAN/etc. from file name)
+      for (let i = remainingAll.length - 1; i >= 0; i -= 1) {
+        const doc = remainingAll[i];
+        try {
+          const file = await readFileAsBase64(doc.file);
+          const res = await vendorApi.uploadDocument(saved.id, {
+            docType: 'auto',
+            fileName: doc.name,
+            file,
+          });
+          saved = res.data;
+          remainingAll.splice(i, 1);
+        } catch (err) {
+          uploadErrors.push(`${doc.name}: ${err instanceof Error ? err.message : 'upload failed'}`);
+        }
+      }
+
       for (const { type, label } of DOC_UPLOAD_FIELDS) {
         const doc = remainingFiles[type];
         if (!doc) continue;
@@ -245,9 +297,21 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
 
       setSavedVendor(saved);
       if (saved.documents?.length) {
-        setExistingDocs(Object.fromEntries(saved.documents.map((d) => [d.docType, d.fileName])));
+        setExistingDocs(
+          Object.fromEntries(
+            saved.documents
+              .filter((d) => DOC_UPLOAD_FIELDS.some((f) => f.type === d.docType))
+              .map((d) => [d.docType, d.fileName])
+          )
+        );
+        setExistingOtherDocs(
+          saved.documents
+            .filter((d) => String(d.docType || '').startsWith('other__'))
+            .map((d) => ({ docType: d.docType, fileName: d.fileName }))
+        );
       }
       setFiles(remainingFiles);
+      setAllFiles(remainingAll);
 
       if (uploadErrors.length) {
         setError(`Vendor saved, but some files did not store. Please upload again: ${uploadErrors.join('; ')}`);
@@ -532,6 +596,80 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             </div>
           </div>
         </div>
+
+        <div className="mb-5 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <p className="text-sm font-semibold text-teal-900">All Documents</p>
+              <p className="text-xs text-teal-700 mt-0.5">
+                Select multiple files at once (PDF/images). Names with GST, PAN, Cheque, MSME, KYC
+                are auto-mapped; other files are stored as extra documents.
+              </p>
+            </div>
+            {allFiles.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setAllFiles([])}
+                className="text-xs font-medium text-red-600 hover:underline whitespace-nowrap"
+              >
+                Clear selected
+              </button>
+            )}
+          </div>
+          <label className="flex flex-col items-center justify-center w-full min-h-[7rem] border-2 border-dashed border-teal-300 rounded-lg cursor-pointer hover:bg-white/70 transition-colors px-4 py-5">
+            <i className="ri-upload-cloud-2-line text-3xl text-teal-500 mb-1"></i>
+            <span className="text-sm font-medium text-teal-800">Click to select multiple files</span>
+            <span className="text-xs text-teal-600 mt-1">Hold Ctrl/Cmd to pick many files</span>
+            <input
+              type="file"
+              className="hidden"
+              multiple
+              accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx"
+              onChange={handleAllFilesChange}
+            />
+          </label>
+          {allFiles.length > 0 && (
+            <ul className="mt-3 space-y-2">
+              {allFiles.map((doc, idx) => (
+                <li
+                  key={`${doc.name}-${doc.file.size}-${idx}`}
+                  className="flex items-center gap-2 rounded-lg border border-teal-100 bg-white px-3 py-2"
+                >
+                  <i className="ri-file-text-line text-teal-600"></i>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 truncate">{doc.name}</p>
+                    <p className="text-xs text-gray-500">{(doc.file.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeAllFile(idx)}
+                    className="text-red-500 hover:text-red-700"
+                    aria-label={`Remove ${doc.name}`}
+                  >
+                    <i className="ri-close-line text-lg"></i>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {existingOtherDocs.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-teal-100">
+              <p className="text-xs font-semibold text-gray-600 mb-2">Already uploaded (extra)</p>
+              <ul className="space-y-1">
+                {existingOtherDocs.map((d) => (
+                  <li key={d.docType} className="text-xs text-teal-700 flex items-center gap-1.5">
+                    <i className="ri-checkbox-circle-line"></i>
+                    <span className="truncate">{d.fileName}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          Or upload by document type
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {DOC_UPLOAD_FIELDS.map(({ type, label }) => (
             <div key={type}>

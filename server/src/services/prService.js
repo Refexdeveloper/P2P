@@ -644,7 +644,7 @@ async function getTimelineAssignees(prId, requesterId, prStatus = null) {
 }
 
 async function enrichPR(row) {
-  const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows, attachments] = await Promise.all([
+  const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows, attachments, sassInvoiceRows] = await Promise.all([
     getLineItems(row.id),
     getApprovalHistory(row.id, row.pr_flow, row.purchase_type),
     getTimelineAssignees(row.id, row.requester_id, row.status),
@@ -675,8 +675,34 @@ async function enrichPR(row) {
       )
       .then(([rows]) => rows),
     listPrAttachments(row.id),
+    pool
+      .query(
+        `SELECT i.id, i.invoice_number, i.invoice_file_name, i.invoice_file_path, i.status
+         FROM invoices i
+         JOIN purchase_orders po ON po.id = i.po_id
+         WHERE po.pr_id = ?
+           AND (
+             po.purchase_type IN ('sass', 'saas', 'cloud_subscription')
+             OR po.po_number LIKE 'CS-%'
+           )
+         ORDER BY i.id DESC
+         LIMIT 1`,
+        [row.id]
+      )
+      .then(([rows]) => rows)
+      .catch(() => []),
   ]);
   const po = poRows[0] || null;
+  const sassInvoiceRow = sassInvoiceRows[0] || null;
+  const sassInvoice = sassInvoiceRow
+    ? {
+        id: Number(sassInvoiceRow.id),
+        invoiceNumber: sassInvoiceRow.invoice_number || null,
+        fileName: sassInvoiceRow.invoice_file_name || null,
+        hasFile: Boolean(sassInvoiceRow.invoice_file_path),
+        status: sassInvoiceRow.status || null,
+      }
+    : null;
   const poMeta = po
     ? {
         id: po.id,
@@ -777,6 +803,7 @@ async function enrichPR(row) {
     })),
     approvalHistory,
     attachments,
+    sassInvoice,
     items: lineItems.length,
   };
   return applyRequesterDisplay(base, poMeta);
@@ -4760,8 +4787,22 @@ export async function listTasks(user) {
        JOIN users u ON u.id = pr.requester_id
        LEFT JOIN entity_masters e ON e.id = pr.entity_id
        LEFT JOIN users au ON au.id = wt.assigned_user_id
-       LEFT JOIN purchase_orders po ON po.pr_id = pr.id AND po.purchase_type = 'sass'
-       LEFT JOIN invoices i ON i.po_id = po.id
+       LEFT JOIN purchase_orders po ON po.id = (
+         SELECT po2.id FROM purchase_orders po2
+         WHERE po2.pr_id = pr.id
+           AND (
+             po2.purchase_type IN ('sass', 'saas', 'cloud_subscription')
+             OR po2.po_number LIKE 'CS-%'
+           )
+         ORDER BY po2.id DESC
+         LIMIT 1
+       )
+       LEFT JOIN invoices i ON i.id = (
+         SELECT i2.id FROM invoices i2
+         WHERE i2.po_id = po.id
+         ORDER BY i2.id DESC
+         LIMIT 1
+       )
        WHERE wt.status = 'pending'
          AND wt.task_type = 'INVOICE_UPLOAD'
          AND pr.status = ?

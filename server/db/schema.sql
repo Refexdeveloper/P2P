@@ -448,7 +448,7 @@ CREATE TABLE IF NOT EXISTS entity_locations (
 CREATE TABLE IF NOT EXISTS vendor_documents (
   id INT AUTO_INCREMENT PRIMARY KEY,
   vendor_id INT NOT NULL,
-  doc_type ENUM('gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration') NOT NULL,
+  doc_type VARCHAR(120) NOT NULL,
   file_name VARCHAR(255) NOT NULL,
   file_path VARCHAR(500) NOT NULL,
   file_data LONGBLOB NULL,

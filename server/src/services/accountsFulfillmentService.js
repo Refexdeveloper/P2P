@@ -1385,7 +1385,15 @@ export async function resolveInvoiceFile(invoiceId) {
     if (fs.existsSync(fullPath)) return { fullPath, fileName, buffer: null };
   }
   if (gcsEnabled()) {
-    const keys = [...new Set([`${gcsFolderSafe(stored, 'invoices')}`, `invoices/${base}`, stored, base])];
+    const keys = [
+      ...new Set([
+        gcsFolderSafe(stored, 'invoices'),
+        `invoices/${base}`,
+        stored.startsWith('invoices/') ? stored : null,
+        stored,
+        base,
+      ].filter(Boolean)),
+    ];
     for (const key of keys) {
       const buf = await downloadFromGcs(key);
       if (buf?.length) return { fullPath: null, fileName, buffer: buf };

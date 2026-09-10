@@ -10,6 +10,12 @@ const DOC_LABELS: Record<string, string> = {
   msme_declaration: 'MSME Declaration Form',
 };
 
+function docLabel(docType: string, fileName?: string) {
+  if (DOC_LABELS[docType]) return DOC_LABELS[docType];
+  if (String(docType).startsWith('other__')) return fileName || 'Other document';
+  return docType;
+}
+
 interface Props {
   vendor: VendorRecord;
   loading?: boolean;
@@ -50,6 +56,9 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
 
   const docTypes = ['gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration'] as const;
   const docMap = Object.fromEntries((vendor.documents || []).map((d) => [d.docType, d]));
+  const otherDocs = (vendor.documents || []).filter((d) =>
+    String(d.docType || '').startsWith('other__')
+  );
 
   const handleDownload = async (docType: string, fileName: string) => {
     try {
@@ -251,53 +260,122 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {docTypes.map((type) => {
-                  const doc = docMap[type];
-                  return (
-                    <div
-                      key={type}
-                      className={`rounded-lg border p-4 ${
-                        doc ? 'border-teal-200 bg-teal-50/50' : 'border-gray-200 bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${doc ? 'bg-teal-100' : 'bg-gray-100'}`}>
-                          <i className={`ri-file-text-line text-lg ${doc ? 'text-teal-600' : 'text-gray-300'}`}></i>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {docTypes.map((type) => {
+                    const doc = docMap[type];
+                    return (
+                      <div
+                        key={type}
+                        className={`rounded-lg border p-4 ${
+                          doc ? 'border-teal-200 bg-teal-50/50' : 'border-gray-200 bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3 mb-3">
+                          <div
+                            className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                              doc ? 'bg-teal-100' : 'bg-gray-100'
+                            }`}
+                          >
+                            <i
+                              className={`ri-file-text-line text-lg ${
+                                doc ? 'text-teal-600' : 'text-gray-300'
+                              }`}
+                            ></i>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900">{DOC_LABELS[type]}</p>
+                            {doc ? (
+                              <>
+                                <p
+                                  className="text-xs text-gray-600 truncate mt-0.5"
+                                  title={doc.fileName}
+                                >
+                                  {doc.fileName}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  Uploaded {doc.uploadedAt}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-xs text-gray-400 mt-0.5">Not uploaded</p>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900">{DOC_LABELS[type]}</p>
-                          {doc ? (
-                            <>
-                              <p className="text-xs text-gray-600 truncate mt-0.5" title={doc.fileName}>{doc.fileName}</p>
-                              <p className="text-xs text-gray-400 mt-0.5">Uploaded {doc.uploadedAt}</p>
-                            </>
-                          ) : (
-                            <p className="text-xs text-gray-400 mt-0.5">Not uploaded</p>
-                          )}
-                        </div>
+                        {doc && (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleViewFile(type)}
+                              className="flex-1 px-2 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <i className="ri-eye-line"></i> View
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownload(type, doc.fileName)}
+                              className="flex-1 px-2 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <i className="ri-download-line"></i> Download
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      {doc && (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleViewFile(type)}
-                            className="flex-1 px-2 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer flex items-center justify-center gap-1"
-                          >
-                            <i className="ri-eye-line"></i> View
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDownload(type, doc.fileName)}
-                            className="flex-1 px-2 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer flex items-center justify-center gap-1"
-                          >
-                            <i className="ri-download-line"></i> Download
-                          </button>
+                    );
+                  })}
+                </div>
+
+                {otherDocs.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
+                      Other uploaded documents ({otherDocs.length})
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {otherDocs.map((doc) => (
+                        <div
+                          key={doc.docType}
+                          className="rounded-lg border border-teal-200 bg-teal-50/50 p-4"
+                        >
+                          <div className="flex items-start gap-3 mb-3">
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-teal-100">
+                              <i className="ri-file-text-line text-lg text-teal-600"></i>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">
+                                {docLabel(doc.docType, doc.fileName)}
+                              </p>
+                              <p
+                                className="text-xs text-gray-600 truncate mt-0.5"
+                                title={doc.fileName}
+                              >
+                                {doc.fileName}
+                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                Uploaded {doc.uploadedAt}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleViewFile(doc.docType)}
+                              className="flex-1 px-2 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <i className="ri-eye-line"></i> View
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownload(doc.docType, doc.fileName)}
+                              className="flex-1 px-2 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <i className="ri-download-line"></i> Download
+                            </button>
+                          </div>
                         </div>
-                      )}
+                      ))}
                     </div>
-                  );
-                })}
+                  </div>
+                )}
               </div>
             )}
           </div>

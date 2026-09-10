@@ -15,7 +15,32 @@ function ensureVendorDir() {
   }
 }
 
-const DOC_TYPES = ['gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration'];
+const TYPED_DOC_TYPES = ['gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration'];
+const DOC_TYPES = TYPED_DOC_TYPES;
+
+function isAllowedDocType(docType) {
+  const t = String(docType || '').trim();
+  if (!t) return false;
+  if (TYPED_DOC_TYPES.includes(t)) return true;
+  return /^other__[a-zA-Z0-9._-]{1,100}$/.test(t);
+}
+
+/** Infer KYC slot from filename; unknown files become other__{safeName}. */
+export function inferVendorDocType(fileName) {
+  const original = path.basename(String(fileName || '')).trim();
+  const n = original.toLowerCase();
+  if (!original) return 'other__document';
+  if (/\bpan\b|pan\s*card|pan_card/.test(n)) return 'pan';
+  if (/\bgst\b|gstin|gst\s*cert/.test(n)) return 'gst';
+  if (/cheque|check|cancelled|cancel\s*chq|boi\s*cancel/.test(n)) return 'cheque';
+  if (/(udyam|msme).*(declar|declaration)|declaration.*(udyam|msme)/.test(n)) {
+    return 'msme_declaration';
+  }
+  if (/\budyam\b|\bmsme\b/.test(n)) return 'msme';
+  if (/\bkyc\b/.test(n)) return 'kyc';
+  const safe = original.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_').slice(0, 80);
+  return `other__${safe || 'document'}`;
+}
 let fileDataColumnReady = false;
 
 async function ensureFileDataColumn() {
@@ -222,11 +247,15 @@ async function saveBodyDocuments(vendorId, body) {
 }
 
 export async function uploadVendorDocument(vendorId, body = {}) {
-  const docType = String(body.docType || '').trim();
-  if (!DOC_TYPES.includes(docType)) throw new Error('Invalid document type');
+  let docType = String(body.docType || '').trim();
   const fileName = body.fileName || body.name;
   const file = body.file || body.data || body.fileData || body.base64;
   if (!file || !fileName) throw new Error('File and file name are required');
+
+  if (!docType || docType === 'auto' || docType === 'all') {
+    docType = inferVendorDocType(fileName);
+  }
+  if (!isAllowedDocType(docType)) throw new Error('Invalid document type');
 
   const [rows] = await pool.query(`SELECT id FROM vendors WHERE id = ?`, [vendorId]);
   if (!rows.length) throw new Error('Vendor not found');
@@ -389,13 +418,14 @@ export async function getVendorById(vendorId) {
 }
 
 export async function getVendorDocumentFile(vendorId, docType) {
-  if (!DOC_TYPES.includes(docType)) throw new Error('Invalid document type');
+  const type = decodeURIComponent(String(docType || '').trim());
+  if (!isAllowedDocType(type)) throw new Error('Invalid document type');
 
   await ensureFileDataColumn();
 
   const [rows] = await pool.query(
     `SELECT file_name, file_path, file_data FROM vendor_documents WHERE vendor_id = ? AND doc_type = ?`,
-    [vendorId, docType]
+    [vendorId, type]
   );
   if (!rows.length) throw new Error('Document not found');
 
@@ -419,7 +449,7 @@ export async function getVendorDocumentFile(vendorId, docType) {
       try {
         await pool.query(
           `UPDATE vendor_documents SET file_data = ? WHERE vendor_id = ? AND doc_type = ?`,
-          [buffer, vendorId, docType]
+          [buffer, vendorId, type]
         );
       } catch (err) {
         console.warn('Vendor document DB backfill skipped:', err.message);

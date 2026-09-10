@@ -162,6 +162,8 @@ const MIGRATIONS = [
     INDEX idx_doc_seq_entity (entity_id)
   )`,
   `ALTER TABLE vendor_documents MODIFY COLUMN doc_type ENUM('gst', 'pan', 'cheque', 'msme', 'kyc', 'msme_declaration') NOT NULL`,
+  // Bulk "All documents" uploads use other__* keys; typed KYC slots stay the same
+  `ALTER TABLE vendor_documents MODIFY COLUMN doc_type VARCHAR(120) NOT NULL`,
   // Persist vendor KYC/GST/PAN files in DB — Cloud Run disk is ephemeral
   `ALTER TABLE vendor_documents ADD COLUMN file_data LONGBLOB NULL`,
   `ALTER TABLE purchase_orders MODIFY COLUMN status ENUM(
