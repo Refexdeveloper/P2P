@@ -6,9 +6,9 @@ import { formatRoleDisplayName } from '../../../utils/roleDisplay';
 
 const ROLE_NAV_WHITELIST: Record<string, string[]> = {
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
-  'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
-  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
 };
+
+const ROLES_SHOW_REQUESTER_MENUS = new Set(['Requester', 'HOD Approver', 'PR Manager']);
 
 export default function UserPermissionsPage() {
   const { refreshUser } = useAuth();
@@ -116,7 +116,8 @@ export default function UserPermissionsPage() {
     if (!allowed) {
       const out: Record<string, NavItem[]> = {};
       for (const [group, items] of Object.entries(groupedCatalog)) {
-        if (group === 'Requester' && selectedRole !== 'Requester') continue;
+        if (group === 'Requester' && !ROLES_SHOW_REQUESTER_MENUS.has(selectedRole)) continue;
+        if (group === 'Admin' && selectedRole !== 'Super Admin') continue;
         out[group] = items;
       }
       return out;
@@ -126,10 +127,6 @@ export default function UserPermissionsPage() {
     for (const [group, items] of Object.entries(groupedCatalog)) {
       const filtered = items.filter((i) => allowSet.has(i.code));
       if (!filtered.length) continue;
-      if (group === 'Requester') {
-        out['PR'] = [...(out['PR'] || []), ...filtered];
-        continue;
-      }
       out[group] = filtered;
     }
     return out;
@@ -434,9 +431,14 @@ export default function UserPermissionsPage() {
               </div>
 
               <div className="p-6 max-h-[520px] overflow-y-auto space-y-6">
-                {ROLE_NAV_WHITELIST[selectedRole] ? (
+                {selectedRole === 'CFO' ? (
                   <p className="text-xs text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
-                    L1/L2/CFO users only see the menus below. To give Financial Insights to L1/L2, check{' '}
+                    CFO users only see the menus below.
+                  </p>
+                ) : selectedRole === 'HOD Approver' || selectedRole === 'PR Manager' ? (
+                  <p className="text-xs text-sky-800 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2">
+                    Select any menus below for this {selectedRole === 'PR Manager' ? 'L2 Manager' : 'L1 Manager'}.
+                    Only checked menus appear in their sidebar after Save. For Financial Insights, check{' '}
                     <strong>Dashboard</strong> under CFO and assign a Dashboard Entity above.
                   </p>
                 ) : null}

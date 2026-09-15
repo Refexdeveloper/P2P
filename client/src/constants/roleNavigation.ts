@@ -316,12 +316,6 @@ const REQUESTER_MASTER_NAV_CODES = [
   'nav.department_master',
 ] as const;
 
-const ROLE_NAV_WHITELIST: Record<string, string[]> = {
-  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
-  'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
-  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
-};
-
 const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   Requester: [
     'nav.requester_dashboard',
@@ -543,14 +537,10 @@ export function ensureNavigation(
     }
   }
 
-  // L1 Manager (HOD): My Tasks + RFQ Approval; optional Financial Insights from admin
+  // L1 Manager (HOD): honor admin-selected menus exactly
   if (role === 'HOD Approver') {
-    const allowed = new Set(ROLE_NAV_WHITELIST['HOD Approver'] || ['nav.tasks', 'nav.rfq_approval']);
-    merged = merged.filter((n) => allowed.has(n.code));
-    for (const code of ['nav.create_pr', 'nav.track_pr']) {
-      if (!merged.some((n) => n.code === code) && NAV_BY_CODE[code]) {
-        merged.push(NAV_BY_CODE[code]);
-      }
+    if (!navigation?.length) {
+      merged = getDefaultNavigationForRole('HOD Approver');
     }
     const order = ['nav.cfo_insights', 'nav.create_pr', 'nav.track_pr', 'nav.tasks', 'nav.rfq_approval'];
     const rank = new Map(order.map((code, i) => [code, i]));
@@ -561,22 +551,22 @@ export function ensureNavigation(
     });
   }
 
-  // L2 Manager: one My Tasks entry (nav.pr_manager_dashboard), never also nav.tasks
+  // L2 Manager: honor admin-selected menus; prefer L2 My Tasks over generic nav.tasks
   if (role === 'PR Manager') {
-    const allowed = new Set(ROLE_NAV_WHITELIST['PR Manager'] || ['nav.pr_manager_dashboard', 'nav.rfq_approval']);
-    merged = merged.filter((n) => allowed.has(n.code));
-    merged = merged.filter((n) => n.code !== 'nav.tasks');
-    const codes = new Set(merged.map((n) => n.code));
-    if (!codes.has('nav.pr_manager_dashboard') && NAV_BY_CODE['nav.pr_manager_dashboard']) {
-      merged = [NAV_BY_CODE['nav.pr_manager_dashboard'], ...merged];
+    if (!navigation?.length) {
+      merged = getDefaultNavigationForRole('PR Manager');
     }
-    for (const code of ['nav.create_pr', 'nav.track_pr']) {
-      if (!codes.has(code) && NAV_BY_CODE[code]) {
-        merged.push(NAV_BY_CODE[code]);
-        codes.add(code);
-      }
+    const hasL2Tasks = merged.some((n) => n.code === 'nav.pr_manager_dashboard');
+    if (hasL2Tasks) {
+      merged = merged.filter((n) => n.code !== 'nav.tasks');
     }
-    const order = ['nav.cfo_insights', 'nav.create_pr', 'nav.track_pr', 'nav.pr_manager_dashboard', 'nav.rfq_approval'];
+    const order = [
+      'nav.cfo_insights',
+      'nav.create_pr',
+      'nav.track_pr',
+      'nav.pr_manager_dashboard',
+      'nav.rfq_approval',
+    ];
     const rank = new Map(order.map((code, i) => [code, i]));
     merged = [...merged].sort((a, b) => {
       const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;

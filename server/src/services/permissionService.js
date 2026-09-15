@@ -167,25 +167,24 @@ export const REQUESTER_ONLY_NAV_CODES = new Set([
   'nav.grn',
 ]);
 
-/** Admin-controlled menu whitelist per role (no Requester / unrelated menus). */
+/** Admin-controlled menu whitelist (CFO only). L1/L2 use full catalog — exact admin selection. */
 export const ROLE_NAV_WHITELIST = {
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
-  'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
-  'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.cfo_insights', 'nav.create_pr', 'nav.track_pr'],
 };
+
+/** Roles that may be assigned Requester-group menus (Create PR, Track PR, etc.). */
+const ROLES_ALLOW_REQUESTER_NAV = new Set(['Requester', 'HOD Approver', 'PR Manager']);
 
 function enforceRoleNavWhitelist(role, codes = []) {
   const allowed = ROLE_NAV_WHITELIST[role];
   if (!allowed) {
+    if (ROLES_ALLOW_REQUESTER_NAV.has(role)) return [...codes];
     return codes.filter((c) => !REQUESTER_ONLY_NAV_CODES.has(c));
   }
   const allowSet = new Set(allowed);
   const out = codes.filter((c) => allowSet.has(c));
   for (const code of ROLE_DEFAULT_PERMISSIONS[role] || []) {
     if (allowSet.has(code) && !out.includes(code)) out.push(code);
-  }
-  if (role === 'PR Manager') {
-    return out.filter((c) => c !== 'nav.tasks');
   }
   return out;
 }
@@ -247,8 +246,16 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
     return enforceRoleNavWhitelist(role, stored);
   }
 
-  if (role === 'HOD Approver' || role === 'PR Manager') {
-    return enforceRoleNavWhitelist(role, stored);
+  // L1 / L2: honor exact admin-selected menus (no force-heal of defaults)
+  if (role === 'HOD Approver') {
+    return stored;
+  }
+  if (role === 'PR Manager') {
+    // Prefer L2 My Tasks over generic nav.tasks when both present
+    if (stored.includes('nav.pr_manager_dashboard')) {
+      return stored.filter((c) => c !== 'nav.tasks');
+    }
+    return stored;
   }
 
   if (role === 'Requester' || role === 'SCM Buyer' || role === 'SCM Manager') {
@@ -456,7 +463,7 @@ export async function getUserNavigation(userId, role, email = null) {
     }
   }
 
-  // CFO / L1 / L2: only whitelisted dashboards (no Requester menus)
+  // CFO: only whitelisted menus
   if (ROLE_NAV_WHITELIST[role] && !getEmailNavPermissionOverride(email)) {
     const allowed = new Set(ROLE_NAV_WHITELIST[role]);
     nav = nav.filter((n) => allowed.has(n.code));
@@ -467,6 +474,12 @@ export async function getUserNavigation(userId, role, email = null) {
       const bi = rank.has(b.code) ? rank.get(b.code) : 1000 + b.sort;
       return ai - bi;
     });
+  }
+
+  // L2: drop duplicate generic My Tasks if L2 My Tasks is present
+  if (role === 'PR Manager') {
+    const hasL2Tasks = nav.some((n) => n.code === 'nav.pr_manager_dashboard');
+    if (hasL2Tasks) nav = nav.filter((n) => n.code !== 'nav.tasks');
   }
 
   // SCM Manager: Dashboard → PO Approval → RFQ Approval → …
@@ -518,8 +531,11 @@ export async function setUserPermissions(userId, permissionCodes) {
   const role = userRows[0].role;
   if (ROLE_NAV_WHITELIST[role]) {
     filtered = enforceRoleNavWhitelist(role, filtered);
-  } else {
-    filtered = filtered.filter((c) => !REQUESTER_ONLY_NAV_CODES.has(c) || role === 'Requester');
+  } else if (!ROLES_ALLOW_REQUESTER_NAV.has(role)) {
+    filtered = filtered.filter((c) => !REQUESTER_ONLY_NAV_CODES.has(c));
+  }
+  if (role === 'PR Manager' && filtered.includes('nav.pr_manager_dashboard')) {
+    filtered = filtered.filter((c) => c !== 'nav.tasks');
   }
 
   await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [userId]);

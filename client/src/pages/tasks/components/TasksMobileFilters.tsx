@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FilterSheetSelect from '../../dashboard/components/FilterSheetSelect';
+import PeriodPicker from '../../dashboard/components/PeriodPicker';
 import { BRAND } from '../../../constants/brandColors';
 
 export type TasksFilterValue = {
@@ -8,6 +9,8 @@ export type TasksFilterValue = {
   status: string;
   priority: string;
   sortBy: string;
+  dateFrom: string;
+  dateTo: string;
 };
 
 const STATUS_OPTIONS = [
@@ -38,6 +41,8 @@ const EMPTY: TasksFilterValue = {
   status: 'all',
   priority: 'all',
   sortBy: 'date',
+  dateFrom: '',
+  dateTo: '',
 };
 
 function countActive(value: TasksFilterValue) {
@@ -46,6 +51,7 @@ function countActive(value: TasksFilterValue) {
   if (value.status !== 'all') n += 1;
   if (value.priority !== 'all') n += 1;
   if (value.sortBy !== 'date') n += 1;
+  if (value.dateFrom || value.dateTo) n += 1;
   return n;
 }
 
@@ -91,6 +97,8 @@ export default function TasksMobileFilters({
       status: draft.status,
       priority: draft.priority,
       sortBy: draft.sortBy,
+      dateFrom: draft.dateFrom,
+      dateTo: draft.dateTo,
     });
     setSheetOpen(false);
   };
@@ -143,7 +151,7 @@ export default function TasksMobileFilters({
                       value={draft.search}
                       onChange={(e) => setDraft((prev) => ({ ...prev, search: e.target.value }))}
                       placeholder="Search PR..."
-                      className="h-11 w-full rounded-2xl border border-[#E6E8F0] bg-white pl-10 pr-3 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[rgba(244,85,59,0.25)]"
+                      className="h-11 w-full rounded-2xl border border-[#E6E8F0] bg-white pl-10 pr-3 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[rgba(41,120,177,0.25)]"
                     />
                   </div>
                 </div>
@@ -170,6 +178,22 @@ export default function TasksMobileFilters({
                       );
                     })}
                   </div>
+                </div>
+
+                <div>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    Date
+                  </p>
+                  <PeriodPicker
+                    dateFrom={draft.dateFrom}
+                    dateTo={draft.dateTo}
+                    onChange={({ dateFrom, dateTo }) =>
+                      setDraft((prev) => ({ ...prev, dateFrom, dateTo }))
+                    }
+                    fullWidth
+                    portalZIndex={10060}
+                    themeAccent
+                  />
                 </div>
 
                 <FilterSheetSelect

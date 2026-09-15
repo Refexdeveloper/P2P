@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate } from '../../utils/formatDate';
 import { formatMoney, normalizeCurrency } from '../../constants/currency';
 import TasksMobileFilters from './components/TasksMobileFilters';
+import PeriodPicker from '../dashboard/components/PeriodPicker';
 
 const STAGE_LABELS: Record<string, string> = {
   SUBMITTED: 'PR Submitted',
@@ -219,6 +220,8 @@ export default function TasksPage() {
   const [filter, setFilter] = useState<string>('pending_approval');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [drawerDetail, setDrawerDetail] = useState<{
@@ -605,6 +608,18 @@ export default function TasksPage() {
       result = result.filter((t) => t.priority === priorityFilter);
     }
 
+    if (dateFrom || dateTo) {
+      const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+      const toTs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+      result = result.filter((t) => {
+        const ts = new Date(t.submittedDate).getTime();
+        if (Number.isNaN(ts)) return false;
+        if (fromTs != null && ts < fromTs) return false;
+        if (toTs != null && ts > toTs) return false;
+        return true;
+      });
+    }
+
     const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
     switch (sortBy) {
@@ -648,7 +663,7 @@ export default function TasksPage() {
     });
 
     return result;
-  }, [processedTasks, searchTerm, filter, priorityFilter, sortBy]);
+  }, [processedTasks, searchTerm, filter, priorityFilter, sortBy, dateFrom, dateTo]);
 
   const stats = useMemo(() => {
     const pending = processedTasks.filter(
@@ -902,13 +917,27 @@ export default function TasksPage() {
                 <option value="priority">Sort: Priority</option>
                 <option value="date">Sort: Newest First</option>
               </select>
+
+              <div className="col-span-2 sm:col-span-1 w-full sm:w-[200px] shrink-0">
+                <PeriodPicker
+                  dateFrom={dateFrom}
+                  dateTo={dateTo}
+                  fullWidth
+                  onChange={({ dateFrom: from, dateTo: to }) => {
+                    setDateFrom(from);
+                    setDateTo(to);
+                  }}
+                />
+              </div>
             </div>
 
-            {(searchTerm || priorityFilter !== 'all') && (
+            {(searchTerm || priorityFilter !== 'all' || dateFrom || dateTo) && (
               <button
                 onClick={() => {
                   setSearchTerm('');
                   setPriorityFilter('all');
+                  setDateFrom('');
+                  setDateTo('');
                 }}
                 className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 self-start"
               >
@@ -935,12 +964,16 @@ export default function TasksPage() {
               status: filter,
               priority: priorityFilter,
               sortBy,
+              dateFrom,
+              dateTo,
             }}
             onApply={(next) => {
               setSearchTerm(next.search);
               setFilter(next.status);
               setPriorityFilter(next.priority);
               setSortBy(next.sortBy);
+              setDateFrom(next.dateFrom);
+              setDateTo(next.dateTo);
             }}
           />
           <p className="text-sm text-gray-500 mt-2">
@@ -1230,12 +1263,14 @@ export default function TasksPage() {
                 ? 'PRs you approve as User Approval or L2 Manager show here'
                 : 'PRs appear here after the previous approver completes their step'}
             </p>
-            {(searchTerm || priorityFilter !== 'all' || filter !== 'all') && (
+            {(searchTerm || priorityFilter !== 'all' || filter !== 'all' || dateFrom || dateTo) && (
               <button
                 onClick={() => {
                   setSearchTerm('');
                   setPriorityFilter('all');
                   setFilter('all');
+                  setDateFrom('');
+                  setDateTo('');
                 }}
                 className="mt-3 px-4 py-2 text-sm font-medium text-sky-700 bg-sky-50 rounded-lg hover:bg-sky-100 transition-colors cursor-pointer whitespace-nowrap"
               >
