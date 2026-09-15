@@ -88,14 +88,14 @@ const NAV_BY_CODE: Record<string, NavItem> = {
   },
   'nav.create_po': {
     code: 'nav.create_po',
-    label: 'Create PO',
+    label: 'PO/WO Workspace',
     path: '/scm/create-po',
     icon: 'ri-shopping-cart-2-line',
     group: 'SCM',
   },
   'nav.track_po': {
     code: 'nav.track_po',
-    label: 'Track PO',
+    label: 'PO/WO Tracker',
     path: '/scm/track-po',
     icon: 'ri-search-eye-line',
     group: 'SCM',
@@ -158,7 +158,7 @@ const NAV_BY_CODE: Record<string, NavItem> = {
   },
   'nav.scm_rfq_entry': {
     code: 'nav.scm_rfq_entry',
-    label: 'RFQ Entry',
+    label: 'RFQ Management',
     path: '/scm/rfq-entry',
     icon: 'ri-file-list-line',
     group: 'SCM',
@@ -484,7 +484,7 @@ export function ensureNavigation(
     merged = [...merged]
       .map((n) =>
         n.code === 'nav.rfq_approval'
-          ? { ...n, label: 'RFQ Entry' }
+          ? { ...n, label: 'RFQ Management' }
           : n
       )
       .sort((a, b) => {

@@ -3207,7 +3207,7 @@ export default function CreatePOPage() {
     return (
       <DashboardLayout>
         <div className="mb-5">
-          <h1 className="text-2xl font-bold text-gray-900">Create PO</h1>
+          <h1 className="text-2xl font-bold text-gray-900">PO/WO Workspace</h1>
           <p className="text-sm text-gray-600 mt-1">
             Create a purchase order or work order from a ready PR, or start a manual PO
           </p>

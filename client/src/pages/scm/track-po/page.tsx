@@ -499,7 +499,7 @@ export default function TrackPoPage() {
       ) : null}
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Track PO</h1>
+          <h1 className="text-2xl font-bold text-gray-900">PO/WO Tracker</h1>
           <p className="text-sm text-gray-600 mt-1">
             All purchase orders and work orders. Filter by entity, department, category, type, and date. Expand a row for details, documents, and approval history.
           </p>

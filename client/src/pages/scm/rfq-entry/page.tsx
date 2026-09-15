@@ -65,7 +65,7 @@ export default function ScmRfqEntryListPage() {
   return (
     <DashboardLayout>
       <div className="p-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">RFQ Entry</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">RFQ Management</h1>
         <p className="text-sm text-gray-600 mb-6">
           Purchase requests ready for vendor quotation — expand a row for PR details, vendor comparison, and approval history
         </p>
