@@ -403,7 +403,7 @@ function isMastersNavCode(code?: string) {
 }
 
 const EMAIL_NAV_CODES: Record<string, string[]> = {
-  'srivaths.varadharajan@refex.co.in': ['nav.cfo_insights', 'nav.tasks'],
+  'srivaths.varadharajan@refex.co.in': ['nav.tasks', 'nav.cfo_insights'],
 };
 
 export function ensureNavigation(

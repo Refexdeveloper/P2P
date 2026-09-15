@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatusBadge from '../../../components/base/StatusBadge';
+import { BRAND_PRIMARY_GRADIENT } from '../../../constants/brandColors';
+import PeriodPicker from '../../dashboard/components/PeriodPicker';
+import RequesterPrMobileFilters, {
+  type PrStatusFilter,
+} from './components/RequesterPrMobileFilters';
 import { prApi, taskApi, RequesterPrListMeta } from '../../../services/api';
 import { getRoleHomePath, useAuth } from '../../../contexts/AuthContext';
 import PRDetailDrawer, { PRDetail } from './components/PRDetailDrawer';
@@ -79,9 +84,11 @@ export default function RequesterDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
-  const [filter, setFilter] = useState<'all' | 'draft' | 'pending_approval' | 'approved' | 'returned' | 'rejected'>('all');
+  const [filter, setFilter] = useState<PrStatusFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState<RequesterPrListMeta>({
     page: 1,
@@ -123,7 +130,7 @@ export default function RequesterDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [filter, debouncedSearch]);
+  }, [filter, debouncedSearch, dateFrom, dateTo]);
 
   const loadList = useCallback(async () => {
     setListLoading(true);
@@ -133,6 +140,8 @@ export default function RequesterDashboard() {
         pageSize: PAGE_SIZE,
         search: debouncedSearch || undefined,
         status: filter,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
         scope: 'requester',
       });
       setRequesterPRs(listRes.data as RequesterPR[]);
@@ -145,7 +154,7 @@ export default function RequesterDashboard() {
       setListLoading(false);
       setLoading(false);
     }
-  }, [page, filter, debouncedSearch]);
+  }, [page, filter, debouncedSearch, dateFrom, dateTo]);
 
   const loadSideData = useCallback(async () => {
     const [statsRes, tasksRes] = await Promise.all([prApi.requesterStats(), taskApi.listRequester()]);
@@ -249,7 +258,7 @@ export default function RequesterDashboard() {
       )}
       {loading && <div className="mb-4 text-sm text-gray-500">Loading purchase requests...</div>}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         {widgetCards.map((card) => (
           <button
             key={card.title}
@@ -275,12 +284,16 @@ export default function RequesterDashboard() {
         ))}
       </div>
 
-      <div className="flex gap-3 mb-6">
-        <Link to="/requester/create-pr?new=1" className="px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer">
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <Link
+          to="/requester/create-pr?new=1"
+          className="inline-flex justify-center px-5 py-2.5 text-white text-sm font-medium rounded-lg transition-opacity hover:opacity-90 items-center space-x-2 whitespace-nowrap cursor-pointer shadow-sm"
+          style={{ background: BRAND_PRIMARY_GRADIENT }}
+        >
           <i className="ri-add-line text-lg"></i>
           <span>Create New PR</span>
         </Link>
-        <Link to="/requester/track-pr" className="px-5 py-2.5 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer">
+        <Link to="/requester/track-pr" className="inline-flex justify-center px-5 py-2.5 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors items-center space-x-2 whitespace-nowrap cursor-pointer">
           <i className="ri-search-eye-line text-lg"></i>
           <span>Track My PRs &amp; SLA</span>
         </Link>
@@ -363,31 +376,165 @@ export default function RequesterDashboard() {
       )}
 
       <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-5 border-b border-gray-200">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <h2 className="text-base font-semibold text-gray-900">Recent Purchase Requests</h2>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative">
+        {/* Desktop (≥992px) — inline filter toolbar */}
+        <div className="hidden min-[992px]:block p-5 border-b border-gray-200">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <h2 className="text-base font-semibold text-gray-900 shrink-0 xl:pb-2">
+              Recent Purchase Requests
+            </h2>
+            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3 xl:justify-end">
+              <div className="relative shrink-0">
                 <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <input type="text" placeholder="Search PR..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 w-full sm:w-56" />
+                <input
+                  type="text"
+                  placeholder="Search PR..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-11 w-48 pl-10 pr-4 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+                />
               </div>
-              <div className="flex gap-1.5">
-                {(['all', 'draft', 'pending_approval', 'approved', 'returned', 'rejected'] as const).map((f) => (
-                  <button key={f} onClick={() => setFilter(f)} className={`px-3 py-2 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${filter === f ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                    {f === 'all' ? 'All' : f === 'pending_approval' ? 'Pending' : f.charAt(0).toUpperCase() + f.slice(1)}
-                  </button>
-                ))}
+              <div className="chip-scroll-fade min-w-0 max-w-full flex-1 xl:flex-none xl:max-w-[min(100%,28rem)]">
+                <div className="chip-scroll py-0.5">
+                  {(['all', 'draft', 'pending_approval', 'approved', 'returned', 'rejected'] as const).map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setFilter(f)}
+                      className={`px-3 h-11 text-xs font-medium rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+                        filter === f ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {f === 'all' ? 'All' : f === 'pending_approval' ? 'Pending' : f.charAt(0).toUpperCase() + f.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="w-[200px] shrink-0">
+                <PeriodPicker
+                  dateFrom={dateFrom}
+                  dateTo={dateTo}
+                  fullWidth
+                  onChange={({ dateFrom: from, dateTo: to }) => {
+                    setDateFrom(from);
+                    setDateTo(to);
+                  }}
+                />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto relative">
+        {/* Phone / tablet — Filters bottom sheet */}
+        <RequesterPrMobileFilters
+          value={{
+            search: searchTerm,
+            status: filter,
+            dateFrom,
+            dateTo,
+          }}
+          onApply={(next) => {
+            setSearchTerm(next.search);
+            setFilter(next.status);
+            setDateFrom(next.dateFrom);
+            setDateTo(next.dateTo);
+            setPage(1);
+          }}
+        />
+
+        <div className="relative">
           {listLoading && (
             <div className="absolute inset-0 bg-white/50 z-10 flex items-start justify-center pt-8">
               <span className="text-xs text-gray-500 bg-white px-3 py-1 rounded-full border border-gray-200">Loading…</span>
             </div>
           )}
+
+          {/* Mobile card list */}
+          <div className="min-[992px]:hidden divide-y divide-gray-200">
+            {requesterPRs.map((request) => (
+              <button
+                key={request.id}
+                type="button"
+                onClick={() => openDrawer(request.prId)}
+                className="w-full text-left px-4 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                      PR Number
+                    </p>
+                    <p className="text-sm font-bold text-gray-900 break-all">{request.id}</p>
+                  </div>
+                  <div className="shrink-0 pt-0.5">
+                    <StatusBadge status={request.statusUI || request.status} />
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                    PR Title
+                  </p>
+                  <p className="text-sm font-semibold text-gray-900 leading-snug">{request.title}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {request.items} items · {request.requestType}
+                    {request.entityName ? ` · ${request.entityName}` : ''}
+                  </p>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-gray-900">
+                    ₹{request.amount.toLocaleString('en-IN')}
+                  </p>
+                  <p className="text-xs text-gray-500">{request.date}</p>
+                </div>
+
+                <div
+                  className="mt-3 flex flex-wrap items-center gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg">
+                    <i className="ri-eye-line"></i>
+                    View
+                  </span>
+                  {request.poDocumentAvailable && request.poId ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/requester/po-document?poId=${request.poId}`)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-50 cursor-pointer"
+                    >
+                      <i className="ri-file-pdf-2-line"></i>
+                      PO
+                    </button>
+                  ) : null}
+                  {(canEditRequesterPr(request, isAdminEditor) ||
+                    String(request.status || '').toLowerCase() === 'draft' ||
+                    String(request.statusUI || '').toLowerCase().includes('return')) && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/requester/edit-pr/${request.prId}`)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      <i className={request.status === 'returned' ? 'ri-refresh-line' : 'ri-edit-line'}></i>
+                      Edit
+                    </button>
+                  )}
+                  {user?.role === 'Requester' && isDraftRequesterPr(request) && (
+                    <button
+                      type="button"
+                      disabled={deletingId === request.prId}
+                      onClick={() => void handleDeleteDraft(request.prId)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-50 cursor-pointer disabled:opacity-50"
+                    >
+                      <i className="ri-delete-bin-line"></i>
+                      {deletingId === request.prId ? 'Deleting…' : 'Delete'}
+                    </button>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden min-[992px]:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -482,6 +629,7 @@ export default function RequesterDashboard() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
 
         {!loading && !listLoading && requesterPRs.length === 0 && (

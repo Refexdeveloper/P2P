@@ -4,6 +4,7 @@ import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatusBadge from '../../../components/base/StatusBadge';
 import PriorityBadge from '../../../components/base/PriorityBadge';
 import PrDocumentsPanel from '../../../components/feature/PrDocumentsPanel';
+import { BRAND_PRIMARY_GRADIENT } from '../../../constants/brandColors';
 import { prApi, RequesterPrListMeta, accountsApi, type PrAttachmentRecord } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import CloudSubscriptionPanel from './CloudSubscriptionPanel';
@@ -1005,7 +1006,8 @@ export default function TrackPRPage() {
           </div>
           <button
             onClick={() => navigate('/requester/create-pr?new=1')}
-            className="px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-2 whitespace-nowrap"
+            className="px-5 py-2.5 text-white text-sm font-medium rounded-lg transition-opacity hover:opacity-90 flex items-center gap-2 whitespace-nowrap shadow-sm"
+            style={{ background: BRAND_PRIMARY_GRADIENT }}
           >
             <i className="ri-add-line text-lg"></i>
             Create New PR

@@ -51,9 +51,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/** Srivaths (CTO) login lands on Financial Insights dashboard */
+/** Srivaths (L2 / CTO) login lands on My Tasks */
 const EMAIL_HOME_OVERRIDES: Record<string, string> = {
-  'srivaths.varadharajan@refex.co.in': '/dashboard',
+  'srivaths.varadharajan@refex.co.in': '/tasks',
   'accounts_rgml_refexev@refex.co.in': '/accounts/invoice-verification',
 };
 

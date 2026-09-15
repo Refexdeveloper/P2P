@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --brand-primary: #2978b1;
+  --brand-secondary: #2978b1;
+  --brand-accent: #7cc144;
+  --brand-hero-gradient: linear-gradient(135deg, #2978b1 0%, #1e5f8f 100%);
+  --brand-primary-gradient: linear-gradient(135deg, #2978b1 0%, #3a8bc4 100%);
+}
+
 html,
 body,
 #root {
@@ -43,4 +51,45 @@ body,
 
 .animate-sheet-up {
   animation: sheet-up 0.28s ease-out;
+}
+
+/* Mobile-friendly horizontal chip / tab scroller */
+.chip-scroll {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none; /* Firefox */
+  touch-action: pan-x;
+  padding-bottom: 2px;
+}
+.chip-scroll::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+.chip-scroll > * {
+  scroll-snap-align: start;
+  flex-shrink: 0;
+}
+.chip-scroll-fade {
+  position: relative;
+}
+.chip-scroll-fade::before,
+.chip-scroll-fade::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 2px;
+  width: 28px;
+  pointer-events: none;
+  z-index: 1;
+}
+.chip-scroll-fade::before {
+  left: 0;
+  background: linear-gradient(90deg, #fff 0%, rgba(255, 255, 255, 0) 100%);
+}
+.chip-scroll-fade::after {
+  right: 0;
+  background: linear-gradient(270deg, #fff 0%, rgba(255, 255, 255, 0) 100%);
 }

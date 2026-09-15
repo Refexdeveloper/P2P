@@ -10,6 +10,7 @@ import { taskApi, prApi, poApi, cloudSubscriptionApi } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate } from '../../utils/formatDate';
 import { formatMoney, normalizeCurrency } from '../../constants/currency';
+import TasksMobileFilters from './components/TasksMobileFilters';
 
 const STAGE_LABELS: Record<string, string> = {
   SUBMITTED: 'PR Submitted',
@@ -85,13 +86,19 @@ function isSassTask(task: { isSass?: boolean; purchaseType?: string }) {
   const t = String(task.purchaseType || '')
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
-  return t === 'sass' || t === 'saas' || t === 'cloud_subscription';
+  return (
+    t === 'sass' ||
+    t === 'saas' ||
+    t === 'cloud_subscription' ||
+    t === 'online_purchase' ||
+    t === 'op'
+  );
 }
 
-function SassBadge() {
+function SassBadge({ label = 'Cloud Subscription' }: { label?: string }) {
   return (
     <span className="px-1.5 py-0.5 bg-teal-100 text-teal-800 text-[10px] font-bold rounded tracking-wide flex-shrink-0">
-      Cloud Subscription
+      {label}
     </span>
   );
 }
@@ -654,10 +661,7 @@ export default function TasksPage() {
     const overdue = processedTasks.filter(
       (t) => t.isOverdue && t.status === 'pending_approval'
     ).length;
-    const totalValue = processedTasks
-      .filter((t) => t.status === 'pending_approval')
-      .reduce((sum, t) => sum + t.totalAmount, 0);
-    return { pending, approved, rejected, overdue, totalValue };
+    return { pending, approved, rejected, overdue };
   }, [processedTasks]);
 
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
@@ -671,7 +675,7 @@ export default function TasksPage() {
     if (task.slaRemaining <= 8)
       return { label: `${task.slaRemaining}h left`, cls: 'text-red-600 bg-red-50' };
     if (task.slaRemaining <= 24)
-      return { label: `${task.slaRemaining}h left`, cls: 'text-amber-600 bg-amber-50' };
+      return { label: `${task.slaRemaining}h left`, cls: 'text-sky-700 bg-sky-50' };
     return {
       label: `${Math.ceil(task.slaRemaining / 24)}d left`,
       cls: 'text-emerald-600 bg-emerald-50',
@@ -684,8 +688,8 @@ export default function TasksPage() {
       filterKey: 'pending_approval',
       value: stats.pending,
       icon: 'ri-time-line',
-      textColor: 'text-amber-600',
-      bgColor: 'bg-amber-50',
+      textColor: 'text-sky-700',
+      bgColor: 'bg-sky-50',
     },
     {
       title: 'Approved',
@@ -806,14 +810,14 @@ export default function TasksPage() {
   return (
     <DashboardLayout>
       {/* Widget Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-4 sm:mb-6">
         {widgetCards.map((card) => (
           <button
             key={card.title}
             type="button"
             onClick={() => setFilter(card.filterKey)}
             className={`text-left bg-white rounded-lg border p-3 sm:p-6 cursor-pointer transition-colors ${
-              filter === card.filterKey ? 'border-amber-400 ring-1 ring-amber-200' : 'border-gray-200 hover:bg-gray-50'
+              filter === card.filterKey ? 'border-[#2978B1] ring-1 ring-[rgba(41,120,177,0.25)]' : 'border-gray-200 hover:bg-gray-50'
             }`}
           >
             <div className="flex items-center justify-between gap-2">
@@ -829,37 +833,10 @@ export default function TasksPage() {
         ))}
       </div>
 
-      {/* Pending Value Banner */}
-      <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center flex-shrink-0">
-            <i className="ri-money-rupee-circle-line text-xl text-slate-600"></i>
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm text-gray-500">Total Pending Value</p>
-            <p className="text-lg sm:text-xl font-bold text-gray-900 truncate">
-              {formatAmount(stats.totalValue, 'INR')}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap cursor-pointer">
-            <i className="ri-download-2-line text-base"></i>
-            <span>Export</span>
-          </button>
-          <button
-            onClick={() => loadTasks()}
-            className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2 whitespace-nowrap cursor-pointer"
-          >
-            <i className="ri-refresh-line text-base"></i>
-            <span>Refresh</span>
-          </button>
-        </div>
-      </div>
-
       {/* Table Card */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="p-4 sm:p-6 border-b border-gray-200">
+        {/* Desktop (≥992px) inline filters */}
+        <div className="hidden min-[992px]:block p-4 sm:p-6 border-b border-gray-200">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
             <h2 className="text-base sm:text-lg font-semibold text-gray-900">
               Purchase Request Approvals
@@ -873,7 +850,7 @@ export default function TasksPage() {
                   placeholder="Search PR..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent w-full sm:w-64"
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[rgba(41,120,177,0.35)] focus:border-[#2978B1] w-full sm:w-64"
                 />
               </div>
 
@@ -890,7 +867,7 @@ export default function TasksPage() {
                     onClick={() => setFilter(tab.key)}
                     className={`px-3 sm:px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
                       filter === tab.key
-                        ? 'bg-amber-600 text-white'
+                        ? 'bg-[#2978B1] text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
@@ -901,13 +878,12 @@ export default function TasksPage() {
             </div>
           </div>
 
-          {/* Secondary Filters */}
           <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 mt-4">
             <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
               <select
                 value={priorityFilter}
                 onChange={(e) => setPriorityFilter(e.target.value)}
-                className="w-full sm:w-auto min-w-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white cursor-pointer"
+                className="w-full sm:w-auto min-w-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgba(41,120,177,0.35)] focus:border-[#2978B1] bg-white cursor-pointer"
               >
                 <option value="all">All Priorities</option>
                 <option value="high">High Priority</option>
@@ -918,7 +894,7 @@ export default function TasksPage() {
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="w-full sm:w-auto min-w-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white cursor-pointer"
+                className="w-full sm:w-auto min-w-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgba(41,120,177,0.35)] focus:border-[#2978B1] bg-white cursor-pointer"
               >
                 <option value="sla">Sort: SLA Urgency</option>
                 <option value="amount_high">Sort: Amount (High to Low)</option>
@@ -948,8 +924,33 @@ export default function TasksPage() {
           </div>
         </div>
 
+        {/* Phone / tablet — Filters bottom sheet */}
+        <div className="min-[992px]:hidden px-4 pt-4 pb-2 border-b border-gray-200">
+          <h2 className="text-base font-semibold text-gray-900 mb-3">
+            Purchase Request Approvals
+          </h2>
+          <TasksMobileFilters
+            value={{
+              search: searchTerm,
+              status: filter,
+              priority: priorityFilter,
+              sortBy,
+            }}
+            onApply={(next) => {
+              setSearchTerm(next.search);
+              setFilter(next.status);
+              setPriorityFilter(next.priority);
+              setSortBy(next.sortBy);
+            }}
+          />
+          <p className="text-sm text-gray-500 mt-2">
+            Showing <strong className="text-gray-900">{filteredTasks.length}</strong>{' '}
+            request{filteredTasks.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+
         {/* Mobile card list */}
-        <div className="md:hidden divide-y divide-gray-200">
+        <div className="min-[992px]:hidden divide-y divide-gray-200">
           {filteredTasks.map((task) => {
             const slaInfo = getSlaInfo(task);
             const isPending = task.status === 'pending_approval';
@@ -978,7 +979,18 @@ export default function TasksPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold text-gray-900">{task.prNumber}</p>
-                      {sass && <SassBadge />}
+                      {sass && (
+                        <SassBadge
+                          label={
+                            String(task.purchaseType || '')
+                              .toLowerCase()
+                              .replace(/[\s-]+/g, '_')
+                              .includes('online')
+                              ? 'Online Purchase'
+                              : 'Cloud Subscription'
+                          }
+                        />
+                      )}
                       {(task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) && (
                         <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-semibold rounded">
                           Post-RFQ
@@ -1004,7 +1016,7 @@ export default function TasksPage() {
                   <div
                     className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                       isPending
-                        ? 'bg-amber-100 text-amber-700'
+                        ? 'bg-sky-100 text-sky-800'
                         : task.status === 'approved'
                         ? 'bg-emerald-100 text-emerald-700'
                         : 'bg-red-100 text-red-700'
@@ -1046,7 +1058,7 @@ export default function TasksPage() {
         </div>
 
         {/* Desktop / tablet table — horizontal scroll; Actions column fixed (sticky right) */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden min-[992px]:block overflow-x-auto">
           <table className="w-full min-w-[1280px] border-collapse">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -1088,7 +1100,18 @@ export default function TasksPage() {
                     <td className="px-3 py-3 align-middle whitespace-nowrap text-sm font-medium text-gray-900">
                       <div className="flex items-center gap-1.5">
                         {task.prNumber}
-                        {sass && <SassBadge />}
+                        {sass && (
+                        <SassBadge
+                          label={
+                            String(task.purchaseType || '')
+                              .toLowerCase()
+                              .replace(/[\s-]+/g, '_')
+                              .includes('online')
+                              ? 'Online Purchase'
+                              : 'Cloud Subscription'
+                          }
+                        />
+                      )}
                       </div>
                     </td>
                     <td className="px-3 py-3 align-middle text-sm text-gray-900 max-w-[220px]">
@@ -1116,7 +1139,7 @@ export default function TasksPage() {
                         <div
                           className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                             isPending
-                              ? 'bg-amber-100 text-amber-700'
+                              ? 'bg-sky-100 text-sky-800'
                               : task.status === 'approved'
                               ? 'bg-emerald-100 text-emerald-700'
                               : 'bg-red-100 text-red-700'
@@ -1214,7 +1237,7 @@ export default function TasksPage() {
                   setPriorityFilter('all');
                   setFilter('all');
                 }}
-                className="mt-3 px-4 py-2 text-sm font-medium text-amber-600 bg-amber-50 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer whitespace-nowrap"
+                className="mt-3 px-4 py-2 text-sm font-medium text-sky-700 bg-sky-50 rounded-lg hover:bg-sky-100 transition-colors cursor-pointer whitespace-nowrap"
               >
                 Clear all filters
               </button>

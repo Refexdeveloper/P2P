@@ -1,10 +1,8 @@
 /**
- * SASS purchase-type workflow helpers.
- * Default chain: Requester → selected user approvals (L1) → Mugesh (approve) → Srivaths (L2) → Mugesh (invoice upload) → Accounts.
- * When Mugesh is the requester: Requester (Mugesh) → L1 → Mugesh invoice upload → Accounts
- *   (skips Mugesh self-approval and Srivaths L2).
- * When Srivaths is L1: after Mugesh approve, skip Srivaths L2 (already approved once) → Mugesh invoice.
- * SCM is never involved.
+ * SASS / Online Purchase workflow helpers.
+ * Cloud Subscription: Requester → selected L1 → Mugesh → Srivaths → Mugesh invoice → Accounts.
+ * Online Purchase: Requester (User Approval) → Mugesh L1 → Srivaths L2 → Mugesh invoice → Completed.
+ * SCM is never involved for either path.
  */
 import fs from 'fs';
 import path from 'path';
@@ -13,6 +11,7 @@ import pool from '../config/db.js';
 import { ensureApproverUser } from './refexOneService.js';
 import { formatDateTime, STAGE } from '../utils/constants.js';
 import { uploadToGcs, gcsEnabled } from './gcsStorage.js';
+import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './documentNumberService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const INVOICE_DIR = path.resolve(__dirname, '../../uploads/invoices');
@@ -31,11 +30,38 @@ export function isSassPurchaseType(value) {
   return raw === 'sass' || raw === 'saas' || raw === 'cloud_subscription';
 }
 
+export function isOnlinePurchaseType(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return raw === 'online_purchase' || raw === 'onlinepurchase' || raw === 'op';
+}
+
+/** Cloud Subscription or Online Purchase — shared invoice / Mugesh–Srivaths path. */
+export function isInvoiceFlowPurchaseType(value) {
+  return isSassPurchaseType(value) || isOnlinePurchaseType(value);
+}
+
+export function purchaseFlowLabel(value) {
+  if (isOnlinePurchaseType(value)) return 'Online Purchase';
+  if (isSassPurchaseType(value)) return 'Cloud Subscription';
+  return 'Purchase Request';
+}
+
 export function isSassPr(pr = {}) {
   return isSassPurchaseType(pr.purchase_type || pr.purchaseType);
 }
 
-/** True when the person is Srivaths (Cloud Subscription L2) — used to skip duplicate L2. */
+export function isOnlinePurchasePr(pr = {}) {
+  return isOnlinePurchaseType(pr.purchase_type || pr.purchaseType);
+}
+
+export function isInvoiceFlowPr(pr = {}) {
+  return isInvoiceFlowPurchaseType(pr.purchase_type || pr.purchaseType);
+}
+
+/** True when the person is Srivaths (L2) — used to skip duplicate L2. */
 export function isSassL2Person(userOr = {}) {
   const email = String(
     userOr.email ||
@@ -54,6 +80,32 @@ export function isSassL2Person(userOr = {}) {
     .toLowerCase();
   if (!email && name && (name === 'srivaths' || name.startsWith('srivaths '))) return true;
   return false;
+}
+
+/** Whether a stage was already approved — never recreate that approval task. */
+export async function hasApprovedStage(prId, stage, connOrPool = null) {
+  const db = connOrPool || pool;
+  const [rows] = await db.query(
+    `SELECT id FROM pr_approvals
+     WHERE pr_id = ? AND stage = ? AND action = 'approve'
+     LIMIT 1`,
+    [Number(prId), stage]
+  );
+  return rows.length > 0;
+}
+
+export async function hasPendingApprovalTaskForUser(prId, userId, connOrPool = null) {
+  const db = connOrPool || pool;
+  const [rows] = await db.query(
+    `SELECT id FROM workflow_tasks
+     WHERE pr_id = ?
+       AND assigned_user_id = ?
+       AND status = 'pending'
+       AND task_type IN ('PR_APPROVAL', 'INVOICE_UPLOAD')
+     LIMIT 1`,
+    [Number(prId), Number(userId)]
+  );
+  return rows.length > 0;
 }
 
 /**
@@ -194,7 +246,13 @@ export async function resolveSassMugeshAssignment(departmentId = null) {
 }
 
 export async function createSassL2ApprovalTask(conn, prId, departmentId = null) {
+  if (await hasApprovedStage(prId, STAGE.PR_MANAGER_REVIEW, conn)) {
+    return null; // L2 already completed — never recreate
+  }
   const assignee = await resolveSassL2Assignment(departmentId);
+  if (await hasPendingApprovalTaskForUser(prId, assignee.userId, conn)) {
+    return assignee;
+  }
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 1);
   await conn.query(
@@ -206,7 +264,13 @@ export async function createSassL2ApprovalTask(conn, prId, departmentId = null) 
 }
 
 export async function createSassMugeshApprovalTask(conn, prId, departmentId = null) {
+  if (await hasApprovedStage(prId, STAGE.CFO_REVIEW, conn)) {
+    return null; // Mugesh L1 already completed — never recreate
+  }
   const assignee = await resolveSassMugeshAssignment(departmentId);
+  if (await hasPendingApprovalTaskForUser(prId, assignee.userId, conn)) {
+    return assignee;
+  }
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 1);
   await conn.query(
@@ -230,12 +294,16 @@ export async function createSassInvoiceUploadTask(conn, prId, departmentId = nul
 }
 
 /**
- * After Srivaths (L2) approval: create internal shell + invoice stub and assign Mugesh invoice-upload task.
- * Cloud Subscription does NOT consume PO/WO document numbers and has no PO document.
+ * After L2 approval: create internal shell + invoice stub and assign Mugesh invoice-upload task.
+ * Cloud Subscription uses CS-{prId} (does NOT consume PO sequence).
+ * Online Purchase uses official OP-Entity-FY-#### via documentNumberService.
  */
 export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
   const createMugeshInvoiceTask = options.createMugeshInvoiceTask !== false;
   const prId = Number(pr.id);
+  const flowType = normalizePurchaseType(pr.purchase_type || pr.purchaseType || 'sass');
+  const isOnline = isOnlinePurchaseType(flowType);
+  const flowLabel = purchaseTypeLabel(flowType);
   const [existingPo] = await conn.query(
     `SELECT id, po_number FROM purchase_orders WHERE pr_id = ? ORDER BY id DESC LIMIT 1`,
     [prId]
@@ -251,8 +319,15 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
   const subtotal = Number(pr.total_amount) || 0;
   const taxAmount = 0;
   const grandTotal = subtotal;
-  // Placeholder only — must not call nextDocumentNumber('PO') / consume PO sequence
-  const cloudRef = `CS-${prId}`;
+  let shellRef = isOnline ? `OP-${prId}` : `CS-${prId}`;
+  if (isOnline && !poId && pr.entity_id) {
+    try {
+      shellRef = await nextDocumentNumber('OP', pr.entity_id, conn);
+    } catch (err) {
+      console.warn('[Online Purchase] OP number fallback:', err.message);
+      shellRef = `OP-${prId}`;
+    }
+  }
 
   if (!poId) {
     const [poResult] = await conn.query(
@@ -260,15 +335,16 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
        (po_number, pr_id, vendor_name, vendor_email, created_by,
         delivery_address, payment_terms, po_type, purchase_type,
         entity_id, currency, subtotal, tax_amount, grand_total, status, gst_percentage)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'short_po', 'sass', ?, ?, ?, ?, ?, 'invoice_entry', 0)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'short_po', ?, ?, ?, ?, ?, ?, 'invoice_entry', 0)`,
       [
-        cloudRef,
+        shellRef,
         prId,
-        String(pr.vendor_name || 'Cloud Subscription Vendor').slice(0, 255) || 'Cloud Subscription Vendor',
-        'sass-invoice@placeholder.local',
+        String(pr.vendor_name || `${flowLabel} Vendor`).slice(0, 255) || `${flowLabel} Vendor`,
+        isOnline ? 'online-purchase@placeholder.local' : 'sass-invoice@placeholder.local',
         actorUser?.id || pr.requester_id,
         pr.place_of_delivery || pr.billing_address || null,
         pr.payment_terms || 'Net 30 Days',
+        flowType,
         pr.entity_id || null,
         pr.currency || 'INR',
         subtotal,
@@ -299,22 +375,43 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
       );
     }
   } else {
-    // If an older SASS row already took a real PO-#### number, rewrite to CS-{prId}
     const existingNum = String(existingPo[0]?.po_number || '');
-    if (/^PO-/i.test(existingNum) || !existingNum.startsWith('CS-')) {
+    if (isOnline) {
+      if (/^PO-/i.test(existingNum) || (!existingNum.startsWith('OP-') && !/^OP-/i.test(existingNum))) {
+        try {
+          await conn.query(`UPDATE purchase_orders SET po_number = ?, purchase_type = ?, updated_at = NOW() WHERE id = ?`, [
+            shellRef,
+            flowType,
+            poId,
+          ]);
+        } catch {
+          /* keep existing if unique conflict */
+        }
+      } else {
+        await conn.query(
+          `UPDATE purchase_orders SET status = 'invoice_entry', purchase_type = ?, updated_at = NOW() WHERE id = ?`,
+          [flowType, poId]
+        );
+      }
+    } else if (/^PO-/i.test(existingNum) || !existingNum.startsWith('CS-')) {
       try {
         await conn.query(`UPDATE purchase_orders SET po_number = ?, updated_at = NOW() WHERE id = ?`, [
-          cloudRef,
+          shellRef,
           poId,
         ]);
       } catch {
         /* keep existing if unique conflict */
       }
+      await conn.query(
+        `UPDATE purchase_orders SET status = 'invoice_entry', purchase_type = 'sass', updated_at = NOW() WHERE id = ?`,
+        [poId]
+      );
+    } else {
+      await conn.query(
+        `UPDATE purchase_orders SET status = 'invoice_entry', purchase_type = 'sass', updated_at = NOW() WHERE id = ?`,
+        [poId]
+      );
     }
-    await conn.query(
-      `UPDATE purchase_orders SET status = 'invoice_entry', purchase_type = 'sass', updated_at = NOW() WHERE id = ?`,
-      [poId]
-    );
   }
 
   const [existingInv] = await conn.query(
@@ -325,7 +422,7 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
   if (!invoiceId) {
     const history = [
       {
-        action: 'Cloud Subscription invoice base created for Mugesh upload',
+        action: `${flowLabel} invoice base created for Mugesh upload`,
         performedBy: actorUser?.name || 'System',
         role: actorUser?.role || 'System',
         date: formatDateTime(new Date()),
@@ -342,7 +439,7 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
         null,
         poId,
         prId,
-        String(pr.vendor_name || 'Cloud Subscription Vendor').slice(0, 255) || 'Cloud Subscription Vendor',
+        String(pr.vendor_name || `${flowLabel} Vendor`).slice(0, 255) || `${flowLabel} Vendor`,
         subtotal,
         taxAmount,
         grandTotal,
@@ -356,7 +453,12 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
 
   let mugeshAssignee = null;
   if (createMugeshInvoiceTask) {
-    mugeshAssignee = await createSassInvoiceUploadTask(conn, prId, pr.department_id);
+    const mugesh = await resolveSassMugeshAssignment(pr.department_id);
+    if (!(await hasPendingApprovalTaskForUser(prId, mugesh.userId, conn))) {
+      mugeshAssignee = await createSassInvoiceUploadTask(conn, prId, pr.department_id);
+    } else {
+      mugeshAssignee = mugesh;
+    }
   }
   return { poId, invoiceId, mugeshAssignee };
 }
@@ -781,7 +883,7 @@ export async function clearStaleSassPrApprovalTasks() {
      SET wt.status = 'completed', wt.completed_at = COALESCE(wt.completed_at, NOW())
      WHERE wt.status = 'pending'
        AND wt.task_type = 'PR_APPROVAL'
-       AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription')
+       AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')
        AND (
          -- PR already past approval (invoice / done) — no PR_APPROVAL should stay open
          pr.status IN ('AWAITING_INVOICE', 'APPROVED', 'REJECTED', 'CANCELLED', 'CLOSED')
@@ -807,7 +909,7 @@ export async function skipRedundantSassL2WhenL1WasSrivaths() {
     `SELECT pr.id, pr.pr_number, pr.department_id, pr.total_amount, pr.requester_id,
             pr.entity_id, pr.currency, pr.title
      FROM purchase_requests pr
-     WHERE pr.purchase_type IN ('sass', 'saas', 'cloud_subscription')
+     WHERE pr.purchase_type IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')
        AND pr.status = 'PENDING_PR_MANAGER_APPROVAL'`
   );
   let skipped = 0;

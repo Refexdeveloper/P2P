@@ -28,10 +28,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ===================== EDIT THESE VALUES =====================
 const CONFIG = {
-  // STEP 1 local | STEP 2 live
-  apiBaseUrl: 'http://localhost:5000',
-  // After deploy, switch to live:
-  // apiBaseUrl: 'https://p2p-backend-645830234926.asia-south1.run.app',
+  // LIVE
+  apiBaseUrl: 'https://p2p-backend-645830234926.asia-south1.run.app',
+  // Local:
+  // apiBaseUrl: 'http://localhost:5000',
 
   // ROOT folder: each subfolder = one vendor, files inside = documents to upload
   vendorDocsRoot: 'D:\\Vendor_KYC_Export\\Vendor_KYC',
@@ -42,7 +42,7 @@ const CONFIG = {
   authToken: '', // optional: paste JWT to skip login
 
   // true = preview only. false = real upload / GCS link.
-  dryRun: true,
+  dryRun: false,
 
   // If folder has no match in Vendor Master → create vendor with folder name
   createMissingVendors: true,

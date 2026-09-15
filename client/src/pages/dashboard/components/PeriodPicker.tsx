@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { BRAND, BRAND_PRIMARY_GRADIENT } from '../../../constants/brandColors';
 import {
   defaultFyFilter,
   fyOptions,
@@ -175,10 +176,19 @@ export default function PeriodPicker({
                     className={`h-8 px-3 rounded-full text-[12px] font-medium ${
                       active
                         ? themeAccent
-                          ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                          ? 'border'
                           : 'bg-[#E8F0FE] text-slate-800 border border-sky-200'
                         : 'bg-slate-100 text-slate-700 border border-transparent hover:bg-slate-200'
                     }`}
+                    style={
+                      active && themeAccent
+                        ? {
+                            backgroundColor: `rgba(${BRAND.primaryRgb}, 0.1)`,
+                            borderColor: `rgba(${BRAND.primaryRgb}, 0.35)`,
+                            color: BRAND.primary,
+                          }
+                        : undefined
+                    }
                   >
                     {k.label}
                   </button>
@@ -197,10 +207,15 @@ export default function PeriodPicker({
                     className={`flex-1 h-8 rounded-full text-[12px] font-medium ${
                       active
                         ? themeAccent
-                          ? 'bg-white text-teal-800 shadow-sm border border-teal-200'
+                          ? 'bg-white shadow-sm border'
                           : 'bg-white text-slate-800 shadow-sm border border-sky-200'
                         : 'text-slate-600'
                     }`}
+                    style={
+                      active && themeAccent
+                        ? { borderColor: `rgba(${BRAND.primaryRgb}, 0.35)`, color: BRAND.primary }
+                        : undefined
+                    }
                   >
                     {g.label}
                   </button>
@@ -245,8 +260,9 @@ export default function PeriodPicker({
                     }
                   }}
                   className={`w-full h-9 rounded-xl text-[12px] font-semibold text-white ${
-                    themeAccent ? 'bg-teal-600 hover:bg-teal-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                    themeAccent ? 'hover:opacity-90' : 'bg-indigo-600 hover:bg-indigo-700'
                   }`}
+                  style={themeAccent ? { background: BRAND_PRIMARY_GRADIENT } : undefined}
                 >
                   Apply custom range
                 </button>
@@ -278,7 +294,19 @@ export default function PeriodPicker({
                       </div>
                       <p className="text-[11px] text-slate-400 mt-0.5">{item.sub}</p>
                       {item.current ? (
-                        <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700">
+                        <span
+                          className={`inline-flex mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            themeAccent ? '' : 'bg-teal-50 text-teal-700'
+                          }`}
+                          style={
+                            themeAccent
+                              ? {
+                                  backgroundColor: `rgba(${BRAND.primaryRgb}, 0.1)`,
+                                  color: BRAND.primary,
+                                }
+                              : undefined
+                          }
+                        >
                           {grain === 'year'
                             ? 'CURRENT FINANCIAL YEAR'
                             : grain === 'monthly'
@@ -304,15 +332,23 @@ export default function PeriodPicker({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`h-11 ${fullWidth ? 'w-full' : 'min-w-[168px]'} px-2.5 inline-flex items-center gap-2 bg-white border border-[#E6E8F0] rounded-2xl text-[13px] font-medium text-slate-800 ${
-          themeAccent ? 'hover:border-teal-300' : 'hover:border-indigo-200'
+          themeAccent ? 'hover:border-[rgba(244,85,59,0.45)]' : 'hover:border-indigo-200'
         }`}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
         <span
           className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-            themeAccent ? 'bg-teal-50 text-teal-600' : 'bg-[#EEF3FF] text-indigo-600'
+            themeAccent ? '' : 'bg-[#EEF3FF] text-indigo-600'
           }`}
+          style={
+            themeAccent
+              ? {
+                  backgroundColor: `rgba(${BRAND.primaryRgb}, 0.1)`,
+                  color: BRAND.primary,
+                }
+              : undefined
+          }
         >
           <i className="ri-calendar-line text-base"></i>
         </span>

@@ -37,9 +37,19 @@ export function buildSassInvoiceUploadedEmail({
         'Requester'
     ).trim() || 'Requester';
 
-  const subject = `Cloud Subscription — Completed · ${prNumber}`;
-  const bodyMessage =
-    'The cloud subscription has been completed using the Corporate Credit Card. Please find the invoice attached for your reference.';
+  const purchaseTypeRaw = String(pr?.purchaseType || pr?.purchase_type || '')
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  const isOnline =
+    purchaseTypeRaw === 'online_purchase' ||
+    purchaseTypeRaw === 'onlinepurchase' ||
+    purchaseTypeRaw === 'op';
+  const flowName = isOnline ? 'Online Purchase' : 'Cloud Subscription';
+
+  const subject = `${flowName} — Completed · ${prNumber}`;
+  const bodyMessage = isOnline
+    ? 'The online purchase has been completed. Please find the invoice attached for your reference.'
+    : 'The cloud subscription has been completed using the Corporate Credit Card. Please find the invoice attached for your reference.';
 
   const html = `
 <!DOCTYPE html>
@@ -49,7 +59,7 @@ export function buildSassInvoiceUploadedEmail({
   <table width="640" align="center" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
     <tr>
       <td style="background:linear-gradient(135deg,#0f766e,#0d9488);padding:28px 32px;">
-        <div style="font-size:11px;color:#ccfbf1;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">Cloud Subscription</div>
+        <div style="font-size:11px;color:#ccfbf1;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">${flowName}</div>
         <div style="font-size:22px;font-weight:800;color:#fff;margin-top:8px;">Completed</div>
         <div style="font-size:14px;color:#ecfdf5;margin-top:8px;">Invoice attached for your reference</div>
       </td>
@@ -84,7 +94,7 @@ export function buildSassInvoiceUploadedEmail({
     </tr>
     <tr>
       <td style="padding:16px 32px;background:#f8fafc;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;">
-        Procure to Pay — Cloud Subscription completion notice
+        Procure to Pay — ${flowName} completion notice
       </td>
     </tr>
   </table>
@@ -92,7 +102,7 @@ export function buildSassInvoiceUploadedEmail({
 </html>`;
 
   const text = [
-    `Cloud Subscription — Completed · ${prNumber}`,
+    `${flowName} — Completed · ${prNumber}`,
     '',
     `Hello ${greetName},`,
     '',

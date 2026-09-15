@@ -129,47 +129,54 @@ export default function PRDetailDrawer({
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-white shadow-2xl overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
-          <div className="flex items-center justify-between">
-            <div>
+      <div className="relative flex h-full w-full max-w-xl flex-col bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
               {pr && (
                 <>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-gray-500">{pr.prNumber}</span>
+                  <p className="text-[11px] font-bold tracking-wide text-gray-500 break-all">
+                    {pr.prNumber}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <StatusBadge status={pr.statusUI || pr.statusFrontend} size="sm" />
                     <PriorityBadge priority={pr.priority} size="sm" />
                   </div>
-                  <h3 className="text-base font-semibold text-gray-900">{pr.title}</h3>
+                  <h3 className="mt-2 text-base font-semibold text-gray-900 leading-snug break-words">
+                    {pr.title}
+                  </h3>
                 </>
               )}
               {loading && <p className="text-sm text-gray-500">Loading PR details...</p>}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1.5">
               {isDraft && user?.role === 'Requester' && onDeleteDraft && pr && (
                 <button
                   type="button"
                   disabled={deletingDraft}
                   onClick={() => void onDeleteDraft(pr.id)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors disabled:opacity-50"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 text-sm font-medium text-rose-700 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                  title={deletingDraft ? 'Deleting…' : 'Delete draft'}
                 >
                   <i className="ri-delete-bin-line"></i>
-                  {deletingDraft ? 'Deleting…' : 'Delete draft'}
+                  <span className="hidden sm:inline">{deletingDraft ? 'Deleting…' : 'Delete draft'}</span>
                 </button>
               )}
               {canEdit && pr && (
                 <Link
                   to={`/requester/edit-pr/${pr.id}`}
                   onClick={onClose}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors"
+                  className="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-lg bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
                 >
                   <i className="ri-edit-line"></i>
                   {isReturned ? 'Edit & Resubmit' : 'Edit PR'}
                 </Link>
               )}
               <button
+                type="button"
                 onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                aria-label="Close"
               >
                 <i className="ri-close-line text-lg text-gray-500"></i>
               </button>
@@ -177,10 +184,11 @@ export default function PRDetailDrawer({
           </div>
         </div>
 
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {pr && (
           <>
             {isReturned && (
-              <div className="mx-6 mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-2">
+              <div className="mx-4 mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-2 sm:mx-6">
                 <i className="ri-arrow-go-back-line text-orange-600 text-lg mt-0.5"></i>
                 <div>
                   <p className="text-sm font-semibold text-orange-800">Returned for Rework</p>
@@ -191,37 +199,40 @@ export default function PRDetailDrawer({
               </div>
             )}
 
-            <div className="px-6 pt-4 flex gap-2 border-b border-gray-100 overflow-x-auto">
-              {(['details', 'items', 'quotes', 'history'] as const)
-                .filter((tab) => tab !== 'quotes' || hasQuotes)
-                .map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                    activeTab === tab
-                      ? 'border-gray-900 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {tab === 'items'
-                    ? `Line Items (${pr.lineItems.length})`
-                    : tab === 'history'
-                      ? 'Approval History'
-                      : tab === 'quotes'
-                        ? 'Vendor Quotations'
-                        : 'Details'}
-                </button>
-              ))}
+            <div className="chip-scroll-fade border-b border-gray-100 px-4 pt-3 sm:px-6">
+              <div className="chip-scroll gap-1 pb-0">
+                {(['details', 'items', 'quotes', 'history'] as const)
+                  .filter((tab) => tab !== 'quotes' || hasQuotes)
+                  .map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                      activeTab === tab
+                        ? 'border-gray-900 text-gray-900'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {tab === 'items'
+                      ? `Line Items (${pr.lineItems.length})`
+                      : tab === 'history'
+                        ? 'History'
+                        : tab === 'quotes'
+                          ? 'Quotations'
+                          : 'Details'}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="px-6 py-5 space-y-5">
+            <div className="px-4 py-5 space-y-5 sm:px-6">
               {activeTab === 'details' && (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
                       <p className="text-xs text-gray-500 mb-0.5">Entity</p>
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-gray-900 break-words">
                         {pr.entityName || '—'}
                         {pr.entityCode ? (
                           <span className="text-gray-500 font-normal"> ({pr.entityCode})</span>
@@ -233,7 +244,7 @@ export default function PRDetailDrawer({
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Department</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.department}</p>
+                      <p className="text-sm font-medium text-gray-900 break-words">{pr.department}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Request Type</p>
@@ -243,9 +254,9 @@ export default function PRDetailDrawer({
                       <p className="text-xs text-gray-500 mb-0.5">Request Category</p>
                       <p className="text-sm font-medium text-gray-900">{pr.requestCategory || '—'}</p>
                     </div>
-                    <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
                       <p className="text-xs text-gray-500 mb-0.5">Project Detail</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.projectDetail || '—'}</p>
+                      <p className="text-sm font-medium text-gray-900 break-words">{pr.projectDetail || '—'}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Required Date</p>
@@ -253,22 +264,22 @@ export default function PRDetailDrawer({
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Expected Delivery Timeline</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.expectedDeliveryTimeline || '—'}</p>
+                      <p className="text-sm font-medium text-gray-900 break-words">{pr.expectedDeliveryTimeline || '—'}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Payment Terms</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.paymentTerms || '—'}</p>
+                      <p className="text-sm font-medium text-gray-900 break-words">{pr.paymentTerms || '—'}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Total Amount</p>
                       <p className="text-sm font-bold text-gray-900">₹{pr.totalAmount.toLocaleString('en-IN')}</p>
                     </div>
                     {pr.poDocumentAvailable && pr.poId ? (
-                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 col-span-2">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 sm:col-span-2">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                          <div className="min-w-0">
                             <p className="text-sm font-semibold text-indigo-900">Purchase Order</p>
-                            <p className="text-xs text-indigo-700 mt-0.5">
+                            <p className="text-xs text-indigo-700 mt-0.5 break-words">
                               {pr.poNumber || `PO #${pr.poId}`}
                               {pr.statusUI ? ` · ${pr.statusUI}` : ''}
                             </p>
@@ -276,7 +287,7 @@ export default function PRDetailDrawer({
                           <button
                             type="button"
                             onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700"
+                            className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700"
                           >
                             <i className="ri-file-pdf-2-line" />
                             View PO Document
@@ -284,9 +295,9 @@ export default function PRDetailDrawer({
                         </div>
                       </div>
                     ) : pr.poId ? (
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 col-span-2">
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 sm:col-span-2">
                         <p className="text-sm font-semibold text-slate-800">Purchase Order</p>
-                        <p className="text-xs text-slate-600 mt-0.5">
+                        <p className="text-xs text-slate-600 mt-0.5 break-words">
                           {pr.poNumber || `PO #${pr.poId}`}
                           {pr.statusUI ? ` · ${pr.statusUI}` : ''}
                         </p>
@@ -295,22 +306,22 @@ export default function PRDetailDrawer({
                         </p>
                       </div>
                     ) : null}
-                    <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
                       <p className="text-xs text-gray-500 mb-0.5">Billing Region / GST</p>
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-gray-900 break-words">
                         {pr.billingLocation || '—'}
                         {pr.billingGstNo ? (
                           <span className="block text-xs font-mono text-gray-600 mt-0.5">{pr.billingGstNo}</span>
                         ) : null}
                       </p>
                     </div>
-                    <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
                       <p className="text-xs text-gray-500 mb-0.5">Billing Address</p>
-                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">{pr.billingAddress || '—'}</p>
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">{pr.billingAddress || '—'}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">POC for Delivery</p>
-                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
                         {pr.deliveryPoc || '—'}
                         {pr.deliveryPocEmail || pr.deliveryPocPhone ? (
                           <span className="block text-xs text-gray-500 mt-0.5">
@@ -321,7 +332,7 @@ export default function PRDetailDrawer({
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Project Manager at HO</p>
-                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap">
+                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
                         {pr.projectManagerHo || '—'}
                         {pr.projectManagerEmail || pr.projectManagerContact ? (
                           <span className="block text-xs text-gray-500 mt-0.5">
@@ -332,20 +343,20 @@ export default function PRDetailDrawer({
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-0.5">Place of Delivery</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.placeOfDelivery || '—'}</p>
+                      <p className="text-sm font-medium text-gray-900 break-words">{pr.placeOfDelivery || '—'}</p>
                     </div>
-                    <div className="bg-gray-50 rounded-lg p-3 col-span-2">
+                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
                       <p className="text-xs text-gray-500 mb-0.5">Submitted Date</p>
                       <p className="text-sm font-medium text-gray-900">{pr.submittedDate || '—'}</p>
                     </div>
                   </div>
                   <div>
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Business Justification</h4>
-                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3">{pr.justification || '—'}</p>
+                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words">{pr.justification || '—'}</p>
                   </div>
                   <div>
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Special Notes</h4>
-                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 whitespace-pre-wrap">{pr.specialNotes || '—'}</p>
+                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 whitespace-pre-wrap break-words">{pr.specialNotes || '—'}</p>
                   </div>
                   {pr.attachments && pr.attachments.length > 0 && (
                     <div>
@@ -388,41 +399,83 @@ export default function PRDetailDrawer({
               ) : null}
 
               {activeTab === 'items' && (
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">#</th>
-                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Description</th>
-                        <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Qty</th>
-                        <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Unit</th>
-                        <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {pr.lineItems.map((item, i) => (
-                        <tr key={item.id ?? `line-${i}`}>
-                          <td className="px-3 py-2 text-gray-500">{i + 1}</td>
-                          <td className="px-3 py-2">
-                            <p className="font-medium text-gray-900">{item.description}</p>
-                            <p className="text-xs text-gray-400">{item.category}</p>
-                          </td>
-                          <td className="px-3 py-2 text-right">{item.quantity}</td>
-                          <td className="px-3 py-2 text-right">₹{item.unitCost.toLocaleString('en-IN')}</td>
-                          <td className="px-3 py-2 text-right font-semibold">₹{item.total.toLocaleString('en-IN')}</td>
+                <>
+                  {/* Mobile cards */}
+                  <div className="space-y-3 md:hidden">
+                    {pr.lineItems.map((item, i) => (
+                      <div
+                        key={item.id ?? `line-card-${i}`}
+                        className="rounded-xl border border-gray-200 bg-white p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="min-w-0">
+                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-slate-100 px-1.5 text-[11px] font-bold text-slate-600">
+                              #{i + 1}
+                            </span>
+                            <p className="mt-1.5 text-sm font-semibold text-gray-900 break-words">
+                              {item.description}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">{item.category || '—'}</p>
+                          </div>
+                          <p className="shrink-0 text-sm font-bold text-gray-900">
+                            ₹{item.total.toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Qty</p>
+                            <p className="text-sm text-gray-800 mt-0.5">{item.quantity}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Unit</p>
+                            <p className="text-sm text-gray-800 mt-0.5">₹{item.unitCost.toLocaleString('en-IN')}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-gray-700">Total</p>
+                      <p className="text-sm font-bold text-gray-900">₹{pr.totalAmount.toLocaleString('en-IN')}</p>
+                    </div>
+                  </div>
+
+                  {/* Desktop table */}
+                  <div className="hidden md:block border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">#</th>
+                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Description</th>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Qty</th>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Unit</th>
+                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Total</th>
                         </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-gray-50">
-                      <tr>
-                        <td colSpan={4} className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Total</td>
-                        <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
-                          ₹{pr.totalAmount.toLocaleString('en-IN')}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {pr.lineItems.map((item, i) => (
+                          <tr key={item.id ?? `line-${i}`}>
+                            <td className="px-3 py-2 text-gray-500">{i + 1}</td>
+                            <td className="px-3 py-2">
+                              <p className="font-medium text-gray-900">{item.description}</p>
+                              <p className="text-xs text-gray-400">{item.category}</p>
+                            </td>
+                            <td className="px-3 py-2 text-right">{item.quantity}</td>
+                            <td className="px-3 py-2 text-right">₹{item.unitCost.toLocaleString('en-IN')}</td>
+                            <td className="px-3 py-2 text-right font-semibold">₹{item.total.toLocaleString('en-IN')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50">
+                        <tr>
+                          <td colSpan={4} className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Total</td>
+                          <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
+                            ₹{pr.totalAmount.toLocaleString('en-IN')}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
               )}
 
               {activeTab === 'history' && (
@@ -462,19 +515,19 @@ export default function PRDetailDrawer({
                             }`}
                           ></i>
                         </div>
-                        <div className="flex-1 pb-4 border-b border-gray-100 last:border-0">
+                        <div className="flex-1 pb-4 border-b border-gray-100 last:border-0 min-w-0">
                           <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{item.stage}</p>
-                              <p className="text-xs text-gray-500">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 break-words">{item.stage}</p>
+                              <p className="text-xs text-gray-500 break-words">
                                 {item.user}
                                 {formatPersonRoleSuffix(item.role, item.user)}
                               </p>
                             </div>
-                            <span className="text-xs text-gray-400 whitespace-nowrap">{item.date}</span>
+                            <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">{item.date}</span>
                           </div>
                           {item.remarks && (
-                            <p className="text-sm text-gray-700 mt-2 bg-gray-50 rounded-lg p-2 border border-gray-100">
+                            <p className="text-sm text-gray-700 mt-2 bg-gray-50 rounded-lg p-2 border border-gray-100 break-words">
                               {item.remarks}
                             </p>
                           )}
@@ -485,24 +538,24 @@ export default function PRDetailDrawer({
                 </div>
               )}
             </div>
-
-            {canEdit && (
-              <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
-                <Link
-                  to={`/requester/edit-pr/${pr.id}`}
-                  onClick={onClose}
-                  className={`px-5 py-2.5 text-white text-sm font-medium rounded-lg transition-colors ${
-                    isReturned ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-900 hover:bg-gray-800'
-                  }`}
-                >
-                  <i className={`${isReturned ? 'ri-edit-line' : isDraft ? 'ri-send-plane-fill' : 'ri-edit-line'} mr-1.5`}></i>
-                  {isReturned ? 'Edit & Resubmit' : isDraft ? 'Edit & Submit' : 'Edit PR'}
-                </Link>
-              </div>
-            )}
           </>
         )}
+        </div>
 
+        {canEdit && pr && (
+          <div className="shrink-0 border-t border-gray-200 px-4 py-3 sm:px-6 sm:py-4 flex justify-end gap-3 bg-white">
+            <Link
+              to={`/requester/edit-pr/${pr.id}`}
+              onClick={onClose}
+              className={`w-full sm:w-auto text-center px-5 py-2.5 text-white text-sm font-medium rounded-lg transition-colors ${
+                isReturned ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-900 hover:bg-gray-800'
+              }`}
+            >
+              <i className={`${isReturned ? 'ri-edit-line' : isDraft ? 'ri-send-plane-fill' : 'ri-edit-line'} mr-1.5`}></i>
+              {isReturned ? 'Edit & Resubmit' : isDraft ? 'Edit & Submit' : 'Edit PR'}
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   );

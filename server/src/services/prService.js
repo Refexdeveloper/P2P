@@ -43,8 +43,14 @@ import {
 import {
   isSassPr,
   isSassPurchaseType,
+  isOnlinePurchasePr,
+  isOnlinePurchaseType,
+  isInvoiceFlowPr,
+  isInvoiceFlowPurchaseType,
+  purchaseFlowLabel,
   isSassMugeshRequester,
   sassL1WasSrivaths,
+  hasApprovedStage,
   createSassL2ApprovalTask,
   createSassMugeshApprovalTask,
   openSassInvoiceStage,
@@ -93,16 +99,17 @@ async function fetchLatestPoMetaByPrIds(prIds) {
 }
 
 function applyRequesterDisplay(pr, poMeta = null) {
-  const isSass = isSassPurchaseType(pr.purchaseType || pr.purchase_type);
-  // Cloud Subscription uses an internal invoice shell only — never expose as a PO
+  const purchaseType = pr.purchaseType || pr.purchase_type || 'purchase_order';
+  const isInvoiceFlow = isInvoiceFlowPurchaseType(purchaseType);
+  // Cloud / Online use an internal invoice shell only — never expose as a PO
   const display = resolveRequesterPrDisplay(
     pr.status,
     pr.prFlow === 'functional' ? 'functional' : 'standard',
     pr.vendorSelection === 'own' ? 'own' : 'scm',
-    isSass ? null : poMeta,
-    pr.purchaseType || pr.purchase_type || 'purchase_order'
+    isInvoiceFlow ? null : poMeta,
+    purchaseType
   );
-  if (isSass) {
+  if (isInvoiceFlow) {
     return {
       ...pr,
       statusFrontend: display.statusFrontend,
@@ -110,7 +117,7 @@ function applyRequesterDisplay(pr, poMeta = null) {
         pr.status,
         pr.prFlow === 'functional' ? 'functional' : 'standard',
         pr.vendorSelection === 'own' ? 'own' : 'scm',
-        pr.purchaseType || pr.purchase_type || 'sass'
+        purchaseType
       ),
       poId: null,
       poNumber: '',
@@ -403,6 +410,16 @@ function collapseConsecutiveAdminEdits(history) {
 }
 
 function formatPrApprovalStage(stage, prFlow = 'standard', purchaseType = 'purchase_order') {
+  if (isOnlinePurchaseType(purchaseType)) {
+    const onlineLabels = {
+      SUBMITTED: 'PR Submitted',
+      HOD_REVIEW: 'User Approval',
+      CFO_REVIEW: 'Mugesh L1 Approval',
+      PR_MANAGER_REVIEW: 'Srivaths L2 Approval',
+      SASS_INVOICE_UPLOAD: 'Mugesh Invoice Upload',
+    };
+    if (onlineLabels[stage]) return onlineLabels[stage];
+  }
   if (isSassPurchaseType(purchaseType)) {
     const sassLabels = {
       SUBMITTED: 'PR Submitted',
@@ -1253,8 +1270,14 @@ export async function createPurchaseRequest(user, body) {
   const prFlow = parsePrFlow(prFlowRaw, 'standard');
   const normalizedPurchaseType = normalizePurchaseType(purchaseType);
   const isSass = normalizedPurchaseType === 'sass';
-  // SASS: vendor is selected on Create PR — treat as own (known vendor), never SCM RFQ
-  const vendorMode = isSass ? 'own' : vendorSelection === 'own' ? 'own' : 'scm';
+  const isOnline = normalizedPurchaseType === 'online_purchase';
+  const isInvoiceFlow = isSass || isOnline;
+  // Invoice-flow types (Cloud / Online): known vendor path, never SCM RFQ
+  const vendorMode = isInvoiceFlow
+    ? 'own'
+    : vendorSelection === 'own'
+      ? 'own'
+      : 'scm';
   const normalizedCurrency = normalizeCurrency(currency);
   const sassVendor = isSass ? await resolveSassVendorFromBody(body) : null;
   if (isSass && submit && !sassVendor?.vendorName) {
@@ -1298,13 +1321,16 @@ export async function createPurchaseRequest(user, body) {
     : approvalUserId
       ? [Number(approvalUserId)]
       : [];
-  if ((prFlow === 'functional' || isSass) && (submit || requestedApproverIds.length)) {
+  if ((prFlow === 'functional' || isSass || isOnline) && (submit || requestedApproverIds.length)) {
     selectedApprovers = await resolveSelectedApprovalUsers(requestedApproverIds, user.id);
   }
   if (isSass && submit && !selectedApprovers.length) {
     throw new Error('Select L1 Manager / User Approver for Cloud Subscription');
   }
-  if (isSass && selectedApprovers.length > 1) {
+  if (isOnline && submit && !selectedApprovers.length) {
+    throw new Error('Select L1 Manager / User Approver for Online Purchase');
+  }
+  if ((isSass || isOnline) && selectedApprovers.length > 1) {
     selectedApprovers = [selectedApprovers[0]];
   }
 
@@ -1338,7 +1364,7 @@ export async function createPurchaseRequest(user, body) {
   }
   const selectedApprover = selectedApprovers[0] || null;
   const selectedApproverIds = selectedApprovers.map((u) => u.id);
-  if (prFlow === 'functional' && submit && vendorMode === 'own' && !isSass) {
+  if (prFlow === 'functional' && submit && vendorMode === 'own' && !isInvoiceFlow) {
     const rfqVendors = body.rfqVendors || body.rfq_vendors;
     if (!Array.isArray(rfqVendors) || !rfqVendors.length) {
       throw new Error('Add at least one vendor with a round-1 quotation and file');
@@ -1523,7 +1549,9 @@ export async function createPurchaseRequest(user, body) {
     let hodAssignment = null;
 
     if (submit) {
-      const pathLabel = isSass
+      const pathLabel = isOnline
+        ? `Online Purchase · User Approver: ${selectedApprover?.name || selectedApprover?.email || '—'} → Mugesh L1 → Srivaths L2 → Mugesh Invoice Upload → Completed (SCM skipped)`
+        : isSass
         ? isSassMugeshRequester(user)
           ? `Cloud Subscription · Mugesh requester · L1: ${selectedApprover?.name || selectedApprover?.email || '—'} → Mugesh Invoice Upload → Accounts (Mugesh approval & Srivaths skipped)`
           : `Cloud Subscription · Selected approvals: ${selectedApprover?.name || selectedApprover?.email || '—'} → Mugesh → L2: Srivaths → Mugesh Invoice Upload → Accounts (SCM skipped)`
@@ -1542,7 +1570,7 @@ export async function createPurchaseRequest(user, body) {
         ]
       );
 
-      if (isSass || prFlow === 'functional') {
+      if (isOnline || isSass || prFlow === 'functional') {
         hodAssignment = await createSelectedUserApprovalTask(conn, prId, selectedApprover.id);
       } else {
         hodAssignment = await createHodApprovalTask(conn, prId, user.email, departmentId);
@@ -2512,6 +2540,9 @@ export async function processApproval(user, prId, action, remarks, options = {})
   const pr = prRows[0];
   const isFunctional = pr.pr_flow === 'functional';
   const isSass = isSassPr(pr);
+  const isOnline = isOnlinePurchasePr(pr);
+  const isInvoiceFlow = isSass || isOnline;
+  const flowLabel = purchaseFlowLabel(pr.purchase_type);
   let sassRequesterIsMugesh = false;
   if (isSass) {
     const [reqUserRows] = await pool.query(
@@ -2524,7 +2555,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
     });
   }
   const isFunctionalUserStep =
-    (isFunctional || isSass) && pr.status === PR_STATUS.PENDING_HOD_APPROVAL;
+    (isFunctional || isSass || isOnline) && pr.status === PR_STATUS.PENDING_HOD_APPROVAL;
   const pendingTask = await getPendingPrApprovalTask(prId);
   const assignedToMe = userMatchesTaskAssignment(user, pendingTask);
 
@@ -2598,7 +2629,27 @@ export async function processApproval(user, prId, action, remarks, options = {})
 
     if (action === 'approve') {
       if (actingAsHod) {
-        if (isSass) {
+        if (isOnline) {
+          // Online Purchase: User Approval → Mugesh L1 (never go back if Mugesh already approved)
+          if (await hasApprovedStage(prId, STAGE.CFO_REVIEW, conn)) {
+            if (await hasApprovedStage(prId, STAGE.PR_MANAGER_REVIEW, conn)) {
+              newStatus = PR_STATUS.AWAITING_INVOICE;
+              newStage = STAGE.SASS_INVOICE_UPLOAD;
+              nextRole = null;
+            } else {
+              newStatus = PR_STATUS.PENDING_PR_MANAGER_APPROVAL;
+              newStage = STAGE.PR_MANAGER_REVIEW;
+              nextRole = 'PR Manager';
+            }
+            remarks = `${remarks.trim()} [Online Purchase · Mugesh L1 already done — advanced without duplicate]`;
+          } else {
+            newStatus = PR_STATUS.PENDING_CFO_APPROVAL;
+            newStage = STAGE.CFO_REVIEW;
+            nextRole = 'CFO';
+            skipToScmRfq = false;
+            remarks = `${remarks.trim()} [Online Purchase · User Approval complete → Mugesh L1]`;
+          }
+        } else if (isSass) {
           if (sassRequesterIsMugesh) {
             // Mugesh raised the PR — after L1 go straight to Mugesh invoice upload
             // (skip Mugesh self-approval and Srivaths L2)
@@ -2661,8 +2712,8 @@ export async function processApproval(user, prId, action, remarks, options = {})
           nextRole = 'PR Manager';
         }
       } else if (actingRole === 'PR Manager') {
-        if (isSass) {
-          // SASS L2 Srivaths → Mugesh invoice upload
+        if (isInvoiceFlow) {
+          // SASS / Online Purchase L2 Srivaths → Mugesh invoice upload
           newStatus = PR_STATUS.AWAITING_INVOICE;
           newStage = STAGE.SASS_INVOICE_UPLOAD;
           nextRole = null;
@@ -2686,15 +2737,18 @@ export async function processApproval(user, prId, action, remarks, options = {})
           }
         }
       } else if (actingRole === 'CFO') {
-        if (isSass) {
-          // Mugesh approve → Srivaths (L2), unless L1 was already Srivaths (skip duplicate)
-          const l1WasSrivaths = await sassL1WasSrivaths(prId, conn);
-          if (l1WasSrivaths) {
+        if (isInvoiceFlow) {
+          // Mugesh L1 approve → Srivaths L2, unless L2 already done or L1 was Srivaths (SASS only)
+          const l2AlreadyDone = await hasApprovedStage(prId, STAGE.PR_MANAGER_REVIEW, conn);
+          const l1WasSrivaths = isSass ? await sassL1WasSrivaths(prId, conn) : false;
+          if (l2AlreadyDone || l1WasSrivaths) {
             newStatus = PR_STATUS.AWAITING_INVOICE;
             newStage = STAGE.SASS_INVOICE_UPLOAD;
             nextRole = null;
             skipToScmRfq = false;
-            remarks = `${remarks.trim()} [Cloud Subscription · L1 was Srivaths — L2 skipped]`;
+            remarks = l2AlreadyDone
+              ? `${remarks.trim()} [${flowLabel} · Srivaths L2 already done — routed to invoice]`
+              : `${remarks.trim()} [Cloud Subscription · L1 was Srivaths — L2 skipped]`;
           } else {
             newStatus = PR_STATUS.PENDING_PR_MANAGER_APPROVAL;
             newStage = STAGE.PR_MANAGER_REVIEW;
@@ -2759,7 +2813,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
     if (nextFunctionalApprover && action === 'approve') {
       nextAssignee = await createSelectedUserApprovalTask(conn, prId, nextFunctionalApprover.id);
     } else if (nextRole === 'PR Manager' && action === 'approve') {
-      if (isSass) {
+      if (isInvoiceFlow) {
         nextAssignee = await createSassL2ApprovalTask(conn, prId, pr.department_id);
       } else {
         const [reqRows] = await conn.query(
@@ -2773,7 +2827,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
           pr.department_id
         );
       }
-    } else if (nextRole === 'CFO' && action === 'approve' && isSass) {
+    } else if (nextRole === 'CFO' && action === 'approve' && isInvoiceFlow) {
       nextAssignee = await createSassMugeshApprovalTask(conn, prId, pr.department_id);
     } else if (nextRole && action === 'approve') {
       const dueDate = new Date();
@@ -2796,22 +2850,23 @@ export async function processApproval(user, prId, action, remarks, options = {})
 
     let sassInvoiceStageMeta = null;
     const openSassInvoice =
-      isSass &&
+      isInvoiceFlow &&
       action === 'approve' &&
       newStatus === PR_STATUS.AWAITING_INVOICE &&
       ((actingRole === 'PR Manager') ||
         (actingAsHod && sassRequesterIsMugesh) ||
-        (actingRole === 'CFO'));
+        (actingRole === 'CFO') ||
+        (actingAsHod && isOnline && newStatus === PR_STATUS.AWAITING_INVOICE));
     if (openSassInvoice) {
       sassInvoiceStageMeta = await openSassInvoiceStage(conn, pr, user, {
         createMugeshInvoiceTask: true,
       });
       nextAssignee = sassInvoiceStageMeta?.mugeshAssignee || nextAssignee;
-      let routeRemark = 'Routed to Mugesh for invoice upload (SCM skipped)';
+      let routeRemark = `Routed to Mugesh for invoice upload (SCM skipped · ${flowLabel})`;
       if (sassRequesterIsMugesh && actingAsHod) {
         routeRemark =
           'Routed to Mugesh for invoice upload (Mugesh requester — L2/Mugesh approval skipped)';
-      } else if (actingRole === 'CFO') {
+      } else if (actingRole === 'CFO' && isSass) {
         routeRemark =
           'Routed to Mugesh for invoice upload (L1 was Srivaths — L2 skipped)';
       }
@@ -2833,7 +2888,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
     let rfqEntryRequester = null;
     if (
       !isFunctional &&
-      !isSass &&
+      !isInvoiceFlow &&
       actingAsHod &&
       action === 'approve' &&
       pr.vendor_selection === 'own'
@@ -2853,7 +2908,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
 
     // SCM vendor: after CFO pre-RFQ, or L2 skip-CFO → SCM Buyer RFQ Entry
     let scmRfqBuyerEmails = [];
-    if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve' && !isSass) {
+    if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve' && !isInvoiceFlow) {
       const rfqDue = new Date();
       rfqDue.setDate(rfqDue.getDate() + 5);
       scmRfqBuyerEmails = await getScmBuyerNotifyEmails(conn);
@@ -3178,7 +3233,9 @@ export async function submitSassInvoiceUpload(user, prId, invoiceBody = {}) {
   const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [id]);
   if (!prRows.length) throw new Error('PR not found');
   const pr = prRows[0];
-  if (!isSassPr(pr)) throw new Error('Not a Cloud Subscription request');
+  if (!isInvoiceFlowPr(pr)) {
+    throw new Error('Not a Cloud Subscription or Online Purchase request');
+  }
   if (pr.status !== PR_STATUS.AWAITING_INVOICE) {
     throw new Error(`PR is not awaiting invoice upload (current: ${pr.status})`);
   }
@@ -4133,7 +4190,7 @@ export async function listRequesterTasks(userId) {
        AND (
          (wt.assigned_role = 'Requester' AND pr.requester_id = ?
            AND NOT (wt.task_type = 'RFQ_ENTRY' AND pr.pr_flow = 'functional')
-           AND NOT (wt.task_type = 'RFQ_ENTRY' AND pr.purchase_type = 'sass'))
+           AND NOT (wt.task_type = 'RFQ_ENTRY' AND pr.purchase_type IN ('sass', 'online_purchase')))
          OR (wt.task_type = 'PR_APPROVAL' AND wt.assigned_user_id = ?)
          OR (wt.task_type = 'PO_VENDOR_ACCEPTANCE' AND wt.assigned_user_id = ?)
        )
@@ -4146,6 +4203,8 @@ export async function listRequesterTasks(userId) {
     const isVendorAcceptance = r.task_type === 'PO_VENDOR_ACCEPTANCE';
     const isInvoiceUpload = r.task_type === 'INVOICE_UPLOAD';
     const isSass = isSassPurchaseType(r.purchase_type);
+    const isOnline = isOnlinePurchaseType(r.purchase_type);
+    const isInvoiceFlow = isSass || isOnline;
     return {
       id: String(r.id),
       taskId: r.id,
@@ -4154,7 +4213,8 @@ export async function listRequesterTasks(userId) {
       taskType: r.task_type,
       purchaseType: r.purchase_type || 'purchase_order',
       purchaseTypeLabel: purchaseTypeLabel(r.purchase_type),
-      isSass,
+      isSass: isInvoiceFlow,
+      isOnlinePurchase: isOnline,
       prNumber: isVendorAcceptance && r.po_number ? r.po_number : r.pr_number,
       title: isVendorAcceptance
         ? `${r.title} — Vendor PO Acceptance`
@@ -4348,13 +4408,13 @@ function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, display
     currency: pr.currency || 'INR',
     purchaseType: pr.purchaseType || 'purchase_order',
     purchaseTypeLabel: pr.purchaseTypeLabel || purchaseTypeLabel(pr.purchaseType),
-    isSass: isSassPurchaseType(pr.purchaseType),
+    isSass: isInvoiceFlowPurchaseType(pr.purchaseType),
     askBusinessApproval: Boolean(
       pending &&
         !isPostRfq &&
         pr.prFlow !== 'functional' &&
         pr.vendorSelection !== 'own' &&
-        !isSassPurchaseType(pr.purchaseType) &&
+        !isInvoiceFlowPurchaseType(pr.purchaseType) &&
         pr.status === PR_STATUS.PENDING_HOD_APPROVAL
     ),
     requireInvoiceUpload: false,
@@ -4465,7 +4525,7 @@ export async function listTasks(user) {
            -- Cloud Subscription CFO/Mugesh steps are never an open role-queue for others
            AND NOT (
              wt.assigned_role = 'CFO'
-             AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription')
+             AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')
            )
          )
        )
@@ -4791,8 +4851,9 @@ export async function listTasks(user) {
          SELECT po2.id FROM purchase_orders po2
          WHERE po2.pr_id = pr.id
            AND (
-             po2.purchase_type IN ('sass', 'saas', 'cloud_subscription')
+             po2.purchase_type IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')
              OR po2.po_number LIKE 'CS-%'
+             OR po2.po_number LIKE 'OP-%'
            )
          ORDER BY po2.id DESC
          LIMIT 1
@@ -4848,7 +4909,7 @@ export async function listTasks(user) {
         slaRemaining: sla.slaRemaining,
         isOverdue: sla.isOverdue,
         lineItems: 0,
-        requestType: 'Cloud Subscription',
+        requestType: purchaseTypeLabel(row.purchase_type) || 'Cloud Subscription',
         requesterRole: 'Requester',
         requesterAvatar: (row.requester_name || 'R').charAt(0).toUpperCase(),
         justification: row.justification || '',
@@ -4857,7 +4918,7 @@ export async function listTasks(user) {
         isSassInvoiceUpload: true,
         requireInvoiceUpload: true,
         purchaseType: row.purchase_type || 'sass',
-        purchaseTypeLabel: 'Cloud Subscription',
+        purchaseTypeLabel: purchaseTypeLabel(row.purchase_type) || 'Cloud Subscription',
         currency: row.currency || 'INR',
         vendorSelection: 'own',
       });

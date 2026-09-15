@@ -12,7 +12,7 @@ export type CreatePrDraftSnapshot = {
   department: string;
   entityId: number | '';
   requestType: 'Capex' | 'Opex' | 'Service';
-  purchaseType: 'purchase_order' | 'work_order' | 'sass';
+  purchaseType: 'purchase_order' | 'work_order' | 'sass' | 'online_purchase';
   /** Cloud Subscription: one_time | recurring */
   sassSubscriptionMode?: 'one_time' | 'recurring' | null;
   sassBillingFrequency?: 'monthly' | 'quarterly' | 'yearly' | null;

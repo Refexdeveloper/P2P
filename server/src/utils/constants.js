@@ -285,16 +285,26 @@ export function resolveRequesterPrDisplay(
 }
 
 export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelection = 'scm', purchaseType = 'purchase_order') {
+  const rawType = String(purchaseType || '')
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
   const isSass =
-    String(purchaseType || '')
-      .toLowerCase()
-      .replace(/[\s-]+/g, '_') === 'sass' ||
-    String(purchaseType || '')
-      .toLowerCase()
-      .replace(/[\s-]+/g, '_') === 'saas' ||
-    String(purchaseType || '')
-      .toLowerCase()
-      .replace(/[\s-]+/g, '_') === 'cloud_subscription';
+    rawType === 'sass' || rawType === 'saas' || rawType === 'cloud_subscription';
+  const isOnline = rawType === 'online_purchase' || rawType === 'onlinepurchase' || rawType === 'op';
+
+  if (isOnline) {
+    const onlineMap = {
+      [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending User Approval',
+      [PR_STATUS.PENDING_CFO_APPROVAL]: 'Pending Mugesh L1 Approval',
+      [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: 'Pending Srivaths L2 Approval',
+      [PR_STATUS.AWAITING_INVOICE]: 'Pending Mugesh Invoice Upload',
+      [PR_STATUS.APPROVED]: 'Completed',
+      [PR_STATUS.REJECTED]: 'Rejected',
+      [PR_STATUS.RETURNED]: 'Returned for Rework',
+      [PR_STATUS.DRAFT]: 'Draft',
+    };
+    if (onlineMap[status]) return onlineMap[status];
+  }
 
   if (isSass) {
     const sassMap = {

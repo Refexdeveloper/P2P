@@ -103,8 +103,8 @@ export default function SearchCreateField({
   const inputPad = compact ? 'pl-9 pr-9 py-2 rounded-lg' : 'pl-9 pr-9 py-2.5 rounded-xl';
 
   return (
-    <div ref={boxRef} className="relative">
-      <div className="relative">
+    <div ref={boxRef} className="relative w-full min-w-0">
+      <div className="relative w-full min-w-0">
         <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none" />
         <input
           type="text"
@@ -132,7 +132,7 @@ export default function SearchCreateField({
             else if (filtered[0]) apply(filtered[0]);
           }}
           placeholder={placeholder}
-          className={`w-full ${inputPad} border text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
+          className={`w-full min-w-0 max-w-full box-border ${inputPad} border text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
             hasError ? 'border-red-400 bg-red-50' : 'border-gray-200'
           }`}
           autoComplete="off"

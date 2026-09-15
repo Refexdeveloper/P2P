@@ -14,7 +14,28 @@ function isSassPrPayload(pr) {
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
-  return raw === 'sass' || raw === 'saas' || raw === 'cloud_subscription';
+  return (
+    raw === 'sass' ||
+    raw === 'saas' ||
+    raw === 'cloud_subscription' ||
+    raw === 'online_purchase' ||
+    raw === 'onlinepurchase' ||
+    raw === 'op'
+  );
+}
+
+function purchaseTypeEmailLabel(pr) {
+  const raw = String(pr?.purchaseType || pr?.purchase_type || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  if (raw === 'online_purchase' || raw === 'onlinepurchase' || raw === 'op') {
+    return 'Online Purchase';
+  }
+  if (raw === 'sass' || raw === 'saas' || raw === 'cloud_subscription') {
+    return 'Cloud Subscription';
+  }
+  return 'Purchase Request';
 }
 
 function isOwnVendorPr(pr) {
@@ -644,7 +665,7 @@ export function buildPrApprovalPendingEmail({
               : `Action Required: Approve PR ${pr.prNumber} — ${pr.title}`;
   const subject =
     isSassRequest && !isScmRfqEntry
-      ? `Cloud Subscription · ${baseSubject.replace(/^Action Required:\s*/i, '')}`
+      ? `${purchaseTypeEmailLabel(pr)} · ${baseSubject.replace(/^Action Required:\s*/i, '')}`
       : baseSubject;
   const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const path = getPortalPath(assignedRole, postRfq && !isCreatePoStep);
@@ -793,7 +814,7 @@ export function buildPrApprovalPendingEmail({
   const headerEyebrow = isSlaBreach
     ? 'SLA Breached'
     : isSassRequest
-      ? 'Cloud Subscription'
+      ? purchaseTypeEmailLabel(pr)
       : isScmRfqEntry
         ? 'New PR Request Received'
         : isRfqEntryStep
@@ -917,7 +938,7 @@ export function buildPrApprovalPendingEmail({
                   isSassRequest
                     ? `<table width="100%" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;"><tr><td style="padding:12px 14px;">
                     <div style="font-size:10px;color:#0f766e;text-transform:uppercase;font-weight:700;">Purchase Type</div>
-                    <div style="font-size:16px;font-weight:800;color:#0f766e;margin-top:4px;">Cloud Subscription</div>
+                    <div style="font-size:16px;font-weight:800;color:#0f766e;margin-top:4px;">${escapeHtml(purchaseTypeEmailLabel(pr))}</div>
                   </td></tr></table>`
                     : ''
                 }</td>
@@ -978,7 +999,7 @@ export function buildPrApprovalPendingEmail({
     isSassRequest ? subject : isScmRfqEntry ? subject : `Action Required: PR ${pr.prNumber} — ${pr.title}`,
     `Entity: ${entityLabel}`,
     entityLocationLabel ? `Entity Location: ${entityLocationLabel}` : '',
-    isSassRequest ? 'Purchase Type: Cloud Subscription' : '',
+    isSassRequest ? `Purchase Type: ${purchaseTypeEmailLabel(pr)}` : '',
     `Role: ${roleDisplayName}`,
     `Stage: ${stageText}`,
     `Requester: ${requester?.name || pr.requester}`,

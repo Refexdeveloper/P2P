@@ -48,7 +48,13 @@ export function buildPrApproverActionConfirmationEmail({
     purchaseTypeRaw === 'sass' ||
     purchaseTypeRaw === 'saas' ||
     purchaseTypeRaw === 'cloud_subscription';
-  const flowTag = isSass ? 'Cloud Subscription · ' : '';
+  const isOnline =
+    purchaseTypeRaw === 'online_purchase' ||
+    purchaseTypeRaw === 'onlinepurchase' ||
+    purchaseTypeRaw === 'op';
+  const isInvoiceFlow = isSass || isOnline;
+  const flowName = isOnline ? 'Online Purchase' : isSass ? 'Cloud Subscription' : '';
+  const flowTag = flowName ? `${flowName} · ` : '';
 
   const subject = `${flowTag}${copy.headline} — ${requestId}`;
 
@@ -70,13 +76,15 @@ export function buildPrApproverActionConfirmationEmail({
       <td style="padding:24px 28px;background:linear-gradient(135deg,#0f766e,#0d9488);">
         <div style="color:#fff;font-size:20px;font-weight:800;">${escapeHtml(copy.headline)}</div>
         ${
-          isSass
-            ? `<div style="display:inline-block;margin-top:10px;padding:4px 10px;background:rgba(255,255,255,0.18);border-radius:999px;color:#ecfdf5;font-size:11px;font-weight:700;letter-spacing:0.04em;">CLOUD SUBSCRIPTION</div>`
+          isInvoiceFlow
+            ? `<div style="display:inline-block;margin-top:10px;padding:4px 10px;background:rgba(255,255,255,0.18);border-radius:999px;color:#ecfdf5;font-size:11px;font-weight:700;letter-spacing:0.04em;">${escapeHtml(
+                flowName.toUpperCase()
+              )}</div>`
             : ''
         }
         <div style="color:#ccfbf1;font-size:14px;margin-top:8px;line-height:1.45;">
           Hello ${escapeHtml(approverName || 'Approver')}, this confirms your action on the${
-            isSass ? ' Cloud Subscription' : ''
+            isInvoiceFlow ? ` ${escapeHtml(flowName)}` : ''
           } purchase request below.
         </div>
       </td>

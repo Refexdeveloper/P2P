@@ -4,6 +4,11 @@ import DashboardLayout from '../../../components/feature/DashboardLayout';
 import ApprovalHistoryPanel from '../../../components/feature/ApprovalHistoryPanel';
 import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, PrAttachmentRecord, VendorRecord, rfqApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
+import {
+  BRAND,
+  BRAND_HERO_GRADIENT,
+  BRAND_PRIMARY_GRADIENT,
+} from '../../../constants/brandColors';
 import DepartmentCombobox from './DepartmentCombobox';
 import SearchCreateField from './SearchCreateField';
 import LineItemEditorForm, {
@@ -158,9 +163,9 @@ export default function CreatePRPage() {
   const [requestCategory, setRequestCategory] = useState<'Product' | 'Service'>('Product');
   const [projectDetail, setProjectDetail] = useState('');
   const [specialNotes, setSpecialNotes] = useState('');
-  const [purchaseType, setPurchaseType] = useState<'purchase_order' | 'work_order' | 'sass'>(
-    'purchase_order'
-  );
+  const [purchaseType, setPurchaseType] = useState<
+    'purchase_order' | 'work_order' | 'sass' | 'online_purchase'
+  >('purchase_order');
   const [sassSubscriptionMode, setSassSubscriptionMode] = useState<'one_time' | 'recurring' | null>(
     null
   );
@@ -173,7 +178,7 @@ export default function CreatePRPage() {
     'mode'
   );
   const [previousPurchaseType, setPreviousPurchaseType] = useState<
-    'purchase_order' | 'work_order' | 'sass'
+    'purchase_order' | 'work_order' | 'sass' | 'online_purchase'
   >('purchase_order');
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
   const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
@@ -322,10 +327,15 @@ export default function CreatePRPage() {
   const backTo = isAdminEditFlow || isEditMode ? '/requester/track-pr' : '/requester/dashboard';
   const persistPrId = editPrId || savedDraftId;
   const askBillingOnCreatePr =
-    purchaseType === 'sass' || !(prFlow === 'standard' && vendorSelection === 'own');
-  /** Standard Own Vendor (non-SASS): no unit price on PR lines. SASS collects quotes on Create PR. */
+    purchaseType === 'sass' ||
+    purchaseType === 'online_purchase' ||
+    !(prFlow === 'standard' && vendorSelection === 'own');
+  /** Standard Own Vendor (non-SASS / non-Online): no unit price on PR lines. */
   const hideLinePricing =
-    purchaseType !== 'sass' && prFlow === 'standard' && vendorSelection === 'own';
+    purchaseType !== 'sass' &&
+    purchaseType !== 'online_purchase' &&
+    prFlow === 'standard' &&
+    vendorSelection === 'own';
   const showInlineVendorQuotes =
     purchaseType === 'sass' || (prFlow === 'functional' && vendorSelection === 'own');
   const restoredKeyRef = useRef('');
@@ -344,7 +354,9 @@ export default function CreatePRPage() {
         ? 'work_order'
         : draft.purchaseType === 'sass'
           ? 'sass'
-          : 'purchase_order'
+          : draft.purchaseType === 'online_purchase'
+            ? 'online_purchase'
+            : 'purchase_order'
     );
     setSassSubscriptionMode(
       draft.sassSubscriptionMode === 'recurring'
@@ -561,7 +573,14 @@ export default function CreatePRPage() {
                   .toLowerCase()
                   .replace(/[\s-]+/g, '_') === 'cloud_subscription'
               ? 'sass'
-              : 'purchase_order';
+              : String(pr.purchaseType || '')
+                    .toLowerCase()
+                    .replace(/[\s-]+/g, '_') === 'online_purchase' ||
+                  String(pr.purchaseType || '')
+                    .toLowerCase()
+                    .replace(/[\s-]+/g, '_') === 'op'
+                ? 'online_purchase'
+                : 'purchase_order';
         setPurchaseType(loadedPurchaseType);
         if (loadedPurchaseType === 'sass') {
           const mode =
@@ -1669,6 +1688,12 @@ export default function CreatePRPage() {
     if (purchaseType === 'sass' && approvalUserIds.length > 1) {
       newErrors.approvalUserId = 'Select exactly one L1 Manager / User Approver for Cloud Subscription';
     }
+    if (purchaseType === 'online_purchase' && approvalUserIds.length === 0) {
+      newErrors.approvalUserId = 'Select L1 Manager / User Approver for Online Purchase';
+    }
+    if (purchaseType === 'online_purchase' && approvalUserIds.length > 1) {
+      newErrors.approvalUserId = 'Select exactly one L1 Manager / User Approver for Online Purchase';
+    }
     if (purchaseType === 'sass' && !sassSubscriptionMode) {
       newErrors.sassSubscriptionMode = 'Select One-Time or Recurring for Cloud Subscription';
     }
@@ -1868,18 +1893,20 @@ export default function CreatePRPage() {
     entityId: entityId ? Number(entityId) : undefined,
     priority,
     currency,
-    prFlow: purchaseType === 'sass' ? 'standard' : prFlow,
+    prFlow: purchaseType === 'sass' || purchaseType === 'online_purchase' ? 'standard' : prFlow,
     approvalUserId:
-      (prFlow === 'functional' || purchaseType === 'sass') && approvalUserIds[0]
+      (prFlow === 'functional' || purchaseType === 'sass' || purchaseType === 'online_purchase') &&
+      approvalUserIds[0]
         ? Number(approvalUserIds[0])
         : undefined,
     approvalUserIds:
-      prFlow === 'functional' || purchaseType === 'sass'
-        ? purchaseType === 'sass'
+      prFlow === 'functional' || purchaseType === 'sass' || purchaseType === 'online_purchase'
+        ? purchaseType === 'sass' || purchaseType === 'online_purchase'
           ? approvalUserIds.slice(0, 1)
           : approvalUserIds
         : undefined,
-    vendorSelection: purchaseType === 'sass' ? 'own' : vendorSelection,
+    vendorSelection:
+      purchaseType === 'sass' || purchaseType === 'online_purchase' ? 'own' : vendorSelection,
     vendorId:
       purchaseType === 'sass' && rfqRecommendedMeta.vendorId
         ? Number(rfqRecommendedMeta.vendorId)
@@ -2059,9 +2086,13 @@ export default function CreatePRPage() {
       const payload: Record<string, unknown> = {
         ...buildPayload(itemsForSave),
         vendorSelection:
-          purchaseType === 'sass' ? 'own' : vendorSelection === 'own' ? 'own' : 'scm',
+          purchaseType === 'sass' || purchaseType === 'online_purchase'
+            ? 'own'
+            : vendorSelection === 'own'
+              ? 'own'
+              : 'scm',
         prFlow:
-          purchaseType === 'sass'
+          purchaseType === 'sass' || purchaseType === 'online_purchase'
             ? 'standard'
             : prFlow === 'functional'
               ? 'functional'
@@ -2360,8 +2391,8 @@ export default function CreatePRPage() {
 
   const priorityColors: Record<string, string> = {
     Low: 'bg-gray-100 text-gray-600',
-    Medium: 'bg-amber-100 text-amber-700',
-    High: 'bg-orange-100 text-orange-700',
+    Medium: 'bg-[rgba(41,120,177,0.12)] text-[#2978B1]',
+    High: 'bg-sky-100 text-sky-800',
     Critical: 'bg-red-100 text-red-700',
   };
 
@@ -2406,17 +2437,20 @@ export default function CreatePRPage() {
         </div>
       ) : (
       <>
-      {/* ── Hero Header Banner ── */}
-      <div className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 px-4 sm:px-8 py-5 sm:py-6 mb-0">
+      {/* ── Hero Header Banner (primary / secondary / accent) ── */}
+      <div
+        className="px-4 sm:px-8 py-5 sm:py-6 mb-0"
+        style={{ background: BRAND_HERO_GRADIENT }}
+      >
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           {/* Left: breadcrumb + title */}
           <div>
-            <div className="flex items-center gap-2 text-slate-400 text-xs mb-2">
+            <div className="flex items-center gap-2 text-white/80 text-xs mb-2">
               <Link to={backTo} className="hover:text-white transition-colors cursor-pointer">
                 {isAdminEditFlow || isEditMode ? 'Track PR' : 'Dashboard'}
               </Link>
               <i className="ri-arrow-right-s-line"></i>
-              <span className="text-slate-300">
+              <span className="text-white/90">
                 {isAdminEditFlow
                   ? 'Admin Edit PR'
                   : isEditMode
@@ -2435,7 +2469,7 @@ export default function CreatePRPage() {
                     : 'Edit Purchase Requisition'
                   : 'New Purchase Requisition'}
             </h1>
-            <p className="text-slate-400 text-sm mt-1">
+            <p className="text-white/85 text-sm mt-1">
               {isAdminEditFlow
                 ? 'Update any PR field or line item, then save changes'
                 : isReturned
@@ -2448,29 +2482,29 @@ export default function CreatePRPage() {
             </p>
           </div>
 
-          {/* Right: PR Number + Total Amount chips */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Right: PR Number + Total Amount chips — glass cards on brand gradient */}
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full lg:w-auto">
             {/* PR Number */}
-            <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-xl px-4 py-3 backdrop-blur-sm">
-              <div className="w-8 h-8 flex items-center justify-center bg-white/20 rounded-lg">
+            <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
+              <div className="w-8 h-8 flex items-center justify-center bg-white/25 rounded-lg shrink-0">
                 <i className="ri-file-list-3-line text-white text-sm"></i>
               </div>
-              <div>
-                <p className="text-slate-400 text-xs leading-none mb-0.5">PR Number</p>
-                <p className="text-white font-bold text-base tracking-wide">{displayPrNumber}</p>
+              <div className="min-w-0">
+                <p className="text-white/80 text-xs leading-none mb-0.5">PR Number</p>
+                <p className="text-white font-bold text-base tracking-wide truncate">{displayPrNumber}</p>
               </div>
             </div>
 
             {/* Total Amount */}
-            <div className="flex items-center gap-2 bg-emerald-500/20 border border-emerald-400/30 rounded-xl px-4 py-3 backdrop-blur-sm">
-              <div className="w-8 h-8 flex items-center justify-center bg-emerald-500/30 rounded-lg">
-                <i className="ri-money-dollar-circle-line text-emerald-300 text-sm"></i>
+            <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
+              <div className="w-8 h-8 flex items-center justify-center bg-white/25 rounded-lg shrink-0">
+                <i className="ri-money-dollar-circle-line text-white text-sm"></i>
               </div>
-              <div>
-                <p className="text-emerald-300/80 text-xs leading-none mb-0.5">
+              <div className="min-w-0">
+                <p className="text-white/80 text-xs leading-none mb-0.5">
                   {hideLinePricing ? 'Vendor Path' : 'Total Amount'}
                 </p>
-                <p className="text-emerald-300 font-bold text-base">
+                <p className="text-white font-bold text-base truncate">
                   {hideLinePricing
                     ? 'Own Vendor'
                     : formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2479,12 +2513,12 @@ export default function CreatePRPage() {
             </div>
 
             {/* Items count */}
-            <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-xl px-4 py-3 backdrop-blur-sm">
-              <div className="w-8 h-8 flex items-center justify-center bg-white/20 rounded-lg">
+            <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
+              <div className="w-8 h-8 flex items-center justify-center bg-white/25 rounded-lg shrink-0">
                 <i className="ri-shopping-cart-line text-white text-sm"></i>
               </div>
-              <div>
-                <p className="text-slate-400 text-xs leading-none mb-0.5">Line Items</p>
+              <div className="min-w-0">
+                <p className="text-white/80 text-xs leading-none mb-0.5">Line Items</p>
                 <p className="text-white font-bold text-base">{lineItems.length}</p>
               </div>
             </div>
@@ -2541,7 +2575,7 @@ export default function CreatePRPage() {
       </div>
 
       {/* ── Main Content ── */}
-      <div className="p-8 space-y-6">
+      <div className="p-3 sm:p-6 lg:p-8 space-y-6 w-full min-w-0 max-w-full">
 
         {isReturned && (
           <div className="p-5 bg-orange-50 border border-orange-200 rounded-xl space-y-4">
@@ -2593,8 +2627,11 @@ export default function CreatePRPage() {
 
         {/* ── Section 1: Basic Information ── */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-            <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
+          <div className="flex items-center gap-3 px-4 sm:px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+            <div
+              className="w-8 h-8 flex items-center justify-center rounded-lg"
+              style={{ backgroundColor: BRAND.secondary }}
+            >
               <i className="ri-information-line text-white text-sm"></i>
             </div>
             <div>
@@ -2603,20 +2640,20 @@ export default function CreatePRPage() {
             </div>
           </div>
 
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 w-full min-w-0">
             {/* PR Number */}
-            <div>
+            <div className="w-full min-w-0">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">PR Number</label>
-              <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-                <i className="ri-lock-line text-slate-400 text-sm"></i>
-                <span className="text-sm font-bold text-slate-700 tracking-wide">{displayPrNumber}</span>
-                <span className="ml-auto text-xs bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">On submit</span>
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl w-full min-w-0">
+                <i className="ri-lock-line text-slate-400 text-sm shrink-0"></i>
+                <span className="text-sm font-bold text-slate-700 tracking-wide truncate min-w-0">{displayPrNumber}</span>
+                <span className="ml-auto shrink-0 text-xs bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">On submit</span>
               </div>
               <p className="text-[11px] text-gray-400 mt-1">Official number: PR-EntityCode-FY-#### (assigned when you submit)</p>
             </div>
 
             {/* PR Title */}
-            <div className="md:col-span-2 lg:col-span-2" data-field="prTitle">
+            <div className="w-full min-w-0 lg:col-span-2 xl:col-span-2" data-field="prTitle">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 PR Title <span className="text-red-500">*</span>
               </label>
@@ -2634,7 +2671,7 @@ export default function CreatePRPage() {
                   }
                 }}
                 placeholder="Enter a short title for this purchase request"
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
+                className={`w-full min-w-0 max-w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white box-border ${
                   errors.prTitle ? 'border-red-400 bg-red-50' : 'border-gray-200'
                 }`}
               />
@@ -2642,7 +2679,7 @@ export default function CreatePRPage() {
             </div>
 
             {/* Entity */}
-            <div>
+            <div className="w-full min-w-0">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Entity <span className="text-red-500">*</span>
               </label>
@@ -2729,11 +2766,11 @@ export default function CreatePRPage() {
             </div>
 
             {/* Purchase Type */}
-            <div className="md:col-span-2 lg:col-span-3">
+            <div className="w-full min-w-0 lg:col-span-2 xl:col-span-3">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Purchase Type <span className="text-red-500">*</span>
               </label>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 w-full">
                 {(
                   [
                     { id: 'purchase_order' as const, label: 'Purchase Order', hint: 'Number: PO-Entity-FY-####' },
@@ -2741,7 +2778,12 @@ export default function CreatePRPage() {
                     {
                       id: 'sass' as const,
                       label: 'Cloud Subscription',
-                      hint: 'No PO · L1 → (Mugesh requester? invoice) or Mugesh → Srivaths → invoice',
+                      hint: 'No PO · L1 → invoice path',
+                    },
+                    {
+                      id: 'online_purchase' as const,
+                      label: 'Online Purchase',
+                      hint: 'Number: OP-Entity-FY-####',
                     },
                   ]
                 ).map((opt) => (
@@ -2759,23 +2801,38 @@ export default function CreatePRPage() {
                       setSassSubscriptionMode(null);
                       setSassBillingFrequency(null);
                       setSassSubscriptionStartDate('');
+                      if (opt.id === 'online_purchase') {
+                        setVendorSelection('own');
+                        setPrFlow('standard');
+                        setApprovalUserIds([]);
+                      }
                       // Service is only valid for Work Order
                       if (opt.id === 'purchase_order' && requestType === 'Service') {
                         setRequestType('Opex');
                       }
-                      if (opt.id === 'purchase_order') {
+                      if (opt.id === 'purchase_order' || opt.id === 'online_purchase') {
                         setWorkStartDate('');
                         setWorkEndDate('');
                       }
                     }}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                    className={`min-w-0 w-full text-left px-2.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-colors ${
                       purchaseType === opt.id
-                        ? 'bg-teal-600 text-white border-teal-600'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-teal-300'
+                        ? 'text-white border-transparent'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-[#2978B1]'
                     }`}
+                    style={
+                      purchaseType === opt.id
+                        ? { backgroundColor: BRAND.secondary, borderColor: BRAND.secondary }
+                        : undefined
+                    }
                   >
-                    <span className="block">{opt.label}</span>
-                    <span className={`block text-[10px] font-normal mt-0.5 ${purchaseType === opt.id ? 'text-teal-100' : 'text-gray-400'}`}>
+                    <span className="block truncate">{opt.label}</span>
+                    <span
+                      className={`block text-[10px] font-normal mt-0.5 truncate ${
+                        purchaseType === opt.id ? 'text-white/85' : 'text-gray-400'
+                      }`}
+                      title={opt.hint}
+                    >
                       {opt.hint}
                     </span>
                   </button>
@@ -3067,6 +3124,39 @@ export default function CreatePRPage() {
               </div>
             </div>
 
+            {purchaseType === 'online_purchase' ? (
+              <>
+                <div className="md:col-span-2 lg:col-span-3 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+                  <p className="text-sm font-semibold text-teal-900">Online Purchase approval path</p>
+                  <p className="text-xs text-teal-800 mt-1 leading-relaxed">
+                    Select L1 / User Approver → Mugesh L1 → Srivaths (L2) → Mugesh Invoice Upload →
+                    Completed. If Srivaths is selected as L1, L2 is skipped (same person already
+                    approved once). SCM RFQ is skipped.
+                  </p>
+                </div>
+                <div className="md:col-span-2" data-field="approvalUserId">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    L1 Manager / User Approver <span className="text-red-500">*</span>
+                  </label>
+                  <UserSearchSelect
+                    users={approvalUsers}
+                    value={approvalUserIds}
+                    onChange={(ids) => setApprovalUserIds(ids.slice(0, 1))}
+                    placeholder="Search and select L1 approver"
+                    error={Boolean(errors.approvalUserId)}
+                    max={1}
+                  />
+                  {errors.approvalUserId && (
+                    <p className="text-xs text-red-500 mt-1">{errors.approvalUserId}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    After L1: Mugesh (mugesh.m@refex.co.in) L1 → Srivaths (L2) → Mugesh Invoice
+                    Upload → Completed. If you select Srivaths as L1, L2 is skipped automatically.
+                  </p>
+                </div>
+              </>
+            ) : null}
+
             {purchaseType === 'sass' ? (
               <>
                 <div className="md:col-span-2 lg:col-span-3 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
@@ -3114,7 +3204,7 @@ export default function CreatePRPage() {
                   </p>
                 </div>
               </>
-            ) : (
+            ) : purchaseType === 'online_purchase' ? null : (
               <>
             {/* Request Flow */}
             <div className="md:col-span-2">
@@ -3127,7 +3217,7 @@ export default function CreatePRPage() {
                   const next = e.target.value === 'functional' ? 'functional' : 'standard';
                   setPrFlow(next);
                 }}
-                className="w-full max-w-md px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
+                className="w-full min-w-0 max-w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
               >
                 <option value="standard">Standard</option>
                 <option value="functional">Functional</option>
@@ -3146,7 +3236,7 @@ export default function CreatePRPage() {
               <select
                 value={vendorSelection}
                 onChange={(e) => setVendorSelection(e.target.value === 'own' ? 'own' : 'scm')}
-                className="w-full max-w-md px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
+                className="w-full min-w-0 max-w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
               >
                 <option value="scm">SCM vendor Selection</option>
                 <option value="own">Own vendor</option>
@@ -3243,7 +3333,122 @@ export default function CreatePRPage() {
             )}
 
             <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {lineItems.length === 0 ? (
+                  <div className="px-4 py-10 text-center">
+                    <p className="text-sm font-medium text-gray-600">No line items yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Tap Add Line Item to enter the first item</p>
+                    {!lineEditor && (
+                      <button
+                        type="button"
+                        onClick={openAddLineItem}
+                        className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer"
+                      >
+                        <i className="ri-add-line"></i>
+                        Add Line Item
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  lineItems.map((item, index) => {
+                    const isEditing = lineEditor?.mode === 'edit' && lineEditor.item.id === item.id;
+                    return (
+                      <div
+                        key={`line-card-${item.id}-${index}`}
+                        className={`px-4 py-4 ${isEditing ? 'bg-slate-50' : 'bg-white'}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-slate-100 px-1.5 text-[11px] font-bold text-slate-600">
+                                #{index + 1}
+                              </span>
+                              <p className="text-sm font-semibold text-gray-900 truncate">
+                                {item.itemName || item.description || `Item ${index + 1}`}
+                              </p>
+                            </div>
+                            {item.description && item.description !== item.itemName && (
+                              <p className="text-xs text-gray-400 line-clamp-2 mb-2" title={item.description}>
+                                {item.description}
+                              </p>
+                            )}
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-2">
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Category</p>
+                                <p className="text-sm text-gray-800 mt-0.5">{item.category || '—'}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Qty</p>
+                                <p className="text-sm text-gray-800 mt-0.5">
+                                  {item.quantity}{' '}
+                                  <span className="text-xs text-gray-400">{item.unit || 'Nos'}</span>
+                                </p>
+                              </div>
+                              {!hideLinePricing && (
+                                <>
+                                  <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Unit Price</p>
+                                    <p className="text-sm text-gray-800 mt-0.5">
+                                      {formatMoney(item.estimatedCost, currency, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">GST %</p>
+                                    <p className="text-sm text-gray-800 mt-0.5">
+                                      {item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">HSN</p>
+                                    <p className="text-sm text-gray-800 mt-0.5">{item.hsnCode || '—'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Amount (incl. GST)</p>
+                                    <p className="text-sm font-semibold text-emerald-700 mt-0.5">
+                                      {formatMoney(
+                                        lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
+                                        currency,
+                                        { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                                      )}
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openEditLineItem(item)}
+                              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                              title="Edit"
+                              aria-label={`Edit ${item.itemName || item.description || 'line item'}`}
+                            >
+                              <i className="ri-pencil-line text-base"></i>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteLineItemId(item.id)}
+                              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              title="Delete"
+                              aria-label={`Delete ${item.itemName || item.description || 'line item'}`}
+                            >
+                              <i className="ri-delete-bin-line text-base"></i>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className={`w-full text-sm ${hideLinePricing ? 'min-w-[520px]' : 'min-w-[720px]'}`}>
                   <thead className="bg-slate-50 border-b border-gray-200">
                     <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">
@@ -3269,15 +3474,15 @@ export default function CreatePRPage() {
                           <p className="text-sm font-medium text-gray-600">No line items yet</p>
                           <p className="text-xs text-gray-400 mt-1">Click Add Line Item to enter the first item</p>
                           {!lineEditor && (
-                    <button
+                            <button
                               type="button"
                               onClick={openAddLineItem}
                               className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer"
-                    >
+                            >
                               <i className="ri-add-line"></i>
                               Add Line Item
-                    </button>
-                  )}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ) : (
@@ -3315,16 +3520,16 @@ export default function CreatePRPage() {
                                     lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
                                     currency,
                                     {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  }
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    }
                                   )}
                                 </td>
                               </>
                             )}
                             <td className="px-3 py-3">
                               <div className="flex items-center justify-end gap-1">
-                      <button
+                                <button
                                   type="button"
                                   onClick={() => openEditLineItem(item)}
                                   className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
@@ -3332,8 +3537,8 @@ export default function CreatePRPage() {
                                   aria-label={`Edit ${item.itemName || item.description || 'line item'}`}
                                 >
                                   <i className="ri-pencil-line text-sm"></i>
-                      </button>
-                      <button
+                                </button>
+                                <button
                                   type="button"
                                   onClick={() => setDeleteLineItemId(item.id)}
                                   className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
@@ -3341,8 +3546,8 @@ export default function CreatePRPage() {
                                   aria-label={`Delete ${item.itemName || item.description || 'line item'}`}
                                 >
                                   <i className="ri-delete-bin-line text-sm"></i>
-                      </button>
-                    </div>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -3350,8 +3555,8 @@ export default function CreatePRPage() {
                     )}
                   </tbody>
                 </table>
-                  </div>
-                    </div>
+              </div>
+            </div>
           </div>
 
           {/* Total Summary Bar */}
@@ -3610,6 +3815,7 @@ export default function CreatePRPage() {
                 }}
                 disabled={isSubmitting}
                 className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
+                style={{ background: BRAND_PRIMARY_GRADIENT, border: 'none' }}
               >
                 <i className="ri-save-line"></i>
                 {isSubmitting ? 'Saving…' : 'Save Changes'}
@@ -3627,9 +3833,8 @@ export default function CreatePRPage() {
             <button
               onClick={handleSubmitPR}
               disabled={isSubmitting}
-              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60 ${
-                isResubmitFlow ? 'bg-orange-600 hover:bg-orange-700' : 'bg-slate-800 hover:bg-slate-700'
-              }`}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-opacity hover:opacity-90 text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
+              style={{ background: BRAND_PRIMARY_GRADIENT }}
             >
               <i className={isResubmitFlow ? 'ri-refresh-line' : 'ri-send-plane-fill'}></i>
               {isResubmitFlow ? 'Resubmit PR' : 'Submit PR'}

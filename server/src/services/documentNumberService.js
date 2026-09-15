@@ -53,18 +53,25 @@ export function normalizePurchaseType(value) {
   if (raw === 'sass' || raw === 'saas' || raw === 'cloud_subscription') {
     return 'sass';
   }
+  if (raw === 'online_purchase' || raw === 'onlinepurchase' || raw === 'op') {
+    return 'online_purchase';
+  }
   return 'purchase_order';
 }
 
 /** Map purchase type → document number prefix / sequence key. */
 export function purchaseTypeToDocType(purchaseType) {
-  return normalizePurchaseType(purchaseType) === 'work_order' ? 'WO' : 'PO';
+  const t = normalizePurchaseType(purchaseType);
+  if (t === 'work_order') return 'WO';
+  if (t === 'online_purchase') return 'OP';
+  return 'PO';
 }
 
 export function purchaseTypeLabel(purchaseType) {
   const t = normalizePurchaseType(purchaseType);
   if (t === 'work_order') return 'Work Order';
   if (t === 'sass') return 'Cloud Subscription';
+  if (t === 'online_purchase') return 'Online Purchase';
   return 'Purchase Order';
 }
 
@@ -120,7 +127,7 @@ async function maxExistingDocumentSeq(docType, entityCode, fyLabel, connection =
      WHERE po_number LIKE ?
        AND po_number NOT LIKE 'CS-%'
        AND po_number NOT LIKE 'DRAFT-%'
-       AND COALESCE(purchase_type, 'purchase_order') <> 'sass'`,
+       AND COALESCE(purchase_type, 'purchase_order') NOT IN ('sass', 'saas', 'cloud_subscription')`,
     [`${prefix}%`]
   );
   return Number(rows[0]?.max_seq) || 0;
@@ -161,7 +168,8 @@ export async function assignOfficialPrNumberIfNeeded(prId, entityId, currentPrNu
  */
 export async function nextDocumentNumber(docType, entityId, connection = pool) {
   const raw = String(docType || '').toUpperCase();
-  const type = raw === 'PO' ? 'PO' : raw === 'WO' ? 'WO' : 'PR';
+  const type =
+    raw === 'PO' ? 'PO' : raw === 'WO' ? 'WO' : raw === 'OP' ? 'OP' : 'PR';
   const entity = await resolveEntityForNumbering(entityId, connection);
   const fyLabel = getIndianFinancialYearLabel();
   const maxExisting = await maxExistingDocumentSeq(type, entity.code, fyLabel, connection);
@@ -190,7 +198,8 @@ export async function nextDocumentNumber(docType, entityId, connection = pool) {
  */
 export async function peekNextDocumentNumber(docType, entityId, connection = pool) {
   const raw = String(docType || '').toUpperCase();
-  const type = raw === 'PO' ? 'PO' : raw === 'WO' ? 'WO' : 'PR';
+  const type =
+    raw === 'PO' ? 'PO' : raw === 'WO' ? 'WO' : raw === 'OP' ? 'OP' : 'PR';
   const entity = await resolveEntityForNumbering(entityId, connection);
   const fyLabel = getIndianFinancialYearLabel();
   const maxExisting = await maxExistingDocumentSeq(type, entity.code, fyLabel, connection);

@@ -82,6 +82,7 @@ export const PR_HEADER_QUESTIONS: PrQuestionConfig[] = [
       { value: 'purchase_order', label: 'Purchase Order' },
       { value: 'work_order', label: 'Work Order' },
       { value: 'sass', label: 'Cloud Subscription' },
+      { value: 'online_purchase', label: 'Online Purchase' },
     ],
   },
   {
@@ -246,7 +247,9 @@ export function formatHeaderAnswer(
         ? 'Work Order'
         : answers.purchaseType === 'sass'
           ? 'Cloud Subscription'
-          : answers.purchaseType === 'purchase_order'
+          : answers.purchaseType === 'online_purchase'
+            ? 'Online Purchase'
+            : answers.purchaseType === 'purchase_order'
             ? 'Purchase Order'
             : '';
     case 'entityId':
