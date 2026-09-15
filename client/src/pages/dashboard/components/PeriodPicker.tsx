@@ -33,6 +33,7 @@ export default function PeriodPicker({
   fullWidth = false,
   portalZIndex = 9999,
   themeAccent = false,
+  hideLabel = false,
 }: {
   dateFrom: string;
   dateTo: string;
@@ -40,6 +41,8 @@ export default function PeriodPicker({
   fullWidth?: boolean;
   portalZIndex?: number;
   themeAccent?: boolean;
+  /** Hide the “Period” label so the control aligns with sibling inputs in a toolbar. */
+  hideLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -326,7 +329,9 @@ export default function PeriodPicker({
 
   return (
     <div className={`relative shrink-0 ${fullWidth ? 'w-full' : ''}`} ref={rootRef}>
-      <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Period</p>
+      {!hideLabel ? (
+        <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Period</p>
+      ) : null}
       <button
         ref={buttonRef}
         type="button"
@@ -336,6 +341,7 @@ export default function PeriodPicker({
         }`}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-label={hideLabel ? 'Period' : undefined}
       >
         <span
           className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${

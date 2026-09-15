@@ -893,59 +893,59 @@ export default function TasksPage() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 mt-4">
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
-              <select
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className="w-full sm:w-auto min-w-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgba(41,120,177,0.35)] focus:border-[#2978B1] bg-white cursor-pointer"
-              >
-                <option value="all">All Priorities</option>
-                <option value="high">High Priority</option>
-                <option value="medium">Medium Priority</option>
-                <option value="low">Low Priority</option>
-              </select>
+          <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="h-11 min-w-[140px] px-3 text-sm border border-[#E6E8F0] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[rgba(41,120,177,0.35)] focus:border-[#2978B1] bg-white cursor-pointer"
+            >
+              <option value="all">All Priorities</option>
+              <option value="high">High Priority</option>
+              <option value="medium">Medium Priority</option>
+              <option value="low">Low Priority</option>
+            </select>
 
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="w-full sm:w-auto min-w-0 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgba(41,120,177,0.35)] focus:border-[#2978B1] bg-white cursor-pointer"
-              >
-                <option value="sla">Sort: SLA Urgency</option>
-                <option value="amount_high">Sort: Amount (High to Low)</option>
-                <option value="amount_low">Sort: Amount (Low to High)</option>
-                <option value="priority">Sort: Priority</option>
-                <option value="date">Sort: Newest First</option>
-              </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="h-11 min-w-[180px] px-3 text-sm border border-[#E6E8F0] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[rgba(41,120,177,0.35)] focus:border-[#2978B1] bg-white cursor-pointer"
+            >
+              <option value="sla">Sort: SLA Urgency</option>
+              <option value="amount_high">Sort: Amount (High to Low)</option>
+              <option value="amount_low">Sort: Amount (Low to High)</option>
+              <option value="priority">Sort: Priority</option>
+              <option value="date">Sort: Newest First</option>
+            </select>
 
-              <div className="col-span-2 sm:col-span-1 w-full sm:w-[200px] shrink-0">
-                <PeriodPicker
-                  dateFrom={dateFrom}
-                  dateTo={dateTo}
-                  fullWidth
-                  onChange={({ dateFrom: from, dateTo: to }) => {
-                    setDateFrom(from);
-                    setDateTo(to);
-                  }}
-                />
-              </div>
+            <div className="w-full sm:w-[200px] shrink-0">
+              <PeriodPicker
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                fullWidth
+                hideLabel
+                onChange={({ dateFrom: from, dateTo: to }) => {
+                  setDateFrom(from);
+                  setDateTo(to);
+                }}
+              />
             </div>
 
             {(searchTerm || priorityFilter !== 'all' || dateFrom || dateTo) && (
               <button
+                type="button"
                 onClick={() => {
                   setSearchTerm('');
                   setPriorityFilter('all');
                   setDateFrom('');
                   setDateTo('');
                 }}
-                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 self-start"
+                className="h-11 px-3 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-2xl transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1"
               >
                 <i className="ri-filter-off-line"></i> Clear Filters
               </button>
             )}
 
-            <span className="sm:ml-auto text-sm text-gray-500">
+            <span className="ml-auto text-sm text-gray-500 self-center whitespace-nowrap">
               Showing{' '}
               <strong className="text-gray-900">{filteredTasks.length}</strong>{' '}
               request{filteredTasks.length !== 1 ? 's' : ''}
@@ -1092,11 +1092,24 @@ export default function TasksPage() {
 
         {/* Desktop / tablet table — horizontal scroll; Actions column fixed (sticky right) */}
         <div className="hidden min-[992px]:block overflow-x-auto">
-          <table className="w-full min-w-[1280px] border-collapse">
+          <table className="w-full min-w-[1280px] table-fixed border-collapse">
+            <colgroup>
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '6%' }} />
+            </colgroup>
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">PR Number</th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[180px]">Title</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Requester</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Entity</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Department</th>
