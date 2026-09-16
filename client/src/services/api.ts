@@ -138,6 +138,8 @@ export interface AuthUser {
   email: string;
   name: string;
   role: string;
+  /** UI designation (e.g. CTO for Srivaths) — may differ from system role */
+  displayRole?: string;
   departmentId?: number | null;
   departmentName?: string | null;
   entityId?: number | null;
@@ -1776,6 +1778,7 @@ export interface AdminUserRecord {
   name: string;
   email: string;
   role: string;
+  displayRole?: string;
   isActive: boolean;
   departmentName: string;
   entityId?: number | null;

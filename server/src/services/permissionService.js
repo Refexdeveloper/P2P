@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { isMugeshActor, isSrivathsActor } from '../templates/emailUtils.js';
 
 export const SUPER_ADMIN_ROLE = 'Super Admin';
 
@@ -14,6 +15,19 @@ const EMAIL_NAV_PERMISSIONS = {
 
 export function getEmailNavPermissionOverride(email) {
   return EMAIL_NAV_PERMISSIONS[String(email || '').trim().toLowerCase()] || null;
+}
+
+/** UI designation for header/profile — Srivaths is CTO, Mugesh has none. */
+export function resolveUserDisplayRole(userRow = {}) {
+  const email = String(userRow.email || '').trim().toLowerCase();
+  const name = String(userRow.name || '').trim();
+  if (isSrivathsActor({ email, name })) return 'CTO';
+  if (isMugeshActor({ email, name })) return '';
+  const role = String(userRow.role || '').trim();
+  if (role === 'HOD Approver') return 'L1 Manager';
+  if (role === 'PR Manager') return 'L2 Manager';
+  if (role === 'CFO') return '';
+  return '';
 }
 
 export async function syncEmailNavPermissions(userId, email) {
@@ -591,6 +605,7 @@ export async function enrichAuthUser(userRow) {
     email: effectiveUser.email,
     name: effectiveUser.name,
     role: effectiveUser.role,
+    displayRole: resolveUserDisplayRole(effectiveUser),
     departmentId: effectiveUser.department_id ?? effectiveUser.departmentId ?? null,
     departmentName: effectiveUser.department_name ?? effectiveUser.departmentName ?? null,
     entityId: entityId ? Number(entityId) : null,

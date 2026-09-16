@@ -535,6 +535,13 @@ export function ensureNavigation(
         merged.push(NAV_BY_CODE[code]);
       }
     }
+    const order = emailOverride;
+    const rank = new Map(order.map((code, i) => [code, i]));
+    merged = [...merged].sort((a, b) => {
+      const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;
+      const bi = rank.has(b.code) ? (rank.get(b.code) as number) : 1000;
+      return ai - bi;
+    });
   }
 
   // L1 Manager (HOD): honor admin-selected menus exactly

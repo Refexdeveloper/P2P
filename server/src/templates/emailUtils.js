@@ -95,8 +95,22 @@ export function isMugeshActor(actorOrEmail) {
 
 export function isSrivathsActor(actorOrEmail) {
   const { email, name } = actorEmailAndName(actorOrEmail);
-  if (email && (email === SRIVATHS_EMAIL || email.includes('srivaths.varadharajan@'))) return true;
-  if (name && (name === 'srivaths' || name.startsWith('srivaths ') || name.startsWith('srivaths.'))) {
+  if (
+    email &&
+    (email === SRIVATHS_EMAIL ||
+      email.includes('srivaths.varadharajan@') ||
+      email.includes('srivath'))
+  ) {
+    return true;
+  }
+  if (
+    name &&
+    (name === 'srivaths' ||
+      name.startsWith('srivaths ') ||
+      name.startsWith('srivaths.') ||
+      name.includes('srivath') ||
+      name.includes('srivats'))
+  ) {
     return true;
   }
   return false;

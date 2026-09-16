@@ -84,7 +84,7 @@ export default function LoginPage() {
 
     if (isAuthenticated && user) {
       setStatus('Opening P2P…');
-      navigate(resolvePostLoginPath(user.role, user.navigation, redirectPath), { replace: true });
+      navigate(resolvePostLoginPath(user.role, user.navigation, redirectPath, user.email), { replace: true });
       return;
     }
 

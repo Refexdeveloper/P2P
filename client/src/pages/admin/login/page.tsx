@@ -23,7 +23,7 @@ export default function AdminLoginPage() {
   useEffect(() => {
     if (authBootLoading) return;
     if (isAuthenticated && user) {
-      navigate(resolvePostLoginPath(user.role, user.navigation, redirectPath), { replace: true });
+      navigate(resolvePostLoginPath(user.role, user.navigation, redirectPath, user.email), { replace: true });
     }
   }, [authBootLoading, isAuthenticated, user, redirectPath, navigate]);
 

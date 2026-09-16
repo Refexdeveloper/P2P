@@ -2,6 +2,7 @@ import { createContext, useContext, useState, ReactNode, useEffect, useCallback 
 import { ensureNavigation } from '../constants/roleNavigation';
 import { authApi, AuthUser, NavItem } from '../services/api';
 import { goToRefexOne } from '../utils/refexOneUrl';
+import { getUserDesignation, isSrivathsUser } from '../utils/roleDisplay';
 
 export type UserRole =
   | 'Requester'
@@ -25,6 +26,7 @@ interface User {
   name: string;
   email: string;
   role: UserRole;
+  displayRole?: string;
   departmentId?: number | null;
   departmentName?: string | null;
   entityId?: number | null;
@@ -81,6 +83,9 @@ export function getRoleHomePath(role: UserRole, navigation?: NavItem[], email?: 
   if (EMAIL_HOME_OVERRIDES[normalizedEmail]) {
     return EMAIL_HOME_OVERRIDES[normalizedEmail];
   }
+  if (isSrivathsUser(email || normalizedEmail)) {
+    return '/tasks';
+  }
   const roleHome = ROLE_HOME[role];
   if (roleHome) return roleHome;
   if (navigation?.length) return navigation[0].path;
@@ -109,6 +114,12 @@ export function resolvePostLoginPath(
     return roleHome;
   }
 
+  const defaultRoleHome = ROLE_HOME[role];
+  // Email-specific home (e.g. Srivaths → My Tasks) wins over generic role landing (/dashboard for CFO)
+  if (defaultRoleHome && pathname === defaultRoleHome && roleHome !== defaultRoleHome) {
+    return roleHome;
+  }
+
   const otherHomes = new Set(
     Object.entries(ROLE_HOME)
       .filter(([r]) => r !== role)
@@ -121,11 +132,12 @@ export function resolvePostLoginPath(
 
 function mapAuthUser(u: AuthUser): User {
   const role = u.role as UserRole;
-  return {
+  const mapped: User = {
     id: u.id,
     name: u.name,
     email: u.email,
     role,
+    displayRole: u.displayRole ?? getUserDesignation({ role, email: u.email, name: u.name }),
     departmentId: u.departmentId,
     departmentName: u.departmentName,
     entityId: u.entityId ?? null,
@@ -135,6 +147,7 @@ function mapAuthUser(u: AuthUser): User {
     permissions: u.permissions || [],
     navigation: ensureNavigation(role, u.navigation, u.email),
   };
+  return mapped;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

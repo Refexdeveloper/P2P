@@ -13,7 +13,7 @@ export default function Home() {
       goToRefexOneSamlSso(getUnauthenticatedSsoUrl('/'));
       return;
     }
-    navigate(getRoleHomePath(user.role, user.navigation), { replace: true });
+    navigate(getRoleHomePath(user.role, user.navigation, user.email), { replace: true });
   }, [user, isLoading, navigate]);
 
   return (

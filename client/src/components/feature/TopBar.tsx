@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { formatRoleDisplayName } from '../../utils/roleDisplay';
+import { getUserDesignation } from '../../utils/roleDisplay';
 import BrandLogo from './BrandLogo';
 
 type TopBarProps = {
@@ -39,6 +39,8 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
       .join('')
       .slice(0, 2);
   };
+
+  const designation = getUserDesignation(user);
 
   return (
     <div className="h-14 sm:h-16 bg-[#f7f7f8] border-b border-gray-200 border-t-[3px] border-t-[#f5c9a8] flex items-center justify-between gap-2 sm:gap-4 px-3 sm:px-4 lg:px-5 shrink-0">
@@ -89,14 +91,10 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
             <div className="w-8 h-8 sm:w-9 sm:h-9 bg-sky-600 rounded-full flex items-center justify-center shrink-0">
               <span className="text-white font-semibold text-sm">{getInitials()}</span>
             </div>
-            <div className="text-left hidden sm:block">
-              <p className="text-sm font-medium text-gray-900 whitespace-nowrap max-w-[8rem] truncate">
-                {user?.name || 'User'}
-              </p>
-              {formatRoleDisplayName(user?.role, user) ? (
-                <p className="text-xs text-gray-500 whitespace-nowrap max-w-[8rem] truncate">
-                  {formatRoleDisplayName(user?.role, user)}
-                </p>
+            <div className="text-left min-w-0 max-w-[7rem] sm:max-w-[8rem]">
+              <p className="text-sm font-medium text-gray-900 truncate">{user?.name || 'User'}</p>
+              {designation ? (
+                <p className="text-xs text-gray-500 truncate">{designation}</p>
               ) : null}
             </div>
             <i className="ri-arrow-down-s-line text-gray-600 hidden sm:inline"></i>
@@ -109,10 +107,8 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                 <div className="p-4 border-b border-gray-200">
                   <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
                   <p className="text-xs text-gray-500 mt-1 truncate">{user?.email}</p>
-                  {formatRoleDisplayName(user?.role, user) ? (
-                    <p className="text-xs text-sky-600 font-medium mt-1">
-                      {formatRoleDisplayName(user?.role, user)}
-                    </p>
+                  {designation ? (
+                    <p className="text-xs text-sky-600 font-medium mt-1">{designation}</p>
                   ) : null}
                 </div>
                 <div className="p-2">

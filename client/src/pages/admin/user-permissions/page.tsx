@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { adminApi, AdminUserRecord, AdminRoleRecord, NavItem, masterApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
-import { formatRoleDisplayName } from '../../../utils/roleDisplay';
+import { formatRoleDisplayName, getUserDesignation } from '../../../utils/roleDisplay';
 
 const ROLE_NAV_WHITELIST: Record<string, string[]> = {
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
@@ -289,9 +289,9 @@ export default function UserPermissionsPage() {
                   <p className="text-sm font-semibold text-gray-900">{u.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{u.email}</p>
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {formatRoleDisplayName(u.role, u) ? (
+                    {getUserDesignation(u) ? (
                       <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                        {formatRoleDisplayName(u.role, u)}
+                        {getUserDesignation(u)}
                       </span>
                     ) : null}
                     {u.source === 'refexone' && (

@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { ensureNavigation, isMastersNavItem } from '../../constants/roleNavigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { invoiceData } from '../../mocks/invoice-data';
-import { formatRoleDisplayName } from '../../utils/roleDisplay';
+import { getUserDesignation } from '../../utils/roleDisplay';
 import { rfqApi, taskApi } from '../../services/api';
 
 type NavBadgeCounts = {
@@ -404,9 +404,9 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{user?.name || 'User'}</p>
-              {formatRoleDisplayName(user?.role, user) ? (
+              {getUserDesignation(user) ? (
                 <p className="text-xs text-gray-500 truncate">
-                  {formatRoleDisplayName(user?.role, user)}
+                  {getUserDesignation(user)}
                 </p>
               ) : null}
             </div>

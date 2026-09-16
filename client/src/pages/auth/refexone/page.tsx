@@ -44,7 +44,9 @@ export default function RefexOneSsoPage() {
   useEffect(() => {
     if (authBootLoading) return;
     if (isAuthenticated && user) {
-      navigate(resolvePostLoginPath(user.role, user.navigation, redirectPath || undefined), { replace: true });
+      navigate(resolvePostLoginPath(user.role, user.navigation, redirectPath || undefined, user.email), {
+        replace: true,
+      });
       return;
     }
 

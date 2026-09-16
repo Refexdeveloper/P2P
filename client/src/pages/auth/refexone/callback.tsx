@@ -18,7 +18,7 @@ export default function RefexOneCallbackPage() {
     if (isLoading) return;
 
     if (isAuthenticated && user) {
-      navigate(resolvePostLoginPath(user.role, user.navigation), { replace: true });
+      navigate(resolvePostLoginPath(user.role, user.navigation, undefined, user.email), { replace: true });
       return;
     }
 

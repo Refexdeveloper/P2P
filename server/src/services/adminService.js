@@ -8,6 +8,7 @@ import {
   ASSIGNABLE_ROLES,
   getUserPermissionCodes,
   resolvePermissionCodesFromStored,
+  resolveUserDisplayRole,
   setUserPermissions,
   isSuperAdmin,
 } from './permissionService.js';
@@ -64,6 +65,7 @@ async function mapUserRow(u, permissionCodes) {
     name: u.name,
     email: u.email,
     role: u.role,
+    displayRole: resolveUserDisplayRole(u),
     isActive: Boolean(u.is_active),
     departmentName: u.department_name || '',
     entityId: u.entity_id ? Number(u.entity_id) : null,

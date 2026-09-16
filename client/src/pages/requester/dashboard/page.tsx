@@ -119,7 +119,7 @@ export default function RequesterDashboard() {
   useEffect(() => {
     if (!user) return;
     if (user.role !== 'Requester' && !user.isSuperAdmin) {
-      navigate(getRoleHomePath(user.role, user.navigation), { replace: true });
+      navigate(getRoleHomePath(user.role, user.navigation, user.email), { replace: true });
     }
   }, [user, navigate]);
 

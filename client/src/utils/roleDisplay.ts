@@ -38,19 +38,46 @@ export function isMugeshUser(userOrEmail?: { email?: string | null; name?: strin
   return false;
 }
 
-/** True when this user is Srivaths (L2) — show CTO, never CFO. */
+/** True when this user is Srivaths (L2) — show CTO, never CFO / Group CEO. */
 export function isSrivathsUser(
   userOrEmail?: { email?: string | null; name?: string | null } | string | null
 ): boolean {
   if (!userOrEmail) return false;
   const email = personEmail(userOrEmail);
-  if (email && (email === SRIVATHS_EMAIL || email.includes('srivaths.varadharajan@'))) return true;
+  if (
+    email &&
+    (email === SRIVATHS_EMAIL ||
+      email.includes('srivaths.varadharajan@') ||
+      email.includes('srivath'))
+  ) {
+    return true;
+  }
   const raw =
     typeof userOrEmail === 'string'
       ? userOrEmail.trim().toLowerCase()
       : personName(userOrEmail);
-  if (raw && (raw === 'srivaths' || raw.startsWith('srivaths ') || raw.startsWith('srivaths.'))) return true;
+  if (
+    raw &&
+    (raw === 'srivaths' ||
+      raw.startsWith('srivaths ') ||
+      raw.startsWith('srivaths.') ||
+      raw.includes('srivath') ||
+      raw.includes('srivats'))
+  ) {
+    return true;
+  }
   return false;
+}
+
+/** Designation shown in header/sidebar — prefers API displayRole when present. */
+export function getUserDesignation(
+  user?: { role?: string | null; email?: string | null; name?: string | null; displayRole?: string | null } | null
+): string {
+  if (!user) return '';
+  if (user.displayRole != null && user.displayRole !== undefined) {
+    return user.displayRole;
+  }
+  return formatRoleDisplayName(user.role, user);
 }
 
 /**

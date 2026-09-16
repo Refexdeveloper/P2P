@@ -14,7 +14,7 @@ import RecentApprovalsCard from './components/RecentApprovalsCard';
 import UpcomingPaymentsCard, { PaymentRow } from './components/UpcomingPaymentsCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { accountsApi, masterApi, poApi, prApi } from '../../services/api';
-import { formatRoleDisplayName } from '../../utils/roleDisplay';
+import { getUserDesignation } from '../../utils/roleDisplay';
 import { formatCompactInr, parseLooseDate } from './cfoFormat';
 
 type Insights = Awaited<ReturnType<typeof poApi.cfoInsights>>['data'];
@@ -456,8 +456,8 @@ export default function Dashboard({
               {greetingForNow()}, {user?.name || 'User'}
             </h1>
             <p className="text-sm text-slate-500 mt-2">
-              {formatRoleDisplayName(user?.role, user)
-                ? `Financial Insights · ${formatRoleDisplayName(user?.role, user)}`
+              {getUserDesignation(user)
+                ? `Financial Insights · ${getUserDesignation(user)}`
                 : 'Financial Insights'}
             </p>
           </div>
