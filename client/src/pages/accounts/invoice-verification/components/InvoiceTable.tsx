@@ -46,8 +46,8 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <table className="w-full">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto w-full min-w-0">
+      <table className="w-full min-w-[960px] table-fixed">
         <thead className="bg-gray-50 border-b border-gray-200">
           <tr>
             <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -181,8 +181,10 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
 
               {expandedRow === invoice.invoiceNumber && (
                 <tr>
-                  <td colSpan={9} className="bg-gray-50 px-6 py-6">
-                    <InvoiceExpandedRow invoice={invoice} onAction={onAction} />
+                  <td colSpan={9} className="bg-gray-50 px-3 sm:px-4 py-4 max-w-0">
+                    <div className="min-w-0 w-full max-w-full overflow-hidden">
+                      <InvoiceExpandedRow invoice={invoice} onAction={onAction} />
+                    </div>
                   </td>
                 </tr>
               )}

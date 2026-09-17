@@ -46,6 +46,7 @@ export interface InvoiceData {
   vendor: string;
   vendorGSTIN: string;
   vendorAddress: string;
+  poId?: number;
   poNumber: string;
   grnNumber: string;
   poStatus?: string;

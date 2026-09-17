@@ -133,8 +133,14 @@ const PO_READ_ROLES = [
   'PR Manager',
   'HOD Approver',
   'Requester',
+  'Accounts Payable',
+  'Accounts Manager',
 ];
-const canReadPo = requireRolesOrPermissions(PO_READ_ROLES, ['nav.cfo_insights']);
+const canReadPo = requireRolesOrPermissions(PO_READ_ROLES, [
+  'nav.cfo_insights',
+  'nav.invoice_verification',
+  'nav.accounts_dashboard',
+]);
 
 router.get(
   '/stats/cfo',

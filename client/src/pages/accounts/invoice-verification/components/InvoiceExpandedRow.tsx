@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { InvoiceData } from '../../../../mocks/invoice-data';
-import { accountsApi, prApi, rfqApi } from '../../../../services/api';
+import { accountsApi, poApi, prApi, rfqApi } from '../../../../services/api';
 
 interface Props {
   invoice: InvoiceData;
@@ -20,7 +20,7 @@ type FilePreview = {
 
 type FileRow = {
   key: string;
-  kind: 'invoice' | 'pr' | 'quotation';
+  kind: 'invoice' | 'po' | 'pr' | 'quotation';
   label: string;
   fileName: string;
   extra?: string;
@@ -50,6 +50,9 @@ function kindMeta(kind: FileRow['kind']) {
   if (kind === 'invoice') {
     return { badge: 'Invoice', icon: 'ri-file-invoice-line', tone: 'teal' };
   }
+  if (kind === 'po') {
+    return { badge: 'PO', icon: 'ri-file-text-line', tone: 'sky' };
+  }
   if (kind === 'quotation') {
     return { badge: 'Quotation', icon: 'ri-file-paper-2-line', tone: 'amber' };
   }
@@ -73,6 +76,18 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
         fileName: invoice.invoiceFileName || `Invoice-${invoice.id}`,
         extra: invoice.invoiceNumber,
         url: accountsApi.invoiceFileUrl(invoice.id),
+      });
+    }
+    const poId = Number(invoice.poId) || 0;
+    if (poId > 0) {
+      const poLabel = String(invoice.poNumber || `PO-${poId}`).trim();
+      rows.push({
+        key: `po-${poId}`,
+        kind: 'po',
+        label: 'Purchase Order',
+        fileName: `${poLabel}.pdf`,
+        extra: poLabel,
+        url: poApi.getPdfUrl(poId),
       });
     }
     (invoice.prAttachments || []).forEach((file) => {
@@ -173,35 +188,39 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
           const tone =
             meta.tone === 'teal'
               ? 'bg-teal-50 text-teal-700 border-teal-200'
-              : meta.tone === 'amber'
-                ? 'bg-amber-50 text-amber-800 border-amber-200'
-                : 'bg-indigo-50 text-indigo-700 border-indigo-200';
+              : meta.tone === 'sky'
+                ? 'bg-sky-50 text-sky-800 border-sky-200'
+                : meta.tone === 'amber'
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : 'bg-indigo-50 text-indigo-700 border-indigo-200';
           return (
             <div
               key={file.key}
-              className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
+              className="flex flex-col sm:flex-row sm:items-start gap-3 rounded-xl border border-gray-200 bg-white px-3 sm:px-4 py-3 min-w-0 w-full"
             >
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${tone}`}>
                 <i className={`${meta.icon} text-lg`} />
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="flex flex-wrap items-center gap-2 mb-0.5">
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${tone}`}>
                     {meta.badge}
                   </span>
-                  {file.extra ? <span className="text-[11px] text-gray-500">{file.extra}</span> : null}
+                  {file.extra ? (
+                    <span className="text-[11px] text-gray-500 break-words">{file.extra}</span>
+                  ) : null}
                 </div>
                 <p className="text-sm font-semibold text-gray-900 break-all">{file.fileName}</p>
                 <p className="text-[11px] text-gray-500 mt-0.5">
                   {[file.label, formatFileSize(file.size), file.uploadedAt].filter(Boolean).join(' · ')}
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-start">
                 <button
                   type="button"
                   disabled={openingKey === file.key}
                   onClick={() => void openFile(file, false)}
-                  className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 disabled:opacity-50"
+                  className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 disabled:opacity-50 whitespace-nowrap"
                 >
                   {openingKey === file.key ? 'Opening…' : 'View'}
                 </button>
@@ -209,7 +228,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
                   type="button"
                   disabled={openingKey === `dl-${file.key}`}
                   onClick={() => void openFile(file, true)}
-                  className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
                 >
                   {openingKey === `dl-${file.key}` ? 'Saving…' : 'Download'}
                 </button>
@@ -260,9 +279,9 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
     );
 
   return (
-    <div className="p-5 space-y-4">
+    <div className="p-2 sm:p-4 space-y-4 min-w-0 w-full max-w-full overflow-hidden">
       {/* Top summary bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <p className="text-xs text-gray-500 mb-1">Invoice Amount</p>
           <p className="text-base font-bold text-gray-900">₹{invoice.invoiceGrandTotal.toLocaleString('en-IN')}</p>
@@ -332,7 +351,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
       {tab === 'match' && (
         <div className="space-y-4">
           {/* Match checks */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-0 w-full">
             {[
               { label: 'PO Match', ok: invoice.matchStatus.poMatch, desc: 'Invoice vs Purchase Order' },
               {
@@ -344,22 +363,22 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
             ].map((check) => (
               <div
                 key={check.label}
-                className={`rounded-lg border p-4 flex items-center space-x-3 ${
+                className={`rounded-lg border p-3 sm:p-4 flex items-center gap-3 min-w-0 ${
                   check.ok ? 'bg-teal-50 border-teal-200' : 'bg-red-50 border-red-200'
                 }`}
               >
-                <div className="w-8 h-8 flex items-center justify-center">
+                <div className="w-8 h-8 flex items-center justify-center shrink-0">
                   <i
                     className={`text-2xl ${
                       check.ok ? 'ri-checkbox-circle-fill text-teal-500' : 'ri-close-circle-fill text-red-500'
                     }`}
                   ></i>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className={`text-sm font-semibold ${check.ok ? 'text-teal-700' : 'text-red-700'}`}>
                     {check.label}
                   </p>
-                  <p className="text-xs text-gray-500">{check.desc}</p>
+                  <p className="text-xs text-gray-500 break-words">{check.desc}</p>
                 </div>
               </div>
             ))}

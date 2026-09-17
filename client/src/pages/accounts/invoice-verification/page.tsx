@@ -17,6 +17,7 @@ function mapApiInvoice(raw: Record<string, unknown>): InvoiceData {
     vendor: String(raw.vendor || ''),
     vendorGSTIN: String(raw.vendorGSTIN || ''),
     vendorAddress: String(raw.vendorAddress || ''),
+    poId: Number(raw.poId) || 0,
     poNumber: String(raw.poNumber || ''),
     grnNumber: String(raw.grnNumber || ''),
     prId: String(raw.prId || ''),
@@ -195,18 +196,18 @@ export default function InvoiceVerificationPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <div className="w-full min-w-0 max-w-full space-y-6">
         {toast && (
           <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-teal-700 text-white text-sm rounded-lg shadow-lg">
             {toast}
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">3-Way Match</h1>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="px-3 py-1 bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-sm font-semibold rounded-full">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">3-Way Match</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <span className="px-3 py-1 bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-sm font-semibold rounded-full shrink-0">
                 {isManager ? 'Accounts Manager' : 'Accounts Payable'}
               </span>
               <span className="text-gray-500 text-sm">
@@ -217,7 +218,7 @@ export default function InvoiceVerificationPage() {
           <button
             type="button"
             onClick={load}
-            className="px-4 py-2 text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg cursor-pointer"
+            className="self-start shrink-0 px-4 py-2 text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg cursor-pointer"
           >
             Refresh
           </button>
@@ -225,16 +226,16 @@ export default function InvoiceVerificationPage() {
 
         <InvoiceStatsCards invoices={invoices} />
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex-1 relative">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full min-w-0">
+          <div className="p-3 sm:p-4 border-b border-gray-200">
+            <div className="relative w-full min-w-0">
               <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
               <input
                 type="text"
                 placeholder="Search by invoice, vendor, PO, GRN, or PR..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full min-w-0 pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
           </div>
@@ -254,7 +255,7 @@ export default function InvoiceVerificationPage() {
                 key={key}
                 type="button"
                 onClick={() => setStatusFilter(key as 'all' | InvoiceStatus)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
                   statusFilter === key ? 'bg-teal-100 text-teal-700' : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
