@@ -293,10 +293,10 @@ export const PO_STYLES = `
     border-spacing: 0;
     border: 1px solid #000;
   }
-  /* Line items (Price Schedule): light borders in PDF */
+  /* Line items (Price Schedule): clear black borders in PDF */
   body.po-document-pdf-pages table.price,
   body.po-document-pdf-pages table.po-table.price {
-    border: 1px solid #cfcfcf;
+    border: 1.5px solid #000;
   }
   body.po-document-pdf-pages table.price th,
   body.po-document-pdf-pages table.price td,
@@ -314,7 +314,7 @@ export const PO_STYLES = `
   body.po-document-pdf-pages table.price td,
   body.po-document-pdf-pages table.po-table.price th,
   body.po-document-pdf-pages table.po-table.price td {
-    border: 1px solid #cfcfcf;
+    border: 1.5px solid #000;
   }
   body.po-document-pdf-pages table.price th.col-uom,
   body.po-document-pdf-pages table.price td.col-uom,
@@ -344,7 +344,7 @@ export const PO_STYLES = `
   body.po-document-pdf-pages .table-frame table.price tr > *:last-child,
   body.po-document-pdf-pages .table-frame table.price thead tr:first-child > *,
   body.po-document-pdf-pages .table-frame table.price tbody tr:last-child > * {
-    border-color: #cfcfcf !important;
+    border-color: #000 !important;
   }
   td.description,
   td.col-description {
@@ -654,23 +654,23 @@ export const PO_STYLES = `
       border-right: 1px solid #000 !important;
     }
     body.po-document-pdf .table-frame table.price tr > *:first-child {
-      border-left-color: #cfcfcf !important;
+      border-left-color: #000 !important;
     }
     body.po-document-pdf .table-frame table.price tr > *:last-child {
-      border-right-color: #cfcfcf !important;
+      border-right-color: #000 !important;
     }
     body.po-document-pdf .table-frame table.price thead tr:first-child > * {
-      border-top-color: #cfcfcf !important;
+      border-top-color: #000 !important;
     }
     body.po-document-pdf .table-frame table.price tbody tr:last-child > *,
     body.po-document-pdf .table-frame table.price tfoot td {
-      border-bottom-color: #cfcfcf !important;
-      border-left-color: #cfcfcf !important;
-      border-right-color: #cfcfcf !important;
+      border-bottom-color: #000 !important;
+      border-left-color: #000 !important;
+      border-right-color: #000 !important;
     }
     body.po-document-pdf table.price th,
     body.po-document-pdf table.price td {
-      border-color: #cfcfcf !important;
+      border-color: #000 !important;
     }
     body.po-document-pdf table.price tfoot,
     body.po-document-pdf table.terms tfoot {
@@ -773,7 +773,7 @@ export const PO_STYLES = `
     break-inside: auto;
   }
   .table-frame:has(table.price) {
-    border: 1px solid #cfcfcf;
+    border: 1.5px solid #000;
   }
   .annexure-card {
     width: 100%;
@@ -1278,10 +1278,10 @@ export const PO_STYLES = `
   }
   table.price th,
   table.price td {
-    border-top: 1px solid #cfcfcf;
-    border-left: 1px solid #cfcfcf;
-    border-right: 1px solid #cfcfcf;
-    border-bottom: 1px solid #cfcfcf;
+    border-top: 1.5px solid #000;
+    border-left: 1.5px solid #000;
+    border-right: 1.5px solid #000;
+    border-bottom: 1.5px solid #000;
   }
   /* Avoid double lines between cells */
   table.price tr > * + *,
@@ -1303,7 +1303,7 @@ export const PO_STYLES = `
     border: 1px solid #000;
   }
   table.price th.section-title {
-    border: 1px solid #cfcfcf;
+    border: 1px solid #000;
   }
   table.terms thead tr.col-heads th,
   table.price thead tr.col-heads th {

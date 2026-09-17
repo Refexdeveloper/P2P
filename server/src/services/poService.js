@@ -342,14 +342,20 @@ async function poPdfMailAttachment(po, { signed = false } = {}) {
 }
 
 function parseManualContextJson(value) {
-  if (!value) return { prDetails: null, vendorQuotes: [], comparisonRounds: [] };
+  if (!value) return { prDetails: null, vendorQuotes: [], comparisonRounds: [], selectedEntityId: null };
   try {
     const raw = typeof value === 'string' ? JSON.parse(value) : value;
     if (!raw || typeof raw !== 'object') {
-      return { prDetails: null, vendorQuotes: [], comparisonRounds: [] };
+      return { prDetails: null, vendorQuotes: [], comparisonRounds: [], selectedEntityId: null };
     }
     const vendorQuotes = Array.isArray(raw.vendorQuotes) ? raw.vendorQuotes : [];
     const comparisonRounds = Array.isArray(raw.comparisonRounds) ? raw.comparisonRounds : [];
+    const selectedEntityId =
+      raw.selectedEntityId !== undefined && raw.selectedEntityId !== null && raw.selectedEntityId !== ''
+        ? Number(raw.selectedEntityId) || null
+        : raw.entityId !== undefined && raw.entityId !== null && raw.entityId !== ''
+          ? Number(raw.entityId) || null
+          : null;
     return {
       prDetails: raw.prDetails && typeof raw.prDetails === 'object' ? raw.prDetails : null,
       vendorQuotes,
@@ -358,9 +364,10 @@ function parseManualContextJson(value) {
         : vendorQuotes.length
           ? [{ round: 1, label: 'Round 1', notes: '', vendorQuotes }]
           : [],
+      selectedEntityId,
     };
   } catch {
-    return { prDetails: null, vendorQuotes: [], comparisonRounds: [] };
+    return { prDetails: null, vendorQuotes: [], comparisonRounds: [], selectedEntityId: null };
   }
 }
 
@@ -425,9 +432,13 @@ function normalizeManualContextInput(body = {}) {
   }
 
   const selectedEntityId =
-    body.selectedEntityId !== undefined && body.selectedEntityId !== null && body.selectedEntityId !== ''
+    body.selectedEntityId !== undefined &&
+    body.selectedEntityId !== null &&
+    body.selectedEntityId !== ''
       ? Number(body.selectedEntityId) || null
-      : null;
+      : body.entityId !== undefined && body.entityId !== null && body.entityId !== ''
+        ? Number(body.entityId) || null
+        : null;
 
   return { prDetails, vendorQuotes, comparisonRounds, selectedEntityId };
 }
@@ -651,23 +662,24 @@ async function assignOfficialPoNumberIfNeeded({
   connection,
   docLabel,
 }) {
-  if (!isDraftPlaceholderPoNumber(currentPoNumber) && String(currentPoNumber || '').trim()) {
-    // Already has an official number — keep unless a different custom is requested
-    if (requested && !isDraftPlaceholderPoNumber(requested)) {
-      return resolvePersistedPoNumber({
-        requested,
-        existingNumber: currentPoNumber,
-        entityId,
-        purchaseType,
-        excludeId: poId,
-        connection,
-        docLabel,
-      });
+  const current = String(currentPoNumber || '').trim();
+  const currentIsDraft = isDraftPlaceholderPoNumber(current);
+  const custom = normalizeRequestedPoNumber(requested);
+
+  // Form / previous official number wins over regenerating from sequence (avoids 0001 → 0002)
+  if (custom && !isDraftPlaceholderPoNumber(custom)) {
+    if (!current || custom.toLowerCase() !== current.toLowerCase()) {
+      await assertPoNumberAvailable(custom, poId, connection, docLabel);
     }
-    return String(currentPoNumber).trim();
+    return custom;
   }
+
+  if (!currentIsDraft && current) {
+    return current;
+  }
+
   return resolvePersistedPoNumber({
-    requested,
+    requested: null,
     existingNumber: null,
     entityId,
     purchaseType,
@@ -750,7 +762,7 @@ async function getLineItems(poId) {
     category: r.category || '',
     itemName: r.item_name || '',
     description: r.description,
-    quantity: r.quantity,
+    quantity: Number(r.quantity) || 0,
     unit: normalizeUnit(r.unit),
     uom: normalizeUnit(r.unit),
     unitPrice: Number(r.unit_price),
@@ -2381,10 +2393,15 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     await conn.beginTransaction();
 
     let poNumber = existing?.po_number || null;
-    // Save Draft always keeps DRAFT-{id}. Official PO/WO number is assigned only on Save & Send.
+    // Save Draft: use DRAFT-{id} for new / PR drafts only.
+    // Manual drafts that already have an official WO/PO number (send-back / repaired)
+    // must keep that number — rewriting to DRAFT-* and re-assigning on send bumps 0001 → 0002.
 
     if (existing) {
-      poNumber = stableDraftPoNumber(existing.id);
+      const existingNo = String(existing.po_number || '').trim();
+      const keepOfficialManualNumber =
+        !existing.pr_id && existingNo && !isDraftPlaceholderPoNumber(existingNo);
+      poNumber = keepOfficialManualNumber ? existingNo : stableDraftPoNumber(existing.id);
       savedPoId = existing.id;
       await conn.query(
         `UPDATE purchase_orders SET
@@ -2537,22 +2554,32 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       !existing?.pr_id ||
       manualContextInput.prDetails.title ||
       manualContextInput.comparisonRounds.length ||
-      manualContextInput.vendorQuotes.length;
+      manualContextInput.vendorQuotes.length ||
+      Boolean(manualContextInput.selectedEntityId) ||
+      Boolean(entityIdForNumber);
     if (shouldPersistManualContext && savedPoId) {
+      const existingCtx = parseManualContextJson(existing?.manual_context_json);
       const roundsToStore = manualContextInput.comparisonRounds.length
         ? manualContextInput.comparisonRounds
         : manualContextInput.vendorQuotes.length
           ? [{ round: 1, label: 'Round 1', notes: '', vendorQuotes: manualContextInput.vendorQuotes }]
-          : [];
+          : existingCtx.comparisonRounds || [];
       const storedComparisonRounds = roundsToStore.length
         ? persistManualComparisonRounds(savedPoId, roundsToStore)
         : [];
       const storedVendorQuotes = storedComparisonRounds.flatMap((roundRow) => roundRow.vendorQuotes);
       const manualContextJson = JSON.stringify({
-        prDetails: manualContextInput.prDetails,
+        prDetails: manualContextInput.prDetails?.title
+          ? manualContextInput.prDetails
+          : existingCtx.prDetails || manualContextInput.prDetails,
         comparisonRounds: storedComparisonRounds,
         vendorQuotes: storedVendorQuotes,
-        selectedEntityId: manualContextInput.selectedEntityId,
+        selectedEntityId:
+          manualContextInput.selectedEntityId ||
+          entityIdForNumber ||
+          existingCtx.selectedEntityId ||
+          Number(existing?.entity_id) ||
+          null,
       });
       await pool.query(`UPDATE purchase_orders SET manual_context_json = ? WHERE id = ?`, [
         manualContextJson,
@@ -4319,6 +4346,9 @@ export async function updatePurchaseOrder(user, poId, body) {
     // When buyer sends draft → SCM Manager, assign official PO/WO number (draft placeholders only)
     let nextPoNumber;
     if (canBuyerRevise) {
+      const formOfficial = normalizeRequestedPoNumber(body.poNumber || body.existingPoNumber);
+      const preferFormOfficial =
+        formOfficial && !isDraftPlaceholderPoNumber(formOfficial) ? formOfficial : null;
       nextPoNumber = await assignOfficialPoNumberIfNeeded({
         poId,
         entityId: existing.entity_id || (await resolveEntityIdFromPoBody(body, existing)),
@@ -4327,7 +4357,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         requested:
           body.skipApproval || body.legacyImport || body.oldPoImport
             ? body.poNumber || body.existingPoNumber
-            : null,
+            : preferFormOfficial,
         connection: conn,
         docLabel: docLabelForNumber,
       });
@@ -4439,6 +4469,7 @@ export async function updatePurchaseOrder(user, poId, body) {
           selectedEntityId:
             manualContextInput.selectedEntityId ||
             existingCtx.selectedEntityId ||
+            Number(existing.entity_id) ||
             null,
         });
         await conn.query(`UPDATE purchase_orders SET manual_context_json = ? WHERE id = ?`, [

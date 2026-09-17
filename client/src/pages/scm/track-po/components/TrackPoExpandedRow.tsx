@@ -637,7 +637,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
             <div className="min-w-0">
               <p className="text-sm font-bold text-gray-900 truncate">
                 {row.prNumber || (row.prId ? `PR #${row.prId}` : 'Manual PO')}
-                {row.poNumber ? ` · ${row.poNumber}` : ''}
+                {(po?.poNumber || row.poNumber) ? ` · ${po?.poNumber || row.poNumber}` : ''}
               </p>
               <p className="text-xs text-gray-500 truncate">{row.title}</p>
             </div>

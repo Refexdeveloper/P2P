@@ -78,6 +78,19 @@ export function fmtMoney(amount, currency = 'INR') {
   return String(formatted).replace(/\s/g, '\u00A0');
 }
 
+/** Qty: whole numbers without decimals; show decimals only when fractional. */
+export function fmtQty(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  if (Number.isInteger(n) || Math.abs(n - Math.round(n)) < 1e-9) {
+    return String(Math.round(n));
+  }
+  // Keep meaningful decimals (trim trailing zeros from DB DECIMAL like 115.500)
+  const fixed = n.toFixed(3).replace(/\.?0+$/, '');
+  return fixed;
+}
+
 function amountCellHtml(amount, currency, extraClass = '') {
   return `<td class="right amount-cell ${extraClass}">${fmtMoney(amount, currency)}</td>`;
 }
@@ -406,7 +419,7 @@ function lineItemRowHtml(item, index, po) {
       <td class="center col-sl">${index + 1}</td>
       <td class="description col-description"><div class="spec-block">${item.itemName ? `<p><strong>${escapeHtml(item.itemName)}</strong></p>` : ''}${looksLikeHtml(item.description) ? item.description : item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}</div></td>
       <td class="center col-uom">${escapeHtml(item.unit || item.uom || 'Nos')}</td>
-      <td class="center col-qty">${escapeHtml(item.quantity)}</td>
+      <td class="center col-qty">${escapeHtml(fmtQty(item.quantity))}</td>
       ${amountCellHtml(item.unitPrice, po.currency, 'col-rate col-unit-rate unit-rate-cell')}
       <td class="center col-tax">${escapeHtml(item.taxPercentage ?? item.tax_percentage ?? 0)}%</td>
       ${amountCellHtml(item.total, po.currency, 'col-total total-amount-cell')}

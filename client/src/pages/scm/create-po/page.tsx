@@ -721,6 +721,7 @@ function ClauseTableEditor({
                     placeholder={descriptionPlaceholder}
                     minHeight={120}
                     advanced
+                    allowTables
                   />
                 </td>
                 <td className="px-5 py-4">
@@ -853,8 +854,8 @@ function AnnexureIiTableEditor({
         </button>
       </div>
       <p className="px-5 pt-3 text-xs text-gray-500">
-        Add technical data, scope, specifications, and images. Paste Excel tables directly into Description
-        (Ctrl+V) — they are kept as text tables on preview and PDF. Use Add Row for another page.
+        Add technical data, scope, specifications, images, and tables. Use the Table button or paste from
+        Excel / Word (Ctrl+V). Existing image and text tools stay the same. Use Add Row for another PDF page.
       </p>
       <div className="divide-y divide-gray-100">
         {localRows.map((row, index) => (
@@ -904,15 +905,16 @@ function AnnexureIiTableEditor({
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Description, images &amp; text</label>
+              <label className="block text-xs text-gray-400 mb-1">Description, images, tables &amp; text</label>
               <RichTextEditor
                 editorKey={`${row.clientKey}-d-${editorRevision}`}
                 value={row.description || ''}
                 onChange={(html) => updateRow(index, { description: html })}
-                placeholder="Add formatted text and images for this page..."
+                placeholder="Add formatted text, tables, and images for this page..."
                 minHeight={180}
                 advanced
                 allowImages
+                allowTables
               />
             </div>
         </div>
@@ -1582,6 +1584,13 @@ export default function CreatePOPage() {
     };
   }, [loadEntityOptions]);
 
+  // After entity master loads, keep edit-mode selection label populated
+  useEffect(() => {
+    if (!isEditMode || manualEntityId === '' || !entityOptions.length) return;
+    const match = entityOptions.find((e) => Number(e.id) === Number(manualEntityId));
+    if (match) setManualEntitySnapshot(match);
+  }, [isEditMode, manualEntityId, entityOptions]);
+
   const reloadClausesFromMaster = useCallback(async () => {
     skipNextLetterheadLoad.current = false;
     userEditedDraftRef.current = false;
@@ -1674,18 +1683,9 @@ export default function CreatePOPage() {
 
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;
-    if (keepLocalDraftAfterSaveRef.current) {
-      keepLocalDraftAfterSaveRef.current = false;
-      skipNextLetterheadLoad.current = true;
-      letterheadLoadSeq.current += 1;
-      letterheadLockedRef.current = true;
-      setLetterheadLocked(true);
-      setCreatedPoId(editPoId);
-      setPoEditStatus('draft');
-      prLineItemsHydratedRef.current = true;
-      setLoading(false);
-      return;
-    }
+    // After Save Draft → ?poId= remount, state is empty — always reload from API
+    // (skipping left Entity / details blank).
+    keepLocalDraftAfterSaveRef.current = false;
     skipNextLetterheadLoad.current = true;
     letterheadLoadSeq.current += 1;
     setLetterheadLocked(true);
@@ -1836,24 +1836,30 @@ export default function CreatePOPage() {
           vendorQuotes?: Array<Record<string, unknown>>;
           selectedEntityId?: number | null;
         };
-        const ctxEntityId = manualContext.selectedEntityId;
-        const parsedCtxEntityId =
-          ctxEntityId != null && Number(ctxEntityId) > 0 ? Number(ctxEntityId) : '';
+        // Prefer PO.entityId (column), then manual_context.selectedEntityId
+        const rawEntityId =
+          Number(po.entityId || 0) ||
+          Number(manualContext.selectedEntityId || 0) ||
+          0;
+        const parsedCtxEntityId = rawEntityId > 0 ? rawEntityId : '';
         setManualEntityId(parsedCtxEntityId);
         if (parsedCtxEntityId !== '') {
           const eid = parsedCtxEntityId;
-          setManualEntitySnapshot((prev) => {
-            if (prev && Number(prev.id) === eid) return prev;
-            const fromList = entityOptions.find((e) => Number(e.id) === eid);
-            if (fromList) return fromList;
-            return {
+          const fromList = entityOptions.find((e) => Number(e.id) === eid);
+          const snapshot: EntityRecord =
+            fromList ||
+            ({
               id: eid,
-              code: String(po.entityCode || ''),
-              name: String(po.entityName || po.entity || ''),
-              costCenter: null,
+              code: String(po.entityCode || '').trim() || '',
+              name: String(po.entityName || po.entity || '').trim() || `Entity #${eid}`,
+              costCenter: '',
+              description: '',
               status: 'active',
-            } as EntityRecord;
-          });
+            } as EntityRecord);
+          setManualEntitySnapshot(snapshot);
+          if (!String(po.entity || '').trim() && snapshot.name) {
+            setEntity(snapshot.name);
+          }
         } else {
           setManualEntitySnapshot(null);
         }

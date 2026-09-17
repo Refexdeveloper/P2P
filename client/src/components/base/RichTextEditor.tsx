@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 
 interface RichTextEditorProps {
   value: string;
@@ -9,6 +9,8 @@ interface RichTextEditorProps {
   /** Extra formatting: font size, alignment, spacing, images */
   advanced?: boolean;
   allowImages?: boolean;
+  /** Insert Table toolbar + Excel/Word paste tables (same as Annexure I paste). */
+  allowTables?: boolean;
   /** Paste and stored value stay normal text (no bold/italic/fonts from Word/web). */
   plainTextOnly?: boolean;
 }
@@ -186,6 +188,20 @@ function plainTextLooksLikeExcelTable(plain: string) {
   return lines.some((line) => line.includes('\t'));
 }
 
+function buildInsertTableHtml(rows: number, cols: number) {
+  const r = Math.max(1, Math.min(12, Math.floor(rows) || 3));
+  const c = Math.max(1, Math.min(12, Math.floor(cols) || 3));
+  const cellStyle = 'border:1px solid #000;padding:4px 6px;vertical-align:top;';
+  const head = `<tr>${Array.from({ length: c }, () => `<th style="${cellStyle}">&nbsp;</th>`).join('')}</tr>`;
+  const body = Array.from({ length: Math.max(0, r - 1) }, () =>
+    `<tr>${Array.from({ length: c }, () => `<td style="${cellStyle}">&nbsp;</td>`).join('')}</tr>`
+  ).join('');
+  return (
+    `<table class="annexure-pasted-table" style="width:100%;border-collapse:collapse;border:1px solid #000;">` +
+    `<tbody>${head}${body}</tbody></table><p><br></p>`
+  );
+}
+
 /** Keep bold/italic/underline/lists/tables from Word, Excel, Google Docs. */
 function sanitizePastedHtml(raw: string, allowImages = false) {
   const html = extractClipboardHtmlFragment(raw);
@@ -324,6 +340,7 @@ export default function RichTextEditor({
   editorKey,
   advanced = false,
   allowImages = false,
+  allowTables = false,
   plainTextOnly = false,
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
@@ -334,6 +351,9 @@ export default function RichTextEditor({
   onChangeRef.current = onChange;
   const plainTextOnlyRef = useRef(plainTextOnly);
   plainTextOnlyRef.current = plainTextOnly;
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableCols, setTableCols] = useState(3);
 
   useEffect(() => {
     if (!editorRef.current) return;
@@ -428,6 +448,20 @@ export default function RichTextEditor({
     };
     reader.readAsDataURL(file);
   };
+
+  const insertBlankTable = useCallback(
+    (rows: number, cols: number) => {
+      editorRef.current?.focus();
+      document.execCommand('styleWithCSS', false, 'true');
+      const html = buildInsertTableHtml(rows, cols);
+      if (!insertHtmlAtCursor(html, editorRef.current)) {
+        document.execCommand('insertHTML', false, html);
+      }
+      setTablePickerOpen(false);
+      emitHtml();
+    },
+    [emitHtml]
+  );
 
   const handleInput = () => emitHtml();
 
@@ -577,6 +611,76 @@ export default function RichTextEditor({
             </label>
           </>
         )}
+        {allowTables && (
+          <>
+            <span className="w-px h-5 bg-gray-200 mx-1" />
+            <div className="relative">
+              <button
+                type="button"
+                title="Insert table"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setTablePickerOpen((open) => !open);
+                }}
+                className="h-8 px-2 inline-flex items-center gap-1 rounded hover:bg-gray-200 text-gray-600 cursor-pointer text-xs font-medium"
+              >
+                <i className="ri-table-line text-sm"></i>
+                Table
+              </button>
+              {tablePickerOpen ? (
+                <div
+                  className="absolute left-0 top-full z-30 mt-1 w-52 rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <p className="text-[11px] font-semibold text-gray-600 mb-2">Insert table</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="flex items-center gap-1 text-[11px] text-gray-500">
+                      Rows
+                      <input
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={tableRows}
+                        onChange={(e) => setTableRows(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                        className="w-12 h-7 border border-gray-200 rounded px-1 text-xs"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-[11px] text-gray-500">
+                      Cols
+                      <input
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={tableCols}
+                        onChange={(e) => setTableCols(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                        className="w-12 h-7 border border-gray-200 rounded px-1 text-xs"
+                      />
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => insertBlankTable(tableRows, tableCols)}
+                      className="flex-1 h-7 rounded bg-teal-600 text-white text-[11px] font-semibold hover:bg-teal-700 cursor-pointer"
+                    >
+                      Insert
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTablePickerOpen(false)}
+                      className="h-7 px-2 rounded border border-gray-200 text-[11px] text-gray-600 hover:bg-gray-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[10px] text-gray-400 leading-snug">
+                    Or paste from Excel / Word (Ctrl+V)
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </>
+        )}
         {allowImages && (
           <>
             <span className="w-px h-5 bg-gray-200 mx-1" />
@@ -585,6 +689,7 @@ export default function RichTextEditor({
               title="Insert image"
               onMouseDown={(e) => {
                 e.preventDefault();
+                setTablePickerOpen(false);
                 fileRef.current?.click();
               }}
               className="h-8 px-2 inline-flex items-center gap-1 rounded hover:bg-gray-200 text-gray-600 cursor-pointer text-xs font-medium"
