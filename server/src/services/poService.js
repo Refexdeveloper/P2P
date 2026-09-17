@@ -1604,7 +1604,9 @@ export async function buildPoPreviewForPo(user, poId, body) {
 }
 
 export async function createPurchaseOrder(user, prId, body) {
-  if (user.role !== 'SCM Buyer') throw new Error('Only SCM Buyer can create purchase orders');
+  if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
+    throw new Error('Only SCM Buyer can create purchase orders');
+  }
 
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
@@ -1619,7 +1621,7 @@ export async function createPurchaseOrder(user, prId, body) {
   const existingNonDraft = existingRows.find((r) => String(r.status) !== 'draft');
   if (existingNonDraft) throw new Error('A purchase order already exists for this PR');
 
-  // Save Draft first → Save & Send: promote the draft and assign official PO number now.
+  // Save Draft / send-back revise → Send for Approval: promote draft to SCM Manager (Rajeev)
   const existingDraft = existingRows.find((r) => String(r.status) === 'draft');
   if (existingDraft) {
     if (
@@ -1629,7 +1631,12 @@ export async function createPurchaseOrder(user, prId, body) {
     ) {
       throw new Error('You can only send your own draft POs');
     }
-    return updatePurchaseOrder(user, existingDraft.id, body || {});
+    return updatePurchaseOrder(user, existingDraft.id, {
+      ...(body || {}),
+      resubmitForApproval: true,
+      saveAsDraft: false,
+      adminEdit: false,
+    });
   }
 
   // Old / historical PO import: create only — no manager approval workflow
@@ -1858,8 +1865,13 @@ export async function createManualPurchaseOrder(user, body = {}) {
       ) {
         throw new Error('You can only send your own draft POs');
       }
-      // updatePurchaseOrder (canBuyerRevise) assigns official number + pending_approval
-      const promoted = await updatePurchaseOrder(user, draftPoId, body || {});
+      // updatePurchaseOrder (canBuyerRevise) assigns official number + pending_approval → Rajeev
+      const promoted = await updatePurchaseOrder(user, draftPoId, {
+        ...(body || {}),
+        resubmitForApproval: true,
+        saveAsDraft: false,
+        adminEdit: false,
+      });
       await pool.query(
         `UPDATE purchase_orders SET status = ?, updated_at = NOW() WHERE id = ?`,
         [skipApproval ? 'approved' : 'pending_approval', draftPoId]
@@ -3655,9 +3667,11 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
   return updated;
 }
 
-/** Manager sends unsigned PO back to SCM Buyer for revision. */
+/** Manager (or Super Admin) sends unsigned PO back to SCM Buyer for revision. */
 export async function sendBackPurchaseOrder(user, poId, remarks) {
-  if (user.role !== 'SCM Manager') throw new Error('Only SCM Manager can send back purchase orders');
+  if (user.role !== 'SCM Manager' && user.role !== 'Super Admin') {
+    throw new Error('Only SCM Manager or Super Admin can send back purchase orders');
+  }
 
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
@@ -3678,13 +3692,38 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
     [poId]
   );
 
-  await pool.query(
-    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-     WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
-    [rows[0].pr_id]
-  );
+  // Manual POs (no PR): keep send-back marker so Create PO list / revise UX stays clear
+  if (!rows[0].pr_id) {
+    try {
+      let ctx = {};
+      if (rows[0].manual_context_json) {
+        ctx =
+          typeof rows[0].manual_context_json === 'string'
+            ? JSON.parse(rows[0].manual_context_json)
+            : rows[0].manual_context_json || {};
+      }
+      ctx = {
+        ...ctx,
+        sentBackAt: new Date().toISOString(),
+        sentBackRemarks: remarks.trim(),
+        sentBackBy: user.name || user.role,
+      };
+      await pool.query(`UPDATE purchase_orders SET manual_context_json = ? WHERE id = ?`, [
+        JSON.stringify(ctx),
+        poId,
+      ]);
+    } catch {
+      /* non-fatal */
+    }
+  }
 
   if (rows[0].pr_id) {
+    await pool.query(
+      `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+       WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
+      [rows[0].pr_id]
+    );
+
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 2);
     await pool.query(
@@ -3712,7 +3751,7 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
       actorName: user.name,
       actorRole: user.role,
       remarks: remarks.trim(),
-      portalUrl: poPortalUrl(rows[0].pr_id ? `/scm/create-po?poId=${poId}` : '/scm/purchase-requests'),
+      portalUrl: poPortalUrl(`/scm/create-po?poId=${poId}&from=create-po`),
       ctaLabel: 'Revise PO',
     });
   }
@@ -3960,8 +3999,14 @@ export async function updatePurchaseOrder(user, poId, body) {
 
   const canManagerEdit = user.role === 'SCM Manager' && existing.status === 'pending_approval';
   const canBuyerEdit = user.role === 'SCM Buyer' && existing.status === 'pending_buyer_verify';
+  // Draft after admin/manager send-back (or first create): Save → SCM Manager Rajeev for sign
+  const wantsManagerResubmit =
+    Boolean(body?.resubmitForApproval) ||
+    (existing.status === 'draft' && !Boolean(body?.adminEdit) && !Boolean(body?.saveAsDraft));
   const canBuyerRevise =
-    (user.role === 'SCM Buyer' || user.role === 'Super Admin') && existing.status === 'draft';
+    wantsManagerResubmit &&
+    existing.status === 'draft' &&
+    ['SCM Buyer', 'Super Admin', 'SCM Manager'].includes(user.role);
   // Track PO / admin correction: edit existing PO without changing workflow status
   const canAdminEdit =
     existing.status !== 'cancelled' &&
@@ -4149,9 +4194,35 @@ export async function updatePurchaseOrder(user, poId, body) {
            WHERE pr_id = ? AND task_type = 'PO_REVISION' AND assigned_role = 'SCM Buyer' AND status = 'pending'`,
           [existing.pr_id]
         );
+        // Drop any stale pending manager-sign tasks, then assign Rajeev
+        await conn.query(
+          `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+           WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
+          [existing.pr_id]
+        );
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 2);
         await insertScmManagerPoApprovalTask(conn, existing.pr_id, dueDate.toISOString().split('T')[0]);
+      } else if (existing.manual_context_json) {
+        // Clear send-back marker on manual PO after resubmit to Rajeev
+        try {
+          const ctx =
+            typeof existing.manual_context_json === 'string'
+              ? JSON.parse(existing.manual_context_json)
+              : existing.manual_context_json || {};
+          if (ctx && (ctx.sentBackAt || ctx.sentBackRemarks)) {
+            const nextCtx = { ...ctx };
+            delete nextCtx.sentBackAt;
+            delete nextCtx.sentBackRemarks;
+            delete nextCtx.sentBackBy;
+            await conn.query(`UPDATE purchase_orders SET manual_context_json = ? WHERE id = ?`, [
+              JSON.stringify(nextCtx),
+              poId,
+            ]);
+          }
+        } catch {
+          /* non-fatal */
+        }
       }
     }
 
@@ -4198,18 +4269,25 @@ export async function updatePurchaseOrder(user, poId, body) {
   }
 
   if (canBuyerRevise) {
-    const managers = await resolveRoleEmails('SCM Manager');
-    if (managers.length) {
+    const manager = await resolveScmManagerUser();
+    const managerEmails = await getScmManagerNotifyEmails();
+    const managerName = manager?.name || getPreferredScmManagerName() || 'Rajeev V';
+    if (managerEmails.length) {
+      const attachments = await poPdfMailAttachment(updatedPo).catch(() => undefined);
       queuePoWorkflowNotification(updatedPo, {
         action: 'assign',
         stageLabel: 'SCM Manager PO Approval',
-        recipientEmails: managers.map((m) => m.email),
-        recipientName: managers[0]?.name || 'SCM Manager',
+        recipientEmails: managerEmails,
+        recipientName: managerName,
         actorName: user.name,
         actorRole: user.role,
-        remarks: 'PO revised by SCM Buyer and resubmitted for sign',
-        portalUrl: poPortalUrl('/scm/po-approval'),
+        remarks:
+          body?.resubmitForApproval || body?.changeSummary
+            ? `Revised after send-back — sent to SCM Manager (${managerName}) for sign`
+            : `PO submitted to SCM Manager (${managerName}) for sign`,
+        portalUrl: poPortalUrl(`/scm/po-approval?poId=${poId}`),
         ctaLabel: 'Open PO Approval',
+        attachments,
       });
     }
   }

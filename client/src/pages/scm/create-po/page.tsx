@@ -3208,20 +3208,46 @@ export default function CreatePOPage() {
           payload.adminEdit = true;
           payload.changeSummary = payload.changeSummary || `PO updated by ${user?.role || 'admin'} from Track PO`;
         }
-        await poApi.update(editPoId, payload);
+        // Send Back → Edit Draft → Send for Approval → SCM Manager (Rajeev)
+        if (poEditStatus === 'draft' || !poEditStatus) {
+          payload.resubmitForApproval = true;
+          payload.saveAsDraft = false;
+          delete payload.adminEdit;
+        }
+        const updateRes = await poApi.update(editPoId, payload);
+        if (poEditStatus === 'draft' || !poEditStatus) {
+          const mgr = scmManager?.name || 'Rajeev V';
+          alert(
+            updateRes.message ||
+              `${poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
+          );
+          navigate('/scm/create-po');
+          return;
+        }
         navigate(editReturnPath);
         return;
       }
 
       // After Save Draft, send must promote that draft and only then assign official PO number
       if (createdPoId) payload.poId = createdPoId;
+      // Always ask server to route Send for Approval to SCM Manager (Rajeev)
+      payload.resubmitForApproval = true;
+      payload.saveAsDraft = false;
 
       const res = isManualPoFlow && !isEditMode
         ? await poApi.createManual(payload)
         : await poApi.create(numericPrId!, payload);
-      const data = res.data as { poNumber: string; id: number };
+      const data = res.data as { poNumber: string; id: number; statusRaw?: string; status?: string };
       setPoNumber(data.poNumber);
       setCreatedPoId(data.id);
+      const statusAfter = String(data.statusRaw || data.status || '').toLowerCase();
+      if (statusAfter === 'pending_approval' || statusAfter === 'pendingapproval') {
+        const mgr = scmManager?.name || 'Rajeev V';
+        alert(
+          res.message ||
+            `${data.poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
+        );
+      }
       try {
       const blob = await poApi.fetchPdfBlob(data.id);
       if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
@@ -3512,6 +3538,8 @@ export default function CreatePOPage() {
                     ? 'Saving...'
                     : isBuyerAwaitingManager
                       ? 'With SCM Manager'
+                      : isEditMode && poEditStatus === 'draft'
+                        ? 'Send for Approval'
                       : isEditMode
                       ? 'Save'
                       : skipApproval
@@ -4978,6 +5006,8 @@ export default function CreatePOPage() {
                       ? isEditMode ? 'Saving...' : 'Creating PO...'
                       : isBuyerAwaitingManager
                         ? 'With SCM Manager'
+                      : isEditMode && poEditStatus === 'draft'
+                        ? 'Send for Approval'
                       : isEditMode
                         ? 'Save Changes'
                         : skipApproval
@@ -5024,7 +5054,7 @@ export default function CreatePOPage() {
             <div className="bg-gradient-to-br from-teal-600 to-teal-700 px-6 py-5">
               <h3 className="text-lg font-bold text-white">
                 {isEditMode && poEditStatus === 'draft'
-                  ? 'Send draft for approval?'
+                  ? `Send for approval to ${scmManager?.name || 'Rajeev V'}?`
                   : 'Send for SCM Manager approval?'}
               </h3>
               <p className="text-teal-100 text-sm mt-1">

@@ -392,10 +392,18 @@ router.post('/pr/:prId/preview-pdf', requireRoles('SCM Buyer'), async (req, res)
   }
 });
 
-router.post('/pr/:prId', requireRoles('SCM Buyer'), async (req, res) => {
+router.post('/pr/:prId', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
   try {
     const data = await createPurchaseOrder(req.user, Number(req.params.prId), req.body);
-    res.json({ data, message: `PO ${data.poNumber} created and sent for SCM Manager approval` });
+    const statusRaw = String(data.statusRaw || data.status || '').toLowerCase();
+    const pendingManager =
+      statusRaw === 'pending_approval' || statusRaw === 'pendingapproval';
+    res.json({
+      data,
+      message: pendingManager
+        ? `PO ${data.poNumber} sent to SCM Manager for sign / approval`
+        : `PO ${data.poNumber} created and sent for SCM Manager approval`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -668,7 +676,15 @@ router.post('/:id/preview-pdf', requireRoles('SCM Manager', 'SCM Buyer', 'Super 
 router.put('/:id', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), async (req, res) => {
   try {
     const data = await updatePurchaseOrder(req.user, Number(req.params.id), req.body);
-    res.json({ data, message: `PO ${data.poNumber} updated successfully` });
+    const statusRaw = String(data.statusRaw || data.status || '').toLowerCase();
+    const sentToManager =
+      statusRaw === 'pending_approval' || statusRaw === 'pendingapproval';
+    res.json({
+      data,
+      message: sentToManager
+        ? `PO ${data.poNumber} sent to SCM Manager for sign / approval`
+        : `PO ${data.poNumber} updated successfully`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -704,12 +720,12 @@ router.post('/:id/reject', requireRoles('SCM Manager'), async (req, res) => {
   }
 });
 
-router.post('/:id/send-back', requireRoles('SCM Manager'), async (req, res) => {
+router.post('/:id/send-back', requireRoles('SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const data = await sendBackPurchaseOrder(req.user, Number(req.params.id), req.body?.remarks);
     res.json({
       data,
-      message: 'PO sent back to SCM Buyer for revision',
+      message: 'PO sent back to SCM Buyer for revision — edit on Create PO, then save to send to Rajeev (SCM Manager)',
     });
   } catch (err) {
     res.status(400).json({ message: err.message });
