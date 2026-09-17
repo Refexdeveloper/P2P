@@ -4083,7 +4083,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         po_number = ?,
         reference_po_number = ?,
         delivery_address = ?, expected_delivery_date = ?, po_date = ?, payment_terms = ?, incoterms = ?,
-        special_instructions = ?, po_type = ?, letterhead_header = ?, letterhead_id = ?, entity = ?,
+        special_instructions = ?, po_type = ?, letterhead_header = ?, letterhead_id = ?, entity_id = ?, entity = ?,
         header_logo = ?, footer_logo = ?, terms_clauses = ?,
         annexure_clauses = ?, annexure_ii_html = ?, po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
         updated_at = NOW()
@@ -4100,6 +4100,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         normalizedPoType,
         resolvedLetterhead,
         resolvedLetterheadId || null,
+        (await resolveEntityIdFromPoBody(body, existing)) || existing.entity_id || null,
         resolvedEntity || '',
         resolvedHeaderLogo || '',
         resolvedFooterLogo || '',

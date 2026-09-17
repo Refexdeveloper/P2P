@@ -163,12 +163,12 @@ function statusColor(status: string) {
 function shortStatusLabel(label: string, status?: string) {
   const s = String(status || '').toLowerCase();
   if (s === 'approved' && /buyer verify/i.test(label)) return 'Buyer Verify';
-  if (s === 'pending') return 'Pending Sign';
+  if (s === 'pending') return 'SCM Manager';
   if (s === 'sent') return 'Vendor Accept';
   const full = String(label || '').trim();
   if (/scm manager signed/i.test(full)) return 'Buyer Verify';
   if (/pending vendor acceptance/i.test(full)) return 'Vendor Accept';
-  if (/pending scm manager sign/i.test(full)) return 'Pending Sign';
+  if (/pending scm manager sign/i.test(full)) return 'SCM Manager';
   return full;
 }
 
@@ -773,7 +773,8 @@ export default function TrackPoPage() {
                               {isAdminEditor &&
                                 row.poId &&
                                 row.status !== 'draft' &&
-                                row.status !== 'cancelled' && (
+                                row.status !== 'cancelled' &&
+                                !(user?.role === 'SCM Buyer' && row.status === 'pending') && (
                                   <button
                                     type="button"
                                     onClick={() => openAdminEditPo(row.poId!)}
@@ -782,6 +783,14 @@ export default function TrackPoPage() {
                                   >
                                     Edit
                                   </button>
+                                )}
+                              {user?.role === 'SCM Buyer' && row.poId && row.status === 'pending' && (
+                                  <span
+                                    className="px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-md whitespace-nowrap"
+                                    title="Sent to SCM Manager for sign / approval"
+                                  >
+                                    SCM Manager
+                                  </span>
                                 )}
                               {row.status === 'cancelled' && row.poId && (
                                 <button

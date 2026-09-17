@@ -1094,6 +1094,7 @@ export default function CreatePOPage() {
   const [importedVendorName, setImportedVendorName] = useState('');
   const [importedVendorEmail, setImportedVendorEmail] = useState('');
   const [manualEntityId, setManualEntityId] = useState<number | ''>('');
+  const [manualEntitySnapshot, setManualEntitySnapshot] = useState<EntityRecord | null>(null);
   const [entityOptions, setEntityOptions] = useState<EntityRecord[]>([]);
   const [manualVendorName, setManualVendorName] = useState('');
   const [manualVendorEmail, setManualVendorEmail] = useState('');
@@ -1128,6 +1129,7 @@ export default function CreatePOPage() {
   const prLineItemsHydratedRef = useRef(false);
   const keepLocalDraftAfterSaveRef = useRef(false);
   const contextLoadSeq = useRef(0);
+  const manualContextInitializedRef = useRef(false);
 
   const markDraftEdited = useCallback(() => {
     userEditedDraftRef.current = true;
@@ -1516,13 +1518,16 @@ export default function CreatePOPage() {
     }));
   }, [isManualPoFlow, manualComparisonRounds]);
 
-  const selectedManualEntity = useMemo(
-    () =>
-      manualEntityId === ''
-        ? null
-        : entityOptions.find((e) => Number(e.id) === Number(manualEntityId)) || null,
-    [manualEntityId, entityOptions]
-  );
+  const selectedManualEntity = useMemo(() => {
+    if (manualEntityId === '') return null;
+    const fromOptions =
+      entityOptions.find((e) => Number(e.id) === Number(manualEntityId)) || null;
+    if (fromOptions) return fromOptions;
+    if (manualEntitySnapshot && Number(manualEntitySnapshot.id) === Number(manualEntityId)) {
+      return manualEntitySnapshot;
+    }
+    return null;
+  }, [manualEntityId, entityOptions, manualEntitySnapshot]);
 
   /** Manual create: show draft placeholder until sent; do not pre-fill next PO number. */
   useEffect(() => {
@@ -1542,9 +1547,16 @@ export default function CreatePOPage() {
   const loadEntityOptions = useCallback(async () => {
     try {
       const res = await masterApi.listEntities({ status: 'active' });
-      setEntityOptions(res.data || []);
+      const next = res.data || [];
+      setEntityOptions(next);
+      // Keep snapshot in sync if the selected entity reloads from master
+      setManualEntitySnapshot((prev) => {
+        if (!prev) return prev;
+        const fresh = next.find((e) => Number(e.id) === Number(prev.id));
+        return fresh || prev;
+      });
     } catch {
-      setEntityOptions([]);
+      // Keep existing options so a selected entity does not disappear on refresh failure
     }
   }, []);
 
@@ -1555,7 +1567,7 @@ export default function CreatePOPage() {
         const res = await masterApi.listEntities({ status: 'active' });
         if (!cancelled) setEntityOptions(res.data || []);
       } catch {
-        if (!cancelled) setEntityOptions([]);
+        // Keep prior options so a selected entity label does not vanish
       }
     })();
     const onVis = () => {
@@ -1825,9 +1837,26 @@ export default function CreatePOPage() {
           selectedEntityId?: number | null;
         };
         const ctxEntityId = manualContext.selectedEntityId;
-        setManualEntityId(
-          ctxEntityId != null && ctxEntityId !== '' ? Number(ctxEntityId) || '' : ''
-        );
+        const parsedCtxEntityId =
+          ctxEntityId != null && Number(ctxEntityId) > 0 ? Number(ctxEntityId) : '';
+        setManualEntityId(parsedCtxEntityId);
+        if (parsedCtxEntityId !== '') {
+          const eid = parsedCtxEntityId;
+          setManualEntitySnapshot((prev) => {
+            if (prev && Number(prev.id) === eid) return prev;
+            const fromList = entityOptions.find((e) => Number(e.id) === eid);
+            if (fromList) return fromList;
+            return {
+              id: eid,
+              code: String(po.entityCode || ''),
+              name: String(po.entityName || po.entity || ''),
+              costCenter: null,
+              status: 'active',
+            } as EntityRecord;
+          });
+        } else {
+          setManualEntitySnapshot(null);
+        }
         setManualPrDetails(
           hydrateManualPrDetailsFromStored(manualContext.prDetails, {
             title: String(po.prTitle || ''),
@@ -1907,6 +1936,12 @@ export default function CreatePOPage() {
         if (!shouldApplyContext()) return;
         setEntityOptions(ents);
         setManualPoNoPr(true);
+        // Only bootstrap blank form once — re-running must not wipe entity / line items
+        if (manualContextInitializedRef.current) {
+          setLoadError('');
+          return;
+        }
+        manualContextInitializedRef.current = true;
         setLetterheadId('');
         setEntity('');
         setHeaderLogo('');
@@ -1946,6 +1981,7 @@ export default function CreatePOPage() {
         setManualVendorEmail('');
         setManualVendorId('');
         setManualEntityId('');
+        setManualEntitySnapshot(null);
         setManualPrDetails({
           prNumber: '',
           title: '',
@@ -1956,7 +1992,6 @@ export default function CreatePOPage() {
           priority: 'Medium',
         });
         setManualComparisonRounds([emptyComparisonRound(1)]);
-        setSkipApproval(true);
         setDocumentType('purchase_order');
         setLoadError('');
       } catch (err) {
@@ -2100,6 +2135,12 @@ export default function CreatePOPage() {
   useEffect(() => {
     loadContext();
   }, [loadContext]);
+
+  useEffect(() => {
+    if (!isManualMode) {
+      manualContextInitializedRef.current = false;
+    }
+  }, [isManualMode]);
 
   useEffect(() => {
     return () => {
@@ -3037,6 +3078,12 @@ export default function CreatePOPage() {
     (!isEditMode || poEditStatus === 'draft');
 
   const handleSendForApproval = () => {
+    if (isBuyerAwaitingManager) {
+      alert(
+        `This ${docLabel} is already with SCM Manager for sign / approval. Open PO Approval as SCM Manager to act on it.`
+      );
+      return;
+    }
     if (!validateBeforeSend()) return;
     if (needsScmManagerConfirm) {
       setShowScmConfirm(true);
@@ -3296,6 +3343,12 @@ export default function CreatePOPage() {
     poEditStatus === 'pending_approval' || poEditStatus === 'pendingapproval';
   const isManagerPoReview =
     user?.role === 'SCM Manager' && isEditMode && isPendingManagerApproval;
+  /** Buyer already sent — owned by SCM Manager until sign / send-back */
+  const isBuyerAwaitingManager =
+    isEditMode &&
+    isPendingManagerApproval &&
+    !isManagerPoReview &&
+    (user?.role === 'SCM Buyer' || user?.role === 'Super Admin');
   const activePrId = pr?.id || numericPrId || null;
   const isBuyerCreatePoSendBack =
     (user?.role === 'SCM Buyer' || user?.role === 'Super Admin') &&
@@ -3451,13 +3504,15 @@ export default function CreatePOPage() {
                 <button
                   type="button"
                   onClick={handleSendForApproval}
-                  disabled={submitting}
+                  disabled={submitting || isBuyerAwaitingManager}
                   className="px-3.5 py-1.5 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-semibold flex items-center gap-1.5 disabled:opacity-60"
                 >
                   <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
                   {submitting
                     ? 'Saving...'
-                    : isEditMode
+                    : isBuyerAwaitingManager
+                      ? 'With SCM Manager'
+                      : isEditMode
                       ? 'Save'
                       : skipApproval
                         ? `Create ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
@@ -3583,43 +3638,51 @@ export default function CreatePOPage() {
                           onSelect={(opt) => {
                             const id = Number(opt.id);
                             setManualEntityId(id);
-                            const selected = entityOptions.find((x) => x.id === id);
-                            if (selected) {
-                              setPr((prev) =>
-                                prev
-                                  ? {
-                                      ...prev,
-                                      entityId: selected.id,
-                                      entityName: selected.name,
-                                      entityCode: selected.code,
-                                    }
-                                  : prev
-                              );
-                              if (!entity) setEntity(selected.name);
-                              const locName = poTermsDetails.locationName || '';
-                              const entityLoc =
-                                matchEntityLocation(selected, locName) ||
-                                selected.locations?.find((l) => l.location) ||
-                                null;
-                              if (entityLoc) {
-                                const billing = String(entityLoc.billingAddress || '').trim();
-                                const site = String(entityLoc.siteAddress || '').trim();
-                                const gst = String(entityLoc.gstNo || locationGstNo || '').trim();
-                                setPoTermsDetails((prev) => ({
-                                  ...prev,
-                                  invoicingAddress: billing
-                                    ? `${addressLinesToHtml(billing)}${
-                                        gst ? `<p>GSTIN: ${escapeHtmlText(gst)}</p>` : ''
-                                      }`
-                                    : prev.invoicingAddress,
-                                  siteAddress: site || prev.siteAddress,
-                                }));
-                                if (site) setDeliveryAddress(site);
-                              }
+                            const selected =
+                              entityOptions.find((x) => Number(x.id) === id) ||
+                              ({
+                                id,
+                                code: '',
+                                name: String(opt.label || '').split(' — ')[0] || String(opt.label || ''),
+                                costCenter: opt.subLabel || null,
+                                status: 'active',
+                              } as EntityRecord);
+                            setManualEntitySnapshot(selected);
+                            setPr((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    entityId: selected.id,
+                                    entityName: selected.name,
+                                    entityCode: selected.code,
+                                  }
+                                : prev
+                            );
+                            if (!entity) setEntity(selected.name);
+                            const locName = poTermsDetails.locationName || '';
+                            const entityLoc =
+                              matchEntityLocation(selected, locName) ||
+                              selected.locations?.find((l) => l.location) ||
+                              null;
+                            if (entityLoc) {
+                              const billing = String(entityLoc.billingAddress || '').trim();
+                              const site = String(entityLoc.siteAddress || '').trim();
+                              const gst = String(entityLoc.gstNo || locationGstNo || '').trim();
+                              setPoTermsDetails((prev) => ({
+                                ...prev,
+                                invoicingAddress: billing
+                                  ? `${addressLinesToHtml(billing)}${
+                                      gst ? `<p>GSTIN: ${escapeHtmlText(gst)}</p>` : ''
+                                    }`
+                                  : prev.invoicingAddress,
+                                siteAddress: site || prev.siteAddress,
+                              }));
+                              if (site) setDeliveryAddress(site);
                             }
                           }}
                           onClear={() => {
                             setManualEntityId('');
+                            setManualEntitySnapshot(null);
                             setPr((prev) =>
                               prev
                                 ? { ...prev, entityId: null, entityName: '', entityCode: '' }
@@ -3630,10 +3693,11 @@ export default function CreatePOPage() {
                             const created = await masterApi.chatCreateEntity({ name });
                             const ent = created.data;
                             setEntityOptions((prev) => {
-                              if (prev.some((e) => e.id === ent.id)) return prev;
+                              if (prev.some((e) => Number(e.id) === Number(ent.id))) return prev;
                               return [...prev, ent].sort((a, b) => a.name.localeCompare(b.name));
                             });
                             setManualEntityId(ent.id);
+                            setManualEntitySnapshot(ent);
                             setPr((prev) =>
                               prev
                                 ? {
@@ -4906,12 +4970,14 @@ export default function CreatePOPage() {
                   )}
                   <button
                     onClick={handleSendForApproval}
-                    disabled={submitting}
+                    disabled={submitting || isBuyerAwaitingManager}
                     className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-sm font-bold whitespace-nowrap shadow-sm flex items-center gap-2 disabled:opacity-50"
                   >
                     <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
                     {submitting
                       ? isEditMode ? 'Saving...' : 'Creating PO...'
+                      : isBuyerAwaitingManager
+                        ? 'With SCM Manager'
                       : isEditMode
                         ? 'Save Changes'
                         : skipApproval

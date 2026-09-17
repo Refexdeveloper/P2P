@@ -98,7 +98,7 @@ function getStatusColor(statusRaw: string, bucket: RowStatus) {
 function shortStatusLabel(label: string, statusRaw?: string) {
   const raw = String(statusRaw || '').toLowerCase();
   if (raw === 'pending_buyer_verify') return 'Buyer Verify';
-  if (raw === 'pending_approval') return 'Pending Sign';
+  if (raw === 'pending_approval') return 'SCM Manager';
   if (raw === 'sent_to_vendor') return 'Vendor Accept';
   if (raw === 'awaiting_grn') return 'Awaiting GRN';
   if (raw === 'grn_completed') return 'GRN Done';
@@ -108,7 +108,7 @@ function shortStatusLabel(label: string, statusRaw?: string) {
   const full = String(label || '').trim();
   if (/scm manager signed/i.test(full)) return 'Buyer Verify';
   if (/pending vendor acceptance/i.test(full)) return 'Vendor Accept';
-  if (/pending scm manager sign/i.test(full)) return 'Pending Sign';
+  if (/pending scm manager sign/i.test(full)) return 'SCM Manager';
   return full;
 }
 
@@ -492,7 +492,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
           { label: 'Total PRs', value: stats.total, color: 'text-gray-900', icon: 'ri-file-list-3-line', bg: 'bg-teal-100', ic: 'text-teal-600' },
           { label: 'Ready for PO', value: stats.readyForPO, color: 'text-emerald-600', icon: 'ri-checkbox-circle-line', bg: 'bg-emerald-100', ic: 'text-emerald-600' },
           { label: 'Draft POs', value: stats.draft, color: 'text-slate-600', icon: 'ri-draft-line', bg: 'bg-slate-100', ic: 'text-slate-600' },
-          { label: 'Pending SCM Sign', value: stats.pendingApproval, color: 'text-amber-600', icon: 'ri-time-line', bg: 'bg-amber-100', ic: 'text-amber-600' },
+          { label: 'With SCM Manager', value: stats.pendingApproval, color: 'text-amber-600', icon: 'ri-time-line', bg: 'bg-amber-100', ic: 'text-amber-600' },
           { label: 'PO Approved', value: stats.poApproved, color: 'text-blue-600', icon: 'ri-file-check-line', bg: 'bg-blue-100', ic: 'text-blue-600' },
           { label: 'PO Rejected', value: stats.poRejected, color: 'text-red-600', icon: 'ri-close-circle-line', bg: 'bg-red-100', ic: 'text-red-600' },
         ].map((s) => (
@@ -527,7 +527,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
               [
                 ['all', `All (${stats.total})`],
                 ['ready', `Ready (${stats.readyForPO})`],
-                ['created', `Pending (${stats.pendingApproval})`],
+                ['created', `SCM Sign (${stats.pendingApproval})`],
                 ['approved', `Approved (${stats.poApproved})`],
                 ['rejected', `Rejected (${stats.poRejected})`],
                 ['draft', `Draft (${stats.draft})`],
@@ -672,14 +672,12 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                 </button>
                               )}
                               {pr.status === 'Pending Approval' && pr.poId && (
-                                <button
-                                  type="button"
-                                  onClick={() => openEditDraft(pr.poId!)}
-                                  className="px-2.5 py-1.5 border border-amber-300 text-amber-800 rounded-md text-xs font-semibold whitespace-nowrap hover:bg-amber-50"
-                                  title="Edit before SCM Manager signs"
+                                <span
+                                  className="px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-md whitespace-nowrap"
+                                  title="Sent to SCM Manager for sign / approval"
                                 >
-                                  Edit
-                                </button>
+                                  SCM Manager
+                                </span>
                               )}
                               {pr.status === 'Cancelled' && pr.poId && (
                                 <button
@@ -745,8 +743,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                             showCreatePo={pr.status === 'Ready for PO'}
                             onCreatePo={() => openCreatePo(pr.prId)}
                             onEditPo={
-                              pr.poId &&
-                              (pr.status === 'Draft' || pr.status === 'Pending Approval')
+                              pr.poId && pr.status === 'Draft'
                                 ? () => openEditDraft(pr.poId!)
                                 : undefined
                             }
