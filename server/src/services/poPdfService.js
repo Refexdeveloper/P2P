@@ -13,6 +13,22 @@ import { buildSignatureRenderOptions } from './signatureService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 
 function withResolvedSignature(po, options = {}) {
+  // Never inject a signature onto unsigned / pending-approval drafts
+  const forceUnsigned = options.signed === false;
+  const hasStoredSign = Boolean(
+    po?.signedAt ||
+      po?.signed_at ||
+      po?.signedPdfPath ||
+      po?.signed_pdf_path ||
+      po?.signatureImagePath ||
+      po?.signature_image_path ||
+      po?.signatureImageData ||
+      po?.signature_image_data ||
+      options.signed
+  );
+  if (forceUnsigned || !hasStoredSign) {
+    return { ...options, signature: options.signature || undefined, signed: false };
+  }
   const signature = options.signature || buildSignatureRenderOptions(po);
   return { ...options, signature };
 }

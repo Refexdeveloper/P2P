@@ -1088,7 +1088,7 @@ export default function CreatePOPage() {
   const manualEntryParam =
     searchParams.get('manual') === '1' || searchParams.get('mode') === 'manual-no-pr';
   const [skipApproval, setSkipApproval] = useState(
-    manualEntryParam || searchParams.get('legacy') === '1' || searchParams.get('skipApproval') === '1'
+    searchParams.get('legacy') === '1' || searchParams.get('skipApproval') === '1'
   );
   const [importedPoNumber, setImportedPoNumber] = useState('');
   const [importedVendorName, setImportedVendorName] = useState('');
@@ -3459,11 +3459,9 @@ export default function CreatePOPage() {
                     ? 'Saving...'
                     : isEditMode
                       ? 'Save'
-                      : isManualMode
-                        ? `Save ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
-                        : skipApproval
-                          ? `Create ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
-                          : 'Send for Approval'}
+                      : skipApproval
+                        ? `Create ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
+                        : 'Send for Approval'}
                 </button>
               </div>
             </div>
@@ -3559,7 +3557,7 @@ export default function CreatePOPage() {
                       <div>
                         <h3 className="text-sm font-bold text-gray-900">Entity for document number</h3>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          Select entity first for PO / WO numbering — no manager approval; data entry only
+                          Select entity first for PO / WO numbering — then send to SCM Manager for sign / approval
                         </p>
                       </div>
                       <div>
@@ -4889,7 +4887,7 @@ export default function CreatePOPage() {
                             ? `Saving will send this draft to SCM Manager${scmManager?.name ? ` (${scmManager.name})` : ''} for approval`
                             : 'Updated PO stays pending until you sign from PO Approval'
                         : isManualMode
-                          ? 'Manual entry — PR details and vendor quotations are stored; PO is saved without manager approval'
+                          ? `Manual entry — PR details and vendor quotations are stored; ${docLabel} is sent to SCM Manager for sign / approval`
                           : skipApproval
                             ? 'Create PO without manager approval (legacy import)'
                             : `PO will be sent to SCM Manager${scmManager?.name ? ` — ${scmManager.name}` : ''} for approval`}
@@ -4916,11 +4914,9 @@ export default function CreatePOPage() {
                       ? isEditMode ? 'Saving...' : 'Creating PO...'
                       : isEditMode
                         ? 'Save Changes'
-                        : isManualMode
-                          ? `Save ${docLabel === 'Work Order' ? 'WO' : 'PO'}`
-                          : skipApproval
-                            ? 'Create PO Only'
-                            : 'Send for Approval'}
+                        : skipApproval
+                          ? 'Create PO Only'
+                          : 'Send for Approval'}
                   </button>
                 </div>
               </div>

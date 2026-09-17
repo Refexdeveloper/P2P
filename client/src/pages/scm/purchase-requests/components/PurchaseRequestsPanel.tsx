@@ -538,7 +538,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
           {loading ? (
             <p className="p-8 text-sm text-gray-500">Loading...</p>
           ) : (
-            <table className="w-full min-w-[1280px]">
+            <table className="w-full table-fixed min-w-[1100px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="w-11 px-2 py-3"></th>
@@ -551,7 +551,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[110px]">
                     PO Date
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[160px]">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[28%]">
                     Title
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[120px]">
@@ -611,8 +611,10 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                           <td className="px-3 py-3 align-middle text-gray-700 text-sm whitespace-nowrap">
                             {pr.poDate || '—'}
                           </td>
-                          <td className="px-3 py-3 align-middle text-gray-900 font-medium text-sm truncate min-w-0" title={pr.title}>
-                            {pr.title}
+                          <td className="px-3 py-3 align-middle text-gray-900 font-medium text-sm max-w-0">
+                            <p className="truncate" title={pr.title}>
+                              {pr.title}
+                            </p>
                           </td>
                           <td className="px-3 py-3 align-middle text-gray-700 text-sm truncate max-w-[120px]" title={pr.department}>
                             {pr.department}

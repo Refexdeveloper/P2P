@@ -645,7 +645,7 @@ export default function TrackPoPage() {
           {loading ? (
             <p className="p-8 text-sm text-gray-500">Loading purchase orders...</p>
           ) : (
-            <table className="w-full min-w-[1380px]">
+            <table className="w-full table-fixed min-w-[1100px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-2 py-3 w-11"></th>
@@ -653,7 +653,7 @@ export default function TrackPoPage() {
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PO / WO Number</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[110px]">PO Date</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[90px]">Type</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase min-w-[160px]">Title / Vendor</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[22%]">Title / Vendor</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Entity</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Department</th>
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
@@ -704,7 +704,7 @@ export default function TrackPoPage() {
                                 (row.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order')}
                             </span>
                           </td>
-                          <td className="px-3 py-3 overflow-hidden">
+                          <td className="px-3 py-3 max-w-0 overflow-hidden">
                             <p className="text-sm font-medium text-gray-900 truncate" title={row.title}>
                               {row.title}
                             </p>

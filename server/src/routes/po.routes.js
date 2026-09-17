@@ -404,9 +404,16 @@ router.post('/pr/:prId', requireRoles('SCM Buyer'), async (req, res) => {
 router.post('/manual', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
   try {
     const data = await createManualPurchaseOrder(req.user, req.body || {});
+    const statusRaw = String(data.statusRaw || data.status || '').toLowerCase();
+    const pendingManager =
+      statusRaw === 'pending_approval' ||
+      statusRaw === 'pending scm manager sign' ||
+      String(data.status || '').toLowerCase().includes('pending');
     res.json({
       data,
-      message: `PO ${data.poNumber} created (manual entry — no approval)`,
+      message: pendingManager
+        ? `PO ${data.poNumber} created — sent to SCM Manager for sign / approval`
+        : `PO ${data.poNumber} created`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

@@ -191,17 +191,14 @@ export async function ensureDefaultScmManagerSignature({ backfill = false } = {}
 
   let backfilled = 0;
   if (backfill) {
+    // Only stamp POs that were actually signed by SCM Manager — never auto-approve
+    // or decorate unsigned manual / pending workflow POs with a default signature.
     const [signedRows] = await pool.query(
       `SELECT id, signed_pdf_path, signature_image_path, signature_name, status, signer_id
        FROM purchase_orders
-       WHERE (
-         signed_at IS NOT NULL
-         OR signed_pdf_path IS NOT NULL
-         OR status IN (
-           'pending_buyer_verify', 'approved', 'sent_to_vendor', 'accepted',
-           'partially_received', 'completed', 'closed'
-         )
-       )`
+       WHERE signed_at IS NOT NULL
+          OR signer_id IS NOT NULL
+          OR (signed_pdf_path IS NOT NULL AND signature_image_path IS NOT NULL)`
     );
 
     for (const row of signedRows) {

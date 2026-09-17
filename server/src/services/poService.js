@@ -1836,6 +1836,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
   }
 
   // Save Draft first → Save & Send: promote draft, assign official PO number now.
+  const skipApproval = Boolean(body?.skipApproval || body?.legacyImport || body?.oldPoImport);
   const draftPoId = Number(body.poId || body.id || 0) || null;
   if (draftPoId) {
     const [draftRows] = await pool.query(
@@ -1851,18 +1852,42 @@ export async function createManualPurchaseOrder(user, body = {}) {
       ) {
         throw new Error('You can only send your own draft POs');
       }
+      // updatePurchaseOrder (canBuyerRevise) assigns official number + pending_approval
       const promoted = await updatePurchaseOrder(user, draftPoId, body || {});
       await pool.query(
-        `UPDATE purchase_orders SET status = 'approved', updated_at = NOW() WHERE id = ?`,
-        [draftPoId]
+        `UPDATE purchase_orders SET status = ?, updated_at = NOW() WHERE id = ?`,
+        [skipApproval ? 'approved' : 'pending_approval', draftPoId]
       );
       const po = await getPurchaseOrderById(draftPoId);
       try {
-        const { fileName } = await generatePoPdf(po, { fileName: `${po.poNumber}_draft.pdf` });
+        const { fileName } = await generatePoPdf(po, {
+          fileName: `${po.poNumber}_draft.pdf`,
+          signed: false,
+        });
         await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, draftPoId]);
         po.pdfPath = fileName;
       } catch {
         /* non-fatal */
+      }
+      if (!skipApproval && po) {
+        try {
+          const managers = await resolveRoleEmails('SCM Manager');
+          const attachments = await poPdfMailAttachment(po);
+          queuePoWorkflowNotification(po, {
+            action: 'assign',
+            stageLabel: 'SCM Manager PO Approval',
+            recipientEmails: managers.map((m) => m.email),
+            recipientName: managers[0]?.name || 'SCM Manager',
+            actorName: user.name,
+            actorRole: user.role,
+            remarks: `Manual ${po.poNumber} created and sent for approval`,
+            portalUrl: poPortalUrl('/scm/po-approval'),
+            ctaLabel: 'Open PO Approval',
+            attachments,
+          });
+        } catch (err) {
+          console.warn('Manual PO manager notify failed:', err.message);
+        }
       }
       return po || promoted;
     }
@@ -1923,7 +1948,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
   const docLabel = purchaseTypeLabel(purchaseType);
   const referencePoNumber = body.referencePoNumber?.trim() || null;
   const requestedPoNumber = normalizeRequestedPoNumber(body?.poNumber || body?.existingPoNumber);
-  const initialStatus = 'approved';
+  const initialStatus = skipApproval ? 'approved' : 'pending_approval';
 
   const conn = await pool.getConnection();
   try {
@@ -2030,9 +2055,33 @@ export async function createManualPurchaseOrder(user, body = {}) {
 
     const [poRows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
     const po = await enrichPO(poRows[0]);
-    const { fileName } = await generatePoPdf(po, { fileName: `${poNumber}_draft.pdf` });
+    const { fileName } = await generatePoPdf(po, {
+      fileName: `${poNumber}_draft.pdf`,
+      signed: false,
+    });
     await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
     po.pdfPath = fileName;
+
+    if (!skipApproval) {
+      try {
+        const managers = await resolveRoleEmails('SCM Manager');
+        const attachments = await poPdfMailAttachment(po);
+        queuePoWorkflowNotification(po, {
+          action: 'assign',
+          stageLabel: 'SCM Manager PO Approval',
+          recipientEmails: managers.map((m) => m.email),
+          recipientName: managers[0]?.name || 'SCM Manager',
+          actorName: user.name,
+          actorRole: user.role,
+          remarks: `Manual ${poNumber} created and sent for approval`,
+          portalUrl: poPortalUrl('/scm/po-approval'),
+          ctaLabel: 'Open PO Approval',
+          attachments,
+        });
+      } catch (err) {
+        console.warn('Manual PO manager notify failed:', err.message);
+      }
+    }
 
     return po;
   } catch (err) {

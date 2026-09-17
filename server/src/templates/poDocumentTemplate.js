@@ -579,6 +579,63 @@ function withResolvedQuoteNo(po) {
   };
 }
 
+/** Plain text start of an HTML fragment (for detecting typed a./1./I. markers). */
+function stripHtmlToPlainStart(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#160;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** True when LI/paragraph text already starts with a typed list marker (a. / 1. / I. / •). */
+function hasTypedListMarker(html) {
+  const text = stripHtmlToPlainStart(html);
+  return /^(?:[a-z][.)]|[ivxlcdm]{1,6}[.)]|\d{1,3}[.)]|[•·▪◦*·]|(?:[-–—]\s))\s*/i.test(text);
+}
+
+/**
+ * Editor often creates <ol><li>a. Scope…</li></ol> when users type letter markers
+ * AND use the numbered-list button — PDF then renders "1. a. Scope…".
+ * Flatten those lists to paragraphs so only the typed marker remains.
+ */
+function flattenListsWithTypedMarkers(html) {
+  let out = String(html || '');
+  let guard = 0;
+  // Innermost lists first (no nested ul/ol inside)
+  const innerListRe =
+    /<(ul|ol)\b([^>]*)>((?:(?!<\/?(?:ul|ol)\b)[\s\S])*?)<\/\1>/gi;
+
+  while (guard < 20) {
+    guard += 1;
+    let changed = false;
+    out = out.replace(innerListRe, (full, _tag, _attrs, body) => {
+      const lis = [...String(body || '').matchAll(/<li\b[^>]*>[\s\S]*?<\/li>/gi)].map((m) => m[0]);
+      if (!lis.length) return full;
+      const marked = lis.filter((li) => {
+        const inner = li.replace(/^<li\b[^>]*>/i, '').replace(/<\/li>\s*$/i, '');
+        return hasTypedListMarker(inner);
+      }).length;
+      // Majority already have typed markers → drop auto list numbers
+      if (marked < Math.ceil(lis.length / 2)) return full;
+      changed = true;
+      return lis
+        .map((li) => {
+          const inner = li.replace(/^<li\b[^>]*>/i, '').replace(/<\/li>\s*$/i, '').trim();
+          if (!inner) return '';
+          if (/^<(p|div|h[1-6])\b/i.test(inner)) return inner;
+          return `<p>${inner}</p>`;
+        })
+        .filter(Boolean)
+        .join('');
+    });
+    if (!changed) break;
+  }
+  return out;
+}
+
 /** Replace clause placeholders with live PO entity + vendor + commercial fields */
 function applyClausePlaceholders(html, po) {
   const company = escapeHtml(po.entity || po.entityName || 'Refex Group of Companies');
@@ -633,7 +690,8 @@ function applyClausePlaceholders(html, po) {
       .replace(/Purchase\s+Order/g, 'Work Order')
       .replace(/purchase\s+order/gi, 'work order');
   }
-  return out;
+  // Prevent PDF "1. a." / "2. b." when description already has typed letter/number markers
+  return flattenListsWithTypedMarkers(out);
 }
 
 /** Header may be plain text or rich-text HTML from the editor */
