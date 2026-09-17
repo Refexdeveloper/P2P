@@ -21,7 +21,7 @@ const isAwaitingManager = (status: string) => {
 
 const isRejected = (status: string) => {
   const s = String(status || '');
-  return s === 'PO Rejected' || s === 'rejected';
+  return s === 'PO Rejected' || s === 'WO Rejected' || s === 'rejected';
 };
 
 /** Manager already signed — includes buyer verify, vendor, GRN, invoice, payment */
@@ -38,6 +38,7 @@ const StatusBadge = ({ status }: { status: string }) => {
     'SCM Manager Signed — Buyer Verify': 'bg-blue-100 text-blue-700 border border-blue-200',
     'Pending Buyer Verify': 'bg-blue-100 text-blue-700 border border-blue-200',
     'PO Approved': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+    'WO Approved': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     'Sent to Vendor': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     'Pending Vendor Acceptance': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     'Vendor Accepted': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
@@ -47,8 +48,9 @@ const StatusBadge = ({ status }: { status: string }) => {
     'Invoice Entry': 'bg-indigo-100 text-indigo-700 border border-indigo-200',
     'Pending Accounts Approval': 'bg-indigo-100 text-indigo-700 border border-indigo-200',
     'Approved for Payment': 'bg-indigo-100 text-indigo-700 border border-indigo-200',
-    'Paid': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+    Paid: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     'PO Rejected': 'bg-red-100 text-red-700 border border-red-200',
+    'WO Rejected': 'bg-red-100 text-red-700 border border-red-200',
     'Vendor Rejected': 'bg-red-100 text-red-700 border border-red-200',
   };
   const icon: Record<string, string> = {
@@ -57,8 +59,10 @@ const StatusBadge = ({ status }: { status: string }) => {
     'SCM Manager Signed — Buyer Verify': 'ri-shield-check-line',
     'Pending Buyer Verify': 'ri-shield-check-line',
     'PO Approved': 'ri-check-double-line',
+    'WO Approved': 'ri-check-double-line',
     'Sent to Vendor': 'ri-mail-send-line',
     'PO Rejected': 'ri-close-circle-line',
+    'WO Rejected': 'ri-close-circle-line',
   };
   return (
     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${map[status] || 'bg-gray-100 text-gray-600'}`}>

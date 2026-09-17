@@ -824,7 +824,11 @@ async function enrichPO(row) {
     subtotal: Number(row.subtotal),
     taxAmount: Number(row.tax_amount),
     grandTotal: Number(row.grand_total),
-    status: mapPoStatusUI(row.status, row.vendor_acceptance_status),
+    status: mapPoStatusUI(
+      row.status,
+      row.vendor_acceptance_status,
+      row.purchase_type || pr?.purchaseType
+    ),
     statusRaw: row.status,
     vendorAcceptanceStatus: row.vendor_acceptance_status || null,
     vendorAcceptanceMode: row.vendor_acceptance_mode || null,
@@ -873,20 +877,22 @@ async function enrichPO(row) {
   };
 }
 
-function mapPoStatusUI(status, acceptanceStatus) {
+function mapPoStatusUI(status, acceptanceStatus, purchaseType) {
   if (status === 'sent_to_vendor') {
     if (acceptanceStatus === 'accepted') return 'Vendor Accepted';
     if (acceptanceStatus === 'rejected') return 'Vendor Rejected';
     if (acceptanceStatus === 'partial') return 'Partially Accepted';
     return 'Pending Vendor Acceptance';
   }
+  const isWo = String(purchaseType || '').toLowerCase() === 'work_order';
+  const doc = isWo ? 'WO' : 'PO';
   const map = {
     draft: 'Draft',
     imported: 'Imported',
     pending_approval: 'Pending SCM Manager Sign',
     pending_buyer_verify: 'SCM Manager Signed — Buyer Verify',
-    approved: 'PO Approved',
-    rejected: 'PO Rejected',
+    approved: `${doc} Approved`,
+    rejected: `${doc} Rejected`,
     sent_to_vendor: 'Pending Vendor Acceptance',
     awaiting_grn: 'Awaiting GRN',
     grn_completed: 'GRN Completed',
@@ -2559,6 +2565,87 @@ export async function savePurchaseOrderDraft(user, body = {}) {
 }
 
 /**
+ * Live fix: manual POs that were wrongly saved as approved/signed without SCM Manager
+ * sign are moved back to pending_approval so Manager can sign them.
+ * Targets: pr_id IS NULL, no signed_at, status approved / pending_buyer_verify (unsigned).
+ */
+export async function repairUnsignedManualPosToPendingApproval() {
+  const [rows] = await pool.query(
+    `SELECT id, po_number, status, pdf_path, signed_pdf_path
+     FROM purchase_orders
+     WHERE pr_id IS NULL
+       AND COALESCE(purchase_type, 'purchase_order') <> 'sass'
+       AND po_number NOT LIKE 'CS-%'
+       AND signed_at IS NULL
+       AND status IN ('approved', 'pending_buyer_verify')
+       AND (
+         manual_context_json IS NOT NULL
+         OR created_by IS NOT NULL
+       )
+     ORDER BY id ASC
+     LIMIT 500`
+  );
+
+  let repaired = 0;
+  for (const row of rows) {
+    try {
+      await pool.query(
+        `UPDATE purchase_orders SET
+           status = 'pending_approval',
+           signed_pdf_path = NULL,
+           signer_id = NULL,
+           signature_name = NULL,
+           signature_image_path = NULL,
+           signature_image_data = NULL,
+           signer_comments = NULL,
+           signature_dsc_json = NULL,
+           updated_at = NOW()
+         WHERE id = ?
+           AND signed_at IS NULL
+           AND status IN ('approved', 'pending_buyer_verify')`,
+        [row.id]
+      );
+
+      // Drop stale signed/approved PDF files so View PDF regenerates unsigned
+      for (const name of [row.signed_pdf_path, row.pdf_path]) {
+        if (!name) continue;
+        try {
+          const full = path.join(PO_UPLOAD_DIR, path.basename(String(name)));
+          if (fs.existsSync(full)) fs.unlinkSync(full);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      try {
+        const po = await getPurchaseOrderById(row.id);
+        if (po) {
+          const { fileName } = await generatePoPdf(po, {
+            fileName: `${po.poNumber}_draft.pdf`,
+            signed: false,
+          });
+          await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, row.id]);
+        }
+      } catch (pdfErr) {
+        console.warn(
+          `Manual PO repair PDF regen skipped id=${row.id}:`,
+          pdfErr.message
+        );
+      }
+
+      repaired += 1;
+      console.log(
+        `Manual PO repair: ${row.po_number} (${row.status} → pending_approval) id=${row.id}`
+      );
+    } catch (err) {
+      console.warn(`Manual PO repair failed id=${row.id}:`, err.message);
+    }
+  }
+
+  return { scanned: rows.length, repaired };
+}
+
+/**
  * Convert draft POs that already consumed official PO/WO numbers back to DRAFT-{id}
  * and realign document sequences. Official numbers are assigned only on Save & Send.
  */
@@ -2678,8 +2765,10 @@ export async function listPurchaseOrders(
   return Promise.all(rows.map(enrichPO));
 }
 
-function mapTrackPoStatus(statusRaw) {
+function mapTrackPoStatus(statusRaw, purchaseType) {
   const s = String(statusRaw || '').toLowerCase();
+  const isWo = String(purchaseType || '').toLowerCase() === 'work_order';
+  const doc = isWo ? 'WO' : 'PO';
   if (s === 'pending_approval') {
     return { status: 'pending', statusLabel: 'Pending SCM Manager Sign' };
   }
@@ -2691,9 +2780,9 @@ function mapTrackPoStatus(statusRaw) {
   if (s === 'approved_for_payment') return { status: 'payment', statusLabel: 'Approved for Payment' };
   if (s === 'paid') return { status: 'paid', statusLabel: 'Paid' };
   if (s === 'awaiting_grn' || s === 'grn_completed') return { status: 'grn', statusLabel: s === 'paid' ? 'Paid' : 'GRN' };
-  if (s === 'rejected') return { status: 'rejected', statusLabel: 'Rejected' };
+  if (s === 'rejected') return { status: 'rejected', statusLabel: `${doc} Rejected` };
   if (s === 'sent_to_vendor') return { status: 'sent', statusLabel: 'Pending Vendor Acceptance' };
-  if (s === 'approved') return { status: 'approved', statusLabel: 'PO Approved' };
+  if (s === 'approved') return { status: 'approved', statusLabel: `${doc} Approved` };
   if (s === 'imported') return { status: 'imported', statusLabel: 'Imported' };
   if (s === 'draft') return { status: 'draft', statusLabel: 'Draft' };
   if (s === 'cancelled') return { status: 'cancelled', statusLabel: 'Cancelled' };
@@ -2953,8 +3042,14 @@ export async function listTrackPurchaseOrders(
   const data = dataRows.map((r) => {
     const mapped =
       r.kind === 'ready'
-        ? { status: 'ready', statusLabel: 'Ready for PO' }
-        : mapTrackPoStatus(r.status_raw);
+        ? {
+            status: 'ready',
+            statusLabel:
+              String(r.purchase_type || '').toLowerCase() === 'work_order'
+                ? 'Ready for WO'
+                : 'Ready for PO',
+          }
+        : mapTrackPoStatus(r.status_raw, r.purchase_type);
     return {
       key: r.row_key,
       prId: r.pr_id != null ? Number(r.pr_id) : 0,

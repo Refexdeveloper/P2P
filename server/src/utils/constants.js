@@ -147,6 +147,10 @@ export function resolveRequesterPrDisplay(
   const poStatus = String(po.status || '');
   const poSentBack = Boolean(po.poSentBack);
   const poSigned = Boolean(po.signedAt || po.signed_at || po.signedPdfPath || po.signed_pdf_path);
+  const effectivePurchaseType = po.purchaseType || po.purchase_type || purchaseType;
+  const isWo = String(effectivePurchaseType || '').toLowerCase() === 'work_order';
+  const doc = isWo ? 'WO' : 'PO';
+  const docLong = isWo ? 'Work Order' : 'Purchase Order';
 
   let statusFrontend = mapStatusToFrontend(prStatus);
   let statusUI = mapStatusToManagerUI(prStatus, prFlow, vendorSelection, purchaseType);
@@ -179,7 +183,7 @@ export function resolveRequesterPrDisplay(
   if (poId && poSentBack && poStatus === 'draft') {
     return {
       statusFrontend: 'returned',
-      statusUI: 'Sent Back — Revise PO',
+      statusUI: `Sent Back — Revise ${doc}`,
       poId,
       poNumber,
       poStatus,
@@ -192,7 +196,7 @@ export function resolveRequesterPrDisplay(
     if (poStatus === 'pending_buyer_verify' && poSigned) {
       return {
         statusFrontend: 'approved',
-        statusUI: 'PO Signed — Pending Buyer Verify',
+        statusUI: `${doc} Signed — Pending Buyer Verify`,
         poId,
         poNumber,
         poStatus,
@@ -203,7 +207,7 @@ export function resolveRequesterPrDisplay(
     if (poStatus === 'approved') {
       return {
         statusFrontend: 'approved',
-        statusUI: 'PO Approved — Pending Release',
+        statusUI: `${doc} Approved — Pending Release`,
         poId,
         poNumber,
         poStatus,
@@ -214,14 +218,14 @@ export function resolveRequesterPrDisplay(
     if (REQUESTER_PO_DOCUMENT_STATUSES.has(poStatus)) {
       const releasedLabel =
         poStatus === 'sent_to_vendor'
-          ? 'PO Released to Vendor'
+          ? `${doc} Released to Vendor`
           : poStatus === 'awaiting_grn'
             ? 'Awaiting GRN'
             : poStatus === 'grn_completed'
               ? 'GRN Completed'
               : poStatus === 'invoice_entry'
                 ? 'Invoice Entry'
-                : 'PO Released';
+                : `${doc} Released`;
       return {
         statusFrontend: 'po_issued',
         statusUI: releasedLabel,
@@ -235,7 +239,7 @@ export function resolveRequesterPrDisplay(
     if (poStatus === 'pending_approval') {
       return {
         statusFrontend: 'pending_approval',
-        statusUI: 'Pending SCM Manager PO Sign',
+        statusUI: `Pending SCM Manager ${doc} Sign`,
         poId,
         poNumber,
         poStatus,
@@ -246,7 +250,7 @@ export function resolveRequesterPrDisplay(
     if (poStatus === 'draft') {
       return {
         statusFrontend: 'pending_approval',
-        statusUI: 'PO Creation In Progress',
+        statusUI: `${docLong} Creation In Progress`,
         poId,
         poNumber,
         poStatus,

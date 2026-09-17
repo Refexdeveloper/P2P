@@ -767,6 +767,18 @@ export async function runStartupMigrations() {
   }
 
   try {
+    const { repairUnsignedManualPosToPendingApproval } = await import('./poService.js');
+    const manualFix = await repairUnsignedManualPosToPendingApproval();
+    if (manualFix.scanned) {
+      console.log(
+        `Manual PO approval repair: scanned=${manualFix.scanned}, repaired=${manualFix.repaired}`
+      );
+    }
+  } catch (err) {
+    console.warn('Manual PO approval repair skipped:', err.message);
+  }
+
+  try {
     const { rewriteDraftPoNumbersToPlaceholders } = await import('./poService.js');
     const draftFix = await rewriteDraftPoNumbersToPlaceholders();
     if (draftFix.rewritten || draftFix.sequencesFixed) {

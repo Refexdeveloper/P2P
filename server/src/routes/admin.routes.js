@@ -20,6 +20,7 @@ import {
   processSlaBreaches,
 } from '../services/slaBreachService.js';
 import { SLA_REMINDER_SLOTS, normalizeSlaReminderSlot } from '../utils/sla.js';
+import { repairUnsignedManualPosToPendingApproval } from '../services/poService.js';
 
 const router = Router();
 router.use(authenticate);
@@ -210,6 +211,19 @@ router.post('/sla/process-daily-reminders', async (req, res) => {
       });
     }
     res.json({ data, message: 'SLA morning/evening reminders processed' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Repair manual POs wrongly marked approved/signed → pending SCM Manager sign */
+router.post('/po/repair-manual-pending-approval', async (_req, res) => {
+  try {
+    const data = await repairUnsignedManualPosToPendingApproval();
+    res.json({
+      data,
+      message: `Repaired ${data.repaired} of ${data.scanned} unsigned manual PO(s) to pending SCM Manager approval`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
