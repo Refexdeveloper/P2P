@@ -633,6 +633,10 @@ export default function RfqEntryDetailPage() {
   const isFinalized = isScm
     ? Boolean(config?.finalizedAt)
     : Boolean(config?.finalizedAt || config?.requesterSubmittedAt);
+  // Super Admin can still fix quotation files + amounts after SCM Manager sign
+  const canAdminEditFinalizedQuotes =
+    user?.role === 'Super Admin' || Boolean(user?.isSuperAdmin);
+  const canEditQuoteAmounts = !isFinalized || canAdminEditFinalizedQuotes;
   const selectedEntity = useMemo(
     () => (pr?.entityId ? entities.find((e) => Number(e.id) === Number(pr.entityId)) || null : null),
     [entities, pr?.entityId]
@@ -1292,7 +1296,7 @@ export default function RfqEntryDetailPage() {
   };
 
   const handleSaveExistingQuote = async (row: TableRow, opts?: { acceptZero?: boolean }) => {
-    if (isFinalized) {
+    if (!canEditQuoteAmounts) {
       failQuote('RFQ is approved — quotation cannot be edited');
       return;
     }
@@ -2000,7 +2004,7 @@ export default function RfqEntryDetailPage() {
   };
 
   const openQuotePopup = (row: TableRow, targetRound?: number) => {
-    if (isFinalized) return;
+    if (!canEditQuoteAmounts) return;
     setError('');
     setQuotePopupError('');
     const existingRound = latestExistingRound(row);
@@ -2010,6 +2014,12 @@ export default function RfqEntryDetailPage() {
     if (existingForWanted) {
       startEditExistingQuote(row, existingForWanted);
       setQuotePopupId(row.invitationId);
+      return;
+    }
+
+    // After finalize, Super Admin may only edit existing quotes (not start new rounds)
+    if (isFinalized && canAdminEditFinalizedQuotes) {
+      failQuote('RFQ is finalized — open an existing quote round to update amount or files.');
       return;
     }
 
@@ -2274,6 +2284,11 @@ export default function RfqEntryDetailPage() {
               ? 'RFQ finalized. This task is on SCM Dashboard → RFQ Approval (or Create PO for own vendor).'
               : 'RFQ finalized. Task completed.'
             : 'RFQ submitted for HOD vendor final → L2 → CFO approval. Task completed.'}
+          {canAdminEditFinalizedQuotes ? (
+            <span className="block mt-1 text-teal-800 font-medium">
+              Super Admin: you can still Edit existing quotes to update amounts and quotation files.
+            </span>
+          ) : null}
         </div>
       )}
 
@@ -2445,6 +2460,7 @@ export default function RfqEntryDetailPage() {
                 recommendedId={recommendedId}
                 quotedCount={quotedCount}
                 isFinalized={isFinalized}
+                allowEditWhenFinalized={canAdminEditFinalizedQuotes}
                 removingId={removingId}
                 resendingId={resendingId}
                 preferredTab={preferredTab}
@@ -2487,8 +2503,10 @@ export default function RfqEntryDetailPage() {
                   const isEditingExisting = editingQuoteIds.has(row.invitationId);
                   const quoteFieldsEditable =
                     mode === 'entry' &&
-                    !isFinalized &&
-                    (awaitingManualEntry || (isEditingExisting && canEditExistingQuote));
+                    canEditQuoteAmounts &&
+                    (awaitingManualEntry
+                      ? !isFinalized
+                      : isEditingExisting && canEditExistingQuote);
                   const awaitingVendorEmail =
                     isEmailRow &&
                     !row.hasActiveQuote &&
@@ -2559,7 +2577,7 @@ export default function RfqEntryDetailPage() {
                               {savingManualId === row.invitationId ? 'Saving...' : 'Save quote + file'}
                             </button>
                           )}
-                          {!isFinalized &&
+                          {canEditQuoteAmounts &&
                             (isEditingExisting || (row.hasActiveQuote && canEditExistingQuote)) &&
                             !awaitingManualEntry && (
                             <button

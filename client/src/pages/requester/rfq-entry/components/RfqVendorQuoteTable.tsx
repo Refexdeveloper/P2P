@@ -56,6 +56,8 @@ interface Props {
   recommendedId: number | null;
   quotedCount: number;
   isFinalized?: boolean;
+  /** Super Admin: allow Edit on existing quotes after RFQ finalize / PO sign */
+  allowEditWhenFinalized?: boolean;
   maxRounds?: number | null;
   /** PR currency for price / reduction display (INR | USD | EUR). */
   currency?: string | null;
@@ -169,6 +171,7 @@ export default function RfqVendorQuoteTable({
   recommendedId,
   quotedCount,
   isFinalized,
+  allowEditWhenFinalized = false,
   onEdit,
   onChoose,
   onRemove,
@@ -181,6 +184,7 @@ export default function RfqVendorQuoteTable({
   preferredTab,
   currency,
 }: Props) {
+  const quoteEditLocked = Boolean(isFinalized) && !allowEditWhenFinalized;
   const moneyCode = normalizeCurrency(currency);
   const moneySym = currencySymbol(moneyCode);
   const formatCurrency = (n: number) =>
@@ -493,11 +497,17 @@ export default function RfqVendorQuoteTable({
                       <button
                         type="button"
                         onClick={() => {
-                          if (isFinalized) return;
+                          if (quoteEditLocked) return;
                           onEdit(row, activeTab === 'all' ? undefined : Number(activeTab));
                         }}
-                        disabled={Boolean(isFinalized)}
-                        title={isFinalized ? 'RFQ is approved — editing is locked' : 'Fill quote fields'}
+                        disabled={quoteEditLocked}
+                        title={
+                          quoteEditLocked
+                            ? 'RFQ is approved — editing is locked'
+                            : allowEditWhenFinalized && isFinalized
+                              ? 'Admin: update quote amount or files'
+                              : 'Fill quote fields'
+                        }
                         className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none disabled:hover:bg-slate-900 inline-flex items-center gap-1"
                       >
                         <i className="ri-edit-line" />

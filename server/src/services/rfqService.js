@@ -3420,10 +3420,13 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
   }
   {
     const config = await getOrCreateRfqConfig(row.pr_id);
-    if (config.finalizedAt) {
+    const isPrivilegedAdmin =
+      user.role === 'Super Admin' || Boolean(user.isSuperAdmin);
+    // Super Admin may correct amounts/files after SCM Manager sign (finalized RFQ).
+    if (config.finalizedAt && !isPrivilegedAdmin) {
       throw new Error('RFQ already finalized — quotation amounts cannot be changed');
     }
-    if (user.role === 'Requester' && config.requesterSubmittedAt) {
+    if (user.role === 'Requester' && config.requesterSubmittedAt && !isPrivilegedAdmin) {
       throw new Error('RFQ already submitted — quotation amounts cannot be changed');
     }
   }
