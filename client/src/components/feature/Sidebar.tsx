@@ -2,14 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ensureNavigation, isMastersNavItem } from '../../constants/roleNavigation';
 import { useAuth } from '../../contexts/AuthContext';
-import { invoiceData } from '../../mocks/invoice-data';
 import { getUserDesignation } from '../../utils/roleDisplay';
-import { rfqApi, taskApi } from '../../services/api';
+import { accountsApi, rfqApi, taskApi } from '../../services/api';
 
 type NavBadgeCounts = {
   tasks: number;
   rfqEntry: number;
   rfqApproval: number;
+  invoiceVerification: number;
+  payment: number;
 };
 
 function badgeForPath(path: string, counts: NavBadgeCounts, role?: string | null): number | null {
@@ -25,18 +26,10 @@ function badgeForPath(path: string, counts: NavBadgeCounts, role?: string | null
     return n > 0 ? n : null;
   }
   if (path === '/accounts/invoice-verification') {
-    const n = invoiceData.filter((i) => i.status === 'Pending Verification' || i.status === 'Discrepancy').length;
-    return n > 0 ? n : null;
+    return counts.invoiceVerification > 0 ? counts.invoiceVerification : null;
   }
-  if (path === '/accounts/payment') {
-    const n = invoiceData.filter(
-      (i) => i.status === 'Approved for Payment' && (i.paymentStatus === 'Pending Payment' || i.paymentStatus === 'Overdue')
-    ).length;
-    return n > 0 ? n : null;
-  }
-  if (path === '/accounts/scm-payment-approval') {
-    const n = invoiceData.filter((i) => i.status === 'Approved for Payment').length;
-    return n > 0 ? n : null;
+  if (path === '/accounts/payment' || path === '/accounts/scm-payment-approval') {
+    return counts.payment > 0 ? counts.payment : null;
   }
   return null;
 }
@@ -74,6 +67,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
     tasks: 0,
     rfqEntry: 0,
     rfqApproval: 0,
+    invoiceVerification: 0,
+    payment: 0,
   });
 
   // Desktop: collapse when not hovered. Mobile drawer: always expanded when open.
@@ -97,16 +92,27 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       role === 'PR Manager' ||
       role === 'CFO' ||
       role === 'Super Admin';
+    const wantsAccounts =
+      role === 'Accounts Payable' ||
+      role === 'Accounts Manager' ||
+      role === 'SCM Manager' ||
+      role === 'Super Admin';
 
     (async () => {
       try {
-        const [taskRes, entryRes, approvalRes] = await Promise.all([
+        const [taskRes, entryRes, approvalRes, invoiceRes, paymentRes] = await Promise.all([
           wantsTasks ? taskApi.list().catch(() => ({ data: [] as unknown[] })) : Promise.resolve({ data: [] }),
           wantsRfqEntry
             ? rfqApi.listScmEntryPending().catch(() => ({ data: [] as unknown[] }))
             : Promise.resolve({ data: [] }),
           wantsRfqApproval
             ? rfqApi.listPostApprovalPending().catch(() => ({ data: [] as unknown[] }))
+            : Promise.resolve({ data: [] }),
+          wantsAccounts
+            ? accountsApi.listInvoices().catch(() => ({ data: [] as unknown[] }))
+            : Promise.resolve({ data: [] }),
+          wantsAccounts
+            ? accountsApi.listInvoices(true).catch(() => ({ data: [] as unknown[] }))
             : Promise.resolve({ data: [] }),
         ]);
         if (cancelled) return;
@@ -116,6 +122,32 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           return !s || s === 'pending_approval' || s === 'pending';
         });
         const approvalCount = Array.isArray(approvalRes.data) ? approvalRes.data.length : 0;
+        const invoices = (invoiceRes.data as Array<{ status?: string; statusRaw?: string }>) || [];
+        const invoiceVerification = invoices.filter((i) => {
+          const status = String(i.status || '');
+          const raw = String(i.statusRaw || '').toLowerCase();
+          return (
+            status === 'Pending Verification' ||
+            status === 'Discrepancy' ||
+            raw === 'awaiting_upload' ||
+            raw === 'pending_verification' ||
+            raw === 'discrepancy'
+          );
+        }).length;
+        const paymentRows =
+          (paymentRes.data as Array<{ status?: string; paymentStatus?: string; statusRaw?: string }>) ||
+          [];
+        const payment = paymentRows.filter((i) => {
+          const status = String(i.status || '');
+          const pay = String(i.paymentStatus || '');
+          const raw = String(i.statusRaw || '').toLowerCase();
+          return (
+            status === 'Approved for Payment' ||
+            raw === 'approved_for_payment' ||
+            pay === 'Pending Payment' ||
+            pay === 'Overdue'
+          );
+        }).length;
         setBadgeCounts({
           tasks: pendingTasks.length || 0,
           // SCM Manager "RFQ Entry" menu is the approval queue
@@ -126,9 +158,19 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                 ? entryRes.data.length
                 : 0,
           rfqApproval: approvalCount,
+          invoiceVerification,
+          payment,
         });
       } catch {
-        if (!cancelled) setBadgeCounts({ tasks: 0, rfqEntry: 0, rfqApproval: 0 });
+        if (!cancelled) {
+          setBadgeCounts({
+            tasks: 0,
+            rfqEntry: 0,
+            rfqApproval: 0,
+            invoiceVerification: 0,
+            payment: 0,
+          });
+        }
       }
     })();
 
@@ -223,7 +265,11 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
     const isActive =
       location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     const isAlertBadge =
-      item.path === '/tasks' || item.path === '/scm/rfq-entry' || item.path === '/rfq-approval';
+      item.path === '/tasks' ||
+      item.path === '/scm/rfq-entry' ||
+      item.path === '/rfq-approval' ||
+      item.path === '/accounts/invoice-verification' ||
+      item.path === '/accounts/payment';
     return (
       <Link
         key={item.path}
