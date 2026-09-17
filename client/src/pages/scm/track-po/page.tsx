@@ -160,6 +160,18 @@ function statusColor(status: string) {
   }
 }
 
+function shortStatusLabel(label: string, status?: string) {
+  const s = String(status || '').toLowerCase();
+  if (s === 'approved' && /buyer verify/i.test(label)) return 'Buyer Verify';
+  if (s === 'pending') return 'Pending Sign';
+  if (s === 'sent') return 'Vendor Accept';
+  const full = String(label || '').trim();
+  if (/scm manager signed/i.test(full)) return 'Buyer Verify';
+  if (/pending vendor acceptance/i.test(full)) return 'Vendor Accept';
+  if (/pending scm manager sign/i.test(full)) return 'Pending Sign';
+  return full;
+}
+
 export default function TrackPoPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -657,7 +669,7 @@ export default function TrackPoPage() {
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Entity</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Department</th>
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[200px]">Status</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px] min-w-[140px]">Status</th>
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[160px]">Actions</th>
                 </tr>
               </thead>
@@ -721,9 +733,12 @@ export default function TrackPoPage() {
                           <td className="px-3 py-3 text-sm font-semibold text-gray-900 text-right tabular-nums whitespace-nowrap">
                             {formatCurrency(row.amount)}
                           </td>
-                          <td className="px-3 py-3 align-middle">
-                            <span className={`inline-flex whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium ${statusColor(row.status)}`}>
-                              {row.statusLabel}
+                          <td className="px-3 py-3 align-middle max-w-[140px] w-[140px]">
+                            <span
+                              className={`inline-flex max-w-full px-2.5 py-1 rounded-full text-xs font-medium ${statusColor(row.status)}`}
+                              title={row.statusLabel}
+                            >
+                              <span className="truncate">{shortStatusLabel(row.statusLabel, row.status)}</span>
                             </span>
                           </td>
                           <td className="px-3 py-3 align-middle">

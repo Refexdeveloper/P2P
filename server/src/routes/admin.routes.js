@@ -222,7 +222,7 @@ router.post('/po/repair-manual-pending-approval', async (_req, res) => {
     const data = await repairUnsignedManualPosToPendingApproval();
     res.json({
       data,
-      message: `Repaired ${data.repaired} of ${data.scanned} unsigned manual PO(s) to pending SCM Manager approval`,
+      message: `Repaired ${data.repaired} of ${data.scanned} unsigned manual PO(s) back to draft for SCM edit`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

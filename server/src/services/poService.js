@@ -2565,9 +2565,8 @@ export async function savePurchaseOrderDraft(user, body = {}) {
 }
 
 /**
- * Live fix: manual POs that were wrongly saved as approved/signed without SCM Manager
- * sign are moved back to pending_approval so Manager can sign them.
- * Targets: pr_id IS NULL, no signed_at, status approved / pending_buyer_verify (unsigned).
+ * Live fix: manual POs wrongly saved as approved/signed without SCM Manager sign
+ * are moved back to draft so SCM Buyer can Edit Draft, then Send for Approval.
  */
 export async function repairUnsignedManualPosToPendingApproval() {
   const [rows] = await pool.query(
@@ -2591,7 +2590,7 @@ export async function repairUnsignedManualPosToPendingApproval() {
     try {
       await pool.query(
         `UPDATE purchase_orders SET
-           status = 'pending_approval',
+           status = 'draft',
            signed_pdf_path = NULL,
            signer_id = NULL,
            signature_name = NULL,
@@ -2606,7 +2605,6 @@ export async function repairUnsignedManualPosToPendingApproval() {
         [row.id]
       );
 
-      // Drop stale signed/approved PDF files so View PDF regenerates unsigned
       for (const name of [row.signed_pdf_path, row.pdf_path]) {
         if (!name) continue;
         try {
@@ -2627,15 +2625,12 @@ export async function repairUnsignedManualPosToPendingApproval() {
           await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, row.id]);
         }
       } catch (pdfErr) {
-        console.warn(
-          `Manual PO repair PDF regen skipped id=${row.id}:`,
-          pdfErr.message
-        );
+        console.warn(`Manual PO repair PDF regen skipped id=${row.id}:`, pdfErr.message);
       }
 
       repaired += 1;
       console.log(
-        `Manual PO repair: ${row.po_number} (${row.status} → pending_approval) id=${row.id}`
+        `Manual PO repair: ${row.po_number} (${row.status} → draft) id=${row.id}`
       );
     } catch (err) {
       console.warn(`Manual PO repair failed id=${row.id}:`, err.message);
@@ -2650,10 +2645,13 @@ export async function repairUnsignedManualPosToPendingApproval() {
  * and realign document sequences. Official numbers are assigned only on Save & Send.
  */
 export async function rewriteDraftPoNumbersToPlaceholders(connection = pool) {
+  // Only reclaim numbers on PR-linked drafts. Manual drafts that were repaired
+  // from false "approved" keep their official WO/PO number for Edit → Send.
   const [rows] = await connection.query(
     `SELECT id, po_number, entity_id
      FROM purchase_orders
      WHERE status = 'draft'
+       AND pr_id IS NOT NULL
        AND po_number NOT LIKE 'DRAFT-%'
        AND po_number NOT LIKE 'CS-%'
        AND COALESCE(purchase_type, 'purchase_order') <> 'sass'`

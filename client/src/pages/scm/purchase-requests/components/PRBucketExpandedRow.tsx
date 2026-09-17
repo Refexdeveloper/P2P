@@ -42,8 +42,10 @@ interface Props {
   title?: string;
   colSpan: number;
   statusLabel: string;
+  statusRaw?: string;
   showCreatePo?: boolean;
   onCreatePo?: () => void;
+  onEditPo?: () => void;
 }
 
 interface CancellationAttachment {
@@ -231,8 +233,10 @@ export default function PRBucketExpandedRow({
   title = '',
   colSpan,
   statusLabel,
+  statusRaw = '',
   showCreatePo = false,
   onCreatePo,
+  onEditPo,
 }: Props) {
   const [tab, setTab] = useState<
     'details' | 'items' | 'vendors' | 'history' | 'cancellation' | 'pdf' | 'reference'
@@ -592,6 +596,18 @@ export default function PRBucketExpandedRow({
                     Create PO
                   </button>
                 )}
+                {onEditPo && poId ? (
+                  <button
+                    type="button"
+                    onClick={onEditPo}
+                    className="px-3 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold"
+                  >
+                    {String(statusRaw).toLowerCase() === 'draft' ||
+                    String(statusLabel).toLowerCase() === 'draft'
+                      ? 'Edit Draft'
+                      : 'Edit'}
+                  </button>
+                ) : null}
                 <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700 whitespace-nowrap">
                   {pr?.statusUI || statusLabel}
                 </span>

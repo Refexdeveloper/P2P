@@ -771,7 +771,7 @@ export async function runStartupMigrations() {
     const manualFix = await repairUnsignedManualPosToPendingApproval();
     if (manualFix.scanned) {
       console.log(
-        `Manual PO approval repair: scanned=${manualFix.scanned}, repaired=${manualFix.repaired}`
+        `Manual PO draft repair: scanned=${manualFix.scanned}, repaired=${manualFix.repaired}`
       );
     }
   } catch (err) {

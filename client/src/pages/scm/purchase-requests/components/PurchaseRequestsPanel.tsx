@@ -94,6 +94,24 @@ function getStatusColor(statusRaw: string, bucket: RowStatus) {
   }
 }
 
+/** Compact badge text so long statuses do not overlap Actions. */
+function shortStatusLabel(label: string, statusRaw?: string) {
+  const raw = String(statusRaw || '').toLowerCase();
+  if (raw === 'pending_buyer_verify') return 'Buyer Verify';
+  if (raw === 'pending_approval') return 'Pending Sign';
+  if (raw === 'sent_to_vendor') return 'Vendor Accept';
+  if (raw === 'awaiting_grn') return 'Awaiting GRN';
+  if (raw === 'grn_completed') return 'GRN Done';
+  if (raw === 'invoice_entry') return 'Invoice Entry';
+  if (raw === 'pending_accounts_approval') return 'Accounts';
+  if (raw === 'approved_for_payment') return 'For Payment';
+  const full = String(label || '').trim();
+  if (/scm manager signed/i.test(full)) return 'Buyer Verify';
+  if (/pending vendor acceptance/i.test(full)) return 'Vendor Accept';
+  if (/pending scm manager sign/i.test(full)) return 'Pending Sign';
+  return full;
+}
+
 type Props = {
   showPageActions?: boolean;
 };
@@ -563,10 +581,10 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[100px]">
                     Amount
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[200px]">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[140px] min-w-[140px]">
                     Status
                   </th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[190px]">
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[200px] min-w-[180px]">
                     Actions
                   </th>
                 </tr>
@@ -625,15 +643,15 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                           <td className="px-3 py-3 align-middle text-right font-semibold text-gray-900 text-sm tabular-nums whitespace-nowrap">
                             {formatCurrency(pr.amount)}
                           </td>
-                          <td className="px-3 py-3 align-middle">
+                          <td className="px-3 py-3 align-middle max-w-[140px] w-[140px]">
                             <span
-                              className={`inline-flex whitespace-nowrap px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pr.statusRaw, pr.status)}`}
+                              className={`inline-flex max-w-full px-2 py-1 rounded-full text-xs font-medium leading-snug ${getStatusColor(pr.statusRaw, pr.status)}`}
                               title={pr.statusLabel}
                             >
-                              {pr.statusLabel}
+                              <span className="truncate">{shortStatusLabel(pr.statusLabel, pr.statusRaw)}</span>
                             </span>
                           </td>
-                          <td className="px-3 py-3 align-middle">
+                          <td className="px-3 py-3 align-middle w-[200px] min-w-[180px]">
                             <div className="flex items-center justify-end gap-1.5 flex-nowrap">
                               {pr.status === 'Ready for PO' && (
                                 <button
@@ -651,6 +669,16 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                   className="px-2.5 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold whitespace-nowrap"
                                 >
                                   Edit Draft
+                                </button>
+                              )}
+                              {pr.status === 'Pending Approval' && pr.poId && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditDraft(pr.poId!)}
+                                  className="px-2.5 py-1.5 border border-amber-300 text-amber-800 rounded-md text-xs font-semibold whitespace-nowrap hover:bg-amber-50"
+                                  title="Edit before SCM Manager signs"
+                                >
+                                  Edit
                                 </button>
                               )}
                               {pr.status === 'Cancelled' && pr.poId && (
@@ -710,11 +738,18 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                             prId={pr.prId}
                             colSpan={10}
                             statusLabel={pr.statusLabel}
+                            statusRaw={pr.statusRaw}
                             poId={pr.poId}
                             poNumber={pr.poNumber}
                             title={pr.title}
                             showCreatePo={pr.status === 'Ready for PO'}
                             onCreatePo={() => openCreatePo(pr.prId)}
+                            onEditPo={
+                              pr.poId &&
+                              (pr.status === 'Draft' || pr.status === 'Pending Approval')
+                                ? () => openEditDraft(pr.poId!)
+                                : undefined
+                            }
                           />
                         )}
                       </Fragment>
