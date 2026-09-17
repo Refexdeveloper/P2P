@@ -328,6 +328,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
         if (row.prId) tasks.push(prApi.get(row.prId));
         if (row.poId) tasks.push(poApi.get(row.poId));
         if (row.prId) tasks.push(rfqApi.getComparison(row.prId));
+        else if (row.poId) tasks.push(poApi.getComparison(row.poId));
         if (row.poId) tasks.push(poApi.fulfillment(row.poId));
 
         const results = await Promise.allSettled(tasks);
@@ -354,7 +355,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
             poData = (poRes.value as { data: Record<string, unknown> }).data;
           }
         }
-        if (row.prId) {
+        if (row.prId || row.poId) {
           const cmpRes = results[idx++];
           if (cmpRes.status === 'fulfilled') {
             cmpData = (cmpRes.value as { data: VendorComparisonData }).data;

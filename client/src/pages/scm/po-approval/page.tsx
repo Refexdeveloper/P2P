@@ -97,25 +97,43 @@ interface ExpandedRowProps {
   isPending: boolean;
 }
 
-function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, isPending }: ExpandedRowProps) {
+function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onViewPdf, isPending }: ExpandedRowProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'comparison' | 'history'>('details');
-  const [comparisonData, setComparisonData] = useState<VendorComparisonData | null>(null);
+  const [comparisonData, setComparisonData] = useState<(VendorComparisonData & { source?: string }) | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState('');
   const [filePreview, setFilePreview] = useState<{ url: string; fileName: string } | null>(null);
 
   useEffect(() => {
-    if (activeTab !== 'comparison' || !po.prDbId) return;
+    if (activeTab !== 'comparison') return;
+    if (!po.prDbId && !poId) return;
 
     let cancelled = false;
     setComparisonLoading(true);
     setComparisonError('');
 
-    rfqApi.getComparison(po.prDbId)
+    const load = po.prDbId
+      ? rfqApi.getComparison(po.prDbId)
+      : poApi.getComparison(Number(poId));
+
+    load
       .then((res) => {
         if (!cancelled) setComparisonData(res.data);
       })
-      .catch((err) => {
+      .catch(async (err) => {
+        // Manual / no-PR: fall back to PO comparison endpoint
+        if (po.prDbId && poId) {
+          try {
+            const fallback = await poApi.getComparison(Number(poId));
+            if (!cancelled) {
+              setComparisonData(fallback.data);
+              setComparisonError('');
+            }
+            return;
+          } catch {
+            /* use original error */
+          }
+        }
         if (!cancelled) {
           setComparisonData(null);
           setComparisonError(err instanceof Error ? err.message : 'Failed to load vendor comparison');
@@ -128,7 +146,7 @@ function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, i
     return () => {
       cancelled = true;
     };
-  }, [activeTab, po.prDbId]);
+  }, [activeTab, po.prDbId, poId]);
 
   const handlePreviewFile = async (submissionId: number, _vendorName: string, fileName: string) => {
     try {
@@ -412,6 +430,16 @@ function ExpandedRow({ po, onApprove, onReject, onSendBack, onEdit, onViewPdf, i
                     <div className="flex flex-wrap items-center gap-3 p-3 bg-teal-50 border border-teal-100 rounded-lg text-sm">
                       <span className="font-semibold text-teal-800">{comparisonData.pr.prNumber}</span>
                       <span className="text-teal-700">{comparisonData.vendorCount} vendors quoted</span>
+                      {(comparisonData as { source?: string }).source === 'manual' && (
+                        <span className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">
+                          Manual Create comparison
+                        </span>
+                      )}
+                      {(comparisonData as { source?: string }).source === 'default' && (
+                        <span className="text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                          Default (PO vendor)
+                        </span>
+                      )}
                       {comparisonData.recommendedVendorName && (
                         <span className="text-emerald-700 font-medium">
                           <i className="ri-star-fill mr-1"></i>

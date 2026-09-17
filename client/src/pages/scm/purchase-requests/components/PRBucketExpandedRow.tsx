@@ -514,12 +514,21 @@ export default function PRBucketExpandedRow({
         } else if (poId) {
           setComparison(null);
           try {
-            const poRes = await poApi.get(poId);
+            const [poRes, cmpRes] = await Promise.allSettled([
+              poApi.get(poId),
+              poApi.getComparison(poId),
+            ]);
             if (cancelled) return;
-            applyPoPayload(poRes.data as Record<string, unknown>);
+            if (poRes.status !== 'fulfilled') {
+              throw poRes.reason instanceof Error ? poRes.reason : new Error('Failed to load PO');
+            }
+            applyPoPayload(poRes.value.data as Record<string, unknown>);
+            if (cmpRes.status === 'fulfilled') {
+              setComparison(cmpRes.value.data);
+            }
             await loadRelatedDocs(
               poId,
-              String((poRes.data as Record<string, unknown>).referencePoNumber || ''),
+              String((poRes.value.data as Record<string, unknown>).referencePoNumber || ''),
               () => cancelled
             );
           } catch (poErr) {
@@ -547,9 +556,7 @@ export default function PRBucketExpandedRow({
   const tabs = [
     { key: 'details' as const, label: isManualDoc ? 'WO / PO Details' : 'PR Details', icon: 'ri-information-line' },
     { key: 'items' as const, label: 'Line Items', icon: 'ri-list-check-2' },
-    ...(!isManualDoc
-      ? [{ key: 'vendors' as const, label: 'Vendor Comparison', icon: 'ri-table-line' }]
-      : []),
+    { key: 'vendors' as const, label: 'Vendor Comparison', icon: 'ri-table-line' },
     {
       key: 'history' as const,
       label: `Approval History${pr?.approvalHistory?.length ? ` (${pr.approvalHistory.length})` : ''}`,
@@ -817,7 +824,9 @@ export default function PRBucketExpandedRow({
                 ) : (
                   <div className="py-8 text-center text-sm text-gray-500">
                     <i className="ri-store-2-line text-2xl text-gray-300 mb-2 block"></i>
-                    No vendor comparison data available for this PR
+                    {isManualDoc
+                      ? 'No vendor comparison for this manual PO / WO'
+                      : 'No vendor comparison data available for this PR'}
                   </div>
                 )
               )}

@@ -3162,6 +3162,226 @@ export async function getPurchaseOrderById(poId) {
   return enrichPO(rows[0]);
 }
 
+/**
+ * Vendor comparison for SCM Manager PO Approval.
+ * - PR-linked: RFQ comparison matrix
+ * - Manual PO/WO: quotes from manual_context_json (comparison rounds)
+ * - Fallback: single default row from PO vendor + grand total
+ */
+export async function getPurchaseOrderVendorComparison(user, poId) {
+  const po = await getPurchaseOrderById(Number(poId));
+  if (!po) throw new Error('PO not found');
+
+  const allowed = ['SCM Manager', 'SCM Buyer', 'Super Admin'].includes(user?.role);
+  if (!allowed) throw new Error('Unauthorized');
+
+  if (po.prId) {
+    const { getVendorComparisonMatrix } = await import('./rfqService.js');
+    return getVendorComparisonMatrix(user, po.prId);
+  }
+
+  const ctx = po.manualContext || parseManualContextJson(null);
+  const rounds = Array.isArray(ctx.comparisonRounds) ? ctx.comparisonRounds : [];
+  let quoteRows = [];
+  for (const roundRow of rounds) {
+    const roundNum = Number(roundRow.round) || 1;
+    for (const q of roundRow.vendorQuotes || []) {
+      if (!String(q.vendorName || '').trim() && !Number(q.quotedPrice)) continue;
+      quoteRows.push({ ...q, round: Number(q.round) || roundNum });
+    }
+  }
+  if (!quoteRows.length && Array.isArray(ctx.vendorQuotes)) {
+    quoteRows = ctx.vendorQuotes.filter(
+      (q) => String(q.vendorName || '').trim() || Number(q.quotedPrice)
+    );
+  }
+
+  const hadManualQuotes = quoteRows.length > 0;
+
+  // Default: PO / WO awarded vendor when no manual comparison was entered
+  if (!quoteRows.length) {
+    quoteRows = [
+      {
+        vendorId: 'po-vendor',
+        vendorName: String(po.vendorName || 'Vendor').trim() || 'Vendor',
+        vendorEmail: String(po.vendorEmail || '').trim(),
+        quotedPrice: Number(po.grandTotal) || 0,
+        leadTime: '',
+        paymentTerms: String(po.paymentTerms || '').trim(),
+        recommended: true,
+        round: 1,
+        files: [],
+      },
+    ];
+  }
+
+  const byVendor = new Map();
+  for (const q of quoteRows) {
+    const name = String(q.vendorName || '').trim() || 'Vendor';
+    const key = String(q.vendorId || name).toLowerCase();
+    if (!byVendor.has(key)) {
+      byVendor.set(key, {
+        key,
+        name,
+        email: String(q.vendorEmail || '').trim(),
+        recommended: Boolean(q.recommended),
+        quotes: [],
+      });
+    }
+    const entry = byVendor.get(key);
+    if (q.recommended) entry.recommended = true;
+    if (q.vendorEmail) entry.email = String(q.vendorEmail).trim();
+    entry.quotes.push(q);
+  }
+
+  // Prefer explicitly recommended; else match PO vendor name
+  const poVendorKey = String(po.vendorName || '')
+    .trim()
+    .toLowerCase();
+  let hasRecommended = [...byVendor.values()].some((v) => v.recommended);
+  if (!hasRecommended && poVendorKey) {
+    for (const v of byVendor.values()) {
+      if (v.name.toLowerCase() === poVendorKey) {
+        v.recommended = true;
+        hasRecommended = true;
+        break;
+      }
+    }
+  }
+  if (!hasRecommended) {
+    const first = byVendor.values().next().value;
+    if (first) first.recommended = true;
+  }
+
+  const parameters = [
+    { id: 'quotedPrice', label: 'Quoted Price', type: 'currency', icon: 'ri-money-rupee-circle-line', showIn: 'commercial' },
+    { id: 'leadTime', label: 'Lead Time', type: 'text', icon: 'ri-time-line', showIn: 'commercial' },
+    { id: 'paymentTerms', label: 'Payment Terms', type: 'text', icon: 'ri-bank-card-line', showIn: 'commercial' },
+    { id: 'vendorEmail', label: 'Vendor Email', type: 'text', icon: 'ri-mail-line', showIn: 'commercial' },
+  ];
+
+  const vendors = [...byVendor.values()].map((v, idx) => {
+    const sorted = [...v.quotes].sort((a, b) => (Number(a.round) || 1) - (Number(b.round) || 1));
+    const latest = sorted[sorted.length - 1] || {};
+    const vendorId = idx + 1;
+    const roundsOut = sorted.map((q, rIdx) => {
+      const values = {
+        quotedPrice: Number(q.quotedPrice) || 0,
+        leadTime: String(q.leadTime || ''),
+        paymentTerms: String(q.paymentTerms || ''),
+        vendorEmail: String(q.vendorEmail || v.email || ''),
+      };
+      const files = (Array.isArray(q.files) ? q.files : [])
+        .map((f) => ({
+          fileName: String(f.fileName || f.storedName || '').trim(),
+          id: null,
+          isPrimary: true,
+        }))
+        .filter((f) => f.fileName);
+      return {
+        round: Number(q.round) || rIdx + 1,
+        values,
+        submittedAt: '',
+        quotationFileName: files[0]?.fileName || '',
+        hasQuotationFile: files.length > 0,
+        submissionId: 0,
+        quotationFiles: files,
+        quoteLineItems: [],
+      };
+    });
+    const latestValues = roundsOut[roundsOut.length - 1]?.values || {
+      quotedPrice: Number(latest.quotedPrice) || 0,
+      leadTime: '',
+      paymentTerms: '',
+      vendorEmail: v.email,
+    };
+    return {
+      id: vendorId,
+      name: v.name,
+      email: v.email,
+      isRecommended: Boolean(v.recommended),
+      round: roundsOut.length ? roundsOut[roundsOut.length - 1].round : 1,
+      status: 'submitted',
+      latest: latestValues,
+      latestSubmissionId: null,
+      quotationFileName: roundsOut[roundsOut.length - 1]?.quotationFileName || '',
+      hasQuotationFile: Boolean(roundsOut[roundsOut.length - 1]?.hasQuotationFile),
+      quoteLineItems: [],
+      rounds: roundsOut,
+    };
+  });
+
+  const matrix = {};
+  for (const param of parameters) {
+    const values = {};
+    let bestVendorId = null;
+    let bestVal = null;
+    for (const vendor of vendors) {
+      const raw = vendor.latest?.[param.id];
+      let display = raw == null || raw === '' ? '—' : String(raw);
+      if (param.id === 'quotedPrice' && typeof raw === 'number') {
+        display = new Intl.NumberFormat('en-IN', {
+          style: 'currency',
+          currency: String(po.currency || 'INR'),
+          maximumFractionDigits: 0,
+        }).format(raw);
+      }
+      values[vendor.id] = { raw, display };
+      if (param.id === 'quotedPrice' && typeof raw === 'number' && !Number.isNaN(raw)) {
+        if (bestVal === null || raw < bestVal) {
+          bestVal = raw;
+          bestVendorId = vendor.id;
+        }
+      }
+    }
+    matrix[param.id] = { values, bestVendorId };
+  }
+
+  const recommended = vendors.find((v) => v.isRecommended) || vendors[0] || null;
+  const prDetails = ctx.prDetails || {};
+  const docLabel = String(po.purchaseType || '').toLowerCase() === 'work_order' ? 'WO' : 'PO';
+  const totalRounds = Math.max(1, ...vendors.map((v) => v.rounds?.length || 1));
+
+  return {
+    pr: {
+      id: 0,
+      prNumber: String(prDetails.prNumber || '').trim() || `${docLabel} ${po.poNumber}`,
+      title:
+        String(prDetails.title || '').trim() ||
+        String(po.prTitle || '').trim() ||
+        `Manual ${docLabel}`,
+      department: String(prDetails.department || po.department || po.entity || '').trim() || '—',
+      entityName: String(po.entity || '').trim(),
+      entityCode: '',
+      requestType: String(prDetails.requestType || 'Opex'),
+      totalAmount: Number(po.grandTotal) || 0,
+      estimatedBudget: Number(po.grandTotal) || 0,
+      status: String(po.statusRaw || ''),
+      statusUI: String(po.status || ''),
+      justification:
+        String(prDetails.justification || po.specialInstructions || '').trim() ||
+        `Manual ${docLabel} vendor comparison`,
+      approvalHistory: Array.isArray(po.approvalHistory) ? po.approvalHistory : [],
+      lineItems: Array.isArray(po.lineItems) ? po.lineItems : [],
+    },
+    vendorCount: vendors.length,
+    totalRounds,
+    maxRounds: null,
+    recommendedVendorId: recommended?.id || null,
+    recommendedVendorName: recommended?.name || '',
+    recommendationJustification: 'From manual Create PO / WO comparison',
+    recommendedRound: recommended?.round || 1,
+    recommendedQuoteLineItems: [],
+    showFullNegotiation: true,
+    stageLabel: 'SCM Manager PO Approval',
+    canApprove: false,
+    source: hadManualQuotes ? 'manual' : 'default',
+    vendors,
+    parameters,
+    matrix,
+  };
+}
+
 export async function getPurchaseOrderByNumber(poNumber) {
   const normalized = String(poNumber || '').trim();
   if (!normalized) return null;
@@ -4181,6 +4401,51 @@ export async function updatePurchaseOrder(user, poId, body) {
          VALUES (?, 'PO_UPDATED', ?, 'updated', ?)`,
         [existing.pr_id, user.id, changeSummary]
       );
+    }
+
+    // Keep / refresh manual vendor comparison on update (Create PO / send-back revise)
+    if (!existing.pr_id) {
+      const manualContextInput = normalizeManualContextInput(body);
+      const hasIncomingComparison =
+        manualContextInput.comparisonRounds.length > 0 ||
+        manualContextInput.vendorQuotes.length > 0 ||
+        Boolean(manualContextInput.prDetails?.title) ||
+        body.selectedEntityId != null ||
+        body.entityId != null;
+      if (hasIncomingComparison) {
+        const existingCtx = parseManualContextJson(existing.manual_context_json);
+        const roundsToStore = manualContextInput.comparisonRounds.length
+          ? manualContextInput.comparisonRounds
+          : manualContextInput.vendorQuotes.length
+            ? [
+                {
+                  round: 1,
+                  label: 'Round 1',
+                  notes: '',
+                  vendorQuotes: manualContextInput.vendorQuotes,
+                },
+              ]
+            : existingCtx.comparisonRounds || [];
+        const storedComparisonRounds = roundsToStore.length
+          ? persistManualComparisonRounds(poId, roundsToStore)
+          : [];
+        const storedVendorQuotes = storedComparisonRounds.flatMap((r) => r.vendorQuotes || []);
+        const manualContextJson = JSON.stringify({
+          prDetails: manualContextInput.prDetails?.title
+            ? manualContextInput.prDetails
+            : existingCtx.prDetails || manualContextInput.prDetails,
+          comparisonRounds: storedComparisonRounds,
+          vendorQuotes: storedVendorQuotes,
+          selectedEntityId:
+            manualContextInput.selectedEntityId ||
+            existingCtx.selectedEntityId ||
+            null,
+        });
+        await conn.query(`UPDATE purchase_orders SET manual_context_json = ? WHERE id = ?`, [
+          manualContextJson,
+          poId,
+        ]);
+      }
     }
 
     if (canBuyerRevise) {

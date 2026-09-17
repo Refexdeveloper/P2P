@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import PoSampleCsvTable from '../../../components/feature/PoSampleCsvTable';
 import TrackPoExpandedRow from './components/TrackPoExpandedRow';
+import POApprovalModal from '../po-approval/components/POApprovalModal';
 import { masterApi, poApi, prApi, CategoryRecord, DepartmentRecord, EntityRecord } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
@@ -181,6 +182,10 @@ export default function TrackPoPage() {
       user?.role === 'SCM Manager' ||
       user?.role === 'SCM Buyer'
   );
+  /** Admin / Manager can send pending-sign POs back to Create PO (draft) */
+  const canSendBackPending = Boolean(
+    isSuperAdmin || user?.role === 'SCM Manager'
+  );
   const csvFileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<TrackRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -214,6 +219,12 @@ export default function TrackPoPage() {
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [retrievingKey, setRetrievingKey] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  const [sendBackModal, setSendBackModal] = useState<{
+    poId: number;
+    poNumber: string;
+    title: string;
+    amount: number;
+  } | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -428,6 +439,26 @@ export default function TrackPoPage() {
 
   const openAdminEditPo = (poId: number) => {
     navigate(`/scm/create-po?poId=${poId}&from=track-po`);
+  };
+
+  const openSendBack = (row: TrackRow) => {
+    if (!row.poId) return;
+    setSendBackModal({
+      poId: row.poId,
+      poNumber: String(row.poNumber || `PO #${row.poId}`),
+      title: String(row.title || row.vendorName || ''),
+      amount: Number(row.amount) || 0,
+    });
+  };
+
+  const handleTrackSendBack = async (remarks: string) => {
+    if (!sendBackModal) return;
+    const res = await poApi.sendBack(sendBackModal.poId, remarks);
+    setToast(res.message || `${sendBackModal.poNumber} sent back to SCM Buyer for revision`);
+    setTimeout(() => setToast(''), 4000);
+    setSendBackModal(null);
+    setExpandedKey(null);
+    await load();
   };
 
   const handleRetrieveCancelled = async (row: TrackRow) => {
@@ -770,6 +801,17 @@ export default function TrackPoPage() {
                                   Edit Draft
                                 </button>
                               )}
+                              {canSendBackPending && row.poId && row.status === 'pending' && (
+                                <button
+                                  type="button"
+                                  onClick={() => openSendBack(row)}
+                                  className="px-3 py-1.5 border border-orange-300 text-orange-700 rounded-md text-xs font-semibold hover:bg-orange-50 whitespace-nowrap"
+                                  title="Send back to SCM Buyer Create PO as draft"
+                                >
+                                  <i className="ri-arrow-go-back-line mr-1"></i>
+                                  Send Back
+                                </button>
+                              )}
                               {isAdminEditor &&
                                 row.poId &&
                                 row.status !== 'draft' &&
@@ -977,6 +1019,18 @@ export default function TrackPoPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {sendBackModal && (
+        <POApprovalModal
+          isOpen
+          type="sendback"
+          poNumber={sendBackModal.poNumber}
+          prTitle={sendBackModal.title}
+          grandTotal={sendBackModal.amount}
+          onConfirm={handleTrackSendBack}
+          onClose={() => setSendBackModal(null)}
+        />
       )}
     </DashboardLayout>
   );

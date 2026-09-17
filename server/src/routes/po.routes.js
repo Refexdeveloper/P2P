@@ -12,6 +12,7 @@ import {
   listVendorAcceptancePOs,
   getPurchaseOrderById,
   getPurchaseOrderByNumber,
+  getPurchaseOrderVendorComparison,
   signPurchaseOrder,
   rejectPurchaseOrder,
   sendBackPurchaseOrder,
@@ -641,6 +642,15 @@ router.get('/:id/fulfillment', canReadPo, async (req, res) => {
         : await getPurchaseOrderById(poId);
     if (!po) return res.status(404).json({ message: 'PO not found' });
     const data = await getPoFulfillmentSummary(poId);
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/:id/comparison', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), async (req, res) => {
+  try {
+    const data = await getPurchaseOrderVendorComparison(req.user, Number(req.params.id));
     res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
