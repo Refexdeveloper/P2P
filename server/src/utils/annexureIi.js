@@ -34,14 +34,23 @@ function normalizeRow(row = {}) {
   const images = Array.isArray(row.images)
     ? row.images.map(normalizeImage).filter(Boolean)
     : [];
-  const title =
+  let title =
     plainTitle(row.title) ||
     plainTitle(row.annexureTitle) ||
     plainTitle(row.annexureHeading) ||
-    DEFAULT_ANNEXURE_II_TITLE;
+    '';
+  let header = String(row.header || row.termsHeader || '');
+  const headerPlain = plainTitle(header);
+  // Legacy: user put ANNEXURE-IV in header while title stayed ANNEXURE-II — promote to single title
+  if (/^ANNEXURE[\s\-–—_.]*([IVXLC]+|\d+)$/i.test(headerPlain)) {
+    const m = headerPlain.match(/^ANNEXURE[\s\-–—_.]*([IVXLC]+|\d+)$/i);
+    title = m ? `ANNEXURE-${String(m[1]).toUpperCase()}` : headerPlain.toUpperCase();
+    header = '';
+  }
+  if (!title) title = DEFAULT_ANNEXURE_II_TITLE;
   return {
     title,
-    header: String(row.header || row.termsHeader || ''),
+    header,
     description: String(row.description || row.termsDescription || row.html || ''),
     images,
     comments: String(row.comments || row.comment || row.remarks || ''),

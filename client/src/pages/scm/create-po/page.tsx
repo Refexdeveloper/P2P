@@ -897,26 +897,55 @@ function AnnexureIiTableEditor({
             </div>
             <div>
               <label className="block text-xs text-gray-400 mb-1">
-                Annexure heading (PDF top bar)
+                Annexure heading (replaces default ANNEXURE-II on PDF)
               </label>
               <input
                 type="text"
                 value={row.title || DEFAULT_ANNEXURE_II_TITLE}
-                onChange={(e) => updateRow(index, { title: e.target.value })}
+                onChange={(e) => {
+                  const nextTitle = e.target.value;
+                  const plainHeader = String(row.header || '')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/&nbsp;/gi, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                  const headerIsAnnexure = /^ANNEXURE[\s\-–—_.]*([IVXLC]+|\d+)$/i.test(plainHeader);
+                  // Keep a single heading: sync title and clear duplicate annexure label from section header
+                  updateRow(index, {
+                    title: nextTitle,
+                    ...(headerIsAnnexure ? { header: '' } : {}),
+                  });
+                }}
                 placeholder="e.g. ANNEXURE-II / ANNEXURE-III / ANNEXURE-IV"
                 className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
               />
               <p className="text-[11px] text-gray-400 mt-1">
-                Default is ANNEXURE-II. Change to ANNEXURE-III, ANNEXURE-IV, etc. as needed.
+                Only this heading appears on the gray PDF bar. Do not put ANNEXURE-III/IV in Section header below.
               </p>
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Section header</label>
+              <label className="block text-xs text-gray-400 mb-1">
+                Section header (optional subtitle — not another ANNEXURE label)
+              </label>
               <RichTextEditor
                 editorKey={`${row.clientKey}-h-${editorRevision}`}
                 value={row.header || ''}
-                onChange={(html) => updateRow(index, { header: html })}
-                placeholder="e.g. APPROVED Drawings / Technical specification"
+                onChange={(html) => {
+                  const plain = String(html || '')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/&nbsp;/gi, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                  // If user types ANNEXURE-IV here, treat it as the main heading (not a second bar)
+                  if (/^ANNEXURE[\s\-–—_.]*([IVXLC]+|\d+)$/i.test(plain)) {
+                    const m = plain.match(/^ANNEXURE[\s\-–—_.]*([IVXLC]+|\d+)$/i);
+                    const label = m ? `ANNEXURE-${String(m[1]).toUpperCase()}` : plain.toUpperCase();
+                    updateRow(index, { title: label, header: '' });
+                    return;
+                  }
+                  updateRow(index, { header: html });
+                }}
+                placeholder="e.g. APPROVED Drawings / Technical specification / Scope of work"
                 minHeight={56}
                 advanced
               />

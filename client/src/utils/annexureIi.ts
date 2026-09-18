@@ -57,15 +57,23 @@ function normalizeRow(row: Record<string, unknown> | AnnexureIiRow = {}): Annexu
         })
         .filter(Boolean) as Array<{ src: string; caption?: string }>
     : [];
-  // Prefer explicit title; do not steal section header into the gray bar
-  const title =
+  let title =
     plainTitle(raw.title) ||
     plainTitle(raw.annexureTitle) ||
     plainTitle(raw.annexureHeading) ||
-    DEFAULT_ANNEXURE_II_TITLE;
+    '';
+  let header = String(raw.header || raw.termsHeader || '');
+  const headerPlain = plainTitle(header);
+  // Legacy: ANNEXURE-IV typed in section header → single top-bar title
+  if (/^ANNEXURE[\s\-–—_.]*([IVXLC]+|\d+)$/i.test(headerPlain)) {
+    const m = headerPlain.match(/^ANNEXURE[\s\-–—_.]*([IVXLC]+|\d+)$/i);
+    title = m ? `ANNEXURE-${String(m[1]).toUpperCase()}` : headerPlain.toUpperCase();
+    header = '';
+  }
+  if (!title) title = DEFAULT_ANNEXURE_II_TITLE;
   return {
     title,
-    header: String(raw.header || raw.termsHeader || ''),
+    header,
     description: String(raw.description || raw.termsDescription || raw.html || ''),
     images,
     comments: String(raw.comments || raw.comment || raw.remarks || ''),

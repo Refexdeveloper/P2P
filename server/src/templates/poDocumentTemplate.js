@@ -1270,6 +1270,45 @@ function annexureHtmlIsEmpty(html) {
     .trim();
 }
 
+function plainAnnexureText(html) {
+  return String(html || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** User annexure labels like ANNEXURE-III / Annexure IV */
+function looksLikeAnnexureHeading(text) {
+  const t = plainAnnexureText(text);
+  if (!t) return false;
+  return /^ANNEXURE[\s\-–—_.]*([IVXLC]+|\d+)$/i.test(t);
+}
+
+function normalizeAnnexureHeadingLabel(text) {
+  const t = plainAnnexureText(text);
+  if (!t) return '';
+  const m = t.match(/^ANNEXURE[\s\-–—_.]*([IVXLC]+|\d+)$/i);
+  if (m) return `ANNEXURE-${String(m[1]).toUpperCase()}`;
+  return t.toUpperCase();
+}
+
+/**
+ * Single PDF top-bar heading.
+ * Prefer explicit title; if user typed ANNEXURE-III/IV in Header, use that instead of default ANNEXURE-II.
+ */
+function resolveAnnexureIiTitleBar(row = {}) {
+  const rawTitle = plainAnnexureText(row.title);
+  const headerPlain = plainAnnexureText(row.header);
+  const titleIsDefault = !rawTitle || /^ANNEXURE[\s\-–—_.]*II$/i.test(rawTitle);
+
+  if (looksLikeAnnexureHeading(headerPlain) && (titleIsDefault || looksLikeAnnexureHeading(rawTitle))) {
+    return normalizeAnnexureHeadingLabel(headerPlain);
+  }
+  if (rawTitle) return normalizeAnnexureHeadingLabel(rawTitle) || rawTitle;
+  return 'ANNEXURE-II';
+}
+
 function annexureIiItemHtml(row, opts = {}) {
   const {
     includeTitle = true,
@@ -1279,12 +1318,9 @@ function annexureIiItemHtml(row, opts = {}) {
     includeComments = true,
     rowIndex = null,
   } = opts;
-  const titleText = String(row.title || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim() || 'ANNEXURE-II';
+  const titleText = resolveAnnexureIiTitleBar(row);
   const headerHtml = sanitizeAnnexureHtml(row.header || '');
+  const headerPlain = plainAnnexureText(row.header);
   const bodyHtml = includeBody ? normalizeAnnexureIiBodyHtml(row.description || '') : '';
   const extraImages = includeImages
     ? (row.images || [])
@@ -1299,7 +1335,16 @@ function annexureIiItemHtml(row, opts = {}) {
         .join('')
     : '';
   const comments = includeComments ? String(row.comments || '').trim() : '';
-  const hasHeader = includeHeader && headerHtml && !annexureHtmlIsEmpty(headerHtml);
+  // Do not render a second heading when Header is the annexure label (already on the gray bar)
+  const headerIsDuplicateTitle =
+    !headerPlain ||
+    looksLikeAnnexureHeading(headerPlain) ||
+    headerPlain.toUpperCase() === titleText.toUpperCase();
+  const hasHeader =
+    includeHeader &&
+    headerHtml &&
+    !annexureHtmlIsEmpty(headerHtml) &&
+    !headerIsDuplicateTitle;
   const hasBody = Boolean(String(bodyHtml || '').trim() && !annexureHtmlIsEmpty(bodyHtml));
   const hasImages = Boolean(String(extraImages || '').trim());
   const hasComments = Boolean(comments);
