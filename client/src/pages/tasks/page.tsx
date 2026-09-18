@@ -1092,19 +1092,19 @@ export default function TasksPage() {
 
         {/* Desktop / tablet table — horizontal scroll; Actions column fixed (sticky right) */}
         <div className="hidden min-[992px]:block overflow-x-auto">
-          <table className="w-full min-w-[1280px] table-fixed border-collapse">
+          <table className="w-full min-w-[1400px] table-fixed border-collapse">
             <colgroup>
-              <col style={{ width: '11%' }} />
-              <col style={{ width: '16%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '7%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '7%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '6%' }} />
+              <col style={{ width: '200px' }} />
+              <col style={{ width: '220px' }} />
+              <col style={{ width: '150px' }} />
+              <col style={{ width: '130px' }} />
+              <col style={{ width: '100px' }} />
+              <col style={{ width: '120px' }} />
+              <col style={{ width: '90px' }} />
+              <col style={{ width: '100px' }} />
+              <col style={{ width: '90px' }} />
+              <col style={{ width: '100px' }} />
+              <col style={{ width: '110px' }} />
             </colgroup>
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -1143,9 +1143,11 @@ export default function TasksPage() {
                       rowOverdue ? 'bg-red-50/40' : sass ? 'bg-teal-50/60' : ''
                     }`}
                   >
-                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm font-medium text-gray-900">
-                      <div className="flex items-center gap-1.5">
-                        {task.prNumber}
+                    <td className="px-3 py-3 align-middle overflow-hidden text-sm font-medium text-gray-900">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate" title={task.prNumber}>
+                          {task.prNumber}
+                        </span>
                         {sass && (
                         <SassBadge
                           label={
@@ -1160,8 +1162,8 @@ export default function TasksPage() {
                       )}
                       </div>
                     </td>
-                    <td className="px-3 py-3 align-middle text-sm text-gray-900 max-w-[220px]">
-                      <div className="min-w-0">
+                    <td className="px-3 py-3 align-middle overflow-hidden text-sm text-gray-900">
+                      <div className="min-w-0 overflow-hidden">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <p className="font-medium truncate" title={task.title}>{task.title}</p>
                           {(task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) && (
@@ -1171,7 +1173,7 @@ export default function TasksPage() {
                           )}
                         </div>
                         {sass && (
-                          <p className="text-[10px] font-bold text-teal-700 uppercase tracking-wide mt-0.5">
+                          <p className="text-[10px] font-bold text-teal-700 uppercase tracking-wide mt-0.5 truncate">
                             Cloud Subscription request
                           </p>
                         )}
@@ -1180,8 +1182,8 @@ export default function TasksPage() {
                         </p>
                       </div>
                     </td>
-                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm text-gray-700">
-                      <div className="flex items-center gap-2">
+                    <td className="px-3 py-3 align-middle overflow-hidden text-sm text-gray-700">
+                      <div className="flex items-center gap-2 min-w-0">
                         <div
                           className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                             isPending
@@ -1193,17 +1195,17 @@ export default function TasksPage() {
                         >
                           {task.requesterAvatar}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 whitespace-nowrap">
+                        <div className="min-w-0 overflow-hidden">
+                          <p className="text-sm font-medium text-gray-900 truncate" title={task.requester}>
                             {task.requester}
                           </p>
-                          <p className="text-xs text-gray-500 whitespace-nowrap">
+                          <p className="text-xs text-gray-500 truncate">
                             {task.requesterRole}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-3 align-middle text-sm text-gray-700 max-w-[140px]">
+                    <td className="px-3 py-3 align-middle overflow-hidden text-sm text-gray-700">
                       <p className="truncate font-medium text-gray-900" title={task.entityName || undefined}>
                         {task.entityName || '—'}
                       </p>
@@ -1211,19 +1213,21 @@ export default function TasksPage() {
                         <p className="text-xs text-gray-500 truncate">{task.entityCode}</p>
                       ) : null}
                     </td>
-                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm text-gray-700">
-                      {task.department || '—'}
+                    <td className="px-3 py-3 align-middle overflow-hidden text-sm text-gray-700">
+                      <span className="truncate block" title={task.department || undefined}>
+                        {task.department || '—'}
+                      </span>
                     </td>
-                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm font-semibold text-gray-900 text-right tabular-nums">
+                    <td className="px-3 py-3 align-middle overflow-hidden whitespace-nowrap text-sm font-semibold text-gray-900 text-right tabular-nums">
                       {formatAmount(task.totalAmount, task.currency)}
                     </td>
-                    <td className="px-3 py-3 align-middle whitespace-nowrap">
+                    <td className="px-3 py-3 align-middle overflow-hidden whitespace-nowrap">
                       <PriorityBadge priority={task.priority} size="sm" />
                     </td>
-                    <td className="px-3 py-3 align-middle whitespace-nowrap">
+                    <td className="px-3 py-3 align-middle overflow-hidden whitespace-nowrap">
                       <StatusBadge status={task.status} size="sm" />
                     </td>
-                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm">
+                    <td className="px-3 py-3 align-middle overflow-hidden whitespace-nowrap text-sm">
                       {slaInfo ? (
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ${slaInfo.cls}`}
@@ -1237,7 +1241,7 @@ export default function TasksPage() {
                         <span className="text-gray-400 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-3 align-middle whitespace-nowrap text-sm text-gray-700">
+                    <td className="px-3 py-3 align-middle overflow-hidden whitespace-nowrap text-sm text-gray-700">
                       {formatDate(task.submittedDate)}
                     </td>
                     <td
