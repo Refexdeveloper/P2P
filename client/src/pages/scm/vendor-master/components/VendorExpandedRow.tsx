@@ -63,7 +63,8 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
   const handleDownload = async (docType: string, fileName: string) => {
     try {
       setError('');
-      const blob = await vendorApi.fetchDocumentBlob(vendor.id, docType);
+      const bust = docMap[docType]?.uploadedAt || Date.now();
+      const blob = await vendorApi.fetchDocumentBlob(vendor.id, docType, bust);
       const typed = new Blob([blob], { type: mimeFromFileName(fileName, blob.type) });
       const url = URL.createObjectURL(typed);
       const a = document.createElement('a');
@@ -85,7 +86,8 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
     }
     try {
       setError('');
-      const blob = await vendorApi.fetchDocumentBlob(vendor.id, docType);
+      const bust = docMap[docType]?.uploadedAt || Date.now();
+      const blob = await vendorApi.fetchDocumentBlob(vendor.id, docType, bust);
       const typed = new Blob([blob], {
         type: mimeFromFileName(fileName, blob.type || 'application/pdf'),
       });

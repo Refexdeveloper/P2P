@@ -175,23 +175,28 @@ export async function findExistingVendorKycObject({ vendorId, docType, fileName 
   if (!originalName) return null;
   const safeOriginal = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
   const type = String(docType || 'other').trim() || 'other';
-  const exactBase = `${vendorId}_${type}_${safeOriginal}`;
-  const exactKey = `vendor-kyc/${exactBase}`;
+  const vid = Number(vendorId) || 0;
+  if (!vid) return null;
 
+  // Only exact keys for THIS vendor — never match another vendor's Scan.jpeg by filename alone
+  const exactBase = `${vid}_${type}_${safeOriginal}`;
+  const exactKey = `vendor-kyc/${exactBase}`;
   if (await gcsObjectExists(exactKey)) return exactKey;
 
   try {
     const index = await loadVendorKycIndex();
+    const prefix = `${vid}_${type}_`.toLowerCase();
+    const suffix = `_${safeOriginal}`.toLowerCase();
+    // Prefer newest versioned object: {vendorId}_{docType}_{stamp}_{file}
+    const matches = index.bySuffix.filter(
+      (x) => x.baseLower.startsWith(prefix) && x.baseLower.endsWith(suffix)
+    );
+    if (matches.length) {
+      matches.sort((a, b) => String(b.baseLower).localeCompare(String(a.baseLower)));
+      return matches[0].key;
+    }
     const hit = index.byBase.get(exactBase.toLowerCase());
-    if (hit) return hit;
-
-    const suffixA = `_${type}_${safeOriginal}`.toLowerCase();
-    const suffixB = `_${safeOriginal}`.toLowerCase();
-    const match =
-      index.bySuffix.find((x) => x.baseLower.endsWith(suffixA)) ||
-      index.bySuffix.find((x) => x.baseLower === safeOriginal.toLowerCase()) ||
-      index.bySuffix.find((x) => x.baseLower.endsWith(suffixB));
-    return match?.key || null;
+    return hit || null;
   } catch (err) {
     console.warn('[GCS] vendor-kyc reuse lookup failed:', err.message);
     return null;

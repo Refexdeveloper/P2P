@@ -318,6 +318,28 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
         return;
       }
 
+      try {
+        const fresh = await vendorApi.get(saved.id);
+        saved = fresh.data;
+        setSavedVendor(saved);
+        if (saved.documents?.length) {
+          setExistingDocs(
+            Object.fromEntries(
+              saved.documents
+                .filter((d) => DOC_UPLOAD_FIELDS.some((f) => f.type === d.docType))
+                .map((d) => [d.docType, d.fileName])
+            )
+          );
+          setExistingOtherDocs(
+            saved.documents
+              .filter((d) => String(d.docType || '').startsWith('other__'))
+              .map((d) => ({ docType: d.docType, fileName: d.fileName }))
+          );
+        }
+      } catch {
+        /* keep last upload response */
+      }
+
       onSuccess(saved);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to ${isEdit ? 'update' : 'create'} vendor`);

@@ -109,6 +109,11 @@ router.get('/:id/documents/:docType/file', canUseVendorsForPr, async (req, res) 
     const safeName = String(fileName || 'document').replace(/"/g, '');
     const disposition = `inline; filename="${safeName}"`;
 
+    // Never let browsers / proxies keep an old vendor document after re-upload
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     if (buffer) {
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Disposition', disposition);

@@ -118,9 +118,18 @@ export default function VendorMasterPage() {
 
   const handleUpdated = (updated?: VendorRecord) => {
     closeEdit();
-    if (updated) {
-      setVendorDetails({ [updated.id]: updated });
-      setExpandedRow(updated.id);
+    if (updated?.id) {
+      // Prefer freshly loaded documents so View shows the latest uploads
+      void vendorApi
+        .get(updated.id)
+        .then((res) => {
+          setVendorDetails({ [updated.id]: res.data });
+          setExpandedRow(updated.id);
+        })
+        .catch(() => {
+          setVendorDetails({ [updated.id]: updated });
+          setExpandedRow(updated.id);
+        });
     } else {
       setVendorDetails({});
     }

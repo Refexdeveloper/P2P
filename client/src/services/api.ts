@@ -1525,12 +1525,18 @@ export const vendorApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  fetchDocumentBlob: async (vendorId: number, docType: string) => {
+  fetchDocumentBlob: async (vendorId: number, docType: string, cacheBust?: string | number) => {
     const token = getToken();
+    const bust = cacheBust != null && String(cacheBust) !== '' ? `?t=${encodeURIComponent(String(cacheBust))}` : `?t=${Date.now()}`;
     const res = await fetch(
-      `${API_URL}/api/vendors/${vendorId}/documents/${encodeURIComponent(docType)}/file`,
+      `${API_URL}/api/vendors/${vendorId}/documents/${encodeURIComponent(docType)}/file${bust}`,
       {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+        },
+        cache: 'no-store',
       }
     );
     if (!res.ok) {
