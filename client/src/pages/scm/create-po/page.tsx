@@ -49,6 +49,7 @@ import {
   parseAnnexureIi,
   serializeAnnexureIi,
   annexureIiRowIsEmpty,
+  DEFAULT_ANNEXURE_II_TITLE,
 } from '../../../utils/annexureIi';
 import {
   CURRENCY_OPTIONS,
@@ -854,8 +855,9 @@ function AnnexureIiTableEditor({
         </button>
       </div>
       <p className="px-5 pt-3 text-xs text-gray-500">
-        Add technical data, scope, specifications, images, and tables. Use the Table button or paste from
-        Excel / Word (Ctrl+V). Existing image and text tools stay the same. Use Add Row for another PDF page.
+        Add technical data, scope, specifications, images, and tables. Edit the{' '}
+        <strong>Annexure heading</strong> (ANNEXURE-II / III / IV…) for the PDF top bar, and use{' '}
+        <strong>Section header</strong> for the subtitle (e.g. APPROVED Drawings).
       </p>
       <div className="divide-y divide-gray-100">
         {localRows.map((row, index) => (
@@ -894,12 +896,27 @@ function AnnexureIiTableEditor({
               </div>
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Header</label>
+              <label className="block text-xs text-gray-400 mb-1">
+                Annexure heading (PDF top bar)
+              </label>
+              <input
+                type="text"
+                value={row.title || DEFAULT_ANNEXURE_II_TITLE}
+                onChange={(e) => updateRow(index, { title: e.target.value })}
+                placeholder="e.g. ANNEXURE-II / ANNEXURE-III / ANNEXURE-IV"
+                className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">
+                Default is ANNEXURE-II. Change to ANNEXURE-III, ANNEXURE-IV, etc. as needed.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Section header</label>
               <RichTextEditor
                 editorKey={`${row.clientKey}-h-${editorRevision}`}
                 value={row.header || ''}
                 onChange={(html) => updateRow(index, { header: html })}
-                placeholder="e.g. Technical specification / Scope of work"
+                placeholder="e.g. APPROVED Drawings / Technical specification"
                 minHeight={56}
                 advanced
               />

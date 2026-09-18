@@ -707,7 +707,12 @@ function splitOverflowingAnnexureIiTable(pages, pageIndex) {
 
     const alreadyCont =
       /annexure-ii-cont/i.test(html) || !/<div class="annexure-ii-title">/i.test(html);
-    const titleHtml = alreadyCont ? '' : `<div class="annexure-ii-title">ANNEXURE-II</div>`;
+    const titleMatch = html.match(/<div class="annexure-ii-title">([\s\S]*?)<\/div>/i);
+    const titleHtml = alreadyCont
+      ? ''
+      : titleMatch
+        ? titleMatch[0]
+        : `<div class="annexure-ii-title">ANNEXURE-II</div>`;
     const headerMatch = html.match(/<div class="annexure-ii-header">[\s\S]*?<\/div>/i);
     const headerHtml = alreadyCont ? '' : headerMatch ? headerMatch[0] : '';
     const before = html.slice(0, tableMatch.index);

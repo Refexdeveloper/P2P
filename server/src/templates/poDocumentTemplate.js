@@ -1279,6 +1279,11 @@ function annexureIiItemHtml(row, opts = {}) {
     includeComments = true,
     rowIndex = null,
   } = opts;
+  const titleText = String(row.title || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || 'ANNEXURE-II';
   const headerHtml = sanitizeAnnexureHtml(row.header || '');
   const bodyHtml = includeBody ? normalizeAnnexureIiBodyHtml(row.description || '') : '';
   const extraImages = includeImages
@@ -1307,7 +1312,7 @@ function annexureIiItemHtml(row, opts = {}) {
 
   return `
       <div class="annexure-ii"${rowAttr}>
-        ${includeTitle ? `<div class="annexure-ii-title">ANNEXURE-II</div>` : ''}
+        ${includeTitle ? `<div class="annexure-ii-title">${escapeHtml(titleText)}</div>` : ''}
         ${hasHeader ? `<div class="annexure-ii-header">${headerHtml}</div>` : ''}
         <div class="annexure-ii-body">${bodyHtml}${extraImages}${
           hasComments

@@ -1,5 +1,7 @@
+export const DEFAULT_ANNEXURE_II_TITLE = 'ANNEXURE-II';
+
 export function emptyAnnexureIiRow() {
-  return { header: '', description: '', images: [], comments: '' };
+  return { title: DEFAULT_ANNEXURE_II_TITLE, header: '', description: '', images: [], comments: '' };
 }
 
 function normalizeImage(img) {
@@ -16,12 +18,30 @@ function normalizeImage(img) {
   };
 }
 
+function plainTitle(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function resolveAnnexureIiTitle(row = {}) {
+  return plainTitle(row.title) || DEFAULT_ANNEXURE_II_TITLE;
+}
+
 function normalizeRow(row = {}) {
   const images = Array.isArray(row.images)
     ? row.images.map(normalizeImage).filter(Boolean)
     : [];
+  const title =
+    plainTitle(row.title) ||
+    plainTitle(row.annexureTitle) ||
+    plainTitle(row.annexureHeading) ||
+    DEFAULT_ANNEXURE_II_TITLE;
   return {
-    header: String(row.header || row.termsHeader || row.title || ''),
+    title,
+    header: String(row.header || row.termsHeader || ''),
     description: String(row.description || row.termsDescription || row.html || ''),
     images,
     comments: String(row.comments || row.comment || row.remarks || ''),
@@ -52,7 +72,7 @@ export function parseAnnexureIi(raw) {
   if (Array.isArray(raw)) return raw.map(normalizeRow);
   if (typeof raw === 'object') {
     if (Array.isArray(raw.rows)) return raw.rows.map(normalizeRow);
-    if (raw.header || raw.description || raw.images) return [normalizeRow(raw)];
+    if (raw.header || raw.description || raw.images || raw.title) return [normalizeRow(raw)];
     return [];
   }
   const text = String(raw).trim();

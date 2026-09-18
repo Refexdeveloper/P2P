@@ -366,6 +366,7 @@ function parseManualContextJson(value) {
           notes: '',
           vendorQuotes: quotes,
         }));
+    }
     const selectedEntityId =
       raw.selectedEntityId !== undefined && raw.selectedEntityId !== null && raw.selectedEntityId !== ''
         ? Number(raw.selectedEntityId) || null

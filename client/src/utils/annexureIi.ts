@@ -1,12 +1,16 @@
 export interface AnnexureIiRow {
+  /** Gray bar on PDF — e.g. ANNEXURE-II, ANNEXURE-III, ANNEXURE-IV */
+  title?: string;
   header: string;
   description: string;
   images?: Array<{ src: string; caption?: string }>;
   comments?: string;
 }
 
+export const DEFAULT_ANNEXURE_II_TITLE = 'ANNEXURE-II';
+
 export function emptyAnnexureIiRow(): AnnexureIiRow {
-  return { header: '', description: '', images: [], comments: '' };
+  return { title: DEFAULT_ANNEXURE_II_TITLE, header: '', description: '', images: [], comments: '' };
 }
 
 function htmlLooksEmpty(html: string) {
@@ -16,6 +20,18 @@ function htmlLooksEmpty(html: string) {
     .replace(/&nbsp;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function plainTitle(value: unknown) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function resolveAnnexureIiTitle(row: Partial<AnnexureIiRow> | null | undefined) {
+  return plainTitle(row?.title) || DEFAULT_ANNEXURE_II_TITLE;
 }
 
 export function annexureIiRowIsEmpty(row: AnnexureIiRow) {
@@ -41,8 +57,15 @@ function normalizeRow(row: Record<string, unknown> | AnnexureIiRow = {}): Annexu
         })
         .filter(Boolean) as Array<{ src: string; caption?: string }>
     : [];
+  // Prefer explicit title; do not steal section header into the gray bar
+  const title =
+    plainTitle(raw.title) ||
+    plainTitle(raw.annexureTitle) ||
+    plainTitle(raw.annexureHeading) ||
+    DEFAULT_ANNEXURE_II_TITLE;
   return {
-    header: String(raw.header || raw.termsHeader || raw.title || ''),
+    title,
+    header: String(raw.header || raw.termsHeader || ''),
     description: String(raw.description || raw.termsDescription || raw.html || ''),
     images,
     comments: String(raw.comments || raw.comment || raw.remarks || ''),
@@ -55,7 +78,7 @@ export function parseAnnexureIi(raw: unknown): AnnexureIiRow[] {
   if (typeof raw === 'object' && raw) {
     const obj = raw as Record<string, unknown>;
     if (Array.isArray(obj.rows)) return obj.rows.map((row) => normalizeRow(row as Record<string, unknown>));
-    if (obj.header || obj.description || obj.images) return [normalizeRow(obj)];
+    if (obj.header || obj.description || obj.images || obj.title) return [normalizeRow(obj)];
     return [];
   }
   const text = String(raw).trim();
