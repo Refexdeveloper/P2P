@@ -308,6 +308,14 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
     navigate(`/scm/create-po?poId=${poId}&from=create-po`);
   };
 
+  const openAdminEditPo = (poId: number) => {
+    if (!poId) {
+      setError('This PO could not be opened.');
+      return;
+    }
+    navigate(`/scm/create-po?poId=${poId}&from=create-po`);
+  };
+
   const handleRetrieveCancelled = async (pr: BucketRow) => {
     if (!pr.poId) return;
     const ok = window.confirm(
@@ -671,7 +679,20 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                   Edit Draft
                                 </button>
                               )}
-                              {pr.status === 'Pending Approval' && pr.poId && (
+                              {isSuperAdmin &&
+                                pr.poId &&
+                                pr.status !== 'Draft' &&
+                                pr.status !== 'Cancelled' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openAdminEditPo(pr.poId!)}
+                                    className="px-2.5 py-1.5 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-50 whitespace-nowrap"
+                                    title="Edit this purchase order / work order"
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                              {pr.status === 'Pending Approval' && pr.poId && !isSuperAdmin && (
                                 <span
                                   className="px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-md whitespace-nowrap"
                                   title="Sent to SCM Manager for sign / approval"
@@ -743,8 +764,13 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                             showCreatePo={pr.status === 'Ready for PO'}
                             onCreatePo={() => openCreatePo(pr.prId)}
                             onEditPo={
-                              pr.poId && pr.status === 'Draft'
-                                ? () => openEditDraft(pr.poId!)
+                              pr.poId &&
+                              (pr.status === 'Draft' ||
+                                (isSuperAdmin && pr.status !== 'Cancelled'))
+                                ? () =>
+                                    pr.status === 'Draft'
+                                      ? openEditDraft(pr.poId!)
+                                      : openAdminEditPo(pr.poId!)
                                 : undefined
                             }
                           />

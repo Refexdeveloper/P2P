@@ -3338,9 +3338,20 @@ export default function CreatePOPage() {
       }
 
       if (isEditMode && editPoId) {
-        if (fromParam === 'track-po' && poEditStatus && poEditStatus !== 'draft') {
+        const isSuperAdminUser = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
+        const allowAdminDocEdit =
+          poEditStatus &&
+          poEditStatus !== 'draft' &&
+          (fromParam === 'track-po' ||
+            fromParam === 'create-po' ||
+            fromParam === 'purchase-requests' ||
+            isSuperAdminUser ||
+            user?.role === 'SCM Manager');
+        if (allowAdminDocEdit) {
           payload.adminEdit = true;
-          payload.changeSummary = payload.changeSummary || `PO updated by ${user?.role || 'admin'} from Track PO`;
+          payload.changeSummary =
+            payload.changeSummary ||
+            `PO updated by ${user?.role || 'admin'} from ${fromParam || 'create-po'}`;
         }
         // Send Back → Edit Draft → Send for Approval → SCM Manager (Rajeev)
         if (poEditStatus === 'draft' || !poEditStatus) {
@@ -3358,6 +3369,7 @@ export default function CreatePOPage() {
           navigate('/scm/create-po');
           return;
         }
+        alert(updateRes.message || `${poNumber || docLabel} saved successfully`);
         navigate(editReturnPath);
         return;
       }
@@ -3498,17 +3510,18 @@ export default function CreatePOPage() {
   const canSaveDraft =
     !isEditMode ||
     poEditStatus === 'draft' ||
-    (isEditMode && !poEditStatus && fromParam === 'create-po');
+    (isEditMode && !poEditStatus && (fromParam === 'create-po' || fromParam === 'track-po'));
   const isPendingManagerApproval =
     poEditStatus === 'pending_approval' || poEditStatus === 'pendingapproval';
   const isManagerPoReview =
     user?.role === 'SCM Manager' && isEditMode && isPendingManagerApproval;
-  /** Buyer already sent — owned by SCM Manager until sign / send-back */
+  /** Buyer already sent — locked until manager acts. Super Admin can still save via admin edit. */
   const isBuyerAwaitingManager =
     isEditMode &&
     isPendingManagerApproval &&
     !isManagerPoReview &&
-    (user?.role === 'SCM Buyer' || user?.role === 'Super Admin');
+    user?.role === 'SCM Buyer' &&
+    !user?.isSuperAdmin;
   const activePrId = pr?.id || numericPrId || null;
   const isBuyerCreatePoSendBack =
     (user?.role === 'SCM Buyer' || user?.role === 'Super Admin') &&
@@ -5113,7 +5126,12 @@ export default function CreatePOPage() {
                       {isEditMode
                         ? isBuyerVerifyEdit
                           ? 'Changes update the signed PO before you verify and send to vendor'
-                          : fromParam === 'track-po' && poEditStatus && poEditStatus !== 'draft'
+                          : (fromParam === 'track-po' ||
+                                fromParam === 'create-po' ||
+                                user?.role === 'Super Admin' ||
+                                user?.isSuperAdmin) &&
+                              poEditStatus &&
+                              poEditStatus !== 'draft'
                             ? 'Admin edit — saves document changes without changing approval status'
                           : poEditStatus === 'draft'
                             ? `Saving will send this draft to SCM Manager${scmManager?.name ? ` (${scmManager.name})` : ''} for approval`
