@@ -1453,16 +1453,14 @@ export default function RfqEntryDetailPage() {
     }
     if (field.id === 'paymentTerms') {
       return (
-        <select
-          value={String(value || 'Net 30')}
+        <textarea
+          rows={3}
+          value={value === undefined || value === null ? '' : String(value)}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className={quoteFieldControlClass}
-        >
-          {['Net 30', 'Net 45', 'Net 60', 'Advance 50%', 'On Delivery', 'Deviated'].map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
+          className="w-full min-h-[88px] box-border px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-50"
+          placeholder="e.g. Net 30 Days / 50% advance, balance on delivery"
+        />
       );
     }
     if (isWideQuoteField(field)) {

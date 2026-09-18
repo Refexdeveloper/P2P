@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import VendorSearchSelect from '../../requester/rfq-entry/components/VendorSearchSelect';
 import type { VendorRecord } from '../../../services/api';
-import { PR_PAYMENT_TERM_OPTIONS } from '../../../constants/prRequisition';
 import RfqVendorQuoteTable, {
   type RfqQuoteTableRow,
 } from '../../requester/rfq-entry/components/RfqVendorQuoteTable';
@@ -705,17 +704,15 @@ export default function ManualPoContextSection({
                     placeholder="e.g. 15 days"
                   />
                 </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payment terms</label>
-                  <select
+                  <textarea
+                    rows={3}
                     value={editingQuote.paymentTerms}
                     onChange={(e) => updateEditingQuote({ paymentTerms: e.target.value })}
-                    className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    {PR_PAYMENT_TERM_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
+                    className="w-full min-h-[88px] px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-white text-gray-900 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="e.g. Net 30 Days / 50% advance, balance on delivery"
+                  />
                 </div>
               </div>
               <div>

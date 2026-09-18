@@ -316,18 +316,14 @@ export default function VendorQuoteRow({
           {/* Payment Terms */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payment Terms</label>
-            <select
-              value={currentQ.paymentTerms}
-              onChange={e => updateCurrent('paymentTerms', e.target.value)}
+            <textarea
+              rows={3}
+              value={currentQ.paymentTerms || ''}
+              onChange={(e) => updateCurrent('paymentTerms', e.target.value)}
               disabled={isLockedPortalQuote}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 cursor-pointer disabled:bg-gray-50"
-            >
-              <option value="Standard">Net 30 (Standard)</option>
-              <option value="Deviated">Deviated</option>
-              <option value="Net 45">Net 45</option>
-              <option value="Net 60">Net 60</option>
-              <option value="Advance 50%">Advance 50%</option>
-            </select>
+              className="w-full min-h-[88px] px-3 py-2 border border-gray-300 rounded-lg text-sm resize-y focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50"
+              placeholder="e.g. Net 30 Days / 50% advance, balance on delivery"
+            />
           </div>
 
           {/* Warranty */}
