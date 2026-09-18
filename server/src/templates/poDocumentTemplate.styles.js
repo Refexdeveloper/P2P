@@ -795,6 +795,8 @@ export const PO_STYLES = `
 
   .annexure-ii {
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     border: 1px solid #000;
     background: #fff;
     page-break-inside: auto;
@@ -802,6 +804,7 @@ export const PO_STYLES = `
     height: auto !important;
     min-height: 0 !important;
     max-height: none;
+    overflow: visible;
   }
   .annexure-ii-title {
     border-bottom: 1px solid #000;
@@ -841,6 +844,19 @@ export const PO_STYLES = `
     color: #111;
     word-wrap: break-word;
     overflow-wrap: anywhere;
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow: visible;
+  }
+  /* Full-bleed tables (like Annexure I) — avoid double inset that clips the right border */
+  .annexure-ii-body:has(> table),
+  .annexure-ii-body:has(> .annexure-ii-table) {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .annexure-ii-body:has(> table:first-child),
+  .annexure-ii-body:has(> table.annexure-ii-table:first-child) {
+    padding-top: 0;
   }
   .annexure-ii-body p { margin: 6px 0; }
   .annexure-ii-body ul,
@@ -891,13 +907,17 @@ export const PO_STYLES = `
     color: #333;
     margin-top: 4px;
   }
+  /* Match Annexure I table chrome: full black grid, fixed layout, no overflow clip */
   .annexure-ii-body table,
   .annexure-ii-body table.annexure-ii-table {
     width: 100% !important;
     max-width: 100% !important;
-    border-collapse: collapse;
-    table-layout: fixed;
-    margin: 8px 0;
+    box-sizing: border-box !important;
+    border-collapse: collapse !important;
+    border-spacing: 0 !important;
+    table-layout: fixed !important;
+    margin: 0 0 8px 0;
+    border: 1px solid #000 !important;
     page-break-inside: auto;
     break-inside: auto;
   }
@@ -905,16 +925,18 @@ export const PO_STYLES = `
   .annexure-ii-body table th,
   .annexure-ii-body table.annexure-ii-table td,
   .annexure-ii-body table.annexure-ii-table th {
-    border: 1px solid #000;
-    padding: 5px 7px;
+    box-sizing: border-box !important;
+    border: 1px solid #000 !important;
+    padding: 6px 8px !important;
     font-size: 11px;
-    vertical-align: top;
+    line-height: 1.4;
+    vertical-align: top !important;
     text-align: left;
     word-wrap: break-word;
     overflow-wrap: anywhere;
     word-break: break-word;
-    white-space: normal;
-    overflow: visible;
+    white-space: normal !important;
+    overflow: visible !important;
   }
   .annexure-ii-body table th,
   .annexure-ii-body table.annexure-ii-table th {
@@ -922,17 +944,53 @@ export const PO_STYLES = `
     font-weight: 700;
     text-align: center;
   }
+  /* 3-column Annexure-I style: S.No | Header | Description */
+  .annexure-ii-body table.annexure-ii-table-3col col.col-sno,
+  .annexure-ii-body table.annexure-ii-table-3col td:first-child,
+  .annexure-ii-body table.annexure-ii-table-3col th:first-child {
+    width: 8% !important;
+    text-align: center;
+    font-weight: 700;
+  }
+  .annexure-ii-body table.annexure-ii-table-3col col.col-head,
+  .annexure-ii-body table.annexure-ii-table-3col td:nth-child(2),
+  .annexure-ii-body table.annexure-ii-table-3col th:nth-child(2) {
+    width: 22% !important;
+    font-weight: 700;
+  }
+  .annexure-ii-body table.annexure-ii-table-3col col.col-desc,
+  .annexure-ii-body table.annexure-ii-table-3col td:nth-child(3),
+  .annexure-ii-body table.annexure-ii-table-3col th:nth-child(3) {
+    width: 70% !important;
+  }
+  .annexure-ii-body table td p,
+  .annexure-ii-body table th p {
+    margin: 3px 0;
+    line-height: 1.35;
+  }
+  .annexure-ii-body table td ul,
+  .annexure-ii-body table td ol {
+    margin: 3px 0;
+    padding-left: 18px;
+  }
+  .annexure-ii-body table td li {
+    margin: 2px 0;
+  }
   body.po-document-pdf-pages .annexure-ii-body table,
   body.po-document-pdf-pages .annexure-ii-body table.annexure-ii-table {
     width: 100% !important;
     max-width: 100% !important;
     table-layout: fixed !important;
+    box-sizing: border-box !important;
+    border: 1px solid #000 !important;
   }
   body.po-document-pdf-pages .annexure-ii-body table td,
   body.po-document-pdf-pages .annexure-ii-body table th {
     font-size: 10px;
-    line-height: 1.3;
-    padding: 4px 5px;
+    line-height: 1.35;
+    padding: 5px 7px !important;
+    border: 1px solid #000 !important;
+    box-sizing: border-box !important;
     white-space: normal !important;
     word-break: break-word !important;
     overflow-wrap: anywhere !important;

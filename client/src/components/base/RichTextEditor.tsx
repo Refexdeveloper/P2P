@@ -160,19 +160,26 @@ function excelPlainToTableHtml(plain: string) {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
 
+  const cellStyle =
+    'border:1px solid #000;padding:6px 8px;vertical-align:top;box-sizing:border-box;';
   const body = rows
     .map((cells, ri) => {
       const tag = ri === 0 ? 'th' : 'td';
       const padded = [...cells];
       while (padded.length < maxCols) padded.push('');
       return `<tr>${padded
-        .map((c) => `<${tag}>${escape(c) || '&nbsp;'}</${tag}>`)
+        .map((c) => `<${tag} style="${cellStyle}">${escape(c) || '&nbsp;'}</${tag}>`)
         .join('')}</tr>`;
     })
     .join('');
 
   return (
-    `<table class="annexure-pasted-table" style="width:100%;border-collapse:collapse;border:1px solid #000;">` +
+    `<table class="annexure-pasted-table" style="width:100%;max-width:100%;border-collapse:collapse;border:1px solid #000;table-layout:fixed;box-sizing:border-box;">` +
+    `${
+      maxCols === 3
+        ? `<colgroup><col style="width:8%" /><col style="width:22%" /><col style="width:70%" /></colgroup>`
+        : ''
+    }` +
     `<tbody>${body}</tbody></table><p><br></p>`
   );
 }
@@ -191,14 +198,19 @@ function plainTextLooksLikeExcelTable(plain: string) {
 function buildInsertTableHtml(rows: number, cols: number) {
   const r = Math.max(1, Math.min(12, Math.floor(rows) || 3));
   const c = Math.max(1, Math.min(12, Math.floor(cols) || 3));
-  const cellStyle = 'border:1px solid #000;padding:4px 6px;vertical-align:top;';
+  const cellStyle =
+    'border:1px solid #000;padding:6px 8px;vertical-align:top;box-sizing:border-box;';
+  const colgroup =
+    c === 3
+      ? `<colgroup><col style="width:8%" /><col style="width:22%" /><col style="width:70%" /></colgroup>`
+      : '';
   const head = `<tr>${Array.from({ length: c }, () => `<th style="${cellStyle}">&nbsp;</th>`).join('')}</tr>`;
   const body = Array.from({ length: Math.max(0, r - 1) }, () =>
     `<tr>${Array.from({ length: c }, () => `<td style="${cellStyle}">&nbsp;</td>`).join('')}</tr>`
   ).join('');
   return (
-    `<table class="annexure-pasted-table" style="width:100%;border-collapse:collapse;border:1px solid #000;">` +
-    `<tbody>${head}${body}</tbody></table><p><br></p>`
+    `<table class="annexure-pasted-table" style="width:100%;max-width:100%;border-collapse:collapse;border:1px solid #000;table-layout:fixed;box-sizing:border-box;">` +
+    `${colgroup}<tbody>${head}${body}</tbody></table><p><br></p>`
   );
 }
 

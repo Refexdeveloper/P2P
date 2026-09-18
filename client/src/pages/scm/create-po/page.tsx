@@ -3894,6 +3894,7 @@ export default function CreatePOPage() {
                       comparisonRounds={manualComparisonRounds}
                       onComparisonRoundsChange={setManualComparisonRounds}
                       vendors={masterVendors}
+                      onVendorsChange={setMasterVendors}
                       currencySymbol={moneySymbol}
                       currency={currency}
                     />
@@ -4052,7 +4053,7 @@ export default function CreatePOPage() {
                         value={poTermsDetails.subject || ''}
                         onChange={(e) => updatePoTermsField('subject', e.target.value)}
                         placeholder="e.g. Supply of equipment for site"
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                        className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
                       />
                     </div>
                   </div>

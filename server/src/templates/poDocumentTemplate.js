@@ -1091,7 +1091,7 @@ function sanitizeAnnexureHtml(html) {
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
 }
 
-/** Normalize pasted Word/Excel tables so PDF columns stay aligned. */
+/** Normalize pasted Word/Excel tables so PDF columns stay aligned (Annexure I style). */
 function normalizeAnnexureIiBodyHtml(html) {
   let out = sanitizeAnnexureHtml(html);
   if (!out) return '';
@@ -1137,13 +1137,55 @@ function normalizeAnnexureIiBodyHtml(html) {
     out = stripImagesOutsideTables(out);
   }
 
-  // Mark pasted tables for consistent PDF layout.
-  out = out.replace(/<table\b([^>]*)>/gi, (_m, attrs) => {
-    const a = String(attrs || '');
+  // Remove Word/Excel colgroup pixel widths — we re-apply % columns below.
+  out = out
+    .replace(/<colgroup\b[\s\S]*?<\/colgroup>/gi, '')
+    .replace(/<col\b[^>]*\/?>/gi, '');
+
+  // Mark pasted tables for consistent PDF layout (Annexure I–like borders + columns).
+  out = out.replace(/<table\b([^>]*)>([\s\S]*?)<\/table>/gi, (_m, attrs, inner) => {
+    let a = String(attrs || '');
+    const body = String(inner || '');
+    const firstRow = body.match(/<tr\b[^>]*>([\s\S]*?)<\/tr>/i);
+    const cellCount = firstRow
+      ? [...firstRow[1].matchAll(/<(?:td|th)\b/gi)].length
+      : 0;
+
     if (/class\s*=/i.test(a)) {
-      return `<table${a.replace(/class\s*=\s*("|')([^"']*)\1/i, (_cm, q, cls) => `class=${q}${cls} annexure-ii-table${q}`)}>`;
+      a = a.replace(/class\s*=\s*("|')([^"']*)\1/i, (_cm, q, cls) => {
+        const next = `${cls} annexure-ii-table${cellCount === 3 ? ' annexure-ii-table-3col' : ''}`.replace(/\s+/g, ' ').trim();
+        return `class=${q}${next}${q}`;
+      });
+    } else {
+      a = ` class="annexure-ii-table${cellCount === 3 ? ' annexure-ii-table-3col' : ''}"${a}`;
     }
-    return `<table class="annexure-ii-table"${a}>`;
+
+    // Strip leftover inline widths on cells so fixed layout can use % cols.
+    let cleanedInner = body
+      .replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/style\s*=\s*(")([^"]*)(")/gi, (_sm, q1, style, q2) => {
+        const kept = String(style || '')
+          .split(';')
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .filter((p) => {
+            const key = p.split(':')[0].trim().toLowerCase();
+            return key && key !== 'width' && key !== 'height' && key !== 'min-width' && key !== 'max-width';
+          });
+        return kept.length ? `style=${q1}${kept.join(';')}${q2}` : '';
+      });
+
+    if (cellCount === 3) {
+      cleanedInner =
+        `<colgroup>` +
+        `<col class="col-sno" style="width:8%" />` +
+        `<col class="col-head" style="width:22%" />` +
+        `<col class="col-desc" style="width:70%" />` +
+        `</colgroup>` +
+        cleanedInner;
+    }
+
+    return `<table${a}>${cleanedInner}</table>`;
   });
 
   return out;

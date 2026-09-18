@@ -7,8 +7,12 @@ interface Props {
   takenNames?: Set<string>;
   takenIds?: Set<string>;
   onChange: (vendorId: string) => void;
+  /** When set, shows “Add new vendor” if search has no usable match */
+  onRequestCreate?: (typedName: string) => void;
   placeholder?: string;
   emptyHint?: string;
+  /** Display name when value is set but not yet in vendors list */
+  fallbackLabel?: string;
 }
 
 function vendorHaystack(v: VendorRecord) {
@@ -27,8 +31,10 @@ export default function VendorSearchSelect({
   takenNames,
   takenIds,
   onChange,
+  onRequestCreate,
   placeholder = 'Type vendor name, code, or email',
   emptyHint,
+  fallbackLabel,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -46,6 +52,12 @@ export default function VendorSearchSelect({
   }, [vendors, query]);
 
   const pickable = matches.filter((v) => !isTaken(v, takenNames, takenIds) || String(v.id) === String(value));
+
+  const typed = query.trim();
+  const exactMatch = typed
+    ? vendors.find((v) => (v.name || '').trim().toLowerCase() === typed.toLowerCase())
+    : null;
+  const showCreate = Boolean(onRequestCreate) && Boolean(typed) && !exactMatch;
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -74,7 +86,10 @@ export default function VendorSearchSelect({
     inputRef.current?.focus();
   };
 
-  const display = open ? query : selected ? `${selected.name}${selected.vendorCode ? ` (${selected.vendorCode})` : ''}` : '';
+  const selectedLabel = selected
+    ? `${selected.name}${selected.vendorCode ? ` (${selected.vendorCode})` : ''}`
+    : fallbackLabel || '';
+  const display = open ? query : selectedLabel;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
@@ -88,6 +103,10 @@ export default function VendorSearchSelect({
       e.preventDefault();
       const hit = pickable[highlight];
       if (hit) pick(hit);
+      else if (showCreate && onRequestCreate) {
+        onRequestCreate(typed);
+        setOpen(false);
+      }
     } else if (e.key === 'Escape') {
       setOpen(false);
       inputRef.current?.blur();
@@ -112,7 +131,7 @@ export default function VendorSearchSelect({
             if (value) onChange('');
           }}
           onFocus={() => {
-            setQuery('');
+            setQuery(selected?.name || fallbackLabel || '');
             setOpen(true);
             setHighlight(0);
           }}
@@ -141,13 +160,14 @@ export default function VendorSearchSelect({
         >
           {matches.length === 0 ? (
             <div className="px-4 py-4 text-sm text-gray-600">
-              <p className="font-medium text-gray-800">No vendor matches “{query.trim()}”</p>
+              <p className="font-medium text-gray-800">
+                {typed ? `No vendor matches “${typed}”` : 'Start typing to search vendors'}
+              </p>
               <p className="text-xs text-gray-500 mt-1">
-                {emptyHint || (
-                  <>
-                    Try another spelling, or tap <strong>New vendor</strong> to add them.
-                  </>
-                )}
+                {emptyHint ||
+                  (onRequestCreate
+                    ? 'Add them below with name and email.'
+                    : 'Try another spelling, or add the vendor from Vendor Master.')}
               </p>
             </div>
           ) : (
@@ -193,6 +213,21 @@ export default function VendorSearchSelect({
                 </button>
               );
             })
+          )}
+          {onRequestCreate && (
+            <button
+              type="button"
+              onClick={() => {
+                onRequestCreate(typed);
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-3 border-t border-teal-100 bg-teal-50/80 hover:bg-teal-50 flex items-center gap-2"
+            >
+              <i className="ri-user-add-line text-teal-700" />
+              <span className="text-sm font-semibold text-teal-800">
+                {typed ? `Add “${typed}” as new vendor` : 'Vendor not in list? Add new'}
+              </span>
+            </button>
           )}
           {vendors.length > matches.length && matches.length > 0 && (
             <p className="px-3 py-2 text-[11px] text-gray-400 bg-gray-50">

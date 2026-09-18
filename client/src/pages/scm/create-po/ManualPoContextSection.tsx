@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import VendorSearchSelect from '../../requester/rfq-entry/components/VendorSearchSelect';
 import type { VendorRecord } from '../../../services/api';
+import { vendorApi } from '../../../services/api';
 import RfqVendorQuoteTable, {
   type RfqQuoteTableRow,
 } from '../../requester/rfq-entry/components/RfqVendorQuoteTable';
@@ -232,6 +233,7 @@ type Props = {
   comparisonRounds: ManualComparisonRound[];
   onComparisonRoundsChange: (next: ManualComparisonRound[]) => void;
   vendors: VendorRecord[];
+  onVendorsChange?: (next: VendorRecord[]) => void;
   currencySymbol: string;
   currency?: string | null;
 };
@@ -242,6 +244,7 @@ export default function ManualPoContextSection({
   comparisonRounds,
   onComparisonRoundsChange,
   vendors,
+  onVendorsChange,
   currencySymbol,
   currency,
 }: Props) {
@@ -253,6 +256,11 @@ export default function ManualPoContextSection({
     quoteKey: string;
     roundKey: string;
   } | null>(null);
+  const [addVendorOpen, setAddVendorOpen] = useState(false);
+  const [addVendorName, setAddVendorName] = useState('');
+  const [addVendorEmail, setAddVendorEmail] = useState('');
+  const [addVendorSaving, setAddVendorSaving] = useState(false);
+  const [addVendorError, setAddVendorError] = useState('');
 
   const pivoted = useMemo(() => pivotVendors(comparisonRounds), [comparisonRounds]);
   const roundCount = maxRoundNum(comparisonRounds);
@@ -463,6 +471,48 @@ export default function ManualPoContextSection({
         ...patch,
       })
     );
+  };
+
+  const openAddVendor = (typedName = '') => {
+    setAddVendorName(typedName.trim() || editingQuote?.vendorName || '');
+    setAddVendorEmail(editingQuote?.vendorEmail || '');
+    setAddVendorError('');
+    setAddVendorOpen(true);
+  };
+
+  const saveNewVendor = async () => {
+    const name = addVendorName.trim();
+    const email = addVendorEmail.trim();
+    if (!name) {
+      setAddVendorError('Vendor name is required');
+      return;
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setAddVendorError('Valid email is required');
+      return;
+    }
+    setAddVendorSaving(true);
+    setAddVendorError('');
+    try {
+      const res = await vendorApi.create({ name, vendorName: name, email });
+      const created = res.data;
+      if (!created?.id) throw new Error('Vendor was not created');
+      const listRes = await vendorApi.list();
+      const nextList = listRes.data || [];
+      onVendorsChange?.(nextList);
+      updateEditingQuote({
+        vendorId: String(created.id),
+        vendorName: created.name || name,
+        vendorEmail: (created.email || email).trim(),
+      });
+      setAddVendorOpen(false);
+      setAddVendorName('');
+      setAddVendorEmail('');
+    } catch (err) {
+      setAddVendorError(err instanceof Error ? err.message : 'Could not add vendor');
+    } finally {
+      setAddVendorSaving(false);
+    }
   };
 
   const openLocalFile = (row: RfqQuoteTableRow) => {
@@ -699,6 +749,7 @@ export default function ManualPoContextSection({
                   <VendorSearchSelect
                     vendors={vendors}
                     value={editingQuote.vendorId}
+                    fallbackLabel={editingQuote.vendorName}
                     onChange={(id) => {
                       const v = vendors.find((x) => String(x.id) === String(id));
                       updateEditingQuote({
@@ -707,8 +758,17 @@ export default function ManualPoContextSection({
                         vendorEmail: (v?.email || '').trim(),
                       });
                     }}
-                    placeholder="Search vendor"
+                    onRequestCreate={openAddVendor}
+                    placeholder="Search vendor by name, code, or email"
                   />
+                  <button
+                    type="button"
+                    onClick={() => openAddVendor(editingQuote.vendorName)}
+                    className="mt-2 text-sm text-teal-700 font-semibold inline-flex items-center gap-1.5"
+                  >
+                    <i className="ri-user-add-line" />
+                    Vendor not in the list? Add name &amp; email
+                  </button>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Email</label>
@@ -717,6 +777,7 @@ export default function ManualPoContextSection({
                     value={editingQuote.vendorEmail}
                     onChange={(e) => updateEditingQuote({ vendorEmail: e.target.value })}
                     className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Filled from vendor master"
                   />
                 </div>
                 <div>
@@ -814,6 +875,82 @@ export default function ManualPoContextSection({
                 className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
               >
                 Save quote
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addVendorOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/80 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Add vendor</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Enter name and email — they will appear in the search list</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !addVendorSaving && setAddVendorOpen(false)}
+                className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500"
+              >
+                <i className="ri-close-line text-lg" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Vendor name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={addVendorName}
+                  onChange={(e) => {
+                    setAddVendorName(e.target.value);
+                    setAddVendorError('');
+                  }}
+                  className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="Company or vendor name"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={addVendorEmail}
+                  onChange={(e) => {
+                    setAddVendorEmail(e.target.value);
+                    setAddVendorError('');
+                  }}
+                  className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="vendor@example.com"
+                />
+              </div>
+              {addVendorError ? (
+                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
+                  {addVendorError}
+                </p>
+              ) : null}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50/80">
+              <button
+                type="button"
+                disabled={addVendorSaving}
+                onClick={() => setAddVendorOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-white disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={addVendorSaving}
+                onClick={() => void saveNewVendor()}
+                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+              >
+                {addVendorSaving ? 'Adding…' : 'Add vendor'}
               </button>
             </div>
           </div>
