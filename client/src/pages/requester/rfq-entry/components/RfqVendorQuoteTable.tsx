@@ -144,12 +144,9 @@ function isPdfFileName(name: string) {
 
 function roundPrice(row: RfqQuoteTableRow, roundNum: number): number | null {
   const hit = roundQuote(row, roundNum);
-  if (hit) return Number(hit.quotedPrice) || 0;
-  if (roundNum === 1 && row.hasActiveQuote) {
-    const latest = [...(row.quotes || [])].reverse().find((q) => q.status === 'submitted' || Number(q.quotedPrice) > 0);
-    if (latest) return Number(latest.quotedPrice) || 0;
-    if (row.fieldValues?.quotedPrice != null) return Number(row.fieldValues.quotedPrice) || 0;
-  }
+  if (hit && Number(hit.quotedPrice) > 0) return Number(hit.quotedPrice) || 0;
+  if (hit && hit.status === 'submitted') return Number(hit.quotedPrice) || 0;
+  // Do not fall back to another round's price — Q1/Q2 must stay independent
   return null;
 }
 

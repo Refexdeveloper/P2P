@@ -128,6 +128,7 @@ export function findRecommendedManualQuote(
 }
 
 type StoredManualQuote = {
+  round?: number;
   vendorId?: string;
   vendorName?: string;
   vendorEmail?: string;
@@ -149,12 +150,28 @@ export function hydrateComparisonRoundsFromStored(
   storedRounds: StoredComparisonRound[] = [],
   flatQuotes: StoredManualQuote[] = []
 ): ManualComparisonRound[] {
-  const rounds =
+  let rounds: StoredComparisonRound[] =
     storedRounds.length > 0
       ? storedRounds
-      : flatQuotes.length
-        ? [{ round: 1, label: 'Round 1', notes: '', vendorQuotes: flatQuotes }]
-        : [];
+      : [];
+
+  // Flat quotes with per-quote round must not all collapse into Round 1
+  if (!rounds.length && flatQuotes.length) {
+    const byRound = new Map<number, StoredManualQuote[]>();
+    for (const q of flatQuotes) {
+      const roundNum = Math.max(1, Number(q.round) || 1);
+      if (!byRound.has(roundNum)) byRound.set(roundNum, []);
+      byRound.get(roundNum)!.push(q);
+    }
+    rounds = [...byRound.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([roundNum, quotes]) => ({
+        round: roundNum,
+        label: `Round ${roundNum}`,
+        notes: '',
+        vendorQuotes: quotes,
+      }));
+  }
 
   return rounds.map((round, roundIdx) => {
     const roundNum = Number(round.round) || roundIdx + 1;
@@ -163,18 +180,24 @@ export function hydrateComparisonRoundsFromStored(
       round: roundNum,
       label: String(round.label || `Round ${roundNum}`),
       notes: String(round.notes || ''),
-      vendorQuotes: (round.vendorQuotes || []).map((q, qi) => ({
-        key: `vq-stored-${roundNum}-${qi}-${Date.now()}`,
-        vendorId: String(q.vendorId || ''),
-        vendorName: String(q.vendorName || ''),
-        vendorEmail: String(q.vendorEmail || ''),
-        quotedPrice: q.quotedPrice != null ? String(q.quotedPrice) : '',
-        leadTime: String(q.leadTime || ''),
-        paymentTerms: String(q.paymentTerms || 'Net 30 Days'),
-        recommended: Boolean(q.recommended),
-        files: [],
-        storedFiles: (q.files || []).filter((f) => f?.fileName),
-      })),
+      vendorQuotes: (round.vendorQuotes || []).map((q, qi) => {
+        const vendorId = String(q.vendorId || '');
+        const vendorName = String(q.vendorName || '');
+        const vendorEmail = String(q.vendorEmail || '');
+        const stable = `${vendorId || vendorEmail || vendorName || 'v'}-${qi}`.replace(/\s+/g, '_');
+        return {
+          key: `vq-stored-${roundNum}-${stable}`,
+          vendorId,
+          vendorName,
+          vendorEmail,
+          quotedPrice: q.quotedPrice != null ? String(q.quotedPrice) : '',
+          leadTime: String(q.leadTime || ''),
+          paymentTerms: String(q.paymentTerms || 'Net 30 Days'),
+          recommended: Boolean(q.recommended),
+          files: [],
+          storedFiles: (q.files || []).filter((f) => f?.fileName),
+        };
+      }),
     };
   });
 }
@@ -287,10 +310,12 @@ export default function ManualPoContextSection({
     return [...comparisonRounds, next].sort((a, b) => a.round - b.round);
   };
 
-  const findQuoteInRounds = (vendorKey: string, roundNum: number) => {
-    const vendor = pivoted.find((v) => v.vendorKey === vendorKey);
-    const quote = vendor?.quotesByRound.get(roundNum);
-    const round = comparisonRounds.find((r) => r.round === roundNum);
+  const findQuoteInRounds = (vendorKey: string, roundNum: number, rounds = comparisonRounds) => {
+    const round = rounds.find((r) => r.round === roundNum);
+    const quote =
+      round?.vendorQuotes.find((q) => vendorStableKey(q) === vendorKey) ||
+      null;
+    const vendor = pivotVendors(rounds).find((v) => v.vendorKey === vendorKey);
     return { vendor, quote, round };
   };
 
@@ -320,24 +345,35 @@ export default function ManualPoContextSection({
   };
 
   const openEdit = (vendorKey: string, targetRound?: number) => {
-    const roundNum = Math.min(roundCount, Math.max(1, Number(targetRound) || preferredTab || 1));
+    const roundNum = Math.max(1, Number(targetRound) || preferredTab || 1);
     let rounds = ensureRound(roundNum);
-    const { vendor, quote, round } = findQuoteInRounds(vendorKey);
-    if (!round) {
-      rounds = ensureRound(roundNum);
-    }
-    const roundRow = rounds.find((r) => r.round === roundNum);
+    const { vendor, quote, round } = findQuoteInRounds(vendorKey, roundNum, rounds);
+    const roundRow = round || rounds.find((r) => r.round === roundNum);
     if (!roundRow) return;
 
     let quoteKey = quote?.key;
-    if (!quoteKey) {
+    let nextQuote = quote || null;
+    if (!quoteKey || !nextQuote) {
+      // New round slot: keep vendor identity only — never copy prior round price/files
       const newQuote = emptyManualVendorQuote(`vq-${Date.now()}-${roundNum}`);
       if (vendor) {
         newQuote.vendorId = vendor.vendorId;
         newQuote.vendorName = vendor.vendorName;
         newQuote.vendorEmail = vendor.vendorEmail;
+      } else {
+        // Fallback: identity from any existing round for this vendor key
+        for (const r of rounds) {
+          const hit = r.vendorQuotes.find((q) => vendorStableKey(q) === vendorKey);
+          if (hit) {
+            newQuote.vendorId = hit.vendorId;
+            newQuote.vendorName = hit.vendorName;
+            newQuote.vendorEmail = hit.vendorEmail;
+            break;
+          }
+        }
       }
       quoteKey = newQuote.key;
+      nextQuote = newQuote;
       rounds = rounds.map((r) =>
         r.round === roundNum
           ? { ...r, vendorQuotes: [...r.vendorQuotes, newQuote] }

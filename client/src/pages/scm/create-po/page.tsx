@@ -1077,6 +1077,7 @@ export default function CreatePOPage() {
   const [scmManager, setScmManager] = useState<{ name: string; email: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'lineItems' | 'terms' | 'preview'>('details');
   const [draftSaved, setDraftSaved] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
   const [poEditStatus, setPoEditStatus] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [pageMode, setPageMode] = useState<'form' | 'pdf'>('form');
@@ -2672,14 +2673,20 @@ export default function CreatePOPage() {
     };
   };
 
-  const handleSaveDraft = async () => {
-    if ((!numericPrId && !editPoId && !isManualPoFlow) || !pr) return;
+  const handleSaveDraft = async (opts?: { silent?: boolean }): Promise<boolean> => {
+    const silent = Boolean(opts?.silent);
+    if ((!numericPrId && !editPoId && !isManualPoFlow) || !pr) return false;
     if (isManualPoFlow && manualEntityId === '') {
-      alert('Please select an entity for PO / WO numbering');
-      setActiveTab('details');
-      return;
+      if (!silent) {
+        alert('Please select an entity for PO / WO numbering');
+        setActiveTab('details');
+      }
+      return false;
     }
-    setSubmitting(true);
+    if (silent && (submitting || autoSaving)) return false;
+    if (poEditStatus && poEditStatus !== 'draft' && silent) return false;
+    if (!silent) setSubmitting(true);
+    else setAutoSaving(true);
     try {
       flushLiveEditors();
       await new Promise((r) => window.setTimeout(r, 80));
@@ -2798,7 +2805,8 @@ export default function CreatePOPage() {
         setCreatedPoId(savedId);
       }
       if (savedPoNumber) setPoNumber(savedPoNumber);
-      if (data.manualContext) {
+      // Silent autosave must not remount rounds (would wipe open edit + local File blobs)
+      if (data.manualContext && !silent) {
         const hydratedRounds = hydrateComparisonRoundsFromStored(
           (data.manualContext.comparisonRounds || []) as Parameters<
             typeof hydrateComparisonRoundsFromStored
@@ -2822,12 +2830,132 @@ export default function CreatePOPage() {
         navigate(`/scm/create-po?${params.toString()}`, { replace: true });
       }
       setPoEditStatus('draft');
+      return true;
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not save draft');
+      if (!silent) alert(err instanceof Error ? err.message : 'Could not save draft');
+      return false;
     } finally {
-      setSubmitting(false);
+      if (!silent) setSubmitting(false);
+      else setAutoSaving(false);
     }
   };
+
+  const handleSaveDraftRef = useRef(handleSaveDraft);
+  handleSaveDraftRef.current = handleSaveDraft;
+  const draftHydratedRef = useRef(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAutoSavedFingerprintRef = useRef('');
+  const autoSaveFingerprintRef = useRef('');
+
+  const autoSaveFingerprint = useMemo(
+    () =>
+      JSON.stringify({
+        manualEntityId,
+        manualPrDetails,
+        manualVendorName,
+        manualVendorEmail,
+        rounds: manualComparisonRounds.map((r) => ({
+          round: r.round,
+          label: r.label,
+          notes: r.notes,
+          quotes: r.vendorQuotes.map((q) => ({
+            vendorId: q.vendorId,
+            vendorName: q.vendorName,
+            vendorEmail: q.vendorEmail,
+            quotedPrice: q.quotedPrice,
+            leadTime: q.leadTime,
+            paymentTerms: q.paymentTerms,
+            recommended: q.recommended,
+            files: q.files.map((f) => f.name),
+            stored: (q.storedFiles || []).map((f) => f.fileName),
+          })),
+        })),
+        lineItems: lineItems.map((i) => ({
+          itemName: i.itemName,
+          description: i.description,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          taxPercentage: i.taxPercentage,
+          unit: i.unit,
+        })),
+        deliveryAddress,
+        expectedDeliveryDate,
+        poDate,
+        paymentTerms,
+        incoterms,
+        specialInstructions,
+        currency,
+        entity,
+        documentType,
+        poType,
+        letterheadHeader,
+        letterheadId,
+        referencePoNumber,
+      }),
+    [
+      manualEntityId,
+      manualPrDetails,
+      manualVendorName,
+      manualVendorEmail,
+      manualComparisonRounds,
+      lineItems,
+      deliveryAddress,
+      expectedDeliveryDate,
+      poDate,
+      paymentTerms,
+      incoterms,
+      specialInstructions,
+      currency,
+      entity,
+      documentType,
+      poType,
+      letterheadHeader,
+      letterheadId,
+      referencePoNumber,
+    ]
+  );
+  autoSaveFingerprintRef.current = autoSaveFingerprint;
+
+  // Allow autosave only after initial load settles
+  useEffect(() => {
+    draftHydratedRef.current = false;
+    lastAutoSavedFingerprintRef.current = '';
+    const t = window.setTimeout(() => {
+      draftHydratedRef.current = true;
+      lastAutoSavedFingerprintRef.current = autoSaveFingerprintRef.current;
+    }, 1800);
+    return () => window.clearTimeout(t);
+  }, [editPoId, numericPrId, isManualPoFlow]);
+
+  // Debounced autosave for Create PO drafts (only when content fingerprint changes)
+  useEffect(() => {
+    if (!draftHydratedRef.current) return;
+    if ((!numericPrId && !editPoId && !createdPoId && !isManualPoFlow) || !pr) return;
+    if (isManualPoFlow && manualEntityId === '') return;
+    if (poEditStatus && poEditStatus !== 'draft') return;
+    if (autoSaveFingerprint === lastAutoSavedFingerprintRef.current) return;
+
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    const fp = autoSaveFingerprint;
+    autoSaveTimerRef.current = setTimeout(() => {
+      void handleSaveDraftRef.current({ silent: true }).then((ok) => {
+        if (ok) lastAutoSavedFingerprintRef.current = fp;
+      });
+    }, 2500);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [
+    autoSaveFingerprint,
+    pr,
+    numericPrId,
+    editPoId,
+    createdPoId,
+    isManualPoFlow,
+    manualEntityId,
+    poEditStatus,
+  ]);
 
   const applyReferencePoDetails = useCallback((po: Record<string, unknown>) => {
     const refNo = String(po.poNumber || '').trim();
@@ -3461,6 +3589,11 @@ export default function CreatePOPage() {
                   <i className="ri-checkbox-circle-fill"></i> Saved
                 </span>
               )}
+              {autoSaving && !draftSaved && (
+                <span className="flex items-center gap-1 text-xs text-gray-500 font-medium">
+                  <i className="ri-loader-4-line animate-spin"></i> Saving…
+                </span>
+              )}
 
               <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
                 {isEditMode && (
@@ -3508,7 +3641,7 @@ export default function CreatePOPage() {
                 {canSaveDraft && (
                   <button
                     type="button"
-                    onClick={handleSaveDraft}
+                    onClick={() => void handleSaveDraft()}
                     disabled={submitting}
                     className="px-3.5 py-1.5 border border-gray-300 bg-white text-slate-800 rounded-md hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium disabled:opacity-50"
                   >
@@ -4995,7 +5128,7 @@ export default function CreatePOPage() {
                 <div className="flex items-center gap-3">
                   {canSaveDraft && (
                     <button
-                      onClick={handleSaveDraft}
+                      onClick={() => void handleSaveDraft()}
                       disabled={submitting}
                       className="px-5 py-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm font-medium whitespace-nowrap disabled:opacity-50"
                     >

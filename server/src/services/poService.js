@@ -349,7 +349,23 @@ function parseManualContextJson(value) {
       return { prDetails: null, vendorQuotes: [], comparisonRounds: [], selectedEntityId: null };
     }
     const vendorQuotes = Array.isArray(raw.vendorQuotes) ? raw.vendorQuotes : [];
-    const comparisonRounds = Array.isArray(raw.comparisonRounds) ? raw.comparisonRounds : [];
+    let comparisonRounds = Array.isArray(raw.comparisonRounds) ? raw.comparisonRounds : [];
+    // Rebuild rounds from flat quotes when comparisonRounds missing (keeps R1/R2 amounts separate)
+    if (!comparisonRounds.length && vendorQuotes.length) {
+      const byRound = new Map();
+      for (const q of vendorQuotes) {
+        const roundNum = Math.max(1, Number(q.round) || 1);
+        if (!byRound.has(roundNum)) byRound.set(roundNum, []);
+        byRound.get(roundNum).push(q);
+      }
+      comparisonRounds = [...byRound.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([roundNum, quotes]) => ({
+          round: roundNum,
+          label: `Round ${roundNum}`,
+          notes: '',
+          vendorQuotes: quotes,
+        }));
     const selectedEntityId =
       raw.selectedEntityId !== undefined && raw.selectedEntityId !== null && raw.selectedEntityId !== ''
         ? Number(raw.selectedEntityId) || null
@@ -359,11 +375,7 @@ function parseManualContextJson(value) {
     return {
       prDetails: raw.prDetails && typeof raw.prDetails === 'object' ? raw.prDetails : null,
       vendorQuotes,
-      comparisonRounds: comparisonRounds.length
-        ? comparisonRounds
-        : vendorQuotes.length
-          ? [{ round: 1, label: 'Round 1', notes: '', vendorQuotes }]
-          : [],
+      comparisonRounds,
       selectedEntityId,
     };
   } catch {
@@ -421,14 +433,20 @@ function normalizeManualContextInput(body = {}) {
       );
 
   if (!comparisonRounds.length && vendorQuotes.length) {
-    comparisonRounds = [
-      {
-        round: 1,
-        label: 'Round 1',
+    const byRound = new Map();
+    for (const q of vendorQuotes) {
+      const roundNum = Math.max(1, Number(q.round) || 1);
+      if (!byRound.has(roundNum)) byRound.set(roundNum, []);
+      byRound.get(roundNum).push(q);
+    }
+    comparisonRounds = [...byRound.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([roundNum, quotes]) => ({
+        round: roundNum,
+        label: `Round ${roundNum}`,
         notes: '',
-        vendorQuotes,
-      },
-    ];
+        vendorQuotes: quotes,
+      }));
   }
 
   const selectedEntityId =
