@@ -1212,6 +1212,16 @@ export default function CreatePOPage() {
       annexureDraftRef.current = nextAnnexure;
       setTermsClauses(nextTerms);
       setAnnexureClauses(nextAnnexure);
+      const iiDefaults = Array.isArray(res.data.annexureIiDefaults)
+        ? (res.data.annexureIiDefaults as AnnexureIiRow[])
+        : [];
+      const iiEmpty =
+        !annexureIiDraftRef.current.length ||
+        annexureIiDraftRef.current.every((row) => annexureIiRowIsEmpty(row));
+      if (iiDefaults.length && (force || iiEmpty)) {
+        annexureIiDraftRef.current = iiDefaults;
+        setAnnexureIiRows(iiDefaults);
+      }
       setLoadedTemplate({
         poType: alignedType,
         title: res.data.title || res.data.poTypeLabel || alignedType,

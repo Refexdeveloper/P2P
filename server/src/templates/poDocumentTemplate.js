@@ -694,7 +694,39 @@ function applyClausePlaceholders(html, po) {
       /\$aos_quotes_invoicing_address_c/gi,
       invoicingAddressPlainHtml(td.invoicingAddress || td.locationName) || '—'
     )
-    .replace(/\$aos_quotes_original_address_c/gi, placeholderText(td.mailingAddress));
+    .replace(/\$aos_quotes_original_address_c/gi, placeholderText(td.mailingAddress))
+    // SugarCRM Work Order (AOS Invoices) placeholders
+    .replace(/\$aos_invoices_company_name_c/gi, company)
+    .replace(/\$billing_account_name/gi, vendor)
+    .replace(/\$aos_invoices_wo_number_c/gi, escapeHtml(po.poNumber || ''))
+    .replace(/\$aos_invoices_create__c/gi, escapeHtml(fmtDateDisplay(po.poDate || po.createdAt) || ''))
+    .replace(/\$aos_invoices_ref_no_c/gi, placeholderText(td.quoteNo || po.prNumber))
+    .replace(/\$aos_invoices_subject_c/gi, placeholderText(td.subject || po.prTitle || po.title))
+    .replace(/\$aos_invoices_scope_c/gi, placeholderText(po.specialInstructions))
+    .replace(/\$aos_invoices_completion_schedule_c/gi, placeholderText(deliveryDate))
+    .replace(
+      /\$aos_invoices_payment_terms_c/gi,
+      placeholderText(td.paymentTermsText || po.paymentTerms)
+    )
+    .replace(/\$aos_invoices_notes_c/gi, placeholderText(po.specialInstructions))
+    .replace(
+      /\$aos_invoices_site_address_c/gi,
+      placeholderText(td.siteAddress || po.deliveryAddress)
+    )
+    .replace(/\$aos_invoices_site_contact_person_c/gi, placeholderText(td.siteContactPerson))
+    .replace(/\$aos_invoices_site_contact_person_phone_c/gi, placeholderText(td.siteContactPhone))
+    .replace(/\$aos_invoices_site_contact_person_mail_c/gi, placeholderText(td.siteContactEmail))
+    .replace(/\$aos_invoices_projectmanageratho_c/gi, placeholderText(td.projectManagerHo))
+    .replace(
+      /\$aos_invoices_projectmanagercontactnumber_c/gi,
+      placeholderText(td.projectManagerContact)
+    )
+    .replace(/\$aos_invoices_projectmanageremail_c/gi, placeholderText(td.projectManagerEmail))
+    .replace(
+      /\$aos_invoices_invoice_address_c/gi,
+      invoicingAddressPlainHtml(td.invoicingAddress || td.locationName) || '—'
+    )
+    .replace(/\$aos_invoices_mailing_address_c/gi, placeholderText(td.mailingAddress));
   if (isWorkOrder) {
     out = out
       .replace(/purchase\s+order\s*\/\s*work\s+order(?:\s*\/\s*service\s+order)?/gi, 'Work Order')

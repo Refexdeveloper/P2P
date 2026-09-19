@@ -1348,6 +1348,14 @@ export interface PoLetterheadConfig {
   letterheadHeader: string;
   terms: PoLetterheadClause[];
   annexure: PoLetterheadClause[];
+  /** Long WO — default Annexure II site EHS rows */
+  annexureIiDefaults?: Array<{
+    title?: string;
+    header?: string;
+    description?: string;
+    images?: unknown[];
+    comments?: string;
+  }>;
   updatedAt?: string;
 }
 

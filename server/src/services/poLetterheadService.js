@@ -4,6 +4,7 @@ import { LONG_PO_LETTERHEAD_DEFAULTS } from './longPoLetterheadDefaults.js';
 import {
   SHORT_WO_LETTERHEAD_DEFAULTS,
   LONG_WO_LETTERHEAD_DEFAULTS,
+  LONG_WO_ANNEXURE_II_DEFAULTS,
 } from './woLetterheadDefaults.js';
 
 export const PO_TYPES = [
@@ -232,6 +233,11 @@ export async function getLetterheadByType(poTypeInput) {
     letterheadHeader: master.letterhead_header || '',
     terms: stripQuoteNoTermRows(terms),
     annexure,
+    // Long WO master also ships Annexure-II site EHS defaults (Create WO preload)
+    annexureIiDefaults:
+      poType === 'long_wo' || poType === 'custom_long_wo'
+        ? LONG_WO_ANNEXURE_II_DEFAULTS
+        : [],
     updatedAt: master.updated_at,
   };
 }
@@ -364,20 +370,66 @@ export async function seedLetterheadDefaults() {
     await saveLetterhead('long_po', LONG_PO_LETTERHEAD_DEFAULTS);
   }
 
-  // Short WO / Long WO — seed once when empty
+  // Short WO — Refex short commercial annexure (Work Schedule + invoice placeholders)
   const shortWoClauses = await clauseHeadersForType('short_wo');
-  if (!shortWoClauses.length) {
+  const hasShortWoWorkSchedule = shortWoClauses.some(
+    (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'work schedule'
+  );
+  const hasShortWoCompletion = shortWoClauses.some(
+    (c) =>
+      c.section_type === 'terms' &&
+      String(c.terms_description || '').includes('$aos_invoices_completion_schedule_c')
+  );
+  const shortWoAnnexureCount = shortWoClauses.filter((c) => c.section_type === 'annexure').length;
+  if (
+    !shortWoClauses.length ||
+    !hasShortWoWorkSchedule ||
+    !hasShortWoCompletion ||
+    shortWoAnnexureCount !== SHORT_WO_LETTERHEAD_DEFAULTS.annexure.length
+  ) {
     await saveLetterhead('short_wo', SHORT_WO_LETTERHEAD_DEFAULTS);
   }
 
+  // Long WO — site mobilization + Annexure I commercial set
   const longWoClauses = await clauseHeadersForType('long_wo');
-  if (!longWoClauses.length) {
+  const hasLongWoSiteMobilization = longWoClauses.some(
+    (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'site mobilization'
+  );
+  const hasLongWoScope = longWoClauses.some(
+    (c) =>
+      c.section_type === 'terms' &&
+      String(c.terms_description || '').includes('$aos_invoices_scope_c')
+  );
+  const longWoAnnexureCount = longWoClauses.filter((c) => c.section_type === 'annexure').length;
+  if (
+    !longWoClauses.length ||
+    !hasLongWoSiteMobilization ||
+    !hasLongWoScope ||
+    longWoAnnexureCount !== LONG_WO_LETTERHEAD_DEFAULTS.annexure.length
+  ) {
     await saveLetterhead('long_wo', LONG_WO_LETTERHEAD_DEFAULTS);
   }
 
   // Custom PO/WO — seed with same default content as matching standard type
   await seedCustomTypeIfEmpty('custom_short_po', SHORT_PO_LETTERHEAD_DEFAULTS);
   await seedCustomTypeIfEmpty('custom_long_po', LONG_PO_LETTERHEAD_DEFAULTS);
-  await seedCustomTypeIfEmpty('custom_short_wo', SHORT_WO_LETTERHEAD_DEFAULTS);
-  await seedCustomTypeIfEmpty('custom_long_wo', LONG_WO_LETTERHEAD_DEFAULTS);
+  // Force-refresh custom WO when standard WO template was upgraded
+  const customShortWo = await clauseHeadersForType('custom_short_wo');
+  if (
+    !customShortWo.length ||
+    !customShortWo.some(
+      (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'work schedule'
+    )
+  ) {
+    await saveLetterhead('custom_short_wo', defaultsWithTitle(SHORT_WO_LETTERHEAD_DEFAULTS, 'custom_short_wo'));
+  }
+  const customLongWo = await clauseHeadersForType('custom_long_wo');
+  if (
+    !customLongWo.length ||
+    !customLongWo.some(
+      (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'site mobilization'
+    )
+  ) {
+    await saveLetterhead('custom_long_wo', defaultsWithTitle(LONG_WO_LETTERHEAD_DEFAULTS, 'custom_long_wo'));
+  }
 }
