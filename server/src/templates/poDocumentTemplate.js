@@ -1123,16 +1123,59 @@ function sanitizeAnnexureHtml(html) {
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
 }
 
+/** Drop pasted Word/editor font sizes so Annexure II matches Annexure I body text. */
+function stripAnnexureTypographyOverrides(html) {
+  let out = String(html || '');
+  if (!out) return '';
+
+  // Editor fontSize command + Word paste often use <font size="5"> / face=
+  out = out.replace(/<\/?font\b[^>]*>/gi, '');
+  // Heading tags render huge in PDF — keep as paragraphs
+  out = out.replace(/<h[1-6]\b[^>]*>/gi, '<p>').replace(/<\/h[1-6]>/gi, '</p>');
+  // Legacy size / face attributes
+  out = out
+    .replace(/\ssize\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\sface\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+
+  // Strip font-size / family / line-height from both " and ' style attrs
+  out = out.replace(/style\s*=\s*(["'])([\s\S]*?)\1/gi, (_m, quote, style) => {
+    const kept = String(style || '')
+      .split(';')
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .filter((p) => {
+        const key = p.split(':')[0].trim().toLowerCase();
+        if (!key) return false;
+        if (/^mso-/i.test(key)) return false;
+        if (
+          key === 'font-size' ||
+          key === 'font-family' ||
+          key === 'font' ||
+          key === 'line-height' ||
+          key === 'letter-spacing' ||
+          key === 'zoom' ||
+          key === 'transform'
+        ) {
+          return false;
+        }
+        return true;
+      });
+    return kept.length ? `style=${quote}${kept.join(';')}${quote}` : '';
+  });
+
+  return out;
+}
+
 /** Normalize pasted Word/Excel tables so PDF columns stay aligned (Annexure I style). */
 function normalizeAnnexureIiBodyHtml(html) {
-  let out = sanitizeAnnexureHtml(html);
+  let out = stripAnnexureTypographyOverrides(sanitizeAnnexureHtml(html));
   if (!out) return '';
 
   // Drop fixed Word widths that overflow A4 and break column alignment.
   out = out
     .replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\snowrap\b/gi, '')
-    .replace(/style\s*=\s*(")([^"]*)(")/gi, (_m, q1, style, q2) => {
+    .replace(/style\s*=\s*(["'])([\s\S]*?)\1/gi, (_m, quote, style) => {
       const kept = String(style || '')
         .split(';')
         .map((p) => p.trim())
@@ -1144,6 +1187,15 @@ function normalizeAnnexureIiBodyHtml(html) {
           if (key === 'width' || key === 'height' || key === 'min-width' || key === 'max-width') return false;
           if (key === 'position' || key === 'left' || key === 'top' || key === 'float') return false;
           if (key === 'white-space') return false; // allow wrapping in PDF cells
+          if (
+            key === 'font-size' ||
+            key === 'font-family' ||
+            key === 'font' ||
+            key === 'line-height' ||
+            key === 'letter-spacing'
+          ) {
+            return false;
+          }
           return [
             'text-align',
             'font-weight',
@@ -1161,7 +1213,7 @@ function normalizeAnnexureIiBodyHtml(html) {
             'padding',
           ].includes(key);
         });
-      return kept.length ? `style=${q1}${kept.join(';')}${q2}` : '';
+      return kept.length ? `style=${quote}${kept.join(';')}${quote}` : '';
     });
 
   // Excel/Word dual-paste: keep the real <table>, drop sibling screenshot images.
@@ -1195,16 +1247,27 @@ function normalizeAnnexureIiBodyHtml(html) {
     // Strip leftover inline widths on cells so fixed layout can use % cols.
     let cleanedInner = body
       .replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-      .replace(/style\s*=\s*(")([^"]*)(")/gi, (_sm, q1, style, q2) => {
+      .replace(/style\s*=\s*(["'])([\s\S]*?)\1/gi, (_sm, quote, style) => {
         const kept = String(style || '')
           .split(';')
           .map((p) => p.trim())
           .filter(Boolean)
           .filter((p) => {
             const key = p.split(':')[0].trim().toLowerCase();
-            return key && key !== 'width' && key !== 'height' && key !== 'min-width' && key !== 'max-width';
+            if (!key) return false;
+            if (key === 'width' || key === 'height' || key === 'min-width' || key === 'max-width') return false;
+            if (
+              key === 'font-size' ||
+              key === 'font-family' ||
+              key === 'font' ||
+              key === 'line-height' ||
+              key === 'letter-spacing'
+            ) {
+              return false;
+            }
+            return true;
           });
-        return kept.length ? `style=${q1}${kept.join(';')}${q2}` : '';
+        return kept.length ? `style=${quote}${kept.join(';')}${quote}` : '';
       });
 
     if (cellCount === 3) {
@@ -1351,7 +1414,7 @@ function annexureIiItemHtml(row, opts = {}) {
     rowIndex = null,
   } = opts;
   const titleText = resolveAnnexureIiTitleBar(row);
-  const headerHtml = sanitizeAnnexureHtml(row.header || '');
+  const headerHtml = stripAnnexureTypographyOverrides(sanitizeAnnexureHtml(row.header || ''));
   const headerPlain = plainAnnexureText(row.header);
   const bodyHtml = includeBody ? normalizeAnnexureIiBodyHtml(row.description || '') : '';
   const extraImages = includeImages

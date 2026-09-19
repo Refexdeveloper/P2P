@@ -824,8 +824,8 @@ export const PO_STYLES = `
     color: #333;
   }
   .annexure-ii-header {
-    padding: 10px 14px 8px;
-    font-size: 14px;
+    padding: 8px 14px 6px;
+    font-size: 11px;
     font-weight: 700;
     color: #111;
     border-bottom: 1px solid #000;
@@ -836,17 +836,36 @@ export const PO_STYLES = `
   .annexure-ii-header p {
     margin: 0;
   }
+  /* Force pasted Word/editor sizes to match Annexure I body (~10.5px) */
+  .annexure-ii-header,
+  .annexure-ii-header *:not(img) {
+    font-size: 11px !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+    line-height: 1.4 !important;
+  }
   .annexure-ii-comments { margin-top: 10px; }
   .annexure-ii-body {
     padding: 12px 14px;
-    font-size: 12px;
-    line-height: 1.5;
+    font-size: 10.5px;
+    line-height: 1.4;
     color: #111;
     word-wrap: break-word;
     overflow-wrap: anywhere;
     box-sizing: border-box;
     max-width: 100%;
     overflow: visible;
+  }
+  .annexure-ii-body,
+  .annexure-ii-body *:not(img) {
+    font-size: 10.5px !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+    line-height: 1.4 !important;
+  }
+  .annexure-ii-body strong,
+  .annexure-ii-body b,
+  .annexure-ii-header strong,
+  .annexure-ii-header b {
+    font-weight: 700 !important;
   }
   /* Full-bleed tables (like Annexure I) — avoid double inset that clips the right border */
   .annexure-ii-body:has(> table),
@@ -864,7 +883,14 @@ export const PO_STYLES = `
   .annexure-ii-body li { margin: 3px 0; }
   .annexure-ii-body h1,
   .annexure-ii-body h2,
-  .annexure-ii-body h3 { margin: 10px 0 6px; font-weight: 700; }
+  .annexure-ii-body h3,
+  .annexure-ii-body h4,
+  .annexure-ii-body h5,
+  .annexure-ii-body h6 {
+    margin: 6px 0;
+    font-weight: 700;
+    font-size: 10.5px !important;
+  }
   .annexure-ii-body img {
     max-width: 100%;
     max-height: none;

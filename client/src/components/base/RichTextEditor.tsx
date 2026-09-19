@@ -20,9 +20,6 @@ const FONT_SIZES = [
   { label: '12', value: '2' },
   { label: '14', value: '3' },
   { label: '16', value: '4' },
-  { label: '18', value: '5' },
-  { label: '24', value: '6' },
-  { label: '32', value: '7' },
 ];
 
 const LINE_SPACING = [
@@ -258,10 +255,23 @@ function sanitizePastedHtml(raw: string, allowImages = false) {
       }
       continue;
     }
+    // Word / editor paste: drop oversized <font size> and demote headings to paragraphs
+    if (tag === 'FONT') {
+      unwrapElement(el);
+      continue;
+    }
+    if (/^H[1-6]$/.test(tag)) {
+      const p = el.ownerDocument.createElement('p');
+      while (el.firstChild) p.appendChild(el.firstChild);
+      el.parentNode?.replaceChild(p, el);
+      continue;
+    }
     if (!PASTE_ALLOWED_TAGS.has(tag)) {
       unwrapElement(el);
       continue;
     }
+    el.removeAttribute('size');
+    el.removeAttribute('face');
     const style = sanitizeStyleAttr(el.getAttribute('style') || '');
     [...el.attributes].forEach((attr) => {
       const name = attr.name.toLowerCase();
