@@ -73,15 +73,55 @@ function createEmptyConfig(poType: PoType): PoLetterheadConfig {
     letterheadHeader: '',
     terms: [emptyRow()],
     annexure: [emptyRow()],
+    annexureIiDefaults: [],
   };
 }
 
-function normalizeConfig(config: PoLetterheadConfig): PoLetterheadConfig {
+function isLongWoMasterType(poType: PoType) {
+  return poType === 'long_wo' || poType === 'custom_long_wo';
+}
+
+type MasterConfig = PoLetterheadConfig & {
+  terms: EditableClause[];
+  annexure: EditableClause[];
+  annexureIiEdit?: EditableClause[];
+};
+
+function annexureIiToClauses(
+  rows: PoLetterheadConfig['annexureIiDefaults'] | undefined
+): EditableClause[] {
+  if (!rows?.length) return [emptyRow()];
+  return rows.map((row) => ({
+    clientKey: makeClientKey(),
+    termsHeader: String(row.header || ''),
+    termsDescription: String(row.description || ''),
+    sortOrder: 0,
+  }));
+}
+
+function clausesToAnnexureIi(clauses: EditableClause[]) {
+  return fromEditableClauses(clauses).map((clause) => ({
+    title: 'ANNEXURE-II',
+    header: clause.termsHeader || '',
+    description: clause.termsDescription || '',
+    images: [] as Array<{ src: string; caption?: string }>,
+    comments: '',
+  }));
+}
+
+function normalizeConfig(config: PoLetterheadConfig): MasterConfig {
+  const annexureIiDefaults = Array.isArray(config.annexureIiDefaults)
+    ? config.annexureIiDefaults
+    : Array.isArray(config.annexureIiRows)
+      ? config.annexureIiRows
+      : [];
   return {
     ...config,
     terms: toEditableClauses(config.terms),
     annexure: toEditableClauses(config.annexure),
-  } as PoLetterheadConfig & { terms: EditableClause[]; annexure: EditableClause[] };
+    annexureIiDefaults,
+    annexureIiEdit: annexureIiToClauses(annexureIiDefaults),
+  };
 }
 
 function ClauseTable({
@@ -227,13 +267,16 @@ function serializeConfig(config: PoLetterheadConfig | null) {
     letterheadHeader: config.letterheadHeader,
     terms: fromEditableClauses(config.terms as EditableClause[]),
     annexure: fromEditableClauses(config.annexure as EditableClause[]),
+    annexureIiDefaults: config.annexureIiDefaults || [],
   });
 }
 
 export default function PoTypeMasterPage() {
   const [activeGroup, setActiveGroup] = useState<DocGroup>('purchase_order');
   const [activeType, setActiveType] = useState<PoType>('short_po');
-  const [configs, setConfigs] = useState<Record<PoType, PoLetterheadConfig | null>>(emptyConfigs);
+  const [configs, setConfigs] = useState<Record<PoType, MasterConfig | null>>(
+    emptyConfigs as Record<PoType, MasterConfig | null>
+  );
   const [savedSnapshots, setSavedSnapshots] = useState<Record<PoType, string>>(emptySnapshots);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -304,7 +347,7 @@ export default function PoTypeMasterPage() {
     }).map((t) => PO_TYPE_LABELS[t]);
   }, [configs, savedSnapshots]);
 
-  const updateCurrent = (patch: Partial<PoLetterheadConfig>) => {
+  const updateCurrent = (patch: Partial<MasterConfig>) => {
     if (!current) return;
     setConfigs((prev) => ({
       ...prev,
@@ -341,6 +384,15 @@ export default function PoTypeMasterPage() {
 
     const terms = fromEditableClauses(current.terms as EditableClause[]);
     const annexure = fromEditableClauses(current.annexure as EditableClause[]);
+    const annexureIiRows = isLongWoMasterType(activeType)
+      ? (current.annexureIiDefaults || []).map((row) => ({
+          title: row.title || 'ANNEXURE-II',
+          header: row.header || '',
+          description: row.description || '',
+          images: row.images || [],
+          comments: row.comments || '',
+        }))
+      : [];
 
     const plain = (html: string) =>
       String(html || '')
@@ -353,7 +405,8 @@ export default function PoTypeMasterPage() {
       current.title?.trim() ||
       current.letterheadHeader?.trim() ||
       terms.some((r) => plain(r.termsHeader) || plain(r.termsDescription)) ||
-      annexure.some((r) => plain(r.termsHeader) || plain(r.termsDescription));
+      annexure.some((r) => plain(r.termsHeader) || plain(r.termsDescription)) ||
+      annexureIiRows.some((r) => plain(r.header) || plain(r.description));
 
     if (!hasContent) {
       showToast('Add at least one header or description before saving', 'error');
@@ -367,6 +420,8 @@ export default function PoTypeMasterPage() {
         letterheadHeader: current.letterheadHeader,
         terms,
         annexure,
+        annexureIiRows,
+        annexureIiDefaults: annexureIiRows,
       });
       const normalized = normalizeConfig(res.data);
       setConfigs((prev) => ({ ...prev, [activeType]: normalized }));
@@ -390,6 +445,10 @@ export default function PoTypeMasterPage() {
 
   const termsRows = (current?.terms as EditableClause[]) || [emptyRow()];
   const annexureRows = (current?.annexure as EditableClause[]) || [emptyRow()];
+  const annexureIiClauseRows =
+    (current as MasterConfig | null)?.annexureIiEdit ||
+    annexureIiToClauses(current?.annexureIiDefaults);
+  const showAnnexureIi = isLongWoMasterType(activeType);
   const activeLabel = PO_TYPE_LABELS[activeType];
   const titleFieldLabel = activeGroup === 'work_order' ? 'WO Title' : 'PO Title';
   const headerFieldLabel = activeGroup === 'work_order' ? 'WO Header' : 'PO Header';
@@ -401,7 +460,8 @@ export default function PoTypeMasterPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">PO Type Master</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Purchase Order and Work Order each have Short and Long templates — header, terms, and annexure.
+              Purchase Order and Work Order each have Short and Long templates — header, terms,
+              Annexure I, and (Long WO) Annexure II.
             </p>
             {dirtyTypes.length > 0 && (
               <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
@@ -524,7 +584,7 @@ export default function PoTypeMasterPage() {
             />
 
             <ClauseTable
-              title="Annexure"
+              title="Annexure I (Commercial terms & conditions)"
               headerColumnLabel="Annexure Header"
               descriptionColumnLabel="Annexure Description"
               descriptionFieldLabel="Annexure Description"
@@ -533,6 +593,24 @@ export default function PoTypeMasterPage() {
               rows={annexureRows}
               onChange={(annexure) => updateCurrent({ annexure: annexure as unknown as PoLetterheadClause[] })}
             />
+
+            {showAnnexureIi && (
+              <ClauseTable
+                title="Annexure II (General terms for working at site)"
+                headerColumnLabel="Annexure Header"
+                descriptionColumnLabel="Annexure Description"
+                descriptionFieldLabel="Annexure Description"
+                headerPlaceholder="e.g. General EHS requirements"
+                descriptionPlaceholder="Enter Annexure II description..."
+                rows={annexureIiClauseRows}
+                onChange={(rows) =>
+                  updateCurrent({
+                    annexureIiEdit: rows,
+                    annexureIiDefaults: clausesToAnnexureIi(rows),
+                  })
+                }
+              />
+            )}
           </div>
         )}
       </div>

@@ -1356,6 +1356,15 @@ export interface PoLetterheadConfig {
     images?: unknown[];
     comments?: string;
   }>;
+  /** Alias of annexureIiDefaults (persisted on master) */
+  annexureIiRows?: Array<{
+    title?: string;
+    header?: string;
+    description?: string;
+    images?: unknown[];
+    comments?: string;
+  }>;
+  annexureIiHtml?: string;
   updatedAt?: string;
 }
 

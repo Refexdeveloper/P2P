@@ -200,6 +200,8 @@ const MIGRATIONS = [
   // Last calendar day an EVENING SLA-breach reminder was sent (User / L1 / L2 only)
   `ALTER TABLE workflow_tasks ADD COLUMN sla_evening_notified_on DATE NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN annexure_ii_html LONGTEXT NULL`,
+  // Long WO master — Annexure II (site EHS) default rows for Create WO preload
+  `ALTER TABLE po_letterhead_masters ADD COLUMN annexure_ii_html LONGTEXT NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN cancellation_reason TEXT NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN cancellation_attachments_json JSON NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN cancelled_by INT NULL`,

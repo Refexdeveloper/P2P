@@ -6,6 +6,11 @@ import {
   LONG_WO_LETTERHEAD_DEFAULTS,
   LONG_WO_ANNEXURE_II_DEFAULTS,
 } from './woLetterheadDefaults.js';
+import {
+  annexureIiHasContent,
+  parseAnnexureIi,
+  serializeAnnexureIi,
+} from '../utils/annexureIi.js';
 
 export const PO_TYPES = [
   'short_po',
@@ -34,6 +39,21 @@ export function isLongPoType(poType) {
     .trim()
     .toLowerCase()
     .includes('long');
+}
+
+export function isLongWoType(poType) {
+  const t = String(poType || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return t === 'long_wo' || t === 'custom_long_wo';
+}
+
+function resolveAnnexureIiForMaster(poType, storedHtml) {
+  const parsed = parseAnnexureIi(storedHtml || '');
+  if (annexureIiHasContent(parsed)) return parsed;
+  if (isLongWoType(poType)) return LONG_WO_ANNEXURE_II_DEFAULTS;
+  return [];
 }
 
 export function isCustomPoType(poType) {
@@ -226,6 +246,8 @@ export async function getLetterheadByType(poTypeInput) {
     else terms.push(item);
   }
 
+  const annexureIiDefaults = resolveAnnexureIiForMaster(poType, master.annexure_ii_html);
+
   return {
     poType,
     poTypeLabel: PO_TYPE_LABELS[poType],
@@ -234,10 +256,9 @@ export async function getLetterheadByType(poTypeInput) {
     terms: stripQuoteNoTermRows(terms),
     annexure,
     // Long WO master also ships Annexure-II site EHS defaults (Create WO preload)
-    annexureIiDefaults:
-      poType === 'long_wo' || poType === 'custom_long_wo'
-        ? LONG_WO_ANNEXURE_II_DEFAULTS
-        : [],
+    annexureIiDefaults,
+    annexureIiRows: annexureIiDefaults,
+    annexureIiHtml: serializeAnnexureIi(annexureIiDefaults),
     updatedAt: master.updated_at,
   };
 }
@@ -257,6 +278,9 @@ export async function saveLetterhead(poTypeInput, payload) {
     letterheadHeader,
     terms = [],
     annexure = [],
+    annexureIiRows,
+    annexureIiDefaults,
+    annexureIiHtml,
   } = payload || {};
 
   const conn = await pool.getConnection();
@@ -264,13 +288,33 @@ export async function saveLetterhead(poTypeInput, payload) {
     await conn.beginTransaction();
     const master = await ensureMaster(poType);
 
+    let nextAnnexureIiHtml = master.annexure_ii_html || null;
+    const hasIiPayload =
+      Array.isArray(annexureIiRows) ||
+      Array.isArray(annexureIiDefaults) ||
+      Object.prototype.hasOwnProperty.call(payload || {}, 'annexureIiHtml');
+    if (hasIiPayload) {
+      const source = Array.isArray(annexureIiRows)
+        ? annexureIiRows
+        : Array.isArray(annexureIiDefaults)
+          ? annexureIiDefaults
+          : annexureIiHtml;
+      nextAnnexureIiHtml = serializeAnnexureIi(source) || null;
+    } else if (isLongWoType(poType) && !annexureIiHasContent(master.annexure_ii_html)) {
+      // First save of Long WO without II payload — seed site EHS defaults
+      nextAnnexureIiHtml = serializeAnnexureIi(LONG_WO_ANNEXURE_II_DEFAULTS);
+    } else if (!isLongWoType(poType)) {
+      nextAnnexureIiHtml = null;
+    }
+
     await conn.query(
       `UPDATE po_letterhead_masters
-       SET title = ?, letterhead_header = ?, updated_at = NOW()
+       SET title = ?, letterhead_header = ?, annexure_ii_html = ?, updated_at = NOW()
        WHERE id = ?`,
       [
         title || PO_TYPE_LABELS[poType],
         letterheadHeader || '',
+        nextAnnexureIiHtml,
         master.id,
       ]
     );
@@ -390,7 +434,7 @@ export async function seedLetterheadDefaults() {
     await saveLetterhead('short_wo', SHORT_WO_LETTERHEAD_DEFAULTS);
   }
 
-  // Long WO — site mobilization + Annexure I commercial set
+  // Long WO — site mobilization + Annexure I commercial set + Annexure II EHS
   const longWoClauses = await clauseHeadersForType('long_wo');
   const hasLongWoSiteMobilization = longWoClauses.some(
     (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'site mobilization'
@@ -401,13 +445,19 @@ export async function seedLetterheadDefaults() {
       String(c.terms_description || '').includes('$aos_invoices_scope_c')
   );
   const longWoAnnexureCount = longWoClauses.filter((c) => c.section_type === 'annexure').length;
+  const longWoMaster = await ensureMaster('long_wo');
+  const longWoHasAnnexureIi = annexureIiHasContent(longWoMaster.annexure_ii_html);
   if (
     !longWoClauses.length ||
     !hasLongWoSiteMobilization ||
     !hasLongWoScope ||
-    longWoAnnexureCount !== LONG_WO_LETTERHEAD_DEFAULTS.annexure.length
+    longWoAnnexureCount !== LONG_WO_LETTERHEAD_DEFAULTS.annexure.length ||
+    !longWoHasAnnexureIi
   ) {
-    await saveLetterhead('long_wo', LONG_WO_LETTERHEAD_DEFAULTS);
+    await saveLetterhead('long_wo', {
+      ...LONG_WO_LETTERHEAD_DEFAULTS,
+      annexureIiRows: LONG_WO_ANNEXURE_II_DEFAULTS,
+    });
   }
 
   // Custom PO/WO — seed with same default content as matching standard type
@@ -424,12 +474,21 @@ export async function seedLetterheadDefaults() {
     await saveLetterhead('custom_short_wo', defaultsWithTitle(SHORT_WO_LETTERHEAD_DEFAULTS, 'custom_short_wo'));
   }
   const customLongWo = await clauseHeadersForType('custom_long_wo');
+  const customLongWoMaster = await ensureMaster('custom_long_wo');
+  const customLongWoHasAnnexureIi = annexureIiHasContent(customLongWoMaster.annexure_ii_html);
   if (
     !customLongWo.length ||
     !customLongWo.some(
       (c) => c.section_type === 'annexure' && headerPlain(c.terms_header) === 'site mobilization'
-    )
+    ) ||
+    !customLongWoHasAnnexureIi
   ) {
-    await saveLetterhead('custom_long_wo', defaultsWithTitle(LONG_WO_LETTERHEAD_DEFAULTS, 'custom_long_wo'));
+    await saveLetterhead(
+      'custom_long_wo',
+      {
+        ...defaultsWithTitle(LONG_WO_LETTERHEAD_DEFAULTS, 'custom_long_wo'),
+        annexureIiRows: LONG_WO_ANNEXURE_II_DEFAULTS,
+      }
+    );
   }
 }

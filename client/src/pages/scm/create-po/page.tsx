@@ -1212,15 +1212,25 @@ export default function CreatePOPage() {
       annexureDraftRef.current = nextAnnexure;
       setTermsClauses(nextTerms);
       setAnnexureClauses(nextAnnexure);
-      const iiDefaults = Array.isArray(res.data.annexureIiDefaults)
-        ? (res.data.annexureIiDefaults as AnnexureIiRow[])
-        : [];
+      const isLongWo =
+        alignedType === 'long_wo' || alignedType === 'custom_long_wo';
+      const iiDefaults = (
+        Array.isArray(res.data.annexureIiRows) && res.data.annexureIiRows.length
+          ? res.data.annexureIiRows
+          : Array.isArray(res.data.annexureIiDefaults)
+            ? res.data.annexureIiDefaults
+            : []
+      ) as AnnexureIiRow[];
       const iiEmpty =
         !annexureIiDraftRef.current.length ||
         annexureIiDraftRef.current.every((row) => annexureIiRowIsEmpty(row));
-      if (iiDefaults.length && (force || iiEmpty)) {
+      if (isLongWo && iiDefaults.length && (force || iiEmpty)) {
         annexureIiDraftRef.current = iiDefaults;
         setAnnexureIiRows(iiDefaults);
+      } else if (!isLongWo && (force || iiEmpty)) {
+        const cleared = [emptyAnnexureIiRow()];
+        annexureIiDraftRef.current = cleared;
+        setAnnexureIiRows(cleared);
       }
       setLoadedTemplate({
         poType: alignedType,
@@ -1245,7 +1255,8 @@ export default function CreatePOPage() {
 
   const applyPoTypeTemplate = useCallback(
     (nextType: PoType, nextDoc?: 'purchase_order' | 'work_order') => {
-      skipNextLetterheadLoad.current = false;
+      // Skip the poType-change effect so we don't race a second non-force load
+      skipNextLetterheadLoad.current = true;
       userEditedDraftRef.current = false;
       letterheadLockedRef.current = false;
       setLetterheadLocked(false);
@@ -1668,6 +1679,20 @@ export default function CreatePOPage() {
       markDraftEdited();
       annexureDraftRef.current = nextAnnexure;
       setAnnexureClauses(nextAnnexure);
+      const isLongWo = alignedType === 'long_wo' || alignedType === 'custom_long_wo';
+      if (isLongWo) {
+        const iiDefaults = (
+          Array.isArray(res.data.annexureIiRows) && res.data.annexureIiRows.length
+            ? res.data.annexureIiRows
+            : Array.isArray(res.data.annexureIiDefaults)
+              ? res.data.annexureIiDefaults
+              : []
+        ) as AnnexureIiRow[];
+        if (iiDefaults.length) {
+          annexureIiDraftRef.current = iiDefaults;
+          setAnnexureIiRows(iiDefaults);
+        }
+      }
     } catch (err) {
       setAnnexurePoLoadError(
         err instanceof Error ? err.message : 'Could not reload annexure from PO Type Master'
