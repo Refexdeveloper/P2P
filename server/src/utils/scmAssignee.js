@@ -1,10 +1,17 @@
 import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
 
-/** Default SCM Buyers for task assignment + mail (Gopi + Satish). */
-export const DEFAULT_SCM_BUYER_EMAILS = [
+/** Default SCM Buyer for task assignment + mail. */
+export const DEFAULT_SCM_BUYER_EMAILS = ['deepa.murthy@refex.co.in'];
+export const DEFAULT_SCM_BUYER_NAMES = {
+  'deepa.murthy@refex.co.in': 'Deepa Murthy',
+};
+
+/** Former designated buyers — never assign or notify, even if still in env. */
+const REMOVED_SCM_BUYER_EMAILS = [
   'gopikrishnan.p@refex.co.in',
   'satish.manickam@refex.co.in',
+  'rajeev.v@refex.co.in',
 ];
 
 /** @deprecated use DEFAULT_SCM_BUYER_EMAILS / getPreferredScmBuyerEmails() */
@@ -15,14 +22,16 @@ export function getPreferredScmBuyerEmails() {
     .split(/[,;\s]+/)
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
-  return [...new Set([...DEFAULT_SCM_BUYER_EMAILS, ...fromEnv])];
+  return [...new Set([...DEFAULT_SCM_BUYER_EMAILS, ...fromEnv])].filter(
+    (email) => !REMOVED_SCM_BUYER_EMAILS.includes(email)
+  );
 }
 
 export function getPreferredScmBuyerEmail() {
   return getPreferredScmBuyerEmails()[0];
 }
 
-/** Designated SCM Buyers (Satish + Gopi) may edit any draft PO, not only ones they created. */
+/** Designated SCM Buyers may edit any draft PO, not only ones they created. */
 export function canEditAnyScmPurchaseOrder(user) {
   if (!user) return false;
   if (user.role === 'Super Admin' || user.role === 'SCM Manager') return true;
@@ -69,12 +78,18 @@ export async function resolveScmBuyerUser(conn = null) {
   if (users[0]) return users[0];
 
   const db = conn || pool;
+  const removed = REMOVED_SCM_BUYER_EMAILS;
+  const notRemoved = removed.length
+    ? `AND LOWER(email) NOT IN (${removed.map(() => '?').join(', ')})`
+    : '';
   const [fallbackRows] = await db.query(
     `SELECT id, email, name, role
      FROM users
      WHERE role = 'SCM Buyer' AND is_active = 1
+       ${notRemoved}
      ORDER BY id ASC
-     LIMIT 1`
+     LIMIT 1`,
+    removed
   );
   if (!fallbackRows[0]) return null;
   return mapBuyerRow(fallbackRows[0]);
@@ -90,25 +105,55 @@ export async function getScmBuyerNotifyEmails(conn = null) {
   return [...emails];
 }
 
-/** Ensure all configured buyers have SCM Buyer role (idempotent). */
+function buyerDisplayName(email) {
+  return DEFAULT_SCM_BUYER_NAMES[email] || email.split('@')[0] || 'SCM Buyer';
+}
+
+/** Ensure configured buyers exist with SCM Buyer role; demote former designated buyers. */
 export async function ensurePreferredScmBuyerRole(conn = null) {
   const db = conn || pool;
   const emails = getPreferredScmBuyerEmails();
-  if (!emails.length) return 0;
-  const placeholders = emails.map(() => '?').join(', ');
-  const [result] = await db.query(
-    `UPDATE users
-     SET role = 'SCM Buyer', is_active = 1
-     WHERE LOWER(email) IN (${placeholders})
-       AND (role <> 'SCM Buyer' OR is_active <> 1)`,
-    emails
-  );
-  return result?.affectedRows || 0;
+  let updated = 0;
+
+  for (const email of emails) {
+    const [rows] = await db.query(`SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1`, [email]);
+    if (rows[0]) {
+      const [result] = await db.query(
+        `UPDATE users
+         SET role = 'SCM Buyer', is_active = 1
+         WHERE id = ? AND (role <> 'SCM Buyer' OR is_active <> 1)`,
+        [rows[0].id]
+      );
+      updated += result?.affectedRows || 0;
+    } else {
+      const hash = await bcrypt.hash('demo1234', 10);
+      await db.query(
+        `INSERT INTO users (name, email, password_hash, role, is_active)
+         VALUES (?, ?, ?, 'SCM Buyer', 1)`,
+        [buyerDisplayName(email), email, hash]
+      );
+      updated += 1;
+    }
+  }
+
+  const former = REMOVED_SCM_BUYER_EMAILS.filter((email) => !emails.includes(email));
+  if (former.length) {
+    const placeholders = former.map(() => '?').join(', ');
+    await db.query(
+      `UPDATE users
+       SET role = 'Requester'
+       WHERE LOWER(email) IN (${placeholders})
+         AND role = 'SCM Buyer'`,
+      former
+    );
+  }
+
+  return updated;
 }
 
 /**
  * Reassign pending SCM Buyer workflow tasks to role-queue (NULL user)
- * so every active SCM Buyer (Gopi + Satish) can act.
+ * so every active designated SCM Buyer can act.
  */
 export async function reassignPendingScmBuyerTasks(conn = null) {
   const buyers = await resolveScmBuyerUsers(conn);
@@ -125,21 +170,27 @@ export async function reassignPendingScmBuyerTasks(conn = null) {
 }
 
 /** Default SCM Manager for login, task assignment, and mail. */
-export const DEFAULT_SCM_MANAGER_EMAIL = 'rajeev.v@refex.co.in';
-export const DEFAULT_SCM_MANAGER_NAME = 'Rajeev V';
+export const DEFAULT_SCM_MANAGER_EMAIL = 'mounesh.r@refex.co.in';
+export const DEFAULT_SCM_MANAGER_NAME = 'Mounesh R';
+
+const REMOVED_SCM_MANAGER_EMAILS = ['rajeev.v@refex.co.in'];
 
 export function getPreferredScmManagerEmail() {
-  return String(process.env.SCM_MANAGER_EMAIL || DEFAULT_SCM_MANAGER_EMAIL)
+  const fromEnv = String(process.env.SCM_MANAGER_EMAIL || '')
     .trim()
     .toLowerCase();
+  if (fromEnv && !REMOVED_SCM_MANAGER_EMAILS.includes(fromEnv)) return fromEnv;
+  return DEFAULT_SCM_MANAGER_EMAIL;
 }
 
 export function getPreferredScmManagerName() {
-  return String(process.env.SCM_MANAGER_NAME || DEFAULT_SCM_MANAGER_NAME).trim() || DEFAULT_SCM_MANAGER_NAME;
+  const fromEnv = String(process.env.SCM_MANAGER_NAME || '').trim();
+  if (fromEnv && fromEnv.toLowerCase() !== 'rajeev v') return fromEnv;
+  return DEFAULT_SCM_MANAGER_NAME;
 }
 
 /**
- * Resolve the preferred SCM Manager user (Rajeev), else first active SCM Manager.
+ * Resolve the preferred SCM Manager user (Mounesh), else first active SCM Manager.
  */
 export async function resolveScmManagerUser(conn = null) {
   const db = conn || pool;
@@ -153,12 +204,18 @@ export async function resolveScmManagerUser(conn = null) {
   );
   if (rows[0]) return mapBuyerRow(rows[0]);
 
+  const removedMgr = REMOVED_SCM_MANAGER_EMAILS;
+  const notRemovedMgr = removedMgr.length
+    ? `AND LOWER(email) NOT IN (${removedMgr.map(() => '?').join(', ')})`
+    : '';
   const [fallbackRows] = await db.query(
     `SELECT id, email, name, role
      FROM users
      WHERE role = 'SCM Manager' AND is_active = 1
+       ${notRemovedMgr}
      ORDER BY id ASC
-     LIMIT 1`
+     LIMIT 1`,
+    removedMgr
   );
   return fallbackRows[0] ? mapBuyerRow(fallbackRows[0]) : null;
 }
@@ -171,7 +228,8 @@ export async function getScmManagerNotifyEmails(conn = null) {
 }
 
 /**
- * Ensure Rajeev is the SCM Manager login (converts Vikram Singh demo account when needed).
+ * Ensure the designated SCM Manager login exists (converts Vikram Singh demo account when needed).
+ * Does not rewrite another live manager's email (e.g. Rajeev) to the new assignee.
  */
 export async function ensurePreferredScmManagerUser(conn = null) {
   const db = conn || pool;
@@ -182,64 +240,69 @@ export async function ensurePreferredScmManagerUser(conn = null) {
     `SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1`,
     [email]
   );
-  if (byEmail[0]) {
+  let managerId = byEmail[0]?.id || null;
+  if (managerId) {
     await db.query(
       `UPDATE users
        SET role = 'SCM Manager', is_active = 1
        WHERE id = ? AND (role <> 'SCM Manager' OR is_active <> 1)`,
-      [byEmail[0].id]
+      [managerId]
     );
     await db.query(
-      `UPDATE users SET name = ? WHERE id = ? AND (name = 'Vikram Singh' OR name = '' OR name IS NULL)`,
-      [name, byEmail[0].id]
+      `UPDATE users SET name = ? WHERE id = ? AND (name IN ('Vikram Singh', 'Rajeev V') OR name = '' OR name IS NULL)`,
+      [name, managerId]
     );
+  } else {
+    const [demo] = await db.query(
+      `SELECT id FROM users
+       WHERE LOWER(email) = 'scmmanager@procure.com'
+          OR (role = 'SCM Manager' AND name = 'Vikram Singh')
+       ORDER BY CASE WHEN LOWER(email) = 'scmmanager@procure.com' THEN 0 ELSE 1 END, id ASC
+       LIMIT 1`
+    );
+    if (demo[0]) {
+      await db.query(
+        `UPDATE users SET email = ?, name = ?, role = 'SCM Manager', is_active = 1 WHERE id = ?`,
+        [email, name, demo[0].id]
+      );
+      managerId = demo[0].id;
+    } else {
+      const hash = await bcrypt.hash('demo1234', 10);
+      const [result] = await db.query(
+        `INSERT INTO users (name, email, password_hash, role, is_active)
+         VALUES (?, ?, ?, 'SCM Manager', 1)`,
+        [name, email, hash]
+      );
+      managerId = result.insertId;
+    }
+  }
+
+  await db.query(
+    `UPDATE users
+     SET is_active = 0
+     WHERE role = 'SCM Manager'
+       AND id <> ?
+       AND (LOWER(email) = 'scmmanager@procure.com' OR name = 'Vikram Singh')`,
+    [managerId]
+  );
+
+  const former = REMOVED_SCM_MANAGER_EMAILS.filter((e) => e !== email);
+  if (former.length) {
+    const placeholders = former.map(() => '?').join(', ');
     await db.query(
       `UPDATE users
-       SET is_active = 0
-       WHERE role = 'SCM Manager'
-         AND id <> ?
-         AND (LOWER(email) = 'scmmanager@procure.com' OR name = 'Vikram Singh')`,
-      [byEmail[0].id]
+       SET role = 'Requester'
+       WHERE LOWER(email) IN (${placeholders})
+         AND role = 'SCM Manager'
+         AND id <> ?`,
+      [...former, managerId]
     );
-    return byEmail[0].id;
   }
 
-  const [demo] = await db.query(
-    `SELECT id FROM users
-     WHERE LOWER(email) = 'scmmanager@procure.com'
-        OR (role = 'SCM Manager' AND name = 'Vikram Singh')
-     ORDER BY CASE WHEN LOWER(email) = 'scmmanager@procure.com' THEN 0 ELSE 1 END, id ASC
-     LIMIT 1`
-  );
-  if (demo[0]) {
-    await db.query(
-      `UPDATE users SET email = ?, name = ?, role = 'SCM Manager', is_active = 1 WHERE id = ?`,
-      [email, name, demo[0].id]
-    );
-    return demo[0].id;
-  }
-
-  const [anyMgr] = await db.query(
-    `SELECT id FROM users WHERE role = 'SCM Manager' ORDER BY id ASC LIMIT 1`
-  );
-  if (anyMgr[0]) {
-    await db.query(
-      `UPDATE users SET email = ?, name = ?, is_active = 1 WHERE id = ?`,
-      [email, name, anyMgr[0].id]
-    );
-    return anyMgr[0].id;
-  }
-
-  const hash = await bcrypt.hash('demo1234', 10);
-  const [result] = await db.query(
-    `INSERT INTO users (name, email, password_hash, role, is_active)
-     VALUES (?, ?, ?, 'SCM Manager', 1)`,
-    [name, email, hash]
-  );
-  return result.insertId;
+  return managerId;
 }
 
-/** Point every pending SCM Manager workflow task at Rajeev's user id. */
+/** Point every pending SCM Manager workflow task at the designated manager. */
 export async function reassignPendingScmManagerTasks(conn = null) {
   const manager = await resolveScmManagerUser(conn);
   if (!manager?.id) return { manager: null, updated: 0 };

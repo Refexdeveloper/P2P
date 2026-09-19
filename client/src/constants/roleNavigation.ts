@@ -331,6 +331,8 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   'SCM Buyer': [
+    'nav.create_pr',
+    'nav.track_pr',
     'nav.purchase_requests',
     'nav.scm_rfq_entry',
     'nav.create_po',
@@ -494,13 +496,15 @@ export function ensureNavigation(
       });
   }
 
-  // SCM Buyer: Dashboard → RFQ Entry → Create PO → Buyer Final Verify → Track PO → Masters
+  // SCM Buyer: Create PR → Track PR → Dashboard → RFQ Entry → Create PO → Buyer Final Verify → Track PO → Masters
   if (role === 'SCM Buyer') {
     merged = merged.filter(
       (n) => n.code !== 'nav.tasks' && n.code !== 'nav.rfq_approval' && n.code !== 'nav.vendor_po_acceptance'
     );
     const codes = new Set(merged.map((n) => n.code));
     for (const code of [
+      'nav.create_pr',
+      'nav.track_pr',
       'nav.purchase_requests',
       'nav.scm_rfq_entry',
       'nav.create_po',

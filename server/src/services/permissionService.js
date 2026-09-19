@@ -118,6 +118,8 @@ export const ROLE_DEFAULT_PERMISSIONS = {
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   'SCM Buyer': [
+    'nav.create_pr',
+    'nav.track_pr',
     'nav.purchase_requests',
     'nav.scm_rfq_entry',
     'nav.create_po',
@@ -187,7 +189,7 @@ export const ROLE_NAV_WHITELIST = {
 };
 
 /** Roles that may be assigned Requester-group menus (Create PR, Track PR, etc.). */
-const ROLES_ALLOW_REQUESTER_NAV = new Set(['Requester', 'HOD Approver', 'PR Manager']);
+const ROLES_ALLOW_REQUESTER_NAV = new Set(['Requester', 'HOD Approver', 'PR Manager', 'SCM Buyer']);
 
 function enforceRoleNavWhitelist(role, codes = []) {
   const allowed = ROLE_NAV_WHITELIST[role];
@@ -298,6 +300,8 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
     }
     if (role === 'SCM Buyer') {
       healCodes.push(
+        'nav.create_pr',
+        'nav.track_pr',
         'nav.purchase_requests',
         'nav.scm_rfq_entry',
         'nav.create_po',
@@ -389,6 +393,8 @@ export async function getUserPermissionCodes(userId, role, email = null) {
         }
         if (role === 'SCM Buyer') {
           healCodes.push(
+            'nav.create_pr',
+            'nav.track_pr',
             'nav.purchase_requests',
             'nav.scm_rfq_entry',
             'nav.create_po',

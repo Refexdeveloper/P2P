@@ -2113,7 +2113,7 @@ async function createPostRfqApprovalTask(conn, prId, level) {
   const assignee = await resolvePostRfqManager(requester.email, requester.departmentId, level);
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 2);
-  // SCM Buyer is role-queued (any active buyer can act). SCM Manager is assigned to Rajeev.
+  // SCM Buyer is role-queued (any active buyer can act). SCM Manager is the designated manager.
   const roleQueued = assignee.workflowRole === 'SCM Buyer';
   const assignedUserId = roleQueued ? null : assignee.userId;
   const sql = `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
@@ -3250,7 +3250,7 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
         dueDate.setDate(dueDate.getDate() + 2);
         let roleUser = null;
         if (nextRole === 'SCM Buyer') {
-          roleUser = null; // role-queue: Gopi + Satish both act / get mail
+          roleUser = null; // role-queue: designated SCM Buyers act / get mail
         } else {
           const [roleUsers] = await conn.query(
             `SELECT id, email, name FROM users WHERE role = ? AND is_active = 1 ORDER BY id ASC LIMIT 1`,

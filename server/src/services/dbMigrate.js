@@ -676,10 +676,25 @@ export async function runStartupMigrations() {
   }
 
   try {
-    const { ensurePreferredScmBuyerRole, reassignPendingScmBuyerTasks, getPreferredScmBuyerEmails } =
-      await import('../utils/scmAssignee.js');
+    const {
+      ensurePreferredScmBuyerRole,
+      reassignPendingScmBuyerTasks,
+      getPreferredScmBuyerEmails,
+      resolveScmBuyerUsers,
+    } = await import('../utils/scmAssignee.js');
     const roleUpdated = await ensurePreferredScmBuyerRole();
     const reassigned = await reassignPendingScmBuyerTasks();
+    const buyers = await resolveScmBuyerUsers();
+    const { seedUserPermissionsForRole } = await import('./permissionService.js');
+    for (const buyer of buyers) {
+      await seedUserPermissionsForRole(buyer.id, 'SCM Buyer');
+      for (const code of ['nav.create_pr', 'nav.track_pr']) {
+        await pool.query(
+          `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
+          [buyer.id, code]
+        );
+      }
+    }
     console.log(
       `SCM Buyer assignees: ${getPreferredScmBuyerEmails().join(', ')}` +
         ` (role updates=${roleUpdated}, pending tasks role-queued=${reassigned.updated})`

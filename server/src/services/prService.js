@@ -1803,7 +1803,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
     const inv = buildPrInvolvementFilterSql(user);
     where += inv.clause;
     params.push(...inv.params);
-  } else if (user.role === 'Requester') {
+  } else if (user.role === 'Requester' || user.role === 'SCM Buyer') {
     where += ' AND pr.requester_id = ?';
     params.push(user.id);
   }

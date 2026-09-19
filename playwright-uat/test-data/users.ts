@@ -85,6 +85,6 @@ export const SEED_USER_HINTS = {
   l2: 'prmanager@procure.com',
   cfo: 'cfo@procure.com',
   scmBuyer: 'scm@procure.com',
-  scmManager: 'rajeev.v@refex.co.in',
+  scmManager: 'mounesh.r@refex.co.in',
   admin: 'admin@procure.com',
 } as const;

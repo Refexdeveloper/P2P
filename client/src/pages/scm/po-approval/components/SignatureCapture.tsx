@@ -129,7 +129,7 @@ export default function SignatureCapture({ onChange }: Props) {
   }, []);
 
   useEffect(() => {
-    // Prefetch gallery so Rajeev default signature is ready for next approvals
+    // Prefetch gallery so the SCM Manager default signature is ready for next approvals
     void loadGallery();
   }, [loadGallery]);
 
@@ -148,7 +148,7 @@ export default function SignatureCapture({ onChange }: Props) {
     emit({
       signatureId: preferred.id,
       signatureImage: preferred.imageDataUrl,
-      signatureName: user?.name || 'Rajeev V',
+      signatureName: user?.name || 'SCM Manager',
       saveToGallery: false,
     });
   }, [gallery, selectedGalleryId, preview, emit, user?.name]);

@@ -1720,7 +1720,7 @@ export default function CreatePOPage() {
         }
       } catch {
         if (!cancelled) {
-          setScmManager({ name: 'Rajeev V', email: 'rajeev.v@refex.co.in' });
+          setScmManager({ name: 'Mounesh R', email: 'mounesh.r@refex.co.in' });
         }
       }
     })();
@@ -3407,7 +3407,7 @@ export default function CreatePOPage() {
             payload.changeSummary ||
             `PO updated by ${user?.role || 'admin'} from ${fromParam || 'create-po'}`;
         }
-        // Send Back → Edit Draft → Send for Approval → SCM Manager (Rajeev)
+        // Send Back → Edit Draft → Send for Approval → SCM Manager
         if (poEditStatus === 'draft' || !poEditStatus) {
           payload.resubmitForApproval = true;
           payload.saveAsDraft = false;
@@ -3415,7 +3415,7 @@ export default function CreatePOPage() {
         }
         const updateRes = await poApi.update(editPoId, payload);
         if (poEditStatus === 'draft' || !poEditStatus) {
-          const mgr = scmManager?.name || 'Rajeev V';
+          const mgr = scmManager?.name || 'Mounesh R';
           alert(
             updateRes.message ||
               `${poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
@@ -3430,7 +3430,7 @@ export default function CreatePOPage() {
 
       // After Save Draft, send must promote that draft and only then assign official PO number
       if (createdPoId) payload.poId = createdPoId;
-      // Always ask server to route Send for Approval to SCM Manager (Rajeev)
+      // Always ask server to route Send for Approval to SCM Manager
       payload.resubmitForApproval = true;
       payload.saveAsDraft = false;
 
@@ -3442,7 +3442,7 @@ export default function CreatePOPage() {
       setCreatedPoId(data.id);
       const statusAfter = String(data.statusRaw || data.status || '').toLowerCase();
       if (statusAfter === 'pending_approval' || statusAfter === 'pendingapproval') {
-        const mgr = scmManager?.name || 'Rajeev V';
+        const mgr = scmManager?.name || 'Mounesh R';
         alert(
           res.message ||
             `${data.poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
@@ -5267,7 +5267,7 @@ export default function CreatePOPage() {
             <div className="bg-gradient-to-br from-teal-600 to-teal-700 px-6 py-5">
               <h3 className="text-lg font-bold text-white">
                 {isEditMode && poEditStatus === 'draft'
-                  ? `Send for approval to ${scmManager?.name || 'Rajeev V'}?`
+                  ? `Send for approval to ${scmManager?.name || 'Mounesh R'}?`
                   : 'Send for SCM Manager approval?'}
               </h3>
               <p className="text-teal-100 text-sm mt-1">

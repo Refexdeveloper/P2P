@@ -4598,7 +4598,7 @@ export async function updatePurchaseOrder(user, poId, body) {
   if (canBuyerRevise) {
     const manager = await resolveScmManagerUser();
     const managerEmails = await getScmManagerNotifyEmails();
-    const managerName = manager?.name || getPreferredScmManagerName() || 'Rajeev V';
+    const managerName = manager?.name || getPreferredScmManagerName() || 'Mounesh R';
     if (managerEmails.length) {
       const attachments = await poPdfMailAttachment(updatedPo).catch(() => undefined);
       queuePoWorkflowNotification(updatedPo, {

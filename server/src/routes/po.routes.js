@@ -736,7 +736,7 @@ router.post('/:id/send-back', requireRoles('SCM Manager', 'Super Admin'), async 
     const data = await sendBackPurchaseOrder(req.user, Number(req.params.id), req.body?.remarks);
     res.json({
       data,
-      message: 'PO sent back to SCM Buyer for revision — edit on Create PO, then save to send to Rajeev (SCM Manager)',
+      message: 'PO sent back to SCM Buyer for revision — edit on Create PO, then save to send to SCM Manager',
     });
   } catch (err) {
     res.status(400).json({ message: err.message });
