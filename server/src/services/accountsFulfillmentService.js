@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadFromGcs, gcsEnabled } from './gcsStorage.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, awaitGcsUpload } from './gcsStorage.js';
 import { formatDate, formatDateTime } from '../utils/constants.js';
 import { sendVendorInvoiceRequestNotification } from './emailService.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
@@ -124,12 +124,8 @@ async function saveBase64File(dir, prefix, fileName, fileData, gcsFolder) {
   const stored = `${prefix}_${Date.now()}_${safe}`;
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, stored), buffer);
-  if (gcsFolder && gcsEnabled()) {
-    try {
-      await uploadToGcs(`${gcsFolder}/${stored}`, buffer);
-    } catch (err) {
-      console.warn(`[GCS] ${gcsFolder} upload failed, file kept on disk:`, err.message);
-    }
+  if (gcsFolder) {
+    await awaitGcsUpload(`${gcsFolder}/${stored}`, buffer);
   }
   return { fileName: safe, filePath: stored };
 }

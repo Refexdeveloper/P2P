@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadFromGcs, gcsEnabled, listGcsKeys } from './gcsStorage.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, listGcsKeys, awaitGcsUpload } from './gcsStorage.js';
 import { getPurchaseRequestById } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath, ensurePoPdf } from './poPdfService.js';
 import { sendPoVendorNotification, queuePoWorkflowNotification, queueApproverActionConfirmationForUser } from './emailService.js';
@@ -29,6 +29,7 @@ import {
   resolveScmManagerUser,
   getScmManagerNotifyEmails,
   getPreferredScmManagerName,
+  getPreferredScmManagerEmail,
   insertScmManagerPoApprovalTask,
   canEditAnyScmPurchaseOrder,
 } from '../utils/scmAssignee.js';
@@ -292,13 +293,7 @@ async function saveVendorAcceptanceFile(poId, fileName, base64Data) {
   const raw = String(base64Data).includes(',') ? String(base64Data).split(',').pop() : String(base64Data);
   const buffer = Buffer.from(raw, 'base64');
   fs.writeFileSync(fullPath, buffer);
-  if (gcsEnabled()) {
-    try {
-      await uploadToGcs(`purchase-orders/${storedName}`, buffer);
-    } catch (e) {
-      console.warn('[GCS] vendor-acceptance upload failed:', e.message);
-    }
-  }
+  await awaitGcsUpload(`purchase-orders/${storedName}`, buffer);
   return { fileName: safeName, filePath: storedName };
 }
 
@@ -311,12 +306,70 @@ function savePoAttachment(poId, prefix, fileName, base64Data) {
   const raw = String(base64Data).includes(',') ? String(base64Data).split(',').pop() : String(base64Data);
   const buffer = Buffer.from(raw, 'base64');
   fs.writeFileSync(fullPath, buffer);
-  if (gcsEnabled()) {
-    uploadToGcs(`purchase-orders/${storedName}`, buffer).catch((e) =>
-      console.warn('[GCS] PO attachment upload failed:', e.message)
-    );
+  return { fileName: safeName, filePath: storedName, buffer };
+}
+
+/** Persist local disk + GCS so files survive Cloud Run redeploy. */
+async function savePoAttachmentAwaited(poId, prefix, fileName, base64Data) {
+  const saved = savePoAttachment(poId, prefix, fileName, base64Data);
+  if (!saved.filePath || !saved.buffer) return { fileName: saved.fileName, filePath: saved.filePath };
+  await awaitGcsUpload(`purchase-orders/${saved.filePath}`, saved.buffer);
+  return { fileName: saved.fileName, filePath: saved.filePath };
+}
+
+async function persistManualVendorQuoteFiles(poId, vendorQuotes = []) {
+  const storedQuotes = [];
+  for (const row of vendorQuotes) {
+    const fileRows = [];
+    for (const file of row.files || []) {
+      if (!file?.fileName) continue;
+      const storedName = String(file.storedName || file.filePath || '').trim();
+      if (storedName) {
+        fileRows.push({
+          fileName: file.fileName || path.basename(storedName),
+          storedName,
+          mimeType: file.mimeType || null,
+        });
+        continue;
+      }
+      if (!file.data && !file.dataBase64) continue;
+      const saved = await savePoAttachmentAwaited(poId, 'manual-quote', file.fileName, file.data || file.dataBase64);
+      if (saved.fileName) {
+        fileRows.push({
+          fileName: saved.fileName,
+          storedName: saved.filePath,
+          mimeType: file.mimeType || null,
+        });
+      }
+    }
+    storedQuotes.push({
+      round: Number(row.round) || 1,
+      vendorId: row.vendorId || '',
+      vendorName: row.vendorName || '',
+      vendorEmail: row.vendorEmail || '',
+      quotedPrice: row.quotedPrice || 0,
+      leadTime: row.leadTime || '',
+      paymentTerms: row.paymentTerms || '',
+      recommended: Boolean(row.recommended),
+      files: fileRows,
+      sortOrder: row.sortOrder ?? 0,
+    });
   }
-  return { fileName: safeName, filePath: storedName };
+  return storedQuotes;
+}
+
+async function persistManualComparisonRounds(poId, comparisonRounds = []) {
+  const out = [];
+  for (const roundRow of comparisonRounds) {
+    const storedQuotes = await persistManualVendorQuoteFiles(poId, roundRow.vendorQuotes || []);
+    out.push({
+      round: Number(roundRow.round) || 1,
+      label: String(roundRow.label || `Round ${roundRow.round || 1}`).trim(),
+      notes: String(roundRow.notes || '').trim(),
+      vendorQuotes: storedQuotes,
+    });
+  }
+  return out;
 }
 
 async function poPdfMailAttachment(po, { signed = false } = {}) {
@@ -460,59 +513,6 @@ function normalizeManualContextInput(body = {}) {
         : null;
 
   return { prDetails, vendorQuotes, comparisonRounds, selectedEntityId };
-}
-
-function persistManualVendorQuoteFiles(poId, vendorQuotes = []) {
-  const storedQuotes = [];
-  for (const row of vendorQuotes) {
-    const fileRows = [];
-    for (const file of row.files || []) {
-      if (!file?.fileName) continue;
-      const storedName = String(file.storedName || file.filePath || '').trim();
-      if (storedName) {
-        fileRows.push({
-          fileName: file.fileName || path.basename(storedName),
-          storedName,
-          mimeType: file.mimeType || null,
-        });
-        continue;
-      }
-      if (!file.data && !file.dataBase64) continue;
-      const saved = savePoAttachment(poId, 'manual-quote', file.fileName, file.data || file.dataBase64);
-      if (saved.fileName) {
-        fileRows.push({
-          fileName: saved.fileName,
-          storedName: saved.filePath,
-          mimeType: file.mimeType || null,
-        });
-      }
-    }
-    storedQuotes.push({
-      round: Number(row.round) || 1,
-      vendorId: row.vendorId || '',
-      vendorName: row.vendorName || '',
-      vendorEmail: row.vendorEmail || '',
-      quotedPrice: row.quotedPrice || 0,
-      leadTime: row.leadTime || '',
-      paymentTerms: row.paymentTerms || '',
-      recommended: Boolean(row.recommended),
-      files: fileRows,
-      sortOrder: row.sortOrder ?? 0,
-    });
-  }
-  return storedQuotes;
-}
-
-function persistManualComparisonRounds(poId, comparisonRounds = []) {
-  return comparisonRounds.map((roundRow) => {
-    const storedQuotes = persistManualVendorQuoteFiles(poId, roundRow.vendorQuotes || []);
-    return {
-      round: Number(roundRow.round) || 1,
-      label: String(roundRow.label || `Round ${roundRow.round || 1}`).trim(),
-      notes: String(roundRow.notes || '').trim(),
-      vendorQuotes: storedQuotes,
-    };
-  });
 }
 
 function parseJsonArray(value) {
@@ -2055,7 +2055,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
     );
 
     const poId = result.insertId;
-    const storedComparisonRounds = persistManualComparisonRounds(
+    const storedComparisonRounds = await persistManualComparisonRounds(
       poId,
       manualContextInput.comparisonRounds
     );
@@ -2584,7 +2584,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
           ? [{ round: 1, label: 'Round 1', notes: '', vendorQuotes: manualContextInput.vendorQuotes }]
           : existingCtx.comparisonRounds || [];
       const storedComparisonRounds = roundsToStore.length
-        ? persistManualComparisonRounds(savedPoId, roundsToStore)
+        ? await persistManualComparisonRounds(savedPoId, roundsToStore)
         : [];
       const storedVendorQuotes = storedComparisonRounds.flatMap((roundRow) => roundRow.vendorQuotes);
       const manualContextJson = JSON.stringify({
@@ -3320,6 +3320,7 @@ export async function getPurchaseOrderVendorComparison(user, poId) {
       const files = (Array.isArray(q.files) ? q.files : [])
         .map((f) => ({
           fileName: String(f.fileName || f.storedName || '').trim(),
+          storedName: String(f.storedName || f.filePath || '').trim() || null,
           id: null,
           isPrimary: true,
         }))
@@ -3555,12 +3556,12 @@ export async function signPurchaseOrder(user, poId, {
     imageDataUrl = gallery.dataUrl;
     const { ext, buffer } = parseDataUrlImage(gallery.dataUrl);
     signatureImageData = buffer;
-    signatureImagePath = saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
+    signatureImagePath = await saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
   } else if (signatureImage) {
     const { ext, buffer, dataUrl } = parseDataUrlImage(signatureImage);
     imageDataUrl = dataUrl;
     signatureImageData = buffer;
-    signatureImagePath = saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
+    signatureImagePath = await saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
     if (saveToGallery) {
       await saveUserSignature(user.id, { image: dataUrl, label: `${signName} Signature` });
     }
@@ -3577,7 +3578,7 @@ export async function signPurchaseOrder(user, poId, {
     imageDataUrl = defaultUrl;
     const { ext, buffer } = parseDataUrlImage(defaultUrl);
     signatureImageData = buffer;
-    signatureImagePath = saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
+    signatureImagePath = await saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
     if (!signatureImagePath) signatureImagePath = DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
   }
 
@@ -3913,21 +3914,30 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
 
   const updated = await getPurchaseOrderById(poId);
   const managers = await resolveRoleEmails('SCM Manager');
+  const rajeevEmail = getPreferredScmManagerEmail();
+  const managerEmails = [
+    ...new Set([
+      ...managers.map((m) => m.email).filter(Boolean),
+      rajeevEmail,
+    ].filter(Boolean)),
+  ];
   queuePoWorkflowNotification(updated, {
     action: 'sendback',
     stageLabel: 'SCM Manager PO Approval — Sent Back',
-    recipientEmails: managers.map((m) => m.email),
-    recipientName: managers[0]?.name || 'SCM Manager',
+    recipientEmails: managerEmails,
+    recipientName: managers[0]?.name || getPreferredScmManagerName() || 'SCM Manager',
     actorName: user.name,
     actorRole: user.role,
     remarks: remarks.trim(),
     portalUrl: poPortalUrl('/scm/po-approval'),
     ctaLabel: 'Review & Re-sign PO',
+    ccEmails: rajeevEmail ? [rajeevEmail] : [],
   });
 
   queueApproverActionConfirmationForUser(updated, user, 'return', {
     remarks: remarks.trim(),
     approverRole: user.role,
+    ccEmails: rajeevEmail ? [rajeevEmail] : [],
   });
 
   return updated;
@@ -4008,6 +4018,7 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
   const updated = await getPurchaseOrderById(poId);
   const buyerEmails = await getScmBuyerNotifyEmails();
   const buyer = await resolveScmBuyerUser();
+  const rajeevEmail = getPreferredScmManagerEmail();
   if (buyerEmails.length) {
     queuePoWorkflowNotification(updated, {
       action: 'sendback',
@@ -4019,12 +4030,14 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
       remarks: remarks.trim(),
       portalUrl: poPortalUrl(`/scm/create-po?poId=${poId}&from=create-po`),
       ctaLabel: 'Revise PO',
+      ccEmails: rajeevEmail ? [rajeevEmail] : [],
     });
   }
 
   queueApproverActionConfirmationForUser(updated, user, 'return', {
     remarks: remarks.trim(),
     approverRole: user.role,
+    ccEmails: rajeevEmail ? [rajeevEmail] : [],
   });
 
   return updated;
@@ -4044,23 +4057,22 @@ export async function cancelPurchaseOrder(user, poId, body = {}) {
   if (!reason) throw new Error('Cancellation reason is required');
 
   const incomingFiles = Array.isArray(body.attachments) ? body.attachments : [];
-  const attachments = incomingFiles
-    .map((item) => {
-      const entry = item && typeof item === 'object' ? item : {};
-      const saved = savePoAttachment(
-        poId,
-        'cancel',
-        String(entry.fileName || entry.name || '').trim(),
-        String(entry.fileData || entry.base64 || '').trim()
-      );
-      if (!saved.filePath) return null;
-      return {
-        fileName: saved.fileName,
-        filePath: saved.filePath,
-        uploadedAt: new Date().toISOString(),
-      };
-    })
-    .filter(Boolean);
+  const attachments = [];
+  for (const item of incomingFiles) {
+    const entry = item && typeof item === 'object' ? item : {};
+    const saved = await savePoAttachmentAwaited(
+      poId,
+      'cancel',
+      String(entry.fileName || entry.name || '').trim(),
+      String(entry.fileData || entry.base64 || '').trim()
+    );
+    if (!saved.filePath) continue;
+    attachments.push({
+      fileName: saved.fileName,
+      filePath: saved.filePath,
+      uploadedAt: new Date().toISOString(),
+    });
+  }
 
   await pool.query(
     `UPDATE purchase_orders
@@ -4476,7 +4488,7 @@ export async function updatePurchaseOrder(user, poId, body) {
               ]
             : existingCtx.comparisonRounds || [];
         const storedComparisonRounds = roundsToStore.length
-          ? persistManualComparisonRounds(poId, roundsToStore)
+          ? await persistManualComparisonRounds(poId, roundsToStore)
           : [];
         const storedVendorQuotes = storedComparisonRounds.flatMap((r) => r.vendorQuotes || []);
         const manualContextJson = JSON.stringify({
@@ -5128,6 +5140,62 @@ export async function resolveVendorAcceptanceFile(poRowOrPath) {
   }
 
   throw new Error('Acceptance file missing on server');
+}
+
+/**
+ * Serve a manual Create PO quotation attachment (disk or GCS).
+ * storedName must belong to this PO's manual_context_json.
+ */
+export async function resolveManualQuoteAttachment(poId, storedName) {
+  const id = Number(poId);
+  const requested = path.basename(String(storedName || '').trim());
+  if (!id || !requested) throw new Error('Quotation file not found');
+  if (!requested.startsWith(`po-${id}-`)) {
+    throw new Error('Quotation file does not belong to this PO');
+  }
+
+  const po = await getPurchaseOrderById(id);
+  if (!po) throw new Error('PO not found');
+
+  const ctx = po.manualContext || parseManualContextJson(null);
+  const allFiles = [];
+  for (const round of ctx.comparisonRounds || []) {
+    for (const q of round.vendorQuotes || []) {
+      for (const f of q.files || []) {
+        const sn = path.basename(String(f.storedName || f.filePath || '').trim());
+        if (sn) allFiles.push({ storedName: sn, fileName: String(f.fileName || sn) });
+      }
+    }
+  }
+  for (const q of ctx.vendorQuotes || []) {
+    for (const f of q.files || []) {
+      const sn = path.basename(String(f.storedName || f.filePath || '').trim());
+      if (sn) allFiles.push({ storedName: sn, fileName: String(f.fileName || sn) });
+    }
+  }
+  const hit = allFiles.find((f) => f.storedName === requested);
+  if (!hit) throw new Error('Quotation file not found on this PO');
+
+  ensurePoUploadDir();
+  const fullPath = path.join(PO_UPLOAD_DIR, requested);
+  if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+    return { fullPath, fileName: hit.fileName, buffer: null };
+  }
+
+  if (gcsEnabled()) {
+    const keys = [
+      `purchase-orders/${requested}`,
+      requested.startsWith('purchase-orders/') ? requested : '',
+    ].filter(Boolean);
+    for (const key of keys) {
+      const buf = await downloadFromGcs(key);
+      if (buf?.length) {
+        return { buffer: buf, fileName: hit.fileName, fullPath: null };
+      }
+    }
+  }
+
+  throw new Error('Quotation file missing on server (try Save Draft again to upload to storage)');
 }
 
 export async function resolveCancellationAttachment(po, index) {

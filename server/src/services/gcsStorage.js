@@ -92,6 +92,25 @@ function getStorage() {
 }
 
 /**
+ * Upload when GCS is enabled. Throws if upload is required but fails
+ * (Cloud Run disk is ephemeral — silent disk-only saves lose files after deploy).
+ * @returns {Promise<string|null>} gcsPath, or null when GCS is disabled
+ */
+export async function awaitGcsUpload(gcsPath, buffer, contentType = 'application/octet-stream', opts = {}) {
+  if (!gcsEnabled()) return null;
+  if (!gcsPath || !buffer?.length) {
+    throw new Error('GCS upload requires a path and non-empty file');
+  }
+  const uploaded = await uploadToGcs(gcsPath, buffer, contentType, opts);
+  if (!uploaded) {
+    throw new Error(
+      `GCS upload failed for ${gcsPath}${_initError ? `: ${_initError}` : ' (storage client not ready)'}`
+    );
+  }
+  return uploaded;
+}
+
+/**
  * Upload a Buffer to GCS.
  * @param {string} gcsPath  e.g. "pr-attachments/12345_file.pdf"
  * @param {Buffer} buffer

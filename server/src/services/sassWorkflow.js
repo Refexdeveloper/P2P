@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
 import { ensureApproverUser } from './refexOneService.js';
 import { formatDateTime, STAGE } from '../utils/constants.js';
-import { uploadToGcs, gcsEnabled } from './gcsStorage.js';
+import { uploadToGcs, gcsEnabled, awaitGcsUpload } from './gcsStorage.js';
 import { nextDocumentNumber, normalizePurchaseType, purchaseTypeLabel } from './documentNumberService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -471,13 +471,7 @@ async function saveSassInvoiceAttachment(invoiceId, fileName, fileData) {
   const stored = `inv_${invoiceId}_${Date.now()}_${safe}`;
   if (!fs.existsSync(INVOICE_DIR)) fs.mkdirSync(INVOICE_DIR, { recursive: true });
   fs.writeFileSync(path.join(INVOICE_DIR, stored), buffer);
-  if (gcsEnabled()) {
-    try {
-      await uploadToGcs(`invoices/${stored}`, buffer);
-    } catch (err) {
-      console.warn('[GCS] SASS invoice upload failed, file kept on disk:', err.message);
-    }
-  }
+  await awaitGcsUpload(`invoices/${stored}`, buffer);
   return { fileName: safe, filePath: stored, buffer };
 }
 

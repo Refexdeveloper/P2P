@@ -2,12 +2,14 @@ export type QuotationFileRef = {
   id?: number | null;
   fileName?: string;
   isPrimary?: boolean;
+  storedName?: string | null;
 };
 
 export type QuotationFileView = {
   fileName: string;
   extraFileId?: number | null;
   submissionId?: number | null;
+  storedName?: string | null;
 };
 
 export function allQuotationFilesForQuote(quote?: {
@@ -23,14 +25,20 @@ export function allQuotationFilesForQuote(quote?: {
         fileName: String(f.fileName || '').trim(),
         extraFileId: f.id ?? null,
         submissionId: quote.submissionId ?? null,
+        storedName: f.storedName ? String(f.storedName) : null,
         isPrimary: Boolean(f.isPrimary ?? i === 0),
       }))
       .filter((f) => f.fileName)
-      .map(({ fileName, extraFileId, submissionId }) => ({ fileName, extraFileId, submissionId }));
+      .map(({ fileName, extraFileId, submissionId, storedName }) => ({
+        fileName,
+        extraFileId,
+        submissionId,
+        storedName,
+      }));
   }
   const primary = String(quote.quotationFileName || '').trim();
   if (!primary) return [];
-  return [{ fileName: primary, extraFileId: null, submissionId: quote.submissionId ?? null }];
+  return [{ fileName: primary, extraFileId: null, submissionId: quote.submissionId ?? null, storedName: null }];
 }
 
 export function allQuotationFilesForRound(round?: {

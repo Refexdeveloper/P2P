@@ -4,7 +4,7 @@ import {
   listAdminSendBackTargets,
   resolveSendBackTarget,
 } from '../utils/sendBackTargets.js';
-import { resolveScmBuyerUser } from '../utils/scmAssignee.js';
+import { resolveScmBuyerUser, getPreferredScmManagerEmail } from '../utils/scmAssignee.js';
 import {
   getL1ManagerForEmail,
   getL2ManagerForEmail,
@@ -195,6 +195,8 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
 
 export function queueSendBackNotifications(updatedPr, applyResult) {
   const { target, assignee, requester } = applyResult;
+  const rajeevCc = [getPreferredScmManagerEmail()].filter(Boolean);
+  const sendBackRemarks = String(applyResult.remarksLine || '').trim();
 
   if (target.key === 'REQUESTER') {
     queuePostRfqActionNotification(
@@ -206,7 +208,7 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
         name: requester?.name || updatedPr.requester,
         email: requester?.email,
       },
-      { editPr: true }
+      { editPr: true, ccEmails: rajeevCc }
     );
     return;
   }
@@ -222,7 +224,7 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
         name: assignee?.name || requester?.name || updatedPr.requester,
         email: assignee?.email || requester?.email,
       },
-      { editPr: false }
+      { editPr: false, ccEmails: rajeevCc }
     );
     return;
   }
@@ -242,8 +244,11 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
       rfqEntry: isRfqEntry,
       createPo: isCreatePo,
       stageLabel: `Sent back — ${target.label}`,
+      sendBackRemarks,
       approverEmails: notifyEmails,
       approverName: target.assignedRole === 'SCM Buyer' ? 'SCM Buyer' : assignee.name || undefined,
+      // Always CC SCM Manager (Rajeev) on Create PO / workflow send-back mails
+      ccEmails: rajeevCc,
     };
     // After quotation rounds, include negotiation + files (Standard Own / SCM vendor / Functional Own)
     if (target.taskType === 'RFQ_POST_APPROVAL' || isCreatePo || (isRfqEntry && updatedPr.vendorSelection === 'own')) {
@@ -283,7 +288,8 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
       {
         name: requester?.name || updatedPr.requester,
         email: requester?.email,
-      }
+      },
+      { ccEmails: rajeevCc }
     );
   }
 }

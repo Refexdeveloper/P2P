@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadStoredUpload, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
+import { uploadToGcs, downloadStoredUpload, gcsEnabled, useGcsForNewUploads, awaitGcsUpload } from './gcsStorage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PR_UPLOAD_DIR = path.join(__dirname, '../../uploads/pr-attachments');
@@ -73,12 +73,12 @@ export async function savePrAttachments(prId, userId, files, db = pool) {
 
     let gcsOk = false;
     if (useGcsForNewUploads()) {
-      try {
-        await uploadToGcs(`pr-attachments/${storedName}`, buffer, mimeType || 'application/octet-stream');
-        gcsOk = true;
-      } catch (err) {
-        console.warn('[GCS] PR attachment upload failed, keeping disk/DB copy:', err.message);
-      }
+      await awaitGcsUpload(
+        `pr-attachments/${storedName}`,
+        buffer,
+        mimeType || 'application/octet-stream'
+      );
+      gcsOk = true;
     }
     try {
       ensureUploadDir();

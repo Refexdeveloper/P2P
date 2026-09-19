@@ -3,13 +3,16 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
-import { uploadToGcs, downloadFromGcs, gcsEnabled } from './gcsStorage.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, awaitGcsUpload } from './gcsStorage.js';
 import {
   buildPoDocumentHtml,
   buildPoPdfParts,
 } from '../templates/poDocumentTemplate.js';
 import { PO_STYLES } from '../templates/poDocumentTemplate.styles.js';
-import { buildSignatureRenderOptions } from './signatureService.js';
+import {
+  buildSignatureRenderOptions,
+  buildSignatureRenderOptionsAsync,
+} from './signatureService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 
 function withResolvedSignature(po, options = {}) {
@@ -31,6 +34,18 @@ function withResolvedSignature(po, options = {}) {
   }
   const signature = options.signature || buildSignatureRenderOptions(po);
   return { ...options, signature };
+}
+
+async function withResolvedSignatureAsync(po, options = {}) {
+  const base = withResolvedSignature(po, options);
+  if (base.signed === false || base.signature?.imageDataUrl || base.signature?.dsc) {
+    return base;
+  }
+  if (!options.signature) {
+    const signature = await buildSignatureRenderOptionsAsync(po);
+    if (signature) return { ...base, signature };
+  }
+  return base;
 }
 
 export function buildPoHtml(po, options = {}) {
@@ -1541,7 +1556,7 @@ export async function htmlToPdf(html, filePath) {
 
 export async function generatePoPdf(po, options = {}) {
   ensurePoDir();
-  options = withResolvedSignature(po, options);
+  options = await withResolvedSignatureAsync(po, options);
   const poNumber = String(po.poNumber || po.po_number || '').trim() || 'PO';
   const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_') || 'PO';
   const branded = await inlinePoBranding({ ...po, poNumber });
@@ -1592,12 +1607,8 @@ export async function generatePoPdf(po, options = {}) {
       !shouldUploadPoPdfToGcs(fileName) ||
       /^DRAFT[-_]/i.test(poNumber);
     if (gcsEnabled() && fs.existsSync(filePath) && !skipGcs) {
-      try {
-        const buf = fs.readFileSync(filePath);
-        await uploadToGcs(`purchase-orders/${fileName}`, buf, 'application/pdf');
-      } catch (e) {
-        console.warn('[GCS] PO PDF upload failed:', e.message);
-      }
+      const buf = fs.readFileSync(filePath);
+      await awaitGcsUpload(`purchase-orders/${fileName}`, buf, 'application/pdf');
     }
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
@@ -1720,7 +1731,7 @@ export async function ensurePoPdf(po, options = {}) {
 
   const signature =
     options.signature ||
-    (isSigned ? buildSignatureRenderOptions(po) : undefined);
+    (isSigned ? await buildSignatureRenderOptionsAsync(po) : undefined);
 
   const generated = await generatePoPdf(
     { ...po, poNumber },

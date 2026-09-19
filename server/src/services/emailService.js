@@ -654,6 +654,14 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
   const emailSet = new Set(emails.map((e) => e.toLowerCase()));
   const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
 
+  // Optional CC (e.g. SCM Manager Rajeev on Create PO send-back)
+  const cc = [...new Set(
+    (options.ccEmails || [])
+      .map((e) => String(e || '').trim())
+      .filter((e) => e && !emailSet.has(e.toLowerCase()))
+  )];
+  for (const c of cc) emailSet.add(c.toLowerCase());
+
   const { subject, html, text } = buildPrApprovalPendingEmail({
     pr,
     requester,
@@ -661,6 +669,7 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
     approverName: primaryName,
     postRfq: options.postRfq || false,
     stageLabel: options.stageLabel || null,
+    sendBackRemarks: options.sendBackRemarks || null,
     rfqSummary: options.rfqSummary || null,
     rfqEntry: options.rfqEntry || false,
     createPo: options.createPo || false,
@@ -671,11 +680,13 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
 
   console.log(
     `Step mail → ${assignedRole} (${primaryName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}` +
+      `${cc.length ? ` (cc: ${cc.join(', ')})` : ''}` +
       ` [attachments=${(options.attachments || []).length}]`
   );
 
   return sendMailToRecipients(emails, subject, html, text, options.attachments || [], {
     bcc,
+    cc,
     emailType: 'pr_approval_pending',
     prId: pr.id || pr.prId || null,
     prNumber: pr.prNumber || pr.pr_number || null,
@@ -683,10 +694,12 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
       assignedRole,
       approverName: primaryName,
       stageLabel: options.stageLabel || null,
+      sendBackRemarks: options.sendBackRemarks || null,
       postRfq: Boolean(options.postRfq),
       rfqEntry: Boolean(options.rfqEntry),
       roleDisplayName: options.roleDisplayName || null,
       includeRfqDetail: Boolean(options.rfqSummary?.vendors?.length),
+      cc,
     },
   });
 }
@@ -900,6 +913,11 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
   }
   const emailSet = new Set(emails.map((e) => e.toLowerCase()));
   const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
+  const cc = [...new Set(
+    (options.ccEmails || [])
+      .map((e) => String(e || '').trim())
+      .filter((e) => e && !emailSet.has(e.toLowerCase()))
+  )];
 
   const { subject, html, text } = buildPostRfqActionEmail({
     pr,
@@ -911,9 +929,13 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
     appBaseUrl: getAppBaseUrl(),
   });
 
-  console.log(`Step mail → Requester (${requesterName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}`);
+  console.log(
+    `Step mail → Requester (${requesterName}): ${emails.join(', ')} for ${pr.prNumber || pr.id}` +
+      `${cc.length ? ` (cc: ${cc.join(', ')})` : ''}`
+  );
   return sendMailToRecipients(emails, subject, html, text, [], {
     bcc,
+    cc,
     emailType: 'pr_post_rfq_action',
     prId: pr.id || pr.prId || null,
     prNumber: pr.prNumber || pr.pr_number || null,
@@ -922,6 +944,7 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
       approverRole,
       editPr: Boolean(options.editPr),
       remarks: String(remarks || ''),
+      cc,
     },
   });
 }
@@ -1199,10 +1222,19 @@ export async function sendApproverActionConfirmation(pr, approver, action, optio
   });
 
   console.log(
-    `Approver confirmation → ${approverEmail} (${normalized}) for ${prNumber || prId || 'PR'}`
+    `Approver confirmation → ${approverEmail} (${normalized}) for ${prNumber || prId || 'PR'}` +
+      `${(options.ccEmails || []).length ? ` (cc: ${(options.ccEmails || []).join(', ')})` : ''}`
   );
 
+  const toSet = new Set([approverEmail.toLowerCase()]);
+  const cc = [...new Set(
+    (options.ccEmails || [])
+      .map((e) => String(e || '').trim())
+      .filter((e) => e && !toSet.has(e.toLowerCase()))
+  )];
+
   return sendMailToRecipients([approverEmail], subject, html, text, [], {
+    cc,
     emailType: 'pr_approver_action_confirmation',
     prId,
     prNumber,
@@ -1210,6 +1242,7 @@ export async function sendApproverActionConfirmation(pr, approver, action, optio
       action: normalized,
       approverName,
       approverRole: options.approverRole || approver?.role || null,
+      cc,
     },
   });
 }
@@ -1321,6 +1354,7 @@ export async function sendPoWorkflowNotification(po, {
   ctaLabel,
   bccOps = true,
   attachments = [],
+  ccEmails = [],
 }) {
   const vendorLower = String(po?.vendorEmail || po?.vendor_email || '').trim().toLowerCase();
   let emails = [...new Set((recipientEmails || []).map((e) => String(e || '').trim()).filter(Boolean))];
@@ -1348,6 +1382,11 @@ export async function sendPoWorkflowNotification(po, {
   const bcc = bccOps
     ? getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()))
     : [];
+  const cc = [...new Set(
+    (ccEmails || [])
+      .map((e) => String(e || '').trim())
+      .filter((e) => e && !emailSet.has(e.toLowerCase()))
+  )];
 
   const { subject, html, text } = buildPoWorkflowEmail({
     po,
@@ -1361,16 +1400,20 @@ export async function sendPoWorkflowNotification(po, {
     ctaLabel,
   });
 
-  console.log(`PO workflow mail (${action}) → ${emails.join(', ')} for ${po?.poNumber || po?.id}`);
+  console.log(
+    `PO workflow mail (${action}) → ${emails.join(', ')} for ${po?.poNumber || po?.id}` +
+      `${cc.length ? ` (cc: ${cc.join(', ')})` : ''}`
+  );
 
   return sendMailToRecipients(emails, subject, html, text, attachments || [], {
     bcc,
+    cc,
     emailType: 'po_workflow',
     poId: po?.id || po?.poId || null,
     prId: po?.prId || po?.pr_id || null,
     poNumber: po?.poNumber || po?.po_number || null,
     prNumber: po?.prNumber || po?.pr_number || null,
-    meta: { action, stageLabel, actorRole },
+    meta: { action, stageLabel, actorRole, cc },
   });
 }
 

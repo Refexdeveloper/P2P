@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadStoredUpload, gcsEnabled, useGcsForNewUploads } from './gcsStorage.js';
+import { uploadToGcs, downloadStoredUpload, gcsEnabled, useGcsForNewUploads, awaitGcsUpload } from './gcsStorage.js';
 import {
   getPurchaseRequestById,
   completeRequesterTask,
@@ -195,12 +195,8 @@ async function saveQuotationFile(invitationId, round, fileName, base64Data) {
   }
   let gcsOk = false;
   if (useGcsForNewUploads()) {
-    try {
-      await uploadToGcs(`rfq-attachments/${storedName}`, buffer);
-      gcsOk = true;
-    } catch (err) {
-      console.warn('[GCS] quotation upload failed, keeping disk/DB copy:', err.message);
-    }
+    await awaitGcsUpload(`rfq-attachments/${storedName}`, buffer);
+    gcsOk = true;
   }
   return { fileName: safeName, filePath: storedName, buffer, gcsOk };
 }

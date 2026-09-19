@@ -29,6 +29,7 @@ import {
   submitVendorAcceptanceByToken,
   resolveVendorAcceptanceFile,
   resolveCancellationAttachment,
+  resolveManualQuoteAttachment,
   assertVendorAcceptanceActor,
   getCfoPoInsights,
   assertRequesterPoDocumentAccess,
@@ -553,9 +554,9 @@ router.get('/:id/document', canReadPo, async (req, res) => {
         ? await assertRequesterPoDocumentAccess(req.user, Number(req.params.id))
         : await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
-    const { buildSignatureRenderOptions } = await import('../services/signatureService.js');
+    const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
     const html = buildPoHtml(po, {
-      signature: buildSignatureRenderOptions(po),
+      signature: await buildSignatureRenderOptionsAsync(po),
     });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
@@ -577,8 +578,8 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
     const preferredName = isSigned
       ? po.signedPdfPath || `${safePoNumber}_signed.pdf`
       : `${safePoNumber}_draft.pdf`;
-    const { buildSignatureRenderOptions } = await import('../services/signatureService.js');
-    const signatureOpts = buildSignatureRenderOptions(po);
+    const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
+    const signatureOpts = await buildSignatureRenderOptionsAsync(po);
     const storedLooksStale =
       Boolean(po.pdfPath) &&
       !String(po.pdfPath).includes(poNumber) &&
@@ -660,8 +661,8 @@ router.get('/:id/comparison', requireRoles('SCM Manager', 'SCM Buyer', 'Super Ad
 router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), async (req, res) => {
   try {
     const po = await buildPoPreviewForPo(req.user, Number(req.params.id), req.body);
-    const { buildSignatureRenderOptions } = await import('../services/signatureService.js');
-    const html = buildPoHtml(po, { signature: buildSignatureRenderOptions(po) });
+    const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
+    const html = buildPoHtml(po, { signature: await buildSignatureRenderOptionsAsync(po) });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (err) {
@@ -821,6 +822,19 @@ router.post('/:id/vendor-acceptance/manual', requireRoles('Requester', 'SCM Buye
     res.json({ data, message: 'Vendor acceptance recorded manually' });
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/:id/manual-quote-file', canReadPo, async (req, res) => {
+  try {
+    const storedName = String(req.query.storedName || req.query.file || '').trim();
+    const file = await resolveManualQuoteAttachment(Number(req.params.id), storedName);
+    return sendStoredFile(res, {
+      ...file,
+      fileName: file.fileName || String(storedName).split(/[/\\]/).pop() || 'quotation',
+    });
+  } catch (err) {
+    res.status(404).json({ message: err.message || 'Quotation file not found' });
   }
 });
 

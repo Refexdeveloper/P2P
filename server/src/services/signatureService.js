@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadFromGcs, gcsEnabled } from './gcsStorage.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, awaitGcsUpload } from './gcsStorage.js';
 import {
   getPreferredScmManagerEmail,
   getPreferredScmManagerName,
@@ -29,16 +29,16 @@ export function parseDataUrlImage(dataUrl) {
   return { ext, buffer, dataUrl: `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${match[2]}` };
 }
 
-export function saveSignatureFile(buffer, ext, fileBaseName) {
+export async function saveSignatureFile(buffer, ext, fileBaseName) {
   ensureDir(SIGNATURE_UPLOAD_DIR);
   const fileName = `${fileBaseName}.${ext}`;
   const fullPath = path.join(SIGNATURE_UPLOAD_DIR, fileName);
   fs.writeFileSync(fullPath, buffer);
-  // New uploads also go to GCS
-  if (gcsEnabled()) {
-    uploadToGcs(`signatures/${fileName}`, buffer, `image/${ext === 'jpg' ? 'jpeg' : ext}`)
-      .catch((e) => console.warn('[GCS] signature upload failed:', e.message));
-  }
+  await awaitGcsUpload(
+    `signatures/${fileName}`,
+    buffer,
+    `image/${ext === 'jpg' ? 'jpeg' : ext}`
+  );
   return fileName;
 }
 
@@ -78,31 +78,61 @@ export async function signatureFileToDataUrlAsync(fileName) {
 }
 
 /** Ensure seed PNG exists under uploads/signatures (copy from assets if needed). */
-export function ensureDefaultScmManagerSignatureFile() {
+export async function ensureDefaultScmManagerSignatureFile() {
   ensureDir(SIGNATURE_UPLOAD_DIR);
   const dest = path.join(SIGNATURE_UPLOAD_DIR, DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
-  if (fs.existsSync(dest) && fs.statSync(dest).size > 0) return dest;
-
-  const seedCandidates = [
-    path.join(SIGNATURE_SEED_DIR, DEFAULT_SCM_MANAGER_SIGNATURE_FILE),
-    path.join(__dirname, '../../assets/signatures', DEFAULT_SCM_MANAGER_SIGNATURE_FILE),
-  ];
-  for (const seed of seedCandidates) {
-    if (fs.existsSync(seed) && fs.statSync(seed).size > 0) {
-      fs.copyFileSync(seed, dest);
-      return dest;
+  if (!(fs.existsSync(dest) && fs.statSync(dest).size > 0)) {
+    const seedCandidates = [
+      path.join(SIGNATURE_SEED_DIR, DEFAULT_SCM_MANAGER_SIGNATURE_FILE),
+      path.join(__dirname, '../../assets/signatures', DEFAULT_SCM_MANAGER_SIGNATURE_FILE),
+    ];
+    for (const seed of seedCandidates) {
+      if (fs.existsSync(seed) && fs.statSync(seed).size > 0) {
+        fs.copyFileSync(seed, dest);
+        break;
+      }
+    }
+  }
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 0 && gcsEnabled()) {
+    try {
+      await awaitGcsUpload(
+        `signatures/${DEFAULT_SCM_MANAGER_SIGNATURE_FILE}`,
+        fs.readFileSync(dest),
+        'image/png',
+        { skipIfExists: true }
+      );
+    } catch (err) {
+      console.warn('[GCS] default signature upload skipped:', err.message);
     }
   }
   return fs.existsSync(dest) ? dest : null;
 }
 
 export function getDefaultScmManagerSignatureDataUrl() {
-  ensureDefaultScmManagerSignatureFile();
+  // Sync path for PDF render; file should already be on disk from seed/assets
+  ensureDir(SIGNATURE_UPLOAD_DIR);
+  const dest = path.join(SIGNATURE_UPLOAD_DIR, DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
+  if (!(fs.existsSync(dest) && fs.statSync(dest).size > 0)) {
+    const seedCandidates = [
+      path.join(SIGNATURE_SEED_DIR, DEFAULT_SCM_MANAGER_SIGNATURE_FILE),
+      path.join(__dirname, '../../assets/signatures', DEFAULT_SCM_MANAGER_SIGNATURE_FILE),
+    ];
+    for (const seed of seedCandidates) {
+      if (fs.existsSync(seed) && fs.statSync(seed).size > 0) {
+        fs.copyFileSync(seed, dest);
+        break;
+      }
+    }
+  }
   return signatureFileToDataUrl(DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
 }
 
 export function getDefaultScmManagerSignatureInfo() {
-  ensureDefaultScmManagerSignatureFile();
+  ensureDir(SIGNATURE_UPLOAD_DIR);
+  const dest = path.join(SIGNATURE_UPLOAD_DIR, DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
+  if (!(fs.existsSync(dest) && fs.statSync(dest).size > 0)) {
+    getDefaultScmManagerSignatureDataUrl();
+  }
   const dataUrl = signatureFileToDataUrl(DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
   const fullPath = path.join(SIGNATURE_UPLOAD_DIR, DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
   let updatedAt = null;
@@ -147,6 +177,7 @@ export async function updateDefaultScmManagerSignature({
   // into the canonical png file name for consistency with existing code paths.
   fs.writeFileSync(uploadPath, buffer);
   fs.writeFileSync(seedPath, buffer);
+  await awaitGcsUpload(`signatures/${destName}`, buffer, 'image/png');
 
   // Refresh gallery entry for SCM Manager
   const seeded = await ensureDefaultScmManagerSignature({ backfill: Boolean(applyToSignedPos) });
@@ -164,7 +195,7 @@ export async function updateDefaultScmManagerSignature({
  * When backfill=true (startup migrate), also stamp signed POs and clear old PDFs for regen.
  */
 export async function ensureDefaultScmManagerSignature({ backfill = false } = {}) {
-  const filePath = ensureDefaultScmManagerSignatureFile();
+  const filePath = await ensureDefaultScmManagerSignatureFile();
   if (!filePath) {
     return { ok: false, reason: 'default signature file missing' };
   }
@@ -243,21 +274,25 @@ export async function listUserSignatures(userId) {
      LIMIT 20`,
     [userId, DEFAULT_SCM_MANAGER_SIGNATURE_FILE]
   );
-  return rows
-    .map((r) => ({
+  const out = [];
+  for (const r of rows) {
+    const imageDataUrl = await signatureFileToDataUrlAsync(r.image_path);
+    if (!imageDataUrl) continue;
+    out.push({
       id: r.id,
       label: r.label || 'Signature',
       imagePath: r.image_path,
-      imageDataUrl: signatureFileToDataUrl(r.image_path),
+      imageDataUrl,
       createdAt: r.created_at,
       isDefault: r.image_path === DEFAULT_SCM_MANAGER_SIGNATURE_FILE,
-    }))
-    .filter((r) => r.imageDataUrl);
+    });
+  }
+  return out;
 }
 
 export async function saveUserSignature(userId, { image, label }) {
   const { ext, buffer } = parseDataUrlImage(image);
-  const fileName = saveSignatureFile(buffer, ext, `user_${userId}_${Date.now()}`);
+  const fileName = await saveSignatureFile(buffer, ext, `user_${userId}_${Date.now()}`);
   const [result] = await pool.query(
     `INSERT INTO user_signatures (user_id, label, image_path) VALUES (?, ?, ?)`,
     [userId, (label || 'My Signature').slice(0, 100), fileName]
@@ -266,7 +301,7 @@ export async function saveUserSignature(userId, { image, label }) {
     id: result.insertId,
     label: (label || 'My Signature').slice(0, 100),
     imagePath: fileName,
-    imageDataUrl: signatureFileToDataUrl(fileName),
+    imageDataUrl: (await signatureFileToDataUrlAsync(fileName)) || signatureFileToDataUrl(fileName),
   };
 }
 
@@ -291,7 +326,7 @@ export async function getUserSignatureImage(userId, signatureId) {
     [signatureId, userId]
   );
   if (!rows.length) throw new Error('Signature not found in gallery');
-  const dataUrl = signatureFileToDataUrl(rows[0].image_path);
+  const dataUrl = await signatureFileToDataUrlAsync(rows[0].image_path);
   if (!dataUrl) throw new Error('Signature file missing');
   return { dataUrl, imagePath: rows[0].image_path };
 }
@@ -335,7 +370,7 @@ export function buildSignatureRenderOptions(po = {}) {
   );
 
   if (looksSigned && !imageDataUrl && !dsc) {
-    ensureDefaultScmManagerSignatureFile();
+    getDefaultScmManagerSignatureDataUrl();
     imagePath = DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
     imageDataUrl = signatureFileToDataUrl(DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
   }
@@ -347,5 +382,23 @@ export function buildSignatureRenderOptions(po = {}) {
     comments: po.signerComments || po.signer_comments || '',
     imageDataUrl: imageDataUrl || undefined,
     dsc: dsc || undefined,
+  };
+}
+
+/** Async variant — loads signature from GCS when disk is empty (Cloud Run). */
+export async function buildSignatureRenderOptionsAsync(po = {}) {
+  const sync = buildSignatureRenderOptions(po);
+  if (sync?.imageDataUrl || sync?.dsc) return sync;
+  const imagePath = po.signatureImagePath || po.signature_image_path || '';
+  if (!imagePath) return sync;
+  const fromGcs = await signatureFileToDataUrlAsync(imagePath);
+  if (!fromGcs) return sync;
+  return {
+    ...(sync || {
+      name: po.signatureName || po.signature_name || getPreferredScmManagerName() || 'SCM Manager',
+      date: po.signedAt || po.signed_at || '',
+      comments: po.signerComments || po.signer_comments || '',
+    }),
+    imageDataUrl: fromGcs,
   };
 }

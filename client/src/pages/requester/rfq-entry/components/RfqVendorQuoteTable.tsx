@@ -17,6 +17,8 @@ export interface RfqQuoteTableFile {
   extraFileId?: number | null;
   isLocal?: boolean;
   isPrimary?: boolean;
+  /** Manual Create PO — stored on disk/GCS after Save Draft */
+  storedName?: string | null;
 }
 
 export interface RfqQuoteTableRow {
@@ -40,6 +42,8 @@ export interface RfqQuoteTableRow {
   submissionId?: number | null;
   /** True when a local File is still in browser memory (not yet uploaded) */
   hasLocalQuotationFile?: boolean;
+  /** Manual Create PO — GCS/disk storedName for Preview after Save */
+  quotationStoredName?: string | null;
   quotes?: Array<{
     round: number;
     quotedPrice: number;
@@ -101,7 +105,14 @@ function fileMetaForRow(row: RfqQuoteTableRow, focusRound: number) {
 }
 
 function normalizeQuoteFiles(
-  files?: Array<{ fileName?: string; extraFileId?: number | null; id?: number | null; isLocal?: boolean; isPrimary?: boolean }>
+  files?: Array<{
+    fileName?: string;
+    extraFileId?: number | null;
+    id?: number | null;
+    isLocal?: boolean;
+    isPrimary?: boolean;
+    storedName?: string | null;
+  }>
 ): RfqQuoteTableFile[] {
   if (!Array.isArray(files)) return [];
   return files
@@ -110,6 +121,7 @@ function normalizeQuoteFiles(
       extraFileId: f.extraFileId ?? f.id ?? null,
       isLocal: Boolean(f.isLocal),
       isPrimary: Boolean(f.isPrimary),
+      storedName: f.storedName ? String(f.storedName) : null,
     }))
     .filter((f) => f.fileName);
 }
@@ -361,7 +373,11 @@ export default function RfqVendorQuoteTable({
               const quoteFiles = filesForRow(row, fileFocusRound);
               const canPreviewFile = (file: RfqQuoteTableFile) =>
                 Boolean(onViewFile) &&
-                (Boolean(fileMeta.submissionId) || Boolean(file.extraFileId) || Boolean(file.isLocal) || Boolean(row.hasLocalQuotationFile));
+                (Boolean(fileMeta.submissionId) ||
+                  Boolean(file.extraFileId) ||
+                  Boolean(file.isLocal) ||
+                  Boolean(file.storedName) ||
+                  Boolean(row.hasLocalQuotationFile));
               return (
                 <tr key={row.id} className={`hover:bg-gray-50 ${isRecommended ? 'bg-teal-50/40' : ''}`}>
                   <td className="px-5 py-3.5">
@@ -469,6 +485,7 @@ export default function RfqVendorQuoteTable({
                                       quotationSubmissionId: fileMeta.submissionId,
                                       submissionId: fileMeta.submissionId,
                                       hasLocalQuotationFile: Boolean(file.isLocal),
+                                      quotationStoredName: file.storedName ?? null,
                                     })
                                   }
                                   className="inline-flex items-center gap-1 self-start px-2.5 py-1 rounded-md border border-teal-200 bg-teal-50 text-teal-800 text-[11px] font-semibold hover:bg-teal-100"

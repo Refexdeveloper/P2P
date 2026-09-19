@@ -1011,6 +1011,8 @@ export const poApi = {
     `${PO_API_URL}/api/po/vendor-accept/${encodeURIComponent(token)}/pdf`,
   getVendorAcceptanceFileUrl: (poId: number) =>
     `${PO_API_URL}/api/po/${poId}/vendor-acceptance/file`,
+  getManualQuoteFileUrl: (poId: number, storedName: string) =>
+    `${PO_API_URL}/api/po/${poId}/manual-quote-file?storedName=${encodeURIComponent(storedName)}`,
   getCancellationFileUrl: (poId: number, index: number) =>
     `${PO_API_URL}/api/po/${poId}/cancellation/${index}/file`,
   finalVerify: (poId: number, remarks?: string) =>

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useState } from 'react';
-import { rfqApi, type VendorComparisonData } from '../../services/api';
+import { poApi, rfqApi, type VendorComparisonData } from '../../services/api';
 import {
   allQuotationFilesForRound,
   type QuotationFileView,
@@ -89,7 +89,12 @@ type RevColumn = {
   submissionId?: number;
   quotationFileName?: string;
   hasQuotationFile?: boolean;
-  quotationFiles?: Array<{ id?: number | null; fileName: string; isPrimary?: boolean }>;
+  quotationFiles?: Array<{
+    id?: number | null;
+    fileName: string;
+    isPrimary?: boolean;
+    storedName?: string | null;
+  }>;
 };
 
 interface Props {
@@ -97,6 +102,8 @@ interface Props {
   selectedVendorId?: number | null;
   onSelectVendor?: (id: number) => void;
   onPreviewFile?: (submissionId: number, vendorName: string, fileName: string) => void;
+  /** Manual Create PO — required to Preview GCS quotation files (submissionId is 0) */
+  poId?: number | null;
   compact?: boolean;
 }
 
@@ -289,11 +296,20 @@ const stOtherLabel = `sticky left-0 z-20 w-[324px] min-w-[324px] md:w-[380px] md
 /** Match Unit+Amount pair width so Other terms lines up under price columns */
 const colRev = 'w-[240px] min-w-[240px] max-w-[276px] align-middle';
 
-async function fetchQuoteBlob(submissionId: number, extraFileId?: number | null) {
+async function fetchQuoteBlob(
+  submissionId: number,
+  extraFileId?: number | null,
+  opts?: { poId?: number | null; storedName?: string | null }
+) {
   const token = localStorage.getItem('p2p_token');
-  const url = extraFileId
-    ? rfqApi.quotationExtraFileUrl(extraFileId)
-    : rfqApi.quotationFileUrl(submissionId);
+  const storedName = String(opts?.storedName || '').trim();
+  const poId = Number(opts?.poId) || 0;
+  const url =
+    storedName && poId
+      ? poApi.getManualQuoteFileUrl(poId, storedName)
+      : extraFileId
+        ? rfqApi.quotationExtraFileUrl(extraFileId)
+        : rfqApi.quotationFileUrl(submissionId);
   const res = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
@@ -320,6 +336,7 @@ export default function VendorComparisonMatrix({
   selectedVendorId,
   onSelectVendor,
   onPreviewFile,
+  poId,
   compact = false,
 }: Props) {
   const { pr, vendors, parameters, recommendedVendorId } = data;
@@ -333,15 +350,22 @@ export default function VendorComparisonMatrix({
     async (file: QuotationFileView, vendorName: string, mode: 'view' | 'download') => {
       const submissionId = Number(file.submissionId) || 0;
       const extraId = Number(file.extraFileId) || 0;
-      const busyKey = `${submissionId}-${extraId}-${mode}`;
+      const storedName = String(file.storedName || '').trim();
+      const busyKey = `${submissionId}-${extraId}-${storedName || 'x'}-${mode}`;
       setFileError('');
       setFileBusy(busyKey);
       try {
-        if (mode === 'view' && onPreviewFile && submissionId && !extraId) {
+        if (mode === 'view' && onPreviewFile && submissionId && !extraId && !storedName) {
           onPreviewFile(submissionId, vendorName, file.fileName);
           return;
         }
-        const blob = await fetchQuoteBlob(submissionId, extraId || null);
+        if (!submissionId && !extraId && !(storedName && poId)) {
+          throw new Error('Quotation file is not available for preview');
+        }
+        const blob = await fetchQuoteBlob(submissionId, extraId || null, {
+          poId,
+          storedName: storedName || null,
+        });
         const url = URL.createObjectURL(blob);
         if (mode === 'download') {
           const a = document.createElement('a');
@@ -359,7 +383,7 @@ export default function VendorComparisonMatrix({
         setFileBusy(null);
       }
     },
-    [onPreviewFile]
+    [onPreviewFile, poId]
   );
 
   const totalRounds = Math.max(
@@ -561,7 +585,7 @@ export default function VendorComparisonMatrix({
     return (
       <div className="flex flex-col items-center gap-2 min-w-0">
         {files.map((file, idx) => {
-          const busyBase = `${Number(file.submissionId) || 0}-${Number(file.extraFileId) || 0}`;
+          const busyBase = `${Number(file.submissionId) || 0}-${Number(file.extraFileId) || 0}-${file.storedName || 'x'}`;
           return (
             <div key={`${file.fileName}-${idx}`} className="flex flex-col items-center gap-1 min-w-0">
               <p className="text-[11px] text-slate-600 truncate max-w-[160px]" title={file.fileName}>

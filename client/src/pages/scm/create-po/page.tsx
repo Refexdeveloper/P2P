@@ -31,6 +31,7 @@ import ManualPoContextSection, {
   findRecommendedManualQuote,
   hydrateComparisonRoundsFromStored,
   hydrateManualPrDetailsFromStored,
+  mergeStoredFilesIntoRounds,
   type ManualPrDetails,
   type ManualComparisonRound,
 } from './ManualPoContextSection';
@@ -2851,15 +2852,22 @@ export default function CreatePOPage() {
         setCreatedPoId(savedId);
       }
       if (savedPoNumber) setPoNumber(savedPoNumber);
-      // Silent autosave must not remount rounds (would wipe open edit + local File blobs)
-      if (data.manualContext && !silent) {
+      // Apply stored GCS file refs after save so Preview works without remount.
+      // Full hydrate on explicit Save; merge on silent autosave (keep open Edit + local Files).
+      if (data.manualContext) {
         const hydratedRounds = hydrateComparisonRoundsFromStored(
           (data.manualContext.comparisonRounds || []) as Parameters<
             typeof hydrateComparisonRoundsFromStored
           >[0],
           (data.manualContext.vendorQuotes || []) as Parameters<typeof hydrateComparisonRoundsFromStored>[1]
         );
-        if (hydratedRounds.length) setManualComparisonRounds(hydratedRounds);
+        if (hydratedRounds.length) {
+          if (silent) {
+            setManualComparisonRounds((prev) => mergeStoredFilesIntoRounds(prev, hydratedRounds));
+          } else {
+            setManualComparisonRounds(hydratedRounds);
+          }
+        }
       }
       skipNextLetterheadLoad.current = true;
       letterheadLoadSeq.current += 1;
@@ -3954,6 +3962,7 @@ export default function CreatePOPage() {
                       onComparisonRoundsChange={setManualComparisonRounds}
                       vendors={masterVendors}
                       onVendorsChange={setMasterVendors}
+                      poId={editPoId || createdPoId}
                       currencySymbol={moneySymbol}
                       currency={currency}
                     />

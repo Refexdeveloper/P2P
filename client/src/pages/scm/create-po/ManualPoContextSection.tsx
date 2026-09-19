@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import VendorSearchSelect from '../../requester/rfq-entry/components/VendorSearchSelect';
 import type { VendorRecord } from '../../../services/api';
-import { vendorApi } from '../../../services/api';
+import { vendorApi, poApi } from '../../../services/api';
 import RfqVendorQuoteTable, {
   type RfqQuoteTableRow,
 } from '../../requester/rfq-entry/components/RfqVendorQuoteTable';
@@ -219,12 +219,50 @@ export function hydrateManualPrDetailsFromStored(
 }
 
 function quoteFilesForDisplay(q: ManualVendorQuoteRow) {
-  const local = q.files.map((f) => ({ fileName: f.name, isLocal: true }));
-  const stored = (q.storedFiles || []).map((f) => ({
-    fileName: f.fileName,
-    isLocal: false,
+  const local = q.files.map((f) => ({
+    fileName: f.name,
+    isLocal: true as const,
+    storedName: null as string | null,
   }));
+  const localNames = new Set(local.map((f) => f.fileName));
+  const stored = (q.storedFiles || [])
+    .filter((f) => f?.fileName && !localNames.has(f.fileName))
+    .map((f) => ({
+      fileName: f.fileName,
+      isLocal: false as const,
+      storedName: f.storedName || null,
+    }));
   return [...local, ...stored];
+}
+
+/** After Save Draft / autosave: attach GCS storedNames without wiping local File blobs. */
+export function mergeStoredFilesIntoRounds(
+  current: ManualComparisonRound[],
+  fromServer: ManualComparisonRound[]
+): ManualComparisonRound[] {
+  const serverByVendorRound = new Map<string, ManualVendorQuoteRow['storedFiles']>();
+  for (const round of fromServer) {
+    for (const q of round.vendorQuotes) {
+      const key = `${round.round}::${vendorStableKey(q)}`;
+      serverByVendorRound.set(key, q.storedFiles || []);
+    }
+  }
+  return current.map((round) => ({
+    ...round,
+    vendorQuotes: round.vendorQuotes.map((q) => {
+      const key = `${round.round}::${vendorStableKey(q)}`;
+      const serverStored = serverByVendorRound.get(key);
+      if (!serverStored?.length) return q;
+      const byName = new Map(serverStored.map((f) => [f.fileName, f]));
+      const mergedStored = [
+        ...serverStored,
+        ...(q.storedFiles || []).filter((f) => f.fileName && !byName.has(f.fileName)),
+      ];
+      // Drop local Files that now exist as stored on server (same name)
+      const nextLocal = q.files.filter((f) => !byName.has(f.name));
+      return { ...q, storedFiles: mergedStored, files: nextLocal };
+    }),
+  }));
 }
 
 type Props = {
@@ -234,6 +272,8 @@ type Props = {
   onComparisonRoundsChange: (next: ManualComparisonRound[]) => void;
   vendors: VendorRecord[];
   onVendorsChange?: (next: VendorRecord[]) => void;
+  /** Saved PO id — required to Preview quotation files after Save Draft / GCS */
+  poId?: number | null;
   currencySymbol: string;
   currency?: string | null;
 };
@@ -245,6 +285,7 @@ export default function ManualPoContextSection({
   onComparisonRoundsChange,
   vendors,
   onVendorsChange,
+  poId,
   currencySymbol,
   currency,
 }: Props) {
@@ -304,7 +345,7 @@ export default function ManualPoContextSection({
         isRecommended: recommendedQuoteKey === v.vendorKey,
         quotationFileName: rowFiles[0]?.fileName,
         quotationFiles: rowFiles,
-        hasLocalQuotationFile: rowFiles.length > 0,
+        hasLocalQuotationFile: rowFiles.some((f) => f.isLocal),
         quotes: submittedQuotes,
       };
     });
@@ -515,7 +556,7 @@ export default function ManualPoContextSection({
     }
   };
 
-  const openLocalFile = (row: RfqQuoteTableRow) => {
+  const openQuoteFile = async (row: RfqQuoteTableRow) => {
     const vendor = pivoted.find((v) => v.vendorKey === row.id);
     if (!vendor) return;
     const roundNum =
@@ -524,12 +565,49 @@ export default function ManualPoContextSection({
         : row.quotes?.reduce((m, q) => Math.max(m, q.round), 1) || 1;
     const quote = vendor.quotesByRound.get(roundNum) || vendor.quotesByRound.get(1);
     const fileName = row.quotationFileName;
-    const file =
-      quote?.files.find((f) => f.name === fileName) || quote?.files[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    window.open(url, '_blank', 'noopener,noreferrer');
-    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    // Prefer local File (just uploaded, not yet saved)
+    const local =
+      quote?.files.find((f) => f.name === fileName) ||
+      (row.hasLocalQuotationFile ? quote?.files[0] : undefined);
+    if (local) {
+      const url = URL.createObjectURL(local);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return;
+    }
+
+    // Saved attachment (disk / GCS) after Save Draft
+    const stored =
+      quote?.storedFiles?.find((f) => f.fileName === fileName) || quote?.storedFiles?.[0];
+    const storedName = String(row.quotationStoredName || stored?.storedName || '').trim();
+    const resolvedPoId = Number(poId) || 0;
+    if (!resolvedPoId || !storedName) {
+      alert('Save Draft first so the quotation file is uploaded, then Preview again.');
+      return;
+    }
+    try {
+      const token = localStorage.getItem('p2p_token');
+      const res = await fetch(poApi.getManualQuoteFileUrl(resolvedPoId, storedName), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        let message = 'Could not open quotation file';
+        try {
+          const body = (await res.json()) as { message?: string };
+          if (body?.message) message = body.message;
+        } catch {
+          /* keep */
+        }
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not open quotation file');
+    }
   };
 
   useEffect(() => {
@@ -705,7 +783,7 @@ export default function ManualPoContextSection({
               openEdit(row.id, next);
             }}
             onNextRound={(nextRound) => addNextRound(nextRound)}
-            onViewFile={(row) => openLocalFile(row)}
+            onViewFile={(row) => void openQuoteFile(row)}
           />
         )}
 
@@ -833,16 +911,17 @@ export default function ManualPoContextSection({
                     }}
                   />
                 </label>
-                {editingQuote.files.length ? (
+                {editingQuote.files.length || (editingQuote.storedFiles || []).length ? (
                   <ul className="mt-3 space-y-1.5">
                     {editingQuote.files.map((f, fi) => (
                       <li
-                        key={`${f.name}-${fi}`}
+                        key={`local-${f.name}-${fi}`}
                         className="flex items-center justify-between gap-2 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2"
                       >
                         <span className="truncate flex items-center gap-1.5">
                           <i className="ri-file-line text-teal-600" />
                           {f.name}
+                          <span className="text-[10px] text-teal-700 font-semibold">New</span>
                         </span>
                         <button
                           type="button"
@@ -855,6 +934,50 @@ export default function ManualPoContextSection({
                         >
                           Remove
                         </button>
+                      </li>
+                    ))}
+                    {(editingQuote.storedFiles || []).map((f, fi) => (
+                      <li
+                        key={`stored-${f.storedName || f.fileName}-${fi}`}
+                        className="flex items-center justify-between gap-2 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2"
+                      >
+                        <span className="truncate flex items-center gap-1.5 min-w-0">
+                          <i className="ri-file-line text-teal-600" />
+                          <span className="truncate">{f.fileName}</span>
+                          <span className="text-[10px] text-gray-500 font-semibold shrink-0">Saved</span>
+                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {poId && f.storedName ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void openQuoteFile({
+                                  id: editTarget?.vendorKey || '',
+                                  invitationId: 0,
+                                  vendorName: editingQuote.vendorName,
+                                  status: 'submitted',
+                                  round: editTarget?.roundNum || 1,
+                                  quotationFileName: f.fileName,
+                                  hasActiveQuote: true,
+                                })
+                              }
+                              className="text-teal-700 text-xs font-semibold"
+                            >
+                              Preview
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateEditingQuote({
+                                storedFiles: (editingQuote.storedFiles || []).filter((_, i) => i !== fi),
+                              })
+                            }
+                            className="text-rose-600 text-xs font-semibold"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>

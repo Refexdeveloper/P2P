@@ -579,6 +579,7 @@ export function buildPrApprovalPendingEmail({
   approverName,
   postRfq = false,
   stageLabel = null,
+  sendBackRemarks = null,
   rfqSummary = null,
   rfqEntry = false,
   createPo = false,
@@ -876,6 +877,14 @@ export function buildPrApprovalPendingEmail({
               ${escapeHtml(pr.prNumber)}
             </div>
             <div style="font-size:16px;color:#334155;margin-top:6px;font-weight:600;">${escapeHtml(pr.title)}</div>
+            ${
+              sendBackRemarks
+                ? `<div style="margin-top:14px;padding:12px 14px;background:#fff7ed;border:1px solid #fdba74;border-radius:10px;">
+              <div style="font-size:10px;color:#c2410c;text-transform:uppercase;font-weight:800;letter-spacing:0.06em;">Send-back reason</div>
+              <div style="font-size:14px;color:#9a3412;margin-top:6px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(String(sendBackRemarks))}</div>
+            </div>`
+                : ''
+            }
           </td>
         </tr>
         <tr>
@@ -1002,6 +1011,7 @@ export function buildPrApprovalPendingEmail({
     isSassRequest ? `Purchase Type: ${purchaseTypeEmailLabel(pr)}` : '',
     `Role: ${roleDisplayName}`,
     `Stage: ${stageText}`,
+    sendBackRemarks ? `Send-back reason: ${String(sendBackRemarks)}` : '',
     `Requester: ${requester?.name || pr.requester}`,
     lineOwnVendor ? 'Vendor Path: Own Vendor' : `PR Amount: ${money(pr.totalAmount, pr)}`,
     !isSassRequest && bestQuote

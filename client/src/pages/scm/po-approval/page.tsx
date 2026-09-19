@@ -452,7 +452,11 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                         </span>
                       )}
                     </div>
-                    <VendorComparisonMatrix data={comparisonData} onPreviewFile={handlePreviewFile} />
+                    <VendorComparisonMatrix
+                      data={comparisonData}
+                      poId={poId}
+                      onPreviewFile={handlePreviewFile}
+                    />
                   </div>
                 ) : (
                   <p className="text-sm text-gray-500 italic py-8 text-center">No vendor comparison data available.</p>

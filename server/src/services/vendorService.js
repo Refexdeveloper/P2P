@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../config/db.js';
-import { uploadToGcs, downloadFromGcs, gcsEnabled, useGcsForNewUploads, findExistingVendorKycObject } from './gcsStorage.js';
+import { uploadToGcs, downloadFromGcs, gcsEnabled, useGcsForNewUploads, findExistingVendorKycObject, awaitGcsUpload } from './gcsStorage.js';
 import { formatDate } from '../utils/constants.js';
 import { parseCsv, rowsToCsv, normalizeHeaderKey } from '../utils/csv.js';
 
@@ -205,7 +205,7 @@ async function saveVendorDocument(vendorId, docType, fileName, base64Data, { lin
   }
 
   if (useGcsForNewUploads()) {
-    await uploadToGcs(`vendor-kyc/${safeName}`, buffer, 'application/octet-stream');
+    await awaitGcsUpload(`vendor-kyc/${safeName}`, buffer, 'application/octet-stream');
   }
 
   try {
