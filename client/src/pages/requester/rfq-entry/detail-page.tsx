@@ -34,6 +34,7 @@ import {
   writeRfqEntryDraft,
 } from './rfqEntryDraftStorage';
 import { currencySymbol, formatMoney } from '../../../constants/currency';
+import { PR_PAYMENT_TERM_OPTIONS } from '../../../constants/prRequisition';
 
 const REQUESTER_SCORE_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
 
@@ -196,6 +197,7 @@ export default function RfqEntryDetailPage() {
     placeOfDelivery?: string;
     expectedDeliveryTimeline?: string;
     paymentTerms?: string;
+    scopeOfWork?: string;
     attachments?: PrAttachmentRecord[];
     lineItems?: Array<{
       id: number | string;
@@ -259,6 +261,7 @@ export default function RfqEntryDetailPage() {
   } | null>(null);
   const [entities, setEntities] = useState<EntityRecord[]>([]);
   const [billing, setBilling] = useState<PrBillingDeliveryValue>(emptyBilling);
+  const [scopeOfWork, setScopeOfWork] = useState('');
   const billingHydratedRef = useRef(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [softSaveHint, setSoftSaveHint] = useState('');
@@ -708,6 +711,7 @@ export default function RfqEntryDetailPage() {
         placeOfDelivery?: string;
         expectedDeliveryTimeline?: string;
         paymentTerms?: string;
+        scopeOfWork?: string;
       };
       setBilling((prev) =>
         billingHydratedRef.current
@@ -728,6 +732,9 @@ export default function RfqEntryDetailPage() {
               paymentTerms: loaded.paymentTerms || '',
             }
       );
+      if (!billingHydratedRef.current) {
+        setScopeOfWork(String(loaded.scopeOfWork || ''));
+      }
       if (!soft) billingHydratedRef.current = true;
       const cfg = data.config as RfqConfig;
       setConfig(cfg);
@@ -834,6 +841,9 @@ export default function RfqEntryDetailPage() {
           localBilling.expectedDeliveryTimeline.trim() || prev.expectedDeliveryTimeline || '',
         paymentTerms: localBilling.paymentTerms.trim() || prev.paymentTerms || '',
       }));
+      if (localBilling.scopeOfWork?.trim()) {
+        setScopeOfWork((prev) => (prev.trim() ? prev : localBilling.scopeOfWork!.trim()));
+      }
     }
 
     // Allow soft-autosave only after restore state has been scheduled
@@ -932,7 +942,7 @@ export default function RfqEntryDetailPage() {
       void persistBilling().catch(() => undefined);
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [billing, isScm, prId, isFinalized]);
+  }, [billing, scopeOfWork, isScm, prId, isFinalized]);
 
   /** Soft-persist in-progress quote forms so refresh doesn't lose work */
   useEffect(() => {
@@ -1554,6 +1564,7 @@ export default function RfqEntryDetailPage() {
       placeOfDelivery: b.placeOfDelivery.trim() || undefined,
       expectedDeliveryTimeline: b.expectedDeliveryTimeline.trim() || undefined,
       paymentTerms: b.paymentTerms.trim() || undefined,
+      scopeOfWork: scopeOfWork.trim() || undefined,
     });
   };
 
@@ -1563,7 +1574,7 @@ export default function RfqEntryDetailPage() {
     maxRounds: config?.maxRounds ?? null,
     draftRows: draftRows.filter((r) => r.vendorId || r.vendorName || r.vendorEmail),
     manualDrafts: manualDrafts as unknown as Record<string, Record<string, unknown>>,
-    billing: billingRef.current,
+    billing: { ...billingRef.current, scopeOfWork },
   });
 
   const persistLocalDraft = (force = false) => {
@@ -1694,12 +1705,22 @@ export default function RfqEntryDetailPage() {
       document.removeEventListener('click', onDocClick, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: leave guards use refs + latest handlers via closure refresh on key deps
-  }, [prId, isFinalized, user?.id, location.pathname, recommendedId, recommendationJustification, manualDrafts, draftRows, billing, config?.maxRounds, fields]);
+  }, [prId, isFinalized, user?.id, location.pathname, recommendedId, recommendationJustification, manualDrafts, draftRows, billing, scopeOfWork, config?.maxRounds, fields]);
 
   const handleSubmitRfq = async () => {
     if (!prId || !recommendedId) {
       setError('Select a recommended vendor before submitting RFQ');
       return;
+    }
+    if (!isScm) {
+      if (!scopeOfWork.trim()) {
+        setError('Scope of Work is required');
+        return;
+      }
+      if (!billing.paymentTerms.trim()) {
+        setError('Payment Terms is required');
+        return;
+      }
     }
     const justification = recommendationJustification.trim();
     if (!justification) {
@@ -2251,12 +2272,58 @@ export default function RfqEntryDetailPage() {
       )}
 
       {!isScm && pr && (
-        <div className="mb-5">
+        <div className="mb-5 space-y-5">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-indigo-50/40">
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+                <i className="ri-file-list-3-line text-white text-sm"></i>
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Scope of Work &amp; Payment Terms</h2>
+                <p className="text-xs text-gray-500">Required for SCM Create PO — fill here on RFQ Entry</p>
+              </div>
+            </div>
+            <div className="p-5 grid grid-cols-1 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Scope of Work <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={scopeOfWork}
+                  onChange={(e) => setScopeOfWork(e.target.value)}
+                  disabled={isFinalized}
+                  rows={5}
+                  placeholder="Describe the full scope of work, deliverables, and any technical requirements..."
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 resize-none disabled:bg-gray-50"
+                />
+                <p className="text-xs text-gray-400 mt-1.5">{scopeOfWork.length} chars</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Payment Terms <span className="text-red-500">*</span>
+                </label>
+                <input
+                  list="rfq-entry-payment-terms"
+                  value={billing.paymentTerms}
+                  onChange={(e) => setBilling((prev) => ({ ...prev, paymentTerms: e.target.value }))}
+                  disabled={isFinalized}
+                  placeholder="e.g. Net 30 Days"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 bg-white disabled:bg-gray-50"
+                />
+                <datalist id="rfq-entry-payment-terms">
+                  {PR_PAYMENT_TERM_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+          </div>
           <PrBillingDeliverySection
             value={billing}
             selectedEntity={selectedEntity}
             billingLocations={billingLocations}
             disabled={isFinalized}
+            hidePaymentTerms
             hint="For Standard + Own vendor, fill billing and delivery here (not on Create PR)."
             onChange={(patch) => {
               setBilling((prev) => ({ ...prev, ...patch }));

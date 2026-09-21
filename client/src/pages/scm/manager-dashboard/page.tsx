@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import PmKpiCard from '../../../components/base/PmKpiCard';
+import { PM_PAGE_BG } from '../../../constants/pmTheme';
 import { poApi, rfqApi, taskApi, PostRfqPendingItem } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import FinancialInsightsDashboard from '../../dashboard/page';
@@ -101,7 +103,7 @@ export default function ScmManagerDashboardPage() {
       value: pendingPos.length,
       sub: pendingValue ? formatCurrency(pendingValue) : 'Awaiting your sign-off',
       icon: 'ri-checkbox-circle-line',
-      color: 'amber',
+      tone: 'amber' as const,
       to: '/scm/po-approval',
       highlight: pendingPos.length > 0,
     },
@@ -112,7 +114,7 @@ export default function ScmManagerDashboardPage() {
         ? `${rfqEntryCount} vendor / post-RFQ awaiting you`
         : 'No RFQ entry pending',
       icon: 'ri-file-list-line',
-      color: 'rose',
+      tone: 'delayed' as const,
       to: '/rfq-approval',
       highlight: rfqEntryCount > 0,
     },
@@ -121,7 +123,7 @@ export default function ScmManagerDashboardPage() {
       value: taskCount,
       sub: taskCount ? `${taskCount} open workflow task${taskCount === 1 ? '' : 's'}` : 'No tasks pending',
       icon: 'ri-task-line',
-      color: 'rose',
+      tone: 'atRisk' as const,
       to: '/tasks',
       highlight: taskCount > 0,
     },
@@ -130,42 +132,11 @@ export default function ScmManagerDashboardPage() {
       value: approvedPos,
       sub: 'Signed / sent / buyer verify',
       icon: 'ri-check-double-line',
-      color: 'emerald',
+      tone: 'completed' as const,
       to: '/scm/po-approval',
       highlight: false,
     },
   ] as const;
-
-  const colorMap: Record<string, { bg: string; text: string; border: string; iconBg: string; ring: string }> = {
-    amber: {
-      bg: 'bg-amber-50',
-      text: 'text-amber-700',
-      border: 'border-amber-100',
-      iconBg: 'bg-amber-100',
-      ring: 'ring-amber-200',
-    },
-    teal: {
-      bg: 'bg-teal-50',
-      text: 'text-teal-700',
-      border: 'border-teal-100',
-      iconBg: 'bg-teal-100',
-      ring: 'ring-teal-200',
-    },
-    emerald: {
-      bg: 'bg-emerald-50',
-      text: 'text-emerald-700',
-      border: 'border-emerald-100',
-      iconBg: 'bg-emerald-100',
-      ring: 'ring-emerald-200',
-    },
-    rose: {
-      bg: 'bg-rose-50',
-      text: 'text-rose-700',
-      border: 'border-rose-200',
-      iconBg: 'bg-rose-100',
-      ring: 'ring-rose-300',
-    },
-  };
 
   if (showDetailedView) {
     return (
@@ -178,12 +149,15 @@ export default function ScmManagerDashboardPage() {
     );
   }
 
+  const kpiSum = cards.reduce((s, c) => s + (Number(c.value) || 0), 0) || 1;
+
   return (
     <DashboardLayout>
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">SCM Manager Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-[#0F172A]">SCM Manager Dashboard</h1>
+          <p className="text-sm text-[#64748B] mt-1">
             Welcome{user?.name ? `, ${user.name}` : ''} — PO sign-off, RFQ Entry &amp; My Tasks
           </p>
         </div>
@@ -191,7 +165,7 @@ export default function ScmManagerDashboardPage() {
           <button
             type="button"
             onClick={() => setShowDetailedView(true)}
-            className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm inline-flex items-center gap-1.5"
+            className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-[#1E88E5] text-white hover:bg-[#1565C0] shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
           >
             <i className="ri-bar-chart-box-line"></i>
             Detailed view
@@ -199,7 +173,7 @@ export default function ScmManagerDashboardPage() {
           <button
             type="button"
             onClick={() => load()}
-            className="px-3 py-1.5 text-xs font-semibold border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+            className="px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-xl hover:bg-white text-[#64748B] bg-white cursor-pointer"
           >
             <i className="ri-refresh-line mr-1"></i>
             Refresh
@@ -237,36 +211,21 @@ export default function ScmManagerDashboardPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         {cards.map((card) => {
-          const c = colorMap[card.color];
+          const pct = Math.round(((Number(card.value) || 0) / kpiSum) * 100);
           return (
-            <button
+            <PmKpiCard
               key={card.label}
-              type="button"
+              title={card.label}
+              value={card.value}
+              icon={card.icon}
+              tone={card.tone}
+              subtitle={card.sub}
+              delta={card.highlight ? `${card.value} flagged` : `${pct}% of queue`}
+              deltaTone={card.highlight ? 'down' : 'flat'}
+              progress={pct}
+              selected={card.highlight}
               onClick={() => navigate(card.to)}
-              className={`text-left bg-white rounded-xl border p-5 hover:shadow-md transition-shadow cursor-pointer ${
-                card.highlight ? `${c.border} ring-2 ${c.ring} ${c.bg}` : `${c.border}`
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs text-gray-500 mb-1 flex items-center gap-2">
-                    {card.label}
-                    {card.highlight && (
-                      <span className="inline-flex min-w-[18px] h-[18px] px-1 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold">
-                        {card.value}
-                      </span>
-                    )}
-                  </p>
-                  <p className={`text-3xl font-bold ${card.highlight ? c.text : 'text-gray-900'}`}>
-                    {card.value}
-                  </p>
-                  <p className={`text-xs mt-1 ${c.text}`}>{card.sub}</p>
-                </div>
-                <div className={`w-11 h-11 ${c.iconBg} rounded-xl flex items-center justify-center shrink-0`}>
-                  <i className={`${card.icon} text-xl ${c.text}`}></i>
-                </div>
-              </div>
-            </button>
+            />
           );
         })}
       </div>
@@ -446,6 +405,7 @@ export default function ScmManagerDashboardPage() {
             My Tasks
           </Link>
         </div>
+      </div>
       </div>
     </DashboardLayout>
   );

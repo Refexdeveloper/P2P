@@ -460,6 +460,7 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_requests ADD COLUMN request_category ENUM('Product', 'Service') NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN project_detail VARCHAR(255) NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN special_notes TEXT NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN scope_of_work LONGTEXT NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN delivery_poc_email VARCHAR(255) NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN delivery_poc_phone VARCHAR(50) NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN project_manager_ho VARCHAR(255) NULL`,

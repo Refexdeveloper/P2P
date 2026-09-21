@@ -47,6 +47,7 @@ export type CreatePrDraftSnapshot = {
   priority: string;
   currency: string;
   businessJustification: string;
+  scopeOfWork?: string;
   requiredDate: string;
   workStartDate?: string;
   workEndDate?: string;

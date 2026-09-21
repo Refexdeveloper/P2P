@@ -439,7 +439,7 @@ export default function Dashboard({
   };
 
   const content = (
-      <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full bg-[#F8F9FC] px-4 sm:px-6 lg:px-7 py-6 font-sans`}>
+      <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full bg-[#F3F6FB] px-4 sm:px-6 lg:px-7 py-6 font-sans`} style={{ background: 'linear-gradient(165deg, #EEF4FF 0%, #F3F6FB 42%, #F3F6FB 100%)' }}>
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
           <div>
             {embedded && onBack ? (

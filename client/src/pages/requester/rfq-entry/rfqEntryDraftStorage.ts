@@ -15,6 +15,7 @@ export type RfqEntryBillingDraft = {
   placeOfDelivery: string;
   expectedDeliveryTimeline: string;
   paymentTerms: string;
+  scopeOfWork?: string;
 };
 
 export type RfqEntryDraftSnapshot = {
@@ -60,6 +61,7 @@ function billingFilled(b?: RfqEntryBillingDraft | null): number {
   if (String(b.placeOfDelivery || '').trim()) n += 1;
   if (String(b.expectedDeliveryTimeline || '').trim()) n += 1;
   if (String(b.paymentTerms || '').trim()) n += 1;
+  if (String(b.scopeOfWork || '').trim()) n += 1;
   return n;
 }
 
@@ -126,6 +128,7 @@ function sanitizeBilling(billing?: RfqEntryBillingDraft | null): RfqEntryBilling
     placeOfDelivery: String(billing.placeOfDelivery || ''),
     expectedDeliveryTimeline: String(billing.expectedDeliveryTimeline || ''),
     paymentTerms: String(billing.paymentTerms || ''),
+    scopeOfWork: String(billing.scopeOfWork || ''),
   };
 }
 

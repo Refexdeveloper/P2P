@@ -171,6 +171,7 @@ function parseRequisitionExtras(body = {}, fallback = {}) {
     paymentTerms: pick(['paymentTerms']),
     projectDetail: pick(['projectDetail', 'project_detail']),
     specialNotes: pick(['specialNotes', 'special_notes'], 4000),
+    scopeOfWork: pick(['scopeOfWork', 'scope_of_work'], 8000),
     deliveryPocEmail: pick(['deliveryPocEmail', 'delivery_poc_email']),
     deliveryPocPhone: pick(['deliveryPocPhone', 'delivery_poc_phone']),
     projectManagerHo: pick(['projectManagerHo', 'project_manager_ho']),
@@ -786,6 +787,7 @@ async function enrichPR(row) {
     requestCategory: normalizeRequestCategory(row.request_category),
     projectDetail: row.project_detail || '',
     specialNotes: row.special_notes || '',
+    scopeOfWork: row.scope_of_work || '',
     vendorId: row.vendor_id || null,
     vendorName: row.vendor_name || '',
     vendorEmail: row.vendor_email || '',
@@ -1514,6 +1516,13 @@ export async function createPurchaseRequest(user, body) {
       prId = result.insertId;
       prNumber = stableDraftPrNumber(prId);
       await conn.query(`UPDATE purchase_requests SET pr_number = ? WHERE id = ?`, [prNumber, prId]);
+    }
+
+    if (extras.scopeOfWork) {
+      await conn.query(`UPDATE purchase_requests SET scope_of_work = ? WHERE id = ?`, [
+        extras.scopeOfWork,
+        prId,
+      ]);
     }
 
     for (const item of lineItems) {
@@ -3382,6 +3391,7 @@ export async function updatePrBillingDelivery(user, prId, body = {}) {
     projectManagerHo: pr.project_manager_ho,
     projectManagerContact: pr.project_manager_contact,
     projectManagerEmail: pr.project_manager_email,
+    scopeOfWork: pr.scope_of_work,
   });
   const billing = await resolvePrBilling(pr.entity_id, body, pr);
 
@@ -3391,6 +3401,7 @@ export async function updatePrBillingDelivery(user, prId, body = {}) {
          delivery_poc = ?, place_of_delivery = ?, expected_delivery_timeline = ?, payment_terms = ?,
          delivery_poc_email = ?, delivery_poc_phone = ?,
          project_manager_ho = ?, project_manager_contact = ?, project_manager_email = ?,
+         scope_of_work = ?,
          updated_at = NOW()
      WHERE id = ?`,
     [
@@ -3407,6 +3418,7 @@ export async function updatePrBillingDelivery(user, prId, body = {}) {
       extras.projectManagerHo || null,
       extras.projectManagerContact || null,
       extras.projectManagerEmail || null,
+      extras.scopeOfWork || null,
       prId,
     ]
   );
@@ -3537,7 +3549,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
            required_date = ?, currency = ?, total_amount = ?, vendor_selection = ?, pr_flow = ?, approval_user_id = ?, approval_user_ids = ?,
            billing_location_id = ?, billing_location = ?, billing_gst_no = ?, billing_address = ?,
            delivery_poc = ?, place_of_delivery = ?, expected_delivery_timeline = ?, payment_terms = ?,
-           request_category = ?, project_detail = ?, special_notes = ?,
+           request_category = ?, project_detail = ?, special_notes = ?, scope_of_work = ?,
            delivery_poc_email = ?, delivery_poc_phone = ?,
            project_manager_ho = ?, project_manager_contact = ?, project_manager_email = ?,
            updated_at = NOW()
@@ -3568,6 +3580,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
         requestCategory || null,
         extras.projectDetail || null,
         extras.specialNotes || null,
+        extras.scopeOfWork || null,
         extras.deliveryPocEmail || null,
         extras.deliveryPocPhone || null,
         extras.projectManagerHo || null,
@@ -3838,7 +3851,7 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
            vendor_selection = ?, pr_flow = ?, approval_user_id = ?, approval_user_ids = ?,
            billing_location_id = ?, billing_location = ?, billing_gst_no = ?, billing_address = ?,
            delivery_poc = ?, place_of_delivery = ?, expected_delivery_timeline = ?, payment_terms = ?,
-           request_category = ?, project_detail = ?, special_notes = ?,
+           request_category = ?, project_detail = ?, special_notes = ?, scope_of_work = ?,
            delivery_poc_email = ?, delivery_poc_phone = ?,
            project_manager_ho = ?, project_manager_contact = ?, project_manager_email = ?,
            updated_at = NOW()
@@ -3869,6 +3882,7 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
         requestCategory || null,
         extras.projectDetail || null,
         extras.specialNotes || null,
+        extras.scopeOfWork || null,
         extras.deliveryPocEmail || null,
         extras.deliveryPocPhone || null,
         extras.projectManagerHo || null,

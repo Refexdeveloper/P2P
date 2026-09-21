@@ -1177,6 +1177,7 @@ export default function CreatePOPage() {
   createdPoIdRef.current = createdPoId;
   const userEditedDraftRef = useRef(false);
   const prLineItemsHydratedRef = useRef(false);
+  const prScopeOfWorkRef = useRef('');
   const keepLocalDraftAfterSaveRef = useRef(false);
   const contextLoadSeq = useRef(0);
   const manualContextInitializedRef = useRef(false);
@@ -1205,7 +1206,25 @@ export default function CreatePOPage() {
       if ((letterheadLockedRef.current || userEditedDraftRef.current) && !force) return;
       const terms = res.data.terms || [];
       const annexure = res.data.annexure || [];
-      const nextTerms = stripQuoteNoFromTermsClauses(adaptClausesForDocumentType(terms, targetDoc));
+      let nextTerms = stripQuoteNoFromTermsClauses(adaptClausesForDocumentType(terms, targetDoc));
+      const sow = String(prScopeOfWorkRef.current || '').trim();
+      if (sow) {
+        nextTerms = nextTerms.map((c) => {
+          const header = String(c.termsHeader || '').toLowerCase();
+          if (!header.includes('scope of work')) return c;
+          const existing = String(c.termsDescription || '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (existing) return c;
+          const safe = sow
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br/>');
+          return { ...c, termsDescription: `<p>${safe}</p>` };
+        });
+      }
       const nextAnnexure = adaptClausesForDocumentType(annexure, targetDoc);
       setLetterheadHeader(adaptWordingForDocumentType(res.data.letterheadHeader || '', targetDoc));
       termsDraftRef.current = nextTerms;
@@ -2144,6 +2163,7 @@ export default function CreatePOPage() {
         projectManagerContact?: string;
         projectManagerEmail?: string;
         paymentTerms?: string;
+        scopeOfWork?: string;
         lineItems: Array<{ id: number; description: string; quantity: number; unitCost: number; category?: string; unit?: string; uom?: string }>;
       };
       const vendor = res.data.vendor as { name: string; email: string; paymentTerms: string; deliveryTerms: string };
@@ -2182,6 +2202,7 @@ export default function CreatePOPage() {
         );
       }
       setPaymentTerms(vendor.paymentTerms || prData.paymentTerms || 'Net 30 Days');
+      prScopeOfWorkRef.current = String(prData.scopeOfWork || '').trim();
       setIncoterms(normalizeIncoterm(vendor.deliveryTerms));
       if (prData.placeOfDelivery) {
         setDeliveryAddress(prData.placeOfDelivery);

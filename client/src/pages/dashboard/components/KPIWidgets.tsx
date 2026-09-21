@@ -1,3 +1,4 @@
+import PmKpiCard from '../../../components/base/PmKpiCard';
 import { formatCompactInr, formatFullInr, monthOverMonth } from '../cfoFormat';
 
 type Kpis = {
@@ -22,6 +23,7 @@ export default function KPIWidgets({
   const approvedShare = kpis.totalPOAmount > 0 ? (kpis.approvedPOAmount / kpis.totalPOAmount) * 100 : 0;
   const pendingShare = kpis.totalPOAmount > 0 ? (kpis.pendingPOAmount / kpis.totalPOAmount) * 100 : 0;
   const payShare = kpis.totalPOAmount > 0 ? (kpis.totalVendorPayments / kpis.totalPOAmount) * 100 : 0;
+  const budgetPct = Number(kpis.budgetUtilization || 0);
 
   const cards = [
     {
@@ -29,83 +31,73 @@ export default function KPIWidgets({
       value: formatCompactInr(kpis.totalPOAmount),
       titleAttr: formatFullInr(kpis.totalPOAmount),
       delta: mom.label,
-      up: mom.up,
-      flat: mom.flat,
-      icon: 'ri-shopping-cart-2-line',
-      iconBg: 'bg-indigo-50',
-      iconColor: 'text-indigo-600',
+      deltaTone: (mom.flat ? 'flat' : mom.up ? 'up' : 'down') as 'up' | 'down' | 'flat',
+      subtitle: `vs ${vs}`,
+      icon: 'ri-folder-3-line',
+      tone: 'total' as const,
+      progress: undefined as number | undefined,
     },
     {
       title: 'Approved PO Amount',
       value: formatCompactInr(kpis.approvedPOAmount),
       titleAttr: formatFullInr(kpis.approvedPOAmount),
-      delta: `${approvedShare.toFixed(1)}% of total PO`,
-      up: true,
-      flat: false,
-      icon: 'ri-shield-check-line',
-      iconBg: 'bg-emerald-50',
-      iconColor: 'text-emerald-600',
+      delta: `${approvedShare.toFixed(0)}% of total`,
+      deltaTone: 'up' as const,
+      subtitle: 'Cleared POs',
+      icon: 'ri-checkbox-circle-line',
+      tone: 'completed' as const,
+      progress: approvedShare,
     },
     {
       title: 'Pending PO Amount',
       value: formatCompactInr(kpis.pendingPOAmount),
       titleAttr: formatFullInr(kpis.pendingPOAmount),
-      delta: `${pendingShare.toFixed(1)}% of total PO`,
-      up: true,
-      flat: false,
-      icon: 'ri-time-line',
-      iconBg: 'bg-orange-50',
-      iconColor: 'text-orange-500',
+      delta: `${pendingShare.toFixed(0)}% of total`,
+      deltaTone: 'down' as const,
+      subtitle: 'Awaiting action',
+      icon: 'ri-notification-3-line',
+      tone: 'active' as const,
+      progress: pendingShare,
     },
     {
       title: 'Vendor Payments',
       value: formatCompactInr(kpis.totalVendorPayments),
       titleAttr: formatFullInr(kpis.totalVendorPayments),
-      delta: `${payShare.toFixed(1)}% of total PO`,
-      up: payShare >= 0,
-      flat: payShare === 0,
+      delta: `${payShare.toFixed(0)}% of total`,
+      deltaTone: payShare >= 50 ? ('up' as const) : ('flat' as const),
+      subtitle: 'Paid to vendors',
       icon: 'ri-bank-line',
-      iconBg: 'bg-sky-50',
-      iconColor: 'text-sky-600',
+      tone: 'open' as const,
+      progress: payShare,
     },
     {
       title: 'Budget Utilization',
-      value: `${Number(kpis.budgetUtilization || 0).toFixed(1)}%`,
-      titleAttr: `${kpis.budgetUtilization}% approved / total PO`,
+      value: `${budgetPct.toFixed(1)}%`,
+      titleAttr: `${budgetPct}% approved / total PO`,
       delta: 'Approved / total PO',
-      up: true,
-      flat: false,
+      deltaTone: 'flat' as const,
+      subtitle: 'Of allocated budget',
       icon: 'ri-pie-chart-2-line',
-      iconBg: 'bg-rose-50',
-      iconColor: 'text-rose-500',
+      tone: budgetPct > 90 ? ('delayed' as const) : ('subtasks' as const),
+      progress: Math.min(100, budgetPct),
     },
   ];
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-5">
       {cards.map((card) => (
-        <div
+        <PmKpiCard
           key={card.title}
-          className="bg-white border border-[#EEF0F5] rounded-[16px] shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-[0_10px_28px_rgba(16,24,40,0.06)] hover:-translate-y-px transition-all duration-200 px-4 py-4 min-h-[120px] flex flex-col"
-        >
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-[12px] font-medium text-slate-500 leading-tight pt-0.5">{card.title}</p>
-            <div className={`w-8 h-8 ${card.iconBg} rounded-lg flex items-center justify-center shrink-0`}>
-              <i className={`${card.icon} text-base ${card.iconColor}`}></i>
-            </div>
-          </div>
-          <p className="text-[22px] font-bold text-slate-900 mt-2 leading-none tracking-tight" title={card.titleAttr}>
-            {card.value}
-          </p>
-          <p
-            className={`text-[11px] mt-2 font-medium inline-flex items-center gap-1 ${
-              card.flat ? 'text-slate-400' : card.up ? 'text-emerald-600' : 'text-rose-500'
-            }`}
-          >
-            {!card.flat ? <i className={`${card.up ? 'ri-arrow-up-line' : 'ri-arrow-down-line'} text-[10px]`}></i> : null}
-            {card.delta}
-          </p>
-        </div>
+          title={card.title}
+          value={card.value}
+          titleAttr={card.titleAttr}
+          icon={card.icon}
+          tone={card.tone}
+          subtitle={card.subtitle}
+          delta={card.delta}
+          deltaTone={card.deltaTone}
+          progress={card.progress}
+        />
       ))}
     </div>
   );

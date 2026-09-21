@@ -5,7 +5,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif']
+        sans: ['Inter', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
       },
       colors: {
         primary: {
@@ -18,10 +18,19 @@ export default {
           600: '#2563eb',
           700: '#1d4ed8',
           800: '#1e40af',
-          900: '#1e3a8a'
-        }
-      }
-    }
+          900: '#1e3a8a',
+        },
+        pm: {
+          bg: '#F3F6FB',
+          accent: '#EEF4FF',
+          primary: '#1E88E5',
+          secondary: '#1565C0',
+          link: '#1E62F0',
+          text: '#0F172A',
+          muted: '#64748B',
+        },
+      },
+    },
   },
-  plugins: []
+  plugins: [],
 } satisfies Config;

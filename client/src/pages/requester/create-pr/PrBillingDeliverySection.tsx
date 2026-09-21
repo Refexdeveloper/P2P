@@ -11,6 +11,13 @@ import {
   mergeSiteContacts,
   upsertSiteLookup,
 } from '../../../constants/poSiteLookups';
+import {
+  PM_CARD,
+  PM_CARD_HEADER,
+  PM_ICON_CHIP_SOLID,
+  PM_INPUT,
+  PM_LABEL,
+} from '../../../constants/pmTheme';
 
 export type PrBillingDeliveryValue = {
   billingLocationId: number | '';
@@ -36,12 +43,13 @@ interface Props {
   requireBillingCore?: boolean;
   disabled?: boolean;
   hint?: string;
+  /** When Payment Terms is shown elsewhere (e.g. above Business Justification). */
+  hidePaymentTerms?: boolean;
   onChange: (patch: Partial<PrBillingDeliveryValue>) => void;
   onClearError?: (key: string) => void;
 }
 
-const inputClass =
-  'w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50';
+const inputClass = `${PM_INPUT} disabled:bg-slate-50`;
 
 export default function PrBillingDeliverySection({
   value,
@@ -51,6 +59,7 @@ export default function PrBillingDeliverySection({
   requireBillingCore = false,
   disabled = false,
   hint,
+  hidePaymentTerms = false,
   onChange,
   onClearError,
 }: Props) {
@@ -165,14 +174,14 @@ export default function PrBillingDeliverySection({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60 rounded-t-2xl">
-        <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
+    <div className={PM_CARD}>
+      <div className={PM_CARD_HEADER}>
+        <div className={PM_ICON_CHIP_SOLID}>
           <i className="ri-map-pin-line text-white text-sm"></i>
         </div>
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">Billing Address &amp; Delivery</h2>
-          <p className="text-xs text-gray-500">
+          <h2 className="text-sm font-semibold text-[#0F172A]">Billing Address &amp; Delivery</h2>
+          <p className="text-xs text-[#64748B]">
             {hint || 'Billing GSTIN is filled from the entity region and can be edited.'}
           </p>
         </div>
@@ -180,7 +189,7 @@ export default function PrBillingDeliverySection({
 
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          <label className={PM_LABEL}>
             Billing Region / GST
             {requireBillingCore ? <span className="text-red-500"> *</span> : null}
           </label>
@@ -193,7 +202,7 @@ export default function PrBillingDeliverySection({
                 applyRegion(id, loc);
               }}
               disabled={disabled || !selectedEntity}
-              className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white ${
+              className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white ${
                 errors.billingLocationId ? 'border-red-400 bg-red-50' : 'border-gray-200'
               }`}
             >
@@ -226,7 +235,7 @@ export default function PrBillingDeliverySection({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
             Billing GSTIN
           </label>
           <div className="relative">
@@ -245,7 +254,7 @@ export default function PrBillingDeliverySection({
               }
               maxLength={15}
               autoComplete="off"
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50"
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white disabled:bg-slate-50"
             />
           </div>
           <p className="text-[11px] text-gray-400 mt-1">
@@ -254,7 +263,7 @@ export default function PrBillingDeliverySection({
         </div>
 
         <div className="md:col-span-2" data-field="billingAddress">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
             Billing Address
             {requireBillingCore ? <span className="text-red-500"> *</span> : null}
           </label>
@@ -267,7 +276,7 @@ export default function PrBillingDeliverySection({
             disabled={disabled}
             rows={3}
             placeholder="Auto-filled from Entity Master location (editable)"
-            className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white resize-none ${
+            className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white resize-none ${
               errors.billingAddress ? 'border-red-400 bg-red-50' : 'border-gray-200'
             }`}
           />
@@ -321,21 +330,21 @@ export default function PrBillingDeliverySection({
                   value={newSiteContact.label}
                   onChange={(e) => setNewSiteContact((prev) => ({ ...prev, label: e.target.value }))}
                   placeholder="Contact name"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 <input
                   type="email"
                   value={newSiteContact.email}
                   onChange={(e) => setNewSiteContact((prev) => ({ ...prev, email: e.target.value }))}
                   placeholder="Email"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 <input
                   type="text"
                   value={newSiteContact.phone}
                   onChange={(e) => setNewSiteContact((prev) => ({ ...prev, phone: e.target.value }))}
                   placeholder="Phone"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 {lookupError && addingSiteContact ? <p className="text-xs text-red-600">{lookupError}</p> : null}
                 <div className="flex items-center justify-end gap-2">
@@ -353,7 +362,7 @@ export default function PrBillingDeliverySection({
                     type="button"
                     onClick={() => void saveSiteContact()}
                     disabled={savingLookup}
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-md disabled:opacity-60 cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] hover:bg-[#1565C0] rounded-md disabled:opacity-60 cursor-pointer"
                   >
                     {savingLookup ? 'Saving...' : 'Add'}
                   </button>
@@ -407,21 +416,21 @@ export default function PrBillingDeliverySection({
                   value={newProjectManager.label}
                   onChange={(e) => setNewProjectManager((prev) => ({ ...prev, label: e.target.value }))}
                   placeholder="Project manager name"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 <input
                   type="email"
                   value={newProjectManager.email}
                   onChange={(e) => setNewProjectManager((prev) => ({ ...prev, email: e.target.value }))}
                   placeholder="Email"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 <input
                   type="text"
                   value={newProjectManager.phone}
                   onChange={(e) => setNewProjectManager((prev) => ({ ...prev, phone: e.target.value }))}
                   placeholder="Phone"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 {lookupError && addingProjectManager ? <p className="text-xs text-red-600">{lookupError}</p> : null}
                 <div className="flex items-center justify-end gap-2">
@@ -439,7 +448,7 @@ export default function PrBillingDeliverySection({
                     type="button"
                     onClick={() => void saveProjectManager()}
                     disabled={savingLookup}
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-md disabled:opacity-60 cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] hover:bg-[#1565C0] rounded-md disabled:opacity-60 cursor-pointer"
                   >
                     {savingLookup ? 'Saving...' : 'Add'}
                   </button>
@@ -450,7 +459,7 @@ export default function PrBillingDeliverySection({
         </div>
 
         <div data-field="placeOfDelivery">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
             Site / Place of Delivery
           </label>
           <textarea
@@ -467,7 +476,7 @@ export default function PrBillingDeliverySection({
         </div>
 
         <div data-field="expectedDeliveryTimeline">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
             Expected Delivery Timeline
           </label>
           <input
@@ -488,8 +497,9 @@ export default function PrBillingDeliverySection({
           </datalist>
         </div>
 
+        {!hidePaymentTerms && (
         <div data-field="paymentTerms">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
             Payment Terms
           </label>
           <input
@@ -509,6 +519,7 @@ export default function PrBillingDeliverySection({
             ))}
           </datalist>
         </div>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatusBadge from '../../../components/base/StatusBadge';
-import { BRAND_PRIMARY_GRADIENT } from '../../../constants/brandColors';
+import PmKpiCard from '../../../components/base/PmKpiCard';
+import { PM_PAGE_BG, PM_PRIMARY_GRADIENT } from '../../../constants/pmTheme';
 import PeriodPicker from '../../dashboard/components/PeriodPicker';
 import RequesterPrMobileFilters, {
   type PrStatusFilter,
@@ -219,82 +220,95 @@ export default function RequesterDashboard() {
       title: 'Pending Approval',
       value: stats.pendingApprovals,
       icon: 'ri-time-line',
-      iconColor: 'text-amber-500',
-      iconBg: 'bg-amber-50',
+      tone: 'amber' as const,
+      subtitle: 'Awaiting sign-off',
       filter: 'pending_approval' as const,
     },
     {
       title: 'Approved',
       value: stats.approved ?? stats.poIssued ?? 0,
-      icon: 'ri-checkbox-multiple-line',
-      iconColor: 'text-emerald-500',
-      iconBg: 'bg-emerald-50',
+      icon: 'ri-checkbox-circle-line',
+      tone: 'completed' as const,
+      subtitle: 'Cleared this period',
       filter: 'approved' as const,
     },
     {
       title: 'Rejected',
       value: stats.rejected ?? 0,
       icon: 'ri-close-circle-line',
-      iconColor: 'text-red-500',
-      iconBg: 'bg-red-50',
+      tone: 'delayed' as const,
+      subtitle: 'Needs revision',
       filter: 'rejected' as const,
     },
     {
       title: 'Overdue SLA',
       value: stats.overdueSla ?? 0,
       icon: 'ri-alarm-warning-line',
-      iconColor: 'text-orange-500',
-      iconBg: 'bg-orange-50',
+      tone: 'atRisk' as const,
+      subtitle: 'Past due date',
       filter: 'pending_approval' as const,
     },
   ];
 
   const totalPages = meta.totalPages || 1;
+  const kpiTotal =
+    widgetCards.reduce((s, c) => s + (Number(c.value) || 0), 0) || 1;
 
   return (
     <DashboardLayout>
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
       )}
-      {loading && <div className="mb-4 text-sm text-gray-500">Loading purchase requests...</div>}
+      {loading && (
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-[118px] rounded-2xl bg-white border border-slate-200/80 animate-pulse"
+            />
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-        {widgetCards.map((card) => (
-          <button
-            key={card.title}
-            type="button"
-            onClick={() => {
-              setFilter(card.filter);
-              setPage(1);
-            }}
-            className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 text-left hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm text-gray-500 font-medium truncate">{card.title}</p>
-                <p className="text-2xl sm:text-[1.75rem] font-bold text-slate-900 mt-1.5 leading-none tracking-tight">
-                  {card.value}
-                </p>
-              </div>
-              <div className={`w-10 h-10 ${card.iconBg} rounded-lg flex items-center justify-center shrink-0`}>
-                <i className={`${card.icon} text-xl ${card.iconColor}`}></i>
-              </div>
-            </div>
-          </button>
-        ))}
+        {widgetCards.map((card) => {
+          const pct = Math.round(((Number(card.value) || 0) / kpiTotal) * 100);
+          return (
+            <PmKpiCard
+              key={card.title}
+              title={card.title}
+              value={card.value}
+              icon={card.icon}
+              tone={card.tone}
+              subtitle={card.subtitle}
+              delta={`${pct}% of queue`}
+              deltaTone={card.tone === 'delayed' || card.tone === 'atRisk' ? 'down' : 'up'}
+              progress={pct}
+              selected={filter === card.filter}
+              onClick={() => {
+                setFilter(card.filter);
+                setPage(1);
+              }}
+            />
+          );
+        })}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <Link
           to="/requester/create-pr?new=1"
-          className="inline-flex justify-center px-5 py-2.5 text-white text-sm font-medium rounded-lg transition-opacity hover:opacity-90 items-center space-x-2 whitespace-nowrap cursor-pointer shadow-sm"
-          style={{ background: BRAND_PRIMARY_GRADIENT }}
+          className="inline-flex justify-center px-5 py-2.5 text-white text-sm font-semibold rounded-xl transition-opacity hover:opacity-90 items-center space-x-2 whitespace-nowrap cursor-pointer shadow-sm"
+          style={{ background: PM_PRIMARY_GRADIENT }}
         >
           <i className="ri-add-line text-lg"></i>
           <span>Create New PR</span>
         </Link>
-        <Link to="/requester/track-pr" className="inline-flex justify-center px-5 py-2.5 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors items-center space-x-2 whitespace-nowrap cursor-pointer">
-          <i className="ri-search-eye-line text-lg"></i>
+        <Link
+          to="/requester/track-pr"
+          className="inline-flex justify-center px-5 py-2.5 bg-white text-[#0F172A] text-sm font-semibold rounded-xl border border-slate-200 hover:bg-[#EEF4FF] hover:border-[#1E88E5]/40 transition-colors items-center space-x-2 whitespace-nowrap cursor-pointer"
+        >
+          <i className="ri-search-eye-line text-lg text-[#1E88E5]"></i>
           <span>Track My PRs &amp; SLA</span>
         </Link>
       </div>
@@ -701,6 +715,7 @@ export default function RequesterDashboard() {
           deletingDraft={drawerPR ? deletingId === drawerPR.id : false}
         />
       )}
+      </div>
     </DashboardLayout>
   );
 }

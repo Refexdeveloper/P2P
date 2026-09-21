@@ -441,7 +441,7 @@ export default function FunctionalOwnRfqSection({
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">{toast}</div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-2xl p-5">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="mb-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 1</p>
           <h2 className="text-base font-bold text-gray-900 mt-0.5">Add vendors</h2>

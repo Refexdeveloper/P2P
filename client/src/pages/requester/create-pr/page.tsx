@@ -5,10 +5,14 @@ import ApprovalHistoryPanel from '../../../components/feature/ApprovalHistoryPan
 import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, PrAttachmentRecord, VendorRecord, rfqApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
-  BRAND,
-  BRAND_HERO_GRADIENT,
-  BRAND_PRIMARY_GRADIENT,
-} from '../../../constants/brandColors';
+  PM_CARD,
+  PM_HERO_GRADIENT,
+  PM_ICON_CHIP_SOLID,
+  PM_PAGE_BG,
+  PM_PRIMARY_GRADIENT,
+  PM_TABLE_HEAD,
+  PM_TABLE_WRAP,
+} from '../../../constants/pmTheme';
 import DepartmentCombobox from './DepartmentCombobox';
 import SearchCreateField from './SearchCreateField';
 import LineItemEditorForm, {
@@ -47,6 +51,7 @@ import {
 } from '../../../constants/currency';
 import {
   PR_REQUEST_CATEGORY_OPTIONS,
+  PR_PAYMENT_TERM_OPTIONS,
   normalizeRequestCategory,
 } from '../../../constants/prRequisition';
 import { formatPrNumberDisplay } from '../../../utils/prNumberDisplay';
@@ -105,6 +110,8 @@ const FIELD_SCROLL_ORDER = [
   'entityId',
   'department',
   'requestCategory',
+  'scopeOfWork',
+  'paymentTerms',
   'businessJustification',
   'requiredDate',
   'billingLocationId',
@@ -112,7 +119,6 @@ const FIELD_SCROLL_ORDER = [
   'deliveryPoc',
   'placeOfDelivery',
   'expectedDeliveryTimeline',
-  'paymentTerms',
   'approvalUserId',
   'rfqVendors',
   'lineItems',
@@ -200,6 +206,7 @@ export default function CreatePRPage() {
   const [priority, setPriority] = useState('Medium');
   const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
   const [businessJustification, setBusinessJustification] = useState('');
+  const [scopeOfWork, setScopeOfWork] = useState('');
   const [requiredDate, setRequiredDate] = useState('');
   const [workStartDate, setWorkStartDate] = useState('');
   const [workEndDate, setWorkEndDate] = useState('');
@@ -338,6 +345,12 @@ export default function CreatePRPage() {
     vendorSelection === 'own';
   const showInlineVendorQuotes =
     purchaseType === 'sass' || (prFlow === 'functional' && vendorSelection === 'own');
+  /** Functional + Own Vendor: Scope of Work & Payment Terms (mandatory for SCM PO create). Hidden on Standard. */
+  const showScopeAndPaymentTerms =
+    prFlow === 'functional' &&
+    vendorSelection === 'own' &&
+    purchaseType !== 'sass' &&
+    purchaseType !== 'online_purchase';
   const restoredKeyRef = useRef('');
 
   const applyDraftSnapshot = (draft: CreatePrDraftSnapshot, options?: { preserveRicherLineItems?: boolean }) => {
@@ -409,6 +422,7 @@ export default function CreatePRPage() {
     setPriority(draft.priority || 'Medium');
     setCurrency(normalizeCurrency(draft.currency));
     setBusinessJustification(draft.businessJustification || '');
+    setScopeOfWork(draft.scopeOfWork || '');
     setRequiredDate(draft.requiredDate || '');
     setWorkStartDate(draft.workStartDate || '');
     setWorkEndDate(draft.workEndDate || '');
@@ -637,6 +651,7 @@ export default function CreatePRPage() {
         setPriority(pr.priority);
         setCurrency(normalizeCurrency(pr.currency));
         setBusinessJustification(pr.justification || '');
+        setScopeOfWork(pr.scopeOfWork || '');
         setRequiredDate(pr.requiredDate || '');
         setWorkStartDate(String(pr.workStartDate || ''));
         setWorkEndDate(String(pr.workEndDate || ''));
@@ -953,6 +968,7 @@ export default function CreatePRPage() {
       priority,
       currency,
       businessJustification,
+      scopeOfWork,
       requiredDate,
       workStartDate,
       workEndDate,
@@ -1015,6 +1031,7 @@ export default function CreatePRPage() {
     priority,
     currency,
     businessJustification,
+    scopeOfWork,
     requiredDate,
     workStartDate,
     workEndDate,
@@ -1091,6 +1108,7 @@ export default function CreatePRPage() {
     if (!entityId) return;
     if (
       !businessJustification.trim() &&
+      !scopeOfWork.trim() &&
       !billingAddress.trim() &&
       !placeOfDelivery.trim() &&
       !deliveryPoc.trim() &&
@@ -1151,6 +1169,7 @@ export default function CreatePRPage() {
     priority,
     currency,
     businessJustification,
+    scopeOfWork,
     requiredDate,
     workStartDate,
     workEndDate,
@@ -1522,6 +1541,7 @@ export default function CreatePRPage() {
           priority,
           currency,
           businessJustification,
+          scopeOfWork,
           requiredDate,
           workStartDate,
           workEndDate,
@@ -1664,6 +1684,10 @@ export default function CreatePRPage() {
     if (!department) newErrors.department = 'Department is required';
     if (!requestCategory) newErrors.requestCategory = 'Request category is required';
     if (!businessJustification.trim()) newErrors.businessJustification = 'Business justification is required';
+    if (showScopeAndPaymentTerms) {
+      if (!scopeOfWork.trim()) newErrors.scopeOfWork = 'Scope of Work is required';
+      if (!paymentTerms.trim()) newErrors.paymentTerms = 'Payment Terms is required';
+    }
     if (!requiredDate) newErrors.requiredDate = 'Required date is required';
     if (purchaseType === 'work_order') {
       if (workStartDate && workEndDate && workEndDate < workStartDate) {
@@ -1921,6 +1945,7 @@ export default function CreatePRPage() {
         ? sassSubscriptionStartDate || undefined
         : undefined,
     justification: businessJustification,
+    scopeOfWork: scopeOfWork.trim() || undefined,
     requiredDate: requiredDate || undefined,
     workStartDate: purchaseType === 'work_order' ? workStartDate || undefined : undefined,
     workEndDate: purchaseType === 'work_order' ? workEndDate || undefined : undefined,
@@ -2048,6 +2073,7 @@ export default function CreatePRPage() {
           priority,
           currency,
           businessJustification,
+          scopeOfWork,
           requiredDate,
           workStartDate,
           workEndDate,
@@ -2064,6 +2090,7 @@ export default function CreatePRPage() {
         }),
         lineItems: itemsForSave,
         businessJustification,
+        scopeOfWork,
         billingAddress,
         placeOfDelivery,
         deliveryPoc,
@@ -2384,16 +2411,16 @@ export default function CreatePRPage() {
   };
 
   const typeColors: Record<string, string> = {
-    Capex: 'bg-violet-100 text-violet-700 border-violet-200',
-    Opex: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    Service: 'bg-amber-100 text-amber-700 border-amber-200',
+    Capex: 'bg-[#EEF4FF] text-[#2B5AED] border-[#C7D2FE]',
+    Opex: 'bg-[#E3F2FD] text-[#1E88E5] border-[#90CAF9]',
+    Service: 'bg-amber-50 text-[#FB8C00] border-amber-200',
   };
 
   const priorityColors: Record<string, string> = {
-    Low: 'bg-gray-100 text-gray-600',
-    Medium: 'bg-[rgba(41,120,177,0.12)] text-[#2978B1]',
-    High: 'bg-sky-100 text-sky-800',
-    Critical: 'bg-red-100 text-red-700',
+    Low: 'bg-slate-100 text-slate-600',
+    Medium: 'bg-[#E3F2FD] text-[#1E88E5]',
+    High: 'bg-amber-50 text-[#FB8C00]',
+    Critical: 'bg-red-50 text-[#E53935]',
   };
 
   return (
@@ -2401,7 +2428,7 @@ export default function CreatePRPage() {
       {toast ? (
         <div
           className={`fixed top-4 right-4 z-[80] max-w-sm px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-start gap-2 ${
-            toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+            toast.type === 'success' ? 'bg-[#43A047] text-white' : 'bg-[#E53935] text-white'
           }`}
           role="alert"
         >
@@ -2420,27 +2447,32 @@ export default function CreatePRPage() {
         </div>
       ) : null}
       {isLoadingPr ? (
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <i className="ri-loader-4-line text-3xl text-slate-400 animate-spin"></i>
-            <p className="text-sm text-gray-500 mt-3">Loading purchase request...</p>
+        <div
+          className="flex items-center justify-center min-h-[60vh] font-sans"
+          style={{ background: PM_PAGE_BG }}
+        >
+          <div className="text-center space-y-3">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+              <i className="ri-loader-4-line text-2xl text-[#1E88E5] animate-spin"></i>
+            </div>
+            <p className="text-sm font-medium text-[#64748B]">Loading purchase request...</p>
           </div>
         </div>
       ) : loadError ? (
-        <div className="p-8">
-          <div className="max-w-md mx-auto p-6 bg-red-50 border border-red-200 rounded-xl text-center">
+        <div className="p-8 font-sans" style={{ background: PM_PAGE_BG }}>
+          <div className="max-w-md mx-auto p-6 bg-white border border-red-200 rounded-2xl text-center shadow-sm">
             <p className="text-sm text-red-700 mb-4">{loadError}</p>
-            <Link to={backTo} className="text-sm font-medium text-red-800 hover:underline">
+            <Link to={backTo} className="text-sm font-semibold text-[#1E88E5] hover:underline">
               {isAdminEditFlow || isEditMode ? 'Back to Track PR' : 'Back to Dashboard'}
             </Link>
           </div>
         </div>
       ) : (
-      <>
-      {/* ── Hero Header Banner (primary / secondary / accent) ── */}
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+      {/* ── Hero Header Banner ── */}
       <div
         className="px-4 sm:px-8 py-5 sm:py-6 mb-0"
-        style={{ background: BRAND_HERO_GRADIENT }}
+        style={{ background: PM_HERO_GRADIENT }}
       >
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           {/* Left: breadcrumb + title */}
@@ -2491,7 +2523,7 @@ export default function CreatePRPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-white/80 text-xs leading-none mb-0.5">PR Number</p>
-                <p className="text-white font-bold text-base tracking-wide truncate">{displayPrNumber}</p>
+                <p className="text-white font-bold text-base tracking-wide truncate tabular-nums">{displayPrNumber}</p>
               </div>
             </div>
 
@@ -2504,13 +2536,13 @@ export default function CreatePRPage() {
                 <p className="text-white/80 text-xs leading-none mb-0.5">
                   {hideLinePricing ? 'Vendor Path' : 'Total Amount'}
                 </p>
-                <p className="text-white font-bold text-base truncate">
+                <p className="text-white font-bold text-base truncate tabular-nums">
                   {hideLinePricing
                     ? 'Own Vendor'
                     : formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
-            </div>
+            </div>  
 
             {/* Items count */}
             <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
@@ -2519,7 +2551,7 @@ export default function CreatePRPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-white/80 text-xs leading-none mb-0.5">Line Items</p>
-                <p className="text-white font-bold text-base">{lineItems.length}</p>
+                <p className="text-white font-bold text-base tabular-nums">{lineItems.length}</p>
               </div>
             </div>
           </div>
@@ -2527,7 +2559,7 @@ export default function CreatePRPage() {
       </div>
 
       {/* ── Sticky Sub-header (type + status bar) ── */}
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm px-3 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] px-3 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${typeColors[requestType]}`}>
             {requestType}
@@ -2536,28 +2568,28 @@ export default function CreatePRPage() {
             {priority} Priority
           </span>
           {department && (
-            <span className="text-xs font-medium px-3 py-1 rounded-full bg-slate-100 text-slate-600">
+            <span className="text-xs font-medium px-3 py-1 rounded-full bg-[#EEF4FF] text-[#1565C0]">
               <i className="ri-building-line mr-1"></i>{department}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {softSaveHint && (
-            <span className="hidden sm:inline text-xs text-emerald-600 font-medium">
+            <span className="hidden sm:inline text-xs text-[#43A047] font-medium">
               <i className="ri-checkbox-circle-line mr-1"></i>
               {softSaveHint}
             </span>
           )}
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-[#64748B]">
             {lineItems.length === 0
               ? 'No items yet'
               : hideLinePricing
                 ? `${lineItems.filter((i) => i.description || i.itemName).length}/${lineItems.length} items filled`
                 : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
           </span>
-          <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <div
-              className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+              className="h-full bg-[#1E88E5] rounded-full transition-all duration-300"
               style={{
                 width: `${
                   lineItems.length > 0
@@ -2609,8 +2641,8 @@ export default function CreatePRPage() {
         )}
 
         {isAdminEditFlow && approvalHistory.length > 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+          <div className={PM_CARD}>
+            <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
               <div>
                 <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Approval History</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -2626,24 +2658,21 @@ export default function CreatePRPage() {
         ) : null}
 
         {/* ── Section 1: Basic Information ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 px-4 sm:px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-            <div
-              className="w-8 h-8 flex items-center justify-center rounded-lg"
-              style={{ backgroundColor: BRAND.secondary }}
-            >
+        <div className={PM_CARD}>
+          <div className="flex items-center gap-3 px-4 sm:px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
+            <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-information-line text-white text-sm"></i>
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Basic Information</h2>
-              <p className="text-xs text-gray-500">General details about this requisition</p>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Basic Information</h2>
+              <p className="text-xs text-[#64748B]">General details about this requisition</p>
             </div>
           </div>
 
           <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 w-full min-w-0">
             {/* PR Number */}
             <div className="w-full min-w-0">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">PR Number</label>
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">PR Number</label>
               <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl w-full min-w-0">
                 <i className="ri-lock-line text-slate-400 text-sm shrink-0"></i>
                 <span className="text-sm font-bold text-slate-700 tracking-wide truncate min-w-0">{displayPrNumber}</span>
@@ -2654,7 +2683,7 @@ export default function CreatePRPage() {
 
             {/* PR Title */}
             <div className="w-full min-w-0 lg:col-span-2 xl:col-span-2" data-field="prTitle">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 PR Title <span className="text-red-500">*</span>
               </label>
               <input
@@ -2671,7 +2700,7 @@ export default function CreatePRPage() {
                   }
                 }}
                 placeholder="Enter a short title for this purchase request"
-                className={`w-full min-w-0 max-w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white box-border ${
+                className={`w-full min-w-0 max-w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white box-border ${
                   errors.prTitle ? 'border-red-400 bg-red-50' : 'border-gray-200'
                 }`}
               />
@@ -2680,7 +2709,7 @@ export default function CreatePRPage() {
 
             {/* Entity */}
             <div className="w-full min-w-0">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Entity <span className="text-red-500">*</span>
               </label>
               <SearchCreateField
@@ -2767,7 +2796,7 @@ export default function CreatePRPage() {
 
             {/* Purchase Type */}
             <div className="w-full min-w-0 lg:col-span-2 xl:col-span-3">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Purchase Type <span className="text-red-500">*</span>
               </label>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 w-full">
@@ -2822,7 +2851,7 @@ export default function CreatePRPage() {
                     }`}
                     style={
                       purchaseType === opt.id
-                        ? { backgroundColor: BRAND.secondary, borderColor: BRAND.secondary }
+                        ? { backgroundColor: '#1E88E5', borderColor: '#1E88E5' }
                         : undefined
                     }
                   >
@@ -2878,7 +2907,7 @@ export default function CreatePRPage() {
 
             {/* Department */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Department <span className="text-red-500">*</span>
               </label>
               <DepartmentCombobox
@@ -2911,7 +2940,7 @@ export default function CreatePRPage() {
 
             {/* Required Date */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Required Date <span className="text-red-500">*</span>
               </label>
               <input
@@ -2919,7 +2948,7 @@ export default function CreatePRPage() {
                 value={requiredDate}
                 onChange={e => setRequiredDate(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer ${errors.requiredDate ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white cursor-pointer ${errors.requiredDate ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
               />
               {errors.requiredDate && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><i className="ri-error-warning-line"></i>{errors.requiredDate}</p>}
             </div>
@@ -2927,7 +2956,7 @@ export default function CreatePRPage() {
             {purchaseType === 'work_order' && (
               <>
                 <div data-field="workStartDate">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                     Work Start Date
                   </label>
                   <input
@@ -2955,7 +2984,7 @@ export default function CreatePRPage() {
                   )}
                 </div>
                 <div data-field="workEndDate">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                     Work End Date
                   </label>
                   <input
@@ -2988,7 +3017,7 @@ export default function CreatePRPage() {
 
             {/* Currency — INR / USD / EUR */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Currency <span className="text-red-500">*</span>
               </label>
               <div className="inline-flex w-full rounded-xl border border-gray-200 bg-white p-0.5">
@@ -2999,7 +3028,7 @@ export default function CreatePRPage() {
                     onClick={() => setCurrency(opt.code)}
                     className={`flex-1 px-2 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap ${
                       currency === opt.code
-                        ? 'bg-slate-800 text-white shadow-sm'
+                        ? 'bg-[#1E88E5] text-white shadow-sm ring-2 ring-[#1E88E5]/25'
                         : 'text-gray-600 hover:bg-gray-50'
                     }`}
                   >
@@ -3011,7 +3040,7 @@ export default function CreatePRPage() {
 
             {/* Request Type — Service only for Work Order */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Request Type <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
@@ -3038,7 +3067,7 @@ export default function CreatePRPage() {
 
             {/* Request Category — Product or Service */}
             <div data-field="requestCategory">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Request Category <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
@@ -3078,7 +3107,7 @@ export default function CreatePRPage() {
 
             {/* Project Detail */}
             <div data-field="projectDetail">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Project Detail
               </label>
               <input
@@ -3086,13 +3115,13 @@ export default function CreatePRPage() {
                 value={projectDetail}
                 onChange={(e) => setProjectDetail(e.target.value)}
                 placeholder="Project name, code, or reference"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white"
               />
             </div>
 
             {/* Special Notes */}
             <div className="md:col-span-2 lg:col-span-3" data-field="specialNotes">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Special Notes
               </label>
               <textarea
@@ -3100,13 +3129,13 @@ export default function CreatePRPage() {
                 onChange={(e) => setSpecialNotes(e.target.value)}
                 rows={3}
                 placeholder="Any special instructions or notes for SCM / vendors"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none"
               />
             </div>
 
             {/* Priority */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Priority</label>
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">Priority</label>
               <div className="flex gap-2">
                 {priorityOptions.map(p => (
                   <button
@@ -3135,7 +3164,7 @@ export default function CreatePRPage() {
                   </p>
                 </div>
                 <div className="md:col-span-2" data-field="approvalUserId">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                     L1 Manager / User Approver <span className="text-red-500">*</span>
                   </label>
                   <UserSearchSelect
@@ -3181,7 +3210,7 @@ export default function CreatePRPage() {
                   </p>
                 </div>
                 <div className="md:col-span-2" data-field="approvalUserId">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                     L1 Manager / User Approver <span className="text-red-500">*</span>
                   </label>
                   <UserSearchSelect
@@ -3208,7 +3237,7 @@ export default function CreatePRPage() {
               <>
             {/* Request Flow */}
             <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Flow <span className="text-red-500">*</span>
               </label>
               <select
@@ -3217,7 +3246,7 @@ export default function CreatePRPage() {
                   const next = e.target.value === 'functional' ? 'functional' : 'standard';
                   setPrFlow(next);
                 }}
-                className="w-full min-w-0 max-w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
+                className="w-full min-w-0 max-w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white cursor-pointer"
               >
                 <option value="standard">Standard</option>
                 <option value="functional">Functional</option>
@@ -3230,13 +3259,13 @@ export default function CreatePRPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Vendor Selection <span className="text-red-500">*</span>
               </label>
               <select
                 value={vendorSelection}
                 onChange={(e) => setVendorSelection(e.target.value === 'own' ? 'own' : 'scm')}
-                className="w-full min-w-0 max-w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
+                className="w-full min-w-0 max-w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white cursor-pointer"
               >
                 <option value="scm">SCM vendor Selection</option>
                 <option value="own">Own vendor</option>
@@ -3254,7 +3283,7 @@ export default function CreatePRPage() {
 
             {prFlow === 'functional' && (
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                   Select User Approval <span className="text-red-500">*</span>
                 </label>
                 <UserSearchSelect
@@ -3281,10 +3310,10 @@ export default function CreatePRPage() {
         </div>
 
         {/* ── Section 2: Line Items ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden" data-field="lineItems">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+        <div className={PM_CARD} data-field="lineItems">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
+              <div className={PM_ICON_CHIP_SOLID}>
                 <i className="ri-shopping-cart-line text-white text-sm"></i>
               </div>
               <div>
@@ -3296,7 +3325,7 @@ export default function CreatePRPage() {
               type="button"
               onClick={openAddLineItem}
               disabled={Boolean(lineEditor)}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 bg-[#1E88E5] text-white text-xs font-semibold rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <i className="ri-add-line"></i>
               Add Line Item
@@ -3332,9 +3361,9 @@ export default function CreatePRPage() {
               />
             )}
 
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <div className={PM_TABLE_WRAP}>
               {/* Mobile cards */}
-              <div className="md:hidden divide-y divide-gray-100">
+              <div className="md:hidden divide-y divide-slate-100">
                 {lineItems.length === 0 ? (
                   <div className="px-4 py-10 text-center">
                     <p className="text-sm font-medium text-gray-600">No line items yet</p>
@@ -3343,7 +3372,7 @@ export default function CreatePRPage() {
                       <button
                         type="button"
                         onClick={openAddLineItem}
-                        className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer"
+                        className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-[#1E88E5] text-white text-xs font-semibold rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer"
                       >
                         <i className="ri-add-line"></i>
                         Add Line Item
@@ -3450,21 +3479,21 @@ export default function CreatePRPage() {
               {/* Desktop table */}
               <div className="hidden md:block overflow-x-auto">
                 <table className={`w-full text-sm ${hideLinePricing ? 'min-w-[520px]' : 'min-w-[720px]'}`}>
-                  <thead className="bg-slate-50 border-b border-gray-200">
-                    <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                      <th className="px-3 py-2.5 w-10">#</th>
-                      <th className="px-3 py-2.5">Item Name</th>
-                      <th className="px-3 py-2.5">Category</th>
-                      <th className="px-3 py-2.5 text-right">Qty</th>
+                  <thead className={PM_TABLE_HEAD}>
+                    <tr className="text-left">
+                      <th className="px-3 py-3 w-10">#</th>
+                      <th className="px-3 py-3">Item Name</th>
+                      <th className="px-3 py-3">Category</th>
+                      <th className="px-3 py-3 text-right tabular-nums">Qty</th>
                       {!hideLinePricing && (
                         <>
-                          <th className="px-3 py-2.5 text-right">Unit Price</th>
-                          <th className="px-3 py-2.5">HSN</th>
-                          <th className="px-3 py-2.5 text-right">GST %</th>
-                          <th className="px-3 py-2.5 text-right">Amount (incl. GST)</th>
+                          <th className="px-3 py-3 text-right tabular-nums">Unit Price</th>
+                          <th className="px-3 py-3">HSN</th>
+                          <th className="px-3 py-3 text-right tabular-nums">GST %</th>
+                          <th className="px-3 py-3 text-right tabular-nums">Amount (incl. GST)</th>
                         </>
                       )}
-                      <th className="px-3 py-2.5 text-right w-24">Actions</th>
+                      <th className="px-3 py-3 text-right w-24">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3477,7 +3506,7 @@ export default function CreatePRPage() {
                             <button
                               type="button"
                               onClick={openAddLineItem}
-                              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer"
+                              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-[#1E88E5] text-white text-xs font-semibold rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer"
                             >
                               <i className="ri-add-line"></i>
                               Add Line Item
@@ -3664,6 +3693,7 @@ export default function CreatePRPage() {
             billingLocations={billingLocations}
             errors={errors}
             requireBillingCore
+            hidePaymentTerms={showScopeAndPaymentTerms}
             onChange={(patch) => {
               if (patch.billingLocationId !== undefined) setBillingLocationId(patch.billingLocationId);
               if (patch.billingLocation !== undefined) setBillingLocation(patch.billingLocation);
@@ -3694,16 +3724,99 @@ export default function CreatePRPage() {
           <div className="bg-teal-50 border border-teal-200 rounded-2xl px-5 py-4">
             <p className="text-sm font-semibold text-teal-900">Billing &amp; delivery on RFQ Entry</p>
             <p className="text-xs text-teal-800 mt-1">
-              For Standard + Own vendor, billing region, GSTIN, address, POC, place of delivery, timeline, and
-              payment terms are asked on RFQ Entry after L1 approval — not on this page.
+              For Standard + Own vendor, billing region, GSTIN, address, POC, place of delivery, timeline,
+              Scope of Work, and payment terms are asked on RFQ Entry after L1 approval — not on this page.
             </p>
           </div>
         )}
 
+        {showScopeAndPaymentTerms && (
+          <div className={PM_CARD} data-field="scopeOfWork">
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
+              <div className={PM_ICON_CHIP_SOLID}>
+                <i className="ri-file-list-3-line text-white text-sm"></i>
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-[#0F172A]">Scope of Work &amp; Payment Terms</h2>
+                <p className="text-xs text-[#64748B]">
+                  Required for Functional + Own Vendor — used when SCM creates the PO
+                </p>
+              </div>
+            </div>
+            <div className="p-6 grid grid-cols-1 gap-5">
+              <div>
+                <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
+                  Scope of Work <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={scopeOfWork}
+                  onChange={(e) => {
+                    setScopeOfWork(e.target.value);
+                    if (errors.scopeOfWork) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.scopeOfWork;
+                        return next;
+                      });
+                    }
+                  }}
+                  rows={5}
+                  placeholder="Describe the full scope of work, deliverables, and any technical requirements..."
+                  className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none ${
+                    errors.scopeOfWork ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                  }`}
+                />
+                {errors.scopeOfWork ? (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <i className="ri-error-warning-line"></i>
+                    {errors.scopeOfWork}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1.5">{scopeOfWork.length} chars</p>
+                )}
+              </div>
+              <div data-field="paymentTerms">
+                <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
+                  Payment Terms <span className="text-red-500">*</span>
+                </label>
+                <input
+                  list="create-pr-scope-payment-terms"
+                  value={paymentTerms}
+                  onChange={(e) => {
+                    setPaymentTerms(e.target.value);
+                    if (errors.paymentTerms) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.paymentTerms;
+                        return next;
+                      });
+                    }
+                  }}
+                  placeholder="e.g. Net 30 Days"
+                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white ${
+                    errors.paymentTerms ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                  }`}
+                />
+                <datalist id="create-pr-scope-payment-terms">
+                  {PR_PAYMENT_TERM_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt} />
+                  ))}
+                </datalist>
+                {errors.paymentTerms ? (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <i className="ri-error-warning-line"></i>
+                    {errors.paymentTerms}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Section 4: Business Justification ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-            <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
+        <div className={PM_CARD}>
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
+            <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-article-line text-white text-sm"></i>
             </div>
             <div>
@@ -3717,7 +3830,7 @@ export default function CreatePRPage() {
               onChange={e => setBusinessJustification(e.target.value)}
               rows={5}
               placeholder="Describe the business need, expected benefits, and why this purchase is necessary for operations..."
-              className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none ${errors.businessJustification ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+              className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none ${errors.businessJustification ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
             />
             <div className="flex items-center justify-between mt-2">
               {errors.businessJustification
@@ -3730,9 +3843,9 @@ export default function CreatePRPage() {
         </div>
 
         {/* ── Section 5: Attachments ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-            <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
+        <div className={PM_CARD}>
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
+            <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-attachment-2 text-white text-sm"></i>
             </div>
             <div>
@@ -3794,7 +3907,7 @@ export default function CreatePRPage() {
         {submitError && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{submitError}</div>
         )}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4">
+        <div className={`${PM_CARD} px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4`}>
           <div className="flex items-center justify-center sm:justify-start gap-2 text-sm text-gray-500">
             <i className="ri-shield-check-line text-emerald-500"></i>
             <span>Autosave keeps the same PR# (incl. quotation files). Create New PR starts blank.</span>
@@ -3814,8 +3927,8 @@ export default function CreatePRPage() {
                   void savePR(false);
                 }}
                 disabled={isSubmitting}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
-                style={{ background: BRAND_PRIMARY_GRADIENT, border: 'none' }}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-[#1E88E5] hover:bg-[#1565C0] text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
+                style={{ background: PM_PRIMARY_GRADIENT, border: 'none' }}
               >
                 <i className="ri-save-line"></i>
                 {isSubmitting ? 'Saving…' : 'Save Changes'}
@@ -3834,7 +3947,7 @@ export default function CreatePRPage() {
               onClick={handleSubmitPR}
               disabled={isSubmitting}
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-opacity hover:opacity-90 text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
-              style={{ background: BRAND_PRIMARY_GRADIENT }}
+              style={{ background: PM_PRIMARY_GRADIENT }}
             >
               <i className={isResubmitFlow ? 'ri-refresh-line' : 'ri-send-plane-fill'}></i>
               {isResubmitFlow ? 'Resubmit PR' : 'Submit PR'}
@@ -3977,7 +4090,7 @@ export default function CreatePRPage() {
               <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 text-sm font-medium cursor-pointer whitespace-nowrap">
                 Cancel
               </button>
-              <button onClick={confirmSubmit} disabled={isSubmitting} className={`flex-1 py-2.5 text-white rounded-xl text-sm font-semibold cursor-pointer whitespace-nowrap disabled:opacity-50 ${isResubmitFlow ? 'bg-orange-600 hover:bg-orange-700' : 'bg-slate-800 hover:bg-slate-700'}`}>
+              <button onClick={confirmSubmit} disabled={isSubmitting} className={`flex-1 py-2.5 text-white rounded-xl text-sm font-semibold cursor-pointer whitespace-nowrap disabled:opacity-50 ${isResubmitFlow ? 'bg-orange-600 hover:bg-orange-700' : 'bg-[#1E88E5] hover:bg-[#1565C0]'}`}>
                 {isSubmitting ? 'Submitting...' : isResubmitFlow ? 'Yes, Resubmit' : 'Yes, Submit'}
               </button>
             </div>
@@ -4059,14 +4172,14 @@ export default function CreatePRPage() {
                 setShowSuccessModal(false);
                 window.REACT_APP_NAVIGATE(backTo);
               }}
-              className="w-full py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-700 text-sm font-semibold cursor-pointer whitespace-nowrap"
+              className="w-full py-2.5 bg-[#1E88E5] text-white rounded-xl hover:bg-[#1565C0] text-sm font-semibold cursor-pointer whitespace-nowrap"
             >
               {isAdminEditFlow || isEditMode ? 'Back to Track PR' : 'Go to Dashboard'}
             </button>
           </div>
         </div>
       )}
-      </>
+      </div>
       )}
 
       {sassSubscriptionModalOpen && (

@@ -1135,6 +1135,7 @@ export async function getPoCreateContext(user, prId) {
       billingLocation: pr.billingLocation || '',
       billingGstNo: pr.billingGstNo || '',
       paymentTerms: pr.paymentTerms || '',
+      scopeOfWork: pr.scopeOfWork || '',
       lineItems,
     },
     vendor: {
