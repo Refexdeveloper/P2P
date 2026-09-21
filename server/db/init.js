@@ -8,27 +8,36 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const DB_NAME = process.env.DB_NAME || 'p2p_system';
-
 function buildDbConfig(includeDatabase = false) {
   const instance =
     process.env.INSTANCE_CONNECTION_NAME ||
     process.env.CLOUD_SQL_CONNECTION_NAME ||
     '';
+
   const base = {
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
   };
-  if (includeDatabase) base.database = DB_NAME;
-  if (instance) {
-    return { ...base, socketPath: `/cloudsql/${instance}` };
+
+  if (includeDatabase) {
+    base.database = DB_NAME;
   }
+
+  // Cloud Run: use Cloud SQL Unix socket
+  if (instance && process.env.USE_CLOUD_SQL_SOCKET === 'true') {
+    return {
+      ...base,
+      socketPath: `/cloudsql/${instance}`,
+    };
+  }
+
+  // Local / Cloud Shell: use TCP connection
   return {
     ...base,
-    host: process.env.DB_HOST || 'localhost',
+    host: process.env.DB_HOST || '127.0.0.1',
     port: Number(process.env.DB_PORT) || 3306,
   };
 }
-
 const DB_CONFIG = buildDbConfig(false);
 
 const DEPARTMENTS = [

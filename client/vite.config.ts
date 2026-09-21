@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import { resolve } from "node:path";
 import AutoImport from "unplugin-auto-import/vite";
 
-const LIVE_API = "https://p2p-backend-645830234926.asia-south1.run.app";
+const LIVE_API = "https://p2p-backend-rmc-business-645830234926.asia-south1.run.app";
 
 /**
  * RefexOne sometimes POSTs SAMLResponse to the HOME URL (SPA route).
