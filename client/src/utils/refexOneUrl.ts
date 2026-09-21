@@ -2,7 +2,7 @@
 export const DEFAULT_REFEXONE_URL = 'https://refexone.com';
 
 /** Live P2P app (RelayState after SSO). */
-export const DEFAULT_P2P_APP_URL = 'https://p2p-backend-645830234926.asia-south1.run.app';
+export const DEFAULT_P2P_APP_URL = 'https://p2p-backend-rmc-business-645830234926.asia-south1.run.app';
 
 /** RefexOne SAML App ID for P2P — set in code, not env */
 export const DEFAULT_REFEXONE_SAML_APP_ID = 'bcc7387a-613a-4607-ae97-028fbdf5dd3b';

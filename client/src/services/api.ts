@@ -1,4 +1,4 @@
-const LIVE_API = 'https://p2p-backend-645830234926.asia-south1.run.app';
+const LIVE_API =  'https://p2p-backend-rmc-business-645830234926.asia-south1.run.app';
 /** API base URL — set VITE_API_URL in client/.env (see .env.example). */
 export const API_BASE_URL = String(import.meta.env.VITE_API_URL || LIVE_API).replace(/\/$/, '');
 const API_URL = API_BASE_URL;
