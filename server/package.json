@@ -9,6 +9,7 @@
     "build:client": "npm run build --prefix ../client",
     "start:prod": "npm run build:client && node src/index.js",
     "db:init": "node db/init.js",
+      "db:create-admin": "node db/create-admin.js",
     "test": "node --test src/services/cloudSubscriptionService.test.js src/services/slaBreachService.test.js",
     "test:cloud-sub": "node --test src/services/cloudSubscriptionService.test.js",
     "test:sla-daily": "node --test src/services/slaBreachService.test.js",
