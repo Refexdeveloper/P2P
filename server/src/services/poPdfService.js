@@ -406,7 +406,7 @@ function clonePages(pages) {
 
 /**
  * Document section order for PDF packing / overflow repair.
- * Annexure-II must stay before manager sign (notes) and vendor acceptance (ack).
+ * Annexure-II must stay before manager sign + vendor acceptance (same page).
  */
 const SECTION_ORDER = {
   details: 0,
@@ -466,7 +466,7 @@ function blockLooksLikeAnnexureIi(block) {
 
 /**
  * Hard guarantee: early sections → Annexure-II rows in editor add order
- * (row 0, then row 1, …; titled card then its continuations) → notes → ack.
+ * (row 0, then row 1, …; titled card then its continuations) → notes+ack (same page).
  * Overflow repair must not leave a later row before an earlier one.
  */
 function enforceDocumentSectionOrder(pages) {
@@ -530,8 +530,10 @@ function enforceDocumentSectionOrder(pages) {
   }
 
   const out = [...early, ...iiPages];
-  if (notes.length) out.push(notes);
-  if (ack.length) out.push(ack);
+  // SCM Manager sign + Vendor Acknowledgment share one page (never split).
+  if (notes.length || ack.length) {
+    out.push([...notes, ...ack]);
+  }
 
   pages.length = 0;
   for (const page of out) {
@@ -1263,13 +1265,15 @@ function packPoPages(parts, heights, scale = 1) {
   const notesHtml = String(parts.notesHtml || '').trim();
   const ackHtml = String(parts.ackHtml || '').trim();
 
-  if (notesHtml) {
+  if (notesHtml || ackHtml) {
+    // One page: SCM Manager sign + Vendor Acknowledgment (do not separate).
     startNewSection();
-    addHtml(notesHtml, packRowHeight(heights, 'notes', 120, scale), false, 'notes');
-  }
-  if (ackHtml) {
-    startNewSection();
-    addHtml(ackHtml, packRowHeight(heights, 'ack', 100, scale), false, 'ack');
+    const stacked = `<div class="notes-ack-stack">${notesHtml}${ackHtml}</div>`;
+    const combinedH =
+      (notesHtml ? packRowHeight(heights, 'notes', 120, scale) : 0) +
+      (ackHtml ? packRowHeight(heights, 'ack', 100, scale) : 0) +
+      (notesHtml && ackHtml ? 6 : 0);
+    addHtml(stacked, combinedH, false, 'notes');
   }
 
   flush();
@@ -1560,9 +1564,15 @@ export async function generatePoPdf(po, options = {}) {
   const poNumber = String(po.poNumber || po.po_number || '').trim() || 'PO';
   const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_') || 'PO';
   const branded = await inlinePoBranding({ ...po, poNumber });
-  const baseName =
-    options.fileName || `${safePoNumber}_${options.signed ? 'signed' : 'draft'}`;
-  const fileName = baseName.endsWith('.pdf') ? baseName : `${baseName}.pdf`;
+  // Sanitize always — callers often pass `${po.poNumber}_draft.pdf` which breaks on /R1 etc.
+  let baseName = String(
+    options.fileName || `${safePoNumber}_${options.signed ? 'signed' : 'draft'}`
+  ).trim();
+  baseName = path.basename(baseName).replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
+  if (!baseName || baseName === '.' || baseName === '..' || baseName === '.pdf') {
+    baseName = `${safePoNumber}_${options.signed ? 'signed' : 'draft'}`;
+  }
+  const fileName = baseName.toLowerCase().endsWith('.pdf') ? baseName : `${baseName}.pdf`;
   const htmlFileName = fileName.replace(/\.pdf$/i, '.html');
   const filePath = path.join(PO_UPLOAD_DIR, fileName);
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);

@@ -133,8 +133,6 @@ router.post('/po/notify-scm-manager', async (req, res) => {
       .map((e) => e.trim())
       .filter(Boolean);
     const data = await adminNotifyScmManagerPoApproval(poKey, {
-      actorName: req.user?.name || 'Super Admin',
-      actorRole: req.user?.role || 'Super Admin',
       extraTo,
       remarks: req.body?.remarks || undefined,
     });

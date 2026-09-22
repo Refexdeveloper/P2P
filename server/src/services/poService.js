@@ -375,9 +375,14 @@ async function persistManualComparisonRounds(poId, comparisonRounds = []) {
 async function poPdfMailAttachment(po, { signed = false } = {}) {
   if (!po) return [];
   try {
-    const filename = signed
+    const rawName = signed
       ? `${po.poNumber || 'PO'}_signed.pdf`
       : `${po.poNumber || 'PO'}_draft.pdf`;
+    const filename = String(rawName)
+      .replace(/[^\w.-]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/\.pdf$/i, '')
+      .concat('.pdf');
     const doc = await resolvePoDocumentPath({
       signedPdfPath: signed ? po.signedPdfPath || filename : po.signedPdfPath,
       pdfPath: signed ? po.pdfPath : po.pdfPath || filename,
@@ -452,21 +457,34 @@ export async function adminNotifyScmManagerPoApproval(poIdOrNumber, options = {}
     po = await getPurchaseOrderById(asId);
   }
   if (!po) {
+    const base = raw.replace(/\/R\d+$/i, '');
     const [rows] = await pool.query(
-      `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) LIMIT 1`,
-      [raw]
+      `SELECT id FROM purchase_orders
+       WHERE LOWER(po_number) = LOWER(?)
+          OR LOWER(po_number) = LOWER(?)
+          OR LOWER(po_number) LIKE LOWER(?)
+       ORDER BY
+         CASE
+           WHEN LOWER(po_number) = LOWER(?) THEN 0
+           WHEN LOWER(po_number) LIKE LOWER(?) THEN 1
+           ELSE 2
+         END,
+         id DESC
+       LIMIT 1`,
+      [raw, base, `${base}/R%`, raw, `${base}/R%`]
     );
     if (rows[0]?.id) po = await getPurchaseOrderById(rows[0].id);
   }
   if (!po) throw new Error(`PO not found: ${raw}`);
+  // Identical to normal send-for-approval mail (CTA, stage, remarks) — not an admin notice.
+  const buyerName =
+    po.createdBy || po.buyerName || po.requester || 'SCM Buyer';
   const result = await notifyScmManagerPoApproval(po, {
-    actorName: options.actorName || 'Super Admin',
-    actorRole: options.actorRole || 'Super Admin',
-    remarks:
-      options.remarks ||
-      `Admin manual trigger — ${po.poNumber} approval mail to SCM Manager`,
+    actorName: buyerName,
+    actorRole: 'SCM Buyer',
+    remarks: options.remarks || `PO submitted to SCM Manager for sign`,
     extraTo: options.extraTo || [],
-    stageLabel: 'SCM Manager PO Approval (Admin trigger)',
+    stageLabel: 'SCM Manager PO Approval',
   });
   if (!result.sent) {
     throw new Error(
@@ -1932,9 +1950,13 @@ export async function createPurchaseOrder(user, prId, body) {
 
     const [poRows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
     const po = await enrichPO(poRows[0]);
-    const { fileName } = await generatePoPdf(po, { fileName: `${poNumber}_draft.pdf` });
-    await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
-    po.pdfPath = fileName;
+    try {
+      const { fileName } = await generatePoPdf(po, { fileName: `${poNumber}_draft.pdf` });
+      await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
+      po.pdfPath = fileName;
+    } catch (pdfErr) {
+      console.warn(`PO PDF after create failed for ${poNumber}:`, pdfErr.message);
+    }
 
     if (!skipApproval) {
       await notifyScmManagerPoApproval(po, {
@@ -2164,12 +2186,16 @@ export async function createManualPurchaseOrder(user, body = {}) {
 
     const [poRows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
     const po = await enrichPO(poRows[0]);
-    const { fileName } = await generatePoPdf(po, {
-      fileName: `${poNumber}_draft.pdf`,
-      signed: false,
-    });
-    await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
-    po.pdfPath = fileName;
+    try {
+      const { fileName } = await generatePoPdf(po, {
+        fileName: `${poNumber}_draft.pdf`,
+        signed: false,
+      });
+      await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
+      po.pdfPath = fileName;
+    } catch (pdfErr) {
+      console.warn(`Manual PO PDF after create failed for ${poNumber}:`, pdfErr.message);
+    }
 
     if (!skipApproval) {
       await notifyScmManagerPoApproval(po, {
@@ -4614,32 +4640,45 @@ export async function updatePurchaseOrder(user, poId, body) {
   const shouldRefreshSignedPdf =
     (canBuyerEdit || isAdminContentEdit) &&
     (existing.signed_at || existing.signature_image_path || existing.signature_image_data);
-  if (shouldRefreshSignedPdf) {
-    const signedFileName = `${updatedPo.poNumber}_signed.pdf`;
-    const { fileName } = await generatePoPdf(updatedPo, {
-      fileName: signedFileName,
-      signed: true,
-      signature: buildSignatureRenderOptions({
-        ...updatedPo,
-        signatureName: existing.signature_name || updatedPo.signatureName,
-        signatureImagePath: existing.signature_image_path,
-        signatureImageData: existing.signature_image_data,
-        signatureDsc: updatedPo.signatureDsc || parseSignatureDsc(existing.signature_dsc_json),
-        signerComments: existing.signer_comments,
-        signedAt: updatedPo.signedAt || existing.signed_at,
-        signedPdfPath: existing.signed_pdf_path,
-      }),
-    });
-    await pool.query(
-      `UPDATE purchase_orders SET pdf_path = ?, signed_pdf_path = ?, updated_at = NOW() WHERE id = ?`,
-      [fileName, fileName, poId]
-    );
-    updatedPo.pdfPath = fileName;
-    updatedPo.signedPdfPath = fileName;
-  } else {
-    const { fileName } = await generatePoPdf(updatedPo, { fileName: `${updatedPo.poNumber}_draft.pdf` });
-    await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
-    updatedPo.pdfPath = fileName;
+  try {
+    if (shouldRefreshSignedPdf) {
+      const safeNo = String(updatedPo.poNumber || 'PO')
+        .replace(/[^\w.-]+/g, '_')
+        .replace(/_+/g, '_');
+      const signedFileName = `${safeNo}_signed.pdf`;
+      const { fileName } = await generatePoPdf(updatedPo, {
+        fileName: signedFileName,
+        signed: true,
+        signature: buildSignatureRenderOptions({
+          ...updatedPo,
+          signatureName: existing.signature_name || updatedPo.signatureName,
+          signatureImagePath: existing.signature_image_path,
+          signatureImageData: existing.signature_image_data,
+          signatureDsc: updatedPo.signatureDsc || parseSignatureDsc(existing.signature_dsc_json),
+          signerComments: existing.signer_comments,
+          signedAt: updatedPo.signedAt || existing.signed_at,
+          signedPdfPath: existing.signed_pdf_path,
+        }),
+      });
+      await pool.query(
+        `UPDATE purchase_orders SET pdf_path = ?, signed_pdf_path = ?, updated_at = NOW() WHERE id = ?`,
+        [fileName, fileName, poId]
+      );
+      updatedPo.pdfPath = fileName;
+      updatedPo.signedPdfPath = fileName;
+    } else {
+      const safeNo = String(updatedPo.poNumber || 'PO')
+        .replace(/[^\w.-]+/g, '_')
+        .replace(/_+/g, '_');
+      const { fileName } = await generatePoPdf(updatedPo, {
+        fileName: `${safeNo}_draft.pdf`,
+      });
+      await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
+      updatedPo.pdfPath = fileName;
+    }
+  } catch (pdfErr) {
+    // Never block SCM Manager approval mail on PDF path issues (e.g. PO…/R1).
+    console.warn(`PO PDF after update failed for ${updatedPo?.poNumber || poId}:`, pdfErr.message);
   }
 
   if (canBuyerRevise) {

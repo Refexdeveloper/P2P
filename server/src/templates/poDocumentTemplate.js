@@ -1572,10 +1572,6 @@ function specialNotesInnerHtml(po, options = {}) {
     </div>`;
 }
 
-function specialNotesHtml(po, options = {}) {
-  return wrapSheet(specialNotesInnerHtml(po, options), 'page-notes', po, options.forPdf === true);
-}
-
 function acknowledgmentInnerHtml(po) {
   return `
     <div class="ack-box">
@@ -1589,8 +1585,17 @@ function acknowledgmentInnerHtml(po) {
     </div>`;
 }
 
-function acknowledgmentHtml(po, forPdf) {
-  return wrapSheet(acknowledgmentInnerHtml(po), 'page-ack', po, forPdf);
+function specialNotesAndAckHtml(po, options = {}) {
+  const forPdf = options.forPdf === true;
+  return wrapSheet(
+    `<div class="notes-ack-stack">
+      ${specialNotesInnerHtml(po, options)}
+      ${acknowledgmentInnerHtml(po)}
+    </div>`,
+    'page-notes',
+    po,
+    forPdf
+  );
 }
 
 /** Letterhead master often embeds a "PURCHASE ORDER" / "WORK ORDER" title — strip so it doesn't duplicate .title */
@@ -1687,8 +1692,7 @@ ${page1}
 ${termsSummaryHtml(po, terms, forPdf)}
 ${annexurePagesHtml(po, annexure, poTypeLabel, docLabel, forPdf)}
 ${annexureIiPagesHtml(po, docLabel, forPdf)}
-${specialNotesHtml(po, { ...options, forPdf })}
-${acknowledgmentHtml(po, forPdf)}`;
+${specialNotesAndAckHtml(po, { ...options, forPdf })}`;
 
   const bodyHtml = forPdf ? content : numberPreviewPages(content);
 

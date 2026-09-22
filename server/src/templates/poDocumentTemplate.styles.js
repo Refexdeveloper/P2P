@@ -512,8 +512,7 @@ export const PO_STYLES = `
   .page-terms,
   .page-annexure,
   .page-annexure-ii,
-  .page-notes,
-  .page-ack {
+  .page-notes {
     page-break-before: always !important;
     break-before: page !important;
   }
@@ -708,8 +707,7 @@ export const PO_STYLES = `
     body.po-document-preview .page-terms,
     body.po-document-preview .page-annexure,
     body.po-document-preview .page-annexure-ii,
-    body.po-document-preview .page-notes,
-    body.po-document-preview .page-ack {
+    body.po-document-preview .page-notes {
       page-break-before: always !important;
       break-before: page !important;
     }
@@ -1335,6 +1333,17 @@ export const PO_STYLES = `
   }
   .notes-ack-stack .special-notes {
     margin-bottom: 8px;
+  }
+  .notes-ack-stack {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .notes-ack-stack .special-notes,
+  .notes-ack-stack .ack-box {
+    page-break-before: auto;
+    break-before: auto;
+    page-break-after: avoid;
+    break-after: avoid;
   }
 
   /*
