@@ -1158,8 +1158,13 @@ function packPoPages(parts, heights, scale = 1) {
     });
   };
 
-  // —— Page 1+: Header + line items ——
-  addHtml(parts.detailsHtml, heights.details || 0, false, 'details');
+  // —— Page 1+: Header + vendor / letterhead details (pad height so address/GST is not clipped) ——
+  const detailsMeasured = Number(heights.details) || 0;
+  const detailsH = Math.max(
+    packRowHeight(heights, 'details', 200, scale),
+    detailsMeasured * 1.12 + 20
+  );
+  addHtml(parts.detailsHtml, detailsH, false, 'details');
 
   const theadH = heights.priceThead || 52;
   const totalsH = heights.totals || 72;
@@ -1560,10 +1565,19 @@ export async function htmlToPdf(html, filePath) {
 
 export async function generatePoPdf(po, options = {}) {
   ensurePoDir();
-  options = await withResolvedSignatureAsync(po, options);
-  const poNumber = String(po.poNumber || po.po_number || '').trim() || 'PO';
+  let poForPdf = po;
+  try {
+    const { overlayVendorMasterOnPo } = await import('./poService.js');
+    if (typeof overlayVendorMasterOnPo === 'function') {
+      poForPdf = await overlayVendorMasterOnPo(po);
+    }
+  } catch {
+    poForPdf = po;
+  }
+  options = await withResolvedSignatureAsync(poForPdf, options);
+  const poNumber = String(poForPdf.poNumber || poForPdf.po_number || '').trim() || 'PO';
   const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_') || 'PO';
-  const branded = await inlinePoBranding({ ...po, poNumber });
+  const branded = await inlinePoBranding({ ...poForPdf, poNumber });
   // Sanitize always — callers often pass `${po.poNumber}_draft.pdf` which breaks on /R1 etc.
   let baseName = String(
     options.fileName || `${safePoNumber}_${options.signed ? 'signed' : 'draft'}`

@@ -584,15 +584,20 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
       Boolean(po.pdfPath) &&
       !String(po.pdfPath).includes(poNumber) &&
       !String(po.pdfPath).startsWith(safePoNumber);
+    // Refresh when vendor master has address/GST but enrich already applied — avoid stale PDF without vendor block
+    const vendorDetailsMissingInStored =
+      !isSigned &&
+      Boolean(String(po.vendorAddress || po.vendorGst || po.vendorPan || '').trim());
     const { fullPath, fileName, buffer } = await ensurePoPdf(po, {
       fileName: preferredName,
       signed: isSigned,
       signature: signatureOpts,
-      // Always refresh when draft, signed, or stored PDF was built under an old DRAFT number
+      // Always refresh when draft, signed, stale name, or vendor details must appear in PDF
       forceRegenerate:
         isSigned ||
         String(po.statusRaw || po.status || '').toLowerCase() === 'draft' ||
-        storedLooksStale,
+        storedLooksStale ||
+        vendorDetailsMissingInStored,
     });
     // Persist regenerated PDF path when previous value was HTML-only or mismatched
     if (!isSigned && po.pdfPath !== fileName) {

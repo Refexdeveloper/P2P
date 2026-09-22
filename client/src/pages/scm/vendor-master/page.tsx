@@ -29,6 +29,7 @@ export default function VendorMasterPage() {
   const [vendorDetails, setVendorDetails] = useState<Record<number, VendorRecord>>({});
   const [detailsLoading, setDetailsLoading] = useState<number | null>(null);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -135,6 +136,33 @@ export default function VendorMasterPage() {
     }
     showToast('Vendor updated successfully', 'success');
     loadVendors();
+  };
+
+  const handleDelete = async (vendor: VendorRecord) => {
+    const label = vendor.vendorCode || vendor.name || `#${vendor.id}`;
+    if (
+      !window.confirm(
+        `Delete vendor ${label}?\n\nThis removes the vendor and uploaded KYC documents. Existing POs keep the vendor name/email already saved.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(vendor.id);
+    try {
+      const res = await vendorApi.delete(vendor.id);
+      if (expandedRow === vendor.id) setExpandedRow(null);
+      setVendorDetails((prev) => {
+        const next = { ...prev };
+        delete next[vendor.id];
+        return next;
+      });
+      showToast(res.message || 'Vendor deleted', 'success');
+      await loadVendors();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete vendor', 'error');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const toggleRow = async (vendorId: number) => {
@@ -310,6 +338,19 @@ export default function VendorMasterPage() {
                                   title="Edit Vendor"
                                 >
                                   <i className="ri-edit-line text-sm"></i>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDelete(v)}
+                                  disabled={deletingId === v.id}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                  title="Delete Vendor"
+                                >
+                                  <i
+                                    className={`text-sm ${
+                                      deletingId === v.id ? 'ri-loader-4-line animate-spin' : 'ri-delete-bin-line'
+                                    }`}
+                                  ></i>
                                 </button>
                               </div>
                             </td>

@@ -1526,6 +1526,11 @@ export const vendorApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  delete: (id: number) =>
+    request<{ data: { id: number; vendorCode: string; name: string }; message: string }>(
+      `/api/vendors/${id}`,
+      { method: 'DELETE' }
+    ),
   exportCsv: () => downloadCsvFile('/api/vendors/export', 'vendors-export.csv'),
   downloadImportTemplate: () =>
     downloadCsvFile('/api/vendors/import-template', 'vendors-import-template.csv'),

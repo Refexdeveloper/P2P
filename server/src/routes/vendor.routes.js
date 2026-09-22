@@ -4,6 +4,7 @@ import {
   listVendors,
   createVendor,
   updateVendor,
+  deleteVendor,
   getVendorById,
   getVendorDocumentFile,
   uploadVendorDocument,
@@ -161,6 +162,18 @@ router.put('/:id', canManageVendors, async (req, res) => {
   try {
     const data = await updateVendor(Number(req.params.id), req.body);
     res.json({ data, message: `Vendor ${data.vendorCode} updated successfully` });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.delete('/:id', canManageVendors, async (req, res) => {
+  try {
+    const data = await deleteVendor(Number(req.params.id));
+    res.json({
+      data,
+      message: `Vendor ${data.vendorCode} (${data.name}) deleted`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

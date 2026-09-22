@@ -1326,6 +1326,8 @@ async function overlayVendorMasterOnPo(po) {
   };
 }
 
+export { overlayVendorMasterOnPo };
+
 async function resolvePoDraftContent(prId, body) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
@@ -1474,10 +1476,22 @@ async function resolvePoDraftContent(prId, body) {
     requester: pr.requester,
     vendorName: vendorMaster.name || vendor.vendor_name,
     vendorEmail: vendorMaster.email || vendor.vendor_email,
-    vendorAddress: vendorMaster.address || '',
-    vendorGst: vendorMaster.gst_number || '',
-    vendorPan: vendorMaster.pan_number || '',
-    vendorPhone: vendorMaster.phone || '',
+    vendorAddress:
+      String(body?.vendorAddress || body?.vendor_address || '').trim() ||
+      vendorMaster.address ||
+      '',
+    vendorGst:
+      String(body?.vendorGst || body?.vendor_gst || body?.gstNumber || '').trim() ||
+      vendorMaster.gst_number ||
+      '',
+    vendorPan:
+      String(body?.vendorPan || body?.vendor_pan || body?.panNumber || '').trim() ||
+      vendorMaster.pan_number ||
+      '',
+    vendorPhone:
+      String(body?.vendorPhone || body?.vendor_phone || body?.phone || '').trim() ||
+      vendorMaster.phone ||
+      '',
     deliveryAddress,
     expectedDeliveryDate,
     poDate,
@@ -1654,10 +1668,22 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     requester: String(requester || '').trim() || 'SCM Buyer',
     vendorName,
     vendorEmail,
-    vendorAddress: vendorMaster.address || '',
-    vendorGst: vendorMaster.gst_number || '',
-    vendorPan: vendorMaster.pan_number || '',
-    vendorPhone: vendorMaster.phone || '',
+    vendorAddress:
+      String(body.vendorAddress || body.vendor_address || '').trim() ||
+      vendorMaster.address ||
+      '',
+    vendorGst:
+      String(body.vendorGst || body.vendor_gst || body.gstNumber || '').trim() ||
+      vendorMaster.gst_number ||
+      '',
+    vendorPan:
+      String(body.vendorPan || body.vendor_pan || body.panNumber || '').trim() ||
+      vendorMaster.pan_number ||
+      '',
+    vendorPhone:
+      String(body.vendorPhone || body.vendor_phone || body.phone || '').trim() ||
+      vendorMaster.phone ||
+      '',
     deliveryAddress,
     expectedDeliveryDate,
     poDate,

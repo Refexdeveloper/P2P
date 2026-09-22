@@ -451,6 +451,43 @@ export async function updateVendor(vendorId, body) {
   return getVendorById(vendorId);
 }
 
+/** Hard-delete vendor and KYC documents (vendor_documents CASCADE). */
+export async function deleteVendor(vendorId) {
+  const id = Number(vendorId);
+  if (!Number.isFinite(id) || id <= 0) throw new Error('Invalid vendor id');
+  const [rows] = await pool.query(`SELECT id, vendor_code, name FROM vendors WHERE id = ?`, [id]);
+  if (!rows.length) throw new Error('Vendor not found');
+
+  // Remove local KYC files when present (DB rows cascade with vendor)
+  try {
+    const [docs] = await pool.query(
+      `SELECT file_path FROM vendor_documents WHERE vendor_id = ?`,
+      [id]
+    );
+    for (const d of docs) {
+      const rel = String(d.file_path || '').trim();
+      if (!rel || rel.startsWith('gs://') || rel.startsWith('gcs:')) continue;
+      const full = path.isAbsolute(rel) ? rel : path.join(VENDOR_UPLOAD_DIR, path.basename(rel));
+      if (fs.existsSync(full)) {
+        try {
+          fs.unlinkSync(full);
+        } catch {
+          /* non-fatal */
+        }
+      }
+    }
+  } catch {
+    /* non-fatal */
+  }
+
+  await pool.query(`DELETE FROM vendors WHERE id = ?`, [id]);
+  return {
+    id: rows[0].id,
+    vendorCode: rows[0].vendor_code,
+    name: rows[0].name,
+  };
+}
+
 export async function getVendorById(vendorId) {
   const [rows] = await pool.query(`SELECT * FROM vendors WHERE id = ?`, [vendorId]);
   if (!rows.length) return null;

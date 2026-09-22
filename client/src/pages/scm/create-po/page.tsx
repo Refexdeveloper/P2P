@@ -2565,9 +2565,13 @@ export default function CreatePOPage() {
           /* keep payload email */
         }
       }
-      if (masterHit?.email) {
+      if (masterHit?.email || masterHit?.name) {
         payload.vendorName = masterHit.name || payload.vendorName;
-        payload.vendorEmail = masterHit.email;
+        payload.vendorEmail = masterHit.email || payload.vendorEmail;
+        if (masterHit.address) payload.vendorAddress = masterHit.address;
+        if (masterHit.gstNumber) payload.vendorGst = masterHit.gstNumber;
+        if (masterHit.panNumber) payload.vendorPan = masterHit.panNumber;
+        if (masterHit.phone) payload.vendorPhone = masterHit.phone;
       }
       return payload;
     },
