@@ -4,8 +4,8 @@ export const DEFAULT_REFEXONE_URL = 'https://refexone.com';
 /** Live P2P app (RelayState after SSO). */
 export const DEFAULT_P2P_APP_URL = 'https://p2p-backend-rmc-business-645830234926.asia-south1.run.app';
 
-/** RefexOne SAML App ID for P2P — set in code, not env */
-export const DEFAULT_REFEXONE_SAML_APP_ID = 'bcc7387a-613a-4607-ae97-028fbdf5dd3b';
+/** RefexOne SAML App ID for RMC Business — set in code, not env */
+export const DEFAULT_REFEXONE_SAML_APP_ID = '0f71f9c3-751e-4004-bb9c-a3f6f007c420';
 
 export function getRefexOneUrl(): string {
   return DEFAULT_REFEXONE_URL;
@@ -67,9 +67,11 @@ export function buildRefexOneSamlSsoUrl(
   return `${web}/api/saml/${encodeURIComponent(appId)}/sso?RelayState=${encodeURIComponent(returnUrl)}`;
 }
 
-/** Unauthenticated redirect: RefexOne SSO → live P2P. */
+/** Unauthenticated redirect: start SSO on THIS RMC host (never the old p2p-backend). */
 export function getUnauthenticatedSsoUrl(returnPath?: string): string {
-  return buildRefexOneSamlSsoUrl(null, getSamlReturnUrl(returnPath));
+  const returnUrl = getSamlReturnUrl(returnPath);
+  const origin = publicP2pOrigin();
+  return `${origin}/api/auth/refexone/sso?returnUrl=${encodeURIComponent(returnUrl)}`;
 }
 
 /** Full-page navigate to RefexOne portal (logout). */

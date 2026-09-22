@@ -18,7 +18,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: p2p-backend
+  name: p2p-backend-rmc-business
   labels:
     cloud.googleapis.com/location: asia-south1
   annotations:
@@ -58,15 +58,25 @@ spec:
             - name: HOME
               value: /tmp
             - name: DB_NAME
-              value: p2p_system
+              value: p2p_rmc_business
             - name: DB_USER
-              value: p2p_app
+              value: p2p_rmc_app
             - name: INSTANCE_CONNECTION_NAME
               value: master-diorama-489103-u2:asia-south1:p2p-mysql
             - name: CORS_ORIGIN
               value: '*'
+            - name: APP_URL
+              value: https://p2p-backend-rmc-business-645830234926.asia-south1.run.app
+            - name: API_PUBLIC_URL
+              value: https://p2p-backend-rmc-business-645830234926.asia-south1.run.app
+            - name: REFEXONE_SAML_APP_ID
+              value: 0f71f9c3-751e-4004-bb9c-a3f6f007c420
+            - name: REFEXONE_SAML_ACS_URL
+              value: https://p2p-backend-rmc-business-645830234926.asia-south1.run.app/api/auth/refexone/saml/acs
+            - name: REFEXONE_SAML_ENTITY_ID
+              value: https://p2p-backend-rmc-business-645830234926.asia-south1.run.app/auth/refexone/saml
             - name: REFEXONE_LOGIN_ENABLED
-              value: 'false'
+              value: 'true'
             - name: GCS_BUCKET_NAME
               value: p2p-app-storage-master-diorama-489103-u2
             - name: GOOGLE_CLOUD_PROJECT

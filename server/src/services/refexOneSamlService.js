@@ -56,10 +56,11 @@ function apiUrl(path = '') {
 /** RefexOne SAML — hardcoded in code (not env). */
 export const DEFAULT_REFEXONE_WEB_URL = 'https://refexone.com';
 export const DEFAULT_REFEXONE_API_URL = 'https://refexone.com/api';
-export const DEFAULT_REFEXONE_SAML_APP_ID = 'bcc7387a-613a-4607-ae97-028fbdf5dd3b';
+export const DEFAULT_REFEXONE_SAML_APP_ID = '0f71f9c3-751e-4004-bb9c-a3f6f007c420';
 
 export function getRefexOneSamlAppId() {
-  return DEFAULT_REFEXONE_SAML_APP_ID;
+  const fromEnv = String(process.env.REFEXONE_SAML_APP_ID || '').trim();
+  return fromEnv || DEFAULT_REFEXONE_SAML_APP_ID;
 }
 
 /**
