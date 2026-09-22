@@ -523,6 +523,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     ['Currency', String(po?.currency || pr?.currency || 'INR')],
     ['Payment Terms', String(po?.paymentTerms || '—')],
     ['Incoterms', String(po?.incoterms || '—')],
+    ['Mode of Shipment', String(po?.modeOfShipment || po?.poTermsDetails?.modeOfShipment || '—')],
     ['Required / Delivery', String(po?.expectedDeliveryDate || pr?.requiredDate || row.requiredDate || '—')],
     ['Created By', String(po?.createdBy || '—')],
     ['Created / Submitted', String(po?.createdAt || pr?.submittedDate || row.createdAt || '—')],

@@ -168,7 +168,7 @@ function parseRequisitionExtras(body = {}, fallback = {}) {
     placeOfDelivery: pick(['placeOfDelivery'], 4000),
     billingAddress: pick(['billingAddress'], 4000),
     expectedDeliveryTimeline: pick(['expectedDeliveryTimeline']),
-    paymentTerms: pick(['paymentTerms']),
+    paymentTerms: pick(['paymentTerms'], 4000),
     projectDetail: pick(['projectDetail', 'project_detail']),
     specialNotes: pick(['specialNotes', 'special_notes'], 4000),
     scopeOfWork: pick(['scopeOfWork', 'scope_of_work'], 8000),

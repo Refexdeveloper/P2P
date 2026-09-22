@@ -498,26 +498,24 @@ export default function PrBillingDeliverySection({
         </div>
 
         {!hidePaymentTerms && (
-        <div data-field="paymentTerms">
+        <div data-field="paymentTerms" className="md:col-span-2 lg:col-span-3">
           <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
             Payment Terms
           </label>
-          <input
-            list="pr-billing-payment-terms"
+          <textarea
             value={value.paymentTerms}
             onChange={(e) => {
               onChange({ paymentTerms: e.target.value });
               onClearError?.('paymentTerms');
             }}
             disabled={disabled}
-            placeholder="e.g. Net 30 Days"
-            className={inputClass}
+            rows={4}
+            placeholder={"e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed..."}
+            className={`${inputClass} resize-none min-h-[96px]`}
           />
-          <datalist id="pr-billing-payment-terms">
-            {PR_PAYMENT_TERM_OPTIONS.map((opt) => (
-              <option key={opt} value={opt} />
-            ))}
-          </datalist>
+          <p className="text-xs text-gray-400 mt-1.5">
+            Suggestions: {PR_PAYMENT_TERM_OPTIONS.slice(0, 4).join(' · ')}
+          </p>
         </div>
         )}
       </div>

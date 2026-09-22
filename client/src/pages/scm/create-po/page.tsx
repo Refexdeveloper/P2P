@@ -230,6 +230,7 @@ const EMPTY_PO_TERMS_DETAILS = {
   locationName: '',
   buyerGstNo: '',
   letterheadLocationId: '',
+  modeOfShipment: '',
 };
 
 function letterheadLocKey(loc: LetterheadLocationRecord, index = 0) {
@@ -316,6 +317,13 @@ const INCOTERMS_OPTIONS = [
   { code: 'CIF', label: 'CIF — Cost, Insurance and Freight (sea)' },
 ] as const;
 
+const MODE_OF_SHIPMENT_OPTIONS = [
+  { value: '', label: 'Select mode of shipment' },
+  { value: 'By Road', label: 'By Road' },
+  { value: 'By Air', label: 'By Air' },
+  { value: 'By Ship', label: 'By Ship' },
+] as const;
+
 function normalizeIncoterm(value?: string | null): string {
   const raw = String(value || '').trim();
   if (!raw) return 'DDP';
@@ -330,6 +338,17 @@ function normalizeIncoterm(value?: string | null): string {
     return upper === o.code || upper.startsWith(`${o.code} `) || upper.startsWith(`${o.code}-`) || upper.includes(o.code);
   });
   return match?.code || 'DDP';
+}
+
+function normalizeModeOfShipment(value?: string | null): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const lower = raw.toLowerCase().replace(/[_-]+/g, ' ');
+  if (lower.includes('air')) return 'By Air';
+  if (lower.includes('ship') || lower.includes('sea') || lower.includes('ocean')) return 'By Ship';
+  if (lower.includes('road') || lower.includes('truck') || lower.includes('land')) return 'By Road';
+  const match = MODE_OF_SHIPMENT_OPTIONS.find((o) => o.value && o.value.toLowerCase() === lower);
+  return match?.value || '';
 }
 
 function todayYmd() {
@@ -1118,6 +1137,8 @@ export default function CreatePOPage() {
     annexureCount: number;
   } | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [scmConfirmLoadingNumber, setScmConfirmLoadingNumber] = useState(false);
+  const scmConfirmBaselineRef = useRef('');
   const [showScmConfirm, setShowScmConfirm] = useState(false);
   const [managerModal, setManagerModal] = useState<'sendback' | 'reject' | null>(null);
   const [showBuyerSendBack, setShowBuyerSendBack] = useState(false);
@@ -1875,6 +1896,9 @@ export default function CreatePOPage() {
           siteAddress: addr,
           quoteNo,
           quoteDate: toInputDate(loadedDetails.quoteDate) || '',
+          modeOfShipment: normalizeModeOfShipment(
+            loadedDetails.modeOfShipment || (po as { modeOfShipment?: string }).modeOfShipment
+          ),
         });
         setTermsClauses(stripQuoteNoFromTermsClauses(adaptedTerms));
         termsDraftRef.current = stripQuoteNoFromTermsClauses(adaptedTerms);
@@ -2447,6 +2471,7 @@ export default function CreatePOPage() {
     poDate,
     paymentTerms,
     incoterms,
+    modeOfShipment: normalizeModeOfShipment(poTermsDetails.modeOfShipment),
     specialInstructions,
     gstPercentage: effectiveGstPercentage,
     poType,
@@ -2467,7 +2492,12 @@ export default function CreatePOPage() {
     annexureClauses: liveAnnexure,
     annexureIiRows: liveAnnexureIi.filter((row) => !annexureIiRowIsEmpty(row)),
     annexureIiHtml: serializeAnnexureIi(liveAnnexureIi.filter((row) => !annexureIiRowIsEmpty(row))),
-    poTermsDetails: synced.poTermsDetails,
+    poTermsDetails: {
+      ...synced.poTermsDetails,
+      modeOfShipment: normalizeModeOfShipment(
+        poTermsDetails.modeOfShipment || synced.poTermsDetails.modeOfShipment
+      ),
+    },
     purchaseType: documentType,
     vendorName: masterVendor?.name || vendorNameForPo,
     vendorEmail: masterVendor?.email || vendorEmailFromForm,
@@ -2811,6 +2841,7 @@ export default function CreatePOPage() {
         poDate,
         paymentTerms,
         incoterms,
+        modeOfShipment: normalizeModeOfShipment(details.modeOfShipment),
         specialInstructions,
         gstPercentage: effectiveGstPercentage,
         poType,
@@ -2829,6 +2860,7 @@ export default function CreatePOPage() {
             siteAddress: details.siteAddress || deliveryAddress,
             letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || '',
             buyerGstNo: details.buyerGstNo || locationGstNo || '',
+            modeOfShipment: normalizeModeOfShipment(details.modeOfShipment),
           }).terms
         ),
         annexure: filterNonEmptyClauses(annexureToSave),
@@ -2840,6 +2872,7 @@ export default function CreatePOPage() {
           siteAddress: details.siteAddress || deliveryAddress,
           letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || '',
           buyerGstNo: details.buyerGstNo || locationGstNo || '',
+          modeOfShipment: normalizeModeOfShipment(details.modeOfShipment),
         }).poTermsDetails,
         referencePoNumber: referencePoNumber.trim() || undefined,
         purchaseType: documentType,
@@ -3122,6 +3155,9 @@ export default function CreatePOPage() {
         siteAddress: addr,
         quoteNo,
         quoteDate: toInputDate(loadedDetails.quoteDate) || '',
+        modeOfShipment: normalizeModeOfShipment(
+          loadedDetails.modeOfShipment || (po as { modeOfShipment?: string }).modeOfShipment
+        ),
       });
       setTermsClauses(stripQuoteNoFromTermsClauses(adaptedTerms));
     }
@@ -3321,7 +3357,25 @@ export default function CreatePOPage() {
     !isBuyerVerifyEdit &&
     (!isEditMode || poEditStatus === 'draft');
 
-  const handleSendForApproval = () => {
+  const confirmVendorName = (
+    isManualPoFlow
+      ? findRecommendedManualQuote(manualComparisonRounds)?.vendorName ||
+        manualVendorName ||
+        importedVendorName ||
+        vendorMeta.name
+      : pr?.recommendedVendor || vendorMeta.name || ''
+  ).trim() || '—';
+
+  const confirmPrNumber = (
+    isManualPoFlow ? manualPrDetails.prNumber || '' : pr?.prNumber || ''
+  ).trim() || '—';
+
+  const isDraftLikePoNumber = (value: string) => {
+    const n = String(value || '').trim().toUpperCase();
+    return !n || n.startsWith('DRAFT-');
+  };
+
+  const handleSendForApproval = async () => {
     if (isBuyerAwaitingManager) {
       alert(
         `This ${docLabel} is already with SCM Manager for sign / approval. Open PO Approval as SCM Manager to act on it.`
@@ -3330,6 +3384,34 @@ export default function CreatePOPage() {
     }
     if (!validateBeforeSend()) return;
     if (needsScmManagerConfirm) {
+      const entityIdForNum = Number(
+        (isManualPoFlow ? manualEntityId : pr?.entityId || manualEntityId || resolvedManualEntityId) || 0
+      );
+      // Default official PO/WO number in the popup — change only if you want a different one.
+      if (isDraftLikePoNumber(poNumber) && entityIdForNum > 0) {
+        setScmConfirmLoadingNumber(true);
+        try {
+          const res = await poApi.nextNumber({
+            entityId: entityIdForNum,
+            purchaseType: documentType === 'work_order' ? 'work_order' : 'purchase_order',
+          });
+          const next = String(res.data?.poNumber || '').trim();
+          if (next) {
+            setPoNumber(next);
+            setPoNumberTouched(false);
+            scmConfirmBaselineRef.current = next;
+          } else {
+            scmConfirmBaselineRef.current = poNumber.trim();
+          }
+        } catch {
+          scmConfirmBaselineRef.current = poNumber.trim();
+        } finally {
+          setScmConfirmLoadingNumber(false);
+        }
+      } else {
+        scmConfirmBaselineRef.current = poNumber.trim();
+        setPoNumberTouched(false);
+      }
       setShowScmConfirm(true);
       return;
     }
@@ -3361,6 +3443,7 @@ export default function CreatePOPage() {
         poDate,
         paymentTerms,
         incoterms,
+        modeOfShipment: normalizeModeOfShipment(details.modeOfShipment),
         specialInstructions,
         gstPercentage: effectiveGstPercentage,
         poType,
@@ -3379,6 +3462,7 @@ export default function CreatePOPage() {
             siteAddress: details.siteAddress || deliveryAddress,
             letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || '',
             buyerGstNo: details.buyerGstNo || locationGstNo || '',
+            modeOfShipment: normalizeModeOfShipment(details.modeOfShipment),
           }).terms
         ),
         annexure: filterNonEmptyClauses(annexureToSave),
@@ -3390,11 +3474,14 @@ export default function CreatePOPage() {
           siteAddress: details.siteAddress || deliveryAddress,
           letterheadLocationId: details.letterheadLocationId || letterheadLocationKey || '',
           buyerGstNo: details.buyerGstNo || locationGstNo || '',
+          modeOfShipment: normalizeModeOfShipment(details.modeOfShipment),
         }).poTermsDetails,
         referencePoNumber: referencePoNumber.trim() || undefined,
         changeSummary: changeSummary.trim() || undefined,
         purchaseType: documentType,
-        poNumber: poNumber.trim() || undefined,
+        // Official number from confirm popup (default or user-edited) → PDF for SCM Manager.
+        // Omit DRAFT-* so the server assigns if somehow still a draft.
+        poNumber: isDraftLikePoNumber(poNumber) ? undefined : poNumber.trim() || undefined,
       };
 
       if (isManualPoFlow) {
@@ -3471,10 +3558,12 @@ export default function CreatePOPage() {
         }
         const updateRes = await poApi.update(editPoId, payload);
         if (poEditStatus === 'draft' || !poEditStatus) {
+          const saved = updateRes.data as { poNumber?: string } | undefined;
+          if (saved?.poNumber) setPoNumber(String(saved.poNumber));
           const mgr = scmManager?.name || 'Rajeev V';
           alert(
             updateRes.message ||
-              `${poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
+              `${saved?.poNumber || poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
           );
           navigate('/scm/create-po');
           return;
@@ -4136,25 +4225,22 @@ export default function CreatePOPage() {
                         value={poNumber}
                         onChange={(e) => handlePoNumberChange(e.target.value)}
                         onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
-                        readOnly={!importedPoNumber.trim() && (poEditStatus === 'draft' || !poEditStatus)}
                         placeholder={
                           importedPoNumber.trim()
                             ? 'Imported number'
-                            : 'Assigned when sent to SCM Manager'
+                            : poNumber.toUpperCase().startsWith('DRAFT-')
+                              ? 'Draft — edit or auto-assign on send to SCM Manager'
+                              : 'PO / WO number'
                         }
                         maxLength={40}
-                        className={`w-full px-3.5 py-2.5 border border-teal-200 rounded-lg text-sm font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-teal-50/40 ${
-                          !importedPoNumber.trim() && (poEditStatus === 'draft' || !poEditStatus)
-                            ? 'cursor-default'
-                            : ''
-                        }`}
+                        className="w-full px-3.5 py-2.5 border border-teal-200 rounded-lg text-sm font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-teal-50/40"
                       />
                       <p className="text-[11px] text-gray-500 mt-1">
                         {poNumber.toUpperCase().startsWith('DRAFT-')
-                          ? 'Draft number — official PO/WO number is generated when you send to SCM Manager'
+                          ? 'Draft number — you can edit the official PO/WO number before / when sending to SCM Manager'
                           : importedPoNumber.trim()
                             ? 'Imported / historical number'
-                            : 'Official number is generated when sent to SCM Manager (Save Draft keeps a draft number)'}
+                            : 'This number prints on the PDF. Edit anytime before send for approval.'}
                       </p>
                     </div>
                     <div>
@@ -4539,7 +4625,7 @@ export default function CreatePOPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                          Incoterms® 2020
+                          Inco Terms
                         </label>
                         <select
                           value={normalizeIncoterm(incoterms)}
@@ -4548,6 +4634,22 @@ export default function CreatePOPage() {
                         >
                           {INCOTERMS_OPTIONS.map((o) => (
                             <option key={o.code} value={o.code}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                          Mode of Shipment
+                        </label>
+                        <select
+                          value={normalizeModeOfShipment(poTermsDetails.modeOfShipment)}
+                          onChange={(e) => updatePoTermsField('modeOfShipment', e.target.value)}
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                        >
+                          {MODE_OF_SHIPMENT_OPTIONS.map((o) => (
+                            <option key={o.value || 'empty'} value={o.value}>
                               {o.label}
                             </option>
                           ))}
@@ -5319,7 +5421,7 @@ export default function CreatePOPage() {
       {/* ── Confirm: send to SCM Manager ── */}
       {showScmConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
             <div className="bg-gradient-to-br from-teal-600 to-teal-700 px-6 py-5">
               <h3 className="text-lg font-bold text-white">
                 {isEditMode && poEditStatus === 'draft'
@@ -5335,6 +5437,55 @@ export default function CreatePOPage() {
                 Is it okay to send this {docLabel.toLowerCase()} to the{' '}
                 <strong>next level — SCM Manager</strong> for sign &amp; approval?
               </p>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1.5">
+                    {docNoLabel}{' '}
+                    <span className="text-teal-600 normal-case font-medium">
+                      (default shown — edit only if you need a different number)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={poNumber}
+                    onChange={(e) => handlePoNumberChange(e.target.value)}
+                    onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
+                    disabled={scmConfirmLoadingNumber || submitting}
+                    placeholder={
+                      scmConfirmLoadingNumber
+                        ? 'Loading default number…'
+                        : `Default ${docNoLabel}`
+                    }
+                    maxLength={40}
+                    className="w-full px-3.5 py-2.5 border border-teal-300 rounded-lg text-sm font-bold text-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white disabled:bg-gray-100"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    {scmConfirmLoadingNumber
+                      ? 'Fetching default number…'
+                      : poNumberTouched &&
+                          poNumber.trim() &&
+                          poNumber.trim() !== scmConfirmBaselineRef.current
+                        ? `You changed the ${docNoLabel}. This exact number will print on the PDF sent to SCM Manager.`
+                        : `Default ${docNoLabel} will print on the PDF sent to SCM Manager. Change it above only if needed.`}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-gray-200">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Vendor</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-0.5 break-words">{confirmVendorName}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">PR Number</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-0.5">{confirmPrNumber}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Total Amount</p>
+                    <p className="text-base font-bold text-teal-700 mt-0.5">{fmt(grandTotal)}</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="rounded-xl border border-teal-200 bg-teal-50/80 p-4">
                 <p className="text-[11px] font-bold uppercase tracking-wide text-teal-700 mb-2">
                   SCM Manager
@@ -5346,7 +5497,13 @@ export default function CreatePOPage() {
                   <p className="text-sm text-teal-800 mt-0.5 break-all">{scmManager.email}</p>
                 ) : null}
                 <p className="text-xs text-gray-500 mt-2">
-                  They will receive the approval task and email for this {docNoLabel}.
+                  They will receive the approval task and email for{' '}
+                  <span className="font-semibold text-gray-700">
+                    {poNumber.trim() && !poNumber.toUpperCase().startsWith('DRAFT-')
+                      ? poNumber.trim()
+                      : `this ${docNoLabel}`}
+                  </span>
+                  .
                 </p>
               </div>
               <div className="flex gap-3 pt-1">

@@ -604,6 +604,7 @@ export const EMPTY_PO_TERMS_DETAILS = {
   locationName: '',
   buyerGstNo: '',
   letterheadLocationId: '',
+  modeOfShipment: '',
 };
 
 export function normalizePoTermsDetails(raw) {
@@ -835,6 +836,7 @@ async function enrichPO(row) {
     poDate: formatDate(row.po_date) || formatDate(row.created_at),
     paymentTerms: row.payment_terms,
     incoterms: row.incoterms,
+    modeOfShipment: quoteMerged.poTermsDetails?.modeOfShipment || '',
     specialInstructions: row.special_instructions || '',
     poType: row.po_type || 'short_po',
     purchaseType: row.purchase_type || pr?.purchaseType || 'purchase_order',
@@ -1379,6 +1381,7 @@ async function resolvePoDraftContent(prId, body) {
     poDate,
     paymentTerms: resolvedPaymentTerms,
     incoterms,
+    modeOfShipment: String(resolvedPoTermsDetails.modeOfShipment || body?.modeOfShipment || '').trim(),
     specialInstructions,
     poType: normalizedPoType,
     purchaseType: resolvedPurchaseType,
@@ -1558,6 +1561,7 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     poDate,
     paymentTerms: resolvedPaymentTerms,
     incoterms,
+    modeOfShipment: String(resolvedPoTermsDetails.modeOfShipment || body?.modeOfShipment || '').trim(),
     specialInstructions,
     poType: normalizedPoType,
     purchaseType: resolvedPurchaseType,

@@ -269,6 +269,10 @@ export default function CreatePRPage() {
   /** Synchronous draft id — avoids duplicate prApi.create while setState is pending. */
   const savedDraftIdRef = useRef<number | null>(null);
   const createDraftLockRef = useRef<Promise<number | null> | null>(null);
+  /** Serializes all savePR calls so one click cannot create multiple PRs. */
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  /** Blocks double-click on Yes, Submit until finished / modal closed. */
+  const submitClickLockRef = useRef(false);
   const suppressSoftResumeRef = useRef(false);
   const bootRedirectDoneRef = useRef(false);
   const loadedEditPrIdRef = useRef<number | null>(null);
@@ -1057,7 +1061,7 @@ export default function CreatePRPage() {
   ]);
 
   useEffect(() => {
-    const flushOnLeave = () => {
+    const flushLocalOnly = () => {
       if (suppressSoftResumeRef.current || skipSoftSaveRef.current || !hydrateDoneRef.current) return;
       const snap = snapshotRef.current;
       if (!snap || !hasMeaningfulCreatePrDraft(snap)) return;
@@ -1067,28 +1071,32 @@ export default function CreatePRPage() {
         backendPrId: id ?? snap.backendPrId,
       });
       markCreatePrSoftResume(id);
-      // Keep the Add/Edit line-item form open; local draft is already written above.
+    };
+    /** Server persist only on real page hide — never on React effect cleanup (Strict Mode remount creates duplicate PRs). */
+    const flushToServer = () => {
+      flushLocalOnly();
       if (lineEditorModeRef.current) return;
-      // Upload quotation files + persist same PR# when leaving to another menu.
-      if (snap.entityId && !savingInFlightRef.current) {
-        void savePRRef.current(false, {
-          silent: true,
-          forceUploadFiles: true,
-          allowCreate: true,
-        });
-      }
+      if (savingInFlightRef.current || submitClickLockRef.current || skipSoftSaveRef.current) return;
+      const snap = snapshotRef.current;
+      if (!snap?.entityId) return;
+      void savePRRef.current(false, {
+        silent: true,
+        forceUploadFiles: true,
+        // Only create if we still have no draft id; otherwise update.
+        allowCreate: !resolvePersistPrId(),
+      });
     };
     const onHide = () => {
-      if (document.visibilityState === 'hidden') flushOnLeave();
+      if (document.visibilityState === 'hidden') flushToServer();
     };
-    window.addEventListener('pagehide', flushOnLeave);
-    window.addEventListener('beforeunload', flushOnLeave);
+    window.addEventListener('pagehide', flushToServer);
+    window.addEventListener('beforeunload', flushLocalOnly);
     document.addEventListener('visibilitychange', onHide);
     return () => {
-      // Only flush on real unmount (menu leave), not when draft id / user deps change.
-      flushOnLeave();
-      window.removeEventListener('pagehide', flushOnLeave);
-      window.removeEventListener('beforeunload', flushOnLeave);
+      // Local draft only — do NOT create a server PR on unmount / Strict Mode remount.
+      flushLocalOnly();
+      window.removeEventListener('pagehide', flushToServer);
+      window.removeEventListener('beforeunload', flushLocalOnly);
       document.removeEventListener('visibilitychange', onHide);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1800,12 +1808,14 @@ export default function CreatePRPage() {
   const selectedApprovalUser = selectedApprovalUsers[0] || null;
 
   const handleSaveDraft = async () => {
+    if (isSubmitting || savingInFlightRef.current) return;
     if (!validateDraftBasics()) return;
     setSubmitAction('draft');
     await savePR(false);
   };
 
   const handleSubmitPR = async () => {
+    if (isSubmitting || submitClickLockRef.current || savingInFlightRef.current) return;
     if (!validateForm()) return;
       setSubmitAction('submit');
       setShowConfirmModal(true);
@@ -2042,9 +2052,28 @@ export default function CreatePRPage() {
     submit: boolean,
     options?: { silent?: boolean; forceUploadFiles?: boolean; allowCreate?: boolean }
   ) => {
+    // Queue saves so overlapping clicks / autosave cannot create 3–4 PRs.
+    const previous = saveQueueRef.current;
+    let releaseQueue!: () => void;
+    saveQueueRef.current = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+    await previous.catch(() => undefined);
+
     const silent = Boolean(options?.silent);
     const forceUploadFiles = Boolean(options?.forceUploadFiles);
     const allowCreate = Boolean(options?.allowCreate) || !silent;
+
+    // After waiting: another save may have created the draft — never create again for silent.
+    if (silent && savingInFlightRef.current) {
+      releaseQueue();
+      return;
+    }
+    if (!silent && submitClickLockRef.current && savingInFlightRef.current) {
+      releaseQueue();
+      return;
+    }
+
       if (!silent) setSubmitError('');
       if (!silent) setToast(null);
     if (!silent) setIsSubmitting(true);
@@ -2349,9 +2378,22 @@ export default function CreatePRPage() {
         }
       }
 
+      // Claim create slot synchronously before any further await when we still have no id.
+      let createSlotResolve: ((id: number | null) => void) | null = null;
+      if (!targetId && !createDraftLockRef.current && !(silent && !allowCreate)) {
+        createDraftLockRef.current = new Promise<number | null>((resolve) => {
+          createSlotResolve = resolve;
+        });
+      }
+
       if (targetId) {
         try {
           await finishExisting(targetId);
+          if (createSlotResolve) {
+            createSlotResolve(targetId);
+            createDraftLockRef.current = null;
+            createSlotResolve = null;
+          }
           return;
     } catch (err) {
           if (silent) throw err;
@@ -2366,48 +2408,80 @@ export default function CreatePRPage() {
       targetId = resolvePersistPrId();
       if (targetId) {
         await finishExisting(targetId);
+        if (createSlotResolve) {
+          createSlotResolve(targetId);
+          createDraftLockRef.current = null;
+          createSlotResolve = null;
+        }
         return;
       }
 
       // First server draft: manual Save Draft / submit, or leave-menu flush (allowCreate).
       // Silent autosave without an id stays local — creating here remounted the page and wiped line items.
       if (silent && !allowCreate) {
+        if (createSlotResolve) {
+          createSlotResolve(null);
+          createDraftLockRef.current = null;
+        }
         setSoftSaveHint('Draft auto-saved locally');
         return;
       }
       if (silent && !entityId) {
+        if (createSlotResolve) {
+          createSlotResolve(null);
+          createDraftLockRef.current = null;
+        }
         setSoftSaveHint('Draft auto-saved locally');
         return;
       }
 
-      const createJob = (async (): Promise<number | null> => {
+      try {
         const res = await prApi.create({ ...payload, submit: Boolean(submit) });
         const created = res.data as { id?: number };
-        if (created.id) bindSavedDraftId(created.id);
+        const newId = created.id ? Number(created.id) : null;
+        if (newId) bindSavedDraftId(newId);
+        if (createSlotResolve) {
+          createSlotResolve(newId);
+          createDraftLockRef.current = null;
+          createSlotResolve = null;
+        }
         await finishCreate(res);
-        return created.id ? Number(created.id) : null;
-      })();
-
-      createDraftLockRef.current = createJob.finally(() => {
-        createDraftLockRef.current = null;
-      });
-      await createJob;
+      } catch (err) {
+        if (createSlotResolve) {
+          createSlotResolve(null);
+          createDraftLockRef.current = null;
+          createSlotResolve = null;
+        }
+        throw err;
+      }
     } catch (err) {
-      if (submit) skipSoftSaveRef.current = false;
+      if (submit) {
+        skipSoftSaveRef.current = false;
+        submitClickLockRef.current = false;
+      }
       if (!silent) showSubmitError(err instanceof Error ? err.message : 'Failed to save PR');
     } finally {
       savingInFlightRef.current = false;
       if (!silent) setIsSubmitting(false);
+      releaseQueue();
     }
   };
 
   savePRRef.current = savePR;
 
   const confirmSubmit = async () => {
+    if (submitClickLockRef.current || savingInFlightRef.current || isSubmitting) return;
+    submitClickLockRef.current = true;
+    setIsSubmitting(true);
     if (snapshotRef.current && hasMeaningfulCreatePrDraft(snapshotRef.current)) {
       writeCreatePrDraft(user?.id, persistPrId ?? editPrId, snapshotRef.current);
     }
-    await savePR(true);
+    try {
+      await savePR(true);
+    } catch {
+      submitClickLockRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const typeColors: Record<string, string> = {
@@ -3779,8 +3853,7 @@ export default function CreatePRPage() {
                 <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                   Payment Terms <span className="text-red-500">*</span>
                 </label>
-                <input
-                  list="create-pr-scope-payment-terms"
+                <textarea
                   value={paymentTerms}
                   onChange={(e) => {
                     setPaymentTerms(e.target.value);
@@ -3792,22 +3865,22 @@ export default function CreatePRPage() {
                       });
                     }
                   }}
-                  placeholder="e.g. Net 30 Days"
-                  className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white ${
+                  rows={4}
+                  placeholder={"e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed..."}
+                  className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none ${
                     errors.paymentTerms ? 'border-red-400 bg-red-50' : 'border-gray-200'
                   }`}
                 />
-                <datalist id="create-pr-scope-payment-terms">
-                  {PR_PAYMENT_TERM_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt} />
-                  ))}
-                </datalist>
                 {errors.paymentTerms ? (
                   <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
                     <i className="ri-error-warning-line"></i>
                     {errors.paymentTerms}
                   </p>
-                ) : null}
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Suggestions: {PR_PAYMENT_TERM_OPTIONS.slice(0, 4).join(' · ')}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -4087,10 +4160,24 @@ export default function CreatePRPage() {
               </span>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 text-sm font-medium cursor-pointer whitespace-nowrap">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSubmitting) return;
+                  submitClickLockRef.current = false;
+                  setShowConfirmModal(false);
+                }}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 text-sm font-medium cursor-pointer whitespace-nowrap disabled:opacity-50"
+              >
                 Cancel
               </button>
-              <button onClick={confirmSubmit} disabled={isSubmitting} className={`flex-1 py-2.5 text-white rounded-xl text-sm font-semibold cursor-pointer whitespace-nowrap disabled:opacity-50 ${isResubmitFlow ? 'bg-orange-600 hover:bg-orange-700' : 'bg-[#1E88E5] hover:bg-[#1565C0]'}`}>
+              <button
+                type="button"
+                onClick={() => void confirmSubmit()}
+                disabled={isSubmitting}
+                className={`flex-1 py-2.5 text-white rounded-xl text-sm font-semibold cursor-pointer whitespace-nowrap disabled:opacity-50 ${isResubmitFlow ? 'bg-orange-600 hover:bg-orange-700' : 'bg-[#1E88E5] hover:bg-[#1565C0]'}`}
+              >
                 {isSubmitting ? 'Submitting...' : isResubmitFlow ? 'Yes, Resubmit' : 'Yes, Submit'}
               </button>
             </div>

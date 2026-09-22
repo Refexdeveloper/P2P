@@ -2302,19 +2302,17 @@ export default function RfqEntryDetailPage() {
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                   Payment Terms <span className="text-red-500">*</span>
                 </label>
-                <input
-                  list="rfq-entry-payment-terms"
+                <textarea
                   value={billing.paymentTerms}
                   onChange={(e) => setBilling((prev) => ({ ...prev, paymentTerms: e.target.value }))}
                   disabled={isFinalized}
-                  placeholder="e.g. Net 30 Days"
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 bg-white disabled:bg-gray-50"
+                  rows={4}
+                  placeholder={"e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed..."}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 resize-none disabled:bg-gray-50"
                 />
-                <datalist id="rfq-entry-payment-terms">
-                  {PR_PAYMENT_TERM_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt} />
-                  ))}
-                </datalist>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  Suggestions: {PR_PAYMENT_TERM_OPTIONS.slice(0, 4).join(' · ')}
+                </p>
               </div>
             </div>
           </div>

@@ -671,7 +671,10 @@ function applyClausePlaceholders(html, po) {
     .replace(/\$aos_quotes_rfq_no_c/gi, '')
     .replace(/\$aos_quotes_inco_terms_c/gi, placeholderText(po.incoterms))
     .replace(/\$aos_quotes_delivery_schedule_c/gi, placeholderText(deliveryDate))
-    .replace(/\$aos_quotes_shipment_mode_c/gi, placeholderText(po.incoterms))
+    .replace(
+      /\$aos_quotes_shipment_mode_c/gi,
+      placeholderText(td.modeOfShipment || po.modeOfShipment)
+    )
     .replace(
       /\$aos_quotes_payment_terms_c/gi,
       placeholderText(td.paymentTermsText || po.paymentTerms)
