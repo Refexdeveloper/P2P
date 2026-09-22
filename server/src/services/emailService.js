@@ -1723,7 +1723,9 @@ async function loadRequesterForRetrigger(pr) {
 export async function retriggerEmailLog(logId, { extraTo } = {}) {
   const log = await getEmailLogById(logId);
   if (!log) throw new Error('Email log not found');
-  if (log.status === 'sent') throw new Error('This email was already sent');
+  if (log.status === 'sent' && !Boolean(options?.allowResend)) {
+    throw new Error('This email was already sent. Use Admin → Notify SCM Manager for a new PO approval mail.');
+  }
 
   const extra = parseEmailList(extraTo);
   const originalTo = parseEmailList(log.toAddresses);

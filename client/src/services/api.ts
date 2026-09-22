@@ -1934,6 +1934,18 @@ export const adminApi = {
         body: JSON.stringify({ extraTo: extraTo || '' }),
       }
     ),
+  /** Force-send SCM Manager PO approval email (manual PO / missed notify). */
+  notifyScmManagerPo: (poNumberOrId: string, extraTo?: string) =>
+    request<{
+      data: { sent: boolean; to: string[]; poNumber: string; poId: number };
+      message: string;
+    }>('/api/admin/po/notify-scm-manager', {
+      method: 'POST',
+      body: JSON.stringify({
+        poNumber: poNumberOrId,
+        extraTo: extraTo || '',
+      }),
+    }),
   listWhatsAppLogs: (params?: {
     status?: string;
     notifyType?: string;

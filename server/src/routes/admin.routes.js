@@ -20,7 +20,7 @@ import {
   processSlaBreaches,
 } from '../services/slaBreachService.js';
 import { SLA_REMINDER_SLOTS, normalizeSlaReminderSlot } from '../utils/sla.js';
-import { repairUnsignedManualPosToPendingApproval } from '../services/poService.js';
+import { repairUnsignedManualPosToPendingApproval, adminNotifyScmManagerPoApproval } from '../services/poService.js';
 
 const router = Router();
 router.use(authenticate);
@@ -118,6 +118,29 @@ router.post('/email-logs/:id/retrigger', async (req, res) => {
     res.json({
       data,
       message: `Email sent to ${Array.isArray(data.to) ? data.to.join(', ') : data.to}`,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Super Admin: force-send SCM Manager approval mail for a manual / any PO */
+router.post('/po/notify-scm-manager', async (req, res) => {
+  try {
+    const poKey = req.body?.poNumber || req.body?.poId || req.body?.id || '';
+    const extraTo = String(req.body?.extraTo || req.body?.to || '')
+      .split(/[,;\s]+/)
+      .map((e) => e.trim())
+      .filter(Boolean);
+    const data = await adminNotifyScmManagerPoApproval(poKey, {
+      actorName: req.user?.name || 'Super Admin',
+      actorRole: req.user?.role || 'Super Admin',
+      extraTo,
+      remarks: req.body?.remarks || undefined,
+    });
+    res.json({
+      data,
+      message: `SCM Manager approval mail queued for ${data.poNumber} → ${data.to.join(', ')}`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

@@ -394,6 +394,90 @@ async function poPdfMailAttachment(po, { signed = false } = {}) {
   return [];
 }
 
+/**
+ * Always notify SCM Manager (Rajeev) that a PO awaits sign.
+ * Safe for manual POs (no PR) and PR-linked POs. Never throws.
+ */
+export async function notifyScmManagerPoApproval(po, options = {}) {
+  if (!po?.id && !po?.poNumber) return { sent: false, reason: 'missing_po' };
+  try {
+    const managerEmails = await getScmManagerNotifyEmails();
+    const managers = await resolveRoleEmails('SCM Manager');
+    const emails = [
+      ...new Set(
+        [...managerEmails, ...managers.map((m) => m.email)]
+          .map((e) => String(e || '').trim())
+          .filter(Boolean)
+      ),
+    ];
+    if (!emails.length) {
+      console.warn(`SCM Manager notify skipped — no emails for ${po.poNumber || po.id}`);
+      return { sent: false, reason: 'no_recipients', to: [] };
+    }
+    const managerName =
+      managers[0]?.name || (await resolveScmManagerUser())?.name || getPreferredScmManagerName() || 'Rajeev V';
+    const attachments = await poPdfMailAttachment(po).catch(() => []);
+    const extraTo = (options.extraTo || [])
+      .map((e) => String(e || '').trim())
+      .filter(Boolean);
+    const allTo = [...new Set([...emails, ...extraTo])];
+    queuePoWorkflowNotification(po, {
+      action: 'assign',
+      stageLabel: options.stageLabel || 'SCM Manager PO Approval',
+      recipientEmails: allTo,
+      recipientName: managerName,
+      actorName: options.actorName || 'System',
+      actorRole: options.actorRole || 'Admin',
+      remarks:
+        options.remarks ||
+        `${po.poNumber || 'PO'} sent for SCM Manager (${managerName}) sign / approval`,
+      portalUrl: poPortalUrl(`/scm/po-approval?poId=${po.id || ''}`),
+      ctaLabel: 'Open PO Approval',
+      attachments,
+    });
+    return { sent: true, to: allTo, poNumber: po.poNumber, poId: po.id };
+  } catch (err) {
+    console.warn('SCM Manager PO approval notify failed:', err.message);
+    return { sent: false, reason: err.message || 'notify_failed' };
+  }
+}
+
+/** Admin: force-send SCM Manager approval mail for a PO by id or number. */
+export async function adminNotifyScmManagerPoApproval(poIdOrNumber, options = {}) {
+  const raw = String(poIdOrNumber || '').trim();
+  if (!raw) throw new Error('PO id or PO number is required');
+  let po = null;
+  const asId = Number(raw);
+  if (Number.isFinite(asId) && asId > 0 && String(asId) === raw) {
+    po = await getPurchaseOrderById(asId);
+  }
+  if (!po) {
+    const [rows] = await pool.query(
+      `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) LIMIT 1`,
+      [raw]
+    );
+    if (rows[0]?.id) po = await getPurchaseOrderById(rows[0].id);
+  }
+  if (!po) throw new Error(`PO not found: ${raw}`);
+  const result = await notifyScmManagerPoApproval(po, {
+    actorName: options.actorName || 'Super Admin',
+    actorRole: options.actorRole || 'Super Admin',
+    remarks:
+      options.remarks ||
+      `Admin manual trigger — ${po.poNumber} approval mail to SCM Manager`,
+    extraTo: options.extraTo || [],
+    stageLabel: 'SCM Manager PO Approval (Admin trigger)',
+  });
+  if (!result.sent) {
+    throw new Error(
+      result.reason === 'no_recipients'
+        ? 'No SCM Manager email configured'
+        : result.reason || 'Failed to queue SCM Manager mail'
+    );
+  }
+  return result;
+}
+
 function parseManualContextJson(value) {
   if (!value) return { prDetails: null, vendorQuotes: [], comparisonRounds: [], selectedEntityId: null };
   try {
@@ -1853,19 +1937,10 @@ export async function createPurchaseOrder(user, prId, body) {
     po.pdfPath = fileName;
 
     if (!skipApproval) {
-      const managers = await resolveRoleEmails('SCM Manager');
-      const attachments = await poPdfMailAttachment(po);
-      queuePoWorkflowNotification(po, {
-        action: 'assign',
-        stageLabel: 'SCM Manager PO Approval',
-        recipientEmails: managers.map((m) => m.email),
-        recipientName: managers[0]?.name || 'SCM Manager',
+      await notifyScmManagerPoApproval(po, {
         actorName: user.name,
         actorRole: user.role,
-        remarks: `PO ${poNumber} created and sent for approval`,
-        portalUrl: poPortalUrl('/scm/po-approval'),
-        ctaLabel: 'Open PO Approval',
-        attachments,
+        remarks: `PO ${poNumber} created and sent for SCM Manager approval`,
       });
     }
 
@@ -1922,26 +1997,6 @@ export async function createManualPurchaseOrder(user, body = {}) {
         po.pdfPath = fileName;
       } catch {
         /* non-fatal */
-      }
-      if (!skipApproval && po) {
-        try {
-          const managers = await resolveRoleEmails('SCM Manager');
-          const attachments = await poPdfMailAttachment(po);
-          queuePoWorkflowNotification(po, {
-            action: 'assign',
-            stageLabel: 'SCM Manager PO Approval',
-            recipientEmails: managers.map((m) => m.email),
-            recipientName: managers[0]?.name || 'SCM Manager',
-            actorName: user.name,
-            actorRole: user.role,
-            remarks: `Manual ${po.poNumber} created and sent for approval`,
-            portalUrl: poPortalUrl('/scm/po-approval'),
-            ctaLabel: 'Open PO Approval',
-            attachments,
-          });
-        } catch (err) {
-          console.warn('Manual PO manager notify failed:', err.message);
-        }
       }
       return po || promoted;
     }
@@ -2117,24 +2172,11 @@ export async function createManualPurchaseOrder(user, body = {}) {
     po.pdfPath = fileName;
 
     if (!skipApproval) {
-      try {
-        const managers = await resolveRoleEmails('SCM Manager');
-        const attachments = await poPdfMailAttachment(po);
-        queuePoWorkflowNotification(po, {
-          action: 'assign',
-          stageLabel: 'SCM Manager PO Approval',
-          recipientEmails: managers.map((m) => m.email),
-          recipientName: managers[0]?.name || 'SCM Manager',
-          actorName: user.name,
-          actorRole: user.role,
-          remarks: `Manual ${poNumber} created and sent for approval`,
-          portalUrl: poPortalUrl('/scm/po-approval'),
-          ctaLabel: 'Open PO Approval',
-          attachments,
-        });
-      } catch (err) {
-        console.warn('Manual PO manager notify failed:', err.message);
-      }
+      await notifyScmManagerPoApproval(po, {
+        actorName: user.name,
+        actorRole: user.role,
+        remarks: `Manual ${poNumber} created and sent for approval`,
+      });
     }
 
     return po;
@@ -4601,27 +4643,14 @@ export async function updatePurchaseOrder(user, poId, body) {
   }
 
   if (canBuyerRevise) {
-    const manager = await resolveScmManagerUser();
-    const managerEmails = await getScmManagerNotifyEmails();
-    const managerName = manager?.name || getPreferredScmManagerName() || 'Rajeev V';
-    if (managerEmails.length) {
-      const attachments = await poPdfMailAttachment(updatedPo).catch(() => undefined);
-      queuePoWorkflowNotification(updatedPo, {
-        action: 'assign',
-        stageLabel: 'SCM Manager PO Approval',
-        recipientEmails: managerEmails,
-        recipientName: managerName,
-        actorName: user.name,
-        actorRole: user.role,
-        remarks:
-          body?.resubmitForApproval || body?.changeSummary
-            ? `Revised after send-back — sent to SCM Manager (${managerName}) for sign`
-            : `PO submitted to SCM Manager (${managerName}) for sign`,
-        portalUrl: poPortalUrl(`/scm/po-approval?poId=${poId}`),
-        ctaLabel: 'Open PO Approval',
-        attachments,
-      });
-    }
+    await notifyScmManagerPoApproval(updatedPo, {
+      actorName: user.name,
+      actorRole: user.role,
+      remarks:
+        body?.resubmitForApproval || body?.changeSummary
+          ? `Revised after send-back — sent to SCM Manager for sign`
+          : `PO submitted to SCM Manager for sign`,
+    });
   }
 
   return updatedPo;

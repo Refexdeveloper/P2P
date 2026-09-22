@@ -61,6 +61,9 @@ export default function AdminEmailLogsPage() {
   const [retriggerRow, setRetriggerRow] = useState<EmailLogRecord | null>(null);
   const [extraTo, setExtraTo] = useState('');
   const [retriggering, setRetriggering] = useState(false);
+  const [notifyPoInput, setNotifyPoInput] = useState('');
+  const [notifyExtraTo, setNotifyExtraTo] = useState('');
+  const [notifyingPo, setNotifyingPo] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const limit = 40;
 
@@ -156,6 +159,26 @@ export default function AdminEmailLogsPage() {
     }
   };
 
+  const handleNotifyScmManager = async () => {
+    const key = notifyPoInput.trim();
+    if (!key) {
+      showToast('Enter a PO number (e.g. PO-…)', 'error');
+      return;
+    }
+    setNotifyingPo(true);
+    try {
+      const res = await adminApi.notifyScmManagerPo(key, notifyExtraTo.trim());
+      showToast(res.message || 'SCM Manager mail queued', 'success');
+      setNotifyPoInput('');
+      setNotifyExtraTo('');
+      await load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Notify failed', 'error');
+    } finally {
+      setNotifyingPo(false);
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="p-6 max-w-7xl mx-auto">
@@ -201,6 +224,48 @@ export default function AdminEmailLogsPage() {
             User activity
           </button>
         </div>
+
+        {channel === 'email' ? (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Send SCM Manager PO approval email</h2>
+            <p className="text-xs text-slate-500 mt-1 mb-3">
+              Use when a manual Create PO did not notify the SCM Manager. Enter PO number and send.
+            </p>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="min-w-[220px] flex-1">
+                <label className="block text-xs font-medium text-slate-500 mb-1">PO number</label>
+                <input
+                  value={notifyPoInput}
+                  onChange={(e) => setNotifyPoInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleNotifyScmManager();
+                  }}
+                  placeholder="PO-VBEFPL-2026-27-0001"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="min-w-[200px] flex-1">
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  Extra To (optional)
+                </label>
+                <input
+                  value={notifyExtraTo}
+                  onChange={(e) => setNotifyExtraTo(e.target.value)}
+                  placeholder="email@company.com"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleNotifyScmManager()}
+                disabled={notifyingPo}
+                className="rounded-lg bg-indigo-700 text-white px-4 py-2 text-sm disabled:opacity-60"
+              >
+                {notifyingPo ? 'Sending…' : 'Send to SCM Manager'}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap gap-3 mb-4 items-end">
           <div className="flex-1 min-w-[200px]">
