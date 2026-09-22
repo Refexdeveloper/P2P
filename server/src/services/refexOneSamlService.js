@@ -5,13 +5,21 @@ const inflateRaw = promisify(zlib.inflateRaw);
 const inflate = promisify(zlib.inflate);
 
 /** Live Cloud Run backend (SPA + API). Override with APP_URL / API_PUBLIC_URL in env. */
-const LIVE_APP_URL = 'https://p2p-backend-645830234926.asia-south1.run.app';
+const LIVE_APP_URL = 'https://p2p-backend-rmc-business-645830234926.asia-south1.run.app';
+const LEGACY_P2P_HOST = 'p2p-backend-645830234926.asia-south1.run.app';
+
+function isLegacyP2pHost(url) {
+  const host = String(url || '').toLowerCase();
+  return host.includes(LEGACY_P2P_HOST) && !host.includes('rmc-business');
+}
 
 function isUsablePublicBase(url) {
   if (!url || typeof url !== 'string') return false;
   const trimmed = url.trim().replace(/\/$/, '');
   if (!trimmed || trimmed === '*') return false;
   if (!/^https?:\/\//i.test(trimmed)) return false;
+  // This RMC app must never advertise the old P2P Cloud Run host to RefexOne
+  if (isLegacyP2pHost(trimmed)) return false;
   // Cloud Run sets PORT=8080; never advertise localhost ACS to RefexOne there
   if (process.env.K_SERVICE && /localhost|127\.0\.0\.1/i.test(trimmed)) return false;
   return true;
@@ -130,14 +138,15 @@ export function resolveSamlRelayState(requested, fallbackAppUrl) {
 }
 
 export function getRefexOneSamlConfig() {
-  const entityId =
-    process.env.REFEXONE_SAML_ENTITY_ID || `${appUrl()}/auth/refexone/saml`;
-  const acsUrl =
-    process.env.REFEXONE_SAML_ACS_URL ||
-    apiUrl('/api/auth/refexone/saml/acs');
+  const appBase = appUrl();
+  const entityId = isUsablePublicBase(process.env.REFEXONE_SAML_ENTITY_ID)
+    ? String(process.env.REFEXONE_SAML_ENTITY_ID).trim().replace(/\/$/, '')
+    : `${appBase}/auth/refexone/saml`;
+  const acsUrl = isUsablePublicBase(process.env.REFEXONE_SAML_ACS_URL)
+    ? String(process.env.REFEXONE_SAML_ACS_URL).trim().replace(/\/$/, '')
+    : apiUrl('/api/auth/refexone/saml/acs');
   const launchUrl = appUrl('/auth/refexone/launch');
   const homeUrl = launchUrl;
-  const appBase = appUrl();
   const samlAppId = getRefexOneSamlAppId();
   const ssoUrl = getRefexOneSamlSsoUrl(appBase);
   return {

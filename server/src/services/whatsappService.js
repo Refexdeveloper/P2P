@@ -22,7 +22,7 @@ const WHATSAPP_APP_SECRET = "97375eca676e4e6488c7195f611b213c797d9ca04e6f4825";
 const DEFAULT_API_URL = 'https://whatsapp.unfyd.com/unfyd-meta-api/api/v1/hsm/send';
 const DEFAULT_TEMPLATE = 'workflow_all_application';
 const DEFAULT_LANG = 'en_US';
-const LIVE_APP_URL = 'https://p2p-backend-645830234926.asia-south1.run.app';
+const LIVE_APP_URL = 'https://p2p-backend-rmc-business-645830234926.asia-south1.run.app';
 
 function isEnabled() {
   return WHATSAPP_SEND_ENABLED === true;
