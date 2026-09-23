@@ -358,7 +358,6 @@ export function buildPoPdfChromeTemplates(po = {}) {
   const footerTemplate =
     `<div style="${root}height:68mm;max-height:68mm;overflow:hidden;padding:1mm ${side} 2mm ${side};text-align:center;box-sizing:border-box;">` +
     `<div style="width:122%;margin-left:-11%;transform:scale(0.82);transform-origin:top center;font-size:9px;line-height:1.2;text-align:center;">${footerInner}</div>` +
-    `<div style="width:100%;text-align:center;font-size:10px;font-weight:700;margin-top:2mm;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>` +
     `</div>`;
 
   return { headerTemplate, footerTemplate };

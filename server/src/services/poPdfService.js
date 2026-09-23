@@ -7,8 +7,6 @@ import { uploadToGcs, downloadFromGcs, gcsEnabled, awaitGcsUpload } from './gcsS
 import {
   buildPoDocumentHtml,
   buildPoPdfParts,
-  buildPoPdfChromeTemplates,
-  PO_PDF_LAYOUT,
 } from '../templates/poDocumentTemplate.js';
 import { PO_STYLES } from '../templates/poDocumentTemplate.styles.js';
 import {
@@ -1532,28 +1530,39 @@ async function paginatePoHtml(browser, po, options) {
  * Convert already-paginated PO HTML → A4 PDF.
  * Header/footer live inside each .pdf-page (reserved bands).
  */
-async function printPageToPdf(page, filePath, chrome = null) {
-  const useChrome = Boolean(chrome?.headerTemplate || chrome?.footerTemplate);
-  await page.pdf({
-    path: filePath,
-    format: 'A4',
-    printBackground: true,
-    preferCSSPageSize: !useChrome,
-    margin: useChrome
-      ? {
-          top: PO_PDF_LAYOUT.top,
-          right: PO_PDF_LAYOUT.side,
-          bottom: PO_PDF_LAYOUT.bottom,
-          left: PO_PDF_LAYOUT.side,
-        }
-      : { top: '0', right: '0', bottom: '0', left: '0' },
-    displayHeaderFooter: useChrome,
-    headerTemplate: useChrome ? chrome.headerTemplate || '<div></div>' : '<div></div>',
-    footerTemplate: useChrome ? chrome.footerTemplate || '<div></div>' : '<div></div>',
-  });
+async function renderPaginatedPdf(branded, options, filePath, htmlPath) {
+  const browser = await launchPdfBrowser(resolveBrowserExecutable());
+  try {
+    const html = await paginatePoHtml(browser, branded, options);
+    fs.writeFileSync(htmlPath, html, 'utf8');
+    const page = await browser.newPage();
+    await safeSetViewport(page);
+    try {
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    } catch {
+      await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
+    }
+    await page.emulateMediaType('print');
+    await waitForPdfAssets(page);
+    await page.pdf({
+      path: filePath,
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      displayHeaderFooter: false,
+    });
+    return html;
+  } finally {
+    try {
+      await browser.close();
+    } catch {
+      /* already closed */
+    }
+  }
 }
 
-export async function htmlToPdf(html, filePath, chromePo = null) {
+export async function htmlToPdf(html, filePath) {
   const executablePath = resolveBrowserExecutable();
   if (!executablePath) {
     throw new Error(
@@ -1573,8 +1582,15 @@ export async function htmlToPdf(html, filePath, chromePo = null) {
     }
     await page.emulateMediaType('print');
     await waitForPdfAssets(page);
-    const chrome = chromePo ? buildPoPdfChromeTemplates(chromePo) : null;
-    await printPageToPdf(page, filePath, chrome);
+
+    await page.pdf({
+      path: filePath,
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      displayHeaderFooter: false,
+    });
   } finally {
     await browser.close();
   }
@@ -1582,13 +1598,27 @@ export async function htmlToPdf(html, filePath, chromePo = null) {
 
 export async function generatePoPdf(po, options = {}) {
   ensurePoDir();
-  options = await withResolvedSignatureAsync(po, options);
-  const poNumber = String(po.poNumber || po.po_number || '').trim() || 'PO';
+  let poForPdf = po;
+  try {
+    const { overlayVendorMasterOnPo } = await import('./poService.js');
+    if (typeof overlayVendorMasterOnPo === 'function') {
+      poForPdf = await overlayVendorMasterOnPo(po);
+    }
+  } catch {
+    poForPdf = po;
+  }
+  options = await withResolvedSignatureAsync(poForPdf, options);
+  const poNumber = String(poForPdf.poNumber || poForPdf.po_number || '').trim() || 'PO';
   const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_') || 'PO';
-  const branded = await inlinePoBranding({ ...po, poNumber });
-  const baseName =
-    options.fileName || `${safePoNumber}_${options.signed ? 'signed' : 'draft'}`;
-  const fileName = baseName.endsWith('.pdf') ? baseName : `${baseName}.pdf`;
+  const branded = await inlinePoBranding({ ...poForPdf, poNumber });
+  let baseName = String(
+    options.fileName || `${safePoNumber}_${options.signed ? 'signed' : 'draft'}`
+  ).trim();
+  baseName = path.basename(baseName).replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
+  if (!baseName || baseName === '.' || baseName === '..' || baseName === '.pdf') {
+    baseName = `${safePoNumber}_${options.signed ? 'signed' : 'draft'}`;
+  }
+  const fileName = baseName.toLowerCase().endsWith('.pdf') ? baseName : `${baseName}.pdf`;
   const htmlFileName = fileName.replace(/\.pdf$/i, '.html');
   const filePath = path.join(PO_UPLOAD_DIR, fileName);
   const htmlPath = path.join(PO_UPLOAD_DIR, htmlFileName);
@@ -1607,20 +1637,8 @@ export async function generatePoPdf(po, options = {}) {
     };
   }
 
-  const browser = await launchPdfBrowser(executablePath);
   try {
-    const html = await paginatePoHtml(browser, branded, options);
-    fs.writeFileSync(htmlPath, html, 'utf8');
-    const page = await browser.newPage();
-    await safeSetViewport(page);
-    try {
-      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    } catch {
-      await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
-    }
-    await page.emulateMediaType('print');
-    await waitForPdfAssets(page);
-    await printPageToPdf(page, filePath);
+    await renderPaginatedPdf(branded, options, filePath, htmlPath);
     const skipGcs =
       options.skipGcs === true ||
       !shouldUploadPoPdfToGcs(fileName) ||
@@ -1631,21 +1649,14 @@ export async function generatePoPdf(po, options = {}) {
     }
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
-    console.warn('Paginated PDF failed, retrying simple render:', err.message);
+    console.warn('Paginated PDF failed, retrying same layout:', err.message);
     try {
-      await browser.close();
-    } catch {
-      /* already closed */
-    }
-    try {
-      const simpleHtml = buildPoHtml(branded, { ...options, forPdf: true });
-      fs.writeFileSync(htmlPath, simpleHtml, 'utf8');
-      await htmlToPdf(simpleHtml, filePath, branded);
+      await renderPaginatedPdf(branded, options, filePath, htmlPath);
       if (looksLikePdfFile(filePath)) {
         return { filePath, fileName, htmlFileName, htmlPath };
       }
     } catch (retryErr) {
-      console.warn('Simple PDF retry failed:', retryErr.message);
+      console.warn('PDF retry failed:', retryErr.message);
     }
     if (!fs.existsSync(htmlPath)) {
       fs.writeFileSync(htmlPath, buildPoHtml(branded, { ...options, forPdf: false }), 'utf8');
@@ -1658,12 +1669,6 @@ export async function generatePoPdf(po, options = {}) {
       htmlOnly: true,
       pdfError: err.message,
     };
-  } finally {
-    try {
-      if (browser?.connected !== false) await browser.close();
-    } catch {
-      /* already closed */
-    }
   }
 }
 
