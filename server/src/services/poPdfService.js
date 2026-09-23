@@ -121,6 +121,7 @@ function puppeteerLaunchArgs() {
     '--font-render-hinting=none',
     '--hide-scrollbars',
     '--mute-audio',
+    '--touch-events=disabled',
   ];
 }
 
@@ -129,6 +130,7 @@ async function launchPdfBrowser(executablePath) {
   const opts = {
     executablePath,
     headless: true,
+    defaultViewport: null,
     protocolTimeout: 120000,
     timeout: 60000,
     args: puppeteerLaunchArgs(),
@@ -141,6 +143,14 @@ async function launchPdfBrowser(executablePath) {
       ...opts,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
     });
+  }
+}
+
+async function safeSetViewport(page, viewport = { width: 794, height: 1123 }) {
+  try {
+    await page.setViewport({ ...viewport, deviceScaleFactor: 1, hasTouch: false, isMobile: false });
+  } catch (err) {
+    console.warn('PDF viewport skipped:', err.message);
   }
 }
 
@@ -1314,7 +1324,7 @@ async function detectFooterCollisions(browser, html, reusePage = null, opts = {}
   const ownsPage = !reusePage;
   const waitAssets = opts.waitAssets !== false;
   if (ownsPage) {
-    await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+    await safeSetViewport(checkPage);
   }
   try {
     await checkPage.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -1369,7 +1379,7 @@ async function detectFooterCollisions(browser, html, reusePage = null, opts = {}
 async function paginatePoHtml(browser, po, options) {
   const parts = buildPoPdfParts(po, options);
   const measurePage = await browser.newPage();
-  await measurePage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+  await safeSetViewport(measurePage);
   await measurePage.setContent(buildMeasureHtml(parts), { waitUntil: 'domcontentloaded', timeout: 60000 });
   await measurePage.emulateMediaType('print');
   await waitForPdfAssets(measurePage);
@@ -1443,7 +1453,7 @@ async function paginatePoHtml(browser, po, options) {
   };
 
   const checkPage = await browser.newPage();
-  await checkPage.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+  await safeSetViewport(checkPage);
 
   let packScale = 1.0;
   let pages = [];
@@ -1532,7 +1542,7 @@ export async function htmlToPdf(html, filePath) {
 
   try {
     const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+    await safeSetViewport(page);
     try {
       await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
     } catch {
@@ -1586,7 +1596,7 @@ export async function generatePoPdf(po, options = {}) {
     const html = await paginatePoHtml(browser, branded, options);
     fs.writeFileSync(htmlPath, html, 'utf8');
     const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+    await safeSetViewport(page);
     try {
       await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
     } catch {
@@ -1612,7 +1622,22 @@ export async function generatePoPdf(po, options = {}) {
     }
     return { filePath, fileName, htmlFileName, htmlPath };
   } catch (err) {
-    console.warn('HTML-to-PDF failed, HTML document saved:', err.message);
+    console.warn('Paginated PDF failed, retrying simple render:', err.message);
+    try {
+      await browser.close();
+    } catch {
+      /* already closed */
+    }
+    try {
+      const simpleHtml = buildPoHtml(branded, { ...options, forPdf: true });
+      fs.writeFileSync(htmlPath, simpleHtml, 'utf8');
+      await htmlToPdf(simpleHtml, filePath);
+      if (looksLikePdfFile(filePath)) {
+        return { filePath, fileName, htmlFileName, htmlPath };
+      }
+    } catch (retryErr) {
+      console.warn('Simple PDF retry failed:', retryErr.message);
+    }
     if (!fs.existsSync(htmlPath)) {
       fs.writeFileSync(htmlPath, buildPoHtml(branded, { ...options, forPdf: false }), 'utf8');
     }
@@ -1625,7 +1650,11 @@ export async function generatePoPdf(po, options = {}) {
       pdfError: err.message,
     };
   } finally {
-    await browser.close();
+    try {
+      if (browser?.connected !== false) await browser.close();
+    } catch {
+      /* already closed */
+    }
   }
 }
 

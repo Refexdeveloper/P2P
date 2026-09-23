@@ -151,6 +151,10 @@ const canTrackPo = requireRolesOrPermissions(
   ['SCM Buyer', 'SCM Manager', 'Super Admin'],
   ['nav.track_po', 'nav.create_po', 'nav.po_approval']
 );
+const canCreatePo = requireRolesOrPermissions(
+  ['SCM Buyer', 'SCM Manager', 'Super Admin'],
+  ['nav.create_po', 'nav.po_approval']
+);
 
 router.get(
   '/stats/cfo',
@@ -378,7 +382,7 @@ router.put('/letterhead/:poType', letterheadRoles, async (req, res) => {
   }
 });
 
-router.get('/pr/:prId/context', requireRoles('SCM Buyer'), async (req, res) => {
+router.get('/pr/:prId/context', canCreatePo, async (req, res) => {
   try {
     const data = await getPoCreateContext(req.user, Number(req.params.prId));
     res.json({ data });
@@ -387,7 +391,7 @@ router.get('/pr/:prId/context', requireRoles('SCM Buyer'), async (req, res) => {
   }
 });
 
-router.post('/pr/:prId/preview-document', requireRoles('SCM Buyer'), async (req, res) => {
+router.post('/pr/:prId/preview-document', canCreatePo, async (req, res) => {
   try {
     const po = await buildPoPreviewDocument(req.user, Number(req.params.prId), req.body);
     const html = buildPoHtml(po);
@@ -398,7 +402,7 @@ router.post('/pr/:prId/preview-document', requireRoles('SCM Buyer'), async (req,
   }
 });
 
-router.post('/pr/:prId/preview-pdf', requireRoles('SCM Buyer'), async (req, res) => {
+router.post('/pr/:prId/preview-pdf', canCreatePo, async (req, res) => {
   try {
     // Same PO payload + HTML path as preview-document → PDF matches preview exactly
     const po = await buildPoPreviewDocument(req.user, Number(req.params.prId), req.body);
@@ -412,7 +416,7 @@ router.post('/pr/:prId/preview-pdf', requireRoles('SCM Buyer'), async (req, res)
   }
 });
 
-router.post('/pr/:prId', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
+router.post('/pr/:prId', canCreatePo, async (req, res) => {
   try {
     const data = await createPurchaseOrder(req.user, Number(req.params.prId), req.body);
     const statusRaw = String(data.statusRaw || data.status || '').toLowerCase();
@@ -429,7 +433,7 @@ router.post('/pr/:prId', requireRoles('SCM Buyer', 'Super Admin'), async (req, r
   }
 });
 
-router.post('/manual', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
+router.post('/manual', canCreatePo, async (req, res) => {
   try {
     const data = await createManualPurchaseOrder(req.user, req.body || {});
     const statusRaw = String(data.statusRaw || data.status || '').toLowerCase();
@@ -448,7 +452,7 @@ router.post('/manual', requireRoles('SCM Buyer', 'Super Admin'), async (req, res
   }
 });
 
-router.post('/draft', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
+router.post('/draft', canCreatePo, async (req, res) => {
   try {
     const data = await savePurchaseOrderDraft(req.user, req.body || {});
     res.json({ data, message: `Draft saved — ${data.poNumber}` });
@@ -457,7 +461,7 @@ router.post('/draft', requireRoles('SCM Buyer', 'Super Admin'), async (req, res)
   }
 });
 
-router.post('/manual/preview-document', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.post('/manual/preview-document', canCreatePo, async (req, res) => {
   try {
     const po = await buildManualPoPreviewDocument(req.user, req.body || {});
     const html = buildPoHtml(po);
@@ -468,7 +472,7 @@ router.post('/manual/preview-document', requireRoles('SCM Buyer', 'SCM Manager',
   }
 });
 
-router.post('/manual/preview-pdf', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.post('/manual/preview-pdf', canCreatePo, async (req, res) => {
   try {
     const po = await buildManualPoPreviewDocument(req.user, req.body || {});
     const safeName = String(po.poNumber || 'MANUAL-PO').replace(/[^\w.-]+/g, '_');

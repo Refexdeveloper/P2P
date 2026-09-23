@@ -1092,7 +1092,7 @@ async function getFullPoApprovalHistory(row) {
 export async function getPoCreateContext(user, prId) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
-  if (user.role !== 'SCM Buyer' && user.role !== 'Requester') {
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'].includes(user.role)) {
     throw new Error('Unauthorized');
   }
 
@@ -1635,8 +1635,8 @@ export async function buildPoPreviewForPo(user, poId, body) {
 }
 
 export async function createPurchaseOrder(user, prId, body) {
-  if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
-    throw new Error('Only SCM Buyer can create purchase orders');
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+    throw new Error('Only SCM Buyer or SCM Manager can create purchase orders');
   }
 
   const pr = await getPurchaseRequestById(prId);
@@ -1875,8 +1875,8 @@ export async function createPurchaseOrder(user, prId, body) {
 
 /** Create PO / WO with no Purchase Request reference. */
 export async function createManualPurchaseOrder(user, body = {}) {
-  if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
-    throw new Error('Only SCM Buyer can create purchase orders');
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+    throw new Error('Only SCM Buyer or SCM Manager can create purchase orders');
   }
 
   // Save Draft first → Save & Send: promote draft, assign official PO number now.
@@ -2325,8 +2325,8 @@ async function persistDraftLineItems(conn, poId, lineItems) {
 
 /** Save or update a draft PO / WO (PR-linked or manual). */
 export async function savePurchaseOrderDraft(user, body = {}) {
-  if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
-    throw new Error('Only SCM Buyer can save PO drafts');
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+    throw new Error('Only SCM Buyer or SCM Manager can save PO drafts');
   }
 
   const poId = Number(body.poId || body.id || 0) || null;
