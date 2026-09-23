@@ -232,6 +232,42 @@ export default function FunctionalOwnRfqSection({
     return { synced, nextVisible };
   };
 
+  /**
+   * Delete one quotation round (Q2+) for every vendor — vendors stay.
+   * Higher rounds are renumbered down so tabs stay Q1, Q2, Q3… with no gaps.
+   */
+  const removeRound = (round: number) => {
+    const target = Math.min(4, Math.max(1, Number(round) || 1));
+    if (target <= 1) {
+      showToast('Round Q1 cannot be deleted');
+      return;
+    }
+    if (target > visibleRounds) return;
+
+    const nextVisible = Math.max(1, visibleRounds - 1);
+    onMaxRoundsChange(nextVisible);
+
+    const trimmed = rows.map((r) => {
+      const renumbered = r.quotes
+        .filter((q) => q.round !== target)
+        .map((q) => (q.round > target ? { ...q, round: q.round - 1 } : q))
+        .filter((q) => q.round >= 1 && q.round <= nextVisible);
+      return { ...r, quotes: syncQuotes(renumbered, nextVisible) };
+    });
+    onChange(trimmed);
+    setFocusTab(Math.min(focusTab, nextVisible));
+    if (quoteRound === target) {
+      setQuoteRound(Math.max(1, target - 1));
+    } else if (quoteRound > target) {
+      setQuoteRound(quoteRound - 1);
+    }
+    if (quoteKey) {
+      const saved = trimmed.find((r) => r.key === quoteKey);
+      if (saved) setQuoteDraft(saved);
+    }
+    showToast(`Round Q${target} deleted. Vendors kept. Save draft to confirm.`);
+  };
+
   const openQuote = (row: FunctionalRfqVendorRow, round = 1, baseRows: FunctionalRfqVendorRow[] = rows) => {
     const { synced, nextVisible } = applyRows(baseRows, round);
     const saved = synced.find((r) => r.key === row.key) || row;
@@ -574,7 +610,7 @@ export default function FunctionalOwnRfqSection({
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 2 &amp; 3</p>
               <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Switch tabs, tap <strong>Edit</strong> to fill the round, then <strong>Choose</strong> a vendor. Fill <strong>Q1</strong> first — tap <strong>Re-quote</strong> to add and show <strong>Q2</strong>.
+                Switch tabs to edit each round. Click the <strong>×</strong> on Q2/Q3/Q4 to delete that round only (vendors stay). <strong>Remove vendor</strong> deletes that vendor and all their rounds.
               </p>
             </div>
             <span className="px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-semibold text-gray-600">
@@ -591,7 +627,17 @@ export default function FunctionalOwnRfqSection({
             }
             quotedCount={quotedCount}
             maxRounds={visibleRounds}
+            roundCeiling={4}
             preferredTab={focusTab}
+            onNextRound={(next) => {
+              const capped = Math.min(4, Math.max(1, Number(next) || 1));
+              if (capped > visibleRounds) {
+                onMaxRoundsChange(capped);
+                onChange(rows.map((r) => ({ ...r, quotes: syncQuotes(r.quotes, capped) })));
+              }
+              setFocusTab(capped);
+            }}
+            onRemoveRound={removeRound}
             onEdit={(tableRow, targetRound) => {
               const row = rows.find((r) => r.key === tableRow.id);
               if (!row) return;
@@ -670,7 +716,7 @@ export default function FunctionalOwnRfqSection({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 items-center">
                 {editingQuotes.map((q) => (
                   <button
                     key={q.round}
@@ -684,6 +730,20 @@ export default function FunctionalOwnRfqSection({
                     {q.round === 1 ? ' *' : ''}
                   </button>
                 ))}
+                {quoteRound > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const r = quoteRound;
+                      removeRound(r);
+                      closeQuote();
+                    }}
+                    className="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 inline-flex items-center gap-1"
+                  >
+                    <i className="ri-delete-bin-line" />
+                    Delete round {quoteRound} only
+                  </button>
+                )}
               </div>
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">

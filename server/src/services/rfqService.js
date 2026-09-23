@@ -953,6 +953,23 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
           [prId]
         );
       }
+      // Drop rounds the user deleted (e.g. Q3 removed → maxRounds 2)
+      for (const { inv } of resolved) {
+        try {
+          await pool.query(
+            `DELETE vqf FROM vendor_quotation_files vqf
+             INNER JOIN vendor_quotation_submissions vqs ON vqs.id = vqf.submission_id
+             WHERE vqs.rfq_invitation_id = ? AND vqs.round > ?`,
+            [inv.id, maxRounds]
+          );
+        } catch {
+          /* extra files table may be missing on older DBs */
+        }
+        await pool.query(
+          `DELETE FROM vendor_quotation_submissions WHERE rfq_invitation_id = ? AND round > ?`,
+          [inv.id, maxRounds]
+        );
+      }
       await applyFunctionalOwnRecommendation(prId, options);
       return;
     }

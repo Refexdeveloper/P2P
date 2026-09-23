@@ -1237,6 +1237,7 @@ export default function CreatePRPage() {
           config?: {
             recommendedInvitationId?: number | null;
             recommendationJustification?: string;
+            maxRounds?: number | null;
           };
           invitations?: Array<{
             id?: number;
@@ -1255,9 +1256,16 @@ export default function CreatePRPage() {
           }>;
         };
         const invitations = data?.invitations || [];
+        const serverMax = Math.min(4, Math.max(1, Number(data.config?.maxRounds) || 1));
+        // User already reduced rounds in UI/draft → keep that; otherwise take server config
+        const effectiveMax = rfqMaxRounds > 1 ? Math.min(4, rfqMaxRounds) : serverMax;
+        if (rfqMaxRounds <= 1 && serverMax > 1) {
+          setRfqMaxRounds(serverMax);
+        }
         const hasQuotes = invitations.some((inv) =>
           (inv.submissions || []).some(
             (q) =>
+              Number(q.round || 1) <= effectiveMax &&
               Number(q.quotedPrice) >= 0 &&
               Boolean(q.quotationFileName || (Array.isArray(q.quotationFiles) && q.quotationFiles.length))
           )
@@ -1293,37 +1301,66 @@ export default function CreatePRPage() {
                       (row.email || '') &&
                       (i.vendorEmail || '').toLowerCase() === row.email.toLowerCase())
                 );
-                if (!inv) return row;
-                const subs = inv.submissions || [];
-                return {
-                  ...row,
-                  quotes: row.quotes.map((q) => {
-                    const sub = subs.find((s) => Number(s.round) === Number(q.round));
-                    if (!sub && !q.file && !q.files?.length) return q;
-                    const locals = localQuoteFiles(q);
-                    const saved = filesFromSubmission(sub);
-                    const remainingLocals = locals.filter(
-                      (f) => !saved.some((s) => s.fileName === f.name)
-                    );
-                    return {
-                      ...q,
-                      quotedPrice: q.quotedPrice || (sub?.quotedPrice != null ? String(sub.quotedPrice) : ''),
-                      leadTime: q.leadTime || (sub?.leadTime != null ? String(sub.leadTime) : ''),
-                      paymentTerms: q.paymentTerms || sub?.paymentTerms || '',
-                      file: remainingLocals[0] || null,
-                      files: remainingLocals,
-                      savedFiles: saved.length ? saved : q.savedFiles,
-                      savedFileName: saved[0]?.fileName || q.savedFileName,
-                      savedSubmissionId: sub?.id ? Number(sub.id) : q.savedSubmissionId,
-                    };
-                  }),
-                };
+                if (!inv) {
+                  return {
+                    ...row,
+                    quotes: row.quotes.filter((q) => q.round <= effectiveMax),
+                  };
+                }
+                const subs = (inv.submissions || []).filter(
+                  (s) => Number(s.round || 1) <= effectiveMax
+                );
+                const baseQuotes = row.quotes.filter((q) => q.round <= effectiveMax);
+                const merged = baseQuotes.map((q) => {
+                  const sub = subs.find((s) => Number(s.round) === Number(q.round));
+                  if (!sub && !q.file && !q.files?.length) return q;
+                  const locals = localQuoteFiles(q);
+                  const saved = filesFromSubmission(sub);
+                  const remainingLocals = locals.filter(
+                    (f) => !saved.some((s) => s.fileName === f.name)
+                  );
+                  return {
+                    ...q,
+                    quotedPrice: q.quotedPrice || (sub?.quotedPrice != null ? String(sub.quotedPrice) : ''),
+                    leadTime: q.leadTime || (sub?.leadTime != null ? String(sub.leadTime) : ''),
+                    paymentTerms: q.paymentTerms || sub?.paymentTerms || '',
+                    file: remainingLocals[0] || null,
+                    files: remainingLocals,
+                    savedFiles: saved.length ? saved : q.savedFiles,
+                    savedFileName: saved[0]?.fileName || q.savedFileName,
+                    savedSubmissionId: sub?.id ? Number(sub.id) : q.savedSubmissionId,
+                  };
+                });
+                // Ensure slots only up to effectiveMax (never re-add a deleted higher round)
+                const byRound = new Map(merged.map((q) => [q.round, q]));
+                const quotes = Array.from({ length: effectiveMax }, (_, i) => {
+                  const round = i + 1;
+                  return (
+                    byRound.get(round) || {
+                      round,
+                      quotedPrice: '',
+                      leadTime: '',
+                      paymentTerms: '',
+                      file: null as File | null,
+                      files: [] as File[],
+                      savedFiles: [] as { id?: number | null; fileName: string; isPrimary?: boolean }[],
+                      savedFileName: undefined as string | undefined,
+                      savedSubmissionId: undefined as number | undefined,
+                    }
+                  );
+                });
+                return { ...row, quotes };
               });
             } else {
               next = invitations.map((inv, idx) => {
-                const subs = inv.submissions || [];
-                const maxR = Math.max(1, ...subs.map((s) => Number(s.round) || 1), rfqMaxRounds);
-                const quotes = Array.from({ length: Math.min(4, maxR) }, (_, i) => {
+                const subs = (inv.submissions || []).filter(
+                  (s) => Number(s.round || 1) <= effectiveMax
+                );
+                const maxR = Math.min(
+                  4,
+                  Math.max(1, effectiveMax, ...subs.map((s) => Number(s.round) || 1))
+                );
+                const quotes = Array.from({ length: maxR }, (_, i) => {
                   const round = i + 1;
                   const sub = subs.find((s) => Number(s.round) === round);
                   const saved = filesFromSubmission(sub);
@@ -1871,11 +1908,13 @@ export default function CreatePRPage() {
 
   const buildRfqVendorsPayload = async (options?: { skipFileData?: boolean }) => {
     const skipFileData = Boolean(options?.skipFileData);
+    const maxR = Math.min(4, Math.max(1, Number(rfqMaxRounds) || 1));
     const packed = [];
     for (const row of rfqVendors) {
       const master = vendorMaster.find((v) => String(v.id) === String(row.vendorId));
       const quotes = [];
       for (const quote of row.quotes) {
+        if (Number(quote.round) > maxR) continue;
         const price = Number(quote.quotedPrice);
         if (!Number.isFinite(price) || price < 0) continue;
         const locals = localQuoteFiles(quote);
@@ -2236,6 +2275,7 @@ export default function CreatePRPage() {
           })?.invitations || [];
           if (!invitations.length) return;
           setRfqVendors((prev) => {
+            const maxR = Math.min(4, Math.max(1, Number(rfqMaxRounds) || 1));
             const next = prev.map((row) => {
               const inv = invitations.find(
                 (i) =>
@@ -2244,23 +2284,29 @@ export default function CreatePRPage() {
                     (row.email || '') &&
                     (i.vendorEmail || '').toLowerCase() === row.email.toLowerCase())
               );
-              if (!inv) return row;
+              if (!inv) {
+                return { ...row, quotes: row.quotes.filter((q) => q.round <= maxR) };
+              }
               return {
                 ...row,
-                quotes: row.quotes.map((q) => {
-                  const sub = (inv.submissions || []).find((s) => Number(s.round) === Number(q.round));
-                  if (!sub?.id && !sub?.quotationFileName && !sub?.quotationFiles?.length) return q;
-                  const saved = filesFromSubmission(sub);
-                  const keepLocal = localQuoteFiles(q);
-                  return {
-                    ...q,
-                    file: sub.id ? null : q.file,
-                    files: sub.id ? [] : keepLocal,
-                    savedFiles: saved.length ? saved : q.savedFiles,
-                    savedFileName: saved[0]?.fileName || sub.quotationFileName || q.savedFileName,
-                    savedSubmissionId: sub.id ? Number(sub.id) : q.savedSubmissionId,
-                  };
-                }),
+                quotes: row.quotes
+                  .filter((q) => q.round <= maxR)
+                  .map((q) => {
+                    const sub = (inv.submissions || []).find(
+                      (s) => Number(s.round) === Number(q.round) && Number(s.round) <= maxR
+                    );
+                    if (!sub?.id && !sub?.quotationFileName && !sub?.quotationFiles?.length) return q;
+                    const saved = filesFromSubmission(sub);
+                    const keepLocal = localQuoteFiles(q);
+                    return {
+                      ...q,
+                      file: sub.id ? null : q.file,
+                      files: sub.id ? [] : keepLocal,
+                      savedFiles: saved.length ? saved : q.savedFiles,
+                      savedFileName: saved[0]?.fileName || sub.quotationFileName || q.savedFileName,
+                      savedSubmissionId: sub.id ? Number(sub.id) : q.savedSubmissionId,
+                    };
+                  }),
               };
             });
             const snap = snapshotRef.current;
@@ -2268,6 +2314,7 @@ export default function CreatePRPage() {
               writeCreatePrDraft(user?.id, prId, {
                 ...snap,
                 backendPrId: prId,
+                rfqMaxRounds: maxR,
                 rfqVendors: next.map((row) => ({
                   key: row.key,
                   vendorId: row.vendorId,

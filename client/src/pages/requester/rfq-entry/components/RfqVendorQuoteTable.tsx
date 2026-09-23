@@ -63,6 +63,8 @@ interface Props {
   /** Super Admin: allow Edit on existing quotes after RFQ finalize / PO sign */
   allowEditWhenFinalized?: boolean;
   maxRounds?: number | null;
+  /** Hard ceiling for “Next round” (Create PR uses 4). Defaults to 20. */
+  roundCeiling?: number | null;
   /** PR currency for price / reduction display (INR | USD | EUR). */
   currency?: string | null;
   onEdit: (row: RfqQuoteTableRow, targetRound?: number) => void;
@@ -72,6 +74,8 @@ interface Props {
   onSendBack?: (row: RfqQuoteTableRow) => void;
   onViewFile?: (row: RfqQuoteTableRow) => void;
   onNextRound?: (nextRound: number) => void;
+  /** Delete a quotation round (Q2+) for all vendors — does NOT remove the vendor */
+  onRemoveRound?: (round: number) => void;
   removingId?: number | null;
   resendingId?: number | null;
   preferredTab?: number | null;
@@ -181,6 +185,8 @@ export default function RfqVendorQuoteTable({
   quotedCount,
   isFinalized,
   allowEditWhenFinalized = false,
+  maxRounds = null,
+  roundCeiling = null,
   onEdit,
   onChoose,
   onRemove,
@@ -188,6 +194,7 @@ export default function RfqVendorQuoteTable({
   onSendBack,
   onViewFile,
   onNextRound,
+  onRemoveRound,
   removingId,
   resendingId,
   preferredTab,
@@ -199,13 +206,32 @@ export default function RfqVendorQuoteTable({
   const formatCurrency = (n: number) =>
     formatMoney(n, moneyCode, { maximumFractionDigits: 0, minimumFractionDigits: 0 });
   const dataRounds = usedRoundCount(rows);
+  const ceiling =
+    roundCeiling != null && Number(roundCeiling) > 0
+      ? Math.min(20, Math.max(1, Number(roundCeiling)))
+      : 20;
+  /** Current open rounds from parent (after delete). Fall back to data/added tabs. */
+  const currentMax =
+    maxRounds != null && Number(maxRounds) > 0 ? Math.min(ceiling, Math.max(1, Number(maxRounds))) : null;
   const [addedTabs, setAddedTabs] = useState(0);
-  const roundCount = Math.max(dataRounds, addedTabs, 1);
+  const roundCount = Math.max(
+    1,
+    Math.min(ceiling, currentMax != null ? currentMax : Math.max(dataRounds, addedTabs, 1))
+  );
   const [activeTab, setActiveTab] = useState<RoundTab>(dataRounds);
 
   useEffect(() => {
-    setAddedTabs((prev) => Math.max(prev, dataRounds));
-  }, [dataRounds]);
+    if (currentMax != null) {
+      setAddedTabs(currentMax);
+      setActiveTab((tab) => {
+        if (tab === 'all') return tab;
+        const n = Number(tab);
+        return n > currentMax ? currentMax : tab;
+      });
+      return;
+    }
+    setAddedTabs((prev) => Math.min(ceiling, Math.max(prev, dataRounds)));
+  }, [dataRounds, currentMax, ceiling]);
 
   useEffect(() => {
     const tab = Number(preferredTab);
@@ -219,10 +245,24 @@ export default function RfqVendorQuoteTable({
 
   const addNextRound = () => {
     const next = roundCount + 1;
-    if (next > 20) return;
+    if (next > ceiling) return;
     setAddedTabs(next);
     setActiveTab(next);
     onNextRound?.(next);
+  };
+
+  const deleteRoundTab = (round: number) => {
+    if (round <= 1 || !onRemoveRound) return;
+    onRemoveRound(round);
+    const nextCount = Math.max(1, roundCount - 1);
+    setAddedTabs(nextCount);
+    setActiveTab((tab) => {
+      if (tab === 'all') return 'all';
+      const n = Number(tab);
+      if (n === round) return Math.max(1, round - 1);
+      if (n > round) return Math.max(1, n - 1);
+      return tab;
+    });
   };
 
   const stats = rows.map((row) => {
@@ -282,21 +322,40 @@ export default function RfqVendorQuoteTable({
             const selected = activeTab === r;
             const count = stats.filter((s) => s.prices[r - 1] != null).length;
             return (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setActiveTab(r)}
-                className={`px-4 py-2 rounded-t-lg text-sm font-bold border-b-2 transition-colors ${
-                  selected
-                    ? `${color.tab} border-transparent`
-                    : `bg-transparent border-transparent ${color.idle}`
-                }`}
-              >
-                Q{r}
-                <span className={`ml-1.5 text-[11px] font-semibold ${selected ? 'text-white/80' : 'opacity-70'}`}>
-                  {count}/{rows.length}
-                </span>
-              </button>
+              <div key={r} className="inline-flex items-stretch">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(r)}
+                  className={`px-4 py-2 rounded-t-lg text-sm font-bold border-b-2 transition-colors ${
+                    selected
+                      ? `${color.tab} border-transparent`
+                      : `bg-transparent border-transparent ${color.idle}`
+                  } ${r > 1 && onRemoveRound && !isFinalized ? 'rounded-tr-none' : ''}`}
+                >
+                  Q{r}
+                  <span className={`ml-1.5 text-[11px] font-semibold ${selected ? 'text-white/80' : 'opacity-70'}`}>
+                    {count}/{rows.length}
+                  </span>
+                </button>
+                {r > 1 && onRemoveRound && !isFinalized && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteRoundTab(r);
+                    }}
+                    className={`px-2 py-2 rounded-t-lg border-b-2 border-transparent text-xs font-bold ${
+                      selected
+                        ? 'bg-red-600 text-white hover:bg-red-700'
+                        : 'text-red-600 hover:bg-red-50'
+                    }`}
+                    title={`Delete round Q${r} only (vendors stay)`}
+                    aria-label={`Delete round Q${r}`}
+                  >
+                    <i className="ri-close-line text-base" />
+                  </button>
+                )}
+              </div>
             );
           })}
           {roundCount > 1 && (
@@ -312,7 +371,7 @@ export default function RfqVendorQuoteTable({
               All rounds
             </button>
           )}
-          {!isFinalized && roundCount < 20 && (
+          {!isFinalized && roundCount < ceiling && (
             <button
               type="button"
               onClick={addNextRound}
@@ -566,8 +625,13 @@ export default function RfqVendorQuoteTable({
                           disabled={removingId === row.invitationId}
                           onClick={() => onRemove(row)}
                           className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs font-semibold"
+                          title="Remove this vendor and all of their quotation rounds"
                         >
-                          {removingId === row.invitationId ? '…' : 'Remove'}
+                          {removingId === row.invitationId
+                            ? '…'
+                            : onRemoveRound
+                              ? 'Remove vendor'
+                              : 'Remove'}
                         </button>
                       )}
                     </div>
