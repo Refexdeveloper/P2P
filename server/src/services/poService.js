@@ -4030,13 +4030,15 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
     remarks: remarks.trim(),
     portalUrl: poPortalUrl('/scm/po-approval'),
     ctaLabel: 'Review & Re-sign PO',
-    ccEmails: rajeevEmail ? [rajeevEmail] : [],
+    // To = managers (incl. Rajeev); no extra CC / ops BCC on send-back
+    ccEmails: [],
+    bccOps: false,
   });
 
   queueApproverActionConfirmationForUser(updated, user, 'return', {
     remarks: remarks.trim(),
     approverRole: user.role,
-    ccEmails: rajeevEmail ? [rajeevEmail] : [],
+    ccEmails: [],
   });
 
   return updated;
@@ -4129,14 +4131,16 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
       remarks: remarks.trim(),
       portalUrl: poPortalUrl(`/scm/create-po?poId=${poId}&from=create-po`),
       ctaLabel: 'Revise PO',
+      // Create PO send-back: CC mapped SCM Manager (Rajeev) only — no ops BCC
       ccEmails: rajeevEmail ? [rajeevEmail] : [],
+      bccOps: false,
     });
   }
 
   queueApproverActionConfirmationForUser(updated, user, 'return', {
     remarks: remarks.trim(),
     approverRole: user.role,
-    ccEmails: rajeevEmail ? [rajeevEmail] : [],
+    ccEmails: [],
   });
 
   return updated;
@@ -4359,11 +4363,15 @@ export async function rejectPurchaseOrder(user, poId, remarks) {
     remarks: remarks.trim(),
     portalUrl: poPortalUrl('/scm/track-po'),
     ctaLabel: 'Track PO',
+    // Reject: no CC / ops BCC
+    ccEmails: [],
+    bccOps: false,
   });
 
   queueApproverActionConfirmationForUser(updated, user, 'reject', {
     remarks: remarks.trim(),
     approverRole: user.role,
+    ccEmails: [],
   });
 
   return updated;

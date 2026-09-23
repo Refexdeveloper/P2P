@@ -208,7 +208,7 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
         name: requester?.name || updatedPr.requester,
         email: requester?.email,
       },
-      { editPr: true, ccEmails: rajeevCc }
+      { editPr: true, ccEmails: [], skipOpsBcc: true }
     );
     return;
   }
@@ -224,7 +224,7 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
         name: assignee?.name || requester?.name || updatedPr.requester,
         email: assignee?.email || requester?.email,
       },
-      { editPr: false, ccEmails: rajeevCc }
+      { editPr: false, ccEmails: [], skipOpsBcc: true }
     );
     return;
   }
@@ -247,8 +247,10 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
       sendBackRemarks,
       approverEmails: notifyEmails,
       approverName: target.assignedRole === 'SCM Buyer' ? 'SCM Buyer' : assignee.name || undefined,
-      // Always CC SCM Manager (Rajeev) on Create PO / workflow send-back mails
-      ccEmails: rajeevCc,
+      // Create PO send-back only: CC mapped SCM Manager (Rajeev). No CC on other send-backs.
+      ccEmails: isCreatePo ? rajeevCc : [],
+      skipOpsBcc: true,
+      bccOps: false,
     };
     // After quotation rounds, include negotiation + files (Standard Own / SCM vendor / Functional Own)
     if (target.taskType === 'RFQ_POST_APPROVAL' || isCreatePo || (isRfqEntry && updatedPr.vendorSelection === 'own')) {
@@ -278,7 +280,7 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
     return;
   }
 
-  // Fallback: notify requester when assignee email is missing
+  // Fallback: notify requester when assignee email is missing — no CC on generic send-back
   if (requester?.email || updatedPr.requester) {
     queuePostRfqActionNotification(
       updatedPr,
@@ -289,7 +291,7 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
         name: requester?.name || updatedPr.requester,
         email: requester?.email,
       },
-      { ccEmails: rajeevCc }
+      { ccEmails: [], skipOpsBcc: true }
     );
   }
 }

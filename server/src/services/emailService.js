@@ -651,10 +651,18 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
   primaryName = primaryName || 'Approver';
 
   // Keep ops copy as BCC so the step owner is the only primary recipient
+  // Send-back / Create PO revise: skip ops BCC — only mapped CC (Rajeev) when provided
   const emailSet = new Set(emails.map((e) => e.toLowerCase()));
-  const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
+  const skipOpsBcc =
+    options.skipOpsBcc === true ||
+    options.bccOps === false ||
+    Boolean(options.createPo) ||
+    /sent\s*back/i.test(String(options.stageLabel || ''));
+  const bcc = skipOpsBcc
+    ? []
+    : getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
 
-  // Optional CC (e.g. SCM Manager Rajeev on Create PO send-back)
+  // Optional CC (e.g. SCM Manager Rajeev on Create PO send-back only)
   const cc = [...new Set(
     (options.ccEmails || [])
       .map((e) => String(e || '').trim())
@@ -912,7 +920,12 @@ export async function sendPostRfqActionNotification(pr, approverRole, action, re
     return;
   }
   const emailSet = new Set(emails.map((e) => e.toLowerCase()));
-  const bcc = getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
+  // Return / reject: no ops BCC; CC only when explicitly passed (Create PO → Rajeev)
+  const isReturnOrReject = action === 'return' || action === 'reject';
+  const skipOpsBcc = options.skipOpsBcc === true || options.bccOps === false || isReturnOrReject;
+  const bcc = skipOpsBcc
+    ? []
+    : getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
   const cc = [...new Set(
     (options.ccEmails || [])
       .map((e) => String(e || '').trim())
@@ -1379,7 +1392,10 @@ export async function sendPoWorkflowNotification(po, {
   }
 
   const emailSet = new Set(emails.map((e) => e.toLowerCase()));
-  const bcc = bccOps
+  // Send-back / reject: never BCC ops list — only explicit ccEmails (e.g. Rajeev on Create PO)
+  const effectiveBccOps =
+    action === 'sendback' || action === 'reject' ? false : Boolean(bccOps);
+  const bcc = effectiveBccOps
     ? getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()))
     : [];
   const cc = [...new Set(
