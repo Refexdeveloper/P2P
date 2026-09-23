@@ -1,7 +1,8 @@
 import jwt from 'jsonwebtoken';
+import pool from '../config/db.js';
 import { getUserPermissionCodes, isSuperAdmin } from '../services/permissionService.js';
 
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Authentication required' });
@@ -9,7 +10,30 @@ export function authenticate(req, res, next) {
 
   try {
     const token = header.slice(7);
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = payload;
+
+    // Use the live DB role so Admin → User Permissions changes apply without re-login
+    if (payload?.id) {
+      try {
+        const [rows] = await pool.query(
+          `SELECT id, email, name, role, is_active FROM users WHERE id = ? LIMIT 1`,
+          [payload.id]
+        );
+        if (!rows[0] || Number(rows[0].is_active) !== 1) {
+          return res.status(401).json({ message: 'Invalid or expired token' });
+        }
+        req.user = {
+          ...payload,
+          id: rows[0].id,
+          email: rows[0].email,
+          name: rows[0].name,
+          role: rows[0].role,
+        };
+      } catch (err) {
+        console.warn('Auth role refresh skipped:', err.message);
+      }
+    }
     next();
   } catch {
     return res.status(401).json({ message: 'Invalid or expired token' });

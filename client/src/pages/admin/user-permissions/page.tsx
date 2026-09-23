@@ -8,7 +8,7 @@ const ROLE_NAV_WHITELIST: Record<string, string[]> = {
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
 };
 
-const ROLES_SHOW_REQUESTER_MENUS = new Set(['Requester', 'HOD Approver', 'PR Manager']);
+const ROLES_SHOW_REQUESTER_MENUS = new Set(['Requester', 'HOD Approver', 'PR Manager', 'SCM Buyer']);
 
 export default function UserPermissionsPage() {
   const { refreshUser } = useAuth();

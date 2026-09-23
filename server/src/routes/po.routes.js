@@ -139,10 +139,18 @@ const PO_READ_ROLES = [
   'Accounts Manager',
 ];
 const canReadPo = requireRolesOrPermissions(PO_READ_ROLES, [
+  'nav.track_po',
+  'nav.create_po',
+  'nav.po_approval',
+  'nav.purchase_requests',
   'nav.cfo_insights',
   'nav.invoice_verification',
   'nav.accounts_dashboard',
 ]);
+const canTrackPo = requireRolesOrPermissions(
+  ['SCM Buyer', 'SCM Manager', 'Super Admin'],
+  ['nav.track_po', 'nav.create_po', 'nav.po_approval']
+);
 
 router.get(
   '/stats/cfo',
@@ -490,7 +498,7 @@ router.get('/vendor-acceptance', requireRoles('Requester', 'SCM Buyer', 'SCM Man
   }
 });
 
-router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/track', canTrackPo, async (req, res) => {
   try {
     const page = req.query.page != null ? Number(req.query.page) : 1;
     const limit = req.query.limit != null ? Number(req.query.limit) : 10;
@@ -521,7 +529,7 @@ router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), as
   }
 });
 
-router.get('/', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) => {
+router.get('/', canTrackPo, async (req, res) => {
   try {
     const pendingOnly = req.query.pending === 'true';
     const buyerVerifyOnly = req.query.buyerVerify === 'true';

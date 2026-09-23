@@ -55,6 +55,8 @@ const MASTER_READ_PERMS = [
   'nav.vendor_master',
   'nav.purchase_requests',
   'nav.create_po',
+  'nav.track_po',
+  'nav.po_approval',
 ];
 const canReadMasters = requireRolesOrPermissions(READ_ROLES, MASTER_READ_PERMS);
 const canQuickCreateFromPr = requireRolesOrPermissions(CREATE_PR_ROLES, [

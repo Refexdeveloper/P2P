@@ -554,6 +554,13 @@ export async function setUserPermissions(userId, permissionCodes) {
   } else if (!ROLES_ALLOW_REQUESTER_NAV.has(role)) {
     filtered = filtered.filter((c) => !REQUESTER_ONLY_NAV_CODES.has(c));
   }
+  // Keep role-default menus when Admin saves a partial set (avoids 403 on Track PO / RFQ / Create PO)
+  const roleDefaults = ROLE_DEFAULT_PERMISSIONS[role] || [];
+  if (role === 'SCM Buyer' || role === 'SCM Manager') {
+    for (const code of roleDefaults) {
+      if (validCodes.has(code) && !filtered.includes(code)) filtered.push(code);
+    }
+  }
   if (role === 'PR Manager' && filtered.includes('nav.pr_manager_dashboard')) {
     filtered = filtered.filter((c) => c !== 'nav.tasks');
   }
