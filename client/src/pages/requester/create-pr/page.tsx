@@ -18,11 +18,7 @@ import LineItemEditorForm, {
   lineInclusiveAmount,
 } from './LineItemEditorForm';
 import LineItemImportExport from '../../../components/feature/LineItemImportExport';
-import {
-  downloadLineItemExport,
-  downloadLineItemSample,
-  parseLineItemCsv,
-} from '../../../utils/lineItemCsv';
+import { parseLineItemCsv } from '../../../utils/lineItemCsv';
 import FunctionalOwnRfqSection, {
   FunctionalRfqVendorRow,
   quoteHasQuotationFile,
@@ -1545,22 +1541,6 @@ export default function CreatePRPage() {
     });
     if (mapped.length) persistImportedLineItems([...lineItems, ...mapped]);
     return { added: mapped.length, failed: parsed.errors.length, errors: parsed.errors };
-  };
-
-  const exportPrLineItems = () => {
-    downloadLineItemExport(
-      'pr-line-items.csv',
-      lineItems.map((item) => ({
-        itemName: item.itemName || item.description || '',
-        description: item.description || '',
-        category: item.category || '',
-        quantity: item.quantity || 0,
-        unit: item.unit || 'Nos',
-        unitPrice: item.estimatedCost || 0,
-        hsnCode: item.hsnCode || '',
-        gstPercentage: item.gstPercentage ?? 18,
-      }))
-    );
   };
 
   const saveLineItem = (item: LineItem) => {
@@ -3369,11 +3349,7 @@ export default function CreatePRPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <LineItemImportExport
-                onExport={exportPrLineItems}
-                onDownloadSample={() => downloadLineItemSample('pr-line-items-sample.csv')}
-                onImport={importPrLineItems}
-              />
+              <LineItemImportExport onImport={importPrLineItems} />
               <button
                 type="button"
                 onClick={openAddLineItem}
@@ -3387,9 +3363,6 @@ export default function CreatePRPage() {
           </div>
 
           <div className="p-6 space-y-4">
-            <p className="text-[11px] text-gray-400">
-              CSV columns: item_name, description, category, quantity, unit, unit_price, hsn_code, gst_percentage
-            </p>
             {errors.lineItems && (
               <p className="text-xs text-red-500 flex items-center gap-1">
                 <i className="ri-error-warning-line"></i>

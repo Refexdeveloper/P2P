@@ -7,33 +7,21 @@ type ImportSummary = {
 };
 
 type Props = {
-  onExport: () => void;
-  onDownloadSample: () => void;
   onImport: (csvText: string) => ImportSummary;
 };
 
-export default function LineItemImportExport({ onExport, onDownloadSample, onImport }: Props) {
+export default function LineItemImportExport({ onImport }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState<'export' | 'sample' | 'import' | null>(null);
+  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const run = async (kind: 'export' | 'sample' | 'import', fn: () => void | Promise<void>) => {
-    setBusy(kind);
+  const handleFile = async (file: File | null) => {
+    if (!file) return;
+    setBusy(true);
     setError('');
     setMessage('');
     try {
-      await fn();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Operation failed');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleFile = async (file: File | null) => {
-    if (!file) return;
-    await run('import', async () => {
       const text = await file.text();
       const result = onImport(text);
       if (!result.added && result.failed) {
@@ -47,47 +35,23 @@ export default function LineItemImportExport({ onExport, onDownloadSample, onImp
       if (result.errors?.length) {
         setError(result.errors.slice(0, 4).join(' | '));
       }
-    });
-    if (fileRef.current) fileRef.current.value = '';
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
   };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        disabled={!!busy}
-        onClick={() =>
-          run('export', () => {
-            onExport();
-            setMessage('Line items exported');
-          })
-        }
-        className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
-      >
-        <i className={`ri-${busy === 'export' ? 'loader-4-line animate-spin' : 'download-2-line'}`}></i>
-        Export
-      </button>
-      <button
-        type="button"
-        disabled={!!busy}
-        onClick={() =>
-          run('sample', () => {
-            onDownloadSample();
-            setMessage('Sample CSV downloaded');
-          })
-        }
-        className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
-      >
-        <i className={`ri-${busy === 'sample' ? 'loader-4-line animate-spin' : 'file-excel-2-line'}`}></i>
-        Sample
-      </button>
-      <button
-        type="button"
-        disabled={!!busy}
+        disabled={busy}
         onClick={() => fileRef.current?.click()}
         className="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-semibold hover:bg-slate-700 cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
       >
-        <i className={`ri-${busy === 'import' ? 'loader-4-line animate-spin' : 'upload-2-line'}`}></i>
+        <i className={`ri-${busy ? 'loader-4-line animate-spin' : 'upload-2-line'}`}></i>
         Import
       </button>
       <input
