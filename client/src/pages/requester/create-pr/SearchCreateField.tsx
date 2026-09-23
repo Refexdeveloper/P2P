@@ -18,7 +18,8 @@ interface Props {
   emptyHint?: string;
   onSelect: (option: SearchCreateOption) => void;
   onClear: () => void;
-  onCreate?: (name: string) => Promise<void>;
+  onCreate?: (name: string, extra?: string) => Promise<void>;
+  createExtraPlaceholder?: string;
   onOpen?: () => void;
 }
 
@@ -35,11 +36,13 @@ export default function SearchCreateField({
   onSelect,
   onClear,
   onCreate,
+  createExtraPlaceholder,
   onOpen,
 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [createExtra, setCreateExtra] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -50,6 +53,7 @@ export default function SearchCreateField({
   useEffect(() => {
     if (resetKey == null) return;
     setQuery(displayValue);
+    setCreateExtra('');
     setOpen(false);
     setError('');
   }, [resetKey]);
@@ -78,6 +82,7 @@ export default function SearchCreateField({
   const apply = (opt: SearchCreateOption) => {
     onSelect(opt);
     setQuery(opt.label);
+    setCreateExtra('');
     setOpen(false);
     setError('');
   };
@@ -91,7 +96,8 @@ export default function SearchCreateField({
     setSaving(true);
     setError('');
     try {
-      await onCreate(typed);
+      await onCreate(typed, createExtra.trim() || undefined);
+      setCreateExtra('');
       setOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not save ${addNoun || 'value'}`);
@@ -179,15 +185,26 @@ export default function SearchCreateField({
             </button>
           ))}
           {canAdd && (
-            <button
-              type="button"
-              onClick={() => void handleAdd()}
-              disabled={saving}
-              className="w-full text-left px-3 py-2.5 text-sm font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border-t border-teal-100 cursor-pointer"
-            >
-              <i className="ri-add-line mr-1"></i>
-              {saving ? 'Saving…' : `Save “${typed}” as new ${addNoun || 'entry'}`}
-            </button>
+            <div className="border-t border-teal-100 bg-teal-50/70 p-2.5 space-y-2">
+              {createExtraPlaceholder ? (
+                <textarea
+                  value={createExtra}
+                  onChange={(e) => setCreateExtra(e.target.value)}
+                  placeholder={createExtraPlaceholder}
+                  rows={2}
+                  className="w-full px-2.5 py-2 border border-teal-100 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none bg-white"
+                />
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleAdd()}
+                disabled={saving}
+                className="w-full text-left px-2 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100 rounded-lg cursor-pointer"
+              >
+                <i className="ri-add-line mr-1"></i>
+                {saving ? 'Saving…' : `Save “${typed}” as new ${addNoun || 'entry'}`}
+              </button>
+            </div>
           )}
         </div>
       )}

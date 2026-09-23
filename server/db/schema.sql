@@ -307,6 +307,16 @@ CREATE TABLE IF NOT EXISTS categories (
   INDEX idx_category_request_type (request_type)
 );
 
+CREATE TABLE IF NOT EXISTS project_masters (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(200) NOT NULL UNIQUE,
+  description TEXT NULL,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_project_status (status)
+);
+
 CREATE TABLE IF NOT EXISTS items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   item_code VARCHAR(30) NOT NULL UNIQUE,

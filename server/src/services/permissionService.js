@@ -77,6 +77,7 @@ export const NAV_ITEMS = [
   { code: 'nav.category_master', label: 'Category Master', path: '/scm/category-master', icon: 'ri-price-tag-3-line', group: 'Masters', sort: 202 },
   { code: 'nav.entity_master', label: 'Entity Master', path: '/scm/entity-master', icon: 'ri-building-2-line', group: 'Masters', sort: 205 },
   { code: 'nav.department_master', label: 'Department Master', path: '/scm/department-master', icon: 'ri-organization-chart', group: 'Masters', sort: 206 },
+  { code: 'nav.project_master', label: 'Project Master', path: '/scm/project-master', icon: 'ri-folder-chart-line', group: 'Masters', sort: 207 },
   { code: 'nav.po_letterhead_master', label: 'PO Type Master', path: '/scm/po-type-master', icon: 'ri-file-list-3-line', group: 'Masters', sort: 203 },
   { code: 'nav.letterhead_master', label: 'Letterhead Master', path: '/scm/letterhead-master', icon: 'ri-layout-top-2-line', group: 'Masters', sort: 204 },
   { code: 'nav.vendor_quotation', label: 'Vendor Quotation Portal', path: '/scm/vendor-quotation-portal', icon: 'ri-price-tag-3-line', group: 'SCM', sort: 66 },
@@ -113,6 +114,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.category_master',
     'nav.entity_master',
     'nav.department_master',
+    'nav.project_master',
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
@@ -130,6 +132,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.category_master',
     'nav.entity_master',
     'nav.department_master',
+    'nav.project_master',
     'nav.po_letterhead_master',
     'nav.letterhead_master',
     'nav.po_excel_import',
@@ -152,6 +155,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.category_master',
     'nav.entity_master',
     'nav.department_master',
+    'nav.project_master',
     'nav.po_letterhead_master',
     'nav.letterhead_master',
   ],
@@ -281,6 +285,7 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
       'nav.category_master',
       'nav.entity_master',
       'nav.department_master',
+      'nav.project_master',
     ];
     if (role === 'Requester') {
       healCodes.push(
@@ -367,7 +372,7 @@ export async function getUserPermissionCodes(userId, role, email = null) {
       if (role === 'Requester' || role === 'SCM Buyer' || role === 'SCM Manager') {
         const healCodes = [
           'nav.item_master', 'nav.vendor_master', 'nav.category_master',
-          'nav.entity_master', 'nav.department_master',
+          'nav.entity_master', 'nav.department_master', 'nav.project_master',
         ];
         if (role === 'Requester') {
           healCodes.push(

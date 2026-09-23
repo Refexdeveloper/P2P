@@ -4,7 +4,9 @@ import {
   prApi,
   type DepartmentRecord,
   type EntityRecord,
+  type ProjectRecord,
 } from '../../../services/api';
+import ProjectCombobox from '../../requester/create-pr/ProjectCombobox';
 import {
   PR_PAYMENT_TERM_OPTIONS,
   PR_DELIVERY_TIMELINE_OPTIONS,
@@ -90,6 +92,7 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
   const [error, setError] = useState('');
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [entities, setEntities] = useState<EntityRecord[]>([]);
+  const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [meta, setMeta] = useState<{
     prNumber: string;
     requester: string;
@@ -102,10 +105,11 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
     setLoading(true);
     setError('');
     try {
-      const [prRes, deptRes, entRes] = await Promise.all([
+      const [prRes, deptRes, entRes, projectRes] = await Promise.all([
         prApi.get(prId),
         masterApi.listDepartments({ status: 'active' }),
         masterApi.listEntities({ status: 'active' }),
+        masterApi.listProjects({ status: 'active' }),
       ]);
       const pr = prRes.data as Record<string, unknown>;
       const lines = ((pr.lineItems as Array<Record<string, unknown>>) || []).map((li) =>
@@ -152,6 +156,7 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
       });
       setDepartments(deptRes.data || []);
       setEntities(entRes.data || []);
+      setProjects(projectRes.data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load PR details');
     } finally {
@@ -408,14 +413,29 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
 
             <label className="block text-sm md:col-span-2">
               <span className="text-xs font-semibold text-gray-600">Project detail</span>
-              <input
-                disabled={!editing}
-                type="text"
-                value={form.projectDetail}
-                onChange={(e) => setField('projectDetail', e.target.value)}
-                placeholder="Project name, code, or reference"
-                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
-              />
+              {editing ? (
+                <div className="mt-1">
+                  <ProjectCombobox
+                    projects={projects}
+                    selectedName={form.projectDetail}
+                    onSelect={(project) => setField('projectDetail', project.name)}
+                    onClear={() => setField('projectDetail', '')}
+                    onCreated={(created) => {
+                      setProjects((prev) => {
+                        if (prev.some((item) => item.id === created.id)) return prev;
+                        return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+                      });
+                    }}
+                  />
+                </div>
+              ) : (
+                <input
+                  disabled
+                  type="text"
+                  value={form.projectDetail}
+                  className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
+                />
+              )}
             </label>
 
             <label className="block text-sm">

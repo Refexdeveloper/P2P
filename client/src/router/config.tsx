@@ -23,6 +23,7 @@ const ItemMasterPage = lazy(() => import('../pages/scm/item-master/page'));
 const CategoryMasterPage = lazy(() => import('../pages/scm/category-master/page'));
 const EntityMasterPage = lazy(() => import('../pages/scm/entity-master/page'));
 const DepartmentMasterPage = lazy(() => import('../pages/scm/department-master/page'));
+const ProjectMasterPage = lazy(() => import('../pages/scm/project-master/page'));
 const RFQEntryPage = lazy(() => import('../pages/scm/rfq-entry/page'));
 const RequesterRfqTaskListPage = lazy(() => import('../pages/requester/rfq-entry/page'));
 const RfqEntryDetailPage = lazy(() => import('../pages/requester/rfq-entry/detail-page'));
@@ -178,6 +179,10 @@ const routes: RouteObject[] = [
   {
     path: '/scm/department-master',
     element: <ProtectedRoute><DepartmentMasterPage /></ProtectedRoute>,
+  },
+  {
+    path: '/scm/project-master',
+    element: <ProtectedRoute><ProjectMasterPage /></ProtectedRoute>,
   },
   {
     path: '/scm/rfq-entry',

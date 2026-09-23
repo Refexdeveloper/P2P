@@ -142,6 +142,13 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-organization-chart',
     group: 'Masters',
   },
+  'nav.project_master': {
+    code: 'nav.project_master',
+    label: 'Project Master',
+    path: '/scm/project-master',
+    icon: 'ri-folder-chart-line',
+    group: 'Masters',
+  },
   'nav.po_letterhead_master': {
     code: 'nav.po_letterhead_master',
     label: 'PO Type Master',
@@ -304,6 +311,7 @@ const MASTER_NAV_CODES = [
   'nav.category_master',
   'nav.entity_master',
   'nav.department_master',
+  'nav.project_master',
   'nav.po_letterhead_master',
   'nav.letterhead_master',
 ] as const;
@@ -314,6 +322,7 @@ const REQUESTER_MASTER_NAV_CODES = [
   'nav.category_master',
   'nav.entity_master',
   'nav.department_master',
+  'nav.project_master',
 ] as const;
 
 const ROLE_DEFAULT_CODES: Record<string, string[]> = {
@@ -343,6 +352,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.category_master',
     'nav.entity_master',
     'nav.department_master',
+    'nav.project_master',
     'nav.po_letterhead_master',
     'nav.letterhead_master',
     'nav.po_excel_import',
@@ -365,6 +375,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.category_master',
     'nav.entity_master',
     'nav.department_master',
+    'nav.project_master',
     'nav.po_letterhead_master',
     'nav.letterhead_master',
   ],
@@ -618,6 +629,7 @@ export function isMastersNavItem(item: Pick<NavItem, 'code' | 'group' | 'path'>)
     item.path === '/scm/category-master' ||
     item.path === '/scm/entity-master' ||
     item.path === '/scm/department-master' ||
+    item.path === '/scm/project-master' ||
     item.path === '/scm/po-type-master' ||
     item.path === '/scm/letterhead-master' ||
     item.path === '/scm/po-letterhead-master'

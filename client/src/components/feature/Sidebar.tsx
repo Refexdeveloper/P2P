@@ -230,6 +230,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
       location.pathname.includes('/category-master') ||
       location.pathname.includes('/entity-master') ||
       location.pathname.includes('/department-master') ||
+      location.pathname.includes('/project-master') ||
       location.pathname.includes('/po-type-master') ||
       location.pathname.includes('/letterhead-master') ||
       location.pathname.includes('/po-letterhead-master');

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import ApprovalHistoryPanel from '../../../components/feature/ApprovalHistoryPanel';
-import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, PrAttachmentRecord, VendorRecord, rfqApi } from '../../../services/api';
+import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, ProjectRecord, PrAttachmentRecord, VendorRecord, rfqApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   BRAND,
@@ -10,6 +10,7 @@ import {
   BRAND_PRIMARY_GRADIENT,
 } from '../../../constants/brandColors';
 import DepartmentCombobox from './DepartmentCombobox';
+import ProjectCombobox from './ProjectCombobox';
 import SearchCreateField from './SearchCreateField';
 import LineItemEditorForm, {
   LineItem,
@@ -165,6 +166,7 @@ export default function CreatePRPage() {
   const [entityId, setEntityId] = useState<number | ''>('');
   const [entities, setEntities] = useState<EntityRecord[]>([]);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
+  const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [requestType, setRequestType] = useState<'Capex' | 'Opex' | 'Service'>('Opex');
   const [requestCategory, setRequestCategory] = useState<'Product' | 'Service'>('Product');
   const [projectDetail, setProjectDetail] = useState('');
@@ -1380,16 +1382,18 @@ export default function CreatePRPage() {
       }
 
       try {
-        const [itemsRes, catsRes, deptRes] = await Promise.all([
+        const [itemsRes, catsRes, deptRes, projectRes] = await Promise.all([
           masterApi.listItems({ status: 'active' }),
           masterApi.listCategories({ status: 'active', requestType }),
           masterApi.listDepartments({ status: 'active' }),
+          masterApi.listProjects({ status: 'active' }),
         ]);
         if (cancelled) return;
         const items = itemsRes.data || [];
         setMasterItems(items);
         setMasterCategories(catsRes.data || []);
         setDepartments(deptRes.data || []);
+        setProjects(projectRes.data || []);
         // Match existing line items to Item Master by name when editing
         setLineItems((prev) =>
           prev.map((row) => {
@@ -1415,6 +1419,7 @@ export default function CreatePRPage() {
           setMasterItems([]);
           setMasterCategories([]);
           setDepartments([]);
+          setProjects([]);
         }
       }
     };
@@ -1677,6 +1682,13 @@ export default function CreatePRPage() {
 
   const rememberCategory = (created: CategoryRecord) => {
     setMasterCategories((prev) => {
+      if (prev.some((item) => item.id === created.id)) return prev;
+      return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+    });
+  };
+
+  const rememberProject = (created: ProjectRecord) => {
+    setProjects((prev) => {
       if (prev.some((item) => item.id === created.id)) return prev;
       return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
     });
@@ -3145,12 +3157,12 @@ export default function CreatePRPage() {
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Project Detail
               </label>
-              <input
-                type="text"
-                value={projectDetail}
-                onChange={(e) => setProjectDetail(e.target.value)}
-                placeholder="Project name, code, or reference"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+              <ProjectCombobox
+                projects={projects}
+                selectedName={projectDetail}
+                onSelect={(project) => setProjectDetail(project.name)}
+                onClear={() => setProjectDetail('')}
+                onCreated={rememberProject}
               />
             </div>
 

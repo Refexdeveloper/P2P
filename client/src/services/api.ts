@@ -1596,6 +1596,13 @@ export interface DepartmentRecord {
   budgetUtilized?: number;
 }
 
+export interface ProjectRecord {
+  id: number;
+  name: string;
+  description: string;
+  status: string;
+}
+
 export type PoSiteLookupType = 'site_address' | 'site_contact' | 'project_manager';
 
 export interface PoSiteLookupRecord {
@@ -1709,6 +1716,40 @@ export const masterApi = {
     request<{ data: DepartmentRecord; message: string }>(`/api/masters/departments/${id}`, {
       method: 'PUT',
       body: JSON.stringify(body),
+    }),
+  listProjects: (params?: { search?: string; status?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.status) q.set('status', params.status);
+    const qs = q.toString();
+    return request<{ data: ProjectRecord[] }>(`/api/masters/projects${qs ? `?${qs}` : ''}`);
+  },
+  chatCreateProject: (body: { name: string; description?: string }) =>
+    request<{ data: ProjectRecord; message: string }>('/api/masters/projects/chat-create', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createProject: (body: Record<string, unknown>) =>
+    request<{ data: ProjectRecord; message: string }>('/api/masters/projects', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateProject: (id: number, body: Record<string, unknown>) =>
+    request<{ data: ProjectRecord; message: string }>(`/api/masters/projects/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  exportProjectsCsv: () =>
+    downloadCsvFile('/api/masters/projects/export', 'projects-export.csv'),
+  downloadProjectTemplate: () =>
+    downloadCsvFile('/api/masters/projects/import-template', 'projects-import-template.csv'),
+  importProjectsCsv: (csv: string) =>
+    request<{
+      data: { created: number; updated: number; failed: number; errors: string[] };
+      message: string;
+    }>('/api/masters/projects/import', {
+      method: 'POST',
+      body: JSON.stringify({ csv }),
     }),
   listPoSiteLookups: (type: PoSiteLookupType) => {
     const q = new URLSearchParams({ type });

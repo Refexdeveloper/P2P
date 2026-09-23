@@ -281,8 +281,18 @@ router.post('/excel-import', poImportRoles, async (req, res) => {
   }
 });
 
-const letterheadRoles = requireRoles('SCM Buyer', 'Super Admin');
-const letterheadReadRoles = requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin');
+const LETTERHEAD_ROLES = ['SCM Buyer', 'SCM Manager', 'Super Admin'];
+const letterheadReadRoles = requireRolesOrPermissions(LETTERHEAD_ROLES, [
+  'nav.letterhead_master',
+  'nav.po_letterhead_master',
+  'nav.create_po',
+  'nav.track_po',
+  'nav.po_approval',
+]);
+const letterheadRoles = requireRolesOrPermissions(LETTERHEAD_ROLES, [
+  'nav.letterhead_master',
+  'nav.po_letterhead_master',
+]);
 
 router.get('/letterheads', letterheadReadRoles, async (req, res) => {
   try {

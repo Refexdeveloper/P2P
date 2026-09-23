@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requirePermissions, requireRolesOrPermissions, CREATE_PR_ROLES } from '../middleware/auth.js';
+import { authenticate, requireRolesOrPermissions, CREATE_PR_ROLES } from '../middleware/auth.js';
 import {
   listVendors,
   createVendor,
@@ -15,7 +15,10 @@ import {
 const router = Router();
 router.use(authenticate);
 
-const canManageVendors = requirePermissions('nav.vendor_master');
+const canManageVendors = requireRolesOrPermissions(
+  ['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'],
+  ['nav.vendor_master']
+);
 const canUseVendorsForPr = requireRolesOrPermissions(CREATE_PR_ROLES, [
   'nav.create_pr',
   'nav.vendor_master',

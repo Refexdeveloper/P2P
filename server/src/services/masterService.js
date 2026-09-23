@@ -105,6 +105,148 @@ export async function updateCategory(id, body) {
   return mapCategory(rows[0]);
 }
 
+function mapProject(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || '',
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listProjects({ search, status } = {}) {
+  let sql = `SELECT * FROM project_masters WHERE 1=1`;
+  const params = [];
+  if (search) {
+    sql += ` AND (name LIKE ? OR description LIKE ?)`;
+    params.push(`%${search}%`, `%${search}%`);
+  }
+  if (status) {
+    sql += ` AND status = ?`;
+    params.push(status);
+  }
+  sql += ` ORDER BY name ASC`;
+  const [rows] = await pool.query(sql, params);
+  return rows.map(mapProject);
+}
+
+export async function createProject(body) {
+  const name = String(body.name || '').trim();
+  if (!name) throw new Error('Project name is required');
+  const description = String(body.description || '').trim();
+  const status = body.status === 'inactive' ? 'inactive' : 'active';
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO project_masters (name, description, status) VALUES (?, ?, ?)`,
+      [name, description || null, status]
+    );
+    const [rows] = await pool.query(`SELECT * FROM project_masters WHERE id = ?`, [result.insertId]);
+    return mapProject(rows[0]);
+  } catch (err) {
+    if (String(err.message || '').includes('Duplicate')) {
+      throw new Error('Project name already exists');
+    }
+    throw err;
+  }
+}
+
+export async function updateProject(id, body) {
+  const [existing] = await pool.query(`SELECT * FROM project_masters WHERE id = ?`, [id]);
+  if (!existing.length) throw new Error('Project not found');
+  const name = body.name !== undefined ? String(body.name || '').trim() : existing[0].name;
+  if (!name) throw new Error('Project name is required');
+  const description =
+    body.description !== undefined ? String(body.description || '').trim() : existing[0].description;
+  const status =
+    body.status !== undefined
+      ? body.status === 'inactive'
+        ? 'inactive'
+        : 'active'
+      : existing[0].status;
+  try {
+    await pool.query(
+      `UPDATE project_masters SET name = ?, description = ?, status = ?, updated_at = NOW() WHERE id = ?`,
+      [name, description || null, status, id]
+    );
+  } catch (err) {
+    if (String(err.message || '').includes('Duplicate')) {
+      throw new Error('Project name already exists');
+    }
+    throw err;
+  }
+  const [rows] = await pool.query(`SELECT * FROM project_masters WHERE id = ?`, [id]);
+  return mapProject(rows[0]);
+}
+
+const PROJECT_HEADERS = ['name', 'description', 'status'];
+
+export async function exportProjectsCsv() {
+  const rows = await listProjects();
+  return rowsToCsv(
+    PROJECT_HEADERS,
+    rows.map((r) => ({
+      name: r.name,
+      description: r.description,
+      status: r.status,
+    }))
+  );
+}
+
+export function getProjectImportTemplateCsv() {
+  return rowsToCsv(PROJECT_HEADERS, [
+    {
+      name: 'RMC Plant Upgrade',
+      description: 'Ready-mix plant capacity upgrade at Hosur',
+      status: 'active',
+    },
+    {
+      name: 'Site Office Fit-out',
+      description: 'Interior and IT setup for new site office',
+      status: 'active',
+    },
+  ]);
+}
+
+export async function importProjectsFromCsv(csvText) {
+  const parsed = parseCsv(csvText);
+  if (!parsed.length) throw new Error('CSV has no data rows');
+
+  let created = 0;
+  let updated = 0;
+  const errors = [];
+
+  for (let i = 0; i < parsed.length; i++) {
+    const rowNum = i + 2;
+    const mapped = normalizeHeaderKey(parsed[i], {
+      name: ['name', 'project', 'projectname', 'project_name'],
+      description: ['description', 'desc', 'projectdescription', 'project_description'],
+      status: ['status'],
+    });
+    try {
+      if (!mapped.name) throw new Error('name is required');
+      const [existing] = await pool.query(`SELECT id FROM project_masters WHERE name = ?`, [mapped.name]);
+      const payload = {
+        name: mapped.name,
+        description: mapped.description || '',
+        status: mapped.status === 'inactive' ? 'inactive' : 'active',
+      };
+      if (existing.length) {
+        await updateProject(existing[0].id, payload);
+        updated += 1;
+      } else {
+        await createProject(payload);
+        created += 1;
+      }
+    } catch (err) {
+      errors.push(`Row ${rowNum}: ${err.message}`);
+    }
+  }
+
+  return { created, updated, failed: errors.length, errors };
+}
+
 export async function listItems({ search, categoryId, status, page, pageSize } = {}) {
   let where = ` WHERE 1=1`;
   const params = [];

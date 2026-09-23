@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import {
   authenticate,
-  requirePermissions,
   requireRolesOrPermissions,
   CREATE_PR_ROLES,
 } from '../middleware/auth.js';
@@ -29,6 +28,12 @@ import {
   updateDepartment,
   listPoSiteLookups,
   createPoSiteLookup,
+  listProjects,
+  createProject,
+  updateProject,
+  exportProjectsCsv,
+  getProjectImportTemplateCsv,
+  importProjectsFromCsv,
 } from '../services/masterService.js';
 
 const router = Router();
@@ -57,6 +62,9 @@ const MASTER_READ_PERMS = [
   'nav.create_po',
   'nav.track_po',
   'nav.po_approval',
+  'nav.project_master',
+  'nav.letterhead_master',
+  'nav.po_letterhead_master',
 ];
 const canReadMasters = requireRolesOrPermissions(READ_ROLES, MASTER_READ_PERMS);
 const canQuickCreateFromPr = requireRolesOrPermissions(CREATE_PR_ROLES, [
@@ -65,11 +73,14 @@ const canQuickCreateFromPr = requireRolesOrPermissions(CREATE_PR_ROLES, [
   'nav.category_master',
   'nav.entity_master',
   'nav.department_master',
+  'nav.project_master',
 ]);
-const canManageItems = requirePermissions('nav.item_master');
-const canManageCategories = requirePermissions('nav.category_master');
-const canManageEntities = requirePermissions('nav.entity_master');
-const canManageDepartments = requirePermissions('nav.department_master');
+const MASTER_WRITE_ROLES = ['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'];
+const canManageItems = requireRolesOrPermissions(MASTER_WRITE_ROLES, ['nav.item_master']);
+const canManageCategories = requireRolesOrPermissions(MASTER_WRITE_ROLES, ['nav.category_master']);
+const canManageEntities = requireRolesOrPermissions(MASTER_WRITE_ROLES, ['nav.entity_master']);
+const canManageDepartments = requireRolesOrPermissions(MASTER_WRITE_ROLES, ['nav.department_master']);
+const canManageProjects = requireRolesOrPermissions(MASTER_WRITE_ROLES, ['nav.project_master']);
 
 function sendCsv(res, filename, csv) {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -368,6 +379,85 @@ router.put('/departments/:id', canManageDepartments, async (req, res) => {
   try {
     const data = await updateDepartment(Number(req.params.id), req.body);
     res.json({ data, message: 'Department updated successfully' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/projects', canReadMasters, async (req, res) => {
+  try {
+    const data = await listProjects({
+      search: req.query.search,
+      status: req.query.status,
+    });
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/projects/export', canManageProjects, async (_req, res) => {
+  try {
+    sendCsv(res, `projects-export-${Date.now()}.csv`, await exportProjectsCsv());
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/projects/import-template', canManageProjects, async (_req, res) => {
+  try {
+    sendCsv(res, 'projects-import-template.csv', getProjectImportTemplateCsv());
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/projects/import', canManageProjects, async (req, res) => {
+  try {
+    const csvText = req.body?.csv || req.body?.content || '';
+    if (!csvText.trim()) throw new Error('CSV content is required');
+    const result = await importProjectsFromCsv(csvText);
+    res.json({
+      data: result,
+      message: `Import done: ${result.created} created, ${result.updated} updated, ${result.failed} failed`,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/projects/chat-create', canQuickCreateFromPr, async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) throw new Error('Project name is required');
+    const data = await createProject({
+      name,
+      description: req.body?.description || '',
+      status: 'active',
+    });
+    res.status(201).json({ data, message: 'Project created successfully' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post(
+  '/projects',
+  requireRolesOrPermissions(CREATE_PR_ROLES, ['nav.create_pr', 'nav.project_master']),
+  async (req, res) => {
+    try {
+      const data = await createProject(req.body);
+      res.json({ data, message: 'Project created successfully' });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
+
+router.put('/projects/:id', canManageProjects, async (req, res) => {
+  try {
+    const data = await updateProject(Number(req.params.id), req.body);
+    res.json({ data, message: 'Project updated successfully' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
