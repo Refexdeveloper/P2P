@@ -7,6 +7,8 @@ import { uploadToGcs, downloadFromGcs, gcsEnabled, awaitGcsUpload } from './gcsS
 import {
   buildPoDocumentHtml,
   buildPoPdfParts,
+  buildPoPdfChromeTemplates,
+  PO_PDF_LAYOUT,
 } from '../templates/poDocumentTemplate.js';
 import { PO_STYLES } from '../templates/poDocumentTemplate.styles.js';
 import {
@@ -1530,7 +1532,28 @@ async function paginatePoHtml(browser, po, options) {
  * Convert already-paginated PO HTML → A4 PDF.
  * Header/footer live inside each .pdf-page (reserved bands).
  */
-export async function htmlToPdf(html, filePath) {
+async function printPageToPdf(page, filePath, chrome = null) {
+  const useChrome = Boolean(chrome?.headerTemplate || chrome?.footerTemplate);
+  await page.pdf({
+    path: filePath,
+    format: 'A4',
+    printBackground: true,
+    preferCSSPageSize: !useChrome,
+    margin: useChrome
+      ? {
+          top: PO_PDF_LAYOUT.top,
+          right: PO_PDF_LAYOUT.side,
+          bottom: PO_PDF_LAYOUT.bottom,
+          left: PO_PDF_LAYOUT.side,
+        }
+      : { top: '0', right: '0', bottom: '0', left: '0' },
+    displayHeaderFooter: useChrome,
+    headerTemplate: useChrome ? chrome.headerTemplate || '<div></div>' : '<div></div>',
+    footerTemplate: useChrome ? chrome.footerTemplate || '<div></div>' : '<div></div>',
+  });
+}
+
+export async function htmlToPdf(html, filePath, chromePo = null) {
   const executablePath = resolveBrowserExecutable();
   if (!executablePath) {
     throw new Error(
@@ -1550,15 +1573,8 @@ export async function htmlToPdf(html, filePath) {
     }
     await page.emulateMediaType('print');
     await waitForPdfAssets(page);
-
-    await page.pdf({
-      path: filePath,
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: '0', right: '0', bottom: '0', left: '0' },
-      displayHeaderFooter: false,
-    });
+    const chrome = chromePo ? buildPoPdfChromeTemplates(chromePo) : null;
+    await printPageToPdf(page, filePath, chrome);
   } finally {
     await browser.close();
   }
@@ -1604,14 +1620,7 @@ export async function generatePoPdf(po, options = {}) {
     }
     await page.emulateMediaType('print');
     await waitForPdfAssets(page);
-    await page.pdf({
-      path: filePath,
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: '0', right: '0', bottom: '0', left: '0' },
-      displayHeaderFooter: false,
-    });
+    await printPageToPdf(page, filePath);
     const skipGcs =
       options.skipGcs === true ||
       !shouldUploadPoPdfToGcs(fileName) ||
@@ -1631,7 +1640,7 @@ export async function generatePoPdf(po, options = {}) {
     try {
       const simpleHtml = buildPoHtml(branded, { ...options, forPdf: true });
       fs.writeFileSync(htmlPath, simpleHtml, 'utf8');
-      await htmlToPdf(simpleHtml, filePath);
+      await htmlToPdf(simpleHtml, filePath, branded);
       if (looksLikePdfFile(filePath)) {
         return { filePath, fileName, htmlFileName, htmlPath };
       }

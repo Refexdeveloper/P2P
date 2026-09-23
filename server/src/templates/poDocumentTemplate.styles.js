@@ -81,8 +81,11 @@ export const PO_STYLES = `
   .pdf-header {
     grid-row: 1;
     width: 100%;
+    min-height: 16mm;
     box-sizing: border-box;
     padding: 5mm ${PO_PDF_LAYOUT.side} 2mm;
+    background: #fff;
+    z-index: 2;
   }
   .pdf-content {
     grid-row: 2;
@@ -115,11 +118,13 @@ export const PO_STYLES = `
     align-items: stretch;
     justify-content: flex-end;
     width: 100%;
+    min-height: 36mm;
     box-sizing: border-box;
     padding: 2mm ${PO_PDF_LAYOUT.side} 5mm;
     background: #fff;
     text-align: center;
     position: relative;
+    z-index: 2;
   }
   .pdf-footer-brand {
     width: 100%;
