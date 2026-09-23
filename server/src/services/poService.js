@@ -1264,11 +1264,23 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
       .toLowerCase()
       .replace(/&/g, ' and ')
       .replace(/[^a-z0-9]+/g, ' ')
-      .replace(/\b(private|limited|pvt|ltd|llp|inc|corp|company)\b/g, '')
+      .replace(/\b(private|limited|pvt|ltd|llp|inc|corp|company|co)\b/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
-  // Name first — email on the PO is often stale after Vendor Master updates.
+  const pickBestName = (rows, key) => {
+    if (!rows?.length || !key) return null;
+    return (
+      rows.find((row) => nameKey(row.name) === key) ||
+      rows.find((row) => {
+        const k = nameKey(row.name);
+        return k && key && (k.includes(key) || key.includes(k));
+      }) ||
+      null
+    );
+  };
+
+  // Name first — email on the PO is often a generic inbox, not Vendor Master contact.
   if (name) {
     const [byName] = await pool.query(
       `${select} WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1`,
@@ -1276,19 +1288,14 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
     );
     if (byName[0]) return byName[0];
 
-    const token = nameKey(name).split(' ').find((t) => t.length >= 4) || '';
-    if (token) {
+    const key = nameKey(name);
+    const tokens = key.split(' ').filter((t) => t.length >= 3);
+    for (const token of tokens) {
       const [fuzzy] = await pool.query(
-        `${select} WHERE LOWER(name) LIKE ? LIMIT 25`,
+        `${select} WHERE LOWER(name) LIKE ? LIMIT 40`,
         [`%${token}%`]
       );
-      const key = nameKey(name);
-      const hit =
-        fuzzy.find((row) => nameKey(row.name) === key) ||
-        fuzzy.find((row) => {
-          const k = nameKey(row.name);
-          return k && key && (k.includes(key) || key.includes(k));
-        });
+      const hit = pickBestName(fuzzy, key);
       if (hit) return hit;
     }
   }
@@ -1305,6 +1312,18 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
       [email]
     );
     if (byEmail[0]) return byEmail[0];
+
+    // Same company domain (e.g. support@tuv-nord.com → kkashyap@tuv-nord.com on master)
+    const domain = email.includes('@') ? email.split('@')[1].trim().toLowerCase() : '';
+    if (domain && domain.includes('.')) {
+      const [byDomain] = await pool.query(
+        `${select} WHERE LOWER(email) LIKE ? LIMIT 40`,
+        [`%@${domain}`]
+      );
+      const key = nameKey(name);
+      const hit = pickBestName(byDomain, key) || (byDomain.length === 1 ? byDomain[0] : null);
+      if (hit) return hit;
+    }
   }
   return {};
 }

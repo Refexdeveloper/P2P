@@ -503,7 +503,7 @@ function matchVendorFromMaster(
     if (byName) return byName;
     const byPartial = vendors.find((v) => {
       const vn = normalizeVendorMatchKey(v.name);
-      return vn.length > 8 && (vn.includes(name) || name.includes(vn));
+      return vn.length >= 3 && name.length >= 3 && (vn.includes(name) || name.includes(vn));
     });
     if (byPartial) return byPartial;
   }
@@ -516,6 +516,20 @@ function matchVendorFromMaster(
   if (email) {
     const byEmail = vendors.find((v) => String(v.email || '').trim().toLowerCase() === email);
     if (byEmail) return byEmail;
+    const domain = email.includes('@') ? email.split('@')[1] : '';
+    if (domain) {
+      const sameDomain = vendors.filter(
+        (v) => String(v.email || '').trim().toLowerCase().endsWith(`@${domain}`)
+      );
+      if (sameDomain.length === 1) return sameDomain[0];
+      if (name && sameDomain.length > 1) {
+        const byDomainName = sameDomain.find((v) => {
+          const vn = normalizeVendorMatchKey(v.name);
+          return vn === name || vn.includes(name) || name.includes(vn);
+        });
+        if (byDomainName) return byDomainName;
+      }
+    }
   }
   return null;
 }
@@ -2929,6 +2943,8 @@ export default function CreatePOPage() {
       if (existingDraftId) payload.poId = existingDraftId;
       else if (numericPrId) payload.prId = numericPrId;
 
+      await applyMasterVendorToPayload(payload);
+
       const res = await poApi.saveDraft(payload);
       const data = (res.data || {}) as {
         id?: number;
@@ -3537,6 +3553,9 @@ export default function CreatePOPage() {
         if (importedVendorName.trim()) payload.vendorName = importedVendorName.trim();
         if (importedVendorEmail.trim()) payload.vendorEmail = importedVendorEmail.trim();
       }
+
+      // Same Vendor Master details as Create PO preview / live PDF (address, GST, PAN, phone, contact email)
+      await applyMasterVendorToPayload(payload);
 
       if (isEditMode && editPoId) {
         const isSuperAdminUser = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');

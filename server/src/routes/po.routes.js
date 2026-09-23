@@ -549,11 +549,17 @@ router.get('/by-number/:poNumber', canReadPo, async (req, res) => {
 
 router.get('/:id/document', canReadPo, async (req, res) => {
   try {
-    const po =
+    let po =
       req.user.role === 'Requester'
         ? await assertRequesterPoDocumentAccess(req.user, Number(req.params.id))
         : await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
+    try {
+      const { overlayVendorMasterOnPo } = await import('../services/poService.js');
+      po = await overlayVendorMasterOnPo(po);
+    } catch {
+      /* keep enrichPO result */
+    }
     const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
     const html = buildPoHtml(po, {
       signature: await buildSignatureRenderOptionsAsync(po),
@@ -567,11 +573,17 @@ router.get('/:id/document', canReadPo, async (req, res) => {
 
 router.get('/:id/pdf', canReadPo, async (req, res) => {
   try {
-    const po =
+    let po =
       req.user.role === 'Requester'
         ? await assertRequesterPoDocumentAccess(req.user, Number(req.params.id))
         : await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
+    try {
+      const { overlayVendorMasterOnPo } = await import('../services/poService.js');
+      po = await overlayVendorMasterOnPo(po);
+    } catch {
+      /* keep enrichPO result */
+    }
     const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || po.signedAt);
     const poNumber = String(po.poNumber || '').trim() || `PO-${po.id}`;
     const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
@@ -584,20 +596,17 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
       Boolean(po.pdfPath) &&
       !String(po.pdfPath).includes(poNumber) &&
       !String(po.pdfPath).startsWith(safePoNumber);
-    // Refresh when vendor master has address/GST but enrich already applied — avoid stale PDF without vendor block
-    const vendorDetailsMissingInStored =
-      !isSigned &&
-      Boolean(String(po.vendorAddress || po.vendorGst || po.vendorPan || '').trim());
+    const vendorBlockIncomplete = !isSigned && !String(po.vendorAddress || '').trim();
     const { fullPath, fileName, buffer } = await ensurePoPdf(po, {
       fileName: preferredName,
       signed: isSigned,
       signature: signatureOpts,
-      // Always refresh when draft, signed, stale name, or vendor details must appear in PDF
       forceRegenerate:
         isSigned ||
         String(po.statusRaw || po.status || '').toLowerCase() === 'draft' ||
         storedLooksStale ||
-        vendorDetailsMissingInStored,
+        vendorBlockIncomplete ||
+        !isSigned,
     });
     // Persist regenerated PDF path when previous value was HTML-only or mismatched
     if (!isSigned && po.pdfPath !== fileName) {
