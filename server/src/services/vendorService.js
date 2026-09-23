@@ -94,14 +94,29 @@ async function attachDocumentsToVendors(vendors) {
   return vendors.map((v) => ({ ...v, documents: byVendor.get(v.id) || [] }));
 }
 
+/** Next free VND-{year}-{####} — uses max seq so deletes do not reuse / collide. */
 async function generateVendorCode() {
   const year = new Date().getFullYear();
+  const prefix = `VND-${year}-`;
   const [rows] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM vendors WHERE YEAR(created_at) = ?`,
-    [year]
+    `SELECT vendor_code FROM vendors
+     WHERE vendor_code LIKE ?
+     ORDER BY CAST(SUBSTRING_INDEX(vendor_code, '-', -1) AS UNSIGNED) DESC
+     LIMIT 1`,
+    [`${prefix}%`]
   );
-  const seq = String(Number(rows[0].cnt) + 1).padStart(4, '0');
-  return `VND-${year}-${seq}`;
+  let next = 1;
+  if (rows[0]?.vendor_code) {
+    const last = Number(String(rows[0].vendor_code).split('-').pop());
+    if (Number.isFinite(last) && last >= 0) next = last + 1;
+  }
+  // Safety: skip any rare collision (manual codes / race)
+  for (let i = 0; i < 50; i += 1) {
+    const code = `${prefix}${String(next + i).padStart(4, '0')}`;
+    const [dup] = await pool.query(`SELECT id FROM vendors WHERE vendor_code = ? LIMIT 1`, [code]);
+    if (!dup.length) return code;
+  }
+  return `${prefix}${String(Date.now()).slice(-4)}`;
 }
 
 async function getVendorDocuments(vendorId) {
@@ -370,38 +385,53 @@ export async function createVendor(user, body) {
   const [existing] = await pool.query(`SELECT id FROM vendors WHERE email = ?`, [email]);
   if (existing.length) throw new Error('A vendor with this email already exists');
 
-  const vendorCode = await generateVendorCode();
-
   const msme = String(body.msme || '').trim() || null;
-  const [result] = await pool.query(
-    `INSERT INTO vendors (
-      vendor_code, name, vendor_type, gst_number, pan_number, email, phone, address,
-      category, contact_name, msme, msme_type, documents_complete,
-      account_number, ifsc_code, bank_name, branch, created_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      vendorCode,
-      name,
-      body.vendorType || 'Company',
-      body.gstNumber?.trim() || null,
-      body.panNumber?.trim() || null,
-      email,
-      body.phone?.trim() || null,
-      body.address?.trim() || null,
-      body.category?.trim() || null,
-      body.contactName?.trim() || null,
-      msme,
-      msmeTypeValue(body.msmeType),
-      yesNo(body.documentsComplete, 'no'),
-      body.accountNumber?.trim() || null,
-      body.ifscCode?.trim() || null,
-      body.bankName?.trim() || null,
-      body.branch?.trim() || null,
-      user?.id || null,
-    ]
-  );
+  let vendorId = null;
+  let vendorCode = await generateVendorCode();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const [result] = await pool.query(
+        `INSERT INTO vendors (
+          vendor_code, name, vendor_type, gst_number, pan_number, email, phone, address,
+          category, contact_name, msme, msme_type, documents_complete,
+          account_number, ifsc_code, bank_name, branch, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          vendorCode,
+          name,
+          body.vendorType || 'Company',
+          body.gstNumber?.trim() || null,
+          body.panNumber?.trim() || null,
+          email,
+          body.phone?.trim() || null,
+          body.address?.trim() || null,
+          body.category?.trim() || null,
+          body.contactName?.trim() || null,
+          msme,
+          msmeTypeValue(body.msmeType),
+          yesNo(body.documentsComplete, 'no'),
+          body.accountNumber?.trim() || null,
+          body.ifscCode?.trim() || null,
+          body.bankName?.trim() || null,
+          body.branch?.trim() || null,
+          user?.id || null,
+        ]
+      );
+      vendorId = result.insertId;
+      break;
+    } catch (err) {
+      const msg = String(err.message || '');
+      const isDupCode =
+        err.code === 'ER_DUP_ENTRY' && /vendor_code|uniq|unique/i.test(msg);
+      if (!isDupCode || attempt === 4) {
+        if (isDupCode) throw new Error('Vendor code conflict — please try again');
+        throw err;
+      }
+      vendorCode = await generateVendorCode();
+    }
+  }
+  if (!vendorId) throw new Error('Could not create vendor');
 
-  const vendorId = result.insertId;
   await saveBodyDocuments(vendorId, body);
   return getVendorById(vendorId);
 }
