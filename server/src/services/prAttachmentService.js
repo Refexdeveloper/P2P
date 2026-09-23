@@ -7,7 +7,9 @@ import { uploadToGcs, downloadStoredUpload, gcsEnabled, useGcsForNewUploads, awa
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PR_UPLOAD_DIR = path.join(__dirname, '../../uploads/pr-attachments');
 
-const MAX_BYTES = 10 * 1024 * 1024;
+/** Cloud Run HTTP request limit is 32MB — keep each file under that with headroom. */
+export const PR_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+const MAX_BYTES = PR_ATTACHMENT_MAX_BYTES;
 const ALLOWED_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']);
 
 function ensureUploadDir() {
@@ -23,18 +25,32 @@ function decodeBase64(base64Data) {
   return Buffer.from(String(raw).replace(/\s/g, ''), 'base64');
 }
 
-function normalizeIncomingFile(file) {
-  const fileName = path.basename(String(file?.fileName || file?.name || '')).trim();
-  if (!fileName) throw new Error('Attachment file name is required');
-
-  const ext = path.extname(fileName).toLowerCase();
+function assertAllowedFileName(fileName) {
+  const safe = path.basename(String(fileName || '')).trim();
+  if (!safe) throw new Error('Attachment file name is required');
+  const ext = path.extname(safe).toLowerCase();
   if (!ALLOWED_EXT.has(ext)) {
-    throw new Error(`File type not allowed for ${fileName}. Use PDF, DOC, DOCX, XLS, XLSX, JPG, or PNG`);
+    throw new Error(`File type not allowed for ${safe}. Use PDF, DOC, DOCX, XLS, XLSX, JPG, or PNG`);
+  }
+  return safe;
+}
+
+function normalizeIncomingFile(file) {
+  const fileName = assertAllowedFileName(file?.fileName || file?.name);
+
+  let buffer;
+  if (Buffer.isBuffer(file?.buffer)) {
+    buffer = file.buffer;
+  } else if (file?.data || file?.base64 || file?.file) {
+    buffer = decodeBase64(file.data || file.base64 || file.file);
+  } else {
+    buffer = Buffer.alloc(0);
   }
 
-  const buffer = decodeBase64(file.data || file.base64 || file.file);
   if (!buffer.length) throw new Error(`Attachment ${fileName} is empty or invalid`);
-  if (buffer.length > MAX_BYTES) throw new Error(`Attachment ${fileName} must be under 10MB`);
+  if (buffer.length > MAX_BYTES) {
+    throw new Error(`Attachment ${fileName} must be under 25MB`);
+  }
 
   const mimeType = String(file.mimeType || file.type || '').slice(0, 120) || null;
   return { fileName, buffer, mimeType, size: buffer.length };
@@ -67,7 +83,10 @@ export async function savePrAttachments(prId, userId, files, db = pool) {
 
   const saved = [];
   for (const file of files) {
-    if (!file?.data && !file?.base64 && !file?.file) continue;
+    const hasPayload =
+      Buffer.isBuffer(file?.buffer) ||
+      Boolean(file?.data || file?.base64 || file?.file);
+    if (!hasPayload) continue;
     const { fileName, buffer, mimeType, size } = normalizeIncomingFile(file);
     const storedName = `${prId}_${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
@@ -111,6 +130,15 @@ export async function addPrAttachment(prId, userId, file) {
   const saved = await savePrAttachments(prId, userId, [file]);
   if (!saved.length) throw new Error('No file data received');
   return saved[0];
+}
+
+/** Binary body upload (avoids base64 JSON and Cloud Run 413 on large FSD docs). */
+export async function addPrAttachmentBuffer(prId, userId, { fileName, buffer, mimeType }) {
+  return addPrAttachment(prId, userId, {
+    fileName,
+    buffer: Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []),
+    mimeType,
+  });
 }
 
 export async function getPrAttachmentFile(prId, attachmentId) {

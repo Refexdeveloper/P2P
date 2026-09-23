@@ -244,9 +244,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           params.delete('p2p_token');
           params.delete('p2pToken');
+          // Keep deep-link query (prId, action) so L2/HOD email Approve/Reject/Send Back opens the popup on first click
           const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
           window.history.replaceState({}, '', clean);
-          redirectByRole(mapped.role, mapped.navigation, undefined, mapped.email);
+          redirectByRole(mapped.role, mapped.navigation, clean, mapped.email);
         } catch {
           localStorage.removeItem('p2p_token');
         }
@@ -260,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
           window.history.replaceState({}, '', clean);
-          redirectByRole(mapped.role, mapped.navigation, undefined, mapped.email);
+          redirectByRole(mapped.role, mapped.navigation, clean, mapped.email);
         } catch {
           // Login / launch page will show a clearer error
         }

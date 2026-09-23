@@ -1657,14 +1657,27 @@ export default function CreatePRPage() {
   };
   const addFiles = (files: File[]) => {
     const allowed = /\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png)$/i;
-    const accepted = files.filter((f) => allowed.test(f.name) && f.size <= 10 * 1024 * 1024);
+    const maxBytes = 25 * 1024 * 1024;
+    const accepted = files.filter((f) => allowed.test(f.name) && f.size <= maxBytes);
+    const rejected = files.filter((f) => !allowed.test(f.name) || f.size > maxBytes);
     const newFiles: AttachedFile[] = accepted.map((f) => ({
       id: Math.random().toString(36).substr(2, 9),
       name: f.name,
       size: f.size,
       file: f,
     }));
-    setAttachedFiles((prev) => [...prev, ...newFiles]);
+    if (newFiles.length) setAttachedFiles((prev) => [...prev, ...newFiles]);
+    if (rejected.length) {
+      const msg = rejected
+        .map((f) =>
+          !allowed.test(f.name)
+            ? `${f.name} (type not allowed)`
+            : `${f.name} (over 25MB)`
+        )
+        .join(', ');
+      setSubmitError(`Could not add: ${msg}`);
+      showToast(`Could not add: ${msg}`, 'error');
+    }
   };
   const removeFile = async (id: string) => {
     const target = attachedFiles.find((f) => f.id === id);
@@ -2012,8 +2025,7 @@ export default function CreatePRPage() {
     const failed: string[] = [];
     for (const item of pending) {
       try {
-        const filePayload = await fileToAttachmentPayload(item.file as File);
-        const res = await prApi.uploadAttachment(prId, filePayload);
+        const res = await prApi.uploadAttachmentFile(prId, item.file as File);
         const rec = res.data;
         if (rec?.id) {
           uploaded.push({
@@ -2024,12 +2036,13 @@ export default function CreatePRPage() {
           });
         }
       } catch (err) {
-        failed.push(item.name);
+        const reason = err instanceof Error ? err.message : 'upload failed';
+        failed.push(`${item.name}: ${reason}`);
         console.warn('PR attachment upload failed:', err);
       }
     }
     let next = mergeAttachedFiles(
-      attachedFiles.filter((item) => !item.file || failed.includes(item.name)),
+      attachedFiles.filter((item) => !item.file || !failed.some((f) => f.startsWith(item.name))),
       uploaded
     );
     try {
@@ -2044,7 +2057,9 @@ export default function CreatePRPage() {
     setAttachedFiles(next);
     persistAttachedFilesSnapshot(prId, next);
     if (failed.length) {
-      showSubmitError(`PR saved. Could not attach: ${failed.join(', ')}`);
+      const msg = `PR saved. Could not attach — ${failed.join('; ')}`;
+      showSubmitError(msg);
+      showToast(msg, 'error');
     }
   };
 
@@ -2061,7 +2076,6 @@ export default function CreatePRPage() {
     await previous.catch(() => undefined);
 
     const silent = Boolean(options?.silent);
-    const forceUploadFiles = Boolean(options?.forceUploadFiles);
     const allowCreate = Boolean(options?.allowCreate) || !silent;
 
     // After waiting: another save may have created the draft — never create again for silent.
@@ -2158,9 +2172,10 @@ export default function CreatePRPage() {
         const needsQuotationUpload = rfqVendors.some((row) =>
           row.quotes.some((q) => localQuoteFiles(q).length > 0)
         );
-        // Always upload local quotation Files (also on silent / menu leave) so they survive navigation.
+        // Only embed quotation bytes when there are NEW local files — never re-send
+        // already-saved PDFs (that was causing Cloud Run 413 Request Entity Too Large).
         const packed = await buildRfqVendorsPayload({
-          skipFileData: silent && !forceUploadFiles && !needsQuotationUpload,
+          skipFileData: !needsQuotationUpload,
         });
         if (packed.length) {
           payload.rfqVendors = packed;
@@ -2181,6 +2196,23 @@ export default function CreatePRPage() {
             payload.vendorId = chosen.vendorId ? Number(chosen.vendorId) : undefined;
             payload.rfqRecommendationJustification = rfqRecommendationJustification;
           }
+        }
+
+        // Cloud Run rejects bodies over ~32MB — if still too large, strip file bytes and warn.
+        try {
+          const approx = JSON.stringify(payload).length;
+          if (approx > 28 * 1024 * 1024 && Array.isArray(payload.rfqVendors)) {
+            const lightPacked = await buildRfqVendorsPayload({ skipFileData: true });
+            payload.rfqVendors = lightPacked;
+            if (!silent) {
+              showToast(
+                'Quotation files are too large to send in one save. PR details will save; re-add quotation files one at a time (under 25MB each).',
+                'error'
+              );
+            }
+          }
+        } catch {
+          /* ignore size probe failures */
         }
       }
 
@@ -3938,7 +3970,7 @@ export default function CreatePRPage() {
                 <i className="ri-upload-cloud-2-line text-2xl text-slate-500"></i>
               </div>
               <p className="text-sm font-medium text-gray-700 mb-1">Drop files here or click to browse</p>
-              <p className="text-xs text-gray-400">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — Max 10MB each</p>
+              <p className="text-xs text-gray-400">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — Max 25MB each</p>
               <input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" onChange={handleFileSelect} className="hidden" />
             </div>
 

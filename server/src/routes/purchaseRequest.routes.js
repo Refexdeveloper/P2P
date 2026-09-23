@@ -29,7 +29,8 @@ import {
   deleteRequesterDraftPurchaseRequest,
 } from '../services/prService.js';
 import { getSendBackTargetsForPr } from '../services/sendBackService.js';
-import { addPrAttachment, getPrAttachmentFile, deletePrAttachment } from '../services/prAttachmentService.js';
+import { addPrAttachment, addPrAttachmentBuffer, getPrAttachmentFile, deletePrAttachment } from '../services/prAttachmentService.js';
+import express from 'express';
 import pool from '../config/db.js';
 
 const router = Router();
@@ -221,6 +222,43 @@ router.post('/:id/attachments', canCreatePr, async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
+
+/** Raw binary upload — preferred for FSD / large docs (no base64 inflation → fewer 413s). */
+router.post(
+  '/:id/attachments/upload',
+  canCreatePr,
+  express.raw({ type: () => true, limit: '30mb' }),
+  async (req, res) => {
+    try {
+      const pr = await getPurchaseRequestById(req.params.id);
+      if (!pr) return res.status(404).json({ message: 'PR not found' });
+      const isOwner = Number(pr.requesterId) === Number(req.user.id);
+      if (
+        !isOwner &&
+        req.user.role !== 'Super Admin' &&
+        (req.user.role === 'Requester' || !CREATE_PR_ROLES.includes(req.user.role))
+      ) {
+        return res.status(403).json({ message: 'Not allowed to upload files to this PR' });
+      }
+      const fileName = decodeURIComponent(
+        String(req.get('x-file-name') || req.query.fileName || 'attachment').trim()
+      );
+      const mimeType = String(req.get('x-file-type') || req.get('content-type') || '').split(';')[0].trim();
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
+      if (!buffer.length) {
+        return res.status(400).json({ message: 'Empty file body' });
+      }
+      const saved = await addPrAttachmentBuffer(Number(req.params.id), req.user.id, {
+        fileName,
+        buffer,
+        mimeType: mimeType || undefined,
+      });
+      res.status(201).json({ data: saved });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
 
 router.delete(
   '/:id/attachments/:attachmentId',

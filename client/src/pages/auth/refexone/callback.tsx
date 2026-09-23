@@ -18,7 +18,11 @@ export default function RefexOneCallbackPage() {
     if (isLoading) return;
 
     if (isAuthenticated && user) {
-      navigate(resolvePostLoginPath(user.role, user.navigation, undefined, user.email), { replace: true });
+      const redirectPath =
+        searchParams.get('redirect') || searchParams.get('returnUrl') || undefined;
+      navigate(resolvePostLoginPath(user.role, user.navigation, redirectPath, user.email), {
+        replace: true,
+      });
       return;
     }
 

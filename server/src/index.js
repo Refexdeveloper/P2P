@@ -37,9 +37,20 @@ app.use(
     credentials: true,
   })
 );
-// Vendor docs (up to 6 PDFs) + quotation PDFs are sent as base64 (~1.37x); allow several files per request
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Vendor docs + quotation PDFs as base64 can be large; Cloud Run still caps HTTP at ~32MB
+app.use(express.json({ limit: '32mb' }));
+app.use(express.urlencoded({ extended: true, limit: '32mb' }));
+
+// Clear JSON instead of opaque HTML when body-parser rejects oversized payloads
+app.use((err, _req, res, next) => {
+  if (err?.type === 'entity.too.large' || err?.status === 413 || err?.statusCode === 413) {
+    return res.status(413).json({
+      message:
+        'Upload too large (max ~25 MB per file). Save without re-attaching large quotation files, then upload FSD documents one at a time.',
+    });
+  }
+  return next(err);
+});
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

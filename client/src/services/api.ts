@@ -17,11 +17,21 @@ function getToken(): string | null {
 function errorMessageFromResponse(text: string, fallback: string) {
   const raw = String(text || '').trim();
   if (!raw) return fallback;
+  if (
+    /413|request entity too large|entity too large/i.test(raw) ||
+    /<title>\s*413\b/i.test(raw)
+  ) {
+    return 'Upload too large (server limit ~25 MB per file). Save the PR first, then attach FSD documents one at a time. Do not re-upload large quotation PDFs already saved.';
+  }
   try {
     const parsed = JSON.parse(raw) as { message?: string };
     if (parsed?.message) return String(parsed.message);
   } catch {
     /* keep raw */
+  }
+  // Never show raw HTML error pages in the UI
+  if (/^\s*<!DOCTYPE|^\s*<html/i.test(raw)) {
+    return fallback || 'Request failed';
   }
   return raw.slice(0, 200) || fallback;
 }
@@ -115,12 +125,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       data = JSON.parse(text) as Record<string, unknown>;
     } catch {
       if (!res.ok) {
-        throw new ApiError(res.status, text.slice(0, 200) || `Request failed (${res.status})`);
+        throw new ApiError(
+          res.status,
+          errorMessageFromResponse(text, `Request failed (${res.status})`)
+        );
       }
     }
   }
   if (!res.ok) {
-    throw new ApiError(res.status, (data.message as string) || text.slice(0, 200) || `Request failed (${res.status})`);
+    throw new ApiError(
+      res.status,
+      errorMessageFromResponse(
+        (data.message as string) || text,
+        `Request failed (${res.status})`
+      )
+    );
   }
   return data as T;
 }
@@ -366,6 +385,44 @@ export const prApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  /** Preferred: raw binary (no base64) — avoids Cloud Run 413 on large FSD docs. */
+  uploadAttachmentFile: async (prId: number, file: File) => {
+    const token = getToken();
+    const res = await fetch(`${API_URL}/api/purchase-requests/${prId}/attachments/upload`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(file.name),
+        'X-File-Type': file.type || 'application/octet-stream',
+      },
+      body: file,
+    });
+    const text = await res.text();
+    let data: Record<string, unknown> = {};
+    if (text) {
+      try {
+        data = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        if (!res.ok) {
+          throw new ApiError(
+            res.status,
+            errorMessageFromResponse(text, `Upload failed (${res.status})`)
+          );
+        }
+      }
+    }
+    if (!res.ok) {
+      throw new ApiError(
+        res.status,
+        errorMessageFromResponse(
+          (data.message as string) || text,
+          `Upload failed (${res.status})`
+        )
+      );
+    }
+    return data as { data: PrAttachmentRecord };
+  },
   deleteAttachment: (prId: number, attachmentId: number) =>
     request<{ message: string }>(`/api/purchase-requests/${prId}/attachments/${attachmentId}`, {
       method: 'DELETE',

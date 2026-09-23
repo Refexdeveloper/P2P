@@ -177,11 +177,43 @@ export default function TasksPage() {
     loadTasks();
   }, [loadTasks]);
 
+  // Persist email deep-link so Approve/Reject/Send Back still open after SSO redirect
+  useEffect(() => {
+    const prId = searchParams.get('prId');
+    const action = searchParams.get('action');
+    if (!prId || !action) return;
+    try {
+      sessionStorage.setItem(
+        'p2p_tasks_deep_link',
+        JSON.stringify({ prId, action, savedAt: Date.now() })
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     if (loading || deepLinkHandled.current) return;
-    const prId = searchParams.get('prId');
-    const rawAction = searchParams.get('action');
+
+    let prId = searchParams.get('prId');
+    let rawAction = searchParams.get('action');
+    if (!prId || !rawAction) {
+      try {
+        const raw = sessionStorage.getItem('p2p_tasks_deep_link');
+        if (raw) {
+          const parsed = JSON.parse(raw) as { prId?: string; action?: string; savedAt?: number };
+          const age = Date.now() - Number(parsed.savedAt || 0);
+          if (age < 15 * 60 * 1000) {
+            prId = prId || parsed.prId || null;
+            rawAction = rawAction || parsed.action || null;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     if (!prId) return;
+
     const task = tasks.find((t) => t.prId === Number(prId));
     if (!task || task.status !== 'pending_approval') return;
 
@@ -194,6 +226,12 @@ export default function TasksPage() {
           : rawAction;
 
     if (!['approve', 'reject', 'return'].includes(action)) return;
+
+    try {
+      sessionStorage.removeItem('p2p_tasks_deep_link');
+    } catch {
+      /* ignore */
+    }
 
     if (task.isPostRfq) {
       deepLinkHandled.current = true;
@@ -212,6 +250,10 @@ export default function TasksPage() {
       prTitle: task.title,
       amount: task.totalAmount,
       currency: task.currency || 'INR',
+      askBusinessApproval: Boolean(task.askBusinessApproval),
+      requireInvoiceUpload: Boolean(
+        action === 'approve' && (task.requireInvoiceUpload || task.isSassInvoiceUpload)
+      ),
     });
     setSearchParams({}, { replace: true });
   }, [loading, tasks, searchParams, setSearchParams, navigate]);
@@ -285,6 +327,8 @@ export default function TasksPage() {
     prTitle: string;
     amount: number;
     currency?: string;
+    askBusinessApproval?: boolean;
+    requireInvoiceUpload?: boolean;
   }>({
     isOpen: false,
     type: 'approve',
@@ -293,11 +337,13 @@ export default function TasksPage() {
     prTitle: '',
     amount: 0,
     currency: 'INR',
+    askBusinessApproval: false,
+    requireInvoiceUpload: false,
   });
 
   const showToast = (text: string, type: 'success' | 'error') => {
     setToastMessage({ text, type });
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 6000);
   };
 
   const openPostRfqPage = (task: TaskItem, action?: 'approve' | 'reject' | 'return') => {
@@ -495,6 +541,10 @@ export default function TasksPage() {
       prTitle: task.title,
       amount: task.totalAmount,
       currency: task.currency || 'INR',
+      askBusinessApproval: Boolean(task.askBusinessApproval),
+      requireInvoiceUpload: Boolean(
+        type === 'approve' && (task.requireInvoiceUpload || task.isSassInvoiceUpload)
+      ),
     });
   };
 
@@ -511,7 +561,9 @@ export default function TasksPage() {
   ) => {
     const { taskId, type, prNumber } = modalState;
     const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
+    if (!task) {
+      throw new Error('Task not found — refresh My Tasks and try again');
+    }
     const action = type === 'approve' ? 'approve' : type === 'return' ? 'return' : 'reject';
     try {
       if (task.isPoSign && task.poId) {
@@ -520,7 +572,7 @@ export default function TasksPage() {
         } else if (type === 'reject') {
           await poApi.reject(task.poId, remarks);
         } else {
-          return;
+          throw new Error('PO sign approval must be done from the PO Approval page');
         }
       } else if (task.isSassInvoiceUpload && type === 'approve') {
         if (!invoice?.fileName || !invoice?.fileData) {
@@ -573,7 +625,9 @@ export default function TasksPage() {
       else setFilter('returned');
       await loadTasks();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Action failed', 'error');
+      const message = err instanceof Error ? err.message : 'Action failed';
+      showToast(message, 'error');
+      throw err instanceof Error ? err : new Error(message);
     }
   };
 
@@ -1331,11 +1385,13 @@ export default function TasksPage() {
             : tasks.find((t) => t.id === modalState.taskId)?.prId
         }
         askBusinessApproval={Boolean(
-          tasks.find((t) => t.id === modalState.taskId)?.askBusinessApproval
+          modalState.askBusinessApproval ||
+            tasks.find((t) => t.id === modalState.taskId)?.askBusinessApproval
         )}
         requireInvoiceUpload={Boolean(
-          modalState.type === 'approve' &&
-            tasks.find((t) => t.id === modalState.taskId)?.requireInvoiceUpload
+          modalState.requireInvoiceUpload ||
+            (modalState.type === 'approve' &&
+              tasks.find((t) => t.id === modalState.taskId)?.requireInvoiceUpload)
         )}
         onConfirm={handleConfirm}
         onClose={() =>
@@ -1345,9 +1401,9 @@ export default function TasksPage() {
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 animate-slide-up">
+        <div className="fixed bottom-6 right-6 z-[90] animate-slide-up">
           <div
-            className={`px-5 py-3 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium ${
+            className={`px-5 py-3 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium max-w-md ${
               toastMessage.type === 'success'
                 ? 'bg-emerald-700 text-white'
                 : 'bg-red-700 text-white'
@@ -1360,7 +1416,7 @@ export default function TasksPage() {
                   : 'ri-close-circle-line'
               }
             ></i>
-            {toastMessage.text}
+            <span className="break-words">{toastMessage.text}</span>
           </div>
         </div>
       )}
