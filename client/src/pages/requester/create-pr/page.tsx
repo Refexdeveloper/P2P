@@ -16,6 +16,12 @@ import LineItemEditorForm, {
   createEmptyLineItem,
   lineInclusiveAmount,
 } from './LineItemEditorForm';
+import LineItemImportExport from '../../../components/feature/LineItemImportExport';
+import {
+  downloadLineItemExport,
+  downloadLineItemSample,
+  parseLineItemCsv,
+} from '../../../utils/lineItemCsv';
 import FunctionalOwnRfqSection, {
   FunctionalRfqVendorRow,
   quoteHasQuotationFile,
@@ -1492,6 +1498,64 @@ export default function CreatePRPage() {
     pendingLineDraftRef.current = null;
     lineEditorModeRef.current = null;
     setLineEditor(null);
+  };
+
+  const persistImportedLineItems = (next: LineItem[]) => {
+    setLineItems(next);
+    if (snapshotRef.current) {
+      const snap: CreatePrDraftSnapshot = {
+        ...snapshotRef.current,
+        lineItems: next,
+        backendPrId: persistPrId,
+        savedAt: Date.now(),
+      };
+      snapshotRef.current = snap;
+      writeCreatePrDraft(user?.id, persistPrId ?? editPrId, snap);
+      writeCreatePrDraft(user?.id || 'anon', persistPrId ?? editPrId, snap);
+    }
+    setErrors((prev) => {
+      const copy = { ...prev };
+      delete copy.lineItems;
+      return copy;
+    });
+  };
+
+  const importPrLineItems = (csvText: string) => {
+    const parsed = parseLineItemCsv(csvText);
+    const mapped: LineItem[] = parsed.rows.map((row) => {
+      const needle = row.itemName.trim().toLowerCase();
+      const master = masterItems.find((item) => String(item.name || '').trim().toLowerCase() === needle);
+      return {
+        ...createEmptyLineItem(),
+        itemId: master?.id ?? null,
+        itemName: row.itemName || master?.name || '',
+        description: row.description || row.itemName,
+        category: row.category || master?.categoryName || '',
+        quantity: row.quantity,
+        unit: row.unit || master?.unit || 'Nos',
+        estimatedCost: hideLinePricing ? 0 : row.unitPrice,
+        hsnCode: hideLinePricing ? '' : row.hsnCode || master?.hsnCode || '',
+        gstPercentage: hideLinePricing ? 0 : row.gstPercentage ?? Number(master?.gstPercentage) ?? 18,
+      };
+    });
+    if (mapped.length) persistImportedLineItems([...lineItems, ...mapped]);
+    return { added: mapped.length, failed: parsed.errors.length, errors: parsed.errors };
+  };
+
+  const exportPrLineItems = () => {
+    downloadLineItemExport(
+      'pr-line-items.csv',
+      lineItems.map((item) => ({
+        itemName: item.itemName || item.description || '',
+        description: item.description || '',
+        category: item.category || '',
+        quantity: item.quantity || 0,
+        unit: item.unit || 'Nos',
+        unitPrice: item.estimatedCost || 0,
+        hsnCode: item.hsnCode || '',
+        gstPercentage: item.gstPercentage ?? 18,
+      }))
+    );
   };
 
   const saveLineItem = (item: LineItem) => {
@@ -3292,18 +3356,28 @@ export default function CreatePRPage() {
                 <p className="text-xs text-gray-500">Add all items required for this requisition</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={openAddLineItem}
-              disabled={Boolean(lineEditor)}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <i className="ri-add-line"></i>
-              Add Line Item
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <LineItemImportExport
+                onExport={exportPrLineItems}
+                onDownloadSample={() => downloadLineItemSample('pr-line-items-sample.csv')}
+                onImport={importPrLineItems}
+              />
+              <button
+                type="button"
+                onClick={openAddLineItem}
+                disabled={Boolean(lineEditor)}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <i className="ri-add-line"></i>
+                Add Line Item
+              </button>
+            </div>
           </div>
 
           <div className="p-6 space-y-4">
+            <p className="text-[11px] text-gray-400">
+              CSV columns: item_name, description, category, quantity, unit, unit_price, hsn_code, gst_percentage
+            </p>
             {errors.lineItems && (
               <p className="text-xs text-red-500 flex items-center gap-1">
                 <i className="ri-error-warning-line"></i>

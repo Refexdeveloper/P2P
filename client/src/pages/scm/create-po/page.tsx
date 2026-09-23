@@ -39,6 +39,13 @@ import {
   consumePoCsvImport,
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
+import LineItemImportExport from '../../../components/feature/LineItemImportExport';
+import {
+  downloadLineItemExport,
+  downloadLineItemSample,
+  parseLineItemCsv,
+  stripHtml,
+} from '../../../utils/lineItemCsv';
 import PurchaseRequestsPanel from '../purchase-requests/components/PurchaseRequestsPanel';
 import SearchCreateField from '../../requester/create-pr/SearchCreateField';
 import POApprovalModal from '../po-approval/components/POApprovalModal';
@@ -2673,6 +2680,54 @@ export default function CreatePOPage() {
     );
   };
 
+  const importPoLineItems = (csvText: string) => {
+    const parsed = parseLineItemCsv(csvText);
+    const mapped = parsed.rows.map((row) => {
+      const quantity = row.quantity;
+      const unitPrice = row.unitPrice;
+      return {
+        id: `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        itemName: row.itemName,
+        description: row.description || row.itemName,
+        quantity,
+        unitPrice,
+        taxPercentage: row.gstPercentage,
+        total: calcLineTotal(quantity, unitPrice),
+        unit: row.unit || 'Nos',
+      };
+    });
+    if (mapped.length) {
+      patchLineItems((prev) => {
+        const onlyEmpty =
+          prev.length > 0 &&
+          prev.every(
+            (item) =>
+              !String(item.itemName || '').trim() &&
+              !stripHtml(item.description || '') &&
+              Number(item.unitPrice || 0) === 0
+          );
+        return onlyEmpty ? mapped : [...prev, ...mapped];
+      });
+    }
+    return { added: mapped.length, failed: parsed.errors.length, errors: parsed.errors };
+  };
+
+  const exportPoLineItems = () => {
+    downloadLineItemExport(
+      'po-line-items.csv',
+      lineItems.map((item) => ({
+        itemName: item.itemName || '',
+        description: stripHtml(item.description || ''),
+        category: '',
+        quantity: item.quantity || 0,
+        unit: item.unit || 'Nos',
+        unitPrice: item.unitPrice || 0,
+        hsnCode: '',
+        gstPercentage: item.taxPercentage ?? 18,
+      }))
+    );
+  };
+
   const handleAddLineItem = () => {
     patchLineItems((prev) => [
       ...prev,
@@ -4568,6 +4623,11 @@ export default function CreatePOPage() {
                     <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
                       {lineItems.length} Items
                     </span>
+                    <LineItemImportExport
+                      onExport={exportPoLineItems}
+                      onDownloadSample={() => downloadLineItemSample('po-line-items-sample.csv')}
+                      onImport={importPoLineItems}
+                    />
                     <button
                       onClick={handleAddLineItem}
                       className="flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
@@ -4577,6 +4637,9 @@ export default function CreatePOPage() {
                   </div>
                 </div>
 
+                <p className="px-6 pt-3 text-[11px] text-gray-400">
+                  CSV columns: item_name, description, category, quantity, unit, unit_price, hsn_code, gst_percentage
+                </p>
                 <div className="w-full overflow-x-auto">
                   <table className="w-full min-w-[940px]">
                     <thead>
