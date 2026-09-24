@@ -4683,24 +4683,50 @@ export async function listTasks(user) {
   // SCM Buyer final verify after Manager sign-off
   if (user.role === 'SCM Buyer') {
     const [buyerVerifyRows] = await pool.query(
-      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, pr.title, pr.priority,
-              d.name AS department_name, u.name AS requester_name, wt.created_at AS task_created_at, wt.due_date,
-              e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
+      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, po.signed_at, po.updated_at,
+              COALESCE(
+                pr.title,
+                NULLIF(JSON_UNQUOTE(JSON_EXTRACT(po.manual_context_json, '$.prDetails.title')), ''),
+                po.vendor_name,
+                po.po_number
+              ) AS title,
+              pr.priority,
+              COALESCE(
+                d.name,
+                NULLIF(JSON_UNQUOTE(JSON_EXTRACT(po.manual_context_json, '$.prDetails.department')), ''),
+                po.entity,
+                ''
+              ) AS department_name,
+              COALESCE(
+                u.name,
+                NULLIF(JSON_UNQUOTE(JSON_EXTRACT(po.manual_context_json, '$.prDetails.requester')), ''),
+                creator.name,
+                ''
+              ) AS requester_name,
+              wt.created_at AS task_created_at, wt.due_date,
+              COALESCE(e.id, pe.id) AS entity_id,
+              COALESCE(e.name, pe.name, po.entity, '') AS entity_name,
+              COALESCE(e.code, pe.code, '') AS entity_code
        FROM purchase_orders po
-       JOIN purchase_requests pr ON pr.id = po.pr_id
-       JOIN departments d ON d.id = pr.department_id
-       JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+       LEFT JOIN departments d ON d.id = pr.department_id
+       LEFT JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN users creator ON creator.id = po.created_by
        LEFT JOIN entity_masters e ON e.id = pr.entity_id
+       LEFT JOIN entity_masters pe ON pe.id = po.entity_id
        LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
          AND wt.task_type = 'PO_BUYER_VERIFY' AND wt.status = 'pending'
        WHERE po.status = 'pending_buyer_verify'
+         AND COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+         AND po.po_number NOT LIKE 'CS-%'
        ORDER BY po.signed_at DESC, po.updated_at DESC`
     );
     for (const row of buyerVerifyRows) {
-      const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date);
+      const sla = buildPoTaskSlaFields(row.task_created_at || row.signed_at || row.updated_at, row.due_date);
       tasks.push({
         id: `po-verify-${row.po_id}`,
         taskId: row.po_id,
+        poId: row.po_id,
         prId: row.pr_id,
         prNumber: row.po_number,
         title: `${row.title} — Final Verify`,

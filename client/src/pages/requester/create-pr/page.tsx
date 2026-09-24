@@ -18,7 +18,7 @@ import LineItemEditorForm, {
   lineInclusiveAmount,
 } from './LineItemEditorForm';
 import LineItemImportExport from '../../../components/feature/LineItemImportExport';
-import { parseLineItemCsv } from '../../../utils/lineItemCsv';
+import { parseLineItemSpreadsheet } from '../../../utils/lineItemExcel';
 import FunctionalOwnRfqSection, {
   FunctionalRfqVendorRow,
   quoteHasQuotationFile,
@@ -1521,8 +1521,8 @@ export default function CreatePRPage() {
     });
   };
 
-  const importPrLineItems = (csvText: string) => {
-    const parsed = parseLineItemCsv(csvText);
+  const importPrLineItems = async (file: File) => {
+    const parsed = await parseLineItemSpreadsheet(file);
     const mapped: LineItem[] = parsed.rows.map((row) => {
       const needle = row.itemName.trim().toLowerCase();
       const master = masterItems.find((item) => String(item.name || '').trim().toLowerCase() === needle);

@@ -546,7 +546,7 @@ function enforceDocumentSectionOrder(pages) {
   }
 
   const out = [...early, ...iiPages];
-  // SCM Manager sign + Vendor Acknowledgment share one page (never split).
+  // SCM Manager sign block stays on its own last page (vendor ack removed).
   if (notes.length || ack.length) {
     out.push([...notes, ...ack]);
   }
@@ -1287,7 +1287,6 @@ function packPoPages(parts, heights, scale = 1) {
   const ackHtml = String(parts.ackHtml || '').trim();
 
   if (notesHtml || ackHtml) {
-    // One page: SCM Manager sign + Vendor Acknowledgment (do not separate).
     startNewSection();
     const stacked = `<div class="notes-ack-stack">${notesHtml}${ackHtml}</div>`;
     const combinedH =

@@ -12,6 +12,7 @@ interface Props {
   onSelect: (item: ItemRecord) => void;
   onClear: () => void;
   onCreated: (item: ItemRecord) => void;
+  portal?: boolean;
 }
 
 export default function ItemCombobox({
@@ -24,6 +25,7 @@ export default function ItemCombobox({
   onSelect,
   onClear,
   onCreated,
+  portal = false,
 }: Props) {
   const options = useMemo(
     () =>
@@ -45,6 +47,7 @@ export default function ItemCombobox({
       hasError={hasError}
       addNoun="item"
       compact
+      portal={portal}
       onSelect={(opt) => {
         const item = items.find((m) => m.id === opt.id);
         if (item) onSelect(item);

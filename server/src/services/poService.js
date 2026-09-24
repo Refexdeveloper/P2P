@@ -30,7 +30,11 @@ import {
   getScmManagerNotifyEmails,
   getPreferredScmManagerName,
   getPreferredScmManagerEmail,
+  getPreferredScmManagerDesignation,
+  resolveScmManagerSignName,
   insertScmManagerPoApprovalTask,
+  insertScmBuyerVerifyTask,
+  resolveBuyerVerifyAssignee,
   canEditAnyScmPurchaseOrder,
 } from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
@@ -3537,7 +3541,11 @@ export async function signPurchaseOrder(user, poId, {
     dscDetails.validTill = d.toISOString().slice(0, 10);
   }
 
-  const signName = dscDetails?.holderName || signatureName?.trim() || user.name;
+  const signName = resolveScmManagerSignName({
+    holderName: dscDetails?.holderName,
+    signatureName,
+    user,
+  });
   if (!remarks?.trim()) throw new Error('Comments are required for signing');
 
   const {
@@ -3589,6 +3597,7 @@ export async function signPurchaseOrder(user, poId, {
     signed: true,
     signature: {
       name: signName,
+      designation: getPreferredScmManagerDesignation(),
       date: formatDateTime(new Date()),
       comments: remarks.trim(),
       imageDataUrl,
@@ -3613,6 +3622,8 @@ export async function signPurchaseOrder(user, poId, {
     ]
   );
 
+  const verifyAssignee = await resolveBuyerVerifyAssignee(po);
+
   if (po.prId) {
     await pool.query(
       `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
@@ -3622,10 +3633,11 @@ export async function signPurchaseOrder(user, poId, {
 
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 1);
-    await pool.query(
-      `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
-       VALUES (?, 'PO_BUYER_VERIFY', 'SCM Buyer', ?, 'pending', ?)`,
-      [po.prId, null, dueDate.toISOString().split('T')[0]]
+    await insertScmBuyerVerifyTask(
+      pool,
+      po.prId,
+      dueDate.toISOString().split('T')[0],
+      verifyAssignee?.id || null
     );
 
     await pool.query(
@@ -3634,16 +3646,18 @@ export async function signPurchaseOrder(user, poId, {
     );
   }
 
-  const scmBuyer = await resolveScmBuyerUser();
   const updated = await getPurchaseOrderById(poId);
-  const buyerEmails = await getScmBuyerNotifyEmails();
+  const buyerEmails = new Set(await getScmBuyerNotifyEmails());
+  if (verifyAssignee?.email) {
+    buyerEmails.add(String(verifyAssignee.email).trim().toLowerCase());
+  }
   const attachments = await signedPoPdfMailAttachment(updated);
-  if (buyerEmails.length) {
+  if (buyerEmails.size) {
     queuePoWorkflowNotification(updated, {
       action: 'assign',
       stageLabel: 'SCM Buyer Final Verify',
-      recipientEmails: buyerEmails,
-      recipientName: scmBuyer?.name || 'SCM Buyer',
+      recipientEmails: [...buyerEmails],
+      recipientName: verifyAssignee?.name || 'SCM Buyer',
       actorName: signName || user.name,
       actorRole: user.role,
       remarks: remarks.trim(),
@@ -3653,6 +3667,8 @@ export async function signPurchaseOrder(user, poId, {
       notifyWhatsApp: false,
       attachments,
     });
+  } else {
+    console.warn(`No SCM Buyer email for Buyer Final Verify after sign of ${updated?.poNumber || poId}`);
   }
 
   queueApproverActionConfirmationForUser(updated, user, 'approve', {
@@ -4598,7 +4614,7 @@ export async function updatePurchaseOrder(user, poId, body) {
   if (canBuyerRevise) {
     const manager = await resolveScmManagerUser();
     const managerEmails = await getScmManagerNotifyEmails();
-    const managerName = manager?.name || getPreferredScmManagerName() || 'Mounesh R';
+    const managerName = manager?.name || getPreferredScmManagerName() || 'Mounesh Rathakar';
     if (managerEmails.length) {
       const attachments = await poPdfMailAttachment(updatedPo).catch(() => undefined);
       queuePoWorkflowNotification(updatedPo, {

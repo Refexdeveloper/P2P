@@ -5,6 +5,7 @@ function mapLocation(row) {
     id: row.id,
     location: row.location || '',
     gstNo: row.gst_no || '',
+    billingAddress: row.billing_address || '',
     sortOrder: Number(row.sort_order || 0),
   };
 }
@@ -38,6 +39,7 @@ function normalizeLocations(payload = {}) {
         gstNo: String(l?.gstNo || l?.gst_no || '')
           .trim()
           .toUpperCase(),
+        billingAddress: String(l?.billingAddress || l?.billing_address || '').trim(),
         sortOrder: idx,
       }))
       .filter((l) => l.location);
@@ -47,9 +49,10 @@ function normalizeLocations(payload = {}) {
   const gstNo = String(payload.gstNo || payload.gst_no || '')
     .trim()
     .toUpperCase();
+  const billingAddress = String(payload.billingAddress || payload.billing_address || '').trim();
   if (!location && !gstNo) return [];
   if (!location) return [];
-  return [{ location, gstNo, sortOrder: 0 }];
+  return [{ location, gstNo, billingAddress, sortOrder: 0 }];
 }
 
 export async function ensureLetterheadMastersTable() {
@@ -73,6 +76,7 @@ export async function ensureLetterheadMastersTable() {
   for (const sql of [
     `ALTER TABLE letterhead_masters ADD COLUMN location VARCHAR(255) NULL`,
     `ALTER TABLE letterhead_masters ADD COLUMN gst_no VARCHAR(50) NULL`,
+    `ALTER TABLE letterhead_locations ADD COLUMN billing_address TEXT NULL`,
   ]) {
     try {
       await pool.query(sql);
@@ -87,6 +91,7 @@ export async function ensureLetterheadMastersTable() {
       letterhead_id INT NOT NULL,
       location VARCHAR(255) NOT NULL,
       gst_no VARCHAR(50) NULL,
+      billing_address TEXT NULL,
       footer_logo LONGTEXT NULL,
       sort_order INT NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -152,9 +157,9 @@ async function replaceLetterheadLocations(letterheadId, locations) {
   await pool.query(`DELETE FROM letterhead_locations WHERE letterhead_id = ?`, [letterheadId]);
   for (const loc of locations) {
     await pool.query(
-      `INSERT INTO letterhead_locations (letterhead_id, location, gst_no, footer_logo, sort_order)
-       VALUES (?, ?, ?, NULL, ?)`,
-      [letterheadId, loc.location, loc.gstNo || null, loc.sortOrder ?? 0]
+      `INSERT INTO letterhead_locations (letterhead_id, location, gst_no, billing_address, footer_logo, sort_order)
+       VALUES (?, ?, ?, ?, NULL, ?)`,
+      [letterheadId, loc.location, loc.gstNo || null, loc.billingAddress || null, loc.sortOrder ?? 0]
     );
   }
 

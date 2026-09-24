@@ -129,6 +129,7 @@ export function formatRoleDisplayName(role, actorOrEmail = null) {
   const map = {
     'HOD Approver': 'L1 Manager',
     'PR Manager': 'L2 Manager',
+    'SCM Manager': 'Head Procurement',
   };
   return map[raw] || raw;
 }

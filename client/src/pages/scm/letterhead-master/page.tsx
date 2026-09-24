@@ -183,6 +183,7 @@ type LocationRow = {
   id?: number;
   location: string;
   gstNo: string;
+  billingAddress: string;
 };
 
 function makeLocationKey() {
@@ -190,7 +191,7 @@ function makeLocationKey() {
 }
 
 function emptyLocationRow(): LocationRow {
-  return { key: makeLocationKey(), location: '', gstNo: '' };
+  return { key: makeLocationKey(), location: '', gstNo: '', billingAddress: '' };
 }
 
 function logoPreview(value: string) {
@@ -258,13 +259,14 @@ export default function LetterheadMasterPage() {
       footerLogo: row.footerLogo || '',
       status: row.status || 'active',
     });
-    const fromApi = (row.locations || []).filter((l) => l.location || l.gstNo);
+    const fromApi = (row.locations || []).filter((l) => l.location || l.gstNo || l.billingAddress);
     if (fromApi.length) {
       const locs = fromApi.map((l) => ({
         key: makeLocationKey(),
         id: l.id,
         location: l.location || '',
         gstNo: l.gstNo || '',
+        billingAddress: l.billingAddress || '',
       }));
       setLocations(locs);
       setSelectedLocationKey(locs[0]?.key || '');
@@ -275,6 +277,7 @@ export default function LetterheadMasterPage() {
         key: makeLocationKey(),
         location: row.location || '',
         gstNo: row.gstNo || '',
+        billingAddress: '',
       };
       setLocations([locRow]);
       setSelectedLocationKey(locRow.key);
@@ -293,6 +296,7 @@ export default function LetterheadMasterPage() {
         key: makeLocationKey(),
         location: l.location || '',
         gstNo: l.gstNo || '',
+        billingAddress: l.billingAddress || '',
       }));
       setLocations(locs);
       setSelectedLocationKey(locs[0]?.key || '');
@@ -315,6 +319,7 @@ export default function LetterheadMasterPage() {
       updateLocation(key, {
         location: locationName,
         gstNo: match.gstNo || '',
+        billingAddress: match.billingAddress || '',
       });
       return;
     }
@@ -332,6 +337,8 @@ export default function LetterheadMasterPage() {
       .map((l) => ({
         location: l.location.trim(),
         gstNo: l.gstNo.trim(),
+        billingAddress: l.billingAddress.trim(),
+        siteAddress: '',
         footerLogo: '',
       }));
     if (!additions.length) return;
@@ -339,6 +346,8 @@ export default function LetterheadMasterPage() {
       ...existing.map((l) => ({
         location: l.location,
         gstNo: l.gstNo || '',
+        billingAddress: l.billingAddress || '',
+        siteAddress: l.siteAddress || '',
         footerLogo: l.footerLogo || '',
       })),
       ...additions,
@@ -458,6 +467,7 @@ export default function LetterheadMasterPage() {
     const locationPayload = filledLocations.map((l) => ({
       location: l.location.trim(),
       gstNo: l.gstNo.trim(),
+      billingAddress: l.billingAddress.trim(),
     }));
     const payload = {
       ...form,
@@ -522,7 +532,7 @@ export default function LetterheadMasterPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Letterhead Master</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Header and footer logos are common for all locations. Locations table is for GST only.
+              Header and footer logos are common for all locations. Locations table is for GST and billing address.
             </p>
           </div>
           <button
@@ -703,6 +713,7 @@ export default function LetterheadMasterPage() {
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">#</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Location</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">GST No</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Billing address</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -714,6 +725,9 @@ export default function LetterheadMasterPage() {
                             <td className="px-3 py-2.5 text-gray-400">{idx + 1}</td>
                             <td className="px-3 py-2.5 text-gray-800">{loc.location || '—'}</td>
                             <td className="px-3 py-2.5 font-mono text-gray-700">{loc.gstNo || '—'}</td>
+                            <td className="px-3 py-2.5 text-gray-700 whitespace-pre-line">
+                              {loc.billingAddress || '—'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -843,7 +857,7 @@ export default function LetterheadMasterPage() {
                       Locations
                     </h3>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Add each location with GST No only. Header and footer apply to all locations.
+                      Add each location with GST No and Billing address. Header and footer apply to all locations.
                     </p>
                   </div>
                   <button
@@ -878,6 +892,9 @@ export default function LetterheadMasterPage() {
                           </th>
                           <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[140px]">
                             GST No
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[220px]">
+                            Billing address
                           </th>
                           <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase w-16">
                             Action
@@ -921,6 +938,17 @@ export default function LetterheadMasterPage() {
                                   placeholder="22AAAAA0000A1Z5"
                                   maxLength={15}
                                   className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                />
+                              </td>
+                              <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                                <textarea
+                                  value={loc.billingAddress}
+                                  onChange={(e) =>
+                                    updateLocation(loc.key, { billingAddress: e.target.value })
+                                  }
+                                  placeholder="Full billing address"
+                                  rows={2}
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
                                 />
                               </td>
                               <td className="px-3 py-3 text-center">

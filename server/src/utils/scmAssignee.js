@@ -178,7 +178,8 @@ export async function reassignPendingScmBuyerTasks(conn = null) {
 
 /** Default SCM Manager for login, task assignment, and mail. */
 export const DEFAULT_SCM_MANAGER_EMAIL = 'mounesh.r@refex.co.in';
-export const DEFAULT_SCM_MANAGER_NAME = 'Mounesh R';
+export const DEFAULT_SCM_MANAGER_NAME = 'Mounesh Rathakar';
+export const DEFAULT_SCM_MANAGER_DESIGNATION = 'Head Procurement';
 
 const REMOVED_SCM_MANAGER_EMAILS = ['rajeev.v@refex.co.in'];
 
@@ -192,8 +193,45 @@ export function getPreferredScmManagerEmail() {
 
 export function getPreferredScmManagerName() {
   const fromEnv = String(process.env.SCM_MANAGER_NAME || '').trim();
-  if (fromEnv && fromEnv.toLowerCase() !== 'rajeev v') return fromEnv;
+  if (
+    fromEnv &&
+    !['rajeev v', 'mounesh r', 'mounesh.r', 'scm manager'].includes(fromEnv.toLowerCase())
+  ) {
+    return fromEnv;
+  }
   return DEFAULT_SCM_MANAGER_NAME;
+}
+
+export function getPreferredScmManagerDesignation() {
+  const fromEnv = String(process.env.SCM_MANAGER_DESIGNATION || '').trim();
+  return fromEnv || DEFAULT_SCM_MANAGER_DESIGNATION;
+}
+
+function isPlaceholderScmManagerName(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return (
+    !n ||
+    n === 'mounesh r' ||
+    n === 'mounesh.r' ||
+    n === 'mounesh' ||
+    n === 'scm manager' ||
+    n === 'vikram singh' ||
+    n === 'rajeev v' ||
+    n.startsWith('mounesh.r')
+  );
+}
+
+/** Name printed on the signed PO — never the email local-part. */
+export function resolveScmManagerSignName({ holderName, signatureName, user } = {}) {
+  const preferred = getPreferredScmManagerName();
+  const email = String(user?.email || '').trim().toLowerCase();
+  const isDesignated =
+    email === getPreferredScmManagerEmail() || email.includes('mounesh.r@');
+  const holder = String(holderName || '').trim();
+  if (holder && !isPlaceholderScmManagerName(holder)) return holder;
+  const typed = String(signatureName || '').trim();
+  if (isDesignated && isPlaceholderScmManagerName(typed || user?.name)) return preferred;
+  return typed || String(user?.name || '').trim() || preferred;
 }
 
 /**
@@ -255,10 +293,7 @@ export async function ensurePreferredScmManagerUser(conn = null) {
        WHERE id = ? AND (role <> 'SCM Manager' OR is_active <> 1)`,
       [managerId]
     );
-    await db.query(
-      `UPDATE users SET name = ? WHERE id = ? AND (name IN ('Vikram Singh', 'Rajeev V') OR name = '' OR name IS NULL)`,
-      [name, managerId]
-    );
+    await db.query(`UPDATE users SET name = ? WHERE id = ?`, [name, managerId]);
   } else {
     const [demo] = await db.query(
       `SELECT id FROM users
@@ -332,4 +367,36 @@ export async function insertScmManagerPoApprovalTask(db, prId, dueDateStr) {
     [prId, manager?.id || null, dueDateStr]
   );
   return manager;
+}
+
+/**
+ * Who should receive Buyer Final Verify (task + mail).
+ * Prefer the PO creator when they are an active SCM Buyer; else designated buyer.
+ */
+export async function resolveBuyerVerifyAssignee(po, conn = null) {
+  const db = conn || pool;
+  const createdBy = Number(po?.createdByUserId || po?.created_by || 0);
+  if (createdBy) {
+    const [rows] = await db.query(
+      `SELECT id, email, name, role
+       FROM users
+       WHERE id = ? AND is_active = 1 AND role = 'SCM Buyer'
+       LIMIT 1`,
+      [createdBy]
+    );
+    if (rows[0]) return mapBuyerRow(rows[0]);
+  }
+  return resolveScmBuyerUser(db);
+}
+
+export async function insertScmBuyerVerifyTask(db, prId, dueDateStr, assignedUserId = null) {
+  const buyer = assignedUserId
+    ? { id: assignedUserId }
+    : await resolveScmBuyerUser(db);
+  await db.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+     VALUES (?, 'PO_BUYER_VERIFY', 'SCM Buyer', ?, 'pending', ?)`,
+    [prId, buyer?.id || null, dueDateStr]
+  );
+  return buyer;
 }

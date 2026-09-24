@@ -40,6 +40,20 @@ function defaultValidTill() {
   return d.toISOString().slice(0, 10);
 }
 
+function scmManagerSignName(user?: { name?: string | null; email?: string | null } | null) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  const name = String(user?.name || '').trim();
+  if (
+    email.includes('mounesh.r@') ||
+    /^(mounesh(\.r| r)?)$/i.test(name) ||
+    name.toLowerCase() === 'scm manager'
+  ) {
+    return 'Mounesh Rathakar';
+  }
+  return name || 'Mounesh Rathakar';
+}
+}
+
 function generateDscStampPng(dsc: DscDetails, signedAt: string) {
   const canvas = document.createElement('canvas');
   canvas.width = 840;
@@ -104,7 +118,7 @@ export default function SignatureCapture({ onChange }: Props) {
   const [gallery, setGallery] = useState<UserSignatureItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [dsc, setDsc] = useState<DscDetails>({
-    holderName: user?.name || '',
+    holderName: scmManagerSignName(user),
     serial: '',
     issuer: DSC_ISSUERS[0],
     validTill: defaultValidTill(),
@@ -148,7 +162,7 @@ export default function SignatureCapture({ onChange }: Props) {
     emit({
       signatureId: preferred.id,
       signatureImage: preferred.imageDataUrl,
-      signatureName: user?.name || 'SCM Manager',
+      signatureName: scmManagerSignName(user),
       saveToGallery: false,
     });
   }, [gallery, selectedGalleryId, preview, emit, user?.name]);
@@ -250,7 +264,7 @@ export default function SignatureCapture({ onChange }: Props) {
 
   const applyDsc = (next: DscDetails) => {
     const filled: DscDetails = {
-      holderName: next.holderName.trim() || user?.name || '',
+      holderName: next.holderName.trim() || scmManagerSignName(user),
       serial: next.serial.trim(),
       issuer: next.issuer.trim() || DSC_ISSUERS[0],
       validTill: next.validTill || defaultValidTill(),
@@ -322,7 +336,7 @@ export default function SignatureCapture({ onChange }: Props) {
                 if (m.key === 'dsc') {
                   applyDsc({
                     ...dsc,
-                    holderName: dsc.holderName || user?.name || '',
+                    holderName: dsc.holderName || scmManagerSignName(user),
                   });
                 }
               }}

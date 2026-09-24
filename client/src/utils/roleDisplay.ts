@@ -2,6 +2,7 @@
 const ROLE_DISPLAY_NAMES: Record<string, string> = {
   'HOD Approver': 'L1 Manager',
   'PR Manager': 'L2 Manager',
+  'SCM Manager': 'Head Procurement',
   CFO: 'Group CEO',
 };
 
@@ -74,7 +75,7 @@ export function getUserDesignation(
   user?: { role?: string | null; email?: string | null; name?: string | null; displayRole?: string | null } | null
 ): string {
   if (!user) return '';
-  if (user.displayRole != null && user.displayRole !== undefined) {
+  if (user.displayRole != null && String(user.displayRole).trim() !== '') {
     return user.displayRole;
   }
   return formatRoleDisplayName(user.role, user);

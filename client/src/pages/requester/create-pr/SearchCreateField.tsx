@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export type SearchCreateOption = {
   id: number | string;
@@ -21,6 +22,7 @@ interface Props {
   onCreate?: (name: string, extra?: string) => Promise<void>;
   createExtraPlaceholder?: string;
   onOpen?: () => void;
+  portal?: boolean;
 }
 
 export default function SearchCreateField({
@@ -38,13 +40,16 @@ export default function SearchCreateField({
   onCreate,
   createExtraPlaceholder,
   onOpen,
+  portal = false,
 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [createExtra, setCreateExtra] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number; maxH: number } | null>(null);
 
   useEffect(() => {
     if (!open) setQuery(displayValue);
@@ -61,11 +66,39 @@ export default function SearchCreateField({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (boxRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !portal) return;
+    const place = () => {
+      const el = boxRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - r.bottom - 12;
+      const spaceAbove = r.top - 12;
+      const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+      const maxH = Math.max(160, Math.min(280, openUp ? spaceAbove : spaceBelow));
+      setMenuPos({
+        top: openUp ? Math.max(8, r.top - maxH - 4) : r.bottom + 4,
+        left: Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - r.width - 8)),
+        width: r.width,
+        maxH,
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open, portal]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -159,55 +192,69 @@ export default function SearchCreateField({
           </button>
         )}
       </div>
-      {open && (
-        <div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg">
-          {filtered.length === 0 && !canAdd && (
-            <p className="px-3 py-2.5 text-sm text-gray-500">
-              {typed
-                ? `No ${addNoun || 'matches'} for “${typed}”`
-                : emptyHint ||
-                  (options.length === 0
-                    ? `No ${addNoun || 'options'} available`
-                    : 'Start typing to search')}
-            </p>
-          )}
-          {filtered.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => apply(opt)}
-              className={`w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 cursor-pointer ${
-                selectedId === opt.id ? 'bg-slate-100 font-semibold text-slate-900' : 'text-gray-800'
-              }`}
+      {open &&
+        (() => {
+          const menu = (
+            <div
+              ref={menuRef}
+              className={`${
+                portal ? 'fixed z-[80]' : 'absolute z-30 mt-1 w-full'
+              } max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg`}
+              style={
+                portal && menuPos
+                  ? { top: menuPos.top, left: menuPos.left, width: menuPos.width, maxHeight: menuPos.maxH }
+                  : undefined
+              }
             >
-              <span className="block truncate">{opt.label}</span>
-              {opt.subLabel ? <span className="block text-[11px] text-gray-400">{opt.subLabel}</span> : null}
-            </button>
-          ))}
-          {canAdd && (
-            <div className="border-t border-teal-100 bg-teal-50/70 p-2.5 space-y-2">
-              {createExtraPlaceholder ? (
-                <textarea
-                  value={createExtra}
-                  onChange={(e) => setCreateExtra(e.target.value)}
-                  placeholder={createExtraPlaceholder}
-                  rows={2}
-                  className="w-full px-2.5 py-2 border border-teal-100 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none bg-white"
-                />
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void handleAdd()}
-                disabled={saving}
-                className="w-full text-left px-2 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100 rounded-lg cursor-pointer"
-              >
-                <i className="ri-add-line mr-1"></i>
-                {saving ? 'Saving…' : `Save “${typed}” as new ${addNoun || 'entry'}`}
-              </button>
+              {filtered.length === 0 && !canAdd && (
+                <p className="px-3 py-2.5 text-sm text-gray-500">
+                  {typed
+                    ? `No ${addNoun || 'matches'} for “${typed}”`
+                    : emptyHint ||
+                      (options.length === 0
+                        ? `No ${addNoun || 'options'} available`
+                        : 'Start typing to search')}
+                </p>
+              )}
+              {filtered.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => apply(opt)}
+                  className={`w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 cursor-pointer ${
+                    selectedId === opt.id ? 'bg-slate-100 font-semibold text-slate-900' : 'text-gray-800'
+                  }`}
+                >
+                  <span className="block truncate">{opt.label}</span>
+                  {opt.subLabel ? <span className="block text-[11px] text-gray-400">{opt.subLabel}</span> : null}
+                </button>
+              ))}
+              {canAdd && (
+                <div className="border-t border-teal-100 bg-teal-50/70 p-2.5 space-y-2">
+                  {createExtraPlaceholder ? (
+                    <textarea
+                      value={createExtra}
+                      onChange={(e) => setCreateExtra(e.target.value)}
+                      placeholder={createExtraPlaceholder}
+                      rows={2}
+                      className="w-full px-2.5 py-2 border border-teal-100 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none bg-white"
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void handleAdd()}
+                    disabled={saving}
+                    className="w-full text-left px-2 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100 rounded-lg cursor-pointer"
+                  >
+                    <i className="ri-add-line mr-1"></i>
+                    {saving ? 'Saving…' : `Save “${typed}” as new ${addNoun || 'entry'}`}
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          );
+          return portal ? createPortal(menu, document.body) : menu;
+        })()}
       {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </div>
   );

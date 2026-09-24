@@ -26,6 +26,7 @@ import {
   VendorRecord,
   EntityRecord,
   DepartmentRecord,
+  ItemRecord,
 } from '../../../services/api';
 import ManualPoContextSection, {
   emptyComparisonRound,
@@ -41,10 +42,12 @@ import {
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
 import LineItemImportExport from '../../../components/feature/LineItemImportExport';
-import { parseLineItemCsv, stripHtml } from '../../../utils/lineItemCsv';
+import { stripHtml, type LineItemCsvRow } from '../../../utils/lineItemCsv';
+import { parseLineItemSpreadsheet } from '../../../utils/lineItemExcel';
 import PurchaseRequestsPanel from '../purchase-requests/components/PurchaseRequestsPanel';
 import SearchCreateField from '../../requester/create-pr/SearchCreateField';
 import DepartmentCombobox from '../../requester/create-pr/DepartmentCombobox';
+import ItemCombobox from '../../requester/create-pr/ItemCombobox';
 import POApprovalModal from '../po-approval/components/POApprovalModal';
 import PostRfqApprovalModal from '../../rfq-approval/components/PostRfqApprovalModal';
 import { numberToIndianWords } from '../../../utils/amountInWords';
@@ -67,6 +70,7 @@ import {
 
 interface LineItem {
   id: string | number;
+  itemId?: number | null;
   itemName: string;
   description: string;
   quantity: number;
@@ -1180,6 +1184,7 @@ export default function CreatePOPage() {
     emptyComparisonRound(1),
   ]);
   const [masterVendors, setMasterVendors] = useState<VendorRecord[]>([]);
+  const [masterItems, setMasterItems] = useState<ItemRecord[]>([]);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [requesterUsers, setRequesterUsers] = useState<
     Array<{ id: number; name: string; email: string; role: string; department: string }>
@@ -1654,6 +1659,34 @@ export default function CreatePOPage() {
   }, [loadEntityOptions]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await masterApi.listItems({ status: 'active' });
+        if (!cancelled) setMasterItems(res.data || []);
+      } catch {
+        if (!cancelled) setMasterItems([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!masterItems.length) return;
+    setLineItems((prev) =>
+      prev.map((row) => {
+        if (row.itemId) return row;
+        const name = String(row.itemName || '').trim().toLowerCase();
+        if (!name) return row;
+        const match = masterItems.find((m) => m.name.trim().toLowerCase() === name);
+        return match ? { ...row, itemId: match.id, itemName: match.name } : row;
+      })
+    );
+  }, [masterItems]);
+
+  useEffect(() => {
     if (!isManualPoFlow) return;
     let cancelled = false;
     (async () => {
@@ -1758,7 +1791,7 @@ export default function CreatePOPage() {
         }
       } catch {
         if (!cancelled) {
-          setScmManager({ name: 'Mounesh R', email: 'mounesh.r@refex.co.in' });
+          setScmManager({ name: 'Mounesh Rathakar', email: 'mounesh.r@refex.co.in' });
         }
       }
     })();
@@ -1873,6 +1906,7 @@ export default function CreatePOPage() {
         const itemName = String(li.itemName || li.name || '').trim() || plainTextFromHtml(description);
         return {
           id: Number(li.id) || `li-${itemName || description}`,
+          itemId: Number(li.itemId || li.item_id) || null,
           itemName,
           description,
           quantity,
@@ -2720,9 +2754,37 @@ export default function CreatePOPage() {
     );
   };
 
-  const handleItemNameChange = (id: string | number, val: string) => {
+  const rememberMasterItem = (created: ItemRecord) => {
+    setMasterItems((prev) => {
+      if (prev.some((item) => item.id === created.id)) return prev;
+      return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+    });
+  };
+
+  const applyMasterItemToLine = (id: string | number, master: ItemRecord, created = false) => {
     patchLineItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, itemName: val } : item))
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const keepDesc = stripHtml(item.description || '');
+        const oldName = String(item.itemName || '').trim();
+        const desc =
+          keepDesc && keepDesc.toLowerCase() !== oldName.toLowerCase()
+            ? item.description
+            : master.description || master.name;
+        const gst = Number(master.gstPercentage);
+        return {
+          ...item,
+          itemId: master.id,
+          itemName: master.name,
+          description: created && keepDesc ? item.description : desc,
+          unit: master.unit || item.unit || 'Nos',
+          taxPercentage: created
+            ? item.taxPercentage
+            : Number.isFinite(gst)
+              ? gst
+              : item.taxPercentage,
+        };
+      })
     );
   };
 
@@ -2732,20 +2794,23 @@ export default function CreatePOPage() {
     );
   };
 
-  const importPoLineItems = (csvText: string) => {
-    const parsed = parseLineItemCsv(csvText);
+  const importPoLineItems = async (file: File) => {
+    const parsed = await parseLineItemSpreadsheet(file);
     const mapped = parsed.rows.map((row) => {
       const quantity = row.quantity;
       const unitPrice = row.unitPrice;
+      const needle = row.itemName.trim().toLowerCase();
+      const master = masterItems.find((item) => String(item.name || '').trim().toLowerCase() === needle);
       return {
         id: `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        itemName: row.itemName,
+        itemId: master?.id ?? null,
+        itemName: row.itemName || master?.name || '',
         description: row.description || row.itemName,
         quantity,
         unitPrice,
-        taxPercentage: row.gstPercentage,
+        taxPercentage: row.gstPercentage || Number(master?.gstPercentage) || 18,
         total: calcLineTotal(quantity, unitPrice),
-        unit: row.unit || 'Nos',
+        unit: row.unit || master?.unit || 'Nos',
       };
     });
     if (mapped.length) {
@@ -3506,7 +3571,7 @@ export default function CreatePOPage() {
         }
         const updateRes = await poApi.update(editPoId, payload);
         if (poEditStatus === 'draft' || !poEditStatus) {
-          const mgr = scmManager?.name || 'Mounesh R';
+          const mgr = scmManager?.name || 'Mounesh Rathakar';
           alert(
             updateRes.message ||
               `${poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
@@ -3533,7 +3598,7 @@ export default function CreatePOPage() {
       setCreatedPoId(data.id);
       const statusAfter = String(data.statusRaw || data.status || '').toLowerCase();
       if (statusAfter === 'pending_approval' || statusAfter === 'pendingapproval') {
-        const mgr = scmManager?.name || 'Mounesh R';
+        const mgr = scmManager?.name || 'Mounesh Rathakar';
         alert(
           res.message ||
             `${data.poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
@@ -4692,7 +4757,22 @@ export default function CreatePOPage() {
                     <LineItemImportExport
                       onImport={importPoLineItems}
                       showSample
-                      sampleFilename="po-line-items-sample.csv"
+                      showExport
+                      itemNames={masterItems.map((item) => item.name)}
+                      exportRows={lineItems.map(
+                        (item): LineItemCsvRow => ({
+                          itemName: item.itemName || '',
+                          description: stripHtml(item.description || ''),
+                          category: '',
+                          quantity: item.quantity,
+                          unit: item.unit || 'Nos',
+                          unitPrice: item.unitPrice,
+                          hsnCode: '',
+                          gstPercentage: item.taxPercentage,
+                        })
+                      )}
+                      sampleFilename="po-line-items-sample.xls"
+                      exportFilename="po-line-items.xlsx"
                     />
                     <button
                       onClick={handleAddLineItem}
@@ -4725,13 +4805,25 @@ export default function CreatePOPage() {
                               {idx + 1}
                             </span>
                           </td>
-                          <td className="px-2 py-2.5 align-top">
-                            <input
-                              type="text"
-                              value={item.itemName || ''}
-                              onChange={(e) => handleItemNameChange(item.id, e.target.value)}
-                              placeholder="Item name"
-                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                          <td className="px-2 py-2.5 align-top min-w-[200px]">
+                            <ItemCombobox
+                              items={masterItems}
+                              selectedId={item.itemId || null}
+                              selectedName={item.itemName || ''}
+                              instanceKey={String(item.id)}
+                              portal
+                              onSelect={(master) => applyMasterItemToLine(item.id, master)}
+                              onClear={() =>
+                                patchLineItems((prev) =>
+                                  prev.map((row) =>
+                                    row.id === item.id ? { ...row, itemId: null, itemName: '' } : row
+                                  )
+                                )
+                              }
+                              onCreated={(created) => {
+                                rememberMasterItem(created);
+                                applyMasterItemToLine(item.id, created, true);
+                              }}
                             />
                           </td>
                           <td className="px-2 py-2.5 align-top">
@@ -5393,7 +5485,7 @@ export default function CreatePOPage() {
             <div className="bg-gradient-to-br from-teal-600 to-teal-700 px-6 py-5">
               <h3 className="text-lg font-bold text-white">
                 {isEditMode && poEditStatus === 'draft'
-                  ? `Send for approval to ${scmManager?.name || 'Mounesh R'}?`
+                  ? `Send for approval to ${scmManager?.name || 'Mounesh Rathakar'}?`
                   : 'Send for SCM Manager approval?'}
               </h3>
               <p className="text-teal-100 text-sm mt-1">

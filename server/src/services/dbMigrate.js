@@ -148,6 +148,7 @@ const MIGRATIONS = [
     letterhead_id INT NOT NULL,
     location VARCHAR(255) NOT NULL,
     gst_no VARCHAR(50) NULL,
+    billing_address TEXT NULL,
     footer_logo LONGTEXT NULL,
     sort_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -480,6 +481,7 @@ const MIGRATIONS = [
   // Entity location addresses for Create PR / PO autofill
   `ALTER TABLE entity_locations ADD COLUMN billing_address TEXT NULL`,
   `ALTER TABLE entity_locations ADD COLUMN site_address TEXT NULL`,
+  `ALTER TABLE letterhead_locations ADD COLUMN billing_address TEXT NULL`,
   // SASS purchase type — L1 (user) → L2 Srivaths → Mugesh → invoice → Accounts (no SCM)
   `ALTER TABLE purchase_requests MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass', 'online_purchase') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE purchase_orders MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass', 'online_purchase') NOT NULL DEFAULT 'purchase_order'`,

@@ -1557,39 +1557,18 @@ function specialNotesInnerHtml(po, options = {}) {
       <p>${escapeHtml(signature.date)}<br>
       <strong>Authorized Signatory${signature.dsc ? ' (DSC)' : ''}</strong><br>
       Name: ${escapeHtml(signature.name)}<br>
-      Designation: SCM - Head</p>` : `
+      Designation: ${escapeHtml(signature.designation || 'Head Procurement')}</p>` : `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>
       <p><strong>Authorized Signatory</strong><br>
       Name: ____________________<br>
-      Designation: SCM - Head</p>`}
-    </div>`;
-}
-
-function acknowledgmentInnerHtml(po) {
-  return `
-    <div class="ack-box">
-      <p><strong>Acknowledgment and Acceptance by Seller/Supplier</strong></p>
-      <p>We received, read, and understood the terms and conditions mentioned in this order. We hereby acknowledge, confirm and accept the above terms and conditions and the same shall be binding on us as &ldquo;Seller&rdquo;.</p>
-      <p><strong>FOR ${escapeHtml(po.vendorName)},</strong></p>
-      <div class="sig-gap"></div>
-      <p><strong>Authorized Signatory</strong><br>
-      <strong>Dated:</strong><br>
-      <strong>Place:</strong></p>
+      Designation: Head Procurement</p>`}
     </div>`;
 }
 
 function specialNotesAndAckHtml(po, options = {}) {
   const forPdf = options.forPdf === true;
-  return wrapSheet(
-    `<div class="notes-ack-stack">
-      ${specialNotesInnerHtml(po, options)}
-      ${acknowledgmentInnerHtml(po)}
-    </div>`,
-    'page-notes',
-    po,
-    forPdf
-  );
+  return wrapSheet(specialNotesInnerHtml(po, options), 'page-notes', po, forPdf);
 }
 
 /** Letterhead master often embeds a "PURCHASE ORDER" / "WORK ORDER" title — strip so it doesn't duplicate .title */
@@ -1744,6 +1723,6 @@ export function buildPoPdfParts(poInput, options = {}) {
     annexureOverflowRows: buildAnnexureOverflowPackRows(annexure, po),
     annexureIiBlocks: buildAnnexureIiPdfBlocks(annexureIi),
     notesHtml: specialNotesInnerHtml(po, options),
-    ackHtml: acknowledgmentInnerHtml(po),
+    ackHtml: '',
   };
 }

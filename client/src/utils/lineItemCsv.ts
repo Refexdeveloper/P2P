@@ -127,6 +127,41 @@ function toNumber(raw: string, fallback: number) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+export function parseLineItemObjectRows(
+  objects: Record<string, string>[]
+): { rows: LineItemCsvRow[]; errors: string[] } {
+  if (!objects.length) {
+    return { rows: [], errors: ['Spreadsheet has no data rows'] };
+  }
+  const header = LINE_ITEM_CSV_HEADERS.join(',');
+  const body = objects.map((obj) => {
+    const cells = LINE_ITEM_CSV_HEADERS.map((key) => {
+      const aliases = Object.entries(HEADER_ALIASES)
+        .filter(([, field]) => {
+          const col =
+            key === 'item_name'
+              ? 'itemName'
+              : key === 'unit_price'
+                ? 'unitPrice'
+                : key === 'hsn_code'
+                  ? 'hsnCode'
+                  : key === 'gst_percentage'
+                    ? 'gstPercentage'
+                    : key;
+          return field === col;
+        })
+        .map(([alias]) => alias);
+      const rawKey = Object.keys(obj).find((k) => {
+        const n = normalizeHeader(k);
+        return n === key || aliases.includes(n);
+      });
+      return csvEscape(rawKey ? obj[rawKey] : '');
+    });
+    return cells.join(',');
+  });
+  return parseLineItemCsv([header, ...body].join('\n'));
+}
+
 export function parseLineItemCsv(text: string): { rows: LineItemCsvRow[]; errors: string[] } {
   const lines = splitCsvRows(text);
   if (lines.length < 2) {

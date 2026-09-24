@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { downloadLineItemSample } from '../../utils/lineItemCsv';
+import { downloadLineItemExcelExport, downloadLineItemExcelSample, isLineItemSpreadsheet } from '../../utils/lineItemExcel';
+import type { LineItemCsvRow } from '../../utils/lineItemCsv';
 
 type ImportSummary = {
   added: number;
@@ -8,15 +9,23 @@ type ImportSummary = {
 };
 
 type Props = {
-  onImport: (csvText: string) => ImportSummary;
+  onImport: (file: File) => Promise<ImportSummary> | ImportSummary;
   showSample?: boolean;
+  showExport?: boolean;
+  itemNames?: string[];
+  exportRows?: LineItemCsvRow[];
   sampleFilename?: string;
+  exportFilename?: string;
 };
 
 export default function LineItemImportExport({
   onImport,
   showSample = false,
-  sampleFilename = 'line-items-sample.csv',
+  showExport = false,
+  itemNames = [],
+  exportRows = [],
+  sampleFilename = 'po-line-items-sample.xls',
+  exportFilename = 'po-line-items.xlsx',
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -25,12 +34,15 @@ export default function LineItemImportExport({
 
   const handleFile = async (file: File | null) => {
     if (!file) return;
+    if (!isLineItemSpreadsheet(file)) {
+      setError('Use an Excel (.xls / .xlsx) or CSV file');
+      return;
+    }
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      const text = await file.text();
-      const result = onImport(text);
+      const result = await onImport(file);
       if (!result.added && result.failed) {
         throw new Error(result.errors?.[0] || 'No valid line items in the file');
       }
@@ -56,11 +68,22 @@ export default function LineItemImportExport({
         <button
           type="button"
           disabled={busy}
-          onClick={() => downloadLineItemSample(sampleFilename)}
+          onClick={() => downloadLineItemExcelSample(itemNames, sampleFilename)}
           className="px-3 py-1.5 border border-gray-200 bg-white text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-50 cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
         >
           <i className="ri-file-excel-2-line"></i>
           Sample
+        </button>
+      )}
+      {showExport && (
+        <button
+          type="button"
+          disabled={busy || !exportRows.length}
+          onClick={() => downloadLineItemExcelExport(exportRows, itemNames, exportFilename)}
+          className="px-3 py-1.5 border border-gray-200 bg-white text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-50 cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
+        >
+          <i className="ri-download-2-line"></i>
+          Export
         </button>
       )}
       <button
@@ -75,7 +98,7 @@ export default function LineItemImportExport({
       <input
         ref={fileRef}
         type="file"
-        accept=".csv,text/csv"
+        accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
         className="hidden"
         onChange={(e) => handleFile(e.target.files?.[0] || null)}
       />

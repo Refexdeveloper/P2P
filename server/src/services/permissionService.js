@@ -26,6 +26,7 @@ export function resolveUserDisplayRole(userRow = {}) {
   const role = String(userRow.role || '').trim();
   if (role === 'HOD Approver') return 'L1 Manager';
   if (role === 'PR Manager') return 'L2 Manager';
+  if (role === 'SCM Manager') return 'Head Procurement';
   if (role === 'CFO') return '';
   return '';
 }

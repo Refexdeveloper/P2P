@@ -416,6 +416,7 @@ CREATE TABLE IF NOT EXISTS letterhead_locations (
   letterhead_id INT NOT NULL,
   location VARCHAR(255) NOT NULL,
   gst_no VARCHAR(50) NULL,
+  billing_address TEXT NULL,
   footer_logo LONGTEXT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

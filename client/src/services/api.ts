@@ -1355,6 +1355,7 @@ export interface LetterheadLocationRecord {
   id?: number;
   location: string;
   gstNo: string;
+  billingAddress?: string;
   footerLogo: string;
   sortOrder?: number;
 }
