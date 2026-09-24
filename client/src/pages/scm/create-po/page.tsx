@@ -25,6 +25,7 @@ import {
   PoSiteLookupRecord,
   VendorRecord,
   EntityRecord,
+  DepartmentRecord,
 } from '../../../services/api';
 import ManualPoContextSection, {
   emptyComparisonRound,
@@ -43,6 +44,7 @@ import LineItemImportExport from '../../../components/feature/LineItemImportExpo
 import { parseLineItemCsv, stripHtml } from '../../../utils/lineItemCsv';
 import PurchaseRequestsPanel from '../purchase-requests/components/PurchaseRequestsPanel';
 import SearchCreateField from '../../requester/create-pr/SearchCreateField';
+import DepartmentCombobox from '../../requester/create-pr/DepartmentCombobox';
 import POApprovalModal from '../po-approval/components/POApprovalModal';
 import PostRfqApprovalModal from '../../rfq-approval/components/PostRfqApprovalModal';
 import { numberToIndianWords } from '../../../utils/amountInWords';
@@ -259,28 +261,6 @@ function matchEntityLocation(
   );
 }
 
-function buildInvoicingAddressFromLocation(
-  loc: LetterheadLocationRecord,
-  entityLoc?: { billingAddress?: string; siteAddress?: string } | null
-) {
-  const billing = String(entityLoc?.billingAddress || '').trim();
-  if (billing) {
-    const html = addressLinesToHtml(billing);
-    if (loc.gstNo?.trim()) {
-      return `${html}<p>GSTIN: ${escapeHtmlText(loc.gstNo.trim())}</p>`;
-    }
-    return html;
-  }
-  const parts: string[] = [];
-  if (loc.location?.trim()) {
-    parts.push(`<p>${escapeHtmlText(loc.location.trim())}</p>`);
-  }
-  if (loc.gstNo?.trim()) {
-    parts.push(`<p>GSTIN: ${escapeHtmlText(loc.gstNo.trim())}</p>`);
-  }
-  return parts.join('');
-}
-
 type PoTermsDetails = typeof EMPTY_PO_TERMS_DETAILS;
 
 /** Quote No is a header field only — strip it from Terms & Conditions before save / preview. */
@@ -445,6 +425,31 @@ function formatEntityLabel(ent: EntityRecord | { id: number; name: string; code:
   const base = ent.code ? `${ent.code} — ${ent.name}` : ent.name;
   const costCenter = 'costCenter' in ent ? ent.costCenter : '';
   return costCenter ? `${base} (${costCenter})` : base;
+}
+
+function findDefaultManualEntity(ents: EntityRecord[]) {
+  const list = Array.isArray(ents) ? ents : [];
+  const norm = (s: string) =>
+    String(s || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const scored = list
+    .map((e) => {
+      const name = norm(e.name);
+      const code = norm(e.code);
+      let score = 0;
+      if (name === 'refex industries' || name === 'refex industries limited') score = 100;
+      else if (name.startsWith('refex industries')) score = 80;
+      else if (name.includes('refex industries')) score = 60;
+      else if (code === 'ril' || code.includes('refex ind')) score = 40;
+      return { e, score };
+    })
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return scored[0]?.e || null;
 }
 
 function manualEntityPayload(
@@ -1175,6 +1180,10 @@ export default function CreatePOPage() {
     emptyComparisonRound(1),
   ]);
   const [masterVendors, setMasterVendors] = useState<VendorRecord[]>([]);
+  const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
+  const [requesterUsers, setRequesterUsers] = useState<
+    Array<{ id: number; name: string; email: string; role: string; department: string }>
+  >([]);
   const csvAppliedRef = useRef(false);
   const brandingAutoApplied = useRef(false);
   const skipNextLetterheadLoad = useRef(Boolean(poIdParam));
@@ -1193,6 +1202,7 @@ export default function CreatePOPage() {
   const keepLocalDraftAfterSaveRef = useRef(false);
   const contextLoadSeq = useRef(0);
   const manualContextInitializedRef = useRef(false);
+  const defaultManualEntityAppliedRef = useRef(false);
 
   const markDraftEdited = useCallback(() => {
     userEditedDraftRef.current = true;
@@ -1311,14 +1321,12 @@ export default function CreatePOPage() {
           : null) ||
         null;
       const entityLoc = matchEntityLocation(matchedEntity, loc.location || '');
-      const invoicing = buildInvoicingAddressFromLocation(loc, entityLoc);
       const siteFromEntity = String(entityLoc?.siteAddress || '').trim();
       setPoTermsDetails((prev) => ({
         ...prev,
         locationName: loc.location || '',
         buyerGstNo: loc.gstNo || '',
         letterheadLocationId: loc.id != null ? String(loc.id) : key,
-        invoicingAddress: invoicing || prev.invoicingAddress,
         siteAddress: siteFromEntity || prev.siteAddress,
       }));
       if (siteFromEntity) {
@@ -1644,6 +1652,23 @@ export default function CreatePOPage() {
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [loadEntityOptions]);
+
+  useEffect(() => {
+    if (!isManualPoFlow) return;
+    let cancelled = false;
+    (async () => {
+      const [deptRes, userRes] = await Promise.allSettled([
+        masterApi.listDepartments({ status: 'active' }),
+        prApi.listApprovalUsers(),
+      ]);
+      if (cancelled) return;
+      if (deptRes.status === 'fulfilled') setDepartments(deptRes.value.data || []);
+      if (userRes.status === 'fulfilled') setRequesterUsers(userRes.value.data || []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isManualPoFlow]);
 
   // After entity master loads, keep edit-mode selection label populated
   useEffect(() => {
@@ -2009,8 +2034,10 @@ export default function CreatePOPage() {
           return;
         }
         manualContextInitializedRef.current = true;
+        const defaultEntity = findDefaultManualEntity(ents);
+        defaultManualEntityAppliedRef.current = Boolean(defaultEntity);
         setLetterheadId('');
-        setEntity('');
+        setEntity(defaultEntity?.name || '');
         setHeaderLogo('');
         setFooterLogo('');
         setLetterheadLocationKey('');
@@ -2021,9 +2048,9 @@ export default function CreatePOPage() {
           prNumber: '—',
           title: '',
           department: '',
-          entityId: null,
-          entityName: '',
-          entityCode: '',
+          entityId: defaultEntity?.id || null,
+          entityName: defaultEntity?.name || '',
+          entityCode: defaultEntity?.code || '',
           requester: '',
           recommendedVendor: '',
           vendorEmail: '',
@@ -2047,8 +2074,8 @@ export default function CreatePOPage() {
         setManualVendorName('');
         setManualVendorEmail('');
         setManualVendorId('');
-        setManualEntityId('');
-        setManualEntitySnapshot(null);
+        setManualEntityId(defaultEntity ? defaultEntity.id : '');
+        setManualEntitySnapshot(defaultEntity);
         setManualPrDetails({
           prNumber: '',
           title: '',
@@ -2175,9 +2202,6 @@ export default function CreatePOPage() {
         projectManagerHo: prev.projectManagerHo || prData.projectManagerHo || '',
         projectManagerEmail: prev.projectManagerEmail || prData.projectManagerEmail || '',
         projectManagerContact: prev.projectManagerContact || prData.projectManagerContact || '',
-        invoicingAddress:
-          prev.invoicingAddress ||
-          (prData.billingAddress ? addressLinesToHtml(String(prData.billingAddress)) : ''),
       }));
       setVendorMeta({
         name: vendor.name,
@@ -2206,8 +2230,30 @@ export default function CreatePOPage() {
   useEffect(() => {
     if (!isManualMode) {
       manualContextInitializedRef.current = false;
+      defaultManualEntityAppliedRef.current = false;
     }
   }, [isManualMode]);
+
+  useEffect(() => {
+    if (!isManualPoFlow || isEditMode) return;
+    if (defaultManualEntityAppliedRef.current || manualEntityId !== '') return;
+    const match = findDefaultManualEntity(entityOptions);
+    if (!match) return;
+    defaultManualEntityAppliedRef.current = true;
+    setManualEntityId(match.id);
+    setManualEntitySnapshot(match);
+    setEntity((prev) => prev || match.name);
+    setPr((prev) =>
+      prev
+        ? {
+            ...prev,
+            entityId: match.id,
+            entityName: match.name,
+            entityCode: match.code,
+          }
+        : prev
+    );
+  }, [isManualPoFlow, isEditMode, entityOptions, manualEntityId]);
 
   useEffect(() => {
     return () => {
@@ -3944,16 +3990,9 @@ export default function CreatePOPage() {
                               selected.locations?.find((l) => l.location) ||
                               null;
                             if (entityLoc) {
-                              const billing = String(entityLoc.billingAddress || '').trim();
                               const site = String(entityLoc.siteAddress || '').trim();
-                              const gst = String(entityLoc.gstNo || locationGstNo || '').trim();
                               setPoTermsDetails((prev) => ({
                                 ...prev,
-                                invoicingAddress: billing
-                                  ? `${addressLinesToHtml(billing)}${
-                                      gst ? `<p>GSTIN: ${escapeHtmlText(gst)}</p>` : ''
-                                    }`
-                                  : prev.invoicingAddress,
                                 siteAddress: site || prev.siteAddress,
                               }));
                               if (site) setDeliveryAddress(site);
@@ -3995,6 +4034,70 @@ export default function CreatePOPage() {
                             No entities loaded. Add in Entity Master (status Active), then reopen this field.
                           </p>
                         ) : null}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                            Department
+                          </label>
+                          <DepartmentCombobox
+                            departments={departments}
+                            selectedName={manualPrDetails.department}
+                            onSelect={(dept) => {
+                              setDepartments((prev) =>
+                                prev.some((d) => d.id === dept.id) ? prev : [...prev, dept]
+                              );
+                              setManualPrDetails((prev) => ({ ...prev, department: dept.name }));
+                            }}
+                            onClear={() =>
+                              setManualPrDetails((prev) => ({ ...prev, department: '' }))
+                            }
+                            onCreated={(created) => {
+                              setDepartments((prev) => {
+                                if (prev.some((d) => d.id === created.id)) return prev;
+                                return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+                              });
+                              setManualPrDetails((prev) => ({ ...prev, department: created.name }));
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                            Requester
+                          </label>
+                          <SearchCreateField
+                            options={requesterUsers.map((u) => ({
+                              id: u.id,
+                              label: u.name,
+                              subLabel: [u.email, u.department].filter(Boolean).join(' · ') || undefined,
+                            }))}
+                            displayValue={manualPrDetails.requester}
+                            selectedId={
+                              requesterUsers.find(
+                                (u) =>
+                                  u.name.trim().toLowerCase() ===
+                                  manualPrDetails.requester.trim().toLowerCase()
+                              )?.id || null
+                            }
+                            placeholder="Search requester by name, email, or department…"
+                            addNoun="requester"
+                            emptyHint="No users found. Type a name and add it."
+                            onSelect={(opt) => {
+                              const picked = requesterUsers.find((u) => Number(u.id) === Number(opt.id));
+                              setManualPrDetails((prev) => ({
+                                ...prev,
+                                requester: picked?.name || String(opt.label || ''),
+                                department: prev.department || picked?.department || '',
+                              }));
+                            }}
+                            onClear={() =>
+                              setManualPrDetails((prev) => ({ ...prev, requester: '' }))
+                            }
+                            onCreate={async (name) => {
+                              setManualPrDetails((prev) => ({ ...prev, requester: name.trim() }));
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -4449,38 +4552,11 @@ export default function CreatePOPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                       <div className="space-y-1.5 md:col-span-2">
                         <label className="block text-xs font-semibold text-gray-700">Invoicing Address</label>
-                        {(poTermsDetails.locationName || poTermsDetails.buyerGstNo || locationGstNo) && (
-                          <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-2 text-xs text-teal-900 space-y-1 mb-1.5">
-                            {poTermsDetails.locationName && (
-                              <p>
-                                <span className="font-semibold">Location:</span> {poTermsDetails.locationName}
-                              </p>
-                            )}
-                            <p>
-                              <span className="font-semibold">GSTIN:</span>{' '}
-                              <span className="font-mono">
-                                {poTermsDetails.buyerGstNo || locationGstNo || '—'}
-                              </span>
-                            </p>
-                            {footerLogo &&
-                              (footerLogo.startsWith('data:image/') ||
-                                /^https?:\/\//i.test(footerLogo)) && (
-                                <div className="pt-1">
-                                  <p className="font-semibold mb-1">Footer</p>
-                                  <img
-                                    src={footerLogo}
-                                    alt="Location footer"
-                                    className="max-h-10 max-w-[180px] object-contain"
-                                  />
-                        </div>
-                              )}
-                      </div>
-                        )}
                         <RichTextEditor
-                          editorKey={`inv-addr-${letterheadId || 'none'}-${letterheadLocationKey || 'none'}`}
+                          editorKey="inv-addr-manual"
                           value={poTermsDetails.invoicingAddress}
                           onChange={(html) => updatePoTermsField('invoicingAddress', html)}
-                          placeholder="Enter invoicing address. Pasted text is always normal (no bold or other fonts)."
+                          placeholder="Type invoicing address. It stays empty until you enter it."
                           minHeight={120}
                           plainTextOnly
                         />

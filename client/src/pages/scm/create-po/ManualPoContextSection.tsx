@@ -661,24 +661,6 @@ export default function ManualPoContextSection({
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Department</label>
-            <input
-              value={prDetails.department}
-              onChange={(e) => onPrDetailsChange({ ...prDetails, department: e.target.value })}
-              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-              placeholder="Department"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Requester</label>
-            <input
-              value={prDetails.requester}
-              onChange={(e) => onPrDetailsChange({ ...prDetails, requester: e.target.value })}
-              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-              placeholder="Requester name"
-            />
-          </div>
-          <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Request type</label>
             <select
               value={prDetails.requestType}

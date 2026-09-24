@@ -140,8 +140,8 @@ router.get('/l1-manager', canCreatePr, async (req, res) => {
 router.get(
   '/approval-users',
   requireRolesOrPermissions(
-    ['Requester', 'Super Admin', 'SCM Manager', 'HOD Approver', 'PR Manager', 'CFO', ...CREATE_PR_ROLES],
-    ['nav.create_pr']
+    ['Requester', 'Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO', ...CREATE_PR_ROLES],
+    ['nav.create_pr', 'nav.create_po']
   ),
   async (req, res) => {
     try {
