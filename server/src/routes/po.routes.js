@@ -788,9 +788,13 @@ router.delete('/:id', requireRoles('Super Admin'), async (req, res) => {
 router.post('/:id/final-verify', requireRoles('SCM Buyer'), async (req, res) => {
   try {
     const data = await finalVerifyPurchaseOrder(req.user, Number(req.params.id), req.body?.remarks);
+    const releaseNote =
+      data?.vendorSelection === 'scm' || data?.poReleaseMailSent === false
+        ? 'PO final-verified. PO release mail skipped (SCM vendor selection).'
+        : 'PO final-verified. PO release mail sent to requester, L1, and SCM Manager. Vendor is not emailed.';
     res.json({
       data,
-      message: 'PO final-verified. Requester, approvers, and SCM team notified with signed PO. Vendor is not emailed.',
+      message: releaseNote,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

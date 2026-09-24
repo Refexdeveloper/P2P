@@ -1,28 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import KPIWidgets from './components/KPIWidgets';
-import EntityPieChart from './components/EntityPieChart';
-import MonthlyTrendChart from './components/MonthlyTrendChart';
-import TopEntitiesBarChart from './components/TopEntitiesBarChart';
 import EntityPOSummaryTable from './components/EntityPOSummaryTable';
 import RecentPOTable from './components/RecentPOTable';
 import TopVendorsTable from './components/TopVendorsTable';
 import DashboardFilters, { DashboardFiltersValue, EMPTY_DASHBOARD_FILTERS } from './components/DashboardFilters';
-import BudgetActualCard from './components/BudgetActualCard';
-import PoStatusCard from './components/PoStatusCard';
-import RecentApprovalsCard from './components/RecentApprovalsCard';
-import UpcomingPaymentsCard, { PaymentRow } from './components/UpcomingPaymentsCard';
 import { useAuth } from '../../contexts/AuthContext';
-import { accountsApi, masterApi, poApi, prApi } from '../../services/api';
+import { masterApi, poApi } from '../../services/api';
 import { getUserDesignation } from '../../utils/roleDisplay';
-import { formatCompactInr, parseLooseDate } from './cfoFormat';
+import { parseLooseDate } from './cfoFormat';
 
 type Insights = Awaited<ReturnType<typeof poApi.cfoInsights>>['data'];
-type CfoEntity = {
-  name: string;
-  allocatedBudget: number;
-  utilizedBudget: number;
-};
 
 const EMPTY: Insights = {
   kpis: {
@@ -99,20 +87,6 @@ export default function Dashboard({
   const [entities, setEntities] = useState<Array<{ id: string; name: string }>>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [approvals, setApprovals] = useState<
-    Array<{
-      id: string;
-      title: string;
-      entity: string;
-      amount: number;
-      timestamp: string;
-      type: string;
-      poId?: number | null;
-      poNumber?: string;
-    }>
-  >([]);
-  const [cfoEntities, setCfoEntities] = useState<CfoEntity[]>([]);
-  const [payments, setPayments] = useState<Array<PaymentRow & { department?: string }>>([]);
   const [showTables, setShowTables] = useState(true);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [hidden, setHidden] = useState<Record<string, boolean>>(readHidden);
@@ -156,62 +130,6 @@ export default function Dashboard({
           setError(err instanceof Error ? err.message : 'Failed to load CFO insights');
     } finally {
       setLoading(false);
-    }
-
-    try {
-      const dash = await prApi.cfoDashboard();
-      setCfoEntities(
-        (dash.data.entities || []).map((e) => ({
-          name: e.name,
-          allocatedBudget: Number(e.allocatedBudget || 0),
-          utilizedBudget: Number(e.utilizedBudget || 0),
-        }))
-      );
-      setApprovals(
-        (dash.data.recentActivity || []).map((a) => {
-          const poId = Number(a.id);
-          return {
-            id: a.id,
-            title: a.prId,
-            entity: a.entity,
-            amount: a.amount,
-            timestamp: a.timestamp,
-            type: a.type,
-            poId: Number.isFinite(poId) && poId > 0 ? poId : null,
-            poNumber: a.prId,
-          };
-        })
-      );
-    } catch {
-      setCfoEntities([]);
-      setApprovals([]);
-    }
-
-    try {
-      const inv = await accountsApi.listInvoices(true);
-      setPayments(
-        (inv.data || [])
-          .map((raw) => {
-            const status = String(raw.paymentStatus || raw.status || raw.statusRaw || '');
-            return {
-              id: String(raw.id ?? raw.invoiceNumber ?? ''),
-              vendor: String(raw.vendor || raw.vendorName || 'Vendor'),
-              dueDate: String(raw.dueDate || ''),
-              amount: Number(raw.invoiceGrandTotal || raw.amount || 0),
-              department: String(raw.department || ''),
-              status,
-            };
-          })
-          .filter((p) => p.id && p.amount > 0 && !/^paid$/i.test(p.status.trim()))
-          .sort((a, b) => {
-            const da = parseLooseDate(a.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-            const db = parseLooseDate(b.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-            return da - db;
-          })
-          .slice(0, 12)
-      );
-    } catch {
-      setPayments([]);
     }
   };
 
@@ -298,14 +216,6 @@ export default function Dashboard({
     });
   }, [data.monthlyPOTrend, filters.dateFrom, filters.dateTo]);
 
-  const entityTrendKey = useMemo(() => {
-    if (!selectedEntityName) return null;
-    const idx = data.entityWisePOSummary.findIndex(
-      (e) => e.entityName === selectedEntityName || String(e.entityId || '') === filters.entityId
-    );
-    return idx >= 0 && idx < 4 ? `e${idx}` : null;
-  }, [selectedEntityName, data.entityWisePOSummary, filters.entityId]);
-
   const kpis = useMemo(() => {
     const entityTotal = filteredEntities.reduce((s, e) => s + e.totalPOAmount, 0);
     const entityApproved = filteredEntities.reduce((s, e) => s + e.approvedAmount, 0);
@@ -336,63 +246,11 @@ export default function Dashboard({
     };
   }, [data.kpis, filteredEntities, filteredVendors, filters]);
 
-  const trendTotals = filteredTrend.map((p) =>
-    entityTrendKey ? Number(p[entityTrendKey] || 0) : Number(p.total || 0)
-  );
+  const trendTotals = filteredTrend.map((p) => Number(p.total || 0));
   const previousTotal = trendTotals.length >= 2 ? trendTotals[trendTotals.length - 2] : 0;
   const previousMonthLabel = filteredTrend.length >= 2
     ? String(filteredTrend[filteredTrend.length - 2].month || 'prior month')
     : 'prior month';
-
-  const statusFromOrders = useMemo(() => {
-    const counts = { approved: 0, pending: 0, draft: 0, cancelled: 0 };
-    for (const po of filteredOrders) {
-      const s = po.status.toLowerCase();
-      if (s.includes('pending')) counts.pending += 1;
-      else if (s.includes('reject') || s.includes('cancel')) counts.cancelled += 1;
-      else if (s.includes('draft')) counts.draft += 1;
-      else counts.approved += 1;
-    }
-    return [
-      { key: 'approved', label: 'Approved', value: counts.approved, color: '#10B981' },
-      { key: 'pending', label: 'Pending', value: counts.pending, color: '#F97316' },
-      { key: 'draft', label: 'Draft', value: counts.draft, color: '#3B82F6' },
-      { key: 'cancelled', label: 'Cancelled', value: counts.cancelled, color: '#F43F5E' },
-    ].filter((s) => s.value > 0);
-  }, [filteredOrders]);
-
-  const statusSlices = statusFromOrders.length
-    ? statusFromOrders
-    : [
-        { key: 'approved', label: 'Approved', value: kpis.approvedPOAmount, color: '#10B981' },
-        { key: 'pending', label: 'Pending', value: kpis.pendingPOAmount, color: '#F97316' },
-      ].filter((s) => s.value > 0);
-  const statusUsesAmount = !statusFromOrders.length;
-
-  const approvalRows = useMemo(() => {
-    return approvals.filter((a) => !selectedEntityName || a.entity === selectedEntityName);
-  }, [approvals, selectedEntityName]);
-
-  const paymentRows = useMemo(() => {
-    return payments.filter((p) => {
-      if (filters.vendor && p.vendor !== filters.vendor) return false;
-      if (filters.department && p.department !== filters.department) return false;
-      if ((filters.dateFrom || filters.dateTo) && p.dueDate && !inDateRange(p.dueDate, filters.dateFrom, filters.dateTo)) {
-        return false;
-      }
-      return true;
-    });
-  }, [payments, filters.vendor, filters.department, filters.dateFrom, filters.dateTo]);
-
-  const budgetEntity = selectedEntityName
-    ? cfoEntities.find((e) => e.name === selectedEntityName)
-    : null;
-  const budget = budgetEntity
-    ? budgetEntity.allocatedBudget
-    : cfoEntities.reduce((s, e) => s + e.allocatedBudget, 0);
-  const utilized = budgetEntity
-    ? budgetEntity.utilizedBudget || kpis.approvedPOAmount
-    : kpis.approvedPOAmount || kpis.totalPOAmount;
 
   const handleExport = () => {
     const lines = [
@@ -429,14 +287,6 @@ export default function Dashboard({
     }
     return base;
   }, [entities, data.entityWisePOSummary, lockedEntityId, user?.entityName]);
-
-  const openDetails = () => {
-    setShowTables(true);
-    setHidden((prev) => ({ ...prev, tables: false }));
-    window.setTimeout(() => {
-      document.getElementById('cfo-detail-tables')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
-  };
 
   const content = (
       <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full bg-[#F3F6FB] px-4 sm:px-6 lg:px-7 py-6 font-sans`} style={{ background: 'linear-gradient(165deg, #EEF4FF 0%, #F3F6FB 42%, #F3F6FB 100%)' }}>
@@ -483,8 +333,6 @@ export default function Dashboard({
                 <p className="text-[11px] font-semibold text-slate-500 uppercase mb-2">Show sections</p>
                 {[
                   ['kpi', 'KPI cards'],
-                  ['analytics', 'Analytics row'],
-                  ['second', 'Status & activity'],
                   ['tables', 'Detail tables'],
                 ].map(([key, label]) => (
                   <label key={key} className="flex items-center gap-2 py-1 text-sm text-slate-700">
@@ -532,42 +380,6 @@ export default function Dashboard({
             previousTotal={previousTotal}
             previousMonthLabel={previousMonthLabel}
           />
-        ) : null}
-
-        {visible('analytics') ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-            <EntityPieChart entities={filteredEntities} onClick={openDetails} />
-            <TopEntitiesBarChart entities={filteredEntities} onClick={openDetails} />
-            <MonthlyTrendChart
-              trend={
-                entityTrendKey
-                  ? filteredTrend.map((p) => ({ ...p, total: Number(p[entityTrendKey] || 0) }))
-                  : filteredTrend
-              }
-              series={data.monthlySeries}
-              onClick={openDetails}
-            />
-        </div>
-        ) : null}
-
-        {visible('second') ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
-            <BudgetActualCard utilized={utilized} budget={budget} />
-            <PoStatusCard
-              slices={statusSlices}
-              centerLabel={
-                statusUsesAmount
-                  ? kpis.totalPOCount
-                    ? String(kpis.totalPOCount)
-                    : formatCompactInr(kpis.totalPOAmount)
-                  : undefined
-              }
-              formatValue={statusUsesAmount ? formatCompactInr : undefined}
-              onClick={openDetails}
-            />
-            <RecentApprovalsCard rows={approvalRows} />
-            <UpcomingPaymentsCard rows={paymentRows} onClick={openDetails} />
-          </div>
         ) : null}
 
         {showTables || visible('tables') ? (

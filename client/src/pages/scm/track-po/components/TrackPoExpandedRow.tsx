@@ -80,12 +80,41 @@ function htmlToPlain(html: string): string {
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
     .trim();
+}
+
+/** Scope of Work from PR field or PO letterhead terms clause. */
+function extractScopeOfWork(
+  pr: Record<string, unknown> | null | undefined,
+  po: Record<string, unknown> | null | undefined
+): string {
+  const fromPr = String(pr?.scopeOfWork || pr?.scope_of_work || '').trim();
+  if (fromPr) return fromPr;
+  const clauses = Array.isArray(po?.termsClauses) ? (po!.termsClauses as Array<Record<string, unknown>>) : [];
+  for (const c of clauses) {
+    const header = String(c.termsHeader || c.header || '').toLowerCase();
+    if (!header.includes('scope of work') && !header.includes('scope ofwork')) continue;
+    const body = htmlToPlain(String(c.termsDescription || c.description || ''));
+    if (body) return body;
+  }
+  return '';
+}
+
+/** Payment terms from PO column, PO terms details, or PR. */
+function extractPaymentTerms(
+  pr: Record<string, unknown> | null | undefined,
+  po: Record<string, unknown> | null | undefined
+): string {
+  const details = (po?.poTermsDetails as Record<string, unknown> | undefined) || {};
+  return pickText(
+    po?.paymentTerms,
+    po?.payment_terms,
+    details.paymentTermsText,
+    details.paymentTerms,
+    pr?.paymentTerms,
+    pr?.payment_terms
+  );
 }
 
 function formatPoContacts(terms: Record<string, unknown>): string {
@@ -507,6 +536,16 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     ['PR Number', String(pr?.prNumber || row.prNumber || '—')],
     ['PO / WO Number', String(po?.poNumber || row.poNumber || '—')],
     [
+      'Entity',
+      pickText(
+        po?.entity,
+        pr?.entityCode && pr?.entityName ? `${pr.entityCode} — ${pr.entityName}` : '',
+        pr?.entityName,
+        pr?.entityCode,
+        row.entityName
+      ) || '—',
+    ],
+    [
       'PO Type',
       String(
         po?.purchaseTypeLabel ||
@@ -514,14 +553,13 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
           (String(po?.purchaseType || row.purchaseType) === 'work_order' ? 'Work Order' : 'Purchase Order')
       ),
     ],
-    ['Entity', String(po?.entity || pr?.entityName || row.entityName || '—')],
     ['Department', String(po?.department || pr?.department || row.department || '—')],
     ['Requester', String(pr?.requester || row.requester || '—')],
     ['Vendor', String(po?.vendorName || row.vendorName || '—')],
     ['Vendor Email', String(po?.vendorEmail || '—')],
     ['Amount', formatCurrency(Number(po?.grandTotal ?? pr?.totalAmount ?? row.amount) || 0)],
     ['Currency', String(po?.currency || pr?.currency || 'INR')],
-    ['Payment Terms', String(po?.paymentTerms || '—')],
+    ['Payment Terms', extractPaymentTerms(pr, po) || '—'],
     ['Incoterms', String(po?.incoterms || '—')],
     ['Mode of Shipment', String(po?.modeOfShipment || po?.poTermsDetails?.modeOfShipment || '—')],
     ['Required / Delivery', String(po?.expectedDeliveryDate || pr?.requiredDate || row.requiredDate || '—')],
@@ -529,6 +567,8 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     ['Created / Submitted', String(po?.createdAt || pr?.submittedDate || row.createdAt || '—')],
     ['Status', String(po?.status || pr?.statusUI || row.statusLabel || '—')],
   ];
+
+  const scopeOfWorkText = extractScopeOfWork(pr, po);
 
   const poTerms = (po?.poTermsDetails as Record<string, unknown> | undefined) || {};
   const siteAddress = pickText(poTerms.siteAddress, po?.deliveryAddress, pr?.placeOfDelivery);
@@ -716,6 +756,15 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                       {invoicingAddress || '—'}
                     </p>
                   </div>
+                </div>
+
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Scope of Work
+                  </h4>
+                  <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words whitespace-pre-wrap">
+                    {scopeOfWorkText || '—'}
+                  </p>
                 </div>
 
                 <div>

@@ -1393,6 +1393,12 @@ export default function TasksPage() {
             (modalState.type === 'approve' &&
               tasks.find((t) => t.id === modalState.taskId)?.requireInvoiceUpload)
         )}
+        useAdminTargets={Boolean(
+          user?.isSuperAdmin ||
+            user?.role === 'Super Admin' ||
+            user?.role === 'SCM Manager' ||
+            user?.role === 'SCM Buyer'
+        )}
         onConfirm={handleConfirm}
         onClose={() =>
           setModalState((prev) => ({ ...prev, isOpen: false }))

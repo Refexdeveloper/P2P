@@ -173,6 +173,27 @@ function shortStatusLabel(label: string, status?: string) {
   return full;
 }
 
+function StatusBadge({ label, status }: { label: string; status?: string }) {
+  const text = shortStatusLabel(label, status);
+  const isVendorAck = text === 'Vendor Acknowledged pending';
+  return (
+    <span
+      className={`inline-flex max-w-full px-2 py-1 rounded-full text-[11px] font-medium leading-snug text-center ${statusColor(status || '')}`}
+      title={label || text}
+    >
+      {isVendorAck ? (
+        <span className="block text-left">
+          Vendor Acknowledged
+          <br />
+          pending
+        </span>
+      ) : (
+        text
+      )}
+    </span>
+  );
+}
+
 export default function TrackPoPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -688,20 +709,20 @@ export default function TrackPoPage() {
           {loading ? (
             <p className="p-8 text-sm text-gray-500">Loading purchase orders...</p>
           ) : (
-            <table className="w-full table-fixed min-w-[1100px]">
+            <table className="w-full table-fixed min-w-[1280px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-2 py-3 w-11"></th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PR Number</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">PO / WO Number</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[110px]">PO Date</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[90px]">Type</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[22%]">Title / Vendor</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[130px]">Entity</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Department</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[110px]">Amount</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px] min-w-[140px]">Status</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[160px]">Actions</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px]">PR Number</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px]">PO / WO Number</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[100px]">PO Date</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[88px]">Type</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[20%]">Title / Vendor</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Entity</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[110px]">Department</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[100px]">Amount</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">Status</th>
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[280px]">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -764,29 +785,24 @@ export default function TrackPoPage() {
                           <td className="px-3 py-3 text-sm font-semibold text-gray-900 text-right tabular-nums whitespace-nowrap">
                             {formatCurrency(row.amount)}
                           </td>
-                          <td className="px-3 py-3 align-middle max-w-[200px] w-[180px]">
-                            <span
-                              className={`inline-flex max-w-full px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor(row.status)}`}
-                              title={row.statusLabel}
-                            >
-                              {shortStatusLabel(row.statusLabel, row.status)}
-                            </span>
+                          <td className="px-2 py-3 align-middle overflow-hidden">
+                            <StatusBadge label={row.statusLabel} status={row.status} />
                           </td>
-                          <td className="px-3 py-3 align-middle">
-                            <div className="flex items-center justify-end gap-2 flex-nowrap">
+                          <td className="px-2 py-3 align-middle">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
                               {row.kind === 'ready' && (
                                 <>
                                   <button
                                     type="button"
                                     onClick={() => openCreatePo(row.prId)}
-                                    className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold"
+                                    className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
                                   >
                                     Create {row.purchaseType === 'work_order' ? 'WO' : 'PO'}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => openImportModal(row.prId)}
-                                    className="px-3 py-1.5 border border-violet-300 text-violet-700 rounded-md text-xs font-semibold"
+                                    className="px-2.5 py-1.5 border border-violet-300 text-violet-700 rounded-md text-xs font-semibold whitespace-nowrap"
                                   >
                                     Import
                                   </button>
@@ -796,7 +812,7 @@ export default function TrackPoPage() {
                                 <button
                                   type="button"
                                   onClick={() => openEditDraft(row.poId!)}
-                                  className="px-3 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold"
+                                  className="px-2.5 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold whitespace-nowrap"
                                 >
                                   Edit Draft
                                 </button>
@@ -805,7 +821,7 @@ export default function TrackPoPage() {
                                 <button
                                   type="button"
                                   onClick={() => openSendBack(row)}
-                                  className="px-3 py-1.5 border border-orange-300 text-orange-700 rounded-md text-xs font-semibold hover:bg-orange-50 whitespace-nowrap"
+                                  className="px-2.5 py-1.5 border border-orange-300 text-orange-700 rounded-md text-xs font-semibold hover:bg-orange-50 whitespace-nowrap"
                                   title="Send back to SCM Buyer Create PO as draft"
                                 >
                                   <i className="ri-arrow-go-back-line mr-1"></i>
@@ -820,7 +836,7 @@ export default function TrackPoPage() {
                                   <button
                                     type="button"
                                     onClick={() => openAdminEditPo(row.poId!)}
-                                    className="px-3 py-1.5 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-50"
+                                    className="px-2.5 py-1.5 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-50 whitespace-nowrap"
                                     title="Edit this purchase order"
                                   >
                                     Edit
@@ -828,7 +844,7 @@ export default function TrackPoPage() {
                                 )}
                               {user?.role === 'SCM Buyer' && row.poId && row.status === 'pending' && (
                                   <span
-                                    className="px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-md whitespace-nowrap"
+                                    className="px-2 py-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-md whitespace-nowrap"
                                     title="Sent to SCM Manager for sign / approval"
                                   >
                                     SCM Manager
@@ -839,7 +855,7 @@ export default function TrackPoPage() {
                                   type="button"
                                   disabled={retrievingKey === row.key}
                                   onClick={() => void handleRetrieveCancelled(row)}
-                                  className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold disabled:opacity-50"
+                                  className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold disabled:opacity-50 whitespace-nowrap"
                                   title="Retrieve cancelled PO as draft"
                                 >
                                   {retrievingKey === row.key ? 'Retrieving…' : 'Retrieve'}
@@ -849,7 +865,7 @@ export default function TrackPoPage() {
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/scm/po-pdf-view?poId=${row.poId}`)}
-                                  className="px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50"
+                                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50 whitespace-nowrap"
                                 >
                                   View PDF
                                 </button>
@@ -859,7 +875,7 @@ export default function TrackPoPage() {
                                   type="button"
                                   disabled={deletingKey === row.key}
                                   onClick={() => void handleAdminDelete(row)}
-                                  className="px-3 py-1.5 border border-rose-300 text-rose-700 rounded-md text-xs font-medium hover:bg-rose-50 disabled:opacity-50"
+                                  className="px-2.5 py-1.5 border border-rose-300 text-rose-700 rounded-md text-xs font-medium hover:bg-rose-50 disabled:opacity-50 whitespace-nowrap"
                                   title={row.poId ? 'Permanently delete this PO' : 'Permanently delete this PR'}
                                 >
                                   {deletingKey === row.key ? 'Deleting…' : 'Delete'}

@@ -589,10 +589,10 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[100px]">
                     Amount
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[140px] min-w-[140px]">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[150px]">
                     Status
                   </th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[200px] min-w-[180px]">
+                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[260px]">
                     Actions
                   </th>
                 </tr>
@@ -651,16 +651,30 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                           <td className="px-3 py-3 align-middle text-right font-semibold text-gray-900 text-sm tabular-nums whitespace-nowrap">
                             {formatCurrency(pr.amount)}
                           </td>
-                          <td className="px-3 py-3 align-middle max-w-[140px] w-[140px]">
-                            <span
-                              className={`inline-flex max-w-full px-2 py-1 rounded-full text-xs font-medium leading-snug ${getStatusColor(pr.statusRaw, pr.status)}`}
-                              title={pr.statusLabel}
-                            >
-                              <span className="truncate">{shortStatusLabel(pr.statusLabel, pr.statusRaw)}</span>
-                            </span>
+                          <td className="px-2 py-3 align-middle overflow-hidden">
+                            {(() => {
+                              const text = shortStatusLabel(pr.statusLabel, pr.statusRaw);
+                              const isVendorAck = text === 'Vendor Acknowledged pending';
+                              return (
+                                <span
+                                  className={`inline-flex max-w-full px-2 py-1 rounded-full text-[11px] font-medium leading-snug ${getStatusColor(pr.statusRaw, pr.status)}`}
+                                  title={pr.statusLabel}
+                                >
+                                  {isVendorAck ? (
+                                    <span className="block text-left">
+                                      Vendor Acknowledged
+                                      <br />
+                                      pending
+                                    </span>
+                                  ) : (
+                                    text
+                                  )}
+                                </span>
+                              );
+                            })()}
                           </td>
-                          <td className="px-3 py-3 align-middle w-[200px] min-w-[180px]">
-                            <div className="flex items-center justify-end gap-1.5 flex-nowrap">
+                          <td className="px-2 py-3 align-middle">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
                               {pr.status === 'Ready for PO' && (
                                 <button
                                   type="button"

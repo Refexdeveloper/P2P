@@ -25,6 +25,10 @@ interface PRDetail {
   requestCategory?: string;
   projectDetail?: string;
   specialNotes?: string;
+  scopeOfWork?: string;
+  paymentTerms?: string;
+  entityName?: string;
+  entityCode?: string;
   priority: string;
   requiredDate: string;
   submittedDate: string;
@@ -129,6 +133,26 @@ function htmlToPlain(html: string): string {
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function extractScopeOfWorkFromPo(po: Record<string, unknown> | null | undefined): string {
+  if (!po) return '';
+  const clauses = Array.isArray(po.termsClauses) ? (po.termsClauses as Array<Record<string, unknown>>) : [];
+  for (const c of clauses) {
+    const header = String(c.termsHeader || c.header || '').toLowerCase();
+    if (!header.includes('scope of work') && !header.includes('scope ofwork')) continue;
+    const body = htmlToPlain(String(c.termsDescription || c.description || ''));
+    if (body) return body;
+  }
+  return '';
+}
+
+function extractPaymentTermsFromPo(po: Record<string, unknown> | null | undefined): string {
+  if (!po) return '';
+  const terms = (po.poTermsDetails as Record<string, unknown> | undefined) || {};
+  return (
+    String(po.paymentTerms || terms.paymentTermsText || terms.paymentTerms || '').trim()
+  );
 }
 
 function HighlightInfoCard({
@@ -394,6 +418,11 @@ export default function PRBucketExpandedRow({
       submittedDate: String(po.createdAt || ''),
       totalAmount: Number(po.grandTotal || po.totalAmount || 0),
       justification: String(po.specialInstructions || 'Manual document — no PR reference.'),
+      paymentTerms: extractPaymentTermsFromPo(po) || '—',
+      scopeOfWork: extractScopeOfWorkFromPo(po) || '',
+      specialNotes: String(po.specialInstructions || ''),
+      entityName: String(po.entity || po.entityName || ''),
+      entityCode: String(po.entityCode || ''),
       statusUI: String(po.status || statusLabel),
       lineItems: items.map((item) => ({
         ...item,
@@ -452,6 +481,10 @@ export default function PRBucketExpandedRow({
               requestCategory: String(d.requestCategory || ''),
               projectDetail: String(d.projectDetail || ''),
               specialNotes: String(d.specialNotes || ''),
+              scopeOfWork: String(d.scopeOfWork || ''),
+              paymentTerms: String(d.paymentTerms || ''),
+              entityName: String(d.entityName || ''),
+              entityCode: String(d.entityCode || ''),
               priority: String(d.priority || d.priorityLower || ''),
               requiredDate: String(d.requiredDate || ''),
               submittedDate: String(d.submittedDate || ''),
@@ -501,6 +534,17 @@ export default function PRBucketExpandedRow({
               referencePoNumber: String(po.referencePoNumber || '').trim(),
             });
             setAddressInfo((prev) => addressFromPo(po, prev));
+            // Fill payment terms / scope of work from PO when PR fields are empty
+            setPr((prev) => {
+              if (!prev) return prev;
+              const poPay = extractPaymentTermsFromPo(po);
+              const poSow = extractScopeOfWorkFromPo(po);
+              return {
+                ...prev,
+                paymentTerms: prev.paymentTerms?.trim() ? prev.paymentTerms : poPay || prev.paymentTerms,
+                scopeOfWork: prev.scopeOfWork?.trim() ? prev.scopeOfWork : poSow || prev.scopeOfWork,
+              };
+            });
           } else {
             setCancellation(null);
           }
@@ -655,14 +699,21 @@ export default function PRBucketExpandedRow({
 
               {!loading && !error && pr && tab === 'details' && (
                 <div className="space-y-4">
-                  {poSummary ? (
-                    <HighlightInfoCard
-                      label="Entity / Location"
-                      value={poSummary.entity}
-                      icon="ri-building-2-line"
-                      tone="entity"
-                    />
-                  ) : null}
+                  {(() => {
+                    const prEntity =
+                      pr.entityCode && pr.entityName
+                        ? `${pr.entityCode} — ${pr.entityName}`
+                        : pr.entityName || pr.entityCode || '';
+                    const entityValue = poSummary?.entity?.trim() || prEntity || '';
+                    return entityValue ? (
+                      <HighlightInfoCard
+                        label={poSummary?.entity?.trim() ? 'Entity / Location' : 'PR Entity'}
+                        value={entityValue}
+                        icon="ri-building-2-line"
+                        tone="entity"
+                      />
+                    ) : null;
+                  })()}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {[
                       ...(poSummary
@@ -678,6 +729,12 @@ export default function PRBucketExpandedRow({
                               : []),
                           ]
                         : []),
+                      [
+                        'PR Entity',
+                        pr.entityCode && pr.entityName
+                          ? `${pr.entityCode} — ${pr.entityName}`
+                          : pr.entityName || pr.entityCode || '—',
+                      ],
                       ['Department', pr.department],
                       ['Requester', pr.requester],
                       ['Request Type', pr.requestType],
@@ -685,6 +742,7 @@ export default function PRBucketExpandedRow({
                       ['Project Detail', pr.projectDetail],
                       ['Priority', pr.priority],
                       ['Required Date', pr.requiredDate || '—'],
+                      ['Payment Terms', pr.paymentTerms || '—'],
                       ['Submitted', pr.submittedDate || '—'],
                       ['Total Amount', formatCurrency(pr.totalAmount)],
                       ['Status', pr.statusUI],
@@ -730,6 +788,13 @@ export default function PRBucketExpandedRow({
                       </p>
                     </div>
                   </div>
+                  <HighlightInfoCard
+                    label="Scope of Work"
+                    value={pr.scopeOfWork}
+                    icon="ri-file-list-3-line"
+                    tone="notes"
+                    className="min-h-[120px]"
+                  />
                   <HighlightInfoCard
                     label="Special Notes"
                     value={pr.specialNotes}

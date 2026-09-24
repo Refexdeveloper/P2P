@@ -3836,34 +3836,50 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   }
 
   const updated = await getPurchaseOrderById(poId);
-  let parties = { emails: [], name: updated.requester || 'User' };
-  try {
-    parties = await collectRequesterAndApproverEmails(updated, {
-      excludeEmails: [updated.vendorEmail],
-    });
-  } catch (err) {
-    console.warn('Final-verify notify lookup failed:', err.message);
-  }
 
-  try {
-    const scmBuyers = await getScmBuyerNotifyEmails();
-    const scmManagers = await getScmManagerNotifyEmails();
-    const exclude = new Set(
-      [updated.vendorEmail, updated.vendor_email]
-        .map((e) => String(e || '').trim().toLowerCase())
-        .filter(Boolean)
-    );
-    parties.emails = [...new Set([...parties.emails, ...scmBuyers, ...scmManagers])]
-      .map((e) => String(e || '').trim())
-      .filter(
-        (e) =>
-          e &&
-          e.includes('@') &&
-          !exclude.has(e.toLowerCase()) &&
-          !e.toLowerCase().endsWith('@imported.local')
+  // PO release mail (requester + L1 + approvers + Rajeev / SCM Manager):
+  // Own vendor only. SCM vendor selection skips this release notification.
+  let vendorSelection = 'scm';
+  if (rows[0].pr_id) {
+    try {
+      const pr = await getPurchaseRequestById(rows[0].pr_id);
+      vendorSelection = pr?.vendorSelection === 'own' ? 'own' : 'scm';
+    } catch (err) {
+      console.warn('Final-verify vendor selection lookup failed:', err.message);
+    }
+  }
+  const sendPoReleaseMail = vendorSelection === 'own';
+
+  let parties = { emails: [], name: updated.requester || 'User' };
+  if (sendPoReleaseMail) {
+    try {
+      parties = await collectRequesterAndApproverEmails(updated, {
+        excludeEmails: [updated.vendorEmail],
+      });
+    } catch (err) {
+      console.warn('Final-verify notify lookup failed:', err.message);
+    }
+
+    try {
+      const scmBuyers = await getScmBuyerNotifyEmails();
+      const scmManagers = await getScmManagerNotifyEmails();
+      const exclude = new Set(
+        [updated.vendorEmail, updated.vendor_email]
+          .map((e) => String(e || '').trim().toLowerCase())
+          .filter(Boolean)
       );
-  } catch (err) {
-    console.warn('Final-verify SCM team lookup failed:', err.message);
+      parties.emails = [...new Set([...parties.emails, ...scmBuyers, ...scmManagers])]
+        .map((e) => String(e || '').trim())
+        .filter(
+          (e) =>
+            e &&
+            e.includes('@') &&
+            !exclude.has(e.toLowerCase()) &&
+            !e.toLowerCase().endsWith('@imported.local')
+        );
+    } catch (err) {
+      console.warn('Final-verify SCM team lookup failed:', err.message);
+    }
   }
 
   const attachments = await signedPoPdfMailAttachment(updated);
@@ -3872,7 +3888,7 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     getPreferredScmManagerName() ||
     'SCM Manager';
 
-  if (parties.emails.length) {
+  if (sendPoReleaseMail && parties.emails.length) {
     queuePoWorkflowNotification(updated, {
       action: 'verified',
       stageLabel: 'PO approved and signed',
@@ -3887,8 +3903,12 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
       notifyWhatsApp: false,
       attachments,
     });
-  } else {
+  } else if (sendPoReleaseMail) {
     console.warn(`No requester/approver/SCM emails for final-verify ${updated.poNumber}`);
+  } else {
+    console.log(
+      `PO release mail skipped for ${updated.poNumber} (SCM vendor selection)`
+    );
   }
 
   queueApproverActionConfirmationForUser(updated, user, 'verified', {
@@ -3931,7 +3951,7 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   }
 
   // Vendor mail is a separate optional step — never sent from final verify
-  return updated;
+  return { ...updated, poReleaseMailSent: sendPoReleaseMail, vendorSelection };
 }
 
 export async function rejectBuyerFinalVerify(user, poId, remarks) {

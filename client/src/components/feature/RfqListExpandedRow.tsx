@@ -41,6 +41,9 @@ interface PRDetail {
   /** When PR entered SCM RFQ Entry / SCM Verify */
   prDate?: string;
   scmRfqEntryDate?: string;
+  entityName?: string;
+  entityCode?: string;
+  scopeOfWork?: string;
   totalAmount: number;
   justification: string;
   specialNotes?: string;
@@ -204,6 +207,9 @@ export default function RfqListExpandedRow({
             submittedDate: String(d.submittedDate || ''),
             prDate: String(d.prDate || d.scmRfqEntryDate || ''),
             scmRfqEntryDate: String(d.scmRfqEntryDate || d.prDate || ''),
+            entityName: String(d.entityName || ''),
+            entityCode: String(d.entityCode || ''),
+            scopeOfWork: String(d.scopeOfWork || ''),
             totalAmount: Number(d.totalAmount || 0),
             justification: String(d.justification || ''),
             specialNotes: String(d.specialNotes || ''),
@@ -316,6 +322,12 @@ export default function RfqListExpandedRow({
                   {[
                     ['PR Number', pr.prNumber],
                     ['PR Date', pr.prDate || pr.scmRfqEntryDate || '—'],
+                    [
+                      'Entity',
+                      pr.entityCode && pr.entityName
+                        ? `${pr.entityCode} — ${pr.entityName}`
+                        : pr.entityName || pr.entityCode || '—',
+                    ],
                     ['Department', pr.department],
                     ['Requester', pr.requester],
                     ['Request Type', pr.requestType],
@@ -354,6 +366,14 @@ export default function RfqListExpandedRow({
                     </div>
                   ))}
                 </div>
+
+                <HighlightInfoCard
+                  label="Scope of Work"
+                  value={pr.scopeOfWork}
+                  icon="ri-file-list-3-line"
+                  tone="notes"
+                  className="min-h-[100px]"
+                />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   <HighlightInfoCard

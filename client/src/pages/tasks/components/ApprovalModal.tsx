@@ -20,6 +20,8 @@ interface ApprovalModalProps {
   askBusinessApproval?: boolean;
   /** Cloud Subscription Mugesh invoice-upload task */
   requireInvoiceUpload?: boolean;
+  /** Load full admin send-back catalog (any step, incl. Edit PR + RFQ Entry) */
+  useAdminTargets?: boolean;
   onConfirm: (
     remarks: string,
     returnTo?: string,
@@ -52,6 +54,7 @@ export default function ApprovalModal({
   prId,
   askBusinessApproval = false,
   requireInvoiceUpload = false,
+  useAdminTargets = false,
   onConfirm,
   onClose,
 }: ApprovalModalProps) {
@@ -87,7 +90,7 @@ export default function ApprovalModal({
     let cancelled = false;
     setTargetsLoading(true);
     prApi
-      .sendBackTargets(prId)
+      .sendBackTargets(prId, useAdminTargets ? { admin: true } : undefined)
       .then((res) => {
         if (cancelled) return;
         const list = res.data || [];
@@ -106,7 +109,7 @@ export default function ApprovalModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, type, prId]);
+  }, [isOpen, type, prId, useAdminTargets]);
 
   if (!isOpen) return null;
 
@@ -380,15 +383,19 @@ export default function ApprovalModal({
                 disabled={targetsLoading || !targets.length}
                 className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 bg-white"
               >
-                {targetsLoading && <option value="">Loading previous stages...</option>}
-                {!targetsLoading && !targets.length && <option value="">No previous stages</option>}
+                {targetsLoading && <option value="">Loading stages...</option>}
+                {!targetsLoading && !targets.length && <option value="">No stages available</option>}
                 {targets.map((t) => (
                   <option key={t.key} value={t.key}>
                     {t.label}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">PR will return to the selected stage for action.</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {useAdminTargets
+                  ? 'Admin: any step — Requester (Edit PR), RFQ Entry, or approval stages.'
+                  : 'PR will return to the selected previous stage for action.'}
+              </p>
             </div>
           )}
 

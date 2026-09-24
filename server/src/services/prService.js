@@ -140,6 +140,7 @@ function applyRequesterDisplay(pr, poMeta = null) {
   };
 }
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
+import { canUseAdminSendBackCatalog, ADMIN_SEND_BACK_ROLES } from '../utils/sendBackTargets.js';
 import { listPrAttachments, savePrAttachments } from './prAttachmentService.js';
 import { getUserPermissionCodes, isSuperAdmin } from './permissionService.js';
 
@@ -2796,7 +2797,11 @@ export async function processApproval(user, prId, action, remarks, options = {})
       newStatus = PR_STATUS.REJECTED;
     } else if (action === 'return' || action === 'rework') {
       const returnTo = options.returnTo || 'REQUESTER';
-      const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarks, user);
+      // Admin / Super Admin may send back to any step (Edit PR, RFQ Entry, …);
+      // managers without admin catalog stay limited to previous stages.
+      const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarks, user, {
+        admin: canUseAdminSendBackCatalog(user),
+      });
       await conn.query(
         `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
         [prId, roleConfig.stage, user.id, action, applyResult.remarksLine]
@@ -3993,21 +3998,14 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
   return getPurchaseRequestById(prId);
 }
 
-const ADMIN_SEND_BACK_ROLES = [
-  'Super Admin',
-  'SCM Manager',
-  'SCM Buyer',
-  'HOD Approver',
-  'PR Manager',
-  'CFO',
-];
+const ADMIN_SEND_BACK_ROLES_LOCAL = ADMIN_SEND_BACK_ROLES;
 
 /**
- * Admin override: send PR back to any prior workflow step (Track PR).
+ * Admin override: send PR back to any workflow step (Track PR).
  * Does not require the actor to hold the current approval task.
  */
 export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks) {
-  if (!ADMIN_SEND_BACK_ROLES.includes(user.role) && !isSuperAdmin(user.role)) {
+  if (!ADMIN_SEND_BACK_ROLES_LOCAL.includes(user.role) && !isSuperAdmin(user.role)) {
     const codes = await getUserPermissionCodes(user.id, user.role);
     const ok = ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard'].some((c) =>
       codes.includes(c)

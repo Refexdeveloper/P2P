@@ -1190,6 +1190,8 @@ export default function CreatePOPage() {
     department: '',
     requester: '',
     justification: '',
+    scopeOfWork: '',
+    paymentTerms: '',
     requestType: 'Opex',
     priority: 'Medium',
   });
@@ -1623,6 +1625,17 @@ export default function CreatePOPage() {
     if (manualPrDetails.justification.trim()) {
       setSpecialInstructions((prev) => (prev.trim() ? prev : manualPrDetails.justification.trim()));
     }
+    if (manualPrDetails.paymentTerms.trim()) {
+      setPaymentTerms((prev) => (prev.trim() && prev !== 'Net 30 Days' ? prev : manualPrDetails.paymentTerms.trim()));
+      setPoTermsDetails((prev) =>
+        prev.paymentTermsText?.trim()
+          ? prev
+          : { ...prev, paymentTermsText: manualPrDetails.paymentTerms.trim() }
+      );
+    }
+    if (manualPrDetails.scopeOfWork.trim()) {
+      prScopeOfWorkRef.current = manualPrDetails.scopeOfWork.trim();
+    }
   }, [isManualPoFlow, manualPrDetails]);
 
   useEffect(() => {
@@ -2009,6 +2022,10 @@ export default function CreatePOPage() {
             department: String(po.department || ''),
             requester: String(po.requester || ''),
             prNumber: String(po.prNumber || ''),
+            paymentTerms: String(po.paymentTerms || ''),
+            scopeOfWork: String(
+              (manualContext.prDetails as { scopeOfWork?: string } | undefined)?.scopeOfWork || ''
+            ),
           })
         );
         const hydratedRounds = hydrateComparisonRoundsFromStored(

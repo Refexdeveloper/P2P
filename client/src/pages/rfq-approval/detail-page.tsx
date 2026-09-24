@@ -339,6 +339,12 @@ export default function RfqApprovalDetailPage() {
         stageLabel={data.stageLabel || user?.role || 'Approval'}
         prId={Number(prId)}
         askBusinessApproval={Boolean(data.askBusinessApproval)}
+        useAdminTargets={Boolean(
+          user?.isSuperAdmin ||
+            user?.role === 'Super Admin' ||
+            user?.role === 'SCM Manager' ||
+            user?.role === 'SCM Buyer'
+        )}
         onClose={() => setModal((m) => ({ ...m, open: false }))}
         onConfirm={handleApprove}
       />

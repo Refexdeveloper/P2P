@@ -116,15 +116,13 @@ const FUNCTIONAL_PREVIOUS_BY_STATUS = {
   [PR_STATUS.PENDING_SCM_PO]: ['SCM_MANAGER', 'SCM_RFQ', 'HOD_PRE', 'REQUESTER'],
 };
 
-const ADMIN_FUNCTIONAL_KEYS = ['REQUESTER', 'HOD_PRE', 'SCM_RFQ', 'SCM_MANAGER'];
-
 function withFunctionalLabels(def) {
   if (!def) return def;
   if (def.key === 'HOD_PRE') return { ...def, label: 'User Approval' };
   return def;
 }
 
-/** Previous steps available from each current status */
+/** Previous steps available from each current status (manager / task holder) */
 const PREVIOUS_BY_STATUS = {
   [PR_STATUS.PENDING_HOD_APPROVAL]: ['REQUESTER'],
   [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: ['REQUESTER', 'HOD_PRE'],
@@ -134,31 +132,36 @@ const PREVIOUS_BY_STATUS = {
   [PR_STATUS.PENDING_RFQ_L2_APPROVAL]: ['REQUESTER', 'REQUESTER_RFQ', 'HOD_PRE', 'HOD_VENDOR'],
   [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: ['REQUESTER', 'REQUESTER_RFQ', 'HOD_PRE', 'HOD_VENDOR', 'L2_VENDOR'],
 
-  // SCM Manager vendor approval — default first target is SCM RFQ Entry
   [PR_STATUS.PENDING_BUSINESS_APPROVAL]: ['SCM_RFQ', 'REQUESTER_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
   [PR_STATUS.PENDING_SCM_PO]: ['SCM_MANAGER', 'SCM_RFQ', 'REQUESTER_RFQ', 'REQUESTER', 'HOD_PRE', 'L2_PRE', 'CFO_PRE'],
 
-  // During / after RFQ entry (status APPROVED until post-RFQ queue starts)
-  [PR_STATUS.APPROVED]: ['REQUESTER', 'REQUESTER_RFQ', 'SCM_RFQ', 'HOD_PRE', 'L2_PRE', 'CFO_PRE', 'HOD_VENDOR', 'L2_VENDOR', 'CFO_VENDOR'],
+  [PR_STATUS.APPROVED]: [
+    'REQUESTER',
+    'REQUESTER_RFQ',
+    'SCM_RFQ',
+    'HOD_PRE',
+    'L2_PRE',
+    'CFO_PRE',
+    'HOD_VENDOR',
+    'L2_VENDOR',
+    'CFO_VENDOR',
+  ],
 };
 
-/** Full catalog for admin override — any prior workflow step for the PR path */
-const ADMIN_OWN_KEYS = [
+/**
+ * Admin full catalog — any workflow step (not limited to predecessors).
+ * First three are RFQ-entry related: Edit PR, Requester RFQ Entry, SCM RFQ Entry.
+ */
+const ADMIN_ANY_STEP_KEYS = [
   'REQUESTER',
-  'HOD_PRE',
   'REQUESTER_RFQ',
-  'HOD_VENDOR',
-  'L2_VENDOR',
-  'CFO_VENDOR',
   'SCM_RFQ',
-];
-const ADMIN_SCM_KEYS = [
-  'REQUESTER',
-  'REQUESTER_RFQ',
   'HOD_PRE',
   'L2_PRE',
   'CFO_PRE',
-  'SCM_RFQ',
+  'HOD_VENDOR',
+  'L2_VENDOR',
+  'CFO_VENDOR',
   'SCM_MANAGER',
 ];
 
@@ -166,8 +169,8 @@ const OWN_ONLY_KEYS = new Set(['REQUESTER_RFQ', 'HOD_VENDOR', 'L2_VENDOR', 'CFO_
 const SCM_ONLY_KEYS = new Set(['SCM_RFQ', 'SCM_MANAGER', 'L2_PRE', 'CFO_PRE']);
 
 /**
- * List send-back targets for a PR at its current status.
- * Filters own vs SCM where useful (e.g. hide SCM_RFQ on own path).
+ * List send-back targets for a PR at its current status (manager / task holder).
+ * Filters own vs SCM where useful.
  */
 export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 'standard') {
   if (prFlow === 'functional') {
@@ -194,20 +197,16 @@ export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 's
 }
 
 /**
- * Admin: every prior stage for this vendor path (not limited to immediate predecessors).
- * Always includes Requester RFQ Entry so admin can reopen quotes after Create PO / send-back.
+ * Admin: every workflow step (Edit PR + RFQ Entry steps + all approval stages).
+ * Not limited by current status or own/SCM path — admin may reopen any step.
  */
-export function listAdminSendBackTargets(status, vendorSelection = 'scm', prFlow = 'standard') {
-  if (prFlow === 'functional') {
-    return ADMIN_FUNCTIONAL_KEYS
-      .map((key) => withFunctionalLabels(SEND_BACK_TARGET_DEFS[key]))
-      .filter(Boolean)
-      .map((def) => ({ key: def.key, label: def.label }));
-  }
-  const isOwn = vendorSelection === 'own';
-  const keys = isOwn ? ADMIN_OWN_KEYS : ADMIN_SCM_KEYS;
-  return keys
-    .map((key) => SEND_BACK_TARGET_DEFS[key])
+export function listAdminSendBackTargets(_status, _vendorSelection = 'scm', prFlow = 'standard') {
+  const functional = prFlow === 'functional';
+  return ADMIN_ANY_STEP_KEYS.map((key) => {
+    const def = SEND_BACK_TARGET_DEFS[key];
+    if (!def) return null;
+    return functional ? withFunctionalLabels(def) : def;
+  })
     .filter(Boolean)
     .map((def) => ({ key: def.key, label: def.label }));
 }
@@ -215,4 +214,22 @@ export function listAdminSendBackTargets(status, vendorSelection = 'scm', prFlow
 export function resolveSendBackTarget(returnTo) {
   if (!returnTo) return null;
   return SEND_BACK_TARGET_DEFS[returnTo] || null;
+}
+
+/** Roles that may use the full admin send-back catalog (Track PR / override). */
+export const ADMIN_SEND_BACK_ROLES = [
+  'Super Admin',
+  'SCM Manager',
+  'SCM Buyer',
+  'HOD Approver',
+  'PR Manager',
+  'CFO',
+];
+
+/** Roles that may use the full admin send-back catalog on task approve/return. */
+export function canUseAdminSendBackCatalog(user) {
+  if (!user) return false;
+  if (user.isSuperAdmin || user.role === 'Super Admin') return true;
+  // SCM leads: full override from My Tasks / RFQ Approval (same as Track PR admin for these roles)
+  return user.role === 'SCM Manager' || user.role === 'SCM Buyer';
 }

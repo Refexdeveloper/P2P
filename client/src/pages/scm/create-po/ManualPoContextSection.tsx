@@ -12,6 +12,8 @@ export type ManualPrDetails = {
   department: string;
   requester: string;
   justification: string;
+  scopeOfWork: string;
+  paymentTerms: string;
   requestType: string;
   priority: string;
 };
@@ -205,7 +207,14 @@ export function hydrateComparisonRoundsFromStored(
 
 export function hydrateManualPrDetailsFromStored(
   prDetails: Partial<ManualPrDetails> | null | undefined,
-  poFallback?: { title?: string; department?: string; requester?: string; prNumber?: string }
+  poFallback?: {
+    title?: string;
+    department?: string;
+    requester?: string;
+    prNumber?: string;
+    paymentTerms?: string;
+    scopeOfWork?: string;
+  }
 ): ManualPrDetails {
   return {
     prNumber: String(prDetails?.prNumber || poFallback?.prNumber || ''),
@@ -213,6 +222,8 @@ export function hydrateManualPrDetailsFromStored(
     department: String(prDetails?.department || poFallback?.department || ''),
     requester: String(prDetails?.requester || poFallback?.requester || ''),
     justification: String(prDetails?.justification || ''),
+    scopeOfWork: String(prDetails?.scopeOfWork || poFallback?.scopeOfWork || ''),
+    paymentTerms: String(prDetails?.paymentTerms || poFallback?.paymentTerms || ''),
     requestType: String(prDetails?.requestType || 'Opex'),
     priority: String(prDetails?.priority || 'Medium'),
   };
@@ -711,6 +722,25 @@ export default function ManualPoContextSection({
               rows={3}
               className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
               placeholder="Business justification"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Scope of Work</label>
+            <textarea
+              value={prDetails.scopeOfWork}
+              onChange={(e) => onPrDetailsChange({ ...prDetails, scopeOfWork: e.target.value })}
+              rows={3}
+              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+              placeholder="Scope of work / description of services or supply"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payment Terms</label>
+            <input
+              value={prDetails.paymentTerms}
+              onChange={(e) => onPrDetailsChange({ ...prDetails, paymentTerms: e.target.value })}
+              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              placeholder="e.g. Net 30 Days / 50% Advance 50% on completion"
             />
           </div>
             </div>

@@ -1875,7 +1875,7 @@ export default function TrackPRPage() {
               {sendBackModal.title}
             </p>
             <p className="text-xs text-gray-500 mt-2">
-              Choose any previous workflow step. The PR will move there and the assignee will be notified.
+              Admin: send to any step — Requester (Edit PR), Requester RFQ Entry, SCM RFQ Entry, or any approval stage.
             </p>
 
             <label className="block text-xs font-semibold text-gray-700 mt-4 mb-1">

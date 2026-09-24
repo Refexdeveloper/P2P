@@ -25,6 +25,7 @@ import {
 } from './refexOneService.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
+import { canUseAdminSendBackCatalog } from '../utils/sendBackTargets.js';
 import { formatCurrency, normalizeEmailCurrency } from '../templates/emailUtils.js';
 import { isSassPurchaseType } from './sassWorkflow.js';
 
@@ -3214,7 +3215,9 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       const defaultReturnTo =
         pr.pr_flow === 'functional' ? 'HOD_PRE' : pr.vendor_selection === 'own' ? 'REQUESTER_RFQ' : 'SCM_RFQ';
       const returnTo = options.returnTo || defaultReturnTo;
-      const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarks, user);
+      const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarks, user, {
+        admin: canUseAdminSendBackCatalog(user),
+      });
       await conn.query(
         `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
         [prId, roleConfig.stage, user.id, action, applyResult.remarksLine]
