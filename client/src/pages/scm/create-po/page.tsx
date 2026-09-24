@@ -302,7 +302,7 @@ function withSyncedQuoteNo(
 
 const INCOTERM_NOT_APPLICABLE = 'Not applicable';
 
-/** Incoterms® 2020 — all 11 ICC rules, plus Not applicable */
+/** Incoterms® 2020 — all 11 ICC rules, plus FOR (India domestic) and Not applicable */
 const INCOTERMS_OPTIONS = [
   { code: INCOTERM_NOT_APPLICABLE, label: 'Not applicable' },
   { code: 'EXW', label: 'EXW — Ex Works' },
@@ -314,6 +314,7 @@ const INCOTERMS_OPTIONS = [
   { code: 'DDP', label: 'DDP — Delivered Duty Paid' },
   { code: 'FAS', label: 'FAS — Free Alongside Ship (sea)' },
   { code: 'FOB', label: 'FOB — Free on Board (sea)' },
+  { code: 'FOR', label: 'FOR — Free on Road / Rail' },
   { code: 'CFR', label: 'CFR — Cost and Freight (sea)' },
   { code: 'CIF', label: 'CIF — Cost, Insurance and Freight (sea)' },
 ] as const;
@@ -324,6 +325,16 @@ function normalizeIncoterm(value?: string | null): string {
   const upper = raw.toUpperCase().replace(/[_-]+/g, ' ');
   if (['NA', 'N/A', 'N.A.', 'NOT APPLICABLE'].includes(upper)) {
     return INCOTERM_NOT_APPLICABLE;
+  }
+  // India domestic: FOR = Free on Road / Free on Rail
+  if (
+    upper === 'FOR' ||
+    upper.startsWith('FOR ') ||
+    upper.includes('FREE ON ROAD') ||
+    upper.includes('FREE ON RAIL') ||
+    upper.includes('FREIGHT ON ROAD')
+  ) {
+    return 'FOR';
   }
   // Map retired DAT (2010) → DPU (2020)
   if (upper === 'DAT' || upper.includes('DAT')) return 'DPU';
@@ -4517,7 +4528,7 @@ export default function CreatePOPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                          Incoterms® 2020
+                          Incoterms
                         </label>
                         <select
                           value={normalizeIncoterm(incoterms)}
@@ -4602,7 +4613,11 @@ export default function CreatePOPage() {
                     <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
                       {lineItems.length} Items
                     </span>
-                    <LineItemImportExport onImport={importPoLineItems} />
+                    <LineItemImportExport
+                      onImport={importPoLineItems}
+                      showSample
+                      sampleFilename="po-line-items-sample.csv"
+                    />
                     <button
                       onClick={handleAddLineItem}
                       className="flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"

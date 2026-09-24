@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { downloadLineItemSample } from '../../utils/lineItemCsv';
 
 type ImportSummary = {
   added: number;
@@ -8,9 +9,15 @@ type ImportSummary = {
 
 type Props = {
   onImport: (csvText: string) => ImportSummary;
+  showSample?: boolean;
+  sampleFilename?: string;
 };
 
-export default function LineItemImportExport({ onImport }: Props) {
+export default function LineItemImportExport({
+  onImport,
+  showSample = false,
+  sampleFilename = 'line-items-sample.csv',
+}: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -45,6 +52,17 @@ export default function LineItemImportExport({ onImport }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {showSample && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => downloadLineItemSample(sampleFilename)}
+          className="px-3 py-1.5 border border-gray-200 bg-white text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-50 cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
+        >
+          <i className="ri-file-excel-2-line"></i>
+          Sample
+        </button>
+      )}
       <button
         type="button"
         disabled={busy}

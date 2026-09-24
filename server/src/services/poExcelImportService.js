@@ -292,7 +292,7 @@ export async function buildPoExcelImportGroups(rawRows, conn = pool) {
     // Column is VARCHAR(255); move oversized cells into special instructions
     if (incotermsRaw.length > 255) {
       specialInstructions = [specialInstructions, `Incoterms note: ${incotermsRaw}`].filter(Boolean).join('\n');
-      const codeMatch = incotermsRaw.match(/^(EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|CFR|CIF)\b/i);
+      const codeMatch = incotermsRaw.match(/^(EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS|FOB|FOR|CFR|CIF)\b/i);
       incotermsRaw = codeMatch ? codeMatch[1].toUpperCase() : 'DDP';
     }
     const incoterms = clip(incotermsRaw, 255);
