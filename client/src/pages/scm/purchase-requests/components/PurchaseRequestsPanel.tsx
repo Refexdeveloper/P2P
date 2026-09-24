@@ -99,7 +99,7 @@ function shortStatusLabel(label: string, statusRaw?: string) {
   const raw = String(statusRaw || '').toLowerCase();
   if (raw === 'pending_buyer_verify') return 'Buyer Verify';
   if (raw === 'pending_approval') return 'SCM Manager';
-  if (raw === 'sent_to_vendor') return 'Vendor Accept';
+  if (raw === 'sent_to_vendor') return 'Vendor Acknowledged pending';
   if (raw === 'awaiting_grn') return 'Awaiting GRN';
   if (raw === 'grn_completed') return 'GRN Done';
   if (raw === 'invoice_entry') return 'Invoice Entry';
@@ -107,7 +107,7 @@ function shortStatusLabel(label: string, statusRaw?: string) {
   if (raw === 'approved_for_payment') return 'For Payment';
   const full = String(label || '').trim();
   if (/scm manager signed/i.test(full)) return 'Buyer Verify';
-  if (/pending vendor acceptance/i.test(full)) return 'Vendor Accept';
+  if (/pending vendor acceptance/i.test(full)) return 'Vendor Acknowledged pending';
   if (/pending scm manager sign/i.test(full)) return 'SCM Manager';
   return full;
 }

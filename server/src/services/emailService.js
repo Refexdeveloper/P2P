@@ -1643,25 +1643,45 @@ export function queueCloudSubscriptionReminderNotification(payload) {
   });
 }
 
-export async function sendPoVendorNotification(po, { signerName, signerComments, ccEmails, pdfPath, portalUrl }) {
+export async function sendPoVendorNotification(po, {
+  signerName,
+  signerComments,
+  scmComments,
+  ccEmails,
+  pdfPath,
+  portalUrl,
+  toEmail,
+  toName,
+}) {
   if (!EMAIL_SEND_ENABLED) {
-    console.log('Email send skipped (PO vendor): EMAIL_SEND_ENABLED=false');
+    console.log('Email send skipped (PO vendor signed upload request): EMAIL_SEND_ENABLED=false');
     return null;
   }
 
   const { host, user, pass } = getSmtpConfig();
   const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const acceptUrl = portalUrl || `${base}/scm/vendor-po-acceptance`;
+  const acceptUrl = portalUrl || `${base}/requester/vendor-po-acceptance`;
+  const teamComments = String(scmComments || '').trim();
 
   const { subject, html, text } = buildPoVendorEmail({
     po,
     signerName,
     signerComments,
+    scmComments: teamComments,
     portalUrl: acceptUrl,
+    recipientName: toName || po.requester || 'Requester',
   });
 
-  const to = po.vendorEmail;
-  const cc = (ccEmails || []).filter((e) => e && e.toLowerCase() !== String(to || '').toLowerCase());
+  const to = String(toEmail || '').trim();
+  if (!to) {
+    throw new Error('Requester email is required to send Vendor Signed PO upload mail');
+  }
+  const toLower = to.toLowerCase();
+  const cc = [...new Set(
+    (ccEmails || [])
+      .map((e) => String(e || '').trim())
+      .filter((e) => e && e.toLowerCase() !== toLower)
+  )];
   const logId = await createEmailLog({
     emailType: 'po_vendor',
     status: 'queued',
@@ -1669,10 +1689,17 @@ export async function sendPoVendorNotification(po, { signerName, signerComments,
     prId: po?.prId || po?.pr_id || null,
     poNumber: po?.poNumber || po?.po_number || null,
     prNumber: po?.prNumber || po?.pr_number || null,
-    toAddresses: to || '',
+    toAddresses: to,
     ccAddresses: cc,
     subject,
-    meta: { signerName, hasPdf: Boolean(pdfPath) },
+    meta: {
+      signerName,
+      hasPdf: Boolean(pdfPath),
+      recipient: 'requester',
+      toEmail: to,
+      toName: toName || po.requester || '',
+      scmComments: teamComments || undefined,
+    },
   });
 
   if (!host || !user || !pass) {
@@ -1706,7 +1733,7 @@ export async function sendPoVendorNotification(po, { signerName, signerComments,
     return info;
   } catch (err) {
     await updateEmailLog(logId, { status: 'failed', errorMessage: err.message });
-    console.error('Email send failure (PO vendor):', err.message);
+    console.error('Email send failure (requester Vendor Signed PO upload):', err.message);
     if (err.response) console.error('SMTP response:', err.response);
     throw err;
   }
@@ -1927,13 +1954,31 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
     text = built.text;
   } else if (type === 'po_vendor') {
     if (!po) throw new Error('Related PO was not found — cannot rebuild this mail');
-    if (!to.length && po.vendorEmail) to = [po.vendorEmail];
-    const portalUrl = wrapPortalUrlWithSso(`${getAppBaseUrl()}/scm/vendor-po-acceptance`);
+    // Prefer stored requester To; never fall back to vendor for this mail type
+    if (!to.length && meta.toEmail) to = [String(meta.toEmail)];
+    if (!to.length && po.prId) {
+      try {
+        const { getPurchaseRequestById } = await import('./prService.js');
+        const pr = await getPurchaseRequestById(po.prId);
+        if (pr?.requesterId) {
+          const [reqRows] = await pool.query(
+            `SELECT email FROM users WHERE id = ? AND is_active = 1`,
+            [pr.requesterId]
+          );
+          if (reqRows[0]?.email) to = [reqRows[0].email];
+        }
+      } catch {
+        /* rebuild without requester lookup */
+      }
+    }
+    const portalUrl = wrapPortalUrlWithSso(`${getAppBaseUrl()}/requester/vendor-po-acceptance`);
     const built = buildPoVendorEmail({
       po,
       signerName: meta.signerName || po.signatureName || '',
       signerComments: po.signerComments || '',
+      scmComments: meta.scmComments || '',
       portalUrl,
+      recipientName: meta.toName || po.requester || 'Requester',
     });
     subject = built.subject;
     html = built.html;

@@ -820,10 +820,11 @@ router.post('/:id/final-verify/send-back', requireRoles('SCM Buyer'), async (req
 
 router.post('/:id/vendor-acceptance/send-mail', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
-    const data = await sendVendorAcceptanceMail(req.user, Number(req.params.id));
+    const data = await sendVendorAcceptanceMail(req.user, Number(req.params.id), req.body || {});
+    const to = data.mailTo || data.requesterEmail || 'requester';
     res.json({
       data,
-      message: `Acceptance mail sent to ${data.vendorEmail} with signed PO attached`,
+      message: `Mail sent to requester (${to}) to upload Vendor Signed PO`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

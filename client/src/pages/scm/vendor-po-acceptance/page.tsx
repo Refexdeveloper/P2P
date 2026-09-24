@@ -64,6 +64,8 @@ export default function VendorPOAcceptancePage() {
   const [remarks, setRemarks] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [sendMailFor, setSendMailFor] = useState<AcceptancePo | null>(null);
+  const [sendMailComments, setSendMailComments] = useState('');
 
   const showToast = (text: string, type: 'success' | 'error') => {
     setToast({ text, type });
@@ -115,11 +117,21 @@ export default function VendorPOAcceptancePage() {
     [rows]
   );
 
-  const handleSendMail = async (po: AcceptancePo) => {
-    setBusyId(po.id);
+  const openSendMail = (po: AcceptancePo) => {
+    setSendMailFor(po);
+    setSendMailComments('');
+  };
+
+  const handleSendMail = async () => {
+    if (!sendMailFor) return;
+    setBusyId(sendMailFor.id);
     try {
-      const res = await poApi.sendVendorAcceptanceMail(po.id);
-      showToast(res.message || `Mail sent to ${po.vendorEmail}`, 'success');
+      const res = await poApi.sendVendorAcceptanceMail(sendMailFor.id, {
+        comments: sendMailComments.trim() || undefined,
+      });
+      setSendMailFor(null);
+      setSendMailComments('');
+      showToast(res.message || 'Mail sent to requester to upload Vendor Signed PO', 'success');
       await load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to send mail', 'error');
@@ -193,7 +205,7 @@ export default function VendorPOAcceptancePage() {
         <p className="text-sm text-gray-500 mt-1">
           {isRequesterView
             ? 'Record vendor acceptance after GRN and invoice upload (Work Orders appear right after final verify).'
-            : 'POs awaiting vendor acceptance — send mail to vendor or record manual acceptance.'}
+            : 'POs awaiting vendor acceptance — send mail to requester to upload Vendor Signed PO, or record manual acceptance.'}
         </p>
       </div>
 
@@ -309,7 +321,8 @@ export default function VendorPOAcceptancePage() {
                               <button
                                 type="button"
                                 disabled={busyId === po.id}
-                                onClick={() => handleSendMail(po)}
+                                onClick={() => openSendMail(po)}
+                                title="Email requester to upload Vendor Signed PO (CC: L1, SCM Manager, user approvers)"
                                 className="px-3 py-1.5 text-xs font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50"
                               >
                                 {busyId === po.id ? 'Sending…' : 'Send Mail'}
@@ -343,7 +356,7 @@ export default function VendorPOAcceptancePage() {
                       <POExpandedRow
                         po={po}
                           busy={busyId === po.id}
-                          onSendMail={() => handleSendMail(po)}
+                          onSendMail={() => openSendMail(po)}
                           onManual={() => openManual(po)}
                           onViewPdf={() => viewPdf(po.id)}
                         />
@@ -356,6 +369,52 @@ export default function VendorPOAcceptancePage() {
         </div>
         )}
       </div>
+
+      {sendMailFor && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+            <h3 className="text-lg font-bold text-gray-900">Send mail to requester</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              {sendMailFor.poNumber} — ask requester to upload Vendor Signed PO
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              To: Requester · CC: L1 Manager, SCM Manager, user approvers (if any)
+            </p>
+
+            <label className="block mt-4 text-xs font-semibold text-gray-600 mb-1">
+              SCM team comments (included in mail)
+            </label>
+            <textarea
+              value={sendMailComments}
+              onChange={(e) => setSendMailComments(e.target.value)}
+              rows={4}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+              placeholder="Add instructions or notes for the requester…"
+            />
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSendMailFor(null);
+                  setSendMailComments('');
+                }}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busyId === sendMailFor.id}
+                onClick={() => void handleSendMail()}
+                className="px-4 py-2 text-sm font-semibold bg-teal-600 text-white rounded-lg disabled:opacity-50"
+              >
+                {busyId === sendMailFor.id ? 'Sending…' : 'Send Mail'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {manualFor && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">

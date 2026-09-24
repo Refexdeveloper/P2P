@@ -4957,10 +4957,12 @@ async function assertVendorAcceptancePending(poId) {
   return row;
 }
 
-export async function sendVendorAcceptanceMail(user, poId) {
+export async function sendVendorAcceptanceMail(user, poId, body = {}) {
   if (!['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
     throw new Error('Unauthorized');
   }
+
+  const scmComments = String(body.comments || body.remarks || body.scmComments || '').trim();
 
   const row = await assertVendorAcceptancePending(poId);
   await assertVendorAcceptanceActor(user, row);
@@ -4984,29 +4986,71 @@ export async function sendVendorAcceptanceMail(user, poId) {
     /\/$/,
     ''
   );
-  const acceptUrl = `${base}/vendor/po-accept/${token}`;
+  const portalUrl = wrapPortalUrlWithSso(`${base}/requester/vendor-po-acceptance`);
+
+  // To = Requester only (never the vendor). CC = L1 + SCM Manager + user approvers.
+  let requesterEmail = '';
+  let requesterName = updatedPo.requester || 'Requester';
+  if (updatedPo.prId) {
+    const pr = await getPurchaseRequestById(updatedPo.prId);
+    if (pr?.requesterId) {
+      const [reqRows] = await pool.query(
+        `SELECT email, name FROM users WHERE id = ? AND is_active = 1`,
+        [pr.requesterId]
+      );
+      if (reqRows[0]?.email) {
+        requesterEmail = String(reqRows[0].email).trim();
+        requesterName = reqRows[0].name || requesterName;
+      }
+    }
+  }
+  if (!requesterEmail) {
+    throw new Error('Requester email not found — cannot send Vendor Signed PO upload mail');
+  }
+
+  const { emails: approverEmails } = await collectRequesterAndApproverEmails(updatedPo, {
+    excludeEmails: [requesterEmail, updatedPo.vendorEmail],
+  });
+  const scmManagerEmails = await getScmManagerNotifyEmails();
+  const ccEmails = [
+    ...new Set(
+      [...approverEmails, ...scmManagerEmails]
+        .map((e) => String(e || '').trim())
+        .filter((e) => e && e.toLowerCase() !== requesterEmail.toLowerCase())
+    ),
+  ];
 
   await sendPoVendorNotification(updatedPo, {
     signerName: updatedPo.signatureName || 'SCM Manager',
     signerComments: updatedPo.signerComments || '',
-    ccEmails: [],
+    scmComments,
+    toEmail: requesterEmail,
+    toName: requesterName,
+    ccEmails,
     pdfPath,
-    portalUrl: acceptUrl,
+    portalUrl,
   });
 
   if (updatedPo.prId) {
+    const remarkParts = [
+      `Vendor Signed PO upload mail sent to requester ${requesterEmail}`,
+      ccEmails.length ? `(CC: ${ccEmails.join(', ')})` : '',
+      scmComments ? `SCM comments: ${scmComments}` : '',
+    ].filter(Boolean);
     await pool.query(
       `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
        VALUES (?, 'PO_VENDOR_MAIL', ?, 'notified', ?)`,
-      [
-        updatedPo.prId,
-        user.id,
-        `Vendor acceptance mail sent to ${updatedPo.vendorEmail}`,
-      ]
+      [updatedPo.prId, user.id, remarkParts.join(' ')]
     );
   }
 
-  return updatedPo;
+  return {
+    ...updatedPo,
+    mailTo: requesterEmail,
+    mailCc: ccEmails,
+    requesterEmail,
+    scmComments,
+  };
 }
 
 export async function submitManualVendorAcceptance(user, poId, body = {}) {

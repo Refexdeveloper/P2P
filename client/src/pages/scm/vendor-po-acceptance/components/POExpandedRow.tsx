@@ -126,6 +126,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                     type="button"
                     disabled={busy}
                     onClick={onSendMail}
+                    title="Email requester to upload Vendor Signed PO (CC: L1, SCM Manager, user approvers)"
                     className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg disabled:opacity-50"
                   >
                     Send Mail

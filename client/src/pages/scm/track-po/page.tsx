@@ -165,10 +165,10 @@ function shortStatusLabel(label: string, status?: string) {
   const s = String(status || '').toLowerCase();
   if (s === 'approved' && /buyer verify/i.test(label)) return 'Buyer Verify';
   if (s === 'pending') return 'SCM Manager';
-  if (s === 'sent') return 'Vendor Accept';
+  if (s === 'sent') return 'Vendor Acknowledged pending';
   const full = String(label || '').trim();
   if (/scm manager signed/i.test(full)) return 'Buyer Verify';
-  if (/pending vendor acceptance/i.test(full)) return 'Vendor Accept';
+  if (/pending vendor acceptance/i.test(full)) return 'Vendor Acknowledged pending';
   if (/pending scm manager sign/i.test(full)) return 'SCM Manager';
   return full;
 }
@@ -764,12 +764,12 @@ export default function TrackPoPage() {
                           <td className="px-3 py-3 text-sm font-semibold text-gray-900 text-right tabular-nums whitespace-nowrap">
                             {formatCurrency(row.amount)}
                           </td>
-                          <td className="px-3 py-3 align-middle max-w-[140px] w-[140px]">
+                          <td className="px-3 py-3 align-middle max-w-[200px] w-[180px]">
                             <span
-                              className={`inline-flex max-w-full px-2.5 py-1 rounded-full text-xs font-medium ${statusColor(row.status)}`}
+                              className={`inline-flex max-w-full px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor(row.status)}`}
                               title={row.statusLabel}
                             >
-                              <span className="truncate">{shortStatusLabel(row.statusLabel, row.status)}</span>
+                              {shortStatusLabel(row.statusLabel, row.status)}
                             </span>
                           </td>
                           <td className="px-3 py-3 align-middle">

@@ -88,7 +88,7 @@ export default function ScmRfqEntryListPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-2 py-2 w-9"></th>
-                  {['PR Number', 'Title', 'Department', 'Requester', 'Vendor Selection', 'Vendors', 'Amount', 'Action'].map(
+                  {['PR Number', 'PR Date', 'Title', 'Department', 'Requester', 'Vendor Selection', 'Vendors', 'Amount', 'Action'].map(
                     (h) => (
                       <th key={h} className="px-2.5 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                         {h}
@@ -101,6 +101,7 @@ export default function ScmRfqEntryListPage() {
                 {entryList.map((item) => {
                   const open = expandedPrId === item.prId;
                   const isOwn = item.vendorSelection === 'own';
+                  const prDate = item.prDate || item.scmRfqEntryDate || '—';
                   return (
                     <Fragment key={item.prId}>
                       <tr className="border-b hover:bg-gray-50">
@@ -116,6 +117,9 @@ export default function ScmRfqEntryListPage() {
                           </button>
                         </td>
                         <td className="px-2.5 py-1.5 text-sm font-bold text-teal-600 whitespace-nowrap">{item.prNumber}</td>
+                        <td className="px-2.5 py-1.5 text-sm text-gray-700 whitespace-nowrap tabular-nums" title="Date entered SCM RFQ Entry">
+                          {prDate}
+                        </td>
                         <td className="px-2.5 py-1.5 text-sm text-gray-900 max-w-[220px] truncate" title={item.title}>{item.title}</td>
                         <td className="px-2.5 py-1.5 text-sm text-gray-700 whitespace-nowrap">{item.department}</td>
                         <td className="px-2.5 py-1.5 text-sm text-gray-700 whitespace-nowrap">{item.requester}</td>
@@ -164,7 +168,7 @@ export default function ScmRfqEntryListPage() {
                       {open && (
                         <RfqListExpandedRow
                           prId={item.prId}
-                          colSpan={9}
+                          colSpan={10}
                           statusLabel={isOwn ? 'SCM Verify' : item.status || 'RFQ Entry'}
                           actionSlot={
                             <div className="flex items-center gap-1">

@@ -2913,12 +2913,21 @@ export async function listScmRfqEntryPrs(user) {
               ORDER BY vqs.round DESC, vqs.id DESC
               LIMIT 1
             ) AS recommended_quoted_price,
-            (
-              SELECT MIN(wt.created_at)
-              FROM workflow_tasks wt
-              WHERE wt.pr_id = pr.id
-                AND wt.task_type = 'RFQ_ENTRY'
-                AND wt.assigned_role = 'SCM Buyer'
+            COALESCE(
+              (
+                SELECT MIN(wt.created_at)
+                FROM workflow_tasks wt
+                WHERE wt.pr_id = pr.id
+                  AND wt.task_type = 'RFQ_ENTRY'
+                  AND wt.assigned_role = 'SCM Buyer'
+              ),
+              (
+                SELECT MIN(wt2.created_at)
+                FROM workflow_tasks wt2
+                WHERE wt2.pr_id = pr.id
+                  AND wt2.task_type = 'RFQ_ENTRY'
+              ),
+              pr.updated_at
             ) AS scm_rfq_entry_at
      FROM purchase_requests pr
      JOIN departments d ON d.id = pr.department_id

@@ -1032,10 +1032,10 @@ export const poApi = {
     request<{ data: unknown[] }>('/api/po/pending-buyer-verify'),
   listVendorAcceptance: () =>
     request<{ data: unknown[] }>('/api/po/vendor-acceptance'),
-  sendVendorAcceptanceMail: (poId: number) =>
+  sendVendorAcceptanceMail: (poId: number, body?: { comments?: string }) =>
     request<{ data: Record<string, unknown>; message: string }>(
       `/api/po/${poId}/vendor-acceptance/send-mail`,
-      { method: 'POST', body: JSON.stringify({}) }
+      { method: 'POST', body: JSON.stringify(body || {}) }
     ),
   submitManualVendorAcceptance: (
     poId: number,
