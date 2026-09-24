@@ -52,7 +52,6 @@ function scmManagerSignName(user?: { name?: string | null; email?: string | null
   }
   return name || 'Mounesh Rathakar';
 }
-}
 
 function generateDscStampPng(dsc: DscDetails, signedAt: string) {
   const canvas = document.createElement('canvas');
