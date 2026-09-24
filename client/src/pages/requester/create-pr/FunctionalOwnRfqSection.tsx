@@ -199,28 +199,34 @@ export default function FunctionalOwnRfqSection({
 
   const commitVendor = (vendor: { id: string; name: string; email: string }) => {
     const existing = rows.find((r) => r.vendorId === vendor.id);
-    if (existing) return { row: existing, nextRows: rows };
+    if (existing) return { row: existing, nextRows: rows, isNew: false };
     const row: FunctionalRfqVendorRow = {
       ...newFunctionalRfqVendorRow(visibleRounds),
       vendorId: vendor.id,
       name: vendor.name,
       email: vendor.email,
     };
-    return { row, nextRows: [...rows, row] };
+    return { row, nextRows: [...rows, row], isNew: true };
   };
 
-  const requireSelectedVendor = () => {
-    if (!selectedSearch) {
-      setLocalError('Search and select a vendor first');
-      return null;
-    }
+  /**
+   * Add vendor (if needed) and always open the quote popup for amount + file.
+   */
+  const addVendorAndOpenQuote = (
+    vendor: { id: string; name: string; email: string },
+    round = 1
+  ) => {
     setLocalError('');
-    setSearchVendorId('');
-    return commitVendor({
-      id: String(selectedSearch.id),
-      name: selectedSearch.name,
-      email: selectedSearch.email || '',
+    const added = commitVendor({
+      id: String(vendor.id),
+      name: vendor.name,
+      email: vendor.email || '',
     });
+    setSearchVendorId('');
+    openQuote(added.row, round, added.nextRows);
+    if (added.isNew) {
+      showToast(`${vendor.name} added — enter quoted amount and upload quotation file`);
+    }
   };
 
   const applyRows = (nextRows: FunctionalRfqVendorRow[], round = visibleRounds) => {
@@ -269,8 +275,16 @@ export default function FunctionalOwnRfqSection({
   };
 
   const openQuote = (row: FunctionalRfqVendorRow, round = 1, baseRows: FunctionalRfqVendorRow[] = rows) => {
-    const { synced, nextVisible } = applyRows(baseRows, round);
-    const saved = synced.find((r) => r.key === row.key) || row;
+    const nextVisible = Math.min(4, Math.max(visibleRounds, round, 1));
+    if (nextVisible !== visibleRounds) onMaxRoundsChange(nextVisible);
+    const synced = baseRows.map((r) => ({ ...r, quotes: syncQuotes(r.quotes, nextVisible) }));
+    const saved =
+      synced.find((r) => r.key === row.key) ||
+      ({ ...row, quotes: syncQuotes(row.quotes || [], nextVisible) } as FunctionalRfqVendorRow);
+    const withRow = synced.some((r) => r.key === saved.key) ? synced : [...synced, saved];
+    onChange(withRow);
+    setFocusTab(nextVisible);
+    // Set draft + key after list update so modal always has quote slots to show
     setQuoteDraft(saved);
     setQuoteKey(saved.key);
     setQuoteRound(Math.min(nextVisible, Math.max(1, round)));
@@ -281,8 +295,18 @@ export default function FunctionalOwnRfqSection({
     setQuoteDraft(null);
   };
 
-  const editing = (quoteKey && rows.find((r) => r.key === quoteKey)) || (quoteKey && quoteDraft?.key === quoteKey ? quoteDraft : null);
-  const editingQuotes = editing ? syncQuotes(editing.quotes, visibleRounds) : [];
+  const editing =
+    (quoteKey && rows.find((r) => r.key === quoteKey)) ||
+    (quoteKey && quoteDraft?.key === quoteKey ? quoteDraft : null) ||
+    null;
+  // Prefer draft quotes when parent rows have not flushed the new vendor yet
+  const editingSource =
+    quoteDraft?.key === quoteKey && quoteDraft
+      ? quoteDraft
+      : editing;
+  const editingQuotes = editingSource
+    ? syncQuotes(editingSource.quotes, Math.max(visibleRounds, quoteRound, 1))
+    : [];
   const editingQuote = editingQuotes.find((q) => q.round === quoteRound);
 
   const updateQuote = (key: string, round: number, patch: Partial<FunctionalRfqQuote>) => {
@@ -481,7 +505,9 @@ export default function FunctionalOwnRfqSection({
         <div className="mb-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 1</p>
           <h2 className="text-base font-bold text-gray-900 mt-0.5">Add vendors</h2>
-          <p className="text-sm text-gray-500 mt-1">Search a vendor, then choose email, type the quote, or upload with AI.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Type and select a vendor — a popup opens for quoted amount and quotation file.
+          </p>
         </div>
 
         {rows.length > 0 && (
@@ -533,8 +559,19 @@ export default function FunctionalOwnRfqSection({
             vendors={vendors}
             value={searchVendorId}
             takenIds={takenIds}
-            onChange={setSearchVendorId}
-            placeholder="Type name, vendor code, or email"
+            onChange={(id) => {
+              setSearchVendorId(id);
+              if (!id) return;
+              const v = vendors.find((x) => String(x.id) === String(id));
+              if (!v) return;
+              // Selecting a vendor immediately opens quote popup (amount + file)
+              addVendorAndOpenQuote({
+                id: String(v.id),
+                name: v.name,
+                email: v.email || '',
+              });
+            }}
+            placeholder="Type name, vendor code, or email — then enter quote"
             emptyHint="No match. Use Create new to add them to Vendor Master."
           />
           <button
@@ -547,15 +584,20 @@ export default function FunctionalOwnRfqSection({
           </button>
         </div>
 
-        <p className="text-sm font-semibold text-gray-800 mb-2">How do you want to get the quote?</p>
+        <p className="text-sm font-semibold text-gray-800 mb-2">Or choose how to add the quote</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <button
             type="button"
             onClick={() => {
-              const added = requireSelectedVendor();
-              if (!added) return;
-              applyRows(added.nextRows);
-              showToast('Vendor added. On Create PR, type the quote or upload with AI — email invite happens at SCM RFQ if needed.');
+              if (!selectedSearch) {
+                setLocalError('Search and select a vendor first');
+                return;
+              }
+              addVendorAndOpenQuote({
+                id: String(selectedSearch.id),
+                name: selectedSearch.name,
+                email: selectedSearch.email || '',
+              });
             }}
             className="text-left rounded-2xl border border-amber-200 bg-amber-50/70 p-4 hover:border-amber-300"
           >
@@ -563,14 +605,20 @@ export default function FunctionalOwnRfqSection({
               <i className="ri-mail-send-line" />
             </span>
             <p className="text-sm font-bold text-gray-900">Email the vendor</p>
-            <p className="text-xs text-gray-600 mt-1">Add them now. Attach the quote here if you already have it.</p>
+            <p className="text-xs text-gray-600 mt-1">Add them and attach the quote amount + file now.</p>
           </button>
           <button
             type="button"
             onClick={() => {
-              const added = requireSelectedVendor();
-              if (!added) return;
-              openQuote(added.row, 1, added.nextRows);
+              if (!selectedSearch) {
+                setLocalError('Search and select a vendor first');
+                return;
+              }
+              addVendorAndOpenQuote({
+                id: String(selectedSearch.id),
+                name: selectedSearch.name,
+                email: selectedSearch.email || '',
+              });
             }}
             className="text-left rounded-2xl border border-teal-200 bg-teal-50/70 p-4 hover:border-teal-300"
           >
@@ -578,15 +626,20 @@ export default function FunctionalOwnRfqSection({
               <i className="ri-edit-line" />
             </span>
             <p className="text-sm font-bold text-gray-900">I will type the quote</p>
-            <p className="text-xs text-gray-600 mt-1">You already have the price. Fill it here and attach the file.</p>
+            <p className="text-xs text-gray-600 mt-1">Opens popup for quoted amount and quotation file upload.</p>
           </button>
           <button
             type="button"
             onClick={() => {
               setLocalError('');
               if (selectedSearch) {
-                const added = requireSelectedVendor();
-                if (added) applyRows(added.nextRows);
+                const added = commitVendor({
+                  id: String(selectedSearch.id),
+                  name: selectedSearch.name,
+                  email: selectedSearch.email || '',
+                });
+                applyRows(added.nextRows);
+                setSearchVendorId('');
                 openRfqChat({ vendor: selectedSearch });
                 return;
               }
@@ -703,13 +756,17 @@ export default function FunctionalOwnRfqSection({
         </div>
       )}
 
-      {editing && editingQuote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      {editingSource && editingQuote && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
               <div>
-                <h3 className="text-base font-bold text-gray-900">Edit quote — {editing.name}</h3>
-                <p className="text-xs text-gray-500 mt-1">First upload the quotation file, then fill quoted price. Those are required for round 1.</p>
+                <h3 className="text-base font-bold text-gray-900">
+                  Enter quote — {editingSource.name}
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Upload the quotation file and enter the quoted amount (required for round 1).
+                </p>
               </div>
               <button type="button" onClick={closeQuote} className="w-8 h-8 rounded-lg hover:bg-gray-100">
                 ×
@@ -933,7 +990,7 @@ export default function FunctionalOwnRfqSection({
                   }
                   setLocalError('');
                   closeQuote();
-                  showToast(`Quote saved for ${editing.name}`);
+                  showToast(`Quote saved for ${editingSource.name}`);
                 }}
                 className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700"
               >
@@ -1005,8 +1062,11 @@ export default function FunctionalOwnRfqSection({
                 setCreateOpen(false);
                 onVendorsRefresh?.(vendor);
                 if (vendor) {
-                  setSearchVendorId(String(vendor.id));
-                  showToast(`Vendor ${vendor.name} added`);
+                  addVendorAndOpenQuote({
+                    id: String(vendor.id),
+                    name: vendor.name,
+                    email: vendor.email || '',
+                  });
                 }
               }}
               onCancel={() => setCreateOpen(false)}

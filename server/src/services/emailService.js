@@ -16,7 +16,7 @@ import { buildVendorInvoiceRequestEmail } from '../templates/vendorInvoiceReques
 import { buildSassInvoiceUploadedEmail } from '../templates/sassInvoiceUploadedEmail.js';
 import { buildCloudSubscriptionReminderEmail } from '../templates/cloudSubscriptionReminderEmail.js';
 import { buildSlaBreachDailyEmail } from '../templates/slaBreachDailyEmail.js';
-import { resolveScmBuyerUsers, getScmBuyerNotifyEmails } from '../utils/scmAssignee.js';
+import { resolveScmBuyerUsers, getScmBuyerNotifyEmails, getScmManagerNotifyEmails } from '../utils/scmAssignee.js';
 import { formatRoleDisplayName, sanitizeEmailCfoMentions, withEmailLogo } from '../templates/emailUtils.js';
 import {
   buildWorkflowWhatsAppParams,
@@ -662,9 +662,18 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
     ? []
     : getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
 
-  // Optional CC (e.g. SCM Manager Rajeev on Create PO send-back only)
+  // Optional CC + always CC SCM Manager (Rajeev) on SCM "New PR Request Received" / RFQ Entry mails
+  let ccList = [...(options.ccEmails || [])];
+  if (assignedRole === 'SCM Buyer' && options.rfqEntry) {
+    try {
+      const managerEmails = await getScmManagerNotifyEmails();
+      ccList = [...ccList, ...managerEmails];
+    } catch (err) {
+      console.warn('SCM Manager CC for New PR RFQ Entry mail skipped:', err.message);
+    }
+  }
   const cc = [...new Set(
-    (options.ccEmails || [])
+    ccList
       .map((e) => String(e || '').trim())
       .filter((e) => e && !emailSet.has(e.toLowerCase()))
   )];
