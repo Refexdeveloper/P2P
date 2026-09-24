@@ -38,6 +38,9 @@ interface PRDetail {
   deliveryPoc?: string;
   placeOfDelivery?: string;
   submittedDate: string;
+  /** When PR entered SCM RFQ Entry / SCM Verify */
+  prDate?: string;
+  scmRfqEntryDate?: string;
   totalAmount: number;
   justification: string;
   specialNotes?: string;
@@ -199,6 +202,8 @@ export default function RfqListExpandedRow({
             deliveryPoc: String(d.deliveryPoc || ''),
             placeOfDelivery: String(d.placeOfDelivery || ''),
             submittedDate: String(d.submittedDate || ''),
+            prDate: String(d.prDate || d.scmRfqEntryDate || ''),
+            scmRfqEntryDate: String(d.scmRfqEntryDate || d.prDate || ''),
             totalAmount: Number(d.totalAmount || 0),
             justification: String(d.justification || ''),
             specialNotes: String(d.specialNotes || ''),
@@ -307,9 +312,10 @@ export default function RfqListExpandedRow({
 
             {!loading && !error && pr && tab === 'details' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   {[
                     ['PR Number', pr.prNumber],
+                    ['PR Date', pr.prDate || pr.scmRfqEntryDate || '—'],
                     ['Department', pr.department],
                     ['Requester', pr.requester],
                     ['Request Type', pr.requestType],
@@ -340,7 +346,7 @@ export default function RfqListExpandedRow({
                     ],
                     ['Status', pr.statusUI || '—'],
                   ].map(([label, value]) => (
-                    <div key={label} className="bg-gray-50 rounded-lg p-3 min-w-0">
+                    <div key={label} className="bg-gray-50 rounded-lg p-2.5 min-w-0">
                       <p className="text-xs text-gray-500 mb-0.5">{label}</p>
                       <p className="text-sm font-medium text-gray-900 break-words" title={String(value || '')}>
                         {value || '—'}

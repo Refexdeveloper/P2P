@@ -738,6 +738,9 @@ export interface ScmRfqEntryItem {
   requestType: string;
   priority: string;
   requiredDate: string;
+  /** When PR entered SCM RFQ Entry / SCM Verify queue */
+  prDate?: string;
+  scmRfqEntryDate?: string;
   vendorSelection?: 'own' | 'scm';
   vendorCount: number;
   status: string;

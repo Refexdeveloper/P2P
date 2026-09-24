@@ -2912,7 +2912,14 @@ export async function listScmRfqEntryPrs(user) {
                 AND vqs.quoted_price IS NOT NULL
               ORDER BY vqs.round DESC, vqs.id DESC
               LIMIT 1
-            ) AS recommended_quoted_price
+            ) AS recommended_quoted_price,
+            (
+              SELECT MIN(wt.created_at)
+              FROM workflow_tasks wt
+              WHERE wt.pr_id = pr.id
+                AND wt.task_type = 'RFQ_ENTRY'
+                AND wt.assigned_role = 'SCM Buyer'
+            ) AS scm_rfq_entry_at
      FROM purchase_requests pr
      JOIN departments d ON d.id = pr.department_id
      JOIN users u ON u.id = pr.requester_id
@@ -2951,6 +2958,9 @@ export async function listScmRfqEntryPrs(user) {
       vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
       vendorCount: Number(row.vendor_count),
       status: row.vendor_selection === 'own' ? 'Ready for SCM Final RFQ' : 'RFQ Entry',
+      /** Date PR entered SCM RFQ Entry / SCM Verify queue */
+      prDate: formatDate(row.scm_rfq_entry_at) || '',
+      scmRfqEntryDate: formatDate(row.scm_rfq_entry_at) || '',
       recommendedInvitationId,
       recommendationJustification,
       recommendedVendor: row.recommended_vendor || '',

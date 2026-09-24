@@ -662,7 +662,7 @@ async function getTimelineAssignees(prId, requesterId, prStatus = null) {
 }
 
 async function enrichPR(row) {
-  const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows, attachments, sassInvoiceRows] = await Promise.all([
+  const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows, attachments, sassInvoiceRows, scmRfqEntryRows] = await Promise.all([
     getLineItems(row.id),
     getApprovalHistory(row.id, row.pr_flow, row.purchase_type),
     getTimelineAssignees(row.id, row.requester_id, row.status),
@@ -706,6 +706,24 @@ async function enrichPR(row) {
          ORDER BY i.id DESC
          LIMIT 1`,
         [row.id]
+      )
+      .then(([rows]) => rows)
+      .catch(() => []),
+    // Date PR first landed in SCM RFQ Entry / SCM Verify queue
+    pool
+      .query(
+        `SELECT COALESCE(
+           (SELECT MIN(wt.created_at)
+            FROM workflow_tasks wt
+            WHERE wt.pr_id = ?
+              AND wt.task_type = 'RFQ_ENTRY'
+              AND wt.assigned_role = 'SCM Buyer'),
+           (SELECT MIN(wt2.created_at)
+            FROM workflow_tasks wt2
+            WHERE wt2.pr_id = ?
+              AND wt2.task_type = 'RFQ_ENTRY')
+         ) AS entered_at`,
+        [row.id, row.id]
       )
       .then(([rows]) => rows)
       .catch(() => []),
@@ -807,6 +825,9 @@ async function enrichPR(row) {
     rfqFinalized: Boolean(rfqMetaRows[0]?.finalized_at),
     submittedDate: formatDate(row.submitted_at || row.created_at),
     createdAt: formatDate(row.created_at),
+    /** When PR entered SCM RFQ Entry / SCM Verify (SCM Buyer RFQ_ENTRY task). */
+    scmRfqEntryDate: formatDate(scmRfqEntryRows[0]?.entered_at) || '',
+    prDate: formatDate(scmRfqEntryRows[0]?.entered_at) || '',
     lineItems: lineItems.map((li) => ({
       id: li.id,
       category: li.category,

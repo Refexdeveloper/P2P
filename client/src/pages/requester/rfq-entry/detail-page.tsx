@@ -2193,7 +2193,7 @@ export default function RfqEntryDetailPage() {
               }
               className="px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
             >
-              {submitting ? (isScm ? 'Go PO…' : 'Submitting...') : isScm ? 'Go PO' : 'Send for approval'}
+              {submitting ? (isScm ? 'Create PO…' : 'Submitting...') : isScm ? 'Create PO' : 'Send for approval'}
             </button>
           )}
         </div>
