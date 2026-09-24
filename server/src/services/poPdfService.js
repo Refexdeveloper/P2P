@@ -146,9 +146,15 @@ async function launchPdfBrowser(executablePath) {
   }
 }
 
-async function safeSetViewport(page, viewport = { width: 794, height: 1123 }) {
+async function safeSetViewport(page, viewport = { width: 794, height: 1123, deviceScaleFactor: 1 }) {
   try {
-    await page.setViewport({ ...viewport, deviceScaleFactor: 1, hasTouch: false, isMobile: false });
+    await page.setViewport({
+      width: viewport.width || 794,
+      height: viewport.height || 1123,
+      deviceScaleFactor: viewport.deviceScaleFactor || 1,
+      hasTouch: false,
+      isMobile: false,
+    });
   } catch (err) {
     console.warn('PDF viewport skipped:', err.message);
   }
@@ -540,8 +546,10 @@ function enforceDocumentSectionOrder(pages) {
   }
 
   const out = [...early, ...iiPages];
-  if (notes.length) out.push(notes);
-  if (ack.length) out.push(ack);
+  // SCM Manager sign + Vendor Acknowledgment share one page (never split).
+  if (notes.length || ack.length) {
+    out.push([...notes, ...ack]);
+  }
 
   pages.length = 0;
   for (const page of out) {
@@ -1166,8 +1174,13 @@ function packPoPages(parts, heights, scale = 1) {
     });
   };
 
-  // —— Page 1+: Header + line items ——
-  addHtml(parts.detailsHtml, heights.details || 0, false, 'details');
+  // —— Page 1+: Header + vendor / letterhead details (pad height so address/GST is not clipped) ——
+  const detailsMeasured = Number(heights.details) || 0;
+  const detailsH = Math.max(
+    packRowHeight(heights, 'details', 200, scale),
+    detailsMeasured * 1.12 + 20
+  );
+  addHtml(parts.detailsHtml, detailsH, false, 'details');
 
   const theadH = heights.priceThead || 52;
   const totalsH = heights.totals || 72;
@@ -1273,13 +1286,15 @@ function packPoPages(parts, heights, scale = 1) {
   const notesHtml = String(parts.notesHtml || '').trim();
   const ackHtml = String(parts.ackHtml || '').trim();
 
-  if (notesHtml) {
+  if (notesHtml || ackHtml) {
+    // One page: SCM Manager sign + Vendor Acknowledgment (do not separate).
     startNewSection();
-    addHtml(notesHtml, packRowHeight(heights, 'notes', 120, scale), false, 'notes');
-  }
-  if (ackHtml) {
-    startNewSection();
-    addHtml(ackHtml, packRowHeight(heights, 'ack', 100, scale), false, 'ack');
+    const stacked = `<div class="notes-ack-stack">${notesHtml}${ackHtml}</div>`;
+    const combinedH =
+      (notesHtml ? packRowHeight(heights, 'notes', 120, scale) : 0) +
+      (ackHtml ? packRowHeight(heights, 'ack', 100, scale) : 0) +
+      (notesHtml && ackHtml ? 6 : 0);
+    addHtml(stacked, combinedH, false, 'notes');
   }
 
   flush();
@@ -1536,7 +1551,7 @@ async function renderPaginatedPdf(branded, options, filePath, htmlPath) {
     const html = await paginatePoHtml(browser, branded, options);
     fs.writeFileSync(htmlPath, html, 'utf8');
     const page = await browser.newPage();
-    await safeSetViewport(page);
+    await safeSetViewport(page, { width: 794, height: 1123, deviceScaleFactor: 2 });
     try {
       await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
     } catch {
@@ -1574,7 +1589,7 @@ export async function htmlToPdf(html, filePath) {
 
   try {
     const page = await browser.newPage();
-    await safeSetViewport(page);
+    await safeSetViewport(page, { width: 794, height: 1123, deviceScaleFactor: 2 });
     try {
       await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
     } catch {

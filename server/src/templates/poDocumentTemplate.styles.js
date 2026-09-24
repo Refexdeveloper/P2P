@@ -83,6 +83,19 @@ export const PO_STYLES = `
     width: 100%;
     box-sizing: border-box;
     padding: 5mm ${PO_PDF_LAYOUT.side} 2mm;
+    text-align: right;
+  }
+  .pdf-header .pdf-run-header,
+  .pdf-header .pdf-run-header-inner {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  .pdf-header .pdf-run-header-inner {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-height: 44px;
   }
   .pdf-content {
     grid-row: 2;
@@ -512,8 +525,7 @@ export const PO_STYLES = `
   .page-terms,
   .page-annexure,
   .page-annexure-ii,
-  .page-notes,
-  .page-ack {
+  .page-notes {
     page-break-before: always !important;
     break-before: page !important;
   }
@@ -708,8 +720,7 @@ export const PO_STYLES = `
     body.po-document-preview .page-terms,
     body.po-document-preview .page-annexure,
     body.po-document-preview .page-annexure-ii,
-    body.po-document-preview .page-notes,
-    body.po-document-preview .page-ack {
+    body.po-document-preview .page-notes {
       page-break-before: always !important;
       break-before: page !important;
     }
@@ -824,8 +835,8 @@ export const PO_STYLES = `
     color: #333;
   }
   .annexure-ii-header {
-    padding: 10px 14px 8px;
-    font-size: 14px;
+    padding: 8px 14px 6px;
+    font-size: 11px;
     font-weight: 700;
     color: #111;
     border-bottom: 1px solid #000;
@@ -836,17 +847,36 @@ export const PO_STYLES = `
   .annexure-ii-header p {
     margin: 0;
   }
+  /* Force pasted Word/editor sizes to match Annexure I body (~10.5px) */
+  .annexure-ii-header,
+  .annexure-ii-header *:not(img) {
+    font-size: 11px !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+    line-height: 1.4 !important;
+  }
   .annexure-ii-comments { margin-top: 10px; }
   .annexure-ii-body {
     padding: 12px 14px;
-    font-size: 12px;
-    line-height: 1.5;
+    font-size: 10.5px;
+    line-height: 1.4;
     color: #111;
     word-wrap: break-word;
     overflow-wrap: anywhere;
     box-sizing: border-box;
     max-width: 100%;
     overflow: visible;
+  }
+  .annexure-ii-body,
+  .annexure-ii-body *:not(img) {
+    font-size: 10.5px !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+    line-height: 1.4 !important;
+  }
+  .annexure-ii-body strong,
+  .annexure-ii-body b,
+  .annexure-ii-header strong,
+  .annexure-ii-header b {
+    font-weight: 700 !important;
   }
   /* Full-bleed tables (like Annexure I) — avoid double inset that clips the right border */
   .annexure-ii-body:has(> table),
@@ -864,7 +894,14 @@ export const PO_STYLES = `
   .annexure-ii-body li { margin: 3px 0; }
   .annexure-ii-body h1,
   .annexure-ii-body h2,
-  .annexure-ii-body h3 { margin: 10px 0 6px; font-weight: 700; }
+  .annexure-ii-body h3,
+  .annexure-ii-body h4,
+  .annexure-ii-body h5,
+  .annexure-ii-body h6 {
+    margin: 6px 0;
+    font-weight: 700;
+    font-size: 10.5px !important;
+  }
   .annexure-ii-body img {
     max-width: 100%;
     max-height: none;
@@ -1107,30 +1144,30 @@ export const PO_STYLES = `
 
   /* PDF paginated pages — tighter PO header / vendor details */
   body.po-document-pdf-pages .title {
-    font-size: 12px;
-    letter-spacing: 0.5px;
-    margin: 2px 0 4px 0;
+    font-size: 15px;
+    letter-spacing: 1px;
+    margin: 8px 0 12px 0;
   }
   body.po-document-pdf-pages .po-meta {
-    font-size: 9.5px;
-    margin-bottom: 4px;
+    font-size: 12px;
+    margin-bottom: 10px;
   }
   body.po-document-pdf-pages .info-box {
-    padding: 4px 6px;
-    margin-bottom: 6px;
-    font-size: 9.5px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
   }
   body.po-document-pdf-pages .info-box p {
-    margin: 0;
-    line-height: 1.2;
+    margin: 2px 0;
+    line-height: 1.35;
   }
   body.po-document-pdf-pages .letterhead-block {
-    margin-bottom: 3px;
+    margin-bottom: 8px;
   }
   body.po-document-pdf-pages .letterhead-block p {
-    margin: 0;
-    line-height: 1.2;
-    font-size: 9.5px;
+    margin: 2px 0;
+    line-height: 1.35;
+    font-size: 12px;
   }
   body.po-document-pdf-pages .table-frame {
     margin: 3px 0 0;
@@ -1199,14 +1236,14 @@ export const PO_STYLES = `
   /* PDF paginated pages — tighter Special Notes & Acknowledgment */
   body.po-document-pdf-pages .special-notes,
   body.po-document-pdf-pages .ack-box {
-    padding: 4px 6px;
-    font-size: 9.5px;
-    line-height: 1.22;
+    padding: 8px 12px;
+    font-size: 11px;
+    line-height: 1.35;
   }
   body.po-document-pdf-pages .special-notes p,
   body.po-document-pdf-pages .ack-box p {
-    margin: 1px 0;
-    line-height: 1.22;
+    margin: 4px 0;
+    line-height: 1.35;
   }
   body.po-document-pdf-pages .sig-space {
     min-height: 36px;
@@ -1309,6 +1346,17 @@ export const PO_STYLES = `
   }
   .notes-ack-stack .special-notes {
     margin-bottom: 8px;
+  }
+  .notes-ack-stack {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .notes-ack-stack .special-notes,
+  .notes-ack-stack .ack-box {
+    page-break-before: auto;
+    break-before: auto;
+    page-break-after: avoid;
+    break-after: avoid;
   }
 
   /*

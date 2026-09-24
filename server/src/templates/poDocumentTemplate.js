@@ -671,7 +671,10 @@ function applyClausePlaceholders(html, po) {
     .replace(/\$aos_quotes_rfq_no_c/gi, '')
     .replace(/\$aos_quotes_inco_terms_c/gi, placeholderText(po.incoterms))
     .replace(/\$aos_quotes_delivery_schedule_c/gi, placeholderText(deliveryDate))
-    .replace(/\$aos_quotes_shipment_mode_c/gi, placeholderText(po.incoterms))
+    .replace(
+      /\$aos_quotes_shipment_mode_c/gi,
+      placeholderText(td.modeOfShipment || po.modeOfShipment)
+    )
     .replace(
       /\$aos_quotes_payment_terms_c/gi,
       placeholderText(td.paymentTermsText || po.paymentTerms)
@@ -694,7 +697,39 @@ function applyClausePlaceholders(html, po) {
       /\$aos_quotes_invoicing_address_c/gi,
       invoicingAddressPlainHtml(td.invoicingAddress || td.locationName) || '—'
     )
-    .replace(/\$aos_quotes_original_address_c/gi, placeholderText(td.mailingAddress));
+    .replace(/\$aos_quotes_original_address_c/gi, placeholderText(td.mailingAddress))
+    // SugarCRM Work Order (AOS Invoices) placeholders
+    .replace(/\$aos_invoices_company_name_c/gi, company)
+    .replace(/\$billing_account_name/gi, vendor)
+    .replace(/\$aos_invoices_wo_number_c/gi, escapeHtml(po.poNumber || ''))
+    .replace(/\$aos_invoices_create__c/gi, escapeHtml(fmtDateDisplay(po.poDate || po.createdAt) || ''))
+    .replace(/\$aos_invoices_ref_no_c/gi, placeholderText(td.quoteNo || po.prNumber))
+    .replace(/\$aos_invoices_subject_c/gi, placeholderText(td.subject || po.prTitle || po.title))
+    .replace(/\$aos_invoices_scope_c/gi, placeholderText(po.specialInstructions))
+    .replace(/\$aos_invoices_completion_schedule_c/gi, placeholderText(deliveryDate))
+    .replace(
+      /\$aos_invoices_payment_terms_c/gi,
+      placeholderText(td.paymentTermsText || po.paymentTerms)
+    )
+    .replace(/\$aos_invoices_notes_c/gi, placeholderText(po.specialInstructions))
+    .replace(
+      /\$aos_invoices_site_address_c/gi,
+      placeholderText(td.siteAddress || po.deliveryAddress)
+    )
+    .replace(/\$aos_invoices_site_contact_person_c/gi, placeholderText(td.siteContactPerson))
+    .replace(/\$aos_invoices_site_contact_person_phone_c/gi, placeholderText(td.siteContactPhone))
+    .replace(/\$aos_invoices_site_contact_person_mail_c/gi, placeholderText(td.siteContactEmail))
+    .replace(/\$aos_invoices_projectmanageratho_c/gi, placeholderText(td.projectManagerHo))
+    .replace(
+      /\$aos_invoices_projectmanagercontactnumber_c/gi,
+      placeholderText(td.projectManagerContact)
+    )
+    .replace(/\$aos_invoices_projectmanageremail_c/gi, placeholderText(td.projectManagerEmail))
+    .replace(
+      /\$aos_invoices_invoice_address_c/gi,
+      invoicingAddressPlainHtml(td.invoicingAddress || td.locationName) || '—'
+    )
+    .replace(/\$aos_invoices_mailing_address_c/gi, placeholderText(td.mailingAddress));
   if (isWorkOrder) {
     out = out
       .replace(/purchase\s+order\s*\/\s*work\s+order(?:\s*\/\s*service\s+order)?/gi, 'Work Order')
@@ -1091,16 +1126,58 @@ function sanitizeAnnexureHtml(html) {
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
 }
 
+/** Drop pasted Word/editor font sizes so Annexure II matches Annexure I body text. */
+function stripAnnexureTypographyOverrides(html) {
+  let out = String(html || '');
+  if (!out) return '';
+
+  // Editor fontSize command + Word paste often use <font size="5"> / face=
+  out = out.replace(/<\/?font\b[^>]*>/gi, '');
+  // Heading tags render huge in PDF — keep as paragraphs
+  out = out.replace(/<h[1-6]\b[^>]*>/gi, '<p>').replace(/<\/h[1-6]>/gi, '</p>');
+  // Legacy size / face attributes
+  out = out
+    .replace(/\ssize\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\sface\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+
+  // Strip font-size / family / line-height from both " and ' style attrs
+  out = out.replace(/style\s*=\s*(["'])([\s\S]*?)\1/gi, (_m, quote, style) => {
+    const kept = String(style || '')
+      .split(';')
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .filter((p) => {
+        const key = p.split(':')[0].trim().toLowerCase();
+        if (!key) return false;
+        if (/^mso-/i.test(key)) return false;
+        if (
+          key === 'font-size' ||
+          key === 'font-family' ||
+          key === 'font' ||
+          key === 'letter-spacing' ||
+          key === 'zoom' ||
+          key === 'transform'
+        ) {
+          return false;
+        }
+        return true;
+      });
+    return kept.length ? `style=${quote}${kept.join(';')}${quote}` : '';
+  });
+
+  return out;
+}
+
 /** Normalize pasted Word/Excel tables so PDF columns stay aligned (Annexure I style). */
 function normalizeAnnexureIiBodyHtml(html) {
-  let out = sanitizeAnnexureHtml(html);
+  let out = stripAnnexureTypographyOverrides(sanitizeAnnexureHtml(html));
   if (!out) return '';
 
   // Drop fixed Word widths that overflow A4 and break column alignment.
   out = out
     .replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\snowrap\b/gi, '')
-    .replace(/style\s*=\s*(")([^"]*)(")/gi, (_m, q1, style, q2) => {
+    .replace(/style\s*=\s*(["'])([\s\S]*?)\1/gi, (_m, quote, style) => {
       const kept = String(style || '')
         .split(';')
         .map((p) => p.trim())
@@ -1112,6 +1189,14 @@ function normalizeAnnexureIiBodyHtml(html) {
           if (key === 'width' || key === 'height' || key === 'min-width' || key === 'max-width') return false;
           if (key === 'position' || key === 'left' || key === 'top' || key === 'float') return false;
           if (key === 'white-space') return false; // allow wrapping in PDF cells
+          if (
+            key === 'font-size' ||
+            key === 'font-family' ||
+            key === 'font' ||
+            key === 'letter-spacing'
+          ) {
+            return false;
+          }
           return [
             'text-align',
             'font-weight',
@@ -1127,9 +1212,10 @@ function normalizeAnnexureIiBodyHtml(html) {
             'border-bottom',
             'border-left',
             'padding',
+            'line-height',
           ].includes(key);
         });
-      return kept.length ? `style=${q1}${kept.join(';')}${q2}` : '';
+      return kept.length ? `style=${quote}${kept.join(';')}${quote}` : '';
     });
 
   // Excel/Word dual-paste: keep the real <table>, drop sibling screenshot images.
@@ -1163,16 +1249,26 @@ function normalizeAnnexureIiBodyHtml(html) {
     // Strip leftover inline widths on cells so fixed layout can use % cols.
     let cleanedInner = body
       .replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-      .replace(/style\s*=\s*(")([^"]*)(")/gi, (_sm, q1, style, q2) => {
+      .replace(/style\s*=\s*(["'])([\s\S]*?)\1/gi, (_sm, quote, style) => {
         const kept = String(style || '')
           .split(';')
           .map((p) => p.trim())
           .filter(Boolean)
           .filter((p) => {
             const key = p.split(':')[0].trim().toLowerCase();
-            return key && key !== 'width' && key !== 'height' && key !== 'min-width' && key !== 'max-width';
+            if (!key) return false;
+            if (key === 'width' || key === 'height' || key === 'min-width' || key === 'max-width') return false;
+            if (
+              key === 'font-size' ||
+              key === 'font-family' ||
+              key === 'font' ||
+              key === 'letter-spacing'
+            ) {
+              return false;
+            }
+            return true;
           });
-        return kept.length ? `style=${q1}${kept.join(';')}${q2}` : '';
+        return kept.length ? `style=${quote}${kept.join(';')}${quote}` : '';
       });
 
     if (cellCount === 3) {
@@ -1319,7 +1415,7 @@ function annexureIiItemHtml(row, opts = {}) {
     rowIndex = null,
   } = opts;
   const titleText = resolveAnnexureIiTitleBar(row);
-  const headerHtml = sanitizeAnnexureHtml(row.header || '');
+  const headerHtml = stripAnnexureTypographyOverrides(sanitizeAnnexureHtml(row.header || ''));
   const headerPlain = plainAnnexureText(row.header);
   const bodyHtml = includeBody ? normalizeAnnexureIiBodyHtml(row.description || '') : '';
   const extraImages = includeImages
@@ -1474,10 +1570,6 @@ function specialNotesInnerHtml(po, options = {}) {
     </div>`;
 }
 
-function specialNotesHtml(po, options = {}) {
-  return wrapSheet(specialNotesInnerHtml(po, options), 'page-notes', po, options.forPdf === true);
-}
-
 function acknowledgmentInnerHtml(po) {
   return `
     <div class="ack-box">
@@ -1491,8 +1583,17 @@ function acknowledgmentInnerHtml(po) {
     </div>`;
 }
 
-function acknowledgmentHtml(po, forPdf) {
-  return wrapSheet(acknowledgmentInnerHtml(po), 'page-ack', po, forPdf);
+function specialNotesAndAckHtml(po, options = {}) {
+  const forPdf = options.forPdf === true;
+  return wrapSheet(
+    `<div class="notes-ack-stack">
+      ${specialNotesInnerHtml(po, options)}
+      ${acknowledgmentInnerHtml(po)}
+    </div>`,
+    'page-notes',
+    po,
+    forPdf
+  );
 }
 
 /** Letterhead master often embeds a "PURCHASE ORDER" / "WORK ORDER" title — strip so it doesn't duplicate .title */
@@ -1552,8 +1653,8 @@ function poIntroHtml(po) {
       <p><strong>To</strong></p>
       <p><strong>${escapeHtml(po.vendorName)},</strong></p>
       <p>${escapeHtml(vendorAddress).replace(/\n/g, '<br>')}</p>
-      <p><strong>GST No:</strong>${escapeHtml(vendorGst)}</p>
-      <p><strong>PAN No:</strong>${escapeHtml(vendorPan)}</p>
+      <p><strong>GST No:</strong> ${escapeHtml(vendorGst)}</p>
+      <p><strong>PAN No:</strong> ${escapeHtml(vendorPan)}</p>
       <p><strong>Email:</strong> <a href="mailto:${escapeHtml(po.vendorEmail)}">${escapeHtml(po.vendorEmail)}</a></p>
       <p><strong>Phone:</strong> ${escapeHtml(vendorPhone)}</p>
       <p><strong>Quote No:</strong> ${escapeHtml(quoteNoText)}</p>
@@ -1589,8 +1690,7 @@ ${page1}
 ${termsSummaryHtml(po, terms, forPdf)}
 ${annexurePagesHtml(po, annexure, poTypeLabel, docLabel, forPdf)}
 ${annexureIiPagesHtml(po, docLabel, forPdf)}
-${specialNotesHtml(po, { ...options, forPdf })}
-${acknowledgmentHtml(po, forPdf)}`;
+${specialNotesAndAckHtml(po, { ...options, forPdf })}`;
 
   const bodyHtml = forPdf ? content : numberPreviewPages(content);
 

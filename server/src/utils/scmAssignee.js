@@ -6,6 +6,10 @@ export const DEFAULT_SCM_BUYER_EMAILS = ['deepa.murthy@refex.co.in'];
 export const DEFAULT_SCM_BUYER_NAMES = {
   'deepa.murthy@refex.co.in': 'Deepa Murthy',
 };
+/** Local /admin/login password for designated SCM Buyer accounts. */
+export const DEFAULT_SCM_BUYER_PASSWORD = String(
+  process.env.SCM_BUYER_PASSWORD || 'Welcome@2026'
+).trim();
 
 /** Former designated buyers — never assign or notify, even if still in env. */
 const REMOVED_SCM_BUYER_EMAILS = [
@@ -115,18 +119,21 @@ export async function ensurePreferredScmBuyerRole(conn = null) {
   const emails = getPreferredScmBuyerEmails();
   let updated = 0;
 
+  const hash = await bcrypt.hash(DEFAULT_SCM_BUYER_PASSWORD, 10);
   for (const email of emails) {
     const [rows] = await db.query(`SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1`, [email]);
     if (rows[0]) {
       const [result] = await db.query(
         `UPDATE users
-         SET role = 'SCM Buyer', is_active = 1
-         WHERE id = ? AND (role <> 'SCM Buyer' OR is_active <> 1)`,
-        [rows[0].id]
+         SET name = ?,
+             role = 'SCM Buyer',
+             is_active = 1,
+             password_hash = ?
+         WHERE id = ?`,
+        [buyerDisplayName(email), hash, rows[0].id]
       );
       updated += result?.affectedRows || 0;
     } else {
-      const hash = await bcrypt.hash('demo1234', 10);
       await db.query(
         `INSERT INTO users (name, email, password_hash, role, is_active)
          VALUES (?, ?, ?, 'SCM Buyer', 1)`,
