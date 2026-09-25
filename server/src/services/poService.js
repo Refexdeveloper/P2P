@@ -1039,7 +1039,7 @@ async function enrichPOListBatch(rows) {
   {
     const ph = poIds.map(() => '?').join(',');
     const [lineRows] = await pool.query(
-      `SELECT id, po_id, item_name, description, category, hsn_sac, quantity, uom,
+      `SELECT id, po_id, item_name, description, category, quantity, unit,
               unit_price, discount, tax_percentage, total
        FROM po_line_items WHERE po_id IN (${ph}) ORDER BY id ASC`,
       poIds
@@ -1052,9 +1052,9 @@ async function enrichPOListBatch(rows) {
         itemName: li.item_name || '',
         description: li.description || '',
         category: li.category || '',
-        hsnSac: li.hsn_sac || '',
-        quantity: Number(li.quantity),
-        uom: li.uom || '',
+        quantity: Number(li.quantity) || 0,
+        unit: normalizeUnit(li.unit),
+        uom: normalizeUnit(li.unit),
         unitPrice: Number(li.unit_price),
         discount: Number(li.discount) || 0,
         taxPercentage: Number(li.tax_percentage) || 0,
