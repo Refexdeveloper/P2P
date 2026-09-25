@@ -653,23 +653,45 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
   // Keep ops copy as BCC so the step owner is the only primary recipient
   // Send-back / Create PO revise: skip ops BCC — only mapped CC (Rajeev) when provided
   const emailSet = new Set(emails.map((e) => e.toLowerCase()));
+  const stageLabelText = String(options.stageLabel || '');
+  const isCreatePoStepMail =
+    Boolean(options.createPo) || /create\s*po/i.test(stageLabelText);
+  const isSendBackMail =
+    Boolean(options.sendBackRemarks) || /sent\s*back/i.test(stageLabelText);
   const skipOpsBcc =
     options.skipOpsBcc === true ||
     options.bccOps === false ||
-    Boolean(options.createPo) ||
-    /sent\s*back/i.test(String(options.stageLabel || ''));
+    isCreatePoStepMail ||
+    isSendBackMail;
   const bcc = skipOpsBcc
     ? []
     : getNotificationRecipients().filter((e) => e && !emailSet.has(e.toLowerCase()));
 
-  // Optional CC + always CC SCM Manager (Rajeev) on SCM "New PR Request Received" / RFQ Entry mails
+  // CC SCM Manager (Rajeev) only on first SCM RFQ Entry ("New PR Request Received").
+  // Never CC him on Create PO action mails (RFQ Entry → Create PO / post-RFQ → Create PO).
+  // Create PO send-back may still pass Rajeev explicitly via options.ccEmails.
   let ccList = [...(options.ccEmails || [])];
-  if (assignedRole === 'SCM Buyer' && options.rfqEntry) {
+  const isNewPrRfqEntryMail =
+    assignedRole === 'SCM Buyer' &&
+    Boolean(options.rfqEntry) &&
+    !isCreatePoStepMail &&
+    !options.postRfq;
+  if (isNewPrRfqEntryMail) {
     try {
       const managerEmails = await getScmManagerNotifyEmails();
       ccList = [...ccList, ...managerEmails];
     } catch (err) {
       console.warn('SCM Manager CC for New PR RFQ Entry mail skipped:', err.message);
+    }
+  }
+  if (isCreatePoStepMail && !isSendBackMail) {
+    try {
+      const managerEmails = new Set(
+        (await getScmManagerNotifyEmails()).map((e) => String(e || '').trim().toLowerCase()).filter(Boolean)
+      );
+      ccList = ccList.filter((e) => !managerEmails.has(String(e || '').trim().toLowerCase()));
+    } catch (err) {
+      console.warn('SCM Manager CC strip for Create PO mail skipped:', err.message);
     }
   }
   const cc = [...new Set(
@@ -714,6 +736,7 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
       sendBackRemarks: options.sendBackRemarks || null,
       postRfq: Boolean(options.postRfq),
       rfqEntry: Boolean(options.rfqEntry),
+      createPo: Boolean(options.createPo) || isCreatePoStepMail,
       roleDisplayName: options.roleDisplayName || null,
       includeRfqDetail: Boolean(options.rfqSummary?.vendors?.length),
       cc,

@@ -495,12 +495,12 @@ async function getApprovalHistory(prId, prFlow = 'functional', purchaseType = 'p
     const role = isMugeshActor ? '' : r.approver_role || stageLabel;
     return {
       stage: stageLabel,
-      user: r.approver_name || 'System',
+    user: r.approver_name || 'System',
       role,
-      date: formatDateTime(r.created_at),
-      status: r.action === 'submitted' ? 'Completed' : r.action.charAt(0).toUpperCase() + r.action.slice(1),
-      remarks: r.remarks || '',
-      sortAt: new Date(r.created_at).getTime(),
+    date: formatDateTime(r.created_at),
+    status: r.action === 'submitted' ? 'Completed' : r.action.charAt(0).toUpperCase() + r.action.slice(1),
+    remarks: r.remarks || '',
+    sortAt: new Date(r.created_at).getTime(),
     };
   });
 
@@ -1104,10 +1104,10 @@ async function loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId, purchaseTy
   const wantsQuotes =
     isSassPurchaseType(purchaseType) || (prFlow === 'functional' && vendorMode === 'own');
   if (wantsQuotes) {
-    try {
-      const { getRfqEmailPack } = await import('./rfqService.js');
-      return await getRfqEmailPack(prId);
-    } catch (err) {
+  try {
+    const { getRfqEmailPack } = await import('./rfqService.js');
+    return await getRfqEmailPack(prId);
+  } catch (err) {
       console.warn('RFQ email pack failed:', err.message);
     }
   }
@@ -1476,40 +1476,40 @@ export async function createPurchaseRequest(user, body) {
       } catch (err) {
         if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
         const [res] = await conn.query(
-          `INSERT INTO purchase_requests
-         (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, pr_flow, approval_user_id, approval_user_ids, current_stage, submitted_at,
-          billing_location_id, billing_location, billing_gst_no, billing_address, delivery_poc, place_of_delivery, expected_delivery_timeline, payment_terms)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
+      `INSERT INTO purchase_requests
+       (pr_number, title, request_type, purchase_type, department_id, entity_id, requester_id, priority, justification, required_date, currency, total_amount, status, vendor_selection, pr_flow, approval_user_id, approval_user_ids, current_stage, submitted_at,
+        billing_location_id, billing_location, billing_gst_no, billing_address, delivery_poc, place_of_delivery, expected_delivery_timeline, payment_terms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
             number,
-            prTitle,
-            requestType,
-            normalizedPurchaseType,
-            departmentId,
-            Number(entityId),
-            user.id,
-            priority,
-            justification,
-            requiredDate || null,
-            normalizedCurrency,
-            totalAmount,
-            status,
-            vendorMode,
-            prFlow,
-            selectedApprover?.id || null,
-            selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
-            currentStage,
-            submit ? new Date() : null,
-            billing.billingLocationId,
-            billing.billingLocation || null,
-            billing.billingGstNo || null,
-            extras.billingAddress || null,
-            extras.deliveryPoc || null,
-            extras.placeOfDelivery || null,
-            extras.expectedDeliveryTimeline || null,
-            extras.paymentTerms || null,
-          ]
-        );
+        prTitle,
+        requestType,
+        normalizedPurchaseType,
+        departmentId,
+        Number(entityId),
+        user.id,
+        priority,
+        justification,
+        requiredDate || null,
+        normalizedCurrency,
+        totalAmount,
+        status,
+        vendorMode,
+        prFlow,
+        selectedApprover?.id || null,
+        selectedApproverIds.length ? JSON.stringify(selectedApproverIds) : null,
+        currentStage,
+        submit ? new Date() : null,
+        billing.billingLocationId,
+        billing.billingLocation || null,
+        billing.billingGstNo || null,
+        extras.billingAddress || null,
+        extras.deliveryPoc || null,
+        extras.placeOfDelivery || null,
+        extras.expectedDeliveryTimeline || null,
+        extras.paymentTerms || null,
+      ]
+    );
         return res;
       }
     };
@@ -1655,7 +1655,7 @@ export async function createPurchaseRequest(user, body) {
     await conn.commit();
     if ((prFlow === 'functional' || isSass) && vendorMode === 'own') {
       try {
-        await persistFunctionalOwnRfq(user, prId, body, { markSubmitted: Boolean(submit) });
+      await persistFunctionalOwnRfq(user, prId, body, { markSubmitted: Boolean(submit) });
       } catch (err) {
         console.warn('Own-vendor RFQ persist after PR save failed:', err.message);
         if (submit) throw err;
@@ -1916,37 +1916,37 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
     const poMeta = poMetaByPrId.get(row.id) || null;
     const enriched = applyRequesterDisplay(
       {
-        id: row.id,
-        prNumber: row.pr_number,
-        title: row.title,
-        department: row.department_name,
-        entityId: row.entity_id || null,
-        entityName: row.entity_name || '',
-        entityCode: row.entity_code || '',
-        entityCostCenter: row.entity_cost_center || '',
-        totalAmount: Number(row.total_amount || 0),
-        status: row.status,
-        statusFrontend: mapStatusToFrontend(row.status),
+      id: row.id,
+      prNumber: row.pr_number,
+      title: row.title,
+      department: row.department_name,
+      entityId: row.entity_id || null,
+      entityName: row.entity_name || '',
+      entityCode: row.entity_code || '',
+      entityCostCenter: row.entity_cost_center || '',
+      totalAmount: Number(row.total_amount || 0),
+      status: row.status,
+      statusFrontend: mapStatusToFrontend(row.status),
         statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type),
-        priorityLower: mapPriorityToFrontend(row.priority),
-        submittedDate: formatDate(row.submitted_at || row.created_at),
-        createdAt: formatDate(row.created_at),
-        requiredDate: formatDate(row.required_date),
-        justification: row.justification || '',
-        lineItems: [],
-        approvalHistory: [],
-        requester: row.requester_name,
-        vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
-        prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
-        currentStage: row.current_stage,
-        items: Number(row.item_count || 0),
-        requestType: row.request_type,
-        currentApprover: null,
-        l1Manager: null,
-        scmBuyer: null,
+      priorityLower: mapPriorityToFrontend(row.priority),
+      submittedDate: formatDate(row.submitted_at || row.created_at),
+      createdAt: formatDate(row.created_at),
+      requiredDate: formatDate(row.required_date),
+      justification: row.justification || '',
+      lineItems: [],
+      approvalHistory: [],
+      requester: row.requester_name,
+      vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+      prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
+      currentStage: row.current_stage,
+      items: Number(row.item_count || 0),
+      requestType: row.request_type,
+      currentApprover: null,
+      l1Manager: null,
+      scmBuyer: null,
       },
       poMeta
-    );
+  );
     return toRequesterDashboardFormat(enriched);
   });
 
@@ -1997,17 +1997,17 @@ export async function listPurchaseRequests(user, filters = {}) {
       const prMgrEmail = String(user.email || '').toLowerCase().trim();
       sql += ` AND pr.status IN (?, ?)
         AND EXISTS (
-          SELECT 1 FROM workflow_tasks wt
+            SELECT 1 FROM workflow_tasks wt
           LEFT JOIN users au ON au.id = wt.assigned_user_id
-          WHERE wt.pr_id = pr.id
-            AND wt.status = 'pending'
+            WHERE wt.pr_id = pr.id
+              AND wt.status = 'pending'
             AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
-            AND wt.assigned_role = 'PR Manager'
+              AND wt.assigned_role = 'PR Manager'
             AND (
               wt.assigned_user_id = ?
               OR wt.assigned_user_id IS NULL
               OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
-            )
+          )
         )`;
       params.push(
         PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
@@ -2750,21 +2750,21 @@ export async function processApproval(user, prId, action, remarks, options = {})
           nextRole = null;
           skipToScmRfq = false;
         } else {
-          const wantCfo = pr.require_cfo_approval == null || Number(pr.require_cfo_approval) === 1;
-          const [cfoRows] = await conn.query(
-            `SELECT id, email, name FROM users WHERE role = 'CFO' AND is_active = 1 ORDER BY id ASC LIMIT 1`
-          );
-          const cfoUser = wantCfo ? cfoRows[0] || null : null;
-          if (cfoUser) {
-            newStatus = PR_STATUS.PENDING_CFO_APPROVAL;
-            newStage = STAGE.CFO_REVIEW;
-            nextRole = 'CFO';
-          } else {
-            // No → skip CFO. Yes but no CFO user → also skip to SCM RFQ.
-            newStatus = PR_STATUS.APPROVED;
-            newStage = null;
-            nextRole = null;
-            skipToScmRfq = pr.vendor_selection !== 'own';
+        const wantCfo = pr.require_cfo_approval == null || Number(pr.require_cfo_approval) === 1;
+        const [cfoRows] = await conn.query(
+          `SELECT id, email, name FROM users WHERE role = 'CFO' AND is_active = 1 ORDER BY id ASC LIMIT 1`
+        );
+        const cfoUser = wantCfo ? cfoRows[0] || null : null;
+        if (cfoUser) {
+          newStatus = PR_STATUS.PENDING_CFO_APPROVAL;
+          newStage = STAGE.CFO_REVIEW;
+          nextRole = 'CFO';
+        } else {
+          // No → skip CFO. Yes but no CFO user → also skip to SCM RFQ.
+          newStatus = PR_STATUS.APPROVED;
+          newStage = null;
+          nextRole = null;
+          skipToScmRfq = pr.vendor_selection !== 'own';
           }
         }
       } else if (actingRole === 'CFO') {
@@ -2787,10 +2787,10 @@ export async function processApproval(user, prId, action, remarks, options = {})
             skipToScmRfq = false;
           }
         } else {
-          // SCM path only (pre-RFQ): after CFO → SCM RFQ queue
-          newStatus = PR_STATUS.APPROVED;
-          newStage = null;
-          nextRole = null;
+        // SCM path only (pre-RFQ): after CFO → SCM RFQ queue
+        newStatus = PR_STATUS.APPROVED;
+        newStage = null;
+        nextRole = null;
         }
       }
     } else if (action === 'reject') {
@@ -2851,16 +2851,16 @@ export async function processApproval(user, prId, action, remarks, options = {})
       if (isInvoiceFlow) {
         nextAssignee = await createSassL2ApprovalTask(conn, prId, pr.department_id);
       } else {
-        const [reqRows] = await conn.query(
-          `SELECT u.email FROM users u WHERE u.id = ?`,
-          [pr.requester_id]
-        );
-        nextAssignee = await createL2ApprovalTask(
-          conn,
-          prId,
-          reqRows[0]?.email || '',
-          pr.department_id
-        );
+      const [reqRows] = await conn.query(
+        `SELECT u.email FROM users u WHERE u.id = ?`,
+        [pr.requester_id]
+      );
+      nextAssignee = await createL2ApprovalTask(
+        conn,
+        prId,
+        reqRows[0]?.email || '',
+        pr.department_id
+      );
       }
     } else if (nextRole === 'CFO' && action === 'approve' && isInvoiceFlow) {
       nextAssignee = await createSassMugeshApprovalTask(conn, prId, pr.department_id);
@@ -4178,10 +4178,10 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
     const nextStep = isSass
       ? 'L1 Manager Approval'
       : isFunctional
-        ? chainLen > 1
-          ? `User Approval 1 of ${chainLen}`
-          : 'User Approval'
-        : 'L1 Manager Approval';
+      ? chainLen > 1
+        ? `User Approval 1 of ${chainLen}`
+        : 'User Approval'
+      : 'L1 Manager Approval';
     queuePrSubmitNotifications({
       pr: updatedPr,
       user,
@@ -4266,21 +4266,21 @@ export async function listRequesterTasks(userId) {
             ? 'Cloud Subscription · User Approval'
             : `Cloud Subscription · ${r.task_type.replace(/_/g, ' ')}`
         : isUserApproval
-          ? 'User Approval'
+        ? 'User Approval'
           : isVendorAcceptance
             ? 'Vendor PO Acceptance'
             : isInvoiceUpload
               ? 'Invoice Upload'
-              : r.task_type === 'RFQ_ENTRY'
-                ? 'RFQ Entry'
-                : r.task_type.replace(/_/g, ' '),
+        : r.task_type === 'RFQ_ENTRY'
+          ? 'RFQ Entry'
+          : r.task_type.replace(/_/g, ' '),
       actionPath: isUserApproval
         ? `/tasks?prId=${r.pr_id}`
         : isVendorAcceptance
           ? '/requester/vendor-po-acceptance'
           : isInvoiceUpload
             ? '/requester/vendor-invoice'
-            : `/requester/rfq-entry/${r.pr_id}?taskId=${r.id}`,
+        : `/requester/rfq-entry/${r.pr_id}?taskId=${r.id}`,
       cta: isUserApproval
         ? 'Review & Approve'
         : isVendorAcceptance
@@ -5166,8 +5166,8 @@ export function toCfoDashboardFormat(pr) {
           ? 'Pending Mugesh Approval'
           : pr.statusUI
         : pr.status === PR_STATUS.PENDING_CFO_APPROVAL || pr.status === PR_STATUS.PENDING_RFQ_CFO_APPROVAL
-          ? 'Pending CFO Approval'
-          : pr.statusUI,
+        ? 'Pending CFO Approval'
+        : pr.statusUI,
     submittedDate: pr.submittedDate,
     dueDate: formatDate(due),
     justification: pr.justification,

@@ -141,7 +141,7 @@ function buildRecommendationJustificationBlock(rfqSummary) {
   return `
         <tr>
           <td style="padding:0 32px 16px 32px;">
-            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:2px solid #6ee7b7;border-radius:12px;overflow:hidden;background:linear-gradient(90deg,#ecfdf5,#f0fdfa);">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:2px solid #6ee7b7;border-radius:12px;overflow:hidden;background:#ecfdf5;">
               <tr>
                 <td style="padding:12px 16px;background:#d1fae5;border-bottom:1px solid #a7f3d0;">
                   <div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#065f46;">
@@ -399,21 +399,30 @@ function buildQuotedAmountBlock(pr, rfqSummary) {
   if (!best) return '';
   return `
         <tr>
-          <td style="padding:0 32px 16px 32px;">
+          <td style="padding:0 32px 8px 32px;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                <td width="50%" style="padding:6px;">
-                  <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">PR Estimated Amount</div>
-                    <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${money(pr.totalAmount, pr)}</div>
-                  </td></tr></table>
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;">
+                    <tr>
+                      <td valign="top" height="96" style="padding:12px 14px;vertical-align:top;height:96px;">
+                        <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;line-height:1.3;">PR Estimated Amount</div>
+                        <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;line-height:1.35;">${money(pr.totalAmount, pr)}</div>
+                        <div style="font-size:12px;color:#047857;margin-top:4px;line-height:1.35;">&nbsp;</div>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
-                <td width="50%" style="padding:6px;">
-                  <table width="100%" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#0f766e;text-transform:uppercase;font-weight:700;">${best.recommended ? 'Recommended Quote' : 'Best Quoted Amount'}</div>
-                    <div style="font-size:18px;font-weight:800;color:#0f766e;margin-top:4px;">${money(best.price, pr)}</div>
-                    <div style="font-size:12px;color:#115e59;margin-top:4px;">${escapeHtml(best.vendor || 'Vendor')}</div>
-                  </td></tr></table>
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;">
+                    <tr>
+                      <td valign="top" height="96" style="padding:12px 14px;vertical-align:top;height:96px;">
+                        <div style="font-size:10px;color:#0f766e;text-transform:uppercase;font-weight:700;line-height:1.3;">${best.recommended ? 'Recommended Quote' : 'Best Quoted Amount'}</div>
+                        <div style="font-size:18px;font-weight:800;color:#0f766e;margin-top:4px;line-height:1.35;">${money(best.price, pr)}</div>
+                        <div style="font-size:12px;color:#115e59;margin-top:4px;line-height:1.35;">${escapeHtml(best.vendor || 'Vendor')}</div>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
               </tr>
             </table>
@@ -891,36 +900,49 @@ export function buildPrApprovalPendingEmail({
           <td style="padding:0 32px 16px 32px;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                <td width="50%" style="padding:6px;">
-                  <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;">Entity</div>
-                    <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;">${escapeHtml(entityLabel)}</div>
-                    ${
-                      entityLocationLabel
-                        ? `<div style="font-size:12px;color:#64748b;margin-top:4px;">${escapeHtml(entityLocationLabel)}</div>`
-                        : ''
-                    }
-                  </td></tr></table>
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                    <tr>
+                      <td valign="top" height="78" style="padding:12px 14px;vertical-align:top;height:78px;">
+                        <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;line-height:1.3;">Entity</div>
+                        <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;line-height:1.35;">${escapeHtml(entityLabel)}</div>
+                        <div style="font-size:12px;color:#64748b;margin-top:4px;line-height:1.35;">${entityLocationLabel ? escapeHtml(entityLocationLabel) : '&nbsp;'}</div>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
-                <td width="50%" style="padding:6px;">
-                  <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;">Department</div>
-                    <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;">${escapeHtml(pr.department)}</div>
-                  </td></tr></table>
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                    <tr>
+                      <td valign="top" height="78" style="padding:12px 14px;vertical-align:top;height:78px;">
+                        <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;line-height:1.3;">Department</div>
+                        <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;line-height:1.35;">${escapeHtml(pr.department)}</div>
+                        <div style="font-size:12px;color:#64748b;margin-top:4px;line-height:1.35;">&nbsp;</div>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
               </tr>
               <tr>
-                <td width="50%" style="padding:6px;">
-                  <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;">Requester</div>
-                    <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;">${escapeHtml(requester?.name || pr.requester)}</div>
-                  </td></tr></table>
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                    <tr>
+                      <td valign="top" height="64" style="padding:12px 14px;vertical-align:top;height:64px;">
+                        <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;line-height:1.3;">Requester</div>
+                        <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;line-height:1.35;">${escapeHtml(requester?.name || pr.requester)}</div>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
-                <td width="50%" style="padding:6px;">
-                  <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;">Type / Priority</div>
-                    <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;">${escapeHtml(pr.requestType)} · ${escapeHtml(pr.priority)}</div>
-                  </td></tr></table>
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                    <tr>
+                      <td valign="top" height="64" style="padding:12px 14px;vertical-align:top;height:64px;">
+                        <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;line-height:1.3;">Type / Priority</div>
+                        <div style="font-size:14px;font-weight:600;color:#0f172a;margin-top:4px;line-height:1.35;">${escapeHtml(pr.requestType)} · ${escapeHtml(pr.priority)}</div>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
               </tr>
               ${
@@ -928,27 +950,39 @@ export function buildPrApprovalPendingEmail({
                   ? ''
                   : lineOwnVendor
                     ? `<tr>
-                <td width="50%" style="padding:6px;">
-                  <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">Vendor Path</div>
-                    <div style="font-size:16px;font-weight:800;color:#047857;margin-top:4px;">Own Vendor</div>
-                  </td></tr></table>
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;">
+                    <tr>
+                      <td valign="top" style="padding:12px 14px;vertical-align:top;">
+                        <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;line-height:1.3;">Vendor Path</div>
+                        <div style="font-size:16px;font-weight:800;color:#047857;margin-top:4px;line-height:1.35;">Own Vendor</div>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
-                <td width="50%" style="padding:6px;"></td>
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;"></td>
               </tr>`
                     : `<tr>
-                <td width="50%" style="padding:6px;">
-                  <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">Total Amount</div>
-                    <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;">${money(pr.totalAmount, pr)}</div>
-                  </td></tr></table>
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;">
+                    <tr>
+                      <td valign="top" height="64" style="padding:12px 14px;vertical-align:top;height:64px;">
+                        <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;line-height:1.3;">Total Amount</div>
+                        <div style="font-size:18px;font-weight:800;color:#047857;margin-top:4px;line-height:1.35;">${money(pr.totalAmount, pr)}</div>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
-                <td width="50%" style="padding:6px;">${
+                <td width="50%" valign="top" style="padding:6px;vertical-align:top;">${
                   isSassRequest
-                    ? `<table width="100%" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;"><tr><td style="padding:12px 14px;">
-                    <div style="font-size:10px;color:#0f766e;text-transform:uppercase;font-weight:700;">Purchase Type</div>
-                    <div style="font-size:16px;font-weight:800;color:#0f766e;margin-top:4px;">${escapeHtml(purchaseTypeEmailLabel(pr))}</div>
-                  </td></tr></table>`
+                    ? `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;">
+                    <tr>
+                      <td valign="top" height="64" style="padding:12px 14px;vertical-align:top;height:64px;">
+                        <div style="font-size:10px;color:#0f766e;text-transform:uppercase;font-weight:700;line-height:1.3;">Purchase Type</div>
+                        <div style="font-size:16px;font-weight:800;color:#0f766e;margin-top:4px;line-height:1.35;">${escapeHtml(purchaseTypeEmailLabel(pr))}</div>
+                      </td>
+                    </tr>
+                  </table>`
                     : ''
                 }</td>
               </tr>`

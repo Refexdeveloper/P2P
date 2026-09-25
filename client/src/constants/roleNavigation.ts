@@ -200,7 +200,7 @@ const NAV_BY_CODE: Record<string, NavItem> = {
   },
   'nav.buyer_final_verify': {
     code: 'nav.buyer_final_verify',
-    label: 'Buyer Final Verify',
+    label: 'Approved PO verification',
     path: '/scm/buyer-final-verify',
     icon: 'ri-shield-check-line',
     group: 'SCM',

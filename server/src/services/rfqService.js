@@ -2553,6 +2553,7 @@ async function moveToScmCreatePo(prId) {
     createPo: true,
     stageLabel: 'SCM PO Create',
     approverName: 'SCM Buyer',
+    ccEmails: [],
   });
   queueRequesterStepProgressNotification(pr, {
     action: 'approve',
@@ -3330,6 +3331,8 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
         stageLabel: nextLabel,
         approverEmails: nextAssignee?.email ? [nextAssignee.email] : undefined,
         approverName: nextAssignee?.name || (nextRole === 'SCM Buyer' ? 'SCM Buyer' : undefined),
+        // Create PO mail: buyers only — do not CC SCM Manager (Rajeev)
+        ccEmails: nextRole === 'SCM Buyer' ? [] : undefined,
       });
       queueRequesterStepProgressNotification(updatedPr, {
         action: 'approve',

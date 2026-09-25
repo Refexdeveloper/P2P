@@ -73,7 +73,7 @@ export default function SCMPurchaseRequestsPage() {
             prId: Number(t.prId) || undefined,
             poId: poId || undefined,
             number: String(t.prNumber || t.poNumber || 'PO'),
-            title: String(t.title || 'Buyer Final Verify'),
+            title: String(t.title || 'Approved PO verification'),
             path: '/scm/buyer-final-verify',
           });
           return;
@@ -124,7 +124,7 @@ export default function SCMPurchaseRequestsPage() {
           poId,
           prId: Number(p.prId) || undefined,
           number: String(p.poNumber || `PO #${poId}`),
-          title: String(p.prTitle || p.title || p.vendorName || 'Buyer Final Verify'),
+          title: String(p.prTitle || p.title || p.vendorName || 'Approved PO verification'),
           path: '/scm/buyer-final-verify',
         });
       });
@@ -192,7 +192,7 @@ export default function SCMPurchaseRequestsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">SCM Buyer Dashboard</h1>
           <p className="text-sm text-gray-600 mt-1">
-            RFQ Approval (Go PO), Create PO, Buyer Final Verify, and Vendor Acceptance
+            RFQ Approval (Go PO), Create PO, Approved PO verification, and Vendor Acceptance
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -238,9 +238,9 @@ export default function SCMPurchaseRequestsPage() {
             iconBg: 'bg-teal-100',
           },
           {
-            label: 'Buyer Final Verify',
+            label: 'Approved PO verification',
             value: verifyTasks.length,
-            sub: 'Pending final verify only',
+            sub: 'Pending verification only',
             icon: 'ri-shield-check-line',
             to: '/scm/buyer-final-verify',
             border: 'border-indigo-100',
@@ -428,8 +428,8 @@ export default function SCMPurchaseRequestsPage() {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold text-gray-900">Buyer Final Verify</h2>
-              <p className="text-xs text-gray-500">Pending final verify only</p>
+              <h2 className="text-sm font-bold text-gray-900">Approved PO verification</h2>
+              <p className="text-xs text-gray-500">Pending verification only</p>
             </div>
             <Link to="/scm/buyer-final-verify" className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">
               Open queue →
@@ -451,7 +451,7 @@ export default function SCMPurchaseRequestsPage() {
                     <p className="text-xs text-gray-500 truncate">{task.title}</p>
                   </div>
                   <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
-                    Final Verify
+                    Verify
                   </span>
                 </button>
               ))

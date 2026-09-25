@@ -1996,9 +1996,9 @@ export async function createPurchaseOrder(user, prId, body) {
     const [poRows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
     const po = await enrichPO(poRows[0]);
     try {
-      const { fileName } = await generatePoPdf(po, { fileName: `${poNumber}_draft.pdf` });
-      await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
-      po.pdfPath = fileName;
+    const { fileName } = await generatePoPdf(po, { fileName: `${poNumber}_draft.pdf` });
+    await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
+    po.pdfPath = fileName;
     } catch (pdfErr) {
       console.warn(`PO PDF after create failed for ${poNumber}:`, pdfErr.message);
     }
@@ -2236,8 +2236,8 @@ export async function createManualPurchaseOrder(user, body = {}) {
         fileName: `${poNumber}_draft.pdf`,
         signed: false,
       });
-      await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
-      po.pdfPath = fileName;
+    await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
+    po.pdfPath = fileName;
     } catch (pdfErr) {
       console.warn(`Manual PO PDF after create failed for ${poNumber}:`, pdfErr.message);
     }
@@ -2786,7 +2786,7 @@ export async function repairUnsignedManualPosToPendingApproval() {
         try {
           const full = path.join(PO_UPLOAD_DIR, path.basename(String(name)));
           if (fs.existsSync(full)) fs.unlinkSync(full);
-        } catch {
+  } catch {
           /* ignore */
         }
       }
@@ -3608,13 +3608,13 @@ async function signedPoPdfMailAttachment(po) {
       ];
     }
     if (fullPath && fs.existsSync(fullPath)) {
-      return [
-        {
-          filename: `${po.poNumber || 'PO'}_signed.pdf`,
-          path: fullPath,
-          contentType: 'application/pdf',
-        },
-      ];
+    return [
+      {
+        filename: `${po.poNumber || 'PO'}_signed.pdf`,
+        path: fullPath,
+        contentType: 'application/pdf',
+      },
+    ];
     }
     return [];
   } catch (err) {
@@ -3781,6 +3781,38 @@ export async function signPurchaseOrder(user, poId, {
   return updated;
 }
 
+/**
+ * Own vendor → send PO release mail.
+ * SCM vendor selection / Manual Create PO (no Own PR) → skip requester + L1 + SCM Manager release mail.
+ */
+async function resolveVendorSelectionForPoRelease(poRow) {
+  const prId = Number(poRow?.pr_id || poRow?.prId || 0);
+  if (prId > 0) {
+    try {
+      const [rows] = await pool.query(
+        `SELECT vendor_selection FROM purchase_requests WHERE id = ? LIMIT 1`,
+        [prId]
+      );
+      const raw = String(rows[0]?.vendor_selection || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_');
+      if (raw === 'own') return 'own';
+      return 'scm';
+    } catch (err) {
+      console.warn('Final-verify vendor selection lookup failed:', err.message);
+    }
+    try {
+      const pr = await getPurchaseRequestById(prId);
+      if (String(pr?.vendorSelection || '').trim().toLowerCase() === 'own') return 'own';
+    } catch {
+      /* ignore */
+    }
+  }
+  // Manual Create PO (no PR) behaves like SCM vendor — no release mail
+  return 'scm';
+}
+
 export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   if (user.role !== 'SCM Buyer') throw new Error('Only SCM Buyer can final-verify purchase orders');
 
@@ -3796,17 +3828,17 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   const token = rows[0].vendor_acceptance_token || newVendorAcceptanceToken();
 
   if (isWo) {
-    await pool.query(
-      `UPDATE purchase_orders SET
-         status = 'sent_to_vendor',
-         vendor_acceptance_status = 'pending',
-         vendor_acceptance_token = ?,
-         vendor_acceptance_mode = NULL,
-         vendor_notified_at = NULL,
-         updated_at = NOW()
-       WHERE id = ?`,
-      [token, poId]
-    );
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'sent_to_vendor',
+       vendor_acceptance_status = 'pending',
+       vendor_acceptance_token = ?,
+       vendor_acceptance_mode = NULL,
+       vendor_notified_at = NULL,
+       updated_at = NOW()
+     WHERE id = ?`,
+    [token, poId]
+  );
   } else {
     await pool.query(
       `UPDATE purchase_orders SET
@@ -3837,17 +3869,9 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
 
   const updated = await getPurchaseOrderById(poId);
 
-  // PO release mail (requester + L1 + approvers + Rajeev / SCM Manager):
-  // Own vendor only. SCM vendor selection skips this release notification.
-  let vendorSelection = 'scm';
-  if (rows[0].pr_id) {
-    try {
-      const pr = await getPurchaseRequestById(rows[0].pr_id);
-      vendorSelection = pr?.vendorSelection === 'own' ? 'own' : 'scm';
-    } catch (err) {
-      console.warn('Final-verify vendor selection lookup failed:', err.message);
-    }
-  }
+  // PO release mail (requester + L1 + approvers + SCM Manager):
+  // Own vendor only. SCM vendor selection (and Manual Create PO without Own PR) skips it.
+  const vendorSelection = await resolveVendorSelectionForPoRelease(rows[0]);
   const sendPoReleaseMail = vendorSelection === 'own';
 
   let parties = { emails: [], name: updated.requester || 'User' };
@@ -3907,7 +3931,7 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     console.warn(`No requester/approver/SCM emails for final-verify ${updated.poNumber}`);
   } else {
     console.log(
-      `PO release mail skipped for ${updated.poNumber} (SCM vendor selection)`
+      `PO release mail skipped for ${updated.poNumber} (vendor selection: ${vendorSelection})`
     );
   }
 
@@ -3916,6 +3940,7 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     approverRole: user.role,
   });
 
+  // Next-step task mail (GRN / Vendor Acceptance) — requester only, no L1 / SCM Manager release CC
   if (rows[0].pr_id) {
     const requesterId = await getPoRequesterId(rows[0]);
     if (requesterId) {
@@ -3941,7 +3966,8 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
             ctaLabel: isWo ? 'Open Vendor Acceptance' : 'Open GRN',
             bccOps: false,
             notifyWhatsApp: false,
-            attachments: isWo ? attachments : undefined,
+            // Signed PO PDF only on Own-vendor release mail — not on this next-step assign
+            attachments: undefined,
           });
         }
       } catch (err) {
@@ -4134,11 +4160,11 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
   }
 
   if (rows[0].pr_id) {
-    await pool.query(
-      `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-       WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
-      [rows[0].pr_id]
-    );
+  await pool.query(
+    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
+    [rows[0].pr_id]
+  );
 
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 2);
@@ -4201,18 +4227,18 @@ export async function cancelPurchaseOrder(user, poId, body = {}) {
   const incomingFiles = Array.isArray(body.attachments) ? body.attachments : [];
   const attachments = [];
   for (const item of incomingFiles) {
-    const entry = item && typeof item === 'object' ? item : {};
+      const entry = item && typeof item === 'object' ? item : {};
     const saved = await savePoAttachmentAwaited(
-      poId,
-      'cancel',
-      String(entry.fileName || entry.name || '').trim(),
-      String(entry.fileData || entry.base64 || '').trim()
-    );
+        poId,
+        'cancel',
+        String(entry.fileName || entry.name || '').trim(),
+        String(entry.fileData || entry.base64 || '').trim()
+      );
     if (!saved.filePath) continue;
     attachments.push({
-      fileName: saved.fileName,
-      filePath: saved.filePath,
-      uploadedAt: new Date().toISOString(),
+        fileName: saved.fileName,
+        filePath: saved.filePath,
+        uploadedAt: new Date().toISOString(),
     });
   }
 
@@ -4503,10 +4529,10 @@ export async function updatePurchaseOrder(user, poId, body) {
     (isAdminContentEdit
       ? `PO updated by ${user.role || 'admin'} from Track PO`
       : canBuyerRevise
-        ? 'PO revised by SCM Buyer after manager send-back — resubmitted for sign'
-        : canBuyerEdit
-          ? 'PO updated by SCM Buyer during final verify'
-          : 'PO updated by SCM Manager before approval');
+      ? 'PO revised by SCM Buyer after manager send-back — resubmitted for sign'
+      : canBuyerEdit
+        ? 'PO updated by SCM Buyer during final verify'
+        : 'PO updated by SCM Manager before approval');
 
   const conn = await pool.getConnection();
   try {
@@ -4540,14 +4566,14 @@ export async function updatePurchaseOrder(user, poId, body) {
       });
     } else {
       nextPoNumber = await resolvePersistedPoNumber({
-        requested: body.poNumber || body.existingPoNumber,
-        existingNumber: existing.po_number,
-        entityId: existing.entity_id,
+      requested: body.poNumber || body.existingPoNumber,
+      existingNumber: existing.po_number,
+      entityId: existing.entity_id,
         purchaseType: purchaseTypeForNumber,
-        excludeId: poId,
-        connection: conn,
+      excludeId: poId,
+      connection: conn,
         docLabel: docLabelForNumber,
-      });
+    });
     }
 
     await conn.query(
@@ -4719,35 +4745,35 @@ export async function updatePurchaseOrder(user, poId, body) {
         .replace(/[^\w.-]+/g, '_')
         .replace(/_+/g, '_');
       const signedFileName = `${safeNo}_signed.pdf`;
-      const { fileName } = await generatePoPdf(updatedPo, {
-        fileName: signedFileName,
-        signed: true,
-        signature: buildSignatureRenderOptions({
-          ...updatedPo,
-          signatureName: existing.signature_name || updatedPo.signatureName,
-          signatureImagePath: existing.signature_image_path,
-          signatureImageData: existing.signature_image_data,
-          signatureDsc: updatedPo.signatureDsc || parseSignatureDsc(existing.signature_dsc_json),
-          signerComments: existing.signer_comments,
-          signedAt: updatedPo.signedAt || existing.signed_at,
-          signedPdfPath: existing.signed_pdf_path,
-        }),
-      });
-      await pool.query(
-        `UPDATE purchase_orders SET pdf_path = ?, signed_pdf_path = ?, updated_at = NOW() WHERE id = ?`,
-        [fileName, fileName, poId]
-      );
-      updatedPo.pdfPath = fileName;
-      updatedPo.signedPdfPath = fileName;
-    } else {
+    const { fileName } = await generatePoPdf(updatedPo, {
+      fileName: signedFileName,
+      signed: true,
+      signature: buildSignatureRenderOptions({
+        ...updatedPo,
+        signatureName: existing.signature_name || updatedPo.signatureName,
+        signatureImagePath: existing.signature_image_path,
+        signatureImageData: existing.signature_image_data,
+        signatureDsc: updatedPo.signatureDsc || parseSignatureDsc(existing.signature_dsc_json),
+        signerComments: existing.signer_comments,
+        signedAt: updatedPo.signedAt || existing.signed_at,
+        signedPdfPath: existing.signed_pdf_path,
+      }),
+    });
+    await pool.query(
+      `UPDATE purchase_orders SET pdf_path = ?, signed_pdf_path = ?, updated_at = NOW() WHERE id = ?`,
+      [fileName, fileName, poId]
+    );
+    updatedPo.pdfPath = fileName;
+    updatedPo.signedPdfPath = fileName;
+  } else {
       const safeNo = String(updatedPo.poNumber || 'PO')
         .replace(/[^\w.-]+/g, '_')
         .replace(/_+/g, '_');
       const { fileName } = await generatePoPdf(updatedPo, {
         fileName: `${safeNo}_draft.pdf`,
       });
-      await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
-      updatedPo.pdfPath = fileName;
+    await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
+    updatedPo.pdfPath = fileName;
     }
   } catch (pdfErr) {
     // Never block SCM Manager approval mail on PDF path issues (e.g. PO…/R1).
@@ -4756,8 +4782,8 @@ export async function updatePurchaseOrder(user, poId, body) {
 
   if (canBuyerRevise) {
     await notifyScmManagerPoApproval(updatedPo, {
-      actorName: user.name,
-      actorRole: user.role,
+        actorName: user.name,
+        actorRole: user.role,
       remarks:
         body?.resubmitForApproval || body?.changeSummary
           ? `Revised after send-back — sent to SCM Manager for sign`

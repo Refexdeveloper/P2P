@@ -3738,7 +3738,7 @@ export default function CreatePOPage() {
               onClick={() => navigate(isEditMode ? editReturnPath : '/scm/create-po')}
               className="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium"
             >
-              {isBuyerVerifyEdit ? 'Back to Final Verify' : isEditMode ? 'Back' : 'Back to Create PO'}
+              {isBuyerVerifyEdit ? 'Back to Approved PO verification' : isEditMode ? 'Back' : 'Back to Create PO'}
             </button>
           </div>
         </div>
@@ -3831,7 +3831,7 @@ export default function CreatePOPage() {
                 }`}
               >
                 {isBuyerVerifyEdit
-                  ? 'Buyer Final Verify'
+                  ? 'Approved PO verification'
                   : isEditMode && poEditStatus && poEditStatus !== 'draft'
                     ? 'Pending Review'
                     : 'Draft'}

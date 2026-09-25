@@ -82,28 +82,40 @@ export function buildPrStepProgressEmail({
   const completedBlock = completedStepLabel
     ? `
         <tr>
-          <td width="50%" style="padding:6px;">
-            <table width="100%" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;"><tr><td style="padding:12px 14px;">
-              <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;">Completed step</div>
-              <div style="font-size:15px;font-weight:800;color:#047857;margin-top:4px;">${escapeHtml(completedStepLabel)}</div>
-              <div style="font-size:12px;color:#065f46;margin-top:4px;">by ${escapeHtml(actorLine)}</div>
-            </td></tr></table>
+          <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;">
+              <tr>
+                <td valign="top" height="96" style="padding:12px 14px;vertical-align:top;height:96px;">
+                  <div style="font-size:10px;color:#047857;text-transform:uppercase;font-weight:700;line-height:1.3;">Completed step</div>
+                  <div style="font-size:15px;font-weight:800;color:#047857;margin-top:4px;line-height:1.35;">${escapeHtml(completedStepLabel)}</div>
+                  <div style="font-size:12px;color:#065f46;margin-top:4px;line-height:1.35;">by ${escapeHtml(actorLine)}</div>
+                </td>
+              </tr>
+            </table>
           </td>
-          <td width="50%" style="padding:6px;">
-            <table width="100%" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;"><tr><td style="padding:12px 14px;">
-              <div style="font-size:10px;color:#1d4ed8;text-transform:uppercase;font-weight:700;">Next step</div>
-              <div style="font-size:15px;font-weight:800;color:#1e40af;margin-top:4px;">${escapeHtml(nextStepLabel || 'In progress')}</div>
-              <div style="font-size:12px;color:#1e3a8a;margin-top:4px;">Action required by next owner</div>
-            </td></tr></table>
+          <td width="50%" valign="top" style="padding:6px;vertical-align:top;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;">
+              <tr>
+                <td valign="top" height="96" style="padding:12px 14px;vertical-align:top;height:96px;">
+                  <div style="font-size:10px;color:#1d4ed8;text-transform:uppercase;font-weight:700;line-height:1.3;">Next step</div>
+                  <div style="font-size:15px;font-weight:800;color:#1e40af;margin-top:4px;line-height:1.35;">${escapeHtml(nextStepLabel || 'In progress')}</div>
+                  <div style="font-size:12px;color:#1e3a8a;margin-top:4px;line-height:1.35;">Action required by next owner</div>
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>`
     : `
         <tr>
-          <td style="padding:6px;">
-            <table width="100%" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;"><tr><td style="padding:12px 14px;">
-              <div style="font-size:10px;color:#1d4ed8;text-transform:uppercase;font-weight:700;">Next step</div>
-              <div style="font-size:15px;font-weight:800;color:#1e40af;margin-top:4px;">${escapeHtml(nextStepLabel || 'In progress')}</div>
-            </td></tr></table>
+          <td valign="top" style="padding:6px;vertical-align:top;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;">
+              <tr>
+                <td valign="top" style="padding:12px 14px;vertical-align:top;">
+                  <div style="font-size:10px;color:#1d4ed8;text-transform:uppercase;font-weight:700;line-height:1.3;">Next step</div>
+                  <div style="font-size:15px;font-weight:800;color:#1e40af;margin-top:4px;line-height:1.35;">${escapeHtml(nextStepLabel || 'In progress')}</div>
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>`;
 

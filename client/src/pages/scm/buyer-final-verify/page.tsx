@@ -135,7 +135,7 @@ export default function BuyerFinalVerifyPage() {
 
   const openModal = (po: VerifyPO) => {
     setModal({ open: true, po });
-    setRemarks('Final verified — requester, approvers, and SCM team notified (no vendor mail)');
+    setRemarks('Final verified by SCM Buyer');
     setError('');
   };
 
@@ -152,7 +152,13 @@ export default function BuyerFinalVerifyPage() {
     setError('');
     try {
       const res = await poApi.finalVerify(modal.po.id, remarks.trim());
-      showToast(res.message || `${modal.po.poNumber} verified — requester, approvers, and SCM team notified`, 'success');
+      showToast(
+        res.message ||
+          (res.data?.poReleaseMailSent
+            ? `${modal.po.poNumber} verified — PO release mail sent`
+            : `${modal.po.poNumber} verified — PO release mail skipped (SCM vendor)`),
+        'success'
+      );
       setExpandedId(null);
       closeModal();
       await load();
@@ -166,16 +172,17 @@ export default function BuyerFinalVerifyPage() {
   return (
     <DashboardLayout>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">SCM Buyer — Final Verify</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Approved PO verification</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Review Manager-signed POs — verify (notifies requester, approvers, and SCM team with signed PO). Vendor is not emailed.
+          Review Manager-signed POs. Own vendor: verify sends PO release mail to requester, L1, and SCM Manager.
+          SCM vendor / Manual: no PO release mail (vendor is never emailed here).
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
         {[
           {
-            label: 'Pending Final Verify',
+            label: 'Pending verification',
             value: rows.length,
             icon: 'ri-shield-check-line',
             color: 'text-blue-600',
@@ -213,7 +220,7 @@ export default function BuyerFinalVerifyPage() {
           <div>
             <h2 className="text-base font-bold text-gray-900">Signed POs awaiting buyer verify</h2>
             <p className="text-xs text-gray-400 mt-1">
-              Edit PO if needed, then verify to notify requester, approvers, and SCM team with the signed PO (no vendor mail)
+              Edit PO if needed, then verify. Own vendor sends PO release mail; SCM vendor / Manual does not.
             </p>
           </div>
           <div className="relative">
@@ -455,7 +462,7 @@ export default function BuyerFinalVerifyPage() {
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeModal} />
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 bg-teal-50">
-              <h3 className="text-base font-bold text-teal-900">Final Verify</h3>
+              <h3 className="text-base font-bold text-teal-900">Approved PO verification</h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 Email goes to the requester, approvers, and SCM team with the signed PO attached. Vendor is not copied.
               </p>

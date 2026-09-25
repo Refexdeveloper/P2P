@@ -83,7 +83,7 @@ export const NAV_ITEMS = [
   { code: 'nav.vendor_comparison', label: 'Vendor Comparison', path: '/scm/vendor-comparison', icon: 'ri-bar-chart-box-line', group: 'SCM', sort: 67 },
   { code: 'nav.technical_clearance', label: 'Technical Clearance', path: '/scm/technical-clearance', icon: 'ri-shield-check-line', group: 'SCM', sort: 68 },
   { code: 'nav.po_approval', label: 'PO Approval', path: '/scm/po-approval', icon: 'ri-checkbox-circle-line', group: 'SCM', sort: 69 },
-  { code: 'nav.buyer_final_verify', label: 'Buyer Final Verify', path: '/scm/buyer-final-verify', icon: 'ri-shield-check-line', group: 'SCM', sort: 70 },
+  { code: 'nav.buyer_final_verify', label: 'Approved PO verification', path: '/scm/buyer-final-verify', icon: 'ri-shield-check-line', group: 'SCM', sort: 70 },
   { code: 'nav.vendor_po_acceptance', label: 'Vendor PO Acceptance', path: '/scm/vendor-po-acceptance', icon: 'ri-shake-hands-line', group: 'SCM', sort: 71 },
   { code: 'nav.vendor_invoice', label: 'Vendor Invoice', path: '/scm/vendor-invoice', icon: 'ri-file-invoice-line', group: 'SCM', sort: 72 },
   { code: 'nav.grn', label: 'GRN', path: '/grn', icon: 'ri-truck-line', group: 'SCM', sort: 73 },
