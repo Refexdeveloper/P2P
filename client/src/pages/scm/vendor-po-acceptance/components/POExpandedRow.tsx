@@ -76,14 +76,13 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
   const pending = !po.vendorAcceptanceStatus || po.vendorAcceptanceStatus === 'pending';
   const accepted =
     po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
-  const completed = !pending;
-  const hasAcceptanceFile = Boolean(String(po.vendorAcceptanceFileName || '').trim());
+  const completed = !pending && Boolean(po.vendorAcceptanceStatus);
+  const isWorkOrder = po.purchaseType === 'work_order';
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'response' | 'history'>(
     completed ? 'response' : 'details'
   );
   const [openingFile, setOpeningFile] = useState(false);
   const [fileError, setFileError] = useState('');
-  const isWorkOrder = po.purchaseType === 'work_order';
 
   const openAcceptanceFile = async () => {
     setFileError('');
@@ -108,7 +107,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = String(po.vendorAcceptanceFileName || `vendor-acceptance-${po.poNumber}`);
+      a.download = String(po.vendorAcceptanceFileName || 'vendor-acceptance.pdf').replace(/^.*[/\\]/, '');
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -176,14 +175,10 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
 
           <div className="flex border-b border-gray-100 px-5 overflow-x-auto">
             {[
-              { key: 'details' as const, label: 'PO Details', icon: 'ri-information-line' },
-              { key: 'items' as const, label: 'Line Items', icon: 'ri-list-check-2' },
-              {
-                key: 'response' as const,
-                label: hasAcceptanceFile ? 'Vendor Response · File' : 'Vendor Response',
-                icon: 'ri-reply-line',
-              },
-              { key: 'history' as const, label: 'History', icon: 'ri-history-line' },
+              { key: 'details', label: 'PO Details', icon: 'ri-information-line' },
+              { key: 'items', label: 'Line Items', icon: 'ri-list-check-2' },
+              { key: 'response', label: 'Vendor Response', icon: 'ri-reply-line' },
+              { key: 'history', label: 'History', icon: 'ri-history-line' },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -371,7 +366,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4 sm:col-span-2">
                   <p className="text-xs text-gray-500 mb-1">Remarks</p>
-                  <p className="font-medium">{po.vendorAcceptanceRemarks || '—'}</p>
+                  <p className="font-medium whitespace-pre-wrap">{po.vendorAcceptanceRemarks || '—'}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <p className="text-xs text-gray-500 mb-1">Confirmed delivery</p>
@@ -381,25 +376,23 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                   <p className="text-xs text-gray-500 mb-1">Responded at</p>
                   <p className="font-medium">{po.vendorAcceptedAt || '—'}</p>
                 </div>
-                {completed && (
+                {completed ? (
                   <div className="sm:col-span-2 rounded-xl border border-teal-200 bg-teal-50/60 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-2">
-                      Vendor acceptance file
+                      Vendor signed / acceptance file
                     </p>
                     {fileError ? <p className="text-xs text-red-600 mb-2">{fileError}</p> : null}
-                    {hasAcceptanceFile ? (
+                    {po.vendorAcceptanceFileName ? (
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <i className="ri-file-pdf-2-line text-teal-700 text-lg shrink-0"></i>
-                          <span className="text-sm font-medium text-gray-900 truncate">
-                            {po.vendorAcceptanceFileName}
-                          </span>
-                        </div>
+                        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-900 min-w-0">
+                          <i className="ri-file-pdf-2-line text-teal-700 shrink-0"></i>
+                          <span className="truncate">{po.vendorAcceptanceFileName}</span>
+                        </span>
                         <button
                           type="button"
                           disabled={openingFile}
                           onClick={() => void openAcceptanceFile()}
-                          className="px-3 py-1.5 text-xs font-semibold border border-teal-300 text-teal-800 bg-white rounded-lg hover:bg-teal-50 disabled:opacity-50"
+                          className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50"
                         >
                           {openingFile ? 'Opening…' : 'Open'}
                         </button>
@@ -413,10 +406,12 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                         </button>
                       </div>
                     ) : (
-                      <p className="text-sm text-amber-800">
-                        Acceptance recorded, but no uploaded file is available for this PO.
-                      </p>
+                      <p className="text-sm text-gray-500">No acceptance file was uploaded for this response.</p>
                     )}
+                  </div>
+                ) : (
+                  <div className="sm:col-span-2 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                    Vendor signed PO file will appear here after acceptance is completed.
                   </div>
                 )}
               </div>

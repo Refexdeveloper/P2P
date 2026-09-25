@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
@@ -335,6 +335,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
   const [tab, setTab] = useState<
     'details' | 'documents' | 'history' | 'acceptance' | 'grn' | 'invoice'
   >('details');
+  const acceptanceTabAutoOpened = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pr, setPr] = useState<Record<string, unknown> | null>(null);
@@ -431,14 +432,6 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
       if (filePreview?.url) URL.revokeObjectURL(filePreview.url);
     };
   }, [filePreview]);
-
-  useEffect(() => {
-    if (!loading && isVendorAcceptanceFinished(po) && tab === 'details') {
-      setTab('acceptance');
-    }
-    // Only auto-switch once when data first loads into details
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, po?.vendorAcceptanceStatus, po?.vendorAcceptanceFileName]);
 
   const lineItems = useMemo(() => {
     const fromPo = asLineItems(po?.lineItems);
@@ -588,9 +581,8 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
   const gstin = pickText(poTerms.buyerGstNo, pr?.billingGstNo).toUpperCase();
 
   const showFulfillmentTabs =
-    Boolean(row.poId) &&
-    isPoPastApproval(po?.statusRaw || po?.status, row.statusLabel || String(po?.status || ''));
-  const showAcceptanceTab = Boolean(row.poId) && isVendorAcceptanceFinished(po);
+    Boolean(row.poId) && isPoPastApproval(po?.statusRaw, row.statusLabel);
+  const showAcceptanceTab = showFulfillmentTabs && isVendorAcceptanceFinished(po);
   const showGrnTab = showFulfillmentTabs && Boolean(grn);
   const showInvoiceTab = showFulfillmentTabs && Boolean(invoice);
 
@@ -602,15 +594,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
       icon: 'ri-folder-2-line',
     },
     ...(showAcceptanceTab
-      ? [
-          {
-            key: 'acceptance' as const,
-            label: String(po?.vendorAcceptanceFileName || '').trim()
-              ? 'Vendor Acceptance · File'
-              : 'Vendor Acceptance',
-            icon: 'ri-checkbox-circle-line',
-          },
-        ]
+      ? [{ key: 'acceptance' as const, label: 'Vendor Acceptance', icon: 'ri-checkbox-circle-line' }]
       : []),
     ...(showGrnTab ? [{ key: 'grn' as const, label: 'GRN', icon: 'ri-truck-line' }] : []),
     ...(showInvoiceTab
@@ -627,6 +611,18 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     const keys = new Set(tabs.map((t) => t.key));
     if (!keys.has(tab)) setTab('details');
   }, [tab, showAcceptanceTab, showGrnTab, showInvoiceTab]);
+
+  // When vendor acceptance is completed, open that tab once after load
+  useEffect(() => {
+    acceptanceTabAutoOpened.current = false;
+  }, [row.poId, row.prId]);
+
+  useEffect(() => {
+    if (!loading && showAcceptanceTab && !acceptanceTabAutoOpened.current) {
+      acceptanceTabAutoOpened.current = true;
+      setTab('acceptance');
+    }
+  }, [loading, showAcceptanceTab]);
 
   const handleOpenFile = async (doc: DocRow) => {
     if (!doc.url) {
@@ -951,16 +947,14 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                 </div>
                 <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-2">
-                    Vendor acceptance file
+                    Vendor signed / acceptance file
                   </p>
                   {row.poId && String(po?.vendorAcceptanceFileName || '').trim() ? (
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <i className="ri-file-pdf-2-line text-teal-700 text-lg shrink-0"></i>
-                        <span className="text-sm font-medium text-gray-900 truncate">
-                          {String(po?.vendorAcceptanceFileName)}
-                        </span>
-                      </div>
+                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-900 min-w-0">
+                        <i className="ri-file-pdf-2-line text-teal-700 shrink-0"></i>
+                        <span className="truncate">{String(po?.vendorAcceptanceFileName)}</span>
+                      </span>
                       <button
                         type="button"
                         disabled={Boolean(openingKey)}
@@ -973,7 +967,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                             url: poApi.getVendorAcceptanceFileUrl(row.poId!),
                           })
                         }
-                        className="px-3 py-1.5 text-xs font-semibold border border-teal-300 text-teal-800 bg-white rounded-lg hover:bg-teal-50 disabled:opacity-50"
+                        className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-40"
                       >
                         {openingKey === `accept-${row.poId}` ? 'Opening…' : 'Open'}
                       </button>
@@ -989,15 +983,13 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                             url: poApi.getVendorAcceptanceFileUrl(row.poId!),
                           })
                         }
-                        className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                        className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-40"
                       >
                         {openingKey === `dl-accept-${row.poId}` ? 'Saving…' : 'Download'}
                       </button>
                     </div>
                   ) : (
-                    <p className="text-sm text-amber-800">
-                      Acceptance completed, but no uploaded file is stored for this PO/WO.
-                    </p>
+                    <p className="text-sm text-gray-500">No acceptance file uploaded for this PO / WO.</p>
                   )}
                 </div>
               </div>

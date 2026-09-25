@@ -4968,7 +4968,7 @@ export async function listVendorAcceptancePOs(user) {
     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
     WHERE (
       po.status = 'sent_to_vendor'
-      OR po.vendor_acceptance_status IN ('accepted', 'rejected', 'partial')
+      OR COALESCE(po.vendor_acceptance_status, 'pending') IN ('accepted', 'rejected', 'partial')
     )
   `;
   const params = [];
