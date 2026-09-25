@@ -4357,17 +4357,20 @@ export default function CreatePOPage() {
                         className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
                       />
                     </div>
-                    <div>
+                    <div className="sm:col-span-2 lg:col-span-3">
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                         {docLabel} Subject <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        type="text"
+                      <textarea
+                        rows={3}
                         value={poTermsDetails.subject || ''}
                         onChange={(e) => updatePoTermsField('subject', e.target.value)}
-                        placeholder="e.g. Supply of equipment for site"
-                        className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                        placeholder={`e.g. Supply of equipment for site / ${docLabel} description`}
+                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 resize-y min-h-[72px]"
                       />
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Subject prints on the {docLabel === 'Work Order' ? 'WO' : 'PO'} PDF.
+                      </p>
                     </div>
                   </div>
 

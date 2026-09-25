@@ -4966,7 +4966,10 @@ export async function listVendorAcceptancePOs(user) {
   let sql = `
     SELECT po.* FROM purchase_orders po
     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
-    WHERE po.status = 'sent_to_vendor'
+    WHERE (
+      po.status = 'sent_to_vendor'
+      OR po.vendor_acceptance_status IN ('accepted', 'rejected', 'partial')
+    )
   `;
   const params = [];
   if (user.role === 'Requester') {

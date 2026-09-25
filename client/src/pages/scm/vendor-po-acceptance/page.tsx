@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { poApi } from '../../../services/api';
+import { accountsApi, poApi } from '../../../services/api';
 import POExpandedRow, { AcceptancePo } from './components/POExpandedRow';
 
 const formatCurrency = (amount: number) =>
@@ -91,7 +91,11 @@ export default function VendorPOAcceptancePage() {
 
   const filtered = useMemo(() => {
     let list = [...rows];
-    if (filter !== 'all') {
+    if (filter === 'accepted') {
+      list = list.filter(
+        (r) => r.vendorAcceptanceStatus === 'accepted' || r.vendorAcceptanceStatus === 'partial'
+      );
+    } else if (filter !== 'all') {
       list = list.filter((r) => (r.vendorAcceptanceStatus || 'pending') === filter);
     }
     if (search.trim()) {
@@ -110,7 +114,9 @@ export default function VendorPOAcceptancePage() {
   const stats = useMemo(
     () => ({
       pending: rows.filter((r) => (r.vendorAcceptanceStatus || 'pending') === 'pending').length,
-      accepted: rows.filter((r) => r.vendorAcceptanceStatus === 'accepted').length,
+      accepted: rows.filter(
+        (r) => r.vendorAcceptanceStatus === 'accepted' || r.vendorAcceptanceStatus === 'partial'
+      ).length,
       rejected: rows.filter((r) => r.vendorAcceptanceStatus === 'rejected').length,
       total: rows.length,
     }),
@@ -154,6 +160,19 @@ export default function VendorPOAcceptancePage() {
       window.open(URL.createObjectURL(blob), '_blank');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not open PDF', 'error');
+    }
+  };
+
+  const viewAcceptanceFile = async (po: AcceptancePo) => {
+    setExpandedId(po.id);
+    if (!po.vendorAcceptanceFileName) return;
+    try {
+      const blob = await accountsApi.fetchAuthFile(poApi.getVendorAcceptanceFileUrl(po.id));
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not open acceptance file', 'error');
     }
   };
 
@@ -204,8 +223,8 @@ export default function VendorPOAcceptancePage() {
         <h1 className="text-2xl font-bold text-gray-900">Vendor PO Acceptance</h1>
         <p className="text-sm text-gray-500 mt-1">
           {isRequesterView
-            ? 'Record vendor acceptance after GRN and invoice upload (Work Orders appear right after final verify).'
-            : 'POs awaiting vendor acceptance — send mail to requester to upload Vendor Signed PO, or record manual acceptance.'}
+            ? 'Record vendor acceptance after GRN and invoice upload (Work Orders appear right after final verify). Completed acceptances stay listed with the uploaded file.'
+            : 'POs awaiting vendor acceptance — send mail to requester to upload Vendor Signed PO, or record manual acceptance. After completion, open the row to view the acceptance file.'}
         </p>
       </div>
 
@@ -336,19 +355,44 @@ export default function VendorPOAcceptancePage() {
                               </button>
                             </div>
                           ) : accepted ? (
-                            po.purchaseType === 'work_order' ? (
-                              <button
-                                type="button"
-                                onClick={() => navigate('/requester/vendor-invoice')}
-                                className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg"
-                              >
-                                Upload invoice
-                              </button>
-                            ) : (
-                              <span className="text-xs text-emerald-700 font-medium">Accepted</span>
-                            )
+                            <div className="flex flex-wrap gap-2">
+                              {po.vendorAcceptanceFileName ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void viewAcceptanceFile(po)}
+                                  className="px-3 py-1.5 text-xs font-semibold border border-teal-300 text-teal-800 bg-teal-50 rounded-lg hover:bg-teal-100"
+                                  title={po.vendorAcceptanceFileName}
+                                >
+                                  <i className="ri-attachment-2 mr-1"></i>
+                                  View file
+                                </button>
+                              ) : null}
+                              {po.purchaseType === 'work_order' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate('/requester/vendor-invoice')}
+                                  className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg"
+                                >
+                                  Upload invoice
+                                </button>
+                              ) : (
+                                <span className="text-xs text-emerald-700 font-medium self-center">Accepted</span>
+                              )}
+                            </div>
                           ) : (
-                            <span className="text-xs text-gray-500">Completed</span>
+                            <div className="flex flex-wrap gap-2 items-center">
+                              {po.vendorAcceptanceFileName ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void viewAcceptanceFile(po)}
+                                  className="px-3 py-1.5 text-xs font-semibold border border-teal-300 text-teal-800 bg-teal-50 rounded-lg"
+                                >
+                                  <i className="ri-attachment-2 mr-1"></i>
+                                  View file
+                                </button>
+                              ) : null}
+                              <span className="text-xs text-gray-500">Completed</span>
+                            </div>
                           )}
                       </td>
                     </tr>

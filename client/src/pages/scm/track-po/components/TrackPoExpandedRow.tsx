@@ -432,6 +432,14 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     };
   }, [filePreview]);
 
+  useEffect(() => {
+    if (!loading && isVendorAcceptanceFinished(po) && tab === 'details') {
+      setTab('acceptance');
+    }
+    // Only auto-switch once when data first loads into details
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, po?.vendorAcceptanceStatus, po?.vendorAcceptanceFileName]);
+
   const lineItems = useMemo(() => {
     const fromPo = asLineItems(po?.lineItems);
     if (fromPo.length) return fromPo;
@@ -580,8 +588,9 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
   const gstin = pickText(poTerms.buyerGstNo, pr?.billingGstNo).toUpperCase();
 
   const showFulfillmentTabs =
-    Boolean(row.poId) && isPoPastApproval(po?.statusRaw, row.statusLabel);
-  const showAcceptanceTab = showFulfillmentTabs && isVendorAcceptanceFinished(po);
+    Boolean(row.poId) &&
+    isPoPastApproval(po?.statusRaw || po?.status, row.statusLabel || String(po?.status || ''));
+  const showAcceptanceTab = Boolean(row.poId) && isVendorAcceptanceFinished(po);
   const showGrnTab = showFulfillmentTabs && Boolean(grn);
   const showInvoiceTab = showFulfillmentTabs && Boolean(invoice);
 
@@ -593,7 +602,15 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
       icon: 'ri-folder-2-line',
     },
     ...(showAcceptanceTab
-      ? [{ key: 'acceptance' as const, label: 'Vendor Acceptance', icon: 'ri-checkbox-circle-line' }]
+      ? [
+          {
+            key: 'acceptance' as const,
+            label: String(po?.vendorAcceptanceFileName || '').trim()
+              ? 'Vendor Acceptance · File'
+              : 'Vendor Acceptance',
+            icon: 'ri-checkbox-circle-line',
+          },
+        ]
       : []),
     ...(showGrnTab ? [{ key: 'grn' as const, label: 'GRN', icon: 'ri-truck-line' }] : []),
     ...(showInvoiceTab
@@ -932,27 +949,57 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                     {String(po?.vendorAcceptanceRemarks || '—')}
                   </p>
                 </div>
-                {row.poId && String(po?.vendorAcceptanceFileName || '').trim() ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleOpenFile({
-                          key: `accept-${row.poId}`,
-                          kind: 'Vendor Acceptance',
-                          name: String(po?.vendorAcceptanceFileName),
-                          fileName: String(po?.vendorAcceptanceFileName),
-                          url: poApi.getVendorAcceptanceFileUrl(row.poId!),
-                        })
-                      }
-                      className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
-                    >
-                      <i className="ri-file-line mr-1"></i>
-                      View acceptance file
-                    </button>
-                    <span className="text-xs text-gray-500">{String(po?.vendorAcceptanceFileName)}</span>
-                  </div>
-                ) : null}
+                <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-2">
+                    Vendor acceptance file
+                  </p>
+                  {row.poId && String(po?.vendorAcceptanceFileName || '').trim() ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <i className="ri-file-pdf-2-line text-teal-700 text-lg shrink-0"></i>
+                        <span className="text-sm font-medium text-gray-900 truncate">
+                          {String(po?.vendorAcceptanceFileName)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={Boolean(openingKey)}
+                        onClick={() =>
+                          void handleOpenFile({
+                            key: `accept-${row.poId}`,
+                            kind: 'Vendor Acceptance',
+                            name: String(po?.vendorAcceptanceFileName),
+                            fileName: String(po?.vendorAcceptanceFileName),
+                            url: poApi.getVendorAcceptanceFileUrl(row.poId!),
+                          })
+                        }
+                        className="px-3 py-1.5 text-xs font-semibold border border-teal-300 text-teal-800 bg-white rounded-lg hover:bg-teal-50 disabled:opacity-50"
+                      >
+                        {openingKey === `accept-${row.poId}` ? 'Opening…' : 'Open'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(openingKey)}
+                        onClick={() =>
+                          void handleDownloadFile({
+                            key: `accept-${row.poId}`,
+                            kind: 'Vendor Acceptance',
+                            name: String(po?.vendorAcceptanceFileName),
+                            fileName: String(po?.vendorAcceptanceFileName),
+                            url: poApi.getVendorAcceptanceFileUrl(row.poId!),
+                          })
+                        }
+                        className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                      >
+                        {openingKey === `dl-accept-${row.poId}` ? 'Saving…' : 'Download'}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-amber-800">
+                      Acceptance completed, but no uploaded file is stored for this PO/WO.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 

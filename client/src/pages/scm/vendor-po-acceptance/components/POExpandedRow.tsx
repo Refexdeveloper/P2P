@@ -73,12 +73,16 @@ const formatCurrency = (amount: number) =>
 
 export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, busy }: Props) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'details' | 'items' | 'response' | 'history'>('details');
-  const [openingFile, setOpeningFile] = useState(false);
-  const [fileError, setFileError] = useState('');
   const pending = !po.vendorAcceptanceStatus || po.vendorAcceptanceStatus === 'pending';
   const accepted =
     po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
+  const completed = !pending;
+  const hasAcceptanceFile = Boolean(String(po.vendorAcceptanceFileName || '').trim());
+  const [activeTab, setActiveTab] = useState<'details' | 'items' | 'response' | 'history'>(
+    completed ? 'response' : 'details'
+  );
+  const [openingFile, setOpeningFile] = useState(false);
+  const [fileError, setFileError] = useState('');
   const isWorkOrder = po.purchaseType === 'work_order';
 
   const openAcceptanceFile = async () => {
@@ -91,6 +95,24 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setFileError(err instanceof Error ? err.message : 'Could not open acceptance file');
+    } finally {
+      setOpeningFile(false);
+    }
+  };
+
+  const downloadAcceptanceFile = async () => {
+    setFileError('');
+    setOpeningFile(true);
+    try {
+      const blob = await accountsApi.fetchAuthFile(poApi.getVendorAcceptanceFileUrl(po.id));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = String(po.vendorAcceptanceFileName || `vendor-acceptance-${po.poNumber}`);
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : 'Could not download acceptance file');
     } finally {
       setOpeningFile(false);
     }
@@ -154,10 +176,14 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
 
           <div className="flex border-b border-gray-100 px-5 overflow-x-auto">
             {[
-              { key: 'details', label: 'PO Details', icon: 'ri-information-line' },
-              { key: 'items', label: 'Line Items', icon: 'ri-list-check-2' },
-              { key: 'response', label: 'Vendor Response', icon: 'ri-reply-line' },
-              { key: 'history', label: 'History', icon: 'ri-history-line' },
+              { key: 'details' as const, label: 'PO Details', icon: 'ri-information-line' },
+              { key: 'items' as const, label: 'Line Items', icon: 'ri-list-check-2' },
+              {
+                key: 'response' as const,
+                label: hasAcceptanceFile ? 'Vendor Response · File' : 'Vendor Response',
+                icon: 'ri-reply-line',
+              },
+              { key: 'history' as const, label: 'History', icon: 'ri-history-line' },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -355,22 +381,44 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                   <p className="text-xs text-gray-500 mb-1">Responded at</p>
                   <p className="font-medium">{po.vendorAcceptedAt || '—'}</p>
                 </div>
-                {po.vendorAcceptanceFileName ? (
-                  <div className="sm:col-span-2">
-                    {fileError ? (
-                      <p className="text-xs text-red-600 mb-2">{fileError}</p>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={openingFile}
-                      onClick={() => void openAcceptanceFile()}
-                      className="text-teal-700 text-sm font-semibold hover:underline disabled:opacity-50"
-                    >
-                      <i className="ri-attachment-2 mr-1"></i>
-                      {openingFile ? 'Opening…' : po.vendorAcceptanceFileName}
-                    </button>
+                {completed && (
+                  <div className="sm:col-span-2 rounded-xl border border-teal-200 bg-teal-50/60 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-2">
+                      Vendor acceptance file
+                    </p>
+                    {fileError ? <p className="text-xs text-red-600 mb-2">{fileError}</p> : null}
+                    {hasAcceptanceFile ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <i className="ri-file-pdf-2-line text-teal-700 text-lg shrink-0"></i>
+                          <span className="text-sm font-medium text-gray-900 truncate">
+                            {po.vendorAcceptanceFileName}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={openingFile}
+                          onClick={() => void openAcceptanceFile()}
+                          className="px-3 py-1.5 text-xs font-semibold border border-teal-300 text-teal-800 bg-white rounded-lg hover:bg-teal-50 disabled:opacity-50"
+                        >
+                          {openingFile ? 'Opening…' : 'Open'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={openingFile}
+                          onClick={() => void downloadAcceptanceFile()}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                        >
+                          Download
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-amber-800">
+                        Acceptance recorded, but no uploaded file is available for this PO.
+                      </p>
+                    )}
                   </div>
-                ) : null}
+                )}
               </div>
             )}
 
