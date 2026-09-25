@@ -1156,6 +1156,12 @@ export default function CreatePOPage() {
   const [showScmConfirm, setShowScmConfirm] = useState(false);
   const [managerModal, setManagerModal] = useState<'sendback' | 'reject' | null>(null);
   const [showBuyerSendBack, setShowBuyerSendBack] = useState(false);
+  const [showCancelPoModal, setShowCancelPoModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelFiles, setCancelFiles] = useState<File[]>([]);
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [cancelError, setCancelError] = useState('');
+  const cancelFileRef = useRef<HTMLInputElement>(null);
   const [scmManager, setScmManager] = useState<{ name: string; email: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'lineItems' | 'terms' | 'preview'>('details');
   const [draftSaved, setDraftSaved] = useState(false);
@@ -3804,6 +3810,51 @@ export default function CreatePOPage() {
     navigate('/scm/create-po');
   };
 
+  const activeCancelPoId = Number(editPoId || createdPoId || 0) || null;
+  const canCancelPo =
+    Boolean(activeCancelPoId) && String(poEditStatus || '').toLowerCase() !== 'cancelled';
+
+  const openCancelPoModal = () => {
+    setCancelReason('');
+    setCancelFiles([]);
+    setCancelError('');
+    setShowCancelPoModal(true);
+  };
+
+  const closeCancelPoModal = () => {
+    if (cancelSubmitting) return;
+    setShowCancelPoModal(false);
+    setCancelReason('');
+    setCancelFiles([]);
+    setCancelError('');
+  };
+
+  const submitCancelPo = async () => {
+    if (!activeCancelPoId) return;
+    const reason = cancelReason.trim();
+    if (reason.length < 5) {
+      setCancelError('Please enter cancellation reason (minimum 5 characters)');
+      return;
+    }
+    setCancelSubmitting(true);
+    setCancelError('');
+    try {
+      const attachments = await Promise.all(
+        cancelFiles.map(async (file) => {
+          const payload = await fileToAttachmentPayload(file);
+          return { fileName: payload.fileName, fileData: payload.data };
+        })
+      );
+      await poApi.cancel(activeCancelPoId, { reason, attachments });
+      closeCancelPoModal();
+      navigate(editReturnPath || '/scm/create-po');
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Failed to cancel PO');
+    } finally {
+      setCancelSubmitting(false);
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50/60">
@@ -3898,6 +3949,18 @@ export default function CreatePOPage() {
                     className="px-3.5 py-1.5 border border-gray-300 bg-white text-slate-800 rounded-md hover:bg-gray-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium disabled:opacity-50"
                   >
                     {submitting ? 'Saving...' : 'Save as Draft'}
+                  </button>
+                )}
+                {canCancelPo && (
+                  <button
+                    type="button"
+                    onClick={openCancelPoModal}
+                    disabled={submitting || cancelSubmitting}
+                    className="px-3.5 py-1.5 border border-rose-300 bg-white text-rose-700 rounded-md hover:bg-rose-50 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium disabled:opacity-50"
+                    title={`Cancel this ${docLabel}`}
+                  >
+                    <i className="ri-close-circle-line mr-1"></i>
+                    Cancel {docLabel === 'Work Order' ? 'WO' : 'PO'}
                   </button>
                 )}
                 <button
@@ -5456,6 +5519,110 @@ export default function CreatePOPage() {
           onClose={() => setShowBuyerSendBack(false)}
           onConfirm={handleBuyerSendBack}
         />
+      )}
+
+      {showCancelPoModal && activeCancelPoId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl w-full max-w-xl p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Cancel {docLabel === 'Work Order' ? 'Work Order' : 'Purchase Order'}
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {poNumber || `${docLabel} #${activeCancelPoId}`} will be moved to Cancelled status.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCancelPoModal}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+              >
+                <i className="ri-close-line text-lg"></i>
+              </button>
+            </div>
+
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Cancellation Reason *</label>
+            <textarea
+              rows={4}
+              value={cancelReason}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                setCancelError('');
+              }}
+              placeholder="Enter reason for cancellation..."
+              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+            />
+
+            <div className="mt-4">
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Additional Attachments</label>
+              <button
+                type="button"
+                onClick={() => cancelFileRef.current?.click()}
+                className="px-3 py-2 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                <i className="ri-upload-2-line mr-1"></i>
+                Add files
+              </button>
+              <input
+                ref={cancelFileRef}
+                type="file"
+                className="hidden"
+                multiple
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (!files?.length) return;
+                  setCancelFiles((prev) => [...prev, ...Array.from(files)].slice(0, 5));
+                }}
+              />
+              {cancelFiles.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {cancelFiles.map((file, idx) => (
+                    <div
+                      key={`${file.name}-${idx}`}
+                      className="flex items-center justify-between text-xs bg-gray-50 px-3 py-2 rounded-lg"
+                    >
+                      <span className="truncate pr-2">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setCancelFiles((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-rose-600 hover:text-rose-700"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {cancelError && (
+              <p className="mt-3 text-xs text-red-600 flex items-center gap-1">
+                <i className="ri-error-warning-line"></i>
+                {cancelError}
+              </p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2 border-t border-gray-100 pt-4">
+              <button
+                type="button"
+                onClick={closeCancelPoModal}
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+                disabled={cancelSubmitting}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitCancelPo()}
+                disabled={cancelSubmitting}
+                className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-50"
+              >
+                {cancelSubmitting ? 'Cancelling...' : 'Confirm Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Confirm: send to SCM Manager ── */}

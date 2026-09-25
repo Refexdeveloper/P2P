@@ -150,15 +150,9 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
   const [importPoNumber, setImportPoNumber] = useState('');
   const [importError, setImportError] = useState('');
   const [importChecking, setImportChecking] = useState(false);
-  const [cancelTarget, setCancelTarget] = useState<BucketRow | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
-  const [cancelFiles, setCancelFiles] = useState<File[]>([]);
-  const [cancelSubmitting, setCancelSubmitting] = useState(false);
-  const [cancelError, setCancelError] = useState('');
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [retrievingKey, setRetrievingKey] = useState<string | null>(null);
   const csvFileRef = useRef<HTMLInputElement>(null);
-  const cancelFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -392,64 +386,6 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
     } finally {
       setImportChecking(false);
       if (csvFileRef.current) csvFileRef.current.value = '';
-    }
-  };
-
-  const openCancelModal = (row: BucketRow) => {
-    setCancelTarget(row);
-    setCancelReason('');
-    setCancelFiles([]);
-    setCancelError('');
-  };
-
-  const closeCancelModal = () => {
-    if (cancelSubmitting) return;
-    setCancelTarget(null);
-    setCancelReason('');
-    setCancelFiles([]);
-    setCancelError('');
-  };
-
-  const handleCancelFileSelect = (files: FileList | null) => {
-    if (!files?.length) return;
-    setCancelFiles((prev) => [...prev, ...Array.from(files)].slice(0, 5));
-  };
-
-  const removeCancelFile = (idx: number) => {
-    setCancelFiles((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const fileToDataUrl = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
-      reader.readAsDataURL(file);
-    });
-
-  const submitCancellation = async () => {
-    if (!cancelTarget?.poId) return;
-    const reason = cancelReason.trim();
-    if (reason.length < 5) {
-      setCancelError('Please enter cancellation reason (minimum 5 characters)');
-      return;
-    }
-    setCancelSubmitting(true);
-    setCancelError('');
-    try {
-      const attachments = await Promise.all(
-        cancelFiles.map(async (file) => ({
-          fileName: file.name,
-          fileData: await fileToDataUrl(file),
-        }))
-      );
-      await poApi.cancel(cancelTarget.poId, { reason, attachments });
-      closeCancelModal();
-      await load();
-    } catch (err) {
-      setCancelError(err instanceof Error ? err.message : 'Failed to cancel PO');
-    } finally {
-      setCancelSubmitting(false);
     }
   };
 
@@ -734,15 +670,6 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                   View PDF
                                 </button>
                               )}
-                              {pr.poId && pr.status !== 'Cancelled' && (
-                                <button
-                                  type="button"
-                                  onClick={() => openCancelModal(pr)}
-                                  className="px-2.5 py-1.5 border border-rose-300 text-rose-700 rounded-md text-xs font-medium hover:bg-rose-50 whitespace-nowrap"
-                                >
-                                  Cancel PO
-                                </button>
-                              )}
                               {isSuperAdmin && (pr.poId || pr.prId > 0) && (
                                 <button
                                   type="button"
@@ -996,101 +923,6 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
               >
                 <i className="ri-shopping-cart-2-line"></i>
                 Create PO manually
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {cancelTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl w-full max-w-xl p-6 shadow-xl">
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Cancel Purchase Order</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  {cancelTarget.poNumber || 'PO'} will be moved to Cancelled status.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeCancelModal}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
-              >
-                <i className="ri-close-line text-lg"></i>
-              </button>
-            </div>
-
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Cancellation Reason *</label>
-            <textarea
-              rows={4}
-              value={cancelReason}
-              onChange={(e) => {
-                setCancelReason(e.target.value);
-                setCancelError('');
-              }}
-              placeholder="Enter reason for cancellation..."
-              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
-            />
-
-            <div className="mt-4">
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Additional Attachments</label>
-              <button
-                type="button"
-                onClick={() => cancelFileRef.current?.click()}
-                className="px-3 py-2 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                <i className="ri-upload-2-line mr-1"></i>
-                Add files
-              </button>
-              <input
-                ref={cancelFileRef}
-                type="file"
-                className="hidden"
-                multiple
-                onChange={(e) => handleCancelFileSelect(e.target.files)}
-              />
-              {cancelFiles.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {cancelFiles.map((file, idx) => (
-                    <div key={`${file.name}-${idx}`} className="flex items-center justify-between text-xs bg-gray-50 px-3 py-2 rounded-lg">
-                      <span className="truncate pr-2">{file.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeCancelFile(idx)}
-                        className="text-rose-600 hover:text-rose-700"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {cancelError && (
-              <p className="mt-3 text-xs text-red-600 flex items-center gap-1">
-                <i className="ri-error-warning-line"></i>
-                {cancelError}
-              </p>
-            )}
-
-            <div className="mt-5 flex justify-end gap-2 border-t border-gray-100 pt-4">
-              <button
-                type="button"
-                onClick={closeCancelModal}
-                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-                disabled={cancelSubmitting}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={submitCancellation}
-                disabled={cancelSubmitting}
-                className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-50"
-              >
-                {cancelSubmitting ? 'Cancelling...' : 'Confirm Cancel'}
               </button>
             </div>
           </div>
