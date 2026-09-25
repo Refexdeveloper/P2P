@@ -3862,33 +3862,33 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
 
   let parties = { emails: [], name: updated.requester || 'User' };
   if (sendPoReleaseMail) {
-    try {
-      parties = await collectRequesterAndApproverEmails(updated, {
-        excludeEmails: [updated.vendorEmail],
-      });
-    } catch (err) {
-      console.warn('Final-verify notify lookup failed:', err.message);
-    }
+  try {
+    parties = await collectRequesterAndApproverEmails(updated, {
+      excludeEmails: [updated.vendorEmail],
+    });
+  } catch (err) {
+    console.warn('Final-verify notify lookup failed:', err.message);
+  }
 
-    try {
-      const scmBuyers = await getScmBuyerNotifyEmails();
-      const scmManagers = await getScmManagerNotifyEmails();
-      const exclude = new Set(
-        [updated.vendorEmail, updated.vendor_email]
-          .map((e) => String(e || '').trim().toLowerCase())
-          .filter(Boolean)
+  try {
+    const scmBuyers = await getScmBuyerNotifyEmails();
+    const scmManagers = await getScmManagerNotifyEmails();
+    const exclude = new Set(
+      [updated.vendorEmail, updated.vendor_email]
+        .map((e) => String(e || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+    parties.emails = [...new Set([...parties.emails, ...scmBuyers, ...scmManagers])]
+      .map((e) => String(e || '').trim())
+      .filter(
+        (e) =>
+          e &&
+          e.includes('@') &&
+          !exclude.has(e.toLowerCase()) &&
+          !e.toLowerCase().endsWith('@imported.local')
       );
-      parties.emails = [...new Set([...parties.emails, ...scmBuyers, ...scmManagers])]
-        .map((e) => String(e || '').trim())
-        .filter(
-          (e) =>
-            e &&
-            e.includes('@') &&
-            !exclude.has(e.toLowerCase()) &&
-            !e.toLowerCase().endsWith('@imported.local')
-        );
-    } catch (err) {
-      console.warn('Final-verify SCM team lookup failed:', err.message);
+  } catch (err) {
+    console.warn('Final-verify SCM team lookup failed:', err.message);
     }
   }
 
@@ -4183,6 +4183,136 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
       // Create PO send-back: CC mapped SCM Manager (Rajeev) only — no ops BCC
       ccEmails: rajeevEmail ? [rajeevEmail] : [],
       bccOps: false,
+    });
+  }
+
+  queueApproverActionConfirmationForUser(updated, user, 'return', {
+    remarks: remarks.trim(),
+    approverRole: user.role,
+    ccEmails: [],
+  });
+
+  return updated;
+}
+
+const ADMIN_SEND_BACK_BUYER_VERIFY_STATUSES = [
+  'sent_to_vendor',
+  'awaiting_grn',
+  'grn_completed',
+  'invoice_entry',
+  'pending_accounts_approval',
+  'approved_for_payment',
+];
+
+async function clearPoFulfillmentForBuyerVerifyReset(poId) {
+  const id = Number(poId);
+  if (!id) return;
+
+  await pool.query(`DELETE FROM payments WHERE po_id = ?`, [id]).catch(() => {});
+  await pool.query(`DELETE FROM invoices WHERE po_id = ?`, [id]).catch(() => {});
+
+  const [grns] = await pool.query(`SELECT id FROM grn_headers WHERE po_id = ?`, [id]);
+  const grnIds = (grns || []).map((g) => Number(g.id)).filter((n) => n > 0);
+  if (grnIds.length) {
+    const ph = grnIds.map(() => '?').join(',');
+    const [grnLines] = await pool.query(
+      `SELECT id FROM grn_line_items WHERE grn_id IN (${ph})`,
+      grnIds
+    );
+    const lineIds = (grnLines || []).map((r) => Number(r.id)).filter((n) => n > 0);
+    if (lineIds.length) {
+      const lph = lineIds.map(() => '?').join(',');
+      await pool
+        .query(`DELETE FROM grn_line_attachments WHERE grn_line_item_id IN (${lph})`, lineIds)
+        .catch(() => {});
+    }
+    await pool.query(`DELETE FROM grn_line_items WHERE grn_id IN (${ph})`, grnIds);
+    await pool.query(`DELETE FROM grn_headers WHERE po_id = ?`, [id]);
+  }
+}
+
+/**
+ * Super Admin (Track PO): send PO back to SCM Buyer Final Verify from
+ * vendor acceptance / GRN / invoice steps. Clears acceptance + fulfillment
+ * so the Accept → GRN → Invoice path can run again after re-verify.
+ */
+export async function adminSendBackToBuyerVerify(user, poId, remarks) {
+  if (user.role !== 'Super Admin') {
+    throw new Error('Only Super Admin can send PO back to Buyer Verify from Track PO');
+  }
+  if (!remarks?.trim()) throw new Error('Send-back remarks are required');
+
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  const row = rows[0];
+  const status = String(row.status || '');
+  if (!ADMIN_SEND_BACK_BUYER_VERIFY_STATUSES.includes(status)) {
+    throw new Error(
+      'PO can only be sent back to Buyer Verify from vendor acceptance, GRN, or invoice stages'
+    );
+  }
+
+  await clearPoFulfillmentForBuyerVerifyReset(poId);
+
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'pending_buyer_verify',
+       vendor_acceptance_status = NULL,
+       vendor_acceptance_mode = NULL,
+       vendor_acceptance_remarks = NULL,
+       vendor_acceptance_file_name = NULL,
+       vendor_acceptance_file_path = NULL,
+       vendor_delivery_confirmed_date = NULL,
+       vendor_accepted_at = NULL,
+       vendor_notified_at = NULL,
+       updated_at = NOW()
+     WHERE id = ?`,
+    [poId]
+  );
+
+  if (row.pr_id) {
+    await pool.query(
+      `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+       WHERE pr_id = ? AND status = 'pending'
+         AND task_type IN ('PO_VENDOR_ACCEPTANCE', 'PO_BUYER_VERIFY', 'PO_REVISION')`,
+      [row.pr_id]
+    );
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 1);
+    await pool.query(
+      `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+       VALUES (?, 'PO_BUYER_VERIFY', 'SCM Buyer', ?, 'pending', ?)`,
+      [row.pr_id, null, dueDate.toISOString().split('T')[0]]
+    );
+
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_ADMIN_SENT_BACK_BUYER_VERIFY', ?, 'return', ?)`,
+      [
+        row.pr_id,
+        user.id,
+        `Admin sent back to Buyer Verify from ${status}: ${remarks.trim()}`,
+      ]
+    );
+  }
+
+  const updated = await getPurchaseOrderById(poId);
+  const buyerEmails = await getScmBuyerNotifyEmails();
+  const buyer = await resolveScmBuyerUser();
+  if (buyerEmails.length) {
+    queuePoWorkflowNotification(updated, {
+      action: 'sendback',
+      stageLabel: 'Approved PO verification — Sent Back by Admin',
+      recipientEmails: buyerEmails,
+      recipientName: buyer?.name || 'SCM Buyer',
+      actorName: user.name,
+      actorRole: user.role,
+      remarks: remarks.trim(),
+      portalUrl: poPortalUrl('/scm/buyer-final-verify'),
+      ctaLabel: 'Open Buyer Verify',
+      bccOps: false,
+      notifyWhatsApp: false,
     });
   }
 

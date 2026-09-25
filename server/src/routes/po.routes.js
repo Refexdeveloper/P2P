@@ -16,6 +16,7 @@ import {
   signPurchaseOrder,
   rejectPurchaseOrder,
   sendBackPurchaseOrder,
+  adminSendBackToBuyerVerify,
   cancelPurchaseOrder,
   retrieveCancelledPurchaseOrder,
   finalVerifyPurchaseOrder,
@@ -751,6 +752,19 @@ router.post('/:id/send-back', requireRoles('SCM Manager', 'Super Admin'), async 
     res.json({
       data,
       message: 'PO sent back to SCM Buyer for revision — edit on Create PO, then save to send to Rajeev (SCM Manager)',
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Super Admin Track PO: send back to Buyer Verify from acceptance / GRN / invoice */
+router.post('/:id/admin/send-back-buyer-verify', requireRoles('Super Admin'), async (req, res) => {
+  try {
+    const data = await adminSendBackToBuyerVerify(req.user, Number(req.params.id), req.body?.remarks);
+    res.json({
+      data,
+      message: 'PO sent back to Approved PO verification (Buyer Verify)',
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

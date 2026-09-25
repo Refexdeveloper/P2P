@@ -1242,6 +1242,12 @@ export const poApi = {
       method: 'POST',
       body: JSON.stringify({ remarks }),
     }),
+  /** Super Admin: Track PO — send back to Buyer Verify from acceptance/GRN/invoice */
+  adminSendBackToBuyerVerify: (poId: number, remarks: string) =>
+    request<{ data: unknown; message: string }>(`/api/po/${poId}/admin/send-back-buyer-verify`, {
+      method: 'POST',
+      body: JSON.stringify({ remarks }),
+    }),
   cancel: (
     poId: number,
     body: {

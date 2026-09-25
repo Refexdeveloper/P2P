@@ -9,6 +9,11 @@ interface POApprovalModalProps {
   grandTotal: number;
   onConfirm: (remarks: string, signature?: SignaturePayload) => void | Promise<void>;
   onClose: () => void;
+  /** Optional override for send-back copy (e.g. admin → Buyer Verify) */
+  sendBackTitle?: string;
+  sendBackHint?: string;
+  sendBackPlaceholder?: string;
+  sendBackConfirmLabel?: string;
 }
 
 export default function POApprovalModal({
@@ -19,6 +24,10 @@ export default function POApprovalModal({
   grandTotal,
   onConfirm,
   onClose,
+  sendBackTitle,
+  sendBackHint,
+  sendBackPlaceholder,
+  sendBackConfirmLabel,
 }: POApprovalModalProps) {
   const [remarks, setRemarks] = useState('');
   const [signature, setSignature] = useState<SignaturePayload | null>(null);
@@ -87,13 +96,18 @@ export default function POApprovalModal({
             </div>
             <div>
               <h3 className={`text-base font-bold ${isApprove ? 'text-emerald-900' : isSendBack ? 'text-orange-900' : 'text-red-900'}`}>
-                {isApprove ? 'Sign & Approve Purchase Order' : isSendBack ? 'Send Back Purchase Order' : 'Reject Purchase Order'}
+                {isApprove
+                  ? 'Sign & Approve Purchase Order'
+                  : isSendBack
+                    ? sendBackTitle || 'Send Back Purchase Order'
+                    : 'Reject Purchase Order'}
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 {isApprove
                   ? 'Confirm to sign the PO. Next step is SCM Buyer Final Verify — vendor mail is not sent now.'
                   : isSendBack
-                    ? 'PO returns to SCM Buyer as draft so they can revise and resubmit for sign'
+                    ? sendBackHint ||
+                      'PO returns to SCM Buyer as draft so they can revise and resubmit for sign'
                     : 'This action cannot be undone'}
               </p>
             </div>
@@ -129,7 +143,8 @@ export default function POApprovalModal({
                 isApprove
                   ? 'Enter approval comments (shown on signed PDF and in email)...'
                   : isSendBack
-                    ? 'Tell the buyer what to correct before resubmitting...'
+                    ? sendBackPlaceholder ||
+                      'Tell the buyer what to correct before resubmitting...'
                     : 'Please provide reason for rejection...'
               }
               rows={3}
@@ -163,7 +178,13 @@ export default function POApprovalModal({
             }`}
           >
             <i className={isApprove ? 'ri-check-double-line' : isSendBack ? 'ri-arrow-go-back-line' : 'ri-close-circle-line'} />
-            {submitting ? 'Processing...' : isApprove ? 'Confirm' : isSendBack ? 'Send Back to Buyer' : 'Confirm Reject'}
+            {submitting
+              ? 'Processing...'
+              : isApprove
+                ? 'Confirm'
+                : isSendBack
+                  ? sendBackConfirmLabel || 'Send Back to Buyer'
+                  : 'Confirm Reject'}
           </button>
         </div>
       </div>

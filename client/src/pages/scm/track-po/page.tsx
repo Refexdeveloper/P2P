@@ -26,6 +26,7 @@ type TrackRow = {
   amount: number;
   status: string;
   statusLabel: string;
+  statusRaw?: string;
   purchaseType?: string;
   purchaseTypeLabel?: string;
   entityId?: number | null;
@@ -35,6 +36,23 @@ type TrackRow = {
   createdAt: string;
   kind: 'ready' | 'po';
 };
+
+const ADMIN_BUYER_VERIFY_SEND_BACK_RAW = new Set([
+  'sent_to_vendor',
+  'awaiting_grn',
+  'grn_completed',
+  'invoice_entry',
+  'pending_accounts_approval',
+  'approved_for_payment',
+]);
+
+function canAdminSendBackToBuyerVerify(row: TrackRow): boolean {
+  if (!row.poId) return false;
+  const raw = String(row.statusRaw || '').toLowerCase();
+  if (raw && ADMIN_BUYER_VERIFY_SEND_BACK_RAW.has(raw)) return true;
+  // Fallback mapped status from track list
+  return ['sent', 'grn', 'invoice', 'payment'].includes(String(row.status || '').toLowerCase());
+}
 
 type TrackPagination = {
   page: number;
@@ -245,6 +263,7 @@ export default function TrackPoPage() {
     poNumber: string;
     title: string;
     amount: number;
+    mode: 'pending_sign' | 'buyer_verify';
   } | null>(null);
 
   useEffect(() => {
@@ -462,20 +481,29 @@ export default function TrackPoPage() {
     navigate(`/scm/create-po?poId=${poId}&from=track-po`);
   };
 
-  const openSendBack = (row: TrackRow) => {
+  const openSendBack = (row: TrackRow, mode: 'pending_sign' | 'buyer_verify' = 'pending_sign') => {
     if (!row.poId) return;
     setSendBackModal({
       poId: row.poId,
       poNumber: String(row.poNumber || `PO #${row.poId}`),
       title: String(row.title || row.vendorName || ''),
       amount: Number(row.amount) || 0,
+      mode,
     });
   };
 
   const handleTrackSendBack = async (remarks: string) => {
     if (!sendBackModal) return;
-    const res = await poApi.sendBack(sendBackModal.poId, remarks);
-    setToast(res.message || `${sendBackModal.poNumber} sent back to SCM Buyer for revision`);
+    if (sendBackModal.mode === 'buyer_verify') {
+      const res = await poApi.adminSendBackToBuyerVerify(sendBackModal.poId, remarks);
+      setToast(
+        res.message ||
+          `${sendBackModal.poNumber} sent back to Buyer Verify (Approved PO verification)`
+      );
+    } else {
+      const res = await poApi.sendBack(sendBackModal.poId, remarks);
+      setToast(res.message || `${sendBackModal.poNumber} sent back to SCM Buyer for revision`);
+    }
     setTimeout(() => setToast(''), 4000);
     setSendBackModal(null);
     setExpandedKey(null);
@@ -820,12 +848,23 @@ export default function TrackPoPage() {
                               {canSendBackPending && row.poId && row.status === 'pending' && (
                                 <button
                                   type="button"
-                                  onClick={() => openSendBack(row)}
+                                  onClick={() => openSendBack(row, 'pending_sign')}
                                   className="px-2.5 py-1.5 border border-orange-300 text-orange-700 rounded-md text-xs font-semibold hover:bg-orange-50 whitespace-nowrap"
                                   title="Send back to SCM Buyer Create PO as draft"
                                 >
                                   <i className="ri-arrow-go-back-line mr-1"></i>
                                   Send Back
+                                </button>
+                              )}
+                              {isSuperAdmin && canAdminSendBackToBuyerVerify(row) && (
+                                <button
+                                  type="button"
+                                  onClick={() => openSendBack(row, 'buyer_verify')}
+                                  className="px-2.5 py-1.5 border border-amber-400 text-amber-800 rounded-md text-xs font-semibold hover:bg-amber-50 whitespace-nowrap"
+                                  title="Send back to Approved PO verification (Buyer Verify). Clears vendor acceptance, GRN, and invoice for this PO."
+                                >
+                                  <i className="ri-arrow-go-back-line mr-1"></i>
+                                  To Buyer Verify
                                 </button>
                               )}
                               {isAdminEditor &&
@@ -1046,6 +1085,15 @@ export default function TrackPoPage() {
           grandTotal={sendBackModal.amount}
           onConfirm={handleTrackSendBack}
           onClose={() => setSendBackModal(null)}
+          {...(sendBackModal.mode === 'buyer_verify'
+            ? {
+                sendBackTitle: 'Send Back to Buyer Verify',
+                sendBackHint:
+                  'Returns this PO to Approved PO verification. Clears vendor acceptance, GRN, and invoice so the flow can restart after re-verify.',
+                sendBackPlaceholder: 'Why send this PO back to Buyer Verify?',
+                sendBackConfirmLabel: 'Send to Buyer Verify',
+              }
+            : {})}
         />
       )}
     </DashboardLayout>
