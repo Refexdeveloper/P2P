@@ -3824,10 +3824,9 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
 
   const verifyRemarks =
     remarks?.trim() || 'Final verified by SCM Buyer';
-  const isWo = isWorkOrderPo(rows[0]);
   const token = rows[0].vendor_acceptance_token || newVendorAcceptanceToken();
 
-  if (isWo) {
+  // PO and WO both go to vendor acceptance first; PO → awaiting_grn only after accept
   await pool.query(
     `UPDATE purchase_orders SET
        status = 'sent_to_vendor',
@@ -3839,19 +3838,6 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
      WHERE id = ?`,
     [token, poId]
   );
-  } else {
-    await pool.query(
-      `UPDATE purchase_orders SET
-         status = 'awaiting_grn',
-         vendor_acceptance_status = NULL,
-         vendor_acceptance_token = ?,
-         vendor_acceptance_mode = NULL,
-         vendor_notified_at = NULL,
-         updated_at = NOW()
-       WHERE id = ?`,
-      [token, poId]
-    );
-  }
 
   await pool.query(
     `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
@@ -3940,13 +3926,11 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
     approverRole: user.role,
   });
 
-  // Next-step task mail (GRN / Vendor Acceptance) — requester only, no L1 / SCM Manager release CC
+  // Next-step: Vendor Acceptance (requester only). After accept → GRN → Invoice (PO).
   if (rows[0].pr_id) {
     const requesterId = await getPoRequesterId(rows[0]);
     if (requesterId) {
-      if (isWo) {
-        await upsertVendorAcceptanceTask(rows[0].pr_id, requesterId);
-      }
+      await upsertVendorAcceptanceTask(rows[0].pr_id, requesterId);
       try {
         const [reqRows] = await pool.query(
           `SELECT u.email, u.name FROM users u WHERE u.id = ? LIMIT 1`,
@@ -3956,14 +3940,14 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
         if (reqUser?.email) {
           queuePoWorkflowNotification(updated, {
             action: 'assign',
-            stageLabel: isWo ? 'Vendor PO Acceptance' : 'GRN — Goods Receipt',
+            stageLabel: 'Vendor PO Acceptance',
             recipientEmails: [reqUser.email],
             recipientName: reqUser.name || updated.requester || 'Requester',
             actorName: user.name,
             actorRole: user.role,
             remarks: verifyRemarks,
-            portalUrl: poPortalUrl(isWo ? '/requester/vendor-po-acceptance' : '/grn'),
-            ctaLabel: isWo ? 'Open Vendor Acceptance' : 'Open GRN',
+            portalUrl: poPortalUrl('/requester/vendor-po-acceptance'),
+            ctaLabel: 'Open Vendor Acceptance',
             bccOps: false,
             notifyWhatsApp: false,
             // Signed PO PDF only on Own-vendor release mail — not on this next-step assign
@@ -4866,6 +4850,7 @@ function isWorkOrderPo(row) {
 
 function resolveStatusAfterVendorAcceptance(poRow, acceptanceStatus) {
   if (!['accepted', 'partial'].includes(acceptanceStatus)) return poRow.status;
+  // Work Orders skip GRN → invoice entry. Purchase Orders → GRN, then invoice after GRN submit.
   if (isWorkOrderPo(poRow)) return 'invoice_entry';
   if (
     ['invoice_entry', 'pending_accounts_approval', 'approved_for_payment', 'paid'].includes(
@@ -4877,7 +4862,45 @@ function resolveStatusAfterVendorAcceptance(poRow, acceptanceStatus) {
   return 'awaiting_grn';
 }
 
-/** After GRN + invoice upload on a PO, open vendor acceptance for the requester. */
+/** After vendor accepts: PO → GRN next; WO → Invoice next. */
+async function notifyPostVendorAcceptanceNextStep(poRow, acceptanceStatus, actor = {}) {
+  if (!['accepted', 'partial'].includes(acceptanceStatus)) return;
+  if (!poRow?.pr_id) return;
+  const requesterId = await getPoRequesterId(poRow);
+  if (!requesterId) return;
+  try {
+    const updated = await getPurchaseOrderById(poRow.id);
+    const [reqRows] = await pool.query(
+      `SELECT u.email, u.name FROM users u WHERE u.id = ? LIMIT 1`,
+      [requesterId]
+    );
+    const reqUser = reqRows[0];
+    if (!reqUser?.email) return;
+    const isWo = isWorkOrderPo(poRow);
+    queuePoWorkflowNotification(updated, {
+      action: 'assign',
+      stageLabel: isWo ? 'Vendor Invoice' : 'GRN — Goods Receipt',
+      recipientEmails: [reqUser.email],
+      recipientName: reqUser.name || updated.requester || 'Requester',
+      actorName: actor.name || 'System',
+      actorRole: actor.role || 'System',
+      remarks: isWo
+        ? 'Vendor acceptance recorded — proceed to invoice entry'
+        : 'Vendor acceptance recorded — proceed to GRN, then invoice',
+      portalUrl: poPortalUrl(isWo ? '/requester/vendor-invoice' : '/grn'),
+      ctaLabel: isWo ? 'Open Invoice' : 'Open GRN',
+      bccOps: false,
+      notifyWhatsApp: false,
+    });
+  } catch (err) {
+    console.warn('Post vendor-acceptance next-step notify failed:', err.message);
+  }
+}
+
+/**
+ * Legacy helper — acceptance now runs before GRN.
+ * No-op if acceptance already finished; never move a PO backward from GRN/invoice.
+ */
 export async function openVendorAcceptanceStageForPo(poId) {
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) return null;
@@ -4885,16 +4908,28 @@ export async function openVendorAcceptanceStageForPo(poId) {
   if (isWorkOrderPo(row)) return null;
   const pt = String(row.purchase_type || '').toLowerCase();
   if (pt === 'sass' || pt === 'saas' || pt === 'cloud_subscription') return null;
-  const vaStatus = row.vendor_acceptance_status;
+  const vaStatus = String(row.vendor_acceptance_status || '').toLowerCase();
   if (vaStatus && vaStatus !== 'pending') return null;
+  // Do not reopen acceptance after GRN / invoice — flow is Accept → GRN → Invoice
+  if (
+    [
+      'awaiting_grn',
+      'grn_completed',
+      'invoice_entry',
+      'pending_accounts_approval',
+      'approved_for_payment',
+      'paid',
+    ].includes(String(row.status || ''))
+  ) {
+    return null;
+  }
+  if (row.status !== 'sent_to_vendor') return null;
 
   const token = row.vendor_acceptance_token || newVendorAcceptanceToken();
   await pool.query(
     `UPDATE purchase_orders SET
-       status = 'sent_to_vendor',
        vendor_acceptance_status = 'pending',
        vendor_acceptance_token = ?,
-       vendor_notified_at = NULL,
        updated_at = NOW()
      WHERE id = ?`,
     [token, poId]
@@ -4904,31 +4939,6 @@ export async function openVendorAcceptanceStageForPo(poId) {
     const requesterId = await getPoRequesterId(row);
     if (requesterId) {
       await upsertVendorAcceptanceTask(row.pr_id, requesterId);
-      try {
-        const updated = await getPurchaseOrderById(poId);
-        const [reqRows] = await pool.query(
-          `SELECT u.email, u.name FROM users u WHERE u.id = ? LIMIT 1`,
-          [requesterId]
-        );
-        const reqUser = reqRows[0];
-        if (reqUser?.email) {
-          queuePoWorkflowNotification(updated, {
-            action: 'assign',
-            stageLabel: 'Vendor PO Acceptance',
-            recipientEmails: [reqUser.email],
-            recipientName: reqUser.name || updated.requester || 'Requester',
-            actorName: 'System',
-            actorRole: 'System',
-            remarks: 'Invoice uploaded — record vendor PO acceptance',
-            portalUrl: poPortalUrl('/requester/vendor-po-acceptance'),
-            ctaLabel: 'Open Vendor Acceptance',
-            bccOps: false,
-            notifyWhatsApp: false,
-          });
-        }
-      } catch (err) {
-        console.warn('Vendor acceptance open notify failed:', err.message);
-      }
     }
   }
 
@@ -5168,6 +5178,11 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
     await completeVendorAcceptanceTask(row.pr_id);
   }
 
+  await notifyPostVendorAcceptanceNextStep(row, acceptanceStatus, {
+    name: user.name,
+    role: user.role,
+  });
+
   return getPurchaseOrderById(poId);
 }
 
@@ -5266,6 +5281,11 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
     );
     await completeVendorAcceptanceTask(row.pr_id);
   }
+
+  await notifyPostVendorAcceptanceNextStep(row, acceptanceStatus, {
+    name: 'Vendor',
+    role: 'Vendor',
+  });
 
   return getVendorAcceptanceByToken(clean);
 }

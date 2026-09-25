@@ -177,6 +177,18 @@ function isVendorAcceptanceFinished(po: Record<string, unknown> | null): boolean
   return false;
 }
 
+/** Show Vendor Acceptance tab while pending or after response (PO/WO tracker). */
+function shouldShowVendorAcceptanceTab(
+  po: Record<string, unknown> | null,
+  statusRaw: unknown
+): boolean {
+  if (!po) return false;
+  if (isVendorAcceptanceFinished(po)) return true;
+  const va = String(po.vendorAcceptanceStatus || '').toLowerCase();
+  if (va === 'pending') return true;
+  return String(statusRaw || '').toLowerCase() === 'sent_to_vendor';
+}
+
 type FulfillmentGrn = {
   id: number;
   grnNumber?: string;
@@ -582,7 +594,9 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
 
   const showFulfillmentTabs =
     Boolean(row.poId) && isPoPastApproval(po?.statusRaw, row.statusLabel);
-  const showAcceptanceTab = showFulfillmentTabs && isVendorAcceptanceFinished(po);
+  const showAcceptanceTab =
+    showFulfillmentTabs && shouldShowVendorAcceptanceTab(po, po?.statusRaw);
+  const acceptanceFinished = isVendorAcceptanceFinished(po);
   const showGrnTab = showFulfillmentTabs && Boolean(grn);
   const showInvoiceTab = showFulfillmentTabs && Boolean(invoice);
 
@@ -618,11 +632,16 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
   }, [row.poId, row.prId]);
 
   useEffect(() => {
-    if (!loading && showAcceptanceTab && !acceptanceTabAutoOpened.current) {
+    if (
+      !loading &&
+      showAcceptanceTab &&
+      acceptanceFinished &&
+      !acceptanceTabAutoOpened.current
+    ) {
       acceptanceTabAutoOpened.current = true;
       setTab('acceptance');
     }
-  }, [loading, showAcceptanceTab]);
+  }, [loading, showAcceptanceTab, acceptanceFinished]);
 
   const handleOpenFile = async (doc: DocRow) => {
     if (!doc.url) {
@@ -922,15 +941,26 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                     className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${
                       String(po?.vendorAcceptanceStatus || '').toLowerCase() === 'rejected'
                         ? 'bg-red-100 text-red-700'
-                        : 'bg-emerald-100 text-emerald-700'
+                        : acceptanceFinished
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-amber-100 text-amber-800'
                     }`}
                   >
-                    {String(po?.vendorAcceptanceStatus || 'Recorded').replace(/_/g, ' ')}
+                    {String(
+                      po?.vendorAcceptanceStatus || (acceptanceFinished ? 'Recorded' : 'pending')
+                    ).replace(/_/g, ' ')}
                   </span>
                   {po?.vendorAcceptanceMode ? (
                     <span className="text-xs text-gray-500">via {String(po.vendorAcceptanceMode)}</span>
                   ) : null}
                 </div>
+                {!acceptanceFinished ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Awaiting vendor acceptance. Record it from{' '}
+                    <span className="font-semibold">Vendor PO Acceptance</span>. After accept:
+                    GRN, then Invoice.
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <FieldCard label="Accepted / responded at" value={String(po?.vendorAcceptedAt || '—')} />
                   <FieldCard
@@ -989,7 +1019,11 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                       </button>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">No acceptance file uploaded for this PO / WO.</p>
+                    <p className="text-sm text-gray-500">
+                      {acceptanceFinished
+                        ? 'No acceptance file uploaded for this PO / WO.'
+                        : 'No acceptance file yet — upload when recording acceptance.'}
+                    </p>
                   )}
                 </div>
               </div>

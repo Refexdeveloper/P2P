@@ -644,6 +644,40 @@ export async function submitGrn(user, body) {
 
     await conn.commit();
 
+    // Next step after GRN: invoice entry
+    try {
+      const { queuePoWorkflowNotification } = await import('./emailService.js');
+      const { getPurchaseOrderById } = await import('./poService.js');
+      const updatedPo = await getPurchaseOrderById(poId);
+      if (po.pr_id) {
+        const [reqRows] = await pool.query(
+          `SELECT u.email, u.name FROM users u
+           JOIN purchase_requests pr ON pr.requester_id = u.id
+           WHERE pr.id = ? LIMIT 1`,
+          [po.pr_id]
+        );
+        const reqUser = reqRows[0];
+        if (reqUser?.email) {
+          const base = getWhatsAppPublicBaseUrl().replace(/\/$/, '');
+          queuePoWorkflowNotification(updatedPo, {
+            action: 'assign',
+            stageLabel: 'Vendor Invoice',
+            recipientEmails: [reqUser.email],
+            recipientName: reqUser.name || updatedPo.requester || 'Requester',
+            actorName: user.name,
+            actorRole: user.role,
+            remarks: `GRN ${grnNumber} submitted — proceed to invoice entry`,
+            portalUrl: `${base}/requester/vendor-invoice`,
+            ctaLabel: 'Open Invoice',
+            bccOps: false,
+            notifyWhatsApp: false,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Post-GRN invoice notify failed:', err.message);
+    }
+
     return {
       grnId,
       grnNumber,
@@ -815,19 +849,7 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
     [inv.po_id]
   );
 
-  try {
-    const { isSassPurchaseType } = await import('./sassWorkflow.js');
-    const [poTypeRows] = await pool.query(`SELECT purchase_type FROM purchase_orders WHERE id = ?`, [
-      inv.po_id,
-    ]);
-    const skipVendorAcceptance = isSassPurchaseType(poTypeRows[0]?.purchase_type);
-    if (!skipVendorAcceptance) {
-      const { openVendorAcceptanceStageForPo } = await import('./poService.js');
-      await openVendorAcceptanceStageForPo(inv.po_id);
-    }
-  } catch (err) {
-    console.warn('Open vendor acceptance after invoice upload failed:', err.message);
-  }
+  // Acceptance runs before GRN — do not reopen vendor acceptance after invoice upload.
 
   try {
     const {
