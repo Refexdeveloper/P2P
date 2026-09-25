@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { poApi, rfqApi, taskApi, PostRfqPendingItem, ScmRfqEntryItem } from '../../../services/api';
+import { poApi, rfqApi, PostRfqPendingItem, ScmRfqEntryItem } from '../../../services/api';
 import { finalizeGoPo, rfqEntryPath } from '../../../utils/scmGoPo';
 
 type DashTask = {
@@ -13,29 +13,6 @@ type DashTask = {
   title: string;
   path: string;
 };
-
-function isPendingStatus(status: string) {
-  const s = String(status || '').toLowerCase();
-  return s === 'pending_approval' || s === 'pending' || s.includes('pending');
-}
-
-function isCreatePoTask(t: Record<string, unknown>) {
-  const path = String(t.actionPath || '').toLowerCase();
-  const ui = String(t.statusUI || '').toLowerCase();
-  return (
-    Boolean(t.isPoRevise) ||
-    path.includes('/scm/create-po') ||
-    ui.includes('pending scm po') ||
-    ui.includes('ready for po') ||
-    ui.includes('revise po')
-  );
-}
-
-function isBuyerVerifyTask(t: Record<string, unknown>) {
-  const path = String(t.actionPath || '').toLowerCase();
-  const ui = String(t.statusUI || '').toLowerCase();
-  return path.includes('/scm/buyer-final-verify') || ui.includes('buyer verify') || ui.includes('final verify');
-}
 
 export default function SCMPurchaseRequestsPage() {
   const navigate = useNavigate();
@@ -49,11 +26,11 @@ export default function SCMPurchaseRequestsPage() {
 
   const loadQueues = useCallback(async () => {
     try {
-      const [rfqRes, entryRes, taskRes, readyRes, verifyRes, acceptRes] = await Promise.all([
+      // Skip full taskApi.list (enrichPR N+1) — ready / verify / acceptance cover dashboard cards
+      const [rfqRes, entryRes, readyRes, verifyRes, acceptRes] = await Promise.all([
         rfqApi.listPostApprovalPending().catch(() => ({ data: [] as PostRfqPendingItem[] })),
         rfqApi.listScmEntryPending().catch(() => ({ data: [] as ScmRfqEntryItem[] })),
-        taskApi.list().catch(() => ({ data: [] as unknown[] })),
-        poApi.listTrack({ page: 1, limit: 100, status: 'ready' }).catch(() => ({ data: [] })),
+        poApi.listTrack({ page: 1, limit: 50, status: 'ready' }).catch(() => ({ data: [] })),
         poApi.listPendingBuyerVerify().catch(() => ({ data: [] as unknown[] })),
         poApi.listVendorAcceptance().catch(() => ({ data: [] as unknown[] })),
       ]);
@@ -63,46 +40,10 @@ export default function SCMPurchaseRequestsPage() {
       const createMap = new Map<string, DashTask>();
       const verifyMap = new Map<string, DashTask>();
 
-      ((taskRes.data as Array<Record<string, unknown>>) || []).forEach((t) => {
-        if (!isPendingStatus(String(t.status || t.statusUI || ''))) return;
-        if (isBuyerVerifyTask(t)) {
-          const poId = Number(t.poId || t.taskId) || 0;
-          verifyMap.set(`verify-${poId || t.id}`, {
-            id: `verify-${poId || t.id}`,
-            kind: 'buyer_verify',
-            prId: Number(t.prId) || undefined,
-            poId: poId || undefined,
-            number: String(t.prNumber || t.poNumber || 'PO'),
-            title: String(t.title || 'Approved PO verification'),
-            path: '/scm/buyer-final-verify',
-          });
-          return;
-        }
-        if (isCreatePoTask(t)) {
-          const prId = Number(t.prId) || 0;
-          const poId = Number(t.poId) || 0;
-          const path = poId
-            ? `/scm/create-po?poId=${poId}&from=dashboard`
-            : prId
-              ? `/scm/create-po?prId=${prId}&from=dashboard`
-              : '/scm/create-po';
-          createMap.set(`create-${poId || prId || t.id}`, {
-            id: `create-${poId || prId || t.id}`,
-            kind: 'create_po',
-            prId: prId || undefined,
-            poId: poId || undefined,
-            number: String(t.prNumber || t.poNumber || 'PR'),
-            title: String(t.title || 'Create PO'),
-            path,
-          });
-        }
-      });
-
       ((readyRes.data as Array<Record<string, unknown>>) || []).forEach((r) => {
         const prId = Number(r.prId) || 0;
         if (!prId) return;
         const key = `create-${prId}`;
-        if (createMap.has(key)) return;
         createMap.set(key, {
           id: key,
           kind: 'create_po',
@@ -117,7 +58,6 @@ export default function SCMPurchaseRequestsPage() {
         const poId = Number(p.id) || 0;
         if (!poId) return;
         const key = `verify-${poId}`;
-        if (verifyMap.has(key)) return;
         verifyMap.set(key, {
           id: key,
           kind: 'buyer_verify',

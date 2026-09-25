@@ -189,6 +189,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
         limit: pageSize,
         search: debouncedSearch || undefined,
         status: mapUiFilterToApi(statusFilter),
+        includeStats: true,
       });
       setRows(mapTrackRows(res.data as Array<Record<string, unknown>>));
       if (res.pagination) {

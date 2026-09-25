@@ -1012,6 +1012,186 @@ async function enrichPO(row) {
   };
 }
 
+/** Fast list enrichment: batch PR / lines / creators / history — no per-row enrichPR or vendor fuzzy. */
+async function enrichPOListBatch(rows) {
+  if (!rows.length) return [];
+
+  const poIds = rows.map((r) => r.id);
+  const prIds = [...new Set(rows.map((r) => r.pr_id).filter(Boolean))];
+  const creatorIds = [...new Set(rows.map((r) => r.created_by).filter(Boolean))];
+
+  const prById = new Map();
+  if (prIds.length) {
+    const ph = prIds.map(() => '?').join(',');
+    const [prRows] = await pool.query(
+      `SELECT pr.id, pr.pr_number, pr.title, pr.priority, pr.purchase_type,
+              d.name AS department_name, u.name AS requester_name
+       FROM purchase_requests pr
+       LEFT JOIN departments d ON d.id = pr.department_id
+       LEFT JOIN users u ON u.id = pr.requester_id
+       WHERE pr.id IN (${ph})`,
+      prIds
+    );
+    for (const p of prRows) prById.set(Number(p.id), p);
+  }
+
+  const linesByPo = new Map();
+  {
+    const ph = poIds.map(() => '?').join(',');
+    const [lineRows] = await pool.query(
+      `SELECT id, po_id, item_name, description, category, hsn_sac, quantity, uom,
+              unit_price, discount, tax_percentage, total
+       FROM po_line_items WHERE po_id IN (${ph}) ORDER BY id ASC`,
+      poIds
+    );
+    for (const li of lineRows) {
+      const pid = Number(li.po_id);
+      if (!linesByPo.has(pid)) linesByPo.set(pid, []);
+      linesByPo.get(pid).push({
+        id: String(li.id),
+        itemName: li.item_name || '',
+        description: li.description || '',
+        category: li.category || '',
+        hsnSac: li.hsn_sac || '',
+        quantity: Number(li.quantity),
+        uom: li.uom || '',
+        unitPrice: Number(li.unit_price),
+        discount: Number(li.discount) || 0,
+        taxPercentage: Number(li.tax_percentage) || 0,
+        total: Number(li.total),
+      });
+    }
+  }
+
+  const creatorById = new Map();
+  if (creatorIds.length) {
+    const ph = creatorIds.map(() => '?').join(',');
+    const [users] = await pool.query(
+      `SELECT id, name, role FROM users WHERE id IN (${ph})`,
+      creatorIds
+    );
+    for (const u of users) creatorById.set(Number(u.id), u);
+  }
+
+  const historyByPr = new Map();
+  if (prIds.length) {
+    const ph = prIds.map(() => '?').join(',');
+    const [approvalRows] = await pool.query(
+      `SELECT pa.pr_id, pa.stage, pa.action, pa.remarks, pa.created_at,
+              u.name AS approver_name, u.role AS approver_role
+       FROM pr_approvals pa
+       LEFT JOIN users u ON u.id = pa.approver_id
+       WHERE pa.pr_id IN (${ph})
+       ORDER BY pa.created_at ASC`,
+      prIds
+    );
+    for (const r of approvalRows) {
+      const prid = Number(r.pr_id);
+      if (!historyByPr.has(prid)) historyByPr.set(prid, []);
+      historyByPr.get(prid).push({
+        stage: formatApprovalStage(r.stage),
+        approver: r.approver_name || 'System',
+        role: r.approver_role || formatApprovalStage(r.stage),
+        action: mapApprovalAction(r.action),
+        date: formatDateTime(r.created_at),
+        remarks: r.remarks || '',
+      });
+    }
+  }
+
+  return rows.map((row) => {
+    const pr = prById.get(Number(row.pr_id)) || null;
+    const creator = creatorById.get(Number(row.created_by)) || {};
+    const purchaseType = row.purchase_type || pr?.purchase_type || 'purchase_order';
+    const quoteMerged = mergeQuoteNoIntoPoContent(
+      parseClauseJson(row.terms_clauses),
+      normalizePoTermsDetails(row.po_terms_details)
+    );
+    return {
+      id: row.id,
+      poNumber: row.po_number,
+      referencePoNumber: row.reference_po_number || '',
+      prId: row.pr_id,
+      prNumber: pr?.pr_number || '',
+      prTitle: pr?.title || '',
+      department: pr?.department_name || '',
+      requester: pr?.requester_name || '',
+      vendorName: row.vendor_name || '',
+      vendorEmail: row.vendor_email || '',
+      vendorAddress: '',
+      vendorGst: '',
+      vendorPan: '',
+      vendorPhone: '',
+      deliveryAddress: row.delivery_address,
+      expectedDeliveryDate: formatDate(row.expected_delivery_date),
+      poDate: formatDate(row.po_date) || formatDate(row.created_at),
+      paymentTerms: row.payment_terms,
+      incoterms: row.incoterms,
+      modeOfShipment: quoteMerged.poTermsDetails?.modeOfShipment || '',
+      specialInstructions: row.special_instructions || '',
+      poType: row.po_type || 'short_po',
+      purchaseType,
+      purchaseTypeLabel: purchaseTypeLabel(purchaseType),
+      letterheadHeader: row.letterhead_header || '',
+      letterheadId: row.letterhead_id || null,
+      entityId: row.entity_id || null,
+      entity: row.entity || '',
+      headerLogo: row.header_logo || '',
+      footerLogo: row.footer_logo || '',
+      termsClauses: quoteMerged.terms,
+      annexureClauses: parseClauseJson(row.annexure_clauses),
+      annexureIiHtml: row.annexure_ii_html || '',
+      annexureIiRows: parseAnnexureIi(row.annexure_ii_html || ''),
+      poTermsDetails: quoteMerged.poTermsDetails,
+      gstPercentage: Number(row.gst_percentage),
+      currency: normalizeCurrency(row.currency),
+      subtotal: Number(row.subtotal),
+      taxAmount: Number(row.tax_amount),
+      grandTotal: Number(row.grand_total),
+      status: mapPoStatusUI(row.status, row.vendor_acceptance_status, purchaseType),
+      statusRaw: row.status,
+      vendorAcceptanceStatus: row.vendor_acceptance_status || null,
+      vendorAcceptanceMode: row.vendor_acceptance_mode || null,
+      vendorAcceptanceRemarks: row.vendor_acceptance_remarks || '',
+      vendorAcceptanceFileName: row.vendor_acceptance_file_name || '',
+      vendorAcceptanceFilePath: row.vendor_acceptance_file_path || '',
+      vendorDeliveryConfirmedDate: row.vendor_delivery_confirmed_date
+        ? formatDate(row.vendor_delivery_confirmed_date)
+        : null,
+      vendorAcceptedAt: row.vendor_accepted_at ? formatDateTime(row.vendor_accepted_at) : null,
+      vendorNotifiedAt: row.vendor_notified_at ? formatDateTime(row.vendor_notified_at) : null,
+      pdfPath: row.pdf_path,
+      signedPdfPath: row.signed_pdf_path,
+      signatureName: row.signature_name,
+      signatureImagePath: row.signature_image_path || null,
+      signatureImageDataUrl:
+        row.signed_at || row.signature_image_path || row.signed_pdf_path || row.signature_image_data
+          ? buildSignatureRenderOptions({
+              signatureName: row.signature_name,
+              signatureImagePath: row.signature_image_path,
+              signatureImageData: row.signature_image_data,
+              signatureDsc: parseSignatureDsc(row.signature_dsc_json),
+              signedAt: row.signed_at,
+              signedPdfPath: row.signed_pdf_path,
+              signerComments: row.signer_comments,
+            })?.imageDataUrl || null
+          : null,
+      signatureDsc: parseSignatureDsc(row.signature_dsc_json),
+      signerComments: row.signer_comments,
+      signedAt: row.signed_at ? formatDateTime(row.signed_at) : null,
+      createdAt: formatDate(row.created_at),
+      updatedAt: row.updated_at ? formatDateTime(row.updated_at) : null,
+      updatedAtMs: row.updated_at ? new Date(row.updated_at).getTime() : 0,
+      createdByUserId: row.created_by || null,
+      createdBy: creator.name || 'SCM Buyer',
+      createdByRole: creator.role || 'SCM Buyer',
+      approvalHistory: historyByPr.get(Number(row.pr_id)) || [],
+      lineItems: linesByPo.get(Number(row.id)) || [],
+      priority: String(pr?.priority || 'medium').toLowerCase(),
+    };
+  });
+}
+
 function mapPoStatusUI(status, acceptanceStatus, purchaseType) {
   if (status === 'sent_to_vendor') {
     if (acceptanceStatus === 'accepted') return 'Vendor Accepted';
@@ -2936,7 +3116,7 @@ export async function listPurchaseOrders(
     END,
     po.created_at DESC`;
   const [rows] = await pool.query(sql, params);
-  return Promise.all(rows.map(enrichPO));
+  return enrichPOListBatch(rows);
 }
 
 function mapTrackPoStatus(statusRaw, purchaseType) {
@@ -2981,6 +3161,7 @@ export async function listTrackPurchaseOrders(
     category,
     dateFrom,
     dateTo,
+    includeStats = false,
   } = {}
 ) {
   const pageSize = Math.min(100, Math.max(1, Number(limit) || 10));
@@ -3193,10 +3374,23 @@ export async function listTrackPurchaseOrders(
 
   const listParams = [...baseParams, ...filterParams];
 
-  const [[countRows], stats] = await Promise.all([
-    pool.query(`SELECT COUNT(*) AS cnt FROM (${unionSql}) t ${whereExtra}`, listParams),
-    getTrackListStats(user),
-  ]);
+  const countPromise = pool.query(
+    `SELECT COUNT(*) AS cnt FROM (${unionSql}) t ${whereExtra}`,
+    listParams
+  );
+  const statsPromise = includeStats
+    ? getTrackListStats(user)
+    : Promise.resolve({
+        total: 0,
+        ready: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        draft: 0,
+        cancelled: 0,
+      });
+
+  const [[countRows], stats] = await Promise.all([countPromise, statsPromise]);
 
   const total = Number(countRows[0]?.cnt || 0);
   const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
@@ -5127,10 +5321,11 @@ export async function listVendorAcceptancePOs(user) {
       WHEN 'rejected' THEN 3
       ELSE 4
     END,
-    po.updated_at DESC`;
+    po.updated_at DESC
+    LIMIT 200`;
 
   const [rows] = await pool.query(sql, params);
-  return Promise.all(rows.map(enrichPO));
+  return enrichPOListBatch(rows);
 }
 
 async function assertVendorAcceptancePending(poId) {

@@ -265,6 +265,7 @@ export default function TrackPoPage() {
     amount: number;
     mode: 'pending_sign' | 'buyer_verify';
   } | null>(null);
+  const mastersLoadedRef = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -306,6 +307,35 @@ export default function TrackPoPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Defer filter masters until after first list paint (don't compete with /api/po/track)
+  useEffect(() => {
+    if (loading || mastersLoadedRef.current) return;
+    mastersLoadedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [entRes, deptRes, catRes] = await Promise.all([
+          masterApi.listEntities({ status: 'active' }),
+          masterApi.listDepartments({ status: 'active' }),
+          masterApi.listCategories({ status: 'active' }),
+        ]);
+        if (cancelled) return;
+        setEntities(entRes.data || []);
+        setDepartments(deptRes.data || []);
+        setCategories(catRes.data || []);
+      } catch {
+        if (!cancelled) {
+          setEntities([]);
+          setDepartments([]);
+          setCategories([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading]);
 
   const handleAdminDelete = async (row: TrackRow) => {
     if (!isSuperAdmin) return;
@@ -349,25 +379,6 @@ export default function TrackPoPage() {
       }
     }
   };
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [entRes, deptRes, catRes] = await Promise.all([
-          masterApi.listEntities({ status: 'active' }),
-          masterApi.listDepartments({ status: 'active' }),
-          masterApi.listCategories({ status: 'active' }),
-        ]);
-        setEntities(entRes.data || []);
-        setDepartments(deptRes.data || []);
-        setCategories(catRes.data || []);
-      } catch {
-        setEntities([]);
-        setDepartments([]);
-        setCategories([]);
-      }
-    })();
-  }, []);
 
   const resetFilters = () => {
     setSearch('');

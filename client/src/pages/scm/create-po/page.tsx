@@ -1029,6 +1029,8 @@ export default function CreatePOPage() {
     !isEditMode &&
     !numericPrId &&
     (searchParams.get('manual') === '1' || searchParams.get('mode') === 'manual-no-pr');
+  /** Landing: only PurchaseRequestsPanel — skip create-form masters until real create/edit */
+  const needsCreateForm = Boolean(numericPrId || isEditMode || isManualMode);
   const [manualPoNoPr, setManualPoNoPr] = useState(
     searchParams.get('manual') === '1' || searchParams.get('mode') === 'manual-no-pr'
   );
@@ -1452,6 +1454,7 @@ export default function CreatePOPage() {
   );
 
   useEffect(() => {
+    if (!needsCreateForm) return;
     let cancelled = false;
     (async () => {
       try {
@@ -1475,9 +1478,10 @@ export default function CreatePOPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [needsCreateForm]);
 
   useEffect(() => {
+    if (!needsCreateForm) return;
     let cancelled = false;
     (async () => {
       try {
@@ -1490,7 +1494,7 @@ export default function CreatePOPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [needsCreateForm]);
 
   useEffect(() => {
     if (!masterVendors.length) return;
@@ -1534,6 +1538,7 @@ export default function CreatePOPage() {
   ]);
 
   useEffect(() => {
+    if (!needsCreateForm) return;
     let cancelled = false;
     (async () => {
       try {
@@ -1552,7 +1557,7 @@ export default function CreatePOPage() {
     return () => {
       cancelled = true;
     };
-  }, [isEditMode, isManualMode, applyLetterheadBranding]);
+  }, [needsCreateForm, isEditMode, isManualMode, applyLetterheadBranding]);
 
   /** Keep logos/entity in sync with Letterhead Master when id is set (do not reset location pick). */
   useEffect(() => {
@@ -1705,6 +1710,7 @@ export default function CreatePOPage() {
   }, []);
 
   useEffect(() => {
+    if (!needsCreateForm) return;
     let cancelled = false;
     (async () => {
       try {
@@ -1724,7 +1730,7 @@ export default function CreatePOPage() {
       window.removeEventListener('focus', loadEntityOptions);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [loadEntityOptions]);
+  }, [needsCreateForm, loadEntityOptions]);
 
   // After entity master loads, keep edit-mode selection label populated
   useEffect(() => {
@@ -1816,6 +1822,7 @@ export default function CreatePOPage() {
   }, [documentType, poType]);
 
   useEffect(() => {
+    if (!needsCreateForm) return;
     let cancelled = false;
     (async () => {
       try {
@@ -1835,7 +1842,7 @@ export default function CreatePOPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [needsCreateForm]);
 
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;

@@ -978,6 +978,8 @@ export const poApi = {
     category?: string;
     dateFrom?: string;
     dateTo?: string;
+    /** Workspace KPI cards only — track-po / dashboard skip this */
+    includeStats?: boolean;
   }) => {
     const query = new URLSearchParams();
     if (params?.page != null) query.set('page', String(params.page));
@@ -992,6 +994,7 @@ export const poApi = {
     if (params?.category) query.set('category', params.category);
     if (params?.dateFrom) query.set('dateFrom', params.dateFrom);
     if (params?.dateTo) query.set('dateTo', params.dateTo);
+    if (params?.includeStats) query.set('includeStats', '1');
     const qs = query.toString();
     return request<{
       data: Array<{
@@ -1024,6 +1027,8 @@ export const poApi = {
         pending: number;
         approved: number;
         rejected: number;
+        draft?: number;
+        cancelled?: number;
       };
     }>(`/api/po/track${qs ? `?${qs}` : ''}`);
   },

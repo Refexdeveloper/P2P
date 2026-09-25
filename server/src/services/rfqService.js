@@ -17,6 +17,7 @@ import {
   STAGE,
   getPostRfqRoleConfig,
   POST_RFQ_ROLE_MAP,
+  mapStatusToManagerUI,
 } from '../utils/constants.js';
 import {
   getL1ManagerForEmail,
@@ -3050,83 +3051,140 @@ export async function listPostRfqPending(user) {
   }
 
   const rows = [...idSet].map((id) => ({ id }));
-
   const candidateIds = rows.map((r) => r.id);
+  if (!candidateIds.length) return [];
+
   const quoteAmountByPr = await getRecommendedQuotedAmounts(candidateIds);
+  const idPh = candidateIds.map(() => '?').join(',');
+
+  const [[prRows], [poStatusAll], [taskRows], [cfgRows], [vendorCounts], [recVendors]] =
+    await Promise.all([
+      pool.query(
+        `SELECT pr.id, pr.pr_number, pr.title, pr.status, pr.pr_flow, pr.vendor_selection,
+                pr.purchase_type, pr.request_type, pr.priority, pr.total_amount,
+                pr.submitted_at, pr.created_at, pr.entity_id,
+                d.name AS department_name, u.name AS requester_name,
+                e.name AS entity_name, e.code AS entity_code
+         FROM purchase_requests pr
+         LEFT JOIN departments d ON d.id = pr.department_id
+         LEFT JOIN users u ON u.id = pr.requester_id
+         LEFT JOIN entities e ON e.id = pr.entity_id
+         WHERE pr.id IN (${idPh})`,
+        candidateIds
+      ),
+      pool.query(
+        `SELECT pr_id, status FROM purchase_orders WHERE pr_id IN (${idPh})`,
+        candidateIds
+      ),
+      pool.query(
+        `SELECT wt.pr_id, wt.assigned_role, wt.assigned_user_id
+         FROM workflow_tasks wt
+         INNER JOIN (
+           SELECT pr_id, MAX(id) AS max_id
+           FROM workflow_tasks
+           WHERE pr_id IN (${idPh}) AND task_type = 'RFQ_POST_APPROVAL' AND status = 'pending'
+           GROUP BY pr_id
+         ) latest ON latest.max_id = wt.id`,
+        candidateIds
+      ),
+      pool.query(
+        `SELECT pr_id, recommended_invitation_id FROM rfq_configs WHERE pr_id IN (${idPh})`,
+        candidateIds
+      ),
+      pool.query(
+        `SELECT pr_id, COUNT(*) AS cnt FROM rfq_invitations WHERE pr_id IN (${idPh}) GROUP BY pr_id`,
+        candidateIds
+      ),
+      pool.query(
+        `SELECT rc.pr_id, ri.vendor_name
+         FROM rfq_configs rc
+         JOIN rfq_invitations ri ON ri.id = rc.recommended_invitation_id
+         WHERE rc.pr_id IN (${idPh}) AND rc.recommended_invitation_id IS NOT NULL`,
+        candidateIds
+      ),
+    ]);
+
+  const prById = new Map(prRows.map((p) => [Number(p.id), p]));
+  const poByPr = new Map();
+  for (const p of poStatusAll) {
+    const prid = Number(p.pr_id);
+    if (!poByPr.has(prid)) poByPr.set(prid, []);
+    poByPr.get(prid).push(p);
+  }
+  const taskByPr = new Map(taskRows.map((t) => [Number(t.pr_id), t]));
+  const vendorCountByPr = new Map(vendorCounts.map((v) => [Number(v.pr_id), Number(v.cnt) || 0]));
+  const recVendorByPr = new Map(recVendors.map((v) => [Number(v.pr_id), v.vendor_name || '']));
+  // Ensure rfq_configs exist only when missing (rare) — avoid getOrCreate in hot path
+  const cfgPrIds = new Set(cfgRows.map((c) => Number(c.pr_id)));
 
   const results = [];
   for (const row of rows) {
-    const pr = await getPurchaseRequestById(row.id);
-    if (!pr) continue;
+    const raw = prById.get(Number(row.id));
+    if (!raw) continue;
 
-    // Cancelled / closed POs must not stay in RFQ Approvals or Create-PO queues
-    const [poStatusRows] = await pool.query(
-      `SELECT status FROM purchase_orders WHERE pr_id = ?`,
-      [row.id]
-    );
+    const poStatusRows = poByPr.get(Number(row.id)) || [];
     const hasCancelledPo = poStatusRows.some((p) => String(p.status) === 'cancelled');
     const hasOpenPo = poStatusRows.some(
       (p) => !['cancelled', 'rejected'].includes(String(p.status || '').toLowerCase())
     );
     if (hasCancelledPo && !hasOpenPo) continue;
 
-    const pendingTask = await getPendingPostRfqTask(row.id);
+    const pendingTask = taskByPr.get(Number(row.id)) || null;
     const roleConfig = getPostRfqRoleConfig(pendingTask?.assigned_role || user.role);
     if (!roleConfig) continue;
 
-    // Normal match: PR status equals this role's queue status
-    const statusMatches = pr.status === roleConfig.status;
-    // Orphan Buyer Create-PO items incorrectly left as APPROVED with no PO
+    const prStatus = raw.status;
+    const statusMatches = prStatus === roleConfig.status;
     const buyerOrphan =
       user.role === 'SCM Buyer' &&
-      pr.status === PR_STATUS.APPROVED &&
+      prStatus === PR_STATUS.APPROVED &&
       !poStatusRows.length &&
       (roleConfig.status === PR_STATUS.PENDING_SCM_PO || !pendingTask);
-    // Buyer also tracks RFQs still pending SCM Manager vendor approval
     const buyerPendingManager =
-      user.role === 'SCM Buyer' && pr.status === PR_STATUS.PENDING_BUSINESS_APPROVAL;
+      user.role === 'SCM Buyer' && prStatus === PR_STATUS.PENDING_BUSINESS_APPROVAL;
     if (!statusMatches && !buyerOrphan && !buyerPendingManager) continue;
 
+    if (!cfgPrIds.has(Number(row.id))) {
+      try {
+        await getOrCreateRfqConfig(row.id);
+      } catch {
+        /* non-fatal for list */
+      }
+    }
+
     const approvalState =
-      pr.status === PR_STATUS.PENDING_BUSINESS_APPROVAL ? 'pending' : 'approved';
+      prStatus === PR_STATUS.PENDING_BUSINESS_APPROVAL ? 'pending' : 'approved';
     const stageLabel = buyerPendingManager
       ? 'Pending SCM Manager Approval'
       : buyerOrphan
         ? 'Approved — Create PO'
         : roleConfig.label;
 
-    const config = await getOrCreateRfqConfig(row.id);
-    const [vendorCount] = await pool.query(
-      `SELECT COUNT(*) AS cnt FROM rfq_invitations WHERE pr_id = ?`,
-      [row.id]
-    );
-    let recommendedVendor = '';
-    if (config.recommendedInvitationId) {
-      const [inv] = await pool.query(`SELECT vendor_name FROM rfq_invitations WHERE id = ?`, [
-        config.recommendedInvitationId,
-      ]);
-      recommendedVendor = inv[0]?.vendor_name || '';
-    }
-    const recommendedQuote = quoteAmountByPr.get(Number(pr.id));
+    const recommendedQuote = quoteAmountByPr.get(Number(raw.id));
     results.push({
-      prId: pr.id,
-      prNumber: pr.prNumber,
-      title: pr.title,
-      department: pr.department,
-      entityId: pr.entityId || null,
-      entityName: pr.entityName || '',
-      entityCode: pr.entityCode || '',
-      requester: pr.requester,
+      prId: Number(raw.id),
+      prNumber: raw.pr_number,
+      title: raw.title,
+      department: raw.department_name || '',
+      entityId: raw.entity_id || null,
+      entityName: raw.entity_name || '',
+      entityCode: raw.entity_code || '',
+      requester: raw.requester_name || '',
       totalAmount:
         recommendedQuote != null && recommendedQuote > 0
           ? recommendedQuote
-          : Number(pr.totalAmount) || 0,
-      requestType: pr.requestType,
-      priority: pr.priority,
-      status: pr.statusUI,
-      submittedDate: pr.submittedDate,
-      vendorCount: vendorCount[0].cnt,
-      recommendedVendor,
+          : Number(raw.total_amount) || 0,
+      requestType: raw.request_type,
+      priority: raw.priority,
+      status: mapStatusToManagerUI(
+        raw.status,
+        raw.pr_flow,
+        raw.vendor_selection,
+        raw.purchase_type
+      ),
+      submittedDate: formatDate(raw.submitted_at || raw.created_at),
+      vendorCount: vendorCountByPr.get(Number(raw.id)) || 0,
+      recommendedVendor: recVendorByPr.get(Number(raw.id)) || '',
       stageLabel,
       approvalState,
     });

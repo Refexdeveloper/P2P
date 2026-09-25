@@ -504,6 +504,10 @@ router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), as
     const category = typeof req.query.category === 'string' ? req.query.category : '';
     const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom : '';
     const dateTo = typeof req.query.dateTo === 'string' ? req.query.dateTo : '';
+    const includeStats =
+      req.query.includeStats === '1' ||
+      req.query.includeStats === 'true' ||
+      req.query.includeStats === true;
     const result = await listTrackPurchaseOrders(req.user, {
       page: Number.isFinite(page) ? page : 1,
       limit: Number.isFinite(limit) ? limit : 10,
@@ -515,6 +519,7 @@ router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), as
       category,
       dateFrom,
       dateTo,
+      includeStats,
     });
     res.json(result);
   } catch (err) {
