@@ -14,6 +14,11 @@ export type ManualPrDetails = {
   justification: string;
   requestType: string;
   priority: string;
+  plantId?: number | null;
+  plantCode?: string;
+  plantName?: string;
+  plantBillingLocation?: string;
+  plantSiteAddress?: string;
 };
 
 export type ManualVendorQuoteRow = {
@@ -215,6 +220,11 @@ export function hydrateManualPrDetailsFromStored(
     justification: String(prDetails?.justification || ''),
     requestType: String(prDetails?.requestType || 'Opex'),
     priority: String(prDetails?.priority || 'Medium'),
+    plantId: prDetails?.plantId != null ? Number(prDetails.plantId) || null : null,
+    plantCode: String(prDetails?.plantCode || ''),
+    plantName: String(prDetails?.plantName || ''),
+    plantBillingLocation: String(prDetails?.plantBillingLocation || ''),
+    plantSiteAddress: String(prDetails?.plantSiteAddress || ''),
   };
 }
 

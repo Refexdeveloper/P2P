@@ -429,13 +429,16 @@ router.post('/projects/import', canManageProjects, async (req, res) => {
 router.post('/projects/chat-create', canQuickCreateFromPr, async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim();
-    if (!name) throw new Error('Project name is required');
+    if (!name) throw new Error('Plant name is required');
     const data = await createProject({
       name,
+      code: req.body?.code || '',
+      billingLocation: req.body?.billingLocation || '',
+      siteAddress: req.body?.siteAddress || '',
       description: req.body?.description || '',
       status: 'active',
     });
-    res.status(201).json({ data, message: 'Project created successfully' });
+    res.status(201).json({ data, message: 'Plant created successfully' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -447,7 +450,7 @@ router.post(
   async (req, res) => {
     try {
       const data = await createProject(req.body);
-      res.json({ data, message: 'Project created successfully' });
+      res.json({ data, message: 'Plant created successfully' });
     } catch (err) {
       res.status(400).json({ message: err.message });
     }
@@ -457,7 +460,7 @@ router.post(
 router.put('/projects/:id', canManageProjects, async (req, res) => {
   try {
     const data = await updateProject(Number(req.params.id), req.body);
-    res.json({ data, message: 'Project updated successfully' });
+    res.json({ data, message: 'Plant updated successfully' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

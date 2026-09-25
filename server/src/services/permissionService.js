@@ -78,7 +78,7 @@ export const NAV_ITEMS = [
   { code: 'nav.category_master', label: 'Category Master', path: '/scm/category-master', icon: 'ri-price-tag-3-line', group: 'Masters', sort: 202 },
   { code: 'nav.entity_master', label: 'Entity Master', path: '/scm/entity-master', icon: 'ri-building-2-line', group: 'Masters', sort: 205 },
   { code: 'nav.department_master', label: 'Department Master', path: '/scm/department-master', icon: 'ri-organization-chart', group: 'Masters', sort: 206 },
-  { code: 'nav.project_master', label: 'Project Master', path: '/scm/project-master', icon: 'ri-folder-chart-line', group: 'Masters', sort: 207 },
+  { code: 'nav.project_master', label: 'Plant Master', path: '/scm/plant-master', icon: 'ri-building-4-line', group: 'Masters', sort: 207 },
   { code: 'nav.po_letterhead_master', label: 'PO Type Master', path: '/scm/po-type-master', icon: 'ri-file-list-3-line', group: 'Masters', sort: 203 },
   { code: 'nav.letterhead_master', label: 'Letterhead Master', path: '/scm/letterhead-master', icon: 'ri-layout-top-2-line', group: 'Masters', sort: 204 },
   { code: 'nav.vendor_quotation', label: 'Vendor Quotation Portal', path: '/scm/vendor-quotation-portal', icon: 'ri-price-tag-3-line', group: 'SCM', sort: 66 },

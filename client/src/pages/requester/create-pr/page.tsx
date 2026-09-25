@@ -3132,10 +3132,10 @@ export default function CreatePRPage() {
               )}
             </div>
 
-            {/* Project Detail */}
+            {/* Plant */}
             <div data-field="projectDetail">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Project Detail
+                Plant
               </label>
               <ProjectCombobox
                 projects={projects}

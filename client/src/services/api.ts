@@ -1356,6 +1356,8 @@ export interface LetterheadLocationRecord {
   location: string;
   gstNo: string;
   billingAddress?: string;
+  siteAddress?: string;
+  siteAddresses?: string[];
   footerLogo: string;
   sortOrder?: number;
 }
@@ -1600,7 +1602,10 @@ export interface DepartmentRecord {
 export interface ProjectRecord {
   id: number;
   name: string;
+  code?: string;
   description: string;
+  billingLocation?: string;
+  siteAddress?: string;
   status: string;
 }
 
@@ -1725,7 +1730,7 @@ export const masterApi = {
     const qs = q.toString();
     return request<{ data: ProjectRecord[] }>(`/api/masters/projects${qs ? `?${qs}` : ''}`);
   },
-  chatCreateProject: (body: { name: string; description?: string }) =>
+  chatCreateProject: (body: { name: string; description?: string; code?: string }) =>
     request<{ data: ProjectRecord; message: string }>('/api/masters/projects/chat-create', {
       method: 'POST',
       body: JSON.stringify(body),

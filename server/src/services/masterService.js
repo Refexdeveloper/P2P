@@ -109,19 +109,41 @@ function mapProject(row) {
   return {
     id: row.id,
     name: row.name,
+    code: row.code || '',
     description: row.description || '',
+    billingLocation: row.billing_location || '',
+    siteAddress: row.site_address || '',
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
+function normalizePlantPayload(body = {}, existing = {}) {
+  const name = String(body.name || body.plantName || existing.name || '').trim();
+  const code = String(body.code || body.plantCode || existing.code || '').trim();
+  const billingLocation = String(
+    body.billingLocation || body.billing_location || existing.billing_location || existing.billingLocation || ''
+  ).trim();
+  const siteAddress = String(
+    body.siteAddress || body.site_address || existing.site_address || existing.siteAddress || ''
+  ).trim();
+  const description = String(body.description || existing.description || billingLocation || '').trim();
+  const status =
+    body.status !== undefined
+      ? body.status === 'inactive'
+        ? 'inactive'
+        : 'active'
+      : existing.status || 'active';
+  return { name, code, billingLocation, siteAddress, description, status };
+}
+
 export async function listProjects({ search, status } = {}) {
   let sql = `SELECT * FROM project_masters WHERE 1=1`;
   const params = [];
   if (search) {
-    sql += ` AND (name LIKE ? OR description LIKE ?)`;
-    params.push(`%${search}%`, `%${search}%`);
+    sql += ` AND (name LIKE ? OR code LIKE ? OR billing_location LIKE ? OR site_address LIKE ? OR description LIKE ?)`;
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
   if (status) {
     sql += ` AND status = ?`;
@@ -133,20 +155,26 @@ export async function listProjects({ search, status } = {}) {
 }
 
 export async function createProject(body) {
-  const name = String(body.name || '').trim();
-  if (!name) throw new Error('Project name is required');
-  const description = String(body.description || '').trim();
-  const status = body.status === 'inactive' ? 'inactive' : 'active';
+  const payload = normalizePlantPayload(body);
+  if (!payload.name) throw new Error('Plant name is required');
   try {
     const [result] = await pool.query(
-      `INSERT INTO project_masters (name, description, status) VALUES (?, ?, ?)`,
-      [name, description || null, status]
+      `INSERT INTO project_masters (name, code, description, billing_location, site_address, status)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        payload.name,
+        payload.code || null,
+        payload.description || null,
+        payload.billingLocation || null,
+        payload.siteAddress || null,
+        payload.status,
+      ]
     );
     const [rows] = await pool.query(`SELECT * FROM project_masters WHERE id = ?`, [result.insertId]);
     return mapProject(rows[0]);
   } catch (err) {
     if (String(err.message || '').includes('Duplicate')) {
-      throw new Error('Project name already exists');
+      throw new Error('Plant name already exists');
     }
     throw err;
   }
@@ -154,25 +182,27 @@ export async function createProject(body) {
 
 export async function updateProject(id, body) {
   const [existing] = await pool.query(`SELECT * FROM project_masters WHERE id = ?`, [id]);
-  if (!existing.length) throw new Error('Project not found');
-  const name = body.name !== undefined ? String(body.name || '').trim() : existing[0].name;
-  if (!name) throw new Error('Project name is required');
-  const description =
-    body.description !== undefined ? String(body.description || '').trim() : existing[0].description;
-  const status =
-    body.status !== undefined
-      ? body.status === 'inactive'
-        ? 'inactive'
-        : 'active'
-      : existing[0].status;
+  if (!existing.length) throw new Error('Plant not found');
+  const payload = normalizePlantPayload(body, existing[0]);
+  if (!payload.name) throw new Error('Plant name is required');
   try {
     await pool.query(
-      `UPDATE project_masters SET name = ?, description = ?, status = ?, updated_at = NOW() WHERE id = ?`,
-      [name, description || null, status, id]
+      `UPDATE project_masters
+       SET name = ?, code = ?, description = ?, billing_location = ?, site_address = ?, status = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [
+        payload.name,
+        payload.code || null,
+        payload.description || null,
+        payload.billingLocation || null,
+        payload.siteAddress || null,
+        payload.status,
+        id,
+      ]
     );
   } catch (err) {
     if (String(err.message || '').includes('Duplicate')) {
-      throw new Error('Project name already exists');
+      throw new Error('Plant name already exists');
     }
     throw err;
   }
@@ -180,15 +210,17 @@ export async function updateProject(id, body) {
   return mapProject(rows[0]);
 }
 
-const PROJECT_HEADERS = ['name', 'description', 'status'];
+const PROJECT_HEADERS = ['plant_code', 'plant_name', 'billing_location', 'site_address', 'status'];
 
 export async function exportProjectsCsv() {
   const rows = await listProjects();
   return rowsToCsv(
     PROJECT_HEADERS,
     rows.map((r) => ({
-      name: r.name,
-      description: r.description,
+      plant_code: r.code,
+      plant_name: r.name,
+      billing_location: r.billingLocation,
+      site_address: r.siteAddress,
       status: r.status,
     }))
   );
@@ -197,13 +229,17 @@ export async function exportProjectsCsv() {
 export function getProjectImportTemplateCsv() {
   return rowsToCsv(PROJECT_HEADERS, [
     {
-      name: 'RMC Plant Upgrade',
-      description: 'Ready-mix plant capacity upgrade at Hosur',
+      plant_code: 'PLT-HOS',
+      plant_name: 'Hosur Plant',
+      billing_location: 'Hosur',
+      site_address: 'SIPCOT Industrial Area, Hosur',
       status: 'active',
     },
     {
-      name: 'Site Office Fit-out',
-      description: 'Interior and IT setup for new site office',
+      plant_code: 'PLT-CHN',
+      plant_name: 'Chennai Plant',
+      billing_location: 'Chennai',
+      site_address: 'Ambattur Industrial Estate, Chennai',
       status: 'active',
     },
   ]);
@@ -220,15 +256,24 @@ export async function importProjectsFromCsv(csvText) {
   for (let i = 0; i < parsed.length; i++) {
     const rowNum = i + 2;
     const mapped = normalizeHeaderKey(parsed[i], {
-      name: ['name', 'project', 'projectname', 'project_name'],
+      name: ['plant_name', 'plantname', 'name', 'project', 'projectname', 'project_name'],
+      code: ['plant_code', 'plantcode', 'code'],
+      billingLocation: ['billing_location', 'billinglocation', 'billing'],
+      siteAddress: ['site_address', 'siteaddress', 'site'],
       description: ['description', 'desc', 'projectdescription', 'project_description'],
       status: ['status'],
     });
     try {
-      if (!mapped.name) throw new Error('name is required');
-      const [existing] = await pool.query(`SELECT id FROM project_masters WHERE name = ?`, [mapped.name]);
+      if (!mapped.name) throw new Error('plant_name is required');
+      const [existing] = await pool.query(
+        `SELECT id FROM project_masters WHERE name = ? OR (? <> '' AND code = ?) LIMIT 1`,
+        [mapped.name, mapped.code || '', mapped.code || '']
+      );
       const payload = {
         name: mapped.name,
+        code: mapped.code || '',
+        billingLocation: mapped.billingLocation || '',
+        siteAddress: mapped.siteAddress || '',
         description: mapped.description || '',
         status: mapped.status === 'inactive' ? 'inactive' : 'active',
       };

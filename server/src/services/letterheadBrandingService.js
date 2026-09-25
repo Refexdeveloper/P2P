@@ -1,11 +1,38 @@
 import pool from '../config/db.js';
 
+function parseSiteAddresses(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((s) => String(s || '').trim()).filter(Boolean))];
+  }
+  if (value == null) return [];
+  if (typeof value === 'object') {
+    return parseSiteAddresses(Object.values(value));
+  }
+  const raw = String(value).trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) || (parsed && typeof parsed === 'object')) {
+      return parseSiteAddresses(parsed);
+    }
+  } catch {
+    /* plain text */
+  }
+  return raw
+    .split(/\r?\n|;|\|/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function mapLocation(row) {
+  const siteAddresses = parseSiteAddresses(row.site_addresses || row.site_address);
   return {
     id: row.id,
     location: row.location || '',
     gstNo: row.gst_no || '',
     billingAddress: row.billing_address || '',
+    siteAddresses,
+    siteAddress: siteAddresses[0] || '',
     sortOrder: Number(row.sort_order || 0),
   };
 }
@@ -40,6 +67,9 @@ function normalizeLocations(payload = {}) {
           .trim()
           .toUpperCase(),
         billingAddress: String(l?.billingAddress || l?.billing_address || '').trim(),
+        siteAddresses: parseSiteAddresses(
+          l?.siteAddresses || l?.site_addresses || l?.siteAddress || l?.site_address
+        ),
         sortOrder: idx,
       }))
       .filter((l) => l.location);
@@ -50,9 +80,12 @@ function normalizeLocations(payload = {}) {
     .trim()
     .toUpperCase();
   const billingAddress = String(payload.billingAddress || payload.billing_address || '').trim();
+  const siteAddresses = parseSiteAddresses(
+    payload.siteAddresses || payload.site_addresses || payload.siteAddress || payload.site_address
+  );
   if (!location && !gstNo) return [];
   if (!location) return [];
-  return [{ location, gstNo, billingAddress, sortOrder: 0 }];
+  return [{ location, gstNo, billingAddress, siteAddresses, sortOrder: 0 }];
 }
 
 export async function ensureLetterheadMastersTable() {
@@ -77,6 +110,8 @@ export async function ensureLetterheadMastersTable() {
     `ALTER TABLE letterhead_masters ADD COLUMN location VARCHAR(255) NULL`,
     `ALTER TABLE letterhead_masters ADD COLUMN gst_no VARCHAR(50) NULL`,
     `ALTER TABLE letterhead_locations ADD COLUMN billing_address TEXT NULL`,
+    `ALTER TABLE letterhead_locations ADD COLUMN site_address TEXT NULL`,
+    `ALTER TABLE letterhead_locations ADD COLUMN site_addresses JSON NULL`,
   ]) {
     try {
       await pool.query(sql);
@@ -92,6 +127,8 @@ export async function ensureLetterheadMastersTable() {
       location VARCHAR(255) NOT NULL,
       gst_no VARCHAR(50) NULL,
       billing_address TEXT NULL,
+      site_address TEXT NULL,
+      site_addresses JSON NULL,
       footer_logo LONGTEXT NULL,
       sort_order INT NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -157,9 +194,18 @@ async function replaceLetterheadLocations(letterheadId, locations) {
   await pool.query(`DELETE FROM letterhead_locations WHERE letterhead_id = ?`, [letterheadId]);
   for (const loc of locations) {
     await pool.query(
-      `INSERT INTO letterhead_locations (letterhead_id, location, gst_no, billing_address, footer_logo, sort_order)
-       VALUES (?, ?, ?, ?, NULL, ?)`,
-      [letterheadId, loc.location, loc.gstNo || null, loc.billingAddress || null, loc.sortOrder ?? 0]
+      `INSERT INTO letterhead_locations
+         (letterhead_id, location, gst_no, billing_address, site_address, site_addresses, footer_logo, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
+      [
+        letterheadId,
+        loc.location,
+        loc.gstNo || null,
+        loc.billingAddress || null,
+        loc.siteAddresses?.[0] || null,
+        JSON.stringify(loc.siteAddresses || []),
+        loc.sortOrder ?? 0,
+      ]
     );
   }
 

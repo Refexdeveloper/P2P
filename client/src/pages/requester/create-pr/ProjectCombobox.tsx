@@ -12,6 +12,10 @@ interface Props {
   disabled?: boolean;
 }
 
+function plantLabel(p: ProjectRecord) {
+  return [p.code, p.name].filter(Boolean).join(' — ') || p.name;
+}
+
 export default function ProjectCombobox({
   projects,
   selectedName,
@@ -21,13 +25,13 @@ export default function ProjectCombobox({
   onCreated,
   disabled,
 }: Props) {
-  const selected = projects.find((p) => p.name === selectedName);
+  const selected = projects.find((p) => p.name === selectedName || p.code === selectedName);
   const options = useMemo(
     () =>
       projects.map((p) => ({
         id: p.id,
-        label: p.name,
-        subLabel: p.description || undefined,
+        label: plantLabel(p),
+        subLabel: [p.billingLocation, p.siteAddress].filter(Boolean).join(' · ') || undefined,
       })),
     [projects]
   );
@@ -35,13 +39,13 @@ export default function ProjectCombobox({
   return (
     <SearchCreateField
       options={options}
-      displayValue={selected?.name || selectedName || ''}
+      displayValue={selected ? plantLabel(selected) : selectedName || ''}
       selectedId={selected?.id}
-      placeholder="Search project name or description…"
+      placeholder="Search plant code or plant name…"
       hasError={hasError}
-      addNoun="project"
-      emptyHint="No projects yet. Type a name to add one."
-      createExtraPlaceholder="Project description (optional)"
+      addNoun="plant"
+      emptyHint="No plants yet. Type a name to add one."
+      createExtraPlaceholder="Plant code (optional)"
       onSelect={(opt) => {
         const project = projects.find((p) => p.id === opt.id);
         if (project) onSelect(project);
@@ -50,8 +54,11 @@ export default function ProjectCombobox({
       onCreate={
         disabled
           ? undefined
-          : async (name, description) => {
-              const res = await masterApi.chatCreateProject({ name, description });
+          : async (name, extra) => {
+              const res = await masterApi.chatCreateProject({
+                name,
+                code: extra || '',
+              });
               onCreated(res.data);
               onSelect(res.data);
             }

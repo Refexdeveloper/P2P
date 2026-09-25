@@ -27,6 +27,7 @@ import {
   EntityRecord,
   DepartmentRecord,
   ItemRecord,
+  ProjectRecord,
 } from '../../../services/api';
 import ManualPoContextSection, {
   emptyComparisonRound,
@@ -47,6 +48,7 @@ import { parseLineItemSpreadsheet } from '../../../utils/lineItemExcel';
 import PurchaseRequestsPanel from '../purchase-requests/components/PurchaseRequestsPanel';
 import SearchCreateField from '../../requester/create-pr/SearchCreateField';
 import DepartmentCombobox from '../../requester/create-pr/DepartmentCombobox';
+import ProjectCombobox from '../../requester/create-pr/ProjectCombobox';
 import ItemCombobox from '../../requester/create-pr/ItemCombobox';
 import POApprovalModal from '../po-approval/components/POApprovalModal';
 import PostRfqApprovalModal from '../../rfq-approval/components/PostRfqApprovalModal';
@@ -243,6 +245,16 @@ const EMPTY_PO_TERMS_DETAILS = {
 function letterheadLocKey(loc: LetterheadLocationRecord, index = 0) {
   if (loc.id != null) return String(loc.id);
   return `name:${loc.location || index}`;
+}
+
+function letterheadSiteAddresses(loc?: LetterheadLocationRecord | null): string[] {
+  if (!loc) return [];
+  const fromList = Array.isArray(loc.siteAddresses)
+    ? loc.siteAddresses.map((s) => String(s || '').trim()).filter(Boolean)
+    : [];
+  const single = String(loc.siteAddress || '').trim();
+  if (single && !fromList.includes(single)) fromList.push(single);
+  return fromList;
 }
 
 function addressLinesToHtml(text: string) {
@@ -1186,6 +1198,7 @@ export default function CreatePOPage() {
   const [masterVendors, setMasterVendors] = useState<VendorRecord[]>([]);
   const [masterItems, setMasterItems] = useState<ItemRecord[]>([]);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
+  const [plants, setPlants] = useState<ProjectRecord[]>([]);
   const [requesterUsers, setRequesterUsers] = useState<
     Array<{ id: number; name: string; email: string; role: string; department: string }>
   >([]);
@@ -1294,6 +1307,14 @@ export default function CreatePOPage() {
     return [];
   }, [selectedLetterhead]);
 
+  const locationSiteAddressChoices = useMemo(() => {
+    const idx = letterheadLocations.findIndex(
+      (l, i) => letterheadLocKey(l, i) === letterheadLocationKey
+    );
+    if (idx < 0) return [];
+    return letterheadSiteAddresses(letterheadLocations[idx]);
+  }, [letterheadLocations, letterheadLocationKey]);
+
   const applyLetterheadLocation = useCallback(
     (
       loc: LetterheadLocationRecord | null,
@@ -1326,17 +1347,25 @@ export default function CreatePOPage() {
           : null) ||
         null;
       const entityLoc = matchEntityLocation(matchedEntity, loc.location || '');
+      const siteFromLetterhead = letterheadSiteAddresses(loc);
       const siteFromEntity = String(entityLoc?.siteAddress || '').trim();
-      setPoTermsDetails((prev) => ({
-        ...prev,
-        locationName: loc.location || '',
-        buyerGstNo: loc.gstNo || '',
-        letterheadLocationId: loc.id != null ? String(loc.id) : key,
-        siteAddress: siteFromEntity || prev.siteAddress,
-      }));
-      if (siteFromEntity) {
-        setDeliveryAddress(siteFromEntity);
-      }
+      const siteChoices = [
+        ...siteFromLetterhead,
+        ...(siteFromEntity && !siteFromLetterhead.includes(siteFromEntity) ? [siteFromEntity] : []),
+      ];
+      const nextSite = siteChoices.length === 1 ? siteChoices[0] : '';
+      setPoTermsDetails((prev) => {
+        const kept = siteChoices.includes(prev.siteAddress) ? prev.siteAddress : '';
+        const site = nextSite || kept;
+        if (site) setDeliveryAddress(site);
+        return {
+          ...prev,
+          locationName: loc.location || '',
+          buyerGstNo: loc.gstNo || '',
+          letterheadLocationId: loc.id != null ? String(loc.id) : key,
+          siteAddress: site,
+        };
+      });
     },
     [entityOptions, manualEntityId, pr?.entityId, selectedLetterhead]
   );
@@ -1690,13 +1719,15 @@ export default function CreatePOPage() {
     if (!isManualPoFlow) return;
     let cancelled = false;
     (async () => {
-      const [deptRes, userRes] = await Promise.allSettled([
+      const [deptRes, userRes, plantRes] = await Promise.allSettled([
         masterApi.listDepartments({ status: 'active' }),
         prApi.listApprovalUsers(),
+        masterApi.listProjects({ status: 'active' }),
       ]);
       if (cancelled) return;
       if (deptRes.status === 'fulfilled') setDepartments(deptRes.value.data || []);
       if (userRes.status === 'fulfilled') setRequesterUsers(userRes.value.data || []);
+      if (plantRes.status === 'fulfilled') setPlants(plantRes.value.data || []);
     })();
     return () => {
       cancelled = true;
@@ -4164,6 +4195,67 @@ export default function CreatePOPage() {
                           />
                         </div>
                       </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                          Plant
+                        </label>
+                        <ProjectCombobox
+                          projects={plants}
+                          selectedName={manualPrDetails.plantName}
+                          onSelect={(plant) => {
+                            setPlants((prev) =>
+                              prev.some((p) => p.id === plant.id) ? prev : [...prev, plant]
+                            );
+                            setManualPrDetails((prev) => ({
+                              ...prev,
+                              plantId: plant.id,
+                              plantCode: plant.code || '',
+                              plantName: plant.name,
+                              plantBillingLocation: plant.billingLocation || '',
+                              plantSiteAddress: plant.siteAddress || '',
+                            }));
+                            const site = String(plant.siteAddress || '').trim();
+                            const billing = String(plant.billingLocation || '').trim();
+                            if (site) {
+                              setPoTermsDetails((prev) => ({
+                                ...prev,
+                                siteAddress: prev.siteAddress || site,
+                              }));
+                              setDeliveryAddress((prev) => prev || site);
+                            }
+                            if (billing) {
+                              const idx = letterheadLocations.findIndex(
+                                (l) =>
+                                  String(l.location || '').trim().toLowerCase() === billing.toLowerCase()
+                              );
+                              if (idx >= 0) {
+                                applyLetterheadLocation(letterheadLocations[idx], idx);
+                              } else {
+                                setPoTermsDetails((prev) => ({
+                                  ...prev,
+                                  locationName: prev.locationName || billing,
+                                }));
+                              }
+                            }
+                          }}
+                          onClear={() =>
+                            setManualPrDetails((prev) => ({
+                              ...prev,
+                              plantId: null,
+                              plantCode: '',
+                              plantName: '',
+                              plantBillingLocation: '',
+                              plantSiteAddress: '',
+                            }))
+                          }
+                          onCreated={(created) => {
+                            setPlants((prev) => {
+                              if (prev.some((p) => p.id === created.id)) return prev;
+                              return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+                            });
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -4349,10 +4441,18 @@ export default function CreatePOPage() {
                         multiline
                         value={poTermsDetails.siteAddress || deliveryAddress}
                         placeholder="Select site / delivery address"
-                        options={siteAddressOptions.map((opt) => ({
-                          id: opt.id,
-                          label: opt.label,
-                        }))}
+                        options={[
+                          ...locationSiteAddressChoices.map((label, i) => ({
+                            id: `lh-site-${i}`,
+                            label,
+                          })),
+                          ...siteAddressOptions
+                            .filter((opt) => !locationSiteAddressChoices.includes(opt.label))
+                            .map((opt) => ({
+                              id: opt.id,
+                              label: opt.label,
+                            })),
+                        ]}
                         adding={addingSiteAddress}
                         onOpenAdd={() => {
                           setSiteLookupError('');
@@ -4365,7 +4465,10 @@ export default function CreatePOPage() {
                           setAddingSiteAddress(false);
                           setSiteLookupError('');
                         }}
-                        onSelect={(opt) => updatePoTermsField('siteAddress', opt.label)}
+                        onSelect={(opt) => {
+                          updatePoTermsField('siteAddress', opt.label);
+                          setDeliveryAddress(opt.label);
+                        }}
                         addForm={
                           <>
                             <textarea
@@ -5166,8 +5269,36 @@ export default function CreatePOPage() {
                       ))}
                     </select>
                     <p className="text-xs text-gray-500 mt-1.5">
-                      Selecting a location fills GSTIN, billing (invoicing) address and site address from Entity Master when matched.
+                      Selecting a location fills GSTIN. Site addresses come from Letterhead Master for that location.
                     </p>
+                  </div>
+                )}
+
+                {letterheadLocationKey && locationSiteAddressChoices.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                      Site address
+                    </label>
+                    <select
+                      value={
+                        locationSiteAddressChoices.includes(poTermsDetails.siteAddress)
+                          ? poTermsDetails.siteAddress
+                          : ''
+                      }
+                      onChange={(e) => {
+                        const addr = e.target.value;
+                        updatePoTermsField('siteAddress', addr);
+                        setDeliveryAddress(addr);
+                      }}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                    >
+                      <option value="">Select site address...</option>
+                      {locationSiteAddressChoices.map((addr) => (
+                        <option key={addr} value={addr}>
+                          {addr.length > 80 ? `${addr.slice(0, 80)}…` : addr}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
 

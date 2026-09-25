@@ -181,6 +181,10 @@ const routes: RouteObject[] = [
     element: <ProtectedRoute><DepartmentMasterPage /></ProtectedRoute>,
   },
   {
+    path: '/scm/plant-master',
+    element: <ProtectedRoute><ProjectMasterPage /></ProtectedRoute>,
+  },
+  {
     path: '/scm/project-master',
     element: <ProtectedRoute><ProjectMasterPage /></ProtectedRoute>,
   },

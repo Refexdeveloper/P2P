@@ -3576,7 +3576,7 @@ export async function signPurchaseOrder(user, poId, {
   } else if (dscDetails) {
     // DSC stamp is generated on the client and sent as signatureImage; allow text-only if missing
   } else {
-    // Fall back to Rajeev default handwritten signature
+    // Fall back to SCM Manager default handwritten signature
     const { getDefaultScmManagerSignatureDataUrl, DEFAULT_SCM_MANAGER_SIGNATURE_FILE } =
       await import('./signatureService.js');
     const defaultUrl = getDefaultScmManagerSignatureDataUrl();

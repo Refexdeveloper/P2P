@@ -144,9 +144,9 @@ const NAV_BY_CODE: Record<string, NavItem> = {
   },
   'nav.project_master': {
     code: 'nav.project_master',
-    label: 'Project Master',
-    path: '/scm/project-master',
-    icon: 'ri-folder-chart-line',
+    label: 'Plant Master',
+    path: '/scm/plant-master',
+    icon: 'ri-building-4-line',
     group: 'Masters',
   },
   'nav.po_letterhead_master': {

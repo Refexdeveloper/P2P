@@ -90,6 +90,9 @@ const MIGRATIONS = [
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_project_status (status)
   )`,
+  `ALTER TABLE project_masters ADD COLUMN code VARCHAR(50) NULL`,
+  `ALTER TABLE project_masters ADD COLUMN billing_location VARCHAR(255) NULL`,
+  `ALTER TABLE project_masters ADD COLUMN site_address TEXT NULL`,
   `CREATE TABLE IF NOT EXISTS items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     item_code VARCHAR(30) NOT NULL UNIQUE,
@@ -149,6 +152,8 @@ const MIGRATIONS = [
     location VARCHAR(255) NOT NULL,
     gst_no VARCHAR(50) NULL,
     billing_address TEXT NULL,
+    site_address TEXT NULL,
+    site_addresses JSON NULL,
     footer_logo LONGTEXT NULL,
     sort_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -482,6 +487,8 @@ const MIGRATIONS = [
   `ALTER TABLE entity_locations ADD COLUMN billing_address TEXT NULL`,
   `ALTER TABLE entity_locations ADD COLUMN site_address TEXT NULL`,
   `ALTER TABLE letterhead_locations ADD COLUMN billing_address TEXT NULL`,
+  `ALTER TABLE letterhead_locations ADD COLUMN site_address TEXT NULL`,
+  `ALTER TABLE letterhead_locations ADD COLUMN site_addresses JSON NULL`,
   // SASS purchase type — L1 (user) → L2 Srivaths → Mugesh → invoice → Accounts (no SCM)
   `ALTER TABLE purchase_requests MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass', 'online_purchase') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE purchase_orders MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass', 'online_purchase') NOT NULL DEFAULT 'purchase_order'`,

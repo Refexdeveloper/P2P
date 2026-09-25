@@ -12,7 +12,15 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SIGNATURE_UPLOAD_DIR = path.join(__dirname, '../../uploads/signatures');
 export const SIGNATURE_SEED_DIR = path.join(__dirname, '../../assets/signatures');
-export const DEFAULT_SCM_MANAGER_SIGNATURE_FILE = 'rajeev_v_default.png';
+export const DEFAULT_SCM_MANAGER_SIGNATURE_FILE = 'mounesh_rathakar_default.jpg';
+const LEGACY_SCM_MANAGER_SIGNATURE_FILES = ['rajeev_v_default.png'];
+
+function defaultSignatureMime(fileName = DEFAULT_SCM_MANAGER_SIGNATURE_FILE) {
+  const ext = path.extname(fileName).slice(1).toLowerCase();
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'webp') return 'image/webp';
+  return 'image/png';
+}
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -98,7 +106,7 @@ export async function ensureDefaultScmManagerSignatureFile() {
       await awaitGcsUpload(
         `signatures/${DEFAULT_SCM_MANAGER_SIGNATURE_FILE}`,
         fs.readFileSync(dest),
-        'image/png',
+        defaultSignatureMime(DEFAULT_SCM_MANAGER_SIGNATURE_FILE),
         { skipIfExists: true }
       );
     } catch (err) {
@@ -152,7 +160,7 @@ export function getDefaultScmManagerSignatureInfo() {
 }
 
 /**
- * Replace Rajeev default signature (seed + uploads) from admin upload.
+ * Replace SCM Manager default signature (seed + uploads) from admin upload.
  * Optionally re-stamp signed POs so PDF/document view uses the new image.
  */
 export async function updateDefaultScmManagerSignature({
@@ -177,7 +185,7 @@ export async function updateDefaultScmManagerSignature({
   // into the canonical png file name for consistency with existing code paths.
   fs.writeFileSync(uploadPath, buffer);
   fs.writeFileSync(seedPath, buffer);
-  await awaitGcsUpload(`signatures/${destName}`, buffer, 'image/png');
+  await awaitGcsUpload(`signatures/${destName}`, buffer, defaultSignatureMime(destName));
 
   // Refresh gallery entry for SCM Manager
   const seeded = await ensureDefaultScmManagerSignature({ backfill: Boolean(applyToSignedPos) });
@@ -191,7 +199,7 @@ export async function updateDefaultScmManagerSignature({
 }
 
 /**
- * Seed Rajeev's default signature into user_signatures.
+ * Seed the SCM Manager default signature into user_signatures.
  * When backfill=true (startup migrate), also stamp signed POs and clear old PDFs for regen.
  */
 export async function ensureDefaultScmManagerSignature({ backfill = false } = {}) {
@@ -212,11 +220,28 @@ export async function ensureDefaultScmManagerSignature({ backfill = false } = {}
     if (existing.length) {
       galleryId = existing[0].id;
     } else {
-      const [result] = await pool.query(
-        `INSERT INTO user_signatures (user_id, label, image_path) VALUES (?, ?, ?)`,
-        [manager.id, `${getPreferredScmManagerName()} Default Signature`, DEFAULT_SCM_MANAGER_SIGNATURE_FILE]
-      );
-      galleryId = result.insertId;
+      const legacyPlaceholders = LEGACY_SCM_MANAGER_SIGNATURE_FILES.map(() => '?').join(', ');
+      const [legacy] = legacyPlaceholders
+        ? await pool.query(
+            `SELECT id FROM user_signatures
+             WHERE user_id = ? AND image_path IN (${legacyPlaceholders})
+             LIMIT 1`,
+            [manager.id, ...LEGACY_SCM_MANAGER_SIGNATURE_FILES]
+          )
+        : [[]];
+      if (legacy[0]) {
+        await pool.query(
+          `UPDATE user_signatures SET label = ?, image_path = ? WHERE id = ?`,
+          [`${getPreferredScmManagerName()} Default Signature`, DEFAULT_SCM_MANAGER_SIGNATURE_FILE, legacy[0].id]
+        );
+        galleryId = legacy[0].id;
+      } else {
+        const [result] = await pool.query(
+          `INSERT INTO user_signatures (user_id, label, image_path) VALUES (?, ?, ?)`,
+          [manager.id, `${getPreferredScmManagerName()} Default Signature`, DEFAULT_SCM_MANAGER_SIGNATURE_FILE]
+        );
+        galleryId = result.insertId;
+      }
     }
   }
 
@@ -333,7 +358,7 @@ export async function getUserSignatureImage(userId, signatureId) {
 
 /**
  * Build PDF/HTML signature options from a PO record (enrichPO shape or DB row).
- * Falls back to Rajeev's default signature for signed POs when the image is missing.
+ * Falls back to the SCM Manager default signature for signed POs when the image is missing.
  */
 export function buildSignatureRenderOptions(po = {}) {
   const name = po.signatureName || po.signature_name || '';

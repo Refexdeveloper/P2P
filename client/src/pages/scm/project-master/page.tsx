@@ -4,8 +4,10 @@ import MasterImportExport from '../../../components/feature/MasterImportExport';
 import { masterApi, ProjectRecord } from '../../../services/api';
 
 const emptyForm = {
+  code: '',
   name: '',
-  description: '',
+  billingLocation: '',
+  siteAddress: '',
   status: 'active',
 };
 
@@ -46,8 +48,10 @@ export default function ProjectMasterPage() {
   const openEdit = (row: ProjectRecord) => {
     setEditing(row);
     setForm({
+      code: row.code || '',
       name: row.name,
-      description: row.description || '',
+      billingLocation: row.billingLocation || '',
+      siteAddress: row.siteAddress || '',
       status: row.status || 'active',
     });
     setError('');
@@ -56,7 +60,7 @@ export default function ProjectMasterPage() {
 
   const handleSave = async () => {
     if (!form.name.trim()) {
-      setError('Project name is required');
+      setError('Plant name is required');
       return;
     }
     setSaving(true);
@@ -64,10 +68,10 @@ export default function ProjectMasterPage() {
     try {
       if (editing) {
         await masterApi.updateProject(editing.id, form);
-        setToast('Project updated');
+        setToast('Plant updated');
       } else {
         await masterApi.createProject(form);
-        setToast('Project created');
+        setToast('Plant created');
       }
       setShowForm(false);
       load();
@@ -84,9 +88,9 @@ export default function ProjectMasterPage() {
       <>
         <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Project Master</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Plant Master</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Manage project names and descriptions used on Create PR
+              Manage plant code, name, billing location, and site address for Create PR and Manual Create PO
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -100,7 +104,7 @@ export default function ProjectMasterPage() {
               onClick={openCreate}
               className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer flex items-center gap-2"
             >
-              <i className="ri-add-line"></i> Add Project
+              <i className="ri-add-line"></i> Add Plant
             </button>
           </div>
         </div>
@@ -112,7 +116,7 @@ export default function ProjectMasterPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search project name or description..."
+                placeholder="Search plant code, name, billing location, or site address..."
                 className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
@@ -122,8 +126,8 @@ export default function ProjectMasterPage() {
             <p className="p-8 text-sm text-gray-500">Loading...</p>
           ) : rows.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
-              <i className="ri-folder-chart-line text-4xl text-gray-300"></i>
-              <p className="mt-3 text-sm">No projects found</p>
+              <i className="ri-building-4-line text-4xl text-gray-300"></i>
+              <p className="mt-3 text-sm">No plants found</p>
               <p className="mt-1 text-xs text-gray-400">
                 Use Sample to download the import template, then Import to add rows.
               </p>
@@ -133,7 +137,7 @@ export default function ProjectMasterPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    {['Project Name', 'Project Description', 'Status', 'Action'].map((h) => (
+                    {['Plant code', 'Plant name', 'Billing Location', 'Site address', 'Status', 'Action'].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
                         {h}
                       </th>
@@ -143,9 +147,11 @@ export default function ProjectMasterPage() {
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.id} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-mono text-gray-800">{row.code || '—'}</td>
                       <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 max-w-md truncate">
-                        {row.description || '—'}
+                      <td className="px-4 py-3 text-sm text-gray-600">{row.billingLocation || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={row.siteAddress || ''}>
+                        {row.siteAddress || '—'}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -177,7 +183,7 @@ export default function ProjectMasterPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl">
             <div className="px-6 py-4 border-b flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900">{editing ? 'Edit Project' : 'Add Project'}</h2>
+              <h2 className="text-lg font-bold text-gray-900">{editing ? 'Edit Plant' : 'Add Plant'}</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 cursor-pointer">
                 <i className="ri-close-line text-xl"></i>
               </button>
@@ -185,21 +191,39 @@ export default function ProjectMasterPage() {
             <div className="p-6 space-y-4">
               {error && <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Project Name *</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Plant code</label>
                 <input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. RMC Plant Upgrade"
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value })}
+                  placeholder="e.g. PLT-HOS"
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Project Description</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Plant name *</label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Hosur Plant"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Billing Location</label>
+                <input
+                  value={form.billingLocation}
+                  onChange={(e) => setForm({ ...form, billingLocation: e.target.value })}
+                  placeholder="e.g. Hosur / Chennai"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Site address</label>
                 <textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  value={form.siteAddress}
+                  onChange={(e) => setForm({ ...form, siteAddress: e.target.value })}
                   rows={3}
-                  placeholder="Short description of the project"
+                  placeholder="Full site / delivery address"
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
                 />
               </div>

@@ -310,11 +310,15 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS project_masters (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(200) NOT NULL UNIQUE,
+  code VARCHAR(50) NULL,
   description TEXT NULL,
+  billing_location VARCHAR(255) NULL,
+  site_address TEXT NULL,
   status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_project_status (status)
+  INDEX idx_project_status (status),
+  INDEX idx_project_code (code)
 );
 
 CREATE TABLE IF NOT EXISTS items (
@@ -417,6 +421,8 @@ CREATE TABLE IF NOT EXISTS letterhead_locations (
   location VARCHAR(255) NOT NULL,
   gst_no VARCHAR(50) NULL,
   billing_address TEXT NULL,
+  site_address TEXT NULL,
+  site_addresses JSON NULL,
   footer_logo LONGTEXT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

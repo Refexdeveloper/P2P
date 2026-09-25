@@ -184,14 +184,24 @@ type LocationRow = {
   location: string;
   gstNo: string;
   billingAddress: string;
+  siteAddresses: string[];
 };
 
 function makeLocationKey() {
   return `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function normalizeSiteAddresses(value?: string[] | string | null): string[] {
+  if (Array.isArray(value)) {
+    const list = value.map((s) => String(s || '').trim()).filter(Boolean);
+    return list.length ? list : [''];
+  }
+  const single = String(value || '').trim();
+  return single ? [single] : [''];
+}
+
 function emptyLocationRow(): LocationRow {
-  return { key: makeLocationKey(), location: '', gstNo: '', billingAddress: '' };
+  return { key: makeLocationKey(), location: '', gstNo: '', billingAddress: '', siteAddresses: [''] };
 }
 
 function logoPreview(value: string) {
@@ -259,7 +269,9 @@ export default function LetterheadMasterPage() {
       footerLogo: row.footerLogo || '',
       status: row.status || 'active',
     });
-    const fromApi = (row.locations || []).filter((l) => l.location || l.gstNo || l.billingAddress);
+    const fromApi = (row.locations || []).filter(
+      (l) => l.location || l.gstNo || l.billingAddress || (l.siteAddresses && l.siteAddresses.length)
+    );
     if (fromApi.length) {
       const locs = fromApi.map((l) => ({
         key: makeLocationKey(),
@@ -267,6 +279,7 @@ export default function LetterheadMasterPage() {
         location: l.location || '',
         gstNo: l.gstNo || '',
         billingAddress: l.billingAddress || '',
+        siteAddresses: normalizeSiteAddresses(l.siteAddresses || l.siteAddress),
       }));
       setLocations(locs);
       setSelectedLocationKey(locs[0]?.key || '');
@@ -278,6 +291,7 @@ export default function LetterheadMasterPage() {
         location: row.location || '',
         gstNo: row.gstNo || '',
         billingAddress: '',
+        siteAddresses: [''],
       };
       setLocations([locRow]);
       setSelectedLocationKey(locRow.key);
@@ -297,6 +311,7 @@ export default function LetterheadMasterPage() {
         location: l.location || '',
         gstNo: l.gstNo || '',
         billingAddress: l.billingAddress || '',
+        siteAddresses: normalizeSiteAddresses(l.siteAddress),
       }));
       setLocations(locs);
       setSelectedLocationKey(locs[0]?.key || '');
@@ -310,6 +325,35 @@ export default function LetterheadMasterPage() {
     setLocations((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   };
 
+  const updateSiteAddress = (key: string, index: number, value: string) => {
+    setLocations((prev) =>
+      prev.map((l) => {
+        if (l.key !== key) return l;
+        const siteAddresses = [...(l.siteAddresses.length ? l.siteAddresses : [''])];
+        siteAddresses[index] = value;
+        return { ...l, siteAddresses };
+      })
+    );
+  };
+
+  const addSiteAddress = (key: string) => {
+    setLocations((prev) =>
+      prev.map((l) =>
+        l.key === key ? { ...l, siteAddresses: [...(l.siteAddresses.length ? l.siteAddresses : ['']), ''] } : l
+      )
+    );
+  };
+
+  const removeSiteAddress = (key: string, index: number) => {
+    setLocations((prev) =>
+      prev.map((l) => {
+        if (l.key !== key) return l;
+        const next = (l.siteAddresses.length ? l.siteAddresses : ['']).filter((_, i) => i !== index);
+        return { ...l, siteAddresses: next.length ? next : [''] };
+      })
+    );
+  };
+
   /** Type location name; if it matches Entity Master, auto-fill GST. */
   const onLocationTyped = (key: string, locationName: string) => {
     const match = entityLocations.find(
@@ -320,6 +364,7 @@ export default function LetterheadMasterPage() {
         location: locationName,
         gstNo: match.gstNo || '',
         billingAddress: match.billingAddress || '',
+        siteAddresses: normalizeSiteAddresses(match.siteAddress),
       });
       return;
     }
@@ -338,7 +383,7 @@ export default function LetterheadMasterPage() {
         location: l.location.trim(),
         gstNo: l.gstNo.trim(),
         billingAddress: l.billingAddress.trim(),
-        siteAddress: '',
+        siteAddress: l.siteAddresses.map((s) => s.trim()).filter(Boolean).join('\n'),
         footerLogo: '',
       }));
     if (!additions.length) return;
@@ -468,6 +513,7 @@ export default function LetterheadMasterPage() {
       location: l.location.trim(),
       gstNo: l.gstNo.trim(),
       billingAddress: l.billingAddress.trim(),
+      siteAddresses: (l.siteAddresses || []).map((s) => s.trim()).filter(Boolean),
     }));
     const payload = {
       ...form,
@@ -714,6 +760,7 @@ export default function LetterheadMasterPage() {
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Location</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">GST No</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Billing address</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Site addresses</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -727,6 +774,14 @@ export default function LetterheadMasterPage() {
                             <td className="px-3 py-2.5 font-mono text-gray-700">{loc.gstNo || '—'}</td>
                             <td className="px-3 py-2.5 text-gray-700 whitespace-pre-line">
                               {loc.billingAddress || '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-gray-700 whitespace-pre-line">
+                              {(loc.siteAddresses && loc.siteAddresses.length
+                                ? loc.siteAddresses
+                                : loc.siteAddress
+                                  ? [loc.siteAddress]
+                                  : []
+                              ).join('\n') || '—'}
                             </td>
                           </tr>
                         ))}
@@ -857,7 +912,7 @@ export default function LetterheadMasterPage() {
                       Locations
                     </h3>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Add each location with GST No and Billing address. Header and footer apply to all locations.
+                      Add each location with GST No, billing address, and one or more site addresses.
                     </p>
                   </div>
                   <button
@@ -895,6 +950,9 @@ export default function LetterheadMasterPage() {
                           </th>
                           <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[220px]">
                             Billing address
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase min-w-[240px]">
+                            Site addresses
                           </th>
                           <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase w-16">
                             Action
@@ -950,6 +1008,39 @@ export default function LetterheadMasterPage() {
                                   rows={2}
                                   className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
                                 />
+                              </td>
+                              <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                                <div className="space-y-2">
+                                  {(loc.siteAddresses?.length ? loc.siteAddresses : ['']).map((addr, siteIdx) => (
+                                    <div key={`${loc.key}-site-${siteIdx}`} className="flex items-start gap-1.5">
+                                      <textarea
+                                        value={addr}
+                                        onChange={(e) => updateSiteAddress(loc.key, siteIdx, e.target.value)}
+                                        placeholder={`Site address ${siteIdx + 1}`}
+                                        rows={2}
+                                        className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                                      />
+                                      {(loc.siteAddresses?.length || 0) > 1 ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeSiteAddress(loc.key, siteIdx)}
+                                          className="w-8 h-8 mt-1 inline-flex items-center justify-center text-red-500 hover:bg-red-50 rounded-lg cursor-pointer shrink-0"
+                                          title="Remove site address"
+                                        >
+                                          <i className="ri-close-line"></i>
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={() => addSiteAddress(loc.key)}
+                                    className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800 cursor-pointer"
+                                  >
+                                    <i className="ri-add-line"></i>
+                                    Add site address
+                                  </button>
+                                </div>
                               </td>
                               <td className="px-3 py-3 text-center">
                                 <button
