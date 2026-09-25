@@ -245,11 +245,11 @@ export async function resolveSassMugeshAssignment(departmentId = null) {
   return { userId, email: SASS_MUGESH_EMAIL, name: SASS_MUGESH_NAME };
 }
 
-export async function createSassL2ApprovalTask(conn, prId, departmentId = null) {
+export async function createSassL2ApprovalTask(conn, prId, departmentId = null, preAssignee = null) {
   if (await hasApprovedStage(prId, STAGE.PR_MANAGER_REVIEW, conn)) {
     return null; // L2 already completed — never recreate
   }
-  const assignee = await resolveSassL2Assignment(departmentId);
+  const assignee = preAssignee || (await resolveSassL2Assignment(departmentId));
   if (await hasPendingApprovalTaskForUser(prId, assignee.userId, conn)) {
     return assignee;
   }
@@ -263,11 +263,11 @@ export async function createSassL2ApprovalTask(conn, prId, departmentId = null) 
   return assignee;
 }
 
-export async function createSassMugeshApprovalTask(conn, prId, departmentId = null) {
+export async function createSassMugeshApprovalTask(conn, prId, departmentId = null, preAssignee = null) {
   if (await hasApprovedStage(prId, STAGE.CFO_REVIEW, conn)) {
     return null; // Mugesh L1 already completed — never recreate
   }
-  const assignee = await resolveSassMugeshAssignment(departmentId);
+  const assignee = preAssignee || (await resolveSassMugeshAssignment(departmentId));
   if (await hasPendingApprovalTaskForUser(prId, assignee.userId, conn)) {
     return assignee;
   }
@@ -281,8 +281,8 @@ export async function createSassMugeshApprovalTask(conn, prId, departmentId = nu
   return assignee;
 }
 
-export async function createSassInvoiceUploadTask(conn, prId, departmentId = null) {
-  const assignee = await resolveSassMugeshAssignment(departmentId);
+export async function createSassInvoiceUploadTask(conn, prId, departmentId = null, preAssignee = null) {
+  const assignee = preAssignee || (await resolveSassMugeshAssignment(departmentId));
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 5);
   await conn.query(
@@ -453,9 +453,9 @@ export async function openSassInvoiceStage(conn, pr, actorUser, options = {}) {
 
   let mugeshAssignee = null;
   if (createMugeshInvoiceTask) {
-    const mugesh = await resolveSassMugeshAssignment(pr.department_id);
+    const mugesh = options.preMugeshAssignee || (await resolveSassMugeshAssignment(pr.department_id));
     if (!(await hasPendingApprovalTaskForUser(prId, mugesh.userId, conn))) {
-      mugeshAssignee = await createSassInvoiceUploadTask(conn, prId, pr.department_id);
+      mugeshAssignee = await createSassInvoiceUploadTask(conn, prId, pr.department_id, mugesh);
     } else {
       mugeshAssignee = mugesh;
     }
@@ -471,7 +471,10 @@ async function saveSassInvoiceAttachment(invoiceId, fileName, fileData) {
   const stored = `inv_${invoiceId}_${Date.now()}_${safe}`;
   if (!fs.existsSync(INVOICE_DIR)) fs.mkdirSync(INVOICE_DIR, { recursive: true });
   fs.writeFileSync(path.join(INVOICE_DIR, stored), buffer);
-  await awaitGcsUpload(`invoices/${stored}`, buffer);
+  // Fire-and-forget GCS — never hold DB locks waiting on network upload
+  void awaitGcsUpload(`invoices/${stored}`, buffer).catch((err) => {
+    console.warn('SASS invoice GCS upload deferred failure:', err.message);
+  });
   return { fileName: safe, filePath: stored, buffer };
 }
 
@@ -480,15 +483,16 @@ export async function applySassMugeshInvoiceUpload(conn, invoiceId, user, body =
   if (!body.fileName || !body.fileData) throw new Error('Invoice file is required');
   const invoiceNumber = String(body.invoiceNumber || '').trim() || null;
 
-  const [rows] = await conn.query(`SELECT * FROM invoices WHERE id = ? FOR UPDATE`, [invoiceId]);
-  if (!rows.length) throw new Error('Invoice not found');
-  const inv = rows[0];
-
+  // Persist file before locking the invoice row
   const { fileName, filePath, buffer } = await saveSassInvoiceAttachment(
     invoiceId,
     body.fileName,
     body.fileData
   );
+
+  const [rows] = await conn.query(`SELECT * FROM invoices WHERE id = ? FOR UPDATE`, [invoiceId]);
+  if (!rows.length) throw new Error('Invoice not found');
+  const inv = rows[0];
 
   let history = [];
   try {

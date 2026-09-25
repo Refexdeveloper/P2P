@@ -57,7 +57,8 @@ import {
   applySassMugeshInvoiceUpload,
   resolveSassInvoiceUploadedRecipients,
   resolveSassVendorFromBody,
-  clearStaleSassPrApprovalTasks,
+  resolveSassL2Assignment,
+  resolveSassMugeshAssignment,
   SASS_MUGESH_NAME,
   SASS_MUGESH_EMAIL,
 } from './sassWorkflow.js';
@@ -2565,6 +2566,29 @@ function userMatchesTaskAssignment(user, task) {
 }
 
 export async function processApproval(user, prId, action, remarks, options = {}) {
+  const maxAttempts = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await processApprovalOnce(user, prId, action, remarks, options);
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message || '');
+      const isLockWait =
+        err?.errno === 1205 ||
+        err?.code === 'ER_LOCK_WAIT_TIMEOUT' ||
+        /lock wait timeout/i.test(msg);
+      if (!isLockWait || attempt === maxAttempts) throw err;
+      console.warn(
+        `processApproval lock wait on PR ${prId} (attempt ${attempt}/${maxAttempts}) — retrying`
+      );
+      await new Promise((r) => setTimeout(r, 250 * attempt));
+    }
+  }
+  throw lastErr;
+}
+
+async function processApprovalOnce(user, prId, action, remarks, options = {}) {
   const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
   if (!prRows.length) throw new Error('PR not found');
 
@@ -2585,6 +2609,24 @@ export async function processApproval(user, prId, action, remarks, options = {})
       requester_name: reqUserRows[0]?.name,
     });
   }
+
+  // Resolve Mugesh / L2 users BEFORE the approval transaction (ensureApproverUser uses
+  // the pool and must not run while we hold row locks on purchase_requests).
+  let preMugeshAssignee = null;
+  let preL2Assignee = null;
+  if (isInvoiceFlow && action === 'approve') {
+    try {
+      preMugeshAssignee = await resolveSassMugeshAssignment(pr.department_id);
+    } catch (err) {
+      console.warn('Pre-resolve Mugesh assignee failed:', err.message);
+    }
+    try {
+      preL2Assignee = await resolveSassL2Assignment(pr.department_id);
+    } catch (err) {
+      console.warn('Pre-resolve L2 assignee failed:', err.message);
+    }
+  }
+
   const isFunctionalUserStep =
     (isFunctional || isSass || isOnline) && pr.status === PR_STATUS.PENDING_HOD_APPROVAL;
   const pendingTask = await getPendingPrApprovalTask(prId);
@@ -2645,6 +2687,8 @@ export async function processApproval(user, prId, action, remarks, options = {})
   if (!remarks?.trim()) throw new Error('Remarks are required');
 
   const conn = await pool.getConnection();
+  let deferredOpenSassInvoice = false;
+  let deferredInvoiceRouteRemark = '';
   try {
     await conn.beginTransaction();
 
@@ -2849,7 +2893,12 @@ export async function processApproval(user, prId, action, remarks, options = {})
       nextAssignee = await createSelectedUserApprovalTask(conn, prId, nextFunctionalApprover.id);
     } else if (nextRole === 'PR Manager' && action === 'approve') {
       if (isInvoiceFlow) {
-        nextAssignee = await createSassL2ApprovalTask(conn, prId, pr.department_id);
+        nextAssignee = await createSassL2ApprovalTask(
+          conn,
+          prId,
+          pr.department_id,
+          preL2Assignee
+        );
       } else {
       const [reqRows] = await conn.query(
         `SELECT u.email FROM users u WHERE u.id = ?`,
@@ -2863,7 +2912,12 @@ export async function processApproval(user, prId, action, remarks, options = {})
       );
       }
     } else if (nextRole === 'CFO' && action === 'approve' && isInvoiceFlow) {
-      nextAssignee = await createSassMugeshApprovalTask(conn, prId, pr.department_id);
+      nextAssignee = await createSassMugeshApprovalTask(
+        conn,
+        prId,
+        pr.department_id,
+        preMugeshAssignee
+      );
     } else if (nextRole && action === 'approve') {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 1);
@@ -2883,7 +2937,6 @@ export async function processApproval(user, prId, action, remarks, options = {})
       }
     }
 
-    let sassInvoiceStageMeta = null;
     const openSassInvoice =
       isInvoiceFlow &&
       action === 'approve' &&
@@ -2893,22 +2946,20 @@ export async function processApproval(user, prId, action, remarks, options = {})
         (actingRole === 'CFO') ||
         (actingAsHod && isOnline && newStatus === PR_STATUS.AWAITING_INVOICE));
     if (openSassInvoice) {
-      sassInvoiceStageMeta = await openSassInvoiceStage(conn, pr, user, {
-        createMugeshInvoiceTask: true,
-      });
-      nextAssignee = sassInvoiceStageMeta?.mugeshAssignee || nextAssignee;
-      let routeRemark = `Routed to Mugesh for invoice upload (SCM skipped · ${flowLabel})`;
+      // Defer PO/invoice shell creation until AFTER commit — holding locks while
+      // inserting many rows caused Mugesh approve "Lock wait timeout exceeded".
+      deferredOpenSassInvoice = true;
+      deferredInvoiceRouteRemark = `Routed to Mugesh for invoice upload (SCM skipped · ${flowLabel})`;
       if (sassRequesterIsMugesh && actingAsHod) {
-        routeRemark =
+        deferredInvoiceRouteRemark =
           'Routed to Mugesh for invoice upload (Mugesh requester — L2/Mugesh approval skipped)';
       } else if (actingRole === 'CFO' && isSass) {
-        routeRemark =
+        deferredInvoiceRouteRemark =
           'Routed to Mugesh for invoice upload (L1 was Srivaths — L2 skipped)';
       }
-      await conn.query(
-        `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
-        [prId, STAGE.SASS_INVOICE_UPLOAD, user.id, 'routed', routeRemark]
-      );
+      if (preMugeshAssignee) {
+        nextAssignee = preMugeshAssignee;
+      }
     }
 
     if (isFunctional && actingAsHod && action === 'approve' && skipToScmRfq) {
@@ -2955,6 +3006,33 @@ export async function processApproval(user, prId, action, remarks, options = {})
     }
 
     await conn.commit();
+
+    let sassInvoiceStageMeta = null;
+    if (deferredOpenSassInvoice) {
+      const invConn = await pool.getConnection();
+      try {
+        await invConn.beginTransaction();
+        sassInvoiceStageMeta = await openSassInvoiceStage(invConn, pr, user, {
+          createMugeshInvoiceTask: true,
+          preMugeshAssignee,
+        });
+        nextAssignee = sassInvoiceStageMeta?.mugeshAssignee || nextAssignee || preMugeshAssignee;
+        await invConn.query(
+          `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
+          [prId, STAGE.SASS_INVOICE_UPLOAD, user.id, 'routed', deferredInvoiceRouteRemark]
+        );
+        await invConn.commit();
+      } catch (err) {
+        await invConn.rollback();
+        console.error(
+          `openSassInvoiceStage after approve failed for PR ${prId}:`,
+          err.message
+        );
+      } finally {
+        invConn.release();
+      }
+    }
+
     const updatedPr = await getPurchaseRequestById(prId);
 
     const notifyWorkflowStepProgress = (nextStepLabel, completedStepLabel) => {
@@ -4521,13 +4599,9 @@ export async function listTasks(user) {
     [roleConfig?.status, postRfqConfig?.status].filter(Boolean)
   );
 
-  // Heal leftover Cloud Subscription PR_APPROVAL rows so My Tasks does not keep
-  // showing Pending after L2 / Mugesh already approved and the PR moved on.
-  try {
-    await clearStaleSassPrApprovalTasks();
-  } catch (err) {
-    console.warn('clearStaleSassPrApprovalTasks skipped:', err.message);
-  }
+  // Heal leftover Cloud Subscription PR_APPROVAL rows runs on startup migrate only —
+  // never on every My Tasks list (that UPDATE contended with Mugesh approve and caused
+  // "Lock wait timeout exceeded").
 
   let prs = [];
 
