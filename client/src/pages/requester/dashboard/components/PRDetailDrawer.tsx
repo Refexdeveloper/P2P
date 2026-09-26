@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import StatusBadge from '../../../../components/base/StatusBadge';
 import PriorityBadge from '../../../../components/base/PriorityBadge';
@@ -99,6 +99,36 @@ interface PRDetailDrawerProps {
   deletingDraft?: boolean;
 }
 
+const softCard =
+  'relative overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-4';
+const softLabel =
+  'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
+const softValue = 'mt-1.5 text-sm font-semibold text-[#2C3E50] break-words';
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+
+function SoftField({
+  label,
+  children,
+  className = '',
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`${softCard} ${className}`}>
+      <div className="pointer-events-none absolute inset-0" style={softWash} />
+      <div className="relative z-[1]">
+        <p className={softLabel}>{label}</p>
+        <div className={softValue}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function PRDetailDrawer({
   pr,
   loading,
@@ -128,26 +158,37 @@ export default function PRDetailDrawer({
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative flex h-full w-full max-w-xl flex-col bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
-          <div className="flex items-start gap-3">
+      <div className="absolute inset-0 bg-slate-900/25 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        className="relative flex h-full w-full max-w-xl flex-col overflow-hidden shadow-2xl shadow-slate-300/40"
+        style={{ background: 'linear-gradient(180deg, #edf1ff 0%, #f6f8ff 45%, #f2ecff 100%)' }}
+      >
+        {/* Header */}
+        <div className="relative sticky top-0 z-10 border-b border-white/60 bg-white/90 px-4 py-3 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.12)] backdrop-blur-md sm:px-6 sm:py-4">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
+            }}
+          />
+          <div className="relative z-[1] flex items-start gap-3">
             <div className="min-w-0 flex-1">
               {pr && (
                 <>
-                  <p className="text-[11px] font-bold tracking-wide text-gray-500 break-all">
+                  <p className="break-all text-[11px] font-bold tracking-wide text-[#1E88E5]">
                     {pr.prNumber}
                   </p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <StatusBadge status={pr.statusUI || pr.statusFrontend} size="sm" />
                     <PriorityBadge priority={pr.priority} size="sm" />
                   </div>
-                  <h3 className="mt-2 text-base font-semibold text-gray-900 leading-snug break-words">
+                  <h3 className="mt-2 break-words text-base font-semibold leading-snug text-slate-800">
                     {pr.title}
                   </h3>
                 </>
               )}
-              {loading && <p className="text-sm text-gray-500">Loading PR details...</p>}
+              {loading && <p className="text-sm text-slate-500">Loading PR details...</p>}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               {isDraft && user?.role === 'Requester' && onDeleteDraft && pr && (
@@ -155,18 +196,20 @@ export default function PRDetailDrawer({
                   type="button"
                   disabled={deletingDraft}
                   onClick={() => void onDeleteDraft(pr.id)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 text-sm font-medium text-rose-700 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#FFE4E6] px-2.5 text-sm font-semibold text-[#F43F5E] transition-colors hover:bg-[#FECDD3] disabled:opacity-50"
                   title={deletingDraft ? 'Deleting…' : 'Delete draft'}
                 >
                   <i className="ri-delete-bin-line"></i>
-                  <span className="hidden sm:inline">{deletingDraft ? 'Deleting…' : 'Delete draft'}</span>
+                  <span className="hidden sm:inline">
+                    {deletingDraft ? 'Deleting…' : 'Delete draft'}
+                  </span>
                 </button>
               )}
               {canEdit && pr && (
                 <Link
                   to={`/requester/edit-pr/${pr.id}`}
                   onClick={onClose}
-                  className="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-lg bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
+                  className="hidden h-9 items-center gap-1.5 rounded-xl bg-[#1E88E5] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1565C0] sm:inline-flex"
                 >
                   <i className="ri-edit-line"></i>
                   {isReturned ? 'Edit & Resubmit' : 'Edit PR'}
@@ -175,383 +218,435 @@ export default function PRDetailDrawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-transparent bg-white text-slate-500 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-colors hover:border-[#90CAF9] hover:text-[#1E88E5]"
                 aria-label="Close"
               >
-                <i className="ri-close-line text-lg text-gray-500"></i>
+                <i className="ri-close-line text-lg"></i>
               </button>
             </div>
           </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-        {pr && (
-          <>
-            {isReturned && (
-              <div className="mx-4 mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-2 sm:mx-6">
-                <i className="ri-arrow-go-back-line text-orange-600 text-lg mt-0.5"></i>
-                <div>
-                  <p className="text-sm font-semibold text-orange-800">Returned for Rework</p>
-                  <p className="text-xs text-orange-700 mt-0.5">
-                    Review the feedback in approval history, update if needed, then resubmit.
-                  </p>
+          {pr && (
+            <>
+              {isReturned && (
+                <div className="relative mx-4 mt-4 overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:mx-6 sm:rounded-[18px]">
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                      background:
+                        'radial-gradient(120% 90% at 100% 0%, rgba(249, 115, 22, 0.14) 0%, rgba(255,255,255,0) 55%)',
+                    }}
+                  />
+                  <div className="relative z-[1] flex items-start gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
+                      <i className="ri-arrow-go-back-line text-lg"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Returned for Rework</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Review the feedback in approval history, update if needed, then resubmit.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="px-4 pt-4 sm:px-6">
+                <div className="flex flex-wrap gap-2">
+                  {(['details', 'items', 'quotes', 'history'] as const)
+                    .filter((tab) => tab !== 'quotes' || hasQuotes)
+                    .map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setActiveTab(tab)}
+                        className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
+                          activeTab === tab
+                            ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                            : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
+                        }`}
+                      >
+                        {tab === 'items'
+                          ? `Line Items (${pr.lineItems.length})`
+                          : tab === 'history'
+                            ? 'History'
+                            : tab === 'quotes'
+                              ? 'Quotations'
+                              : 'Details'}
+                      </button>
+                    ))}
                 </div>
               </div>
-            )}
 
-            <div className="chip-scroll-fade border-b border-gray-100 px-4 pt-3 sm:px-6">
-              <div className="chip-scroll gap-1 pb-0">
-                {(['details', 'items', 'quotes', 'history'] as const)
-                  .filter((tab) => tab !== 'quotes' || hasQuotes)
-                  .map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                      activeTab === tab
-                        ? 'border-gray-900 text-gray-900'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {tab === 'items'
-                      ? `Line Items (${pr.lineItems.length})`
-                      : tab === 'history'
-                        ? 'History'
-                        : tab === 'quotes'
-                          ? 'Quotations'
-                          : 'Details'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="px-4 py-5 space-y-5 sm:px-6">
-              {activeTab === 'details' && (
-                <>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Entity</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">
+              <div className="space-y-3 px-4 py-5 sm:space-y-4 sm:px-6">
+                {activeTab === 'details' && (
+                  <>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                      <SoftField label="Entity" className="sm:col-span-2">
                         {pr.entityName || '—'}
                         {pr.entityCode ? (
-                          <span className="text-gray-500 font-normal"> ({pr.entityCode})</span>
+                          <span className="font-normal text-slate-500"> ({pr.entityCode})</span>
                         ) : null}
-                      </p>
-                      {pr.entityCostCenter ? (
-                        <p className="text-xs text-gray-500 mt-1">Cost Center: {pr.entityCostCenter}</p>
-                      ) : null}
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Department</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{pr.department}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Request Type</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.requestType}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Request Category</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.requestCategory || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Project Detail</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{pr.projectDetail || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Required Date</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.requiredDate || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Expected Delivery Timeline</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{pr.expectedDeliveryTimeline || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Payment Terms</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{pr.paymentTerms || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Total Amount</p>
-                      <p className="text-sm font-bold text-gray-900">₹{pr.totalAmount.toLocaleString('en-IN')}</p>
-                    </div>
-                    {pr.poDocumentAvailable && pr.poId ? (
-                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 sm:col-span-2">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-indigo-900">Purchase Order</p>
-                            <p className="text-xs text-indigo-700 mt-0.5 break-words">
-                              {pr.poNumber || `PO #${pr.poId}`}
-                              {pr.statusUI ? ` · ${pr.statusUI}` : ''}
-                            </p>
+                        {pr.entityCostCenter ? (
+                          <p className="mt-1 text-xs font-normal text-slate-500">
+                            Cost Center: {pr.entityCostCenter}
+                          </p>
+                        ) : null}
+                      </SoftField>
+                      <SoftField label="Department">{pr.department}</SoftField>
+                      <SoftField label="Request Type">{pr.requestType}</SoftField>
+                      <SoftField label="Request Category">{pr.requestCategory || '—'}</SoftField>
+                      <SoftField label="Project Detail" className="sm:col-span-2">
+                        {pr.projectDetail || '—'}
+                      </SoftField>
+                      <SoftField label="Required Date">{pr.requiredDate || '—'}</SoftField>
+                      <SoftField label="Expected Delivery Timeline">
+                        {pr.expectedDeliveryTimeline || '—'}
+                      </SoftField>
+                      <SoftField label="Payment Terms">{pr.paymentTerms || '—'}</SoftField>
+                      <SoftField label="Total Amount">
+                        <span className="tabular-nums">
+                          ₹{pr.totalAmount.toLocaleString('en-IN')}
+                        </span>
+                      </SoftField>
+
+                      {pr.poDocumentAvailable && pr.poId ? (
+                        <div className={`${softCard} sm:col-span-2`}>
+                          <div
+                            className="pointer-events-none absolute inset-0"
+                            style={{
+                              background:
+                                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.14) 0%, rgba(255,255,255,0) 55%)',
+                            }}
+                          />
+                          <div className="relative z-[1] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className={softLabel}>Purchase Order</p>
+                              <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">
+                                {pr.poNumber || `PO #${pr.poId}`}
+                                {pr.statusUI ? ` · ${pr.statusUI}` : ''}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
+                              className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#1E88E5] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1565C0] sm:w-auto"
+                            >
+                              <i className="ri-file-pdf-2-line" />
+                              View PO Document
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
-                            className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700"
-                          >
-                            <i className="ri-file-pdf-2-line" />
-                            View PO Document
-                          </button>
                         </div>
-                      </div>
-                    ) : pr.poId ? (
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 sm:col-span-2">
-                        <p className="text-sm font-semibold text-slate-800">Purchase Order</p>
-                        <p className="text-xs text-slate-600 mt-0.5 break-words">
+                      ) : pr.poId ? (
+                        <SoftField label="Purchase Order" className="sm:col-span-2">
                           {pr.poNumber || `PO #${pr.poId}`}
                           {pr.statusUI ? ` · ${pr.statusUI}` : ''}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-1">
-                          PO document will be available after SCM Buyer final verification.
-                        </p>
-                      </div>
-                    ) : null}
-                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Billing Region / GST</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">
+                          <p className="mt-1 text-xs font-normal text-slate-500">
+                            PO document will be available after SCM Buyer final verification.
+                          </p>
+                        </SoftField>
+                      ) : null}
+
+                      <SoftField label="Billing Region / GST" className="sm:col-span-2">
                         {pr.billingLocation || '—'}
                         {pr.billingGstNo ? (
-                          <span className="block text-xs font-mono text-gray-600 mt-0.5">{pr.billingGstNo}</span>
+                          <span className="mt-0.5 block font-mono text-xs font-normal text-slate-500">
+                            {pr.billingGstNo}
+                          </span>
                         ) : null}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Billing Address</p>
-                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">{pr.billingAddress || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">POC for Delivery</p>
-                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
-                        {pr.deliveryPoc || '—'}
+                      </SoftField>
+                      <SoftField label="Billing Address" className="sm:col-span-2">
+                        <span className="whitespace-pre-wrap">{pr.billingAddress || '—'}</span>
+                      </SoftField>
+                      <SoftField label="POC for Delivery">
+                        <span className="whitespace-pre-wrap">{pr.deliveryPoc || '—'}</span>
                         {pr.deliveryPocEmail || pr.deliveryPocPhone ? (
-                          <span className="block text-xs text-gray-500 mt-0.5">
+                          <span className="mt-0.5 block text-xs font-normal text-slate-500">
                             {[pr.deliveryPocPhone, pr.deliveryPocEmail].filter(Boolean).join(' · ')}
                           </span>
                         ) : null}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Project Manager at HO</p>
-                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
-                        {pr.projectManagerHo || '—'}
+                      </SoftField>
+                      <SoftField label="Project Manager at HO">
+                        <span className="whitespace-pre-wrap">{pr.projectManagerHo || '—'}</span>
                         {pr.projectManagerEmail || pr.projectManagerContact ? (
-                          <span className="block text-xs text-gray-500 mt-0.5">
-                            {[pr.projectManagerContact, pr.projectManagerEmail].filter(Boolean).join(' · ')}
+                          <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                            {[pr.projectManagerContact, pr.projectManagerEmail]
+                              .filter(Boolean)
+                              .join(' · ')}
                           </span>
                         ) : null}
-                      </p>
+                      </SoftField>
+                      <SoftField label="Place of Delivery">{pr.placeOfDelivery || '—'}</SoftField>
+                      <SoftField label="Submitted Date">{pr.submittedDate || '—'}</SoftField>
                     </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Place of Delivery</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{pr.placeOfDelivery || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Submitted Date</p>
-                      <p className="text-sm font-medium text-gray-900">{pr.submittedDate || '—'}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Business Justification</h4>
-                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words">{pr.justification || '—'}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Special Notes</h4>
-                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 whitespace-pre-wrap break-words">{pr.specialNotes || '—'}</p>
-                  </div>
-                  {pr.attachments && pr.attachments.length > 0 && (
+
                     <div>
-                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Attachments</h4>
-                      <div className="space-y-2">
-                        {pr.attachments.map((file) => (
-                          <button
-                            key={file.id}
-                            type="button"
-                            onClick={() => prApi.downloadAttachment(pr.id, file.id, file.fileName)}
-                            className="w-full flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left hover:bg-white cursor-pointer"
-                          >
-                            <i className="ri-attachment-2 text-slate-500" />
-                            <span className="text-sm text-slate-800 truncate">{file.fileName}</span>
-                          </button>
-                        ))}
+                      <h4 className={`${softLabel} mb-2 px-0.5`}>Business Justification</h4>
+                      <div className={softCard}>
+                        <div className="pointer-events-none absolute inset-0" style={softWash} />
+                        <p className="relative z-[1] break-words text-sm leading-relaxed text-slate-700">
+                          {pr.justification || '—'}
+                        </p>
                       </div>
                     </div>
-                  )}
-                  {hasQuotes && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('quotes')}
-                      className="w-full flex items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-left hover:bg-teal-100/70"
-                    >
-                      <span>
-                        <span className="block text-sm font-semibold text-teal-900">View vendor quotations</span>
-                        <span className="block text-xs text-teal-700 mt-0.5">Prices, rounds, and quotation files on this PR</span>
-                      </span>
-                      <i className="ri-arrow-right-s-line text-teal-700 text-lg" />
-                    </button>
-                  )}
-                </>
-              )}
+                    <div>
+                      <h4 className={`${softLabel} mb-2 px-0.5`}>Special Notes</h4>
+                      <div className={softCard}>
+                        <div className="pointer-events-none absolute inset-0" style={softWash} />
+                        <p className="relative z-[1] whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                          {pr.specialNotes || '—'}
+                        </p>
+                      </div>
+                    </div>
 
-              {pr.id ? (
-                <div className={activeTab === 'quotes' ? '' : 'hidden'}>
-                  <PrVendorQuotationsPanel prId={pr.id} onPresenceChange={setHasQuotes} />
-                </div>
-              ) : null}
+                    {pr.attachments && pr.attachments.length > 0 && (
+                      <div>
+                        <h4 className={`${softLabel} mb-2 px-0.5`}>Attachments</h4>
+                        <div className="space-y-2">
+                          {pr.attachments.map((file) => (
+                            <button
+                              key={file.id}
+                              type="button"
+                              onClick={() => prApi.downloadAttachment(pr.id, file.id, file.fileName)}
+                              className="relative flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-2xl border border-transparent bg-white px-3 py-2.5 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
+                            >
+                              <div
+                                className="pointer-events-none absolute inset-0"
+                                style={softWash}
+                              />
+                              <i className="ri-attachment-2 relative z-[1] text-[#1E88E5]" />
+                              <span className="relative z-[1] truncate text-sm font-medium text-slate-800">
+                                {file.fileName}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-              {activeTab === 'items' && (
-                <>
-                  {/* Mobile cards */}
-                  <div className="space-y-3 md:hidden">
-                    {pr.lineItems.map((item, i) => (
-                      <div
-                        key={item.id ?? `line-card-${i}`}
-                        className="rounded-xl border border-gray-200 bg-white p-4"
+                    {hasQuotes && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('quotes')}
+                        className="relative flex w-full items-center justify-between gap-3 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3.5 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
                       >
-                        <div className="flex items-start justify-between gap-3 mb-3">
-                          <div className="min-w-0">
-                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-slate-100 px-1.5 text-[11px] font-bold text-slate-600">
-                              #{i + 1}
-                            </span>
-                            <p className="mt-1.5 text-sm font-semibold text-gray-900 break-words">
-                              {item.description}
-                            </p>
-                            <p className="text-xs text-gray-400 mt-0.5">{item.category || '—'}</p>
-                          </div>
-                          <p className="shrink-0 text-sm font-bold text-gray-900">
-                            ₹{item.total.toLocaleString('en-IN')}
-                          </p>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Qty</p>
-                            <p className="text-sm text-gray-800 mt-0.5">{item.quantity}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Unit</p>
-                            <p className="text-sm text-gray-800 mt-0.5">₹{item.unitCost.toLocaleString('en-IN')}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-gray-700">Total</p>
-                      <p className="text-sm font-bold text-gray-900">₹{pr.totalAmount.toLocaleString('en-IN')}</p>
-                    </div>
-                  </div>
+                        <div className="pointer-events-none absolute inset-0" style={softWash} />
+                        <span className="relative z-[1]">
+                          <span className="block text-sm font-semibold text-slate-800">
+                            View vendor quotations
+                          </span>
+                          <span className="mt-0.5 block text-xs text-slate-500">
+                            Prices, rounds, and quotation files on this PR
+                          </span>
+                        </span>
+                        <i className="ri-arrow-right-s-line relative z-[1] text-lg text-[#1E88E5]" />
+                      </button>
+                    )}
+                  </>
+                )}
 
-                  {/* Desktop table */}
-                  <div className="hidden md:block border border-gray-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">#</th>
-                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Description</th>
-                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Qty</th>
-                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Unit</th>
-                          <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {pr.lineItems.map((item, i) => (
-                          <tr key={item.id ?? `line-${i}`}>
-                            <td className="px-3 py-2 text-gray-500">{i + 1}</td>
-                            <td className="px-3 py-2">
-                              <p className="font-medium text-gray-900">{item.description}</p>
-                              <p className="text-xs text-gray-400">{item.category}</p>
-                            </td>
-                            <td className="px-3 py-2 text-right">{item.quantity}</td>
-                            <td className="px-3 py-2 text-right">₹{item.unitCost.toLocaleString('en-IN')}</td>
-                            <td className="px-3 py-2 text-right font-semibold">₹{item.total.toLocaleString('en-IN')}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-gray-50">
-                        <tr>
-                          <td colSpan={4} className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Total</td>
-                          <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
-                            ₹{pr.totalAmount.toLocaleString('en-IN')}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
+                {pr.id ? (
+                  <div className={activeTab === 'quotes' ? '' : 'hidden'}>
+                    <PrVendorQuotationsPanel prId={pr.id} onPresenceChange={setHasQuotes} />
                   </div>
-                </>
-              )}
+                ) : null}
 
-              {activeTab === 'history' && (
-                <div className="space-y-4">
-                  {pr.approvalHistory.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-6">No approval history yet</p>
-                  ) : (
-                    collapsePrAdminEditHistory(
-                      pr.approvalHistory.map((item) => ({
-                        stage: item.stage,
-                        user: item.user,
-                        role: item.role,
-                        date: item.date,
-                        status: item.status,
-                        remarks: item.remarks,
-                      }))
-                    ).map((item, index) => (
-                      <div key={index} className="flex gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            item.status === 'Completed' || item.status === 'Approved' || item.status === 'Approve'
-                              ? 'bg-emerald-100 text-emerald-600'
-                              : item.status === 'Rejected' || item.status === 'Reject'
-                              ? 'bg-red-100 text-red-600'
-                              : item.status === 'Returned' || item.status?.toLowerCase().includes('return')
-                              ? 'bg-orange-100 text-orange-600'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          <i
-                            className={`text-sm ${
-                              item.status === 'Rejected' || item.status === 'Reject'
-                                ? 'ri-close-circle-fill'
-                                : item.status === 'Returned'
-                                ? 'ri-arrow-go-back-fill'
-                                : 'ri-checkbox-circle-fill'
-                            }`}
-                          ></i>
-                        </div>
-                        <div className="flex-1 pb-4 border-b border-gray-100 last:border-0 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900 break-words">{item.stage}</p>
-                              <p className="text-xs text-gray-500 break-words">
-                                {item.user}
-                                {formatPersonRoleSuffix(item.role, item.user)}
+                {activeTab === 'items' && (
+                  <>
+                    <div className="space-y-3 md:hidden">
+                      {pr.lineItems.map((item, i) => (
+                        <div key={item.id ?? `line-card-${i}`} className={softCard}>
+                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                          <div className="relative z-[1]">
+                            <div className="mb-3 flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-lg bg-[#E3F2FD] px-1.5 text-[11px] font-bold text-[#1E88E5]">
+                                  #{i + 1}
+                                </span>
+                                <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">
+                                  {item.description}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-400">{item.category || '—'}</p>
+                              </div>
+                              <p className="shrink-0 text-sm font-bold tabular-nums text-[#2C3E50]">
+                                ₹{item.total.toLocaleString('en-IN')}
                               </p>
                             </div>
-                            <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">{item.date}</span>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <p className={softLabel}>Qty</p>
+                                <p className="mt-0.5 text-sm text-slate-800">{item.quantity}</p>
+                              </div>
+                              <div>
+                                <p className={softLabel}>Unit</p>
+                                <p className="mt-0.5 text-sm text-slate-800">
+                                  ₹{item.unitCost.toLocaleString('en-IN')}
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                          {item.remarks && (
-                            <p className="text-sm text-gray-700 mt-2 bg-gray-50 rounded-lg p-2 border border-gray-100 break-words">
-                              {item.remarks}
-                            </p>
-                          )}
+                        </div>
+                      ))}
+                      <div className={softCard}>
+                        <div className="pointer-events-none absolute inset-0" style={softWash} />
+                        <div className="relative z-[1] flex items-center justify-between">
+                          <p className="text-sm font-semibold text-slate-700">Total</p>
+                          <p className="text-sm font-bold tabular-nums text-[#2C3E50]">
+                            ₹{pr.totalAmount.toLocaleString('en-IN')}
+                          </p>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          </>
-        )}
+                    </div>
+
+                    <div className="relative hidden overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] md:block sm:rounded-[18px]">
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <table className="relative z-[1] w-full text-sm">
+                        <thead>
+                          <tr>
+                            <th className="px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                              #
+                            </th>
+                            <th className="px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                              Description
+                            </th>
+                            <th className="px-3 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                              Qty
+                            </th>
+                            <th className="px-3 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                              Unit
+                            </th>
+                            <th className="px-3 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                              Total
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pr.lineItems.map((item, i) => (
+                            <tr key={item.id ?? `line-${i}`} className="border-t border-slate-100/80">
+                              <td className="px-3 py-3 text-slate-500">{i + 1}</td>
+                              <td className="px-3 py-3">
+                                <p className="font-semibold text-[#2C3E50]">{item.description}</p>
+                                <p className="text-xs text-slate-400">{item.category}</p>
+                              </td>
+                              <td className="px-3 py-3 text-right tabular-nums">{item.quantity}</td>
+                              <td className="px-3 py-3 text-right tabular-nums">
+                                ₹{item.unitCost.toLocaleString('en-IN')}
+                              </td>
+                              <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#2C3E50]">
+                                ₹{item.total.toLocaleString('en-IN')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t border-slate-100/80">
+                            <td
+                              colSpan={4}
+                              className="px-3 py-3 text-right text-sm font-semibold text-slate-700"
+                            >
+                              Total
+                            </td>
+                            <td className="px-3 py-3 text-right text-sm font-bold tabular-nums text-[#2C3E50]">
+                              ₹{pr.totalAmount.toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+                {activeTab === 'history' && (
+                  <div className="space-y-3">
+                    {pr.approvalHistory.length === 0 ? (
+                      <div className={`${softCard} py-8 text-center`}>
+                        <div className="pointer-events-none absolute inset-0" style={softWash} />
+                        <p className="relative z-[1] text-sm text-slate-500">
+                          No approval history yet
+                        </p>
+                      </div>
+                    ) : (
+                      collapsePrAdminEditHistory(
+                        pr.approvalHistory.map((item) => ({
+                          stage: item.stage,
+                          user: item.user,
+                          role: item.role,
+                          date: item.date,
+                          status: item.status,
+                          remarks: item.remarks,
+                        }))
+                      ).map((item, index) => (
+                        <div key={index} className={softCard}>
+                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                          <div className="relative z-[1] flex gap-3">
+                            <div
+                              className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${
+                                item.status === 'Completed' ||
+                                item.status === 'Approved' ||
+                                item.status === 'Approve'
+                                  ? 'bg-emerald-50 text-emerald-600'
+                                  : item.status === 'Rejected' || item.status === 'Reject'
+                                    ? 'bg-[#FFE4E6] text-[#F43F5E]'
+                                    : item.status === 'Returned' ||
+                                        item.status?.toLowerCase().includes('return')
+                                      ? 'bg-orange-50 text-orange-600'
+                                      : 'bg-[#E3F2FD] text-[#1E88E5]'
+                              }`}
+                            >
+                              <i
+                                className={`text-sm ${
+                                  item.status === 'Rejected' || item.status === 'Reject'
+                                    ? 'ri-close-circle-fill'
+                                    : item.status === 'Returned'
+                                      ? 'ri-arrow-go-back-fill'
+                                      : 'ri-checkbox-circle-fill'
+                                }`}
+                              ></i>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="break-words text-sm font-semibold text-[#2C3E50]">
+                                    {item.stage}
+                                  </p>
+                                  <p className="break-words text-xs text-slate-500">
+                                    {item.user}
+                                    {formatPersonRoleSuffix(item.role, item.user)}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">
+                                  {item.date}
+                                </span>
+                              </div>
+                              {item.remarks && (
+                                <p className="mt-2 break-words rounded-xl bg-[#F8FAFC] p-2.5 text-sm text-slate-700">
+                                  {item.remarks}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {canEdit && pr && (
-          <div className="shrink-0 border-t border-gray-200 px-4 py-3 sm:px-6 sm:py-4 flex justify-end gap-3 bg-white">
+          <div className="shrink-0 border-t border-white/60 bg-white/90 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
             <Link
               to={`/requester/edit-pr/${pr.id}`}
               onClick={onClose}
-              className={`w-full sm:w-auto text-center px-5 py-2.5 text-white text-sm font-medium rounded-lg transition-colors ${
-                isReturned ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-900 hover:bg-gray-800'
-              }`}
+              className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-[#1E88E5] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1565C0] sm:ml-auto sm:w-auto"
             >
-              <i className={`${isReturned ? 'ri-edit-line' : isDraft ? 'ri-send-plane-fill' : 'ri-edit-line'} mr-1.5`}></i>
+              <i
+                className={`${isReturned ? 'ri-edit-line' : isDraft ? 'ri-send-plane-fill' : 'ri-edit-line'} mr-1.5`}
+              ></i>
               {isReturned ? 'Edit & Resubmit' : isDraft ? 'Edit & Submit' : 'Edit PR'}
             </Link>
           </div>

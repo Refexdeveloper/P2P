@@ -111,48 +111,66 @@ export function ManagerL2CommentsHighlight({
   const manager = pickLatestComment(history, isManagerEntry);
   const l2 = pickLatestComment(history, isL2ManagerEntry);
 
+  const softWash = {
+    background:
+      'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+  } as const;
+
+  const softCard =
+    'relative overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
-        <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-          <i className="ri-user-star-line text-amber-600"></i>
-          Manager Comments
-        </h4>
-        {manager ? (
-          <>
-            <p className="text-sm text-amber-950 leading-relaxed font-medium whitespace-pre-wrap">
-              {manager.remarks}
-            </p>
-            <p className="text-xs text-amber-700/80 mt-2">
-              {manager.approver || manager.user || 'Manager'}
-              {roleLabelForEntry(manager) ? ` · ${roleLabelForEntry(manager)}` : ''}
-              {manager.date ? ` · ${manager.date}` : ''}
-            </p>
-          </>
-        ) : (
-          <p className="text-sm text-amber-700/70 italic">No manager comments recorded.</p>
-        )}
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className={softCard}>
+        <div className="pointer-events-none absolute inset-0" style={softWash} />
+        <div className="relative z-[1]">
+          <h4 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+              <i className="ri-user-star-line text-sm"></i>
+            </span>
+            Manager Comments
+          </h4>
+          {manager ? (
+            <>
+              <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-[#2C3E50]">
+                {manager.remarks}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                {manager.approver || manager.user || 'Manager'}
+                {roleLabelForEntry(manager) ? ` · ${roleLabelForEntry(manager)}` : ''}
+                {manager.date ? ` · ${manager.date}` : ''}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm italic text-slate-400">No manager comments recorded.</p>
+          )}
+        </div>
       </div>
 
-      <div className="rounded-lg border-2 border-violet-300 bg-violet-50 p-4 shadow-sm">
-        <h4 className="text-xs font-bold text-violet-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-          <i className="ri-shield-user-line text-violet-600"></i>
-          L2 Manager Comments
-        </h4>
-        {l2 ? (
-          <>
-            <p className="text-sm text-violet-950 leading-relaxed font-medium whitespace-pre-wrap">
-              {l2.remarks}
-            </p>
-            <p className="text-xs text-violet-700/80 mt-2">
-              {l2.approver || l2.user || 'L2 Manager'}
-              {roleLabelForEntry(l2) ? ` · ${roleLabelForEntry(l2)}` : ''}
-              {l2.date ? ` · ${l2.date}` : ''}
-            </p>
-          </>
-        ) : (
-          <p className="text-sm text-violet-700/70 italic">No L2 manager comments recorded.</p>
-        )}
+      <div className={softCard}>
+        <div className="pointer-events-none absolute inset-0" style={softWash} />
+        <div className="relative z-[1]">
+          <h4 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+              <i className="ri-shield-user-line text-sm"></i>
+            </span>
+            L2 Manager Comments
+          </h4>
+          {l2 ? (
+            <>
+              <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-[#2C3E50]">
+                {l2.remarks}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                {l2.approver || l2.user || 'L2 Manager'}
+                {roleLabelForEntry(l2) ? ` · ${roleLabelForEntry(l2)}` : ''}
+                {l2.date ? ` · ${l2.date}` : ''}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm italic text-slate-400">No L2 manager comments recorded.</p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -165,8 +183,24 @@ export default function ApprovalHistoryPanel({
 }) {
   const items = collapsePrAdminEditHistory(history);
   if (!items.length) {
-    return <p className="text-sm text-gray-500 italic py-4">No approval history available.</p>;
+    return (
+      <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-8 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+          }}
+        />
+        <p className="relative z-[1] text-sm italic text-slate-500">No approval history available.</p>
+      </div>
+    );
   }
+
+  const softWash = {
+    background:
+      'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+  } as const;
 
   return (
     <div className="space-y-0">
@@ -177,94 +211,97 @@ export default function ApprovalHistoryPanel({
         const isMgr = isManagerEntry(item);
         const isBuyerSel = isScmBuyerSelectionEntry(item);
         const isVendorFinal = isVendorFinalEntry(item) && !isL2 && !isMgr;
-        const cardCls = isBuyerSel
-          ? 'bg-teal-50 border-teal-200'
-          : isL2
-            ? 'bg-violet-50 border-violet-200'
-            : isMgr || isVendorFinal
-              ? 'bg-amber-50 border-amber-200'
-              : 'bg-gray-50 border-gray-100';
+        const isPositive =
+          action === 'Approved' ||
+          action === 'Created' ||
+          action === 'Submitted' ||
+          action === 'Completed' ||
+          action === 'Verified';
+        const isRejected = action === 'Rejected';
 
         return (
-          <div key={`${item.stage}-${item.date}-${idx}`} className="flex gap-4 pb-6 relative">
+          <div key={`${item.stage}-${item.date}-${idx}`} className="relative flex gap-4 pb-5">
             {idx !== items.length - 1 && (
-              <div className="absolute left-4 top-10 w-0.5 h-full bg-gray-200"></div>
+              <div className="absolute left-4 top-10 h-full w-0.5 bg-[#BBDEFB]/70"></div>
             )}
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${
-                action === 'Approved' || action === 'Created' || action === 'Submitted' || action === 'Completed' || action === 'Verified'
-                  ? 'bg-emerald-100'
-                  : action === 'Rejected'
-                    ? 'bg-red-100'
-                    : 'bg-amber-100'
+              className={`z-10 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl ${
+                isPositive
+                  ? 'bg-[#E3F2FD] text-[#1E88E5]'
+                  : isRejected
+                    ? 'bg-rose-50 text-rose-500'
+                    : 'bg-[#E3F2FD] text-[#1E88E5]'
               }`}
             >
               <i
                 className={`text-sm ${
-                  action === 'Approved' || action === 'Completed' || action === 'Verified'
-                    ? 'ri-check-line text-emerald-600'
-                    : action === 'Created'
-                      ? 'ri-file-add-line text-emerald-600'
-                      : action === 'Submitted'
-                        ? 'ri-send-plane-line text-emerald-600'
-                        : action === 'Rejected'
-                          ? 'ri-close-line text-red-600'
-                          : 'ri-time-line text-amber-600'
+                  isPositive && action === 'Created'
+                    ? 'ri-file-add-line'
+                    : isPositive && action === 'Submitted'
+                      ? 'ri-send-plane-line'
+                      : isPositive
+                        ? 'ri-check-line'
+                        : isRejected
+                          ? 'ri-close-line'
+                          : 'ri-time-line'
                 }`}
               ></i>
             </div>
-            <div className={`flex-1 rounded-lg p-4 border ${cardCls}`}>
-              <div className="flex items-start justify-between gap-3 mb-1">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-gray-900">{item.stage}</p>
-                    {isMgr && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-200 text-amber-900">
-                        Manager
-                      </span>
-                    )}
-                    {isL2 && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-200 text-violet-900">
-                        L2 Manager
-                      </span>
-                    )}
-                    {isBuyerSel && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-teal-200 text-teal-900">
-                        SCM Buyer Selection
-                      </span>
-                    )}
-                    {isVendorFinal && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-200 text-amber-900">
-                        Vendor Final
-                      </span>
-                    )}
+            <div className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+              <div className="pointer-events-none absolute inset-0" style={softWash} />
+              <div className="relative z-[1]">
+                <div className="mb-1 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-[#2C3E50]">{item.stage}</p>
+                      {isMgr && (
+                        <span className="rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase text-[#1E88E5]">
+                          Manager
+                        </span>
+                      )}
+                      {isL2 && (
+                        <span className="rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase text-[#1E88E5]">
+                          L2 Manager
+                        </span>
+                      )}
+                      {isBuyerSel && (
+                        <span className="rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase text-[#1E88E5]">
+                          SCM Buyer Selection
+                        </span>
+                      )}
+                      {isVendorFinal && (
+                        <span className="rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase text-[#1E88E5]">
+                          Vendor Final
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {who}
+                      {roleLabelForEntry(item) ? ` · ${roleLabelForEntry(item)}` : ''}
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {who}
-                    {roleLabelForEntry(item) ? ` · ${roleLabelForEntry(item)}` : ''}
-                  </p>
+                  <span
+                    className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      isPositive
+                        ? 'bg-[#E3F2FD] text-[#1E88E5]'
+                        : isRejected
+                          ? 'bg-rose-50 text-rose-600'
+                          : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {action}
+                  </span>
                 </div>
-                <span
-                  className={`px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap ${
-                    action === 'Approved' || action === 'Created' || action === 'Submitted' || action === 'Completed' || action === 'Verified'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : action === 'Rejected'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
-                  {action}
-                </span>
-              </div>
-              {item.remarks && (
-                <p className="text-sm text-gray-800 mt-2 leading-relaxed whitespace-pre-wrap font-medium">
-                  {item.remarks}
+                {item.remarks && (
+                  <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-relaxed text-[#2C3E50]">
+                    {item.remarks}
+                  </p>
+                )}
+                <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
+                  <i className="ri-calendar-line"></i>
+                  {item.date}
                 </p>
-              )}
-              <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                <i className="ri-calendar-line"></i>
-                {item.date}
-              </p>
+              </div>
             </div>
           </div>
         );

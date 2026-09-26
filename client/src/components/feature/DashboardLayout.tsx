@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import { PM_PAGE_BG } from '../../constants/pmTheme';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -34,7 +35,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, []);
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] bg-gray-50 overflow-hidden">
+    <div className="flex h-[100dvh] max-h-[100dvh] overflow-hidden" style={{ background: PM_PAGE_BG }}>
       {mobileNavOpen && (
         <button
           type="button"
@@ -48,8 +49,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         <TopBar onMenuClick={() => setMobileNavOpen(true)} />
-        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-gray-50">
-          <div className="p-3 sm:p-4 lg:p-6 min-h-0 w-full min-w-0 max-w-full pb-10">
+        <main
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+          style={{ background: PM_PAGE_BG }}
+        >
+          <div className="min-h-full w-full min-w-0 max-w-full p-3 pb-10 sm:p-4 lg:p-6">
             {children}
           </div>
         </main>

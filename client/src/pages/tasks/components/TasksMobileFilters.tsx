@@ -19,6 +19,7 @@ const STATUS_OPTIONS = [
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
   { value: 'returned', label: 'Returned' },
+  { value: 'overdue', label: 'Overdue' },
 ];
 
 const PRIORITY_OPTIONS = [

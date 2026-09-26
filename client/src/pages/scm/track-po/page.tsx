@@ -6,6 +6,7 @@ import TrackPoExpandedRow from './components/TrackPoExpandedRow';
 import POApprovalModal from '../po-approval/components/POApprovalModal';
 import { masterApi, poApi, prApi, CategoryRecord, DepartmentRecord, EntityRecord } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
+import { PM_PAGE_BG } from '../../../constants/pmTheme';
 import {
   parseAllPoImportCsv,
   storePoCsvImport,
@@ -100,7 +101,7 @@ function EntitySearchSelect({
 
   return (
     <div ref={boxRef} className="relative min-w-[280px] max-w-[420px] flex-1">
-      <i className="ri-building-2-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+      <i className="ri-building-2-line pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
       <input
         type="text"
         value={open ? query : selected ? entityLabel(selected) : ''}
@@ -113,11 +114,11 @@ function EntitySearchSelect({
           setOpen(true);
         }}
         placeholder="Search PO entity (code or name)..."
-        className="w-full pl-9 pr-8 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+        className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-8 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
       />
-      <i className="ri-arrow-down-s-line absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+      <i className="ri-arrow-down-s-line pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
       {open && (
-        <div className="absolute z-30 mt-1 w-full max-h-64 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+        <div className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-2xl border border-transparent bg-white shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]">
           <button
             type="button"
             onClick={() => {
@@ -125,12 +126,12 @@ function EntitySearchSelect({
               setQuery('');
               setOpen(false);
             }}
-            className={`w-full text-left px-3 py-2 text-sm hover:bg-teal-50 ${!value ? 'font-semibold text-teal-700 bg-teal-50' : 'text-gray-700'}`}
+            className={`w-full px-3.5 py-2.5 text-left text-sm hover:bg-[#E3F2FD] ${!value ? 'bg-[#E3F2FD] font-semibold text-[#1E88E5]' : 'text-slate-700'}`}
           >
             All Entities
           </button>
           {filtered.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-gray-500">No entity found</p>
+            <p className="px-3.5 py-2.5 text-sm text-slate-500">No entity found</p>
           ) : (
             filtered.map((ent) => (
               <button
@@ -141,8 +142,8 @@ function EntitySearchSelect({
                   setQuery('');
                   setOpen(false);
                 }}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-teal-50 ${
-                  value === ent.id ? 'font-semibold text-teal-700 bg-teal-50' : 'text-gray-800'
+                className={`w-full px-3.5 py-2.5 text-left text-sm hover:bg-[#E3F2FD] ${
+                  value === ent.id ? 'bg-[#E3F2FD] font-semibold text-[#1E88E5]' : 'text-[#2C3E50]'
                 }`}
                 title={entityLabel(ent)}
               >
@@ -159,23 +160,23 @@ function EntitySearchSelect({
 function statusColor(status: string) {
   switch (status) {
     case 'ready':
-      return 'bg-emerald-100 text-emerald-700';
+      return 'bg-[#E3F2FD] text-[#1E88E5]';
     case 'pending':
-      return 'bg-amber-100 text-amber-800';
+      return 'bg-amber-50 text-amber-700';
     case 'approved':
-      return 'bg-blue-100 text-blue-700';
+      return 'bg-[#E3F2FD] text-[#1565C0]';
     case 'sent':
-      return 'bg-teal-100 text-teal-800';
+      return 'bg-[#E3F2FD] text-[#1E88E5]';
     case 'rejected':
-      return 'bg-red-100 text-red-700';
+      return 'bg-rose-50 text-rose-600';
     case 'imported':
-      return 'bg-indigo-100 text-indigo-800';
+      return 'bg-[#EDE9FE] text-[#7C3AED]';
     case 'draft':
-      return 'bg-slate-100 text-slate-700';
+      return 'bg-slate-100 text-slate-600';
     case 'cancelled':
-      return 'bg-rose-100 text-rose-700';
+      return 'bg-rose-50 text-rose-600';
     default:
-      return 'bg-gray-100 text-gray-700';
+      return 'bg-slate-100 text-slate-600';
   }
 }
 
@@ -196,7 +197,7 @@ function StatusBadge({ label, status }: { label: string; status?: string }) {
   const isVendorAck = text === 'Vendor Acknowledged pending';
   return (
     <span
-      className={`inline-flex max-w-full px-2 py-1 rounded-full text-[11px] font-medium leading-snug text-center ${statusColor(status || '')}`}
+      className={`inline-flex max-w-full rounded-full px-2 py-0.5 text-[11px] font-semibold leading-snug text-center ${statusColor(status || '')}`}
       title={label || text}
     >
       {isVendorAck ? (
@@ -596,407 +597,495 @@ export default function TrackPoPage() {
   return (
     <DashboardLayout>
       {toast ? (
-        <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+        <div className="fixed right-4 top-4 z-50 rounded-xl bg-[#1E88E5] px-4 py-2 text-sm text-white shadow-lg">
           {toast}
         </div>
       ) : null}
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">PO/WO Tracker</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            All purchase orders and work orders. Filter by entity, department, category, type, and date. Expand a row for details, documents, and approval history.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => handleExportAll()}
-            className="px-4 py-2.5 border border-slate-300 text-slate-800 rounded-lg text-sm font-semibold hover:bg-slate-50 flex items-center gap-2"
-          >
-            <i className="ri-download-2-line"></i>
-            Export
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start justify-between gap-3">
-          <span>{error}</span>
-          <button type="button" onClick={() => setError('')} className="text-red-500 hover:text-red-700">
-            <i className="ri-close-line"></i>
-          </button>
-        </div>
-      )}
-
-      <div className="bg-white rounded-lg border border-gray-200 px-4 py-3 mb-5 space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[220px] relative">
-          <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search PR, PO/WO, vendor, title, entity..."
-            className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-          />
-        </div>
-        <EntitySearchSelect
-          entities={entities}
-          value={entityId}
-          onChange={(id) => {
-            setEntityId(id);
-            setPage(1);
-            setExpandedKey(null);
-          }}
-        />
-        <select
-          value={department}
-          onChange={(e) => {
-            setDepartment(e.target.value);
-            setPage(1);
-            setExpandedKey(null);
-          }}
-          className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white min-w-[150px]"
-        >
-          <option value="">All Departments</option>
-          {departments.map((d) => (
-            <option key={d.id} value={d.name}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={category}
-          onChange={(e) => {
-            setCategory(e.target.value);
-            setPage(1);
-            setExpandedKey(null);
-          }}
-          className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white min-w-[150px]"
-        >
-          <option value="">All Categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.name}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-2 text-xs text-gray-600">
-          From
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => {
-              setDateFrom(e.target.value);
-              setPage(1);
-              setExpandedKey(null);
-            }}
-            className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
-          />
-        </label>
-        <label className="flex items-center gap-2 text-xs text-gray-600">
-          To
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => {
-              setDateTo(e.target.value);
-              setPage(1);
-              setExpandedKey(null);
-            }}
-            className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={resetFilters}
-          className="px-3 py-2.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
-        >
-          Clear filters
-        </button>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {(
-            [
-              ['all', 'All Types'],
-              ['purchase_order', 'Purchase Order'],
-              ['work_order', 'Work Order'],
-            ] as const
-          ).map(([key, label]) => (
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+        <div className="p-2 pb-6 sm:p-4 lg:p-6">
+          <header className="mb-4 flex flex-wrap items-start justify-between gap-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl md:text-3xl">
+                PO/WO Tracker
+              </h1>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
+                All purchase orders and work orders. Filter by entity, department, category, type, and date.
+              </p>
+            </div>
             <button
-              key={key}
               type="button"
-              onClick={() => {
-                setPurchaseTypeFilter(key);
-                setPage(1);
-                setExpandedKey(null);
-              }}
-              className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${
-                purchaseTypeFilter === key
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              onClick={() => handleExportAll()}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-transparent bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-colors hover:border-[#90CAF9]"
             >
-              {label}
+              <i className="ri-download-2-line"></i>
+              Export
             </button>
-          ))}
-        </div>
-      </div>
+          </header>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          {loading ? (
-            <p className="p-8 text-sm text-gray-500">Loading purchase orders...</p>
-          ) : (
-            <table className="w-full table-fixed min-w-[1280px]">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="px-2 py-3 w-11"></th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px]">PR Number</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[140px]">PO / WO Number</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[100px]">PO Date</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[88px]">Type</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[20%]">Title / Vendor</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[120px]">Entity</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[110px]">Department</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[100px]">Amount</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-[150px]">Status</th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-[280px]">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="px-5 py-12 text-center text-sm text-gray-500">
-                      No purchase orders found
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((row) => {
-                    const open = expandedKey === row.key;
-                    return (
-                      <Fragment key={row.key}>
-                        <tr className="border-b hover:bg-gray-50">
-                          <td className="px-2 py-3">
-                            <button
-                              type="button"
-                              onClick={() => setExpandedKey(open ? null : row.key)}
-                              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600"
-                            >
-                              <i className={`ri-arrow-${open ? 'down' : 'right'}-s-line text-lg`}></i>
-                            </button>
-                          </td>
-                          <td className="px-3 py-3 text-sm font-semibold text-teal-700 truncate" title={row.prNumber}>
-                            {row.prNumber || '—'}
-                          </td>
-                          <td className="px-3 py-3 text-sm font-bold text-gray-900 truncate" title={row.poNumber || undefined}>
-                            {row.poNumber || '—'}
-                          </td>
-                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap">
-                            {row.poDate || '—'}
-                          </td>
-                          <td className="px-3 py-3">
-                            <span
-                              className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${
-                                row.purchaseType === 'work_order'
-                                  ? 'bg-violet-50 text-violet-700 border border-violet-200'
-                                  : 'bg-teal-50 text-teal-700 border border-teal-200'
-                              }`}
-                            >
-                              {row.purchaseTypeLabel ||
-                                (row.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order')}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3 max-w-0 overflow-hidden">
-                            <p className="text-sm font-medium text-gray-900 truncate" title={row.title}>
-                              {row.title}
-                            </p>
-                            <p className="text-xs text-gray-500 truncate" title={row.vendorName || undefined}>
-                              {row.vendorName || 'Vendor pending'}
-                            </p>
-                          </td>
-                          <td className="px-3 py-3 text-sm text-gray-600 truncate" title={row.entityName || undefined}>
-                            {row.entityName || '—'}
-                          </td>
-                          <td className="px-3 py-3 text-sm text-gray-600 truncate" title={row.department}>
-                            {row.department}
-                          </td>
-                          <td className="px-3 py-3 text-sm font-semibold text-gray-900 text-right tabular-nums whitespace-nowrap">
-                            {formatCurrency(row.amount)}
-                          </td>
-                          <td className="px-2 py-3 align-middle overflow-hidden">
-                            <StatusBadge label={row.statusLabel} status={row.status} />
-                          </td>
-                          <td className="px-2 py-3 align-middle">
-                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                              {row.kind === 'ready' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => openCreatePo(row.prId)}
-                                    className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
-                                  >
-                                    Create {row.purchaseType === 'work_order' ? 'WO' : 'PO'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => openImportModal(row.prId)}
-                                    className="px-2.5 py-1.5 border border-violet-300 text-violet-700 rounded-md text-xs font-semibold whitespace-nowrap"
-                                  >
-                                    Import
-                                  </button>
-                                </>
-                              )}
-                              {row.status === 'draft' && row.poId && (
-                                <button
-                                  type="button"
-                                  onClick={() => openEditDraft(row.poId!)}
-                                  className="px-2.5 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold whitespace-nowrap"
-                                >
-                                  Edit Draft
-                                </button>
-                              )}
-                              {canSendBackPending && row.poId && row.status === 'pending' && (
-                                <button
-                                  type="button"
-                                  onClick={() => openSendBack(row, 'pending_sign')}
-                                  className="px-2.5 py-1.5 border border-orange-300 text-orange-700 rounded-md text-xs font-semibold hover:bg-orange-50 whitespace-nowrap"
-                                  title="Send back to SCM Buyer Create PO as draft"
-                                >
-                                  <i className="ri-arrow-go-back-line mr-1"></i>
-                                  Send Back
-                                </button>
-                              )}
-                              {isSuperAdmin && canAdminSendBackToBuyerVerify(row) && (
-                                <button
-                                  type="button"
-                                  onClick={() => openSendBack(row, 'buyer_verify')}
-                                  className="px-2.5 py-1.5 border border-amber-400 text-amber-800 rounded-md text-xs font-semibold hover:bg-amber-50 whitespace-nowrap"
-                                  title="Send back to Approved PO verification (Buyer Verify). Clears vendor acceptance, GRN, and invoice for this PO."
-                                >
-                                  <i className="ri-arrow-go-back-line mr-1"></i>
-                                  To Buyer Verify
-                                </button>
-                              )}
-                              {isAdminEditor &&
-                                row.poId &&
-                                row.status !== 'draft' &&
-                                row.status !== 'cancelled' &&
-                                !(user?.role === 'SCM Buyer' && row.status === 'pending') && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openAdminEditPo(row.poId!)}
-                                    className="px-2.5 py-1.5 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-50 whitespace-nowrap"
-                                    title="Edit this purchase order"
-                                  >
-                                    Edit
-                                  </button>
-                                )}
-                              {user?.role === 'SCM Buyer' && row.poId && row.status === 'pending' && (
-                                  <span
-                                    className="px-2 py-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-md whitespace-nowrap"
-                                    title="Sent to SCM Manager for sign / approval"
-                                  >
-                                    SCM Manager
-                                  </span>
-                                )}
-                              {row.status === 'cancelled' && row.poId && (
-                                <button
-                                  type="button"
-                                  disabled={retrievingKey === row.key}
-                                  onClick={() => void handleRetrieveCancelled(row)}
-                                  className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold disabled:opacity-50 whitespace-nowrap"
-                                  title="Retrieve cancelled PO as draft"
-                                >
-                                  {retrievingKey === row.key ? 'Retrieving…' : 'Retrieve'}
-                                </button>
-                              )}
-                              {row.poId && (
-                                <button
-                                  type="button"
-                                  onClick={() => navigate(`/scm/po-pdf-view?poId=${row.poId}`)}
-                                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50 whitespace-nowrap"
-                                >
-                                  View PDF
-                                </button>
-                              )}
-                              {isSuperAdmin && (row.poId || row.prId > 0) && (
-                                <button
-                                  type="button"
-                                  disabled={deletingKey === row.key}
-                                  onClick={() => void handleAdminDelete(row)}
-                                  className="px-2.5 py-1.5 border border-rose-300 text-rose-700 rounded-md text-xs font-medium hover:bg-rose-50 disabled:opacity-50 whitespace-nowrap"
-                                  title={row.poId ? 'Permanently delete this PO' : 'Permanently delete this PR'}
-                                >
-                                  {deletingKey === row.key ? 'Deleting…' : 'Delete'}
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {open && <TrackPoExpandedRow row={row} colSpan={11} />}
-                      </Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+          {error && (
+            <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">
+              <span>{error}</span>
+              <button type="button" onClick={() => setError('')} className="cursor-pointer text-rose-500 hover:text-rose-700">
+                <i className="ri-close-line"></i>
+              </button>
+            </div>
           )}
-        </div>
 
-        <div className="px-4 py-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-gray-500">
-            Showing <span className="font-semibold text-gray-700">{rangeFrom}</span>
-            {'–'}
-            <span className="font-semibold text-gray-700">{rangeTo}</span>
-            {' of '}
-            <span className="font-semibold text-gray-700">{pagination.total}</span> records
-          </p>
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-2 text-sm text-gray-600">
-              Rows
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                  setExpandedKey(null);
-                }}
-                className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
-              >
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <option key={size} value={size}>
-                    {size}
-                  </option>
+          <div className="relative mb-5 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5">
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+              }}
+            />
+            <div className="relative z-[1] space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative min-w-[220px] flex-1">
+                  <i className="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search PR, PO/WO, vendor, title, entity..."
+                    className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                  />
+                </div>
+                <EntitySearchSelect
+                  entities={entities}
+                  value={entityId}
+                  onChange={(id) => {
+                    setEntityId(id);
+                    setPage(1);
+                    setExpandedKey(null);
+                  }}
+                />
+                <select
+                  value={department}
+                  onChange={(e) => {
+                    setDepartment(e.target.value);
+                    setPage(1);
+                    setExpandedKey(null);
+                  }}
+                  className="h-11 min-w-[150px] cursor-pointer rounded-2xl border border-transparent bg-white px-3.5 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                >
+                  <option value="">All Departments</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.name}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={category}
+                  onChange={(e) => {
+                    setCategory(e.target.value);
+                    setPage(1);
+                    setExpandedKey(null);
+                  }}
+                  className="h-11 min-w-[150px] cursor-pointer rounded-2xl border border-transparent bg-white px-3.5 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                >
+                  <option value="">All Categories</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  From
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => {
+                      setDateFrom(e.target.value);
+                      setPage(1);
+                      setExpandedKey(null);
+                    }}
+                    className="h-11 cursor-pointer rounded-2xl border border-transparent bg-white px-3 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  To
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => {
+                      setDateTo(e.target.value);
+                      setPage(1);
+                      setExpandedKey(null);
+                    }}
+                    className="h-11 cursor-pointer rounded-2xl border border-transparent bg-white px-3 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="h-11 cursor-pointer rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]"
+                >
+                  Clear filters
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ['all', 'All Types'],
+                    ['purchase_order', 'Purchase Order'],
+                    ['work_order', 'Work Order'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setPurchaseTypeFilter(key);
+                      setPage(1);
+                      setExpandedKey(null);
+                    }}
+                    className={`h-11 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
+                      purchaseTypeFilter === key
+                        ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
+                    }`}
+                  >
+                    {label}
+                  </button>
                 ))}
-              </select>
-            </label>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                disabled={pagination.page <= 1 || loading}
-                onClick={() => {
-                  setPage((p) => Math.max(1, p - 1));
-                  setExpandedKey(null);
-                }}
-                className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              >
-                Previous
-              </button>
-              <span className="px-3 py-1.5 text-sm text-gray-600 whitespace-nowrap">
-                Page {pagination.page} of {pagination.totalPages}
-              </span>
-              <button
-                type="button"
-                disabled={pagination.page >= pagination.totalPages || loading}
-                onClick={() => {
-                  setPage((p) => p + 1);
-                  setExpandedKey(null);
-                }}
-                className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              >
-                Next
-              </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="po-tracker-table"
+            className="relative scroll-mt-24 overflow-x-clip overflow-y-visible rounded-2xl border border-transparent bg-[#F8FAFC]/90 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
+          >
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(248,250,252,0) 55%)',
+              }}
+            />
+            <div
+              data-po-tracker-scroll
+              className="relative z-[1] w-full overflow-x-auto overflow-y-visible overscroll-x-contain px-0 pb-3 pt-1"
+            >
+              {loading ? (
+                <p className="p-8 text-sm text-slate-500">Loading purchase orders...</p>
+              ) : (
+                <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+                  <thead>
+                    <tr>
+                      <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.18)]">
+                        PR / PO Number
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        PO Date
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Type
+                      </th>
+                      <th className="w-[240px] max-w-[240px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Title / Vendor
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Entity
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Department
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Amount
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Status
+                      </th>
+                      <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.18)]">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={9}
+                          className="rounded-2xl border border-transparent bg-white px-5 py-12 text-center text-sm text-slate-400 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
+                        >
+                          No purchase orders found
+                        </td>
+                      </tr>
+                    ) : (
+                      rows.map((row) => {
+                        const open = expandedKey === row.key;
+                        const rowBorder = open
+                          ? 'border-[#90CAF9]'
+                          : 'border-transparent group-hover:border-[#90CAF9]';
+                        const rowShadow = open
+                          ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
+                          : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
+                        return (
+                          <Fragment key={row.key}>
+                            <tr
+                              className="group cursor-pointer"
+                              onClick={() => setExpandedKey(open ? null : row.key)}
+                            >
+                              <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
+                                <div
+                                  className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.16)] transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                                >
+                                  <button
+                                    type="button"
+                                    className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors ${
+                                      open
+                                        ? 'bg-[#1E88E5] text-white'
+                                        : 'bg-[#E3F2FD] text-[#1E88E5] hover:bg-[#BBDEFB]'
+                                    }`}
+                                    aria-expanded={open}
+                                    aria-label={open ? 'Collapse details' : 'Expand details'}
+                                  >
+                                    <i className={`ri-arrow-${open ? 'down' : 'right'}-s-line text-base`}></i>
+                                  </button>
+                                  <div
+                                    className="min-w-0"
+                                    title={[row.prNumber, row.poNumber].filter(Boolean).join(' · ') || undefined}
+                                  >
+                                    <p className="whitespace-nowrap text-sm font-bold text-[#1E88E5]">
+                                      {row.prNumber || '—'}
+                                    </p>
+                                    <p className="mt-0.5 whitespace-nowrap text-xs font-semibold text-[#2C3E50]">
+                                      {row.poNumber || '—'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td
+                                className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-sm text-slate-600 transition-[border-color] sm:py-5 ${rowBorder}`}
+                              >
+                                {row.poDate || '—'}
+                              </td>
+                              <td
+                                className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}
+                              >
+                                <span
+                                  className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                    row.purchaseType === 'work_order'
+                                      ? 'bg-[#EDE9FE] text-[#7C3AED]'
+                                      : 'bg-[#E3F2FD] text-[#1E88E5]'
+                                  }`}
+                                >
+                                  {row.purchaseTypeLabel ||
+                                    (row.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order')}
+                                </span>
+                              </td>
+                              <td
+                                className={`w-[240px] max-w-[240px] border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}
+                                title={`${row.title}${row.vendorName ? ` · ${row.vendorName}` : ''}`}
+                              >
+                                <p className="truncate text-sm font-semibold text-[#2C3E50]">{row.title}</p>
+                                <p className="mt-0.5 truncate text-xs text-slate-500">
+                                  {row.vendorName || 'Vendor pending'}
+                                </p>
+                              </td>
+                              <td
+                                className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-sm text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}
+                                title={row.entityName || undefined}
+                              >
+                                {row.entityName || '—'}
+                              </td>
+                              <td
+                                className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-sm text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}
+                                title={row.department}
+                              >
+                                {row.department || '—'}
+                              </td>
+                              <td
+                                className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-right text-sm font-bold tabular-nums text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}
+                              >
+                                {formatCurrency(row.amount)}
+                              </td>
+                              <td
+                                className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}
+                              >
+                                <StatusBadge label={row.statusLabel} status={row.status} />
+                              </td>
+                              <td
+                                className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div
+                                  className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.16)] transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                                >
+                                  {row.kind === 'ready' && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => openCreatePo(row.prId)}
+                                        className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
+                                      >
+                                        Create {row.purchaseType === 'work_order' ? 'WO' : 'PO'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openImportModal(row.prId)}
+                                        className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                      >
+                                        Import
+                                      </button>
+                                    </>
+                                  )}
+                                  {row.status === 'draft' && row.poId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditDraft(row.poId!)}
+                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
+                                    >
+                                      Edit Draft
+                                    </button>
+                                  )}
+                                  {canSendBackPending && row.poId && row.status === 'pending' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openSendBack(row, 'pending_sign')}
+                                      className="cursor-pointer whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100"
+                                      title="Send back to SCM Buyer Create PO as draft"
+                                    >
+                                      <i className="ri-arrow-go-back-line mr-1"></i>
+                                      Send Back
+                                    </button>
+                                  )}
+                                  {isSuperAdmin && canAdminSendBackToBuyerVerify(row) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openSendBack(row, 'buyer_verify')}
+                                      className="cursor-pointer whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                                      title="Send back to Approved PO verification (Buyer Verify). Clears vendor acceptance, GRN, and invoice for this PO."
+                                    >
+                                      <i className="ri-arrow-go-back-line mr-1"></i>
+                                      To Buyer Verify
+                                    </button>
+                                  )}
+                                  {isAdminEditor &&
+                                    row.poId &&
+                                    row.status !== 'draft' &&
+                                    row.status !== 'cancelled' &&
+                                    !(user?.role === 'SCM Buyer' && row.status === 'pending') && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openAdminEditPo(row.poId!)}
+                                        className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                        title="Edit this purchase order"
+                                      >
+                                        Edit
+                                      </button>
+                                    )}
+                                  {user?.role === 'SCM Buyer' && row.poId && row.status === 'pending' && (
+                                    <span
+                                      className="whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-800"
+                                      title="Sent to SCM Manager for sign / approval"
+                                    >
+                                      SCM Manager
+                                    </span>
+                                  )}
+                                  {row.status === 'cancelled' && row.poId && (
+                                    <button
+                                      type="button"
+                                      disabled={retrievingKey === row.key}
+                                      onClick={() => void handleRetrieveCancelled(row)}
+                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
+                                      title="Retrieve cancelled PO as draft"
+                                    >
+                                      {retrievingKey === row.key ? 'Retrieving…' : 'Retrieve'}
+                                    </button>
+                                  )}
+                                  {row.poId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => navigate(`/scm/po-pdf-view?poId=${row.poId}`)}
+                                      className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                    >
+                                      View PDF
+                                    </button>
+                                  )}
+                                  {isSuperAdmin && (row.poId || row.prId > 0) && (
+                                    <button
+                                      type="button"
+                                      disabled={deletingKey === row.key}
+                                      onClick={() => void handleAdminDelete(row)}
+                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#FFE4E6] px-2.5 py-1.5 text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
+                                      title={row.poId ? 'Permanently delete this PO' : 'Permanently delete this PR'}
+                                    >
+                                      {deletingKey === row.key ? 'Deleting…' : 'Delete'}
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                            {open && <TrackPoExpandedRow row={row} colSpan={9} />}
+                          </Fragment>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-t border-slate-100/80 px-4 py-3">
+              <p className="text-sm text-slate-500">
+                Showing <span className="font-semibold text-slate-700">{rangeFrom}</span>
+                {'–'}
+                <span className="font-semibold text-slate-700">{rangeTo}</span>
+                {' of '}
+                <span className="font-semibold text-slate-700">{pagination.total}</span> records
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  Rows
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setPage(1);
+                      setExpandedKey(null);
+                    }}
+                    className="cursor-pointer rounded-xl border border-transparent bg-white px-2 py-1.5 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/20"
+                  >
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={pagination.page <= 1 || loading}
+                    onClick={() => {
+                      setPage((p) => Math.max(1, p - 1));
+                      setExpandedKey(null);
+                    }}
+                    className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <span className="whitespace-nowrap px-3 py-1.5 text-sm text-slate-600">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={pagination.page >= pagination.totalPages || loading}
+                    onClick={() => {
+                      setPage((p) => p + 1);
+                      setExpandedKey(null);
+                    }}
+                    className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1042,7 +1131,7 @@ export default function TrackPoPage() {
             <select
               value={importPrId ?? ''}
               onChange={(e) => setImportPrId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full mb-4 px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+              className="w-full mb-4 px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none rounded-xl border border-slate-200 bg-white focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/20"
             >
               <option value="">— Use prNumber from CSV —</option>
               {readyOptions.map((r) => (
@@ -1070,7 +1159,7 @@ export default function TrackPoPage() {
                 type="button"
                 disabled={importChecking}
                 onClick={() => csvFileRef.current?.click()}
-                className="px-4 py-2.5 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 flex items-center gap-2"
+                className="flex cursor-pointer items-center gap-2 rounded-xl bg-[#1E88E5] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
               >
                 {importChecking ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-upload-2-line"></i>}
                 Upload CSV & Create PO

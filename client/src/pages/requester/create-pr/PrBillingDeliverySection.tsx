@@ -177,17 +177,17 @@ export default function PrBillingDeliverySection({
     <div className={PM_CARD}>
       <div className={PM_CARD_HEADER}>
         <div className={PM_ICON_CHIP_SOLID}>
-          <i className="ri-map-pin-line text-white text-sm"></i>
+          <i className="ri-map-pin-line text-sm"></i>
         </div>
         <div>
-          <h2 className="text-sm font-semibold text-[#0F172A]">Billing Address &amp; Delivery</h2>
+          <h2 className="text-sm font-semibold text-[#0F172A]">Billing &amp; Delivery</h2>
           <p className="text-xs text-[#64748B]">
-            {hint || 'Billing GSTIN is filled from the entity region and can be edited.'}
+            {hint || 'SCM mandatory — billing GSTIN is filled from the entity region and can be edited.'}
           </p>
         </div>
       </div>
 
-      <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="relative z-[1] grid grid-cols-1 items-start gap-x-6 gap-y-5 p-4 sm:grid-cols-2 sm:p-6">
         <div>
           <label className={PM_LABEL}>
             Billing Region / GST
@@ -202,7 +202,7 @@ export default function PrBillingDeliverySection({
                 applyRegion(id, loc);
               }}
               disabled={disabled || !selectedEntity}
-              className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white ${
+              className={`h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 ${
                 errors.billingLocationId ? 'border-red-400 bg-red-50' : 'border-gray-200'
               }`}
             >
@@ -254,7 +254,7 @@ export default function PrBillingDeliverySection({
               }
               maxLength={15}
               autoComplete="off"
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white disabled:bg-slate-50"
+              className="w-full pl-9 pr-4 py-2.5 border border-transparent rounded-xl text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white disabled:bg-slate-50"
             />
           </div>
           <p className="text-[11px] text-gray-400 mt-1">
@@ -276,8 +276,8 @@ export default function PrBillingDeliverySection({
             disabled={disabled}
             rows={3}
             placeholder="Auto-filled from Entity Master location (editable)"
-            className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white resize-none ${
-              errors.billingAddress ? 'border-red-400 bg-red-50' : 'border-gray-200'
+            className={`h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 resize-none ${
+              errors.billingAddress ? 'border-red-400 bg-red-50' : 'border-transparent'
             }`}
           />
           {errors.billingAddress && <p className="text-xs text-red-500 mt-1">{errors.billingAddress}</p>}
@@ -330,21 +330,21 @@ export default function PrBillingDeliverySection({
                   value={newSiteContact.label}
                   onChange={(e) => setNewSiteContact((prev) => ({ ...prev, label: e.target.value }))}
                   placeholder="Contact name"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
+                  className="w-full px-2.5 py-1.5 border border-transparent rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 <input
                   type="email"
                   value={newSiteContact.email}
                   onChange={(e) => setNewSiteContact((prev) => ({ ...prev, email: e.target.value }))}
                   placeholder="Email"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
+                  className="w-full px-2.5 py-1.5 border border-transparent rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 <input
                   type="text"
                   value={newSiteContact.phone}
                   onChange={(e) => setNewSiteContact((prev) => ({ ...prev, phone: e.target.value }))}
                   placeholder="Phone"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
+                  className="w-full px-2.5 py-1.5 border border-transparent rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 {lookupError && addingSiteContact ? <p className="text-xs text-red-600">{lookupError}</p> : null}
                 <div className="flex items-center justify-end gap-2">
@@ -416,21 +416,21 @@ export default function PrBillingDeliverySection({
                   value={newProjectManager.label}
                   onChange={(e) => setNewProjectManager((prev) => ({ ...prev, label: e.target.value }))}
                   placeholder="Project manager name"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
+                  className="w-full px-2.5 py-1.5 border border-transparent rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 <input
                   type="email"
                   value={newProjectManager.email}
                   onChange={(e) => setNewProjectManager((prev) => ({ ...prev, email: e.target.value }))}
                   placeholder="Email"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
+                  className="w-full px-2.5 py-1.5 border border-transparent rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 <input
                   type="text"
                   value={newProjectManager.phone}
                   onChange={(e) => setNewProjectManager((prev) => ({ ...prev, phone: e.target.value }))}
                   placeholder="Phone"
-                  className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
+                  className="w-full px-2.5 py-1.5 border border-transparent rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
                 />
                 {lookupError && addingProjectManager ? <p className="text-xs text-red-600">{lookupError}</p> : null}
                 <div className="flex items-center justify-end gap-2">

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { poApi, prApi } from '../../../../services/api';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -10,6 +10,10 @@ import {
   storePoCsvImport,
 } from '../../../../utils/poCsvImport';
 
+export type PurchaseRequestsPanelHandle = {
+  openImport: () => void;
+};
+
 type RowStatus = 'Ready for PO' | 'Pending Approval' | 'PO Approved' | 'PO Rejected' | 'Draft' | 'Cancelled';
 
 interface BucketRow {
@@ -19,6 +23,7 @@ interface BucketRow {
   poNumber: string | null;
   poId: number | null;
   title: string;
+  entityName?: string;
   department: string;
   requester: string;
   amount: number;
@@ -72,25 +77,42 @@ function mapUiFilterToApi(filter: 'all' | 'ready' | 'created' | 'approved' | 're
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+
+const softCard =
+  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
+
+const KPI_WASHES = [
+  { value: '#1E88E5', iconBg: '#E3F2FD', wash: 'rgba(30, 136, 229, 0.14)', selectedBorder: 'border-[#90CAF9]' },
+  { value: '#10B981', iconBg: '#D1FAE5', wash: 'rgba(16, 185, 129, 0.14)', selectedBorder: 'border-[#6EE7B7]' },
+  { value: '#64748B', iconBg: '#F1F5F9', wash: 'rgba(100, 116, 139, 0.12)', selectedBorder: 'border-[#CBD5E1]' },
+  { value: '#F59E0B', iconBg: '#FEF3C7', wash: 'rgba(245, 158, 11, 0.14)', selectedBorder: 'border-[#FCD34D]' },
+  { value: '#2563EB', iconBg: '#DBEAFE', wash: 'rgba(37, 99, 235, 0.14)', selectedBorder: 'border-[#93C5FD]' },
+  { value: '#F43F5E', iconBg: '#FFE4E6', wash: 'rgba(244, 63, 94, 0.12)', selectedBorder: 'border-[#FDA4AF]' },
+] as const;
+
 function getStatusColor(statusRaw: string, bucket: RowStatus) {
   const raw = String(statusRaw || '').toLowerCase();
-  if (raw === 'pending_approval') return 'bg-amber-100 text-amber-700';
-  if (raw === 'pending_buyer_verify') return 'bg-blue-100 text-blue-700';
+  if (raw === 'pending_approval') return 'bg-amber-50 text-amber-700';
+  if (raw === 'pending_buyer_verify') return 'bg-[#E3F2FD] text-[#1E88E5]';
   switch (bucket) {
     case 'Ready for PO':
-      return 'bg-emerald-100 text-emerald-700';
+      return 'bg-[#E3F2FD] text-[#1E88E5]';
     case 'Pending Approval':
-      return 'bg-amber-100 text-amber-700';
+      return 'bg-amber-50 text-amber-700';
     case 'PO Approved':
-      return 'bg-blue-100 text-blue-700';
+      return 'bg-[#E3F2FD] text-[#1565C0]';
     case 'PO Rejected':
-      return 'bg-red-100 text-red-700';
+      return 'bg-rose-50 text-rose-600';
     case 'Draft':
-      return 'bg-slate-100 text-slate-700';
+      return 'bg-slate-100 text-slate-600';
     case 'Cancelled':
-      return 'bg-rose-100 text-rose-700';
+      return 'bg-rose-50 text-rose-600';
     default:
-      return 'bg-gray-100 text-gray-700';
+      return 'bg-slate-100 text-slate-600';
   }
 }
 
@@ -112,11 +134,7 @@ function shortStatusLabel(label: string, statusRaw?: string) {
   return full;
 }
 
-type Props = {
-  showPageActions?: boolean;
-};
-
-export default function PurchaseRequestsPanel({ showPageActions = true }: Props) {
+const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function PurchaseRequestsPanel(_props, ref) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
@@ -170,6 +188,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
       poNumber: r.poNumber ? String(r.poNumber) : null,
       poId: r.poId != null ? Number(r.poId) : null,
       title: String(r.title || ''),
+      entityName: String(r.entityName || ''),
       department: String(r.department || ''),
       requester: String(r.requester || ''),
       amount: Number(r.amount) || 0,
@@ -343,6 +362,12 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
     setError('');
   };
 
+  useImperativeHandle(ref, () => ({
+    openImport: () => {
+      void openImportModal();
+    },
+  }));
+
   const confirmImportAndCreate = async () => {
     if (!importTarget) return;
     const value = importPoNumber.trim();
@@ -395,79 +420,87 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
 
   return (
     <>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-bold text-gray-900">Purchase Requests</h2>
-          <p className="text-xs text-gray-500">Create PO from ready PRs, or import from an existing reference PO</p>
-        </div>
-        {showPageActions && (
-          <div className="flex items-center gap-2 flex-wrap">
+      {error && (
+        <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">{error}</div>
+      )}
+
+      <div className="mb-5 grid grid-cols-2 items-stretch gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
+        {(
+          [
+            { label: 'Total PRs', value: stats.total, icon: 'ri-file-list-3-line', filter: 'all' as const },
+            { label: 'Ready for PO', value: stats.readyForPO, icon: 'ri-checkbox-circle-line', filter: 'ready' as const },
+            { label: 'Draft POs', value: stats.draft, icon: 'ri-draft-line', filter: 'draft' as const },
+            { label: 'With SCM Manager', value: stats.pendingApproval, icon: 'ri-time-line', filter: 'created' as const },
+            { label: 'PO Approved', value: stats.poApproved, icon: 'ri-file-check-line', filter: 'approved' as const },
+            { label: 'PO Rejected', value: stats.poRejected, icon: 'ri-close-circle-line', filter: 'rejected' as const },
+          ]
+        ).map((s, i) => {
+          const theme = KPI_WASHES[i % KPI_WASHES.length];
+          const selected = statusFilter === s.filter;
+          return (
             <button
+              key={s.label}
               type="button"
-              onClick={() => navigate('/scm/create-po?manual=1')}
-              className="px-4 py-2.5 border border-slate-300 text-slate-800 rounded-lg text-sm font-semibold hover:bg-slate-50 flex items-center gap-2"
+              onClick={() => {
+                setStatusFilter(s.filter);
+                setPage(1);
+                setExpandedKey(null);
+                document.getElementById('po-workspace-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              aria-pressed={selected}
+              title={`View ${s.label} in table`}
+              className={`group relative box-border flex min-h-[128px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] duration-200 hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:min-h-[140px] sm:rounded-[18px] sm:p-5 border ${
+                selected ? theme.selectedBorder : 'border-transparent'
+              }`}
             >
-              <i className="ri-file-add-line"></i>
-              Manual PO (No PR)
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background: `radial-gradient(120% 90% at 100% 0%, ${theme.wash} 0%, rgba(255,255,255,0) 55%)`,
+                }}
+              />
+              <div className="relative z-[1] flex flex-1 items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px]">
+                    {s.label}
+                  </p>
+                  <p
+                    className="mt-2 text-3xl font-bold tabular-nums leading-none tracking-tight sm:mt-3 sm:text-[2.15rem]"
+                    style={{ color: theme.value }}
+                  >
+                    {s.value}
+                  </p>
+                </div>
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11"
+                  style={{ backgroundColor: theme.iconBg, color: theme.value }}
+                >
+                  <i className={`${s.icon} text-lg sm:text-xl`} aria-hidden />
+                </div>
+              </div>
+              <span className="relative z-[1] mt-auto inline-flex translate-y-1 items-center gap-1 pt-3 text-[12px] font-semibold text-[#6366F1] opacity-0 transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+                Click to view
+                <i className="ri-arrow-right-line text-sm" aria-hidden />
+              </span>
             </button>
-            <button
-              type="button"
-              onClick={() => openImportModal()}
-              className="px-4 py-2.5 border border-violet-300 text-violet-700 rounded-lg text-sm font-semibold hover:bg-violet-50 flex items-center gap-2"
-            >
-              <i className="ri-download-2-line"></i>
-              Import
-            </button>
-            <button
-              type="button"
-              onClick={downloadPoImportSampleCsv}
-              className="px-4 py-2.5 border border-emerald-300 text-emerald-800 bg-emerald-50 rounded-lg text-sm font-semibold hover:bg-emerald-100 flex items-center gap-2"
-            >
-              <i className="ri-file-excel-2-line"></i>
-              Sample CSV
-            </button>
-          </div>
-        )}
+          );
+        })}
       </div>
 
-      {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-5">
-        {[
-          { label: 'Total PRs', value: stats.total, color: 'text-gray-900', icon: 'ri-file-list-3-line', bg: 'bg-teal-100', ic: 'text-teal-600' },
-          { label: 'Ready for PO', value: stats.readyForPO, color: 'text-emerald-600', icon: 'ri-checkbox-circle-line', bg: 'bg-emerald-100', ic: 'text-emerald-600' },
-          { label: 'Draft POs', value: stats.draft, color: 'text-slate-600', icon: 'ri-draft-line', bg: 'bg-slate-100', ic: 'text-slate-600' },
-          { label: 'With SCM Manager', value: stats.pendingApproval, color: 'text-amber-600', icon: 'ri-time-line', bg: 'bg-amber-100', ic: 'text-amber-600' },
-          { label: 'PO Approved', value: stats.poApproved, color: 'text-blue-600', icon: 'ri-file-check-line', bg: 'bg-blue-100', ic: 'text-blue-600' },
-          { label: 'PO Rejected', value: stats.poRejected, color: 'text-red-600', icon: 'ri-close-circle-line', bg: 'bg-red-100', ic: 'text-red-600' },
-        ].map((s) => (
-          <div key={s.label} className="bg-white rounded-lg border border-gray-200 px-5 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-gray-600 truncate mb-1">{s.label}</p>
-                <p className={`text-2xl font-bold leading-tight ${s.color}`}>{s.value}</p>
-              </div>
-              <div className={`w-10 h-10 ${s.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                <i className={`${s.icon} text-xl ${s.ic}`}></i>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 px-5 py-4 mb-5">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex-1 min-w-[220px] relative">
-            <i className="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"></i>
+      <div className={`${softCard} mb-5 px-4 py-4 sm:px-5`}>
+        <div className="pointer-events-none absolute inset-0" style={softWash} />
+        <div className="relative z-[1] flex flex-wrap items-center gap-4">
+          <div className="relative min-w-[220px] flex-1">
+            <i className="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
             <input
               type="text"
               placeholder="Search by PR number, PO number, title..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
             />
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-wrap gap-2">
             {(
               [
                 ['all', `All (${stats.total})`],
@@ -487,7 +520,11 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   setPage(1);
                   setExpandedKey(null);
                 }}
-                className={`px-3.5 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${statusFilter === key ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                className={`h-11 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
+                  statusFilter === key
+                    ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
+                }`}
               >
                 {label}
               </button>
@@ -496,40 +533,52 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="w-full overflow-x-auto">
+      <div
+        id="po-workspace-table"
+        className="relative scroll-mt-24 overflow-x-clip overflow-y-visible rounded-2xl border border-transparent bg-[#F8FAFC]/90 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
+      >
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(248,250,252,0) 55%)',
+          }}
+        />
+        <div
+          data-po-workspace-scroll
+          className="relative z-[1] w-full overflow-x-auto overflow-y-visible overscroll-x-contain px-0 pb-3 pt-1"
+        >
           {loading ? (
-            <p className="p-8 text-sm text-gray-500">Loading...</p>
+            <p className="p-8 text-sm text-slate-500">Loading...</p>
           ) : (
-            <table className="w-full table-fixed min-w-[1100px]">
-              <thead className="bg-gray-50 border-b">
+            <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+              <thead>
                 <tr>
-                  <th className="w-11 px-2 py-3"></th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[148px]">
-                    PR Number
+                  <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.18)]">
+                    PR / PO Number
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[148px]">
-                    PO Number
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[110px]">
+                  <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     PO Date
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[28%]">
+                  <th className="w-[180px] max-w-[180px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                    Entity
+                  </th>
+                  <th className="w-[220px] max-w-[220px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Title
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[120px]">
+                  <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Department
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[110px]">
+                  <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Requester
                   </th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap w-[100px]">
+                  <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Amount
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-[150px]">
+                  <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Status
                   </th>
-                  <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide w-[260px]">
+                  <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.18)]">
                     Actions
                   </th>
                 </tr>
@@ -537,64 +586,97 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-5 py-12 text-center text-sm text-gray-500">
+                    <td colSpan={9} className="rounded-2xl border border-transparent bg-white px-5 py-12 text-center text-sm text-slate-400 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
                       No purchase requests found
                     </td>
                   </tr>
                 ) : (
                   rows.map((pr) => {
                     const isExpanded = expandedKey === pr.key;
+                    const rowBorder = isExpanded
+                      ? 'border-[#90CAF9]'
+                      : 'border-transparent group-hover:border-[#90CAF9]';
+                    const rowShadow = isExpanded
+                      ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
+                      : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
                     return (
                       <Fragment key={pr.key}>
-                        <tr className="border-b hover:bg-gray-50 group">
-                          <td className="px-2 py-3 align-middle">
-                            <button
-                              type="button"
-                              onClick={() => toggleExpand(pr.key)}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-white text-gray-600"
-                              aria-expanded={isExpanded}
-                              aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+                        <tr
+                          className="group cursor-pointer"
+                          onClick={() => toggleExpand(pr.key)}
+                        >
+                          <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
+                            <div
+                              className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.16)] transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
                             >
-                              <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-base`}></i>
-                            </button>
+                              <button
+                                type="button"
+                                className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors ${
+                                  isExpanded
+                                    ? 'bg-[#1E88E5] text-white'
+                                    : 'bg-[#E3F2FD] text-[#1E88E5] hover:bg-[#BBDEFB]'
+                                }`}
+                                aria-expanded={isExpanded}
+                                aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+                              >
+                                <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-base`}></i>
+                              </button>
+                              <div
+                                className="min-w-0"
+                                title={[pr.prNumber, pr.poNumber].filter(Boolean).join(' · ') || undefined}
+                              >
+                                <p className="whitespace-nowrap text-sm font-bold text-[#1E88E5]">
+                                  {pr.prNumber || '—'}
+                                </p>
+                                <p className="mt-0.5 whitespace-nowrap text-xs font-semibold text-[#2C3E50]">
+                                  {pr.poNumber || '—'}
+                                </p>
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-3 py-3 align-middle">
-                            <button
-                              type="button"
-                              onClick={() => toggleExpand(pr.key)}
-                              className="block max-w-[148px] font-semibold text-teal-600 hover:text-teal-800 cursor-pointer text-left text-sm truncate"
-                              title={pr.prNumber}
-                            >
-                              {pr.prNumber || '—'}
-                            </button>
-                          </td>
-                          <td className="px-3 py-3 align-middle text-gray-900 text-sm font-bold truncate max-w-[148px]" title={pr.poNumber || undefined}>
-                            {pr.poNumber || '—'}
-                          </td>
-                          <td className="px-3 py-3 align-middle text-gray-700 text-sm whitespace-nowrap">
+                          <td
+                            className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-sm text-slate-600 transition-[border-color] sm:py-5 ${rowBorder}`}
+                          >
                             {pr.poDate || '—'}
                           </td>
-                          <td className="px-3 py-3 align-middle text-gray-900 font-medium text-sm max-w-0">
-                            <p className="truncate" title={pr.title}>
-                              {pr.title}
-                            </p>
+                          <td
+                            className={`w-[180px] max-w-[180px] border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}
+                            title={pr.entityName || undefined}
+                          >
+                            <p className="truncate text-sm text-[#2C3E50]">{pr.entityName || '—'}</p>
                           </td>
-                          <td className="px-3 py-3 align-middle text-gray-700 text-sm truncate max-w-[120px]" title={pr.department}>
-                            {pr.department}
+                          <td
+                            className={`w-[220px] max-w-[220px] border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}
+                            title={pr.title}
+                          >
+                            <p className="truncate text-sm font-semibold text-[#2C3E50]">{pr.title}</p>
                           </td>
-                          <td className="px-3 py-3 align-middle text-gray-700 text-sm truncate max-w-[110px]" title={pr.requester}>
-                            {pr.requester}
+                          <td
+                            className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-sm text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}
+                            title={pr.department}
+                          >
+                            {pr.department || '—'}
                           </td>
-                          <td className="px-3 py-3 align-middle text-right font-semibold text-gray-900 text-sm tabular-nums whitespace-nowrap">
+                          <td
+                            className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-sm text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}
+                            title={pr.requester}
+                          >
+                            {pr.requester || '—'}
+                          </td>
+                          <td
+                            className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-right text-sm font-bold tabular-nums text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}
+                          >
                             {formatCurrency(pr.amount)}
                           </td>
-                          <td className="px-2 py-3 align-middle overflow-hidden">
+                          <td
+                            className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}
+                          >
                             {(() => {
                               const text = shortStatusLabel(pr.statusLabel, pr.statusRaw);
                               const isVendorAck = text === 'Vendor Acknowledged pending';
                               return (
                                 <span
-                                  className={`inline-flex max-w-full px-2 py-1 rounded-full text-[11px] font-medium leading-snug ${getStatusColor(pr.statusRaw, pr.status)}`}
+                                  className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold leading-snug ${getStatusColor(pr.statusRaw, pr.status)}`}
                                   title={pr.statusLabel}
                                 >
                                   {isVendorAck ? (
@@ -610,13 +692,18 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                               );
                             })()}
                           </td>
-                          <td className="px-2 py-3 align-middle">
-                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          <td
+                            className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div
+                              className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.16)] transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                            >
                               {pr.status === 'Ready for PO' && (
                                 <button
                                   type="button"
                                   onClick={() => openCreatePo(pr.prId)}
-                                  className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap"
+                                  className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
                                 >
                                   Create PO
                                 </button>
@@ -625,7 +712,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                 <button
                                   type="button"
                                   onClick={() => openEditDraft(pr.poId!)}
-                                  className="px-2.5 py-1.5 bg-slate-700 text-white rounded-md text-xs font-semibold whitespace-nowrap"
+                                  className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
                                 >
                                   Edit Draft
                                 </button>
@@ -637,7 +724,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                   <button
                                     type="button"
                                     onClick={() => openAdminEditPo(pr.poId!)}
-                                    className="px-2.5 py-1.5 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-50 whitespace-nowrap"
+                                    className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
                                     title="Edit this purchase order / work order"
                                   >
                                     Edit
@@ -645,7 +732,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                 )}
                               {pr.status === 'Pending Approval' && pr.poId && !isSuperAdmin && (
                                 <span
-                                  className="px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-md whitespace-nowrap"
+                                  className="whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800"
                                   title="Sent to SCM Manager for sign / approval"
                                 >
                                   SCM Manager
@@ -656,7 +743,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                   type="button"
                                   disabled={retrievingKey === pr.key}
                                   onClick={() => void handleRetrieveCancelled(pr)}
-                                  className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold whitespace-nowrap disabled:opacity-50"
+                                  className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
                                   title="Retrieve cancelled PO as draft"
                                 >
                                   {retrievingKey === pr.key ? 'Retrieving…' : 'Retrieve'}
@@ -666,7 +753,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/scm/po-pdf-view?poId=${pr.poId}`)}
-                                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50 whitespace-nowrap"
+                                  className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
                                 >
                                   View PDF
                                 </button>
@@ -676,7 +763,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                   type="button"
                                   disabled={deletingKey === pr.key}
                                   onClick={() => void handleAdminDelete(pr)}
-                                  className="px-2.5 py-1.5 border border-rose-400 text-rose-800 rounded-md text-xs font-semibold hover:bg-rose-50 whitespace-nowrap disabled:opacity-50"
+                                  className="cursor-pointer whitespace-nowrap rounded-xl bg-[#FFE4E6] px-2.5 py-1.5 text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
                                   title={pr.poId ? 'Permanently delete this PO' : 'Permanently delete this PR'}
                                 >
                                   {deletingKey === pr.key ? 'Deleting…' : 'Delete'}
@@ -686,7 +773,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/scm/rfq-entry/${pr.prId}`)}
-                                  className="px-2.5 py-1.5 border border-amber-300 text-amber-700 rounded-md text-xs font-medium hover:bg-amber-50 whitespace-nowrap"
+                                  className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-medium text-amber-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-amber-200"
                                 >
                                   RFQ
                                 </button>
@@ -697,7 +784,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                         {isExpanded && (pr.prId > 0 || !!pr.poId) && (
                           <PRBucketExpandedRow
                             prId={pr.prId}
-                            colSpan={10}
+                            colSpan={9}
                             statusLabel={pr.statusLabel}
                             statusRaw={pr.statusRaw}
                             poId={pr.poId}
@@ -726,7 +813,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
           )}
         </div>
 
-        <div className="px-4 py-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-t border-slate-100/80 px-4 py-3">
           <p className="text-sm text-gray-500">
             Showing <span className="font-semibold text-gray-700">{rangeFrom}</span>
             {'–'}
@@ -744,7 +831,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   setPage(1);
                   setExpandedKey(null);
                 }}
-                className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/20"
               >
                 {PAGE_SIZE_OPTIONS.map((size) => (
                   <option key={size} value={size}>
@@ -761,7 +848,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   setPage((p) => Math.max(1, p - 1));
                   setExpandedKey(null);
                 }}
-                className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Previous
               </button>
@@ -775,7 +862,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   setPage((p) => p + 1);
                   setExpandedKey(null);
                 }}
-                className="px-3 py-1.5 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
               </button>
@@ -810,7 +897,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                 const next = readyOptions.find((r) => r.prId === Number(e.target.value));
                 if (next) setImportTarget(next);
               }}
-              className="w-full mb-4 px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+              className="w-full mb-4 px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-white"
             >
               {readyOptions.map((r) => (
                 <option key={r.prId} value={r.prId}>
@@ -826,7 +913,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   setImportTab('csv');
                   setImportError('');
                 }}
-                className={`flex-1 px-3 py-2.5 text-sm font-semibold ${importTab === 'csv' ? 'bg-violet-600 text-white' : 'bg-white text-gray-600'}`}
+                className={`flex-1 px-3 py-2.5 text-sm font-semibold ${importTab === 'csv' ? 'bg-[#1E88E5] text-white' : 'bg-white text-gray-600'}`}
               >
                 CSV Import
               </button>
@@ -836,7 +923,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   setImportTab('reference');
                   setImportError('');
                 }}
-                className={`flex-1 px-3 py-2.5 text-sm font-semibold border-l border-gray-200 ${importTab === 'reference' ? 'bg-violet-600 text-white' : 'bg-white text-gray-600'}`}
+                className={`flex-1 px-3 py-2.5 text-sm font-semibold border-l border-gray-200 ${importTab === 'reference' ? 'bg-[#1E88E5] text-white' : 'bg-white text-gray-600'}`}
               >
                 Reference PO
               </button>
@@ -852,7 +939,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                     type="button"
                     disabled={importChecking}
                     onClick={() => csvFileRef.current?.click()}
-                    className="w-full px-4 py-3 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full px-4 py-3 bg-[#1E88E5] text-white rounded-lg text-sm font-bold hover:bg-[#1565C0] disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {importChecking ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-upload-2-line"></i>}
                     Upload CSV & Create PO
@@ -883,14 +970,14 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                     }
                   }}
                   placeholder="e.g. PO-2026-0001"
-                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                   autoFocus
                 />
                 <button
                   type="button"
                   onClick={confirmImportAndCreate}
                   disabled={importChecking}
-                  className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#1E88E5] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
                 >
                   {importChecking ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-download-2-line"></i>}
                   {importChecking ? 'Checking...' : 'Import Reference PO & Create'}
@@ -920,7 +1007,7 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
                   setImportTarget(null);
                   openCreatePo(prId);
                 }}
-                className="px-4 py-2 text-sm font-semibold text-teal-700 border border-teal-300 rounded-lg hover:bg-teal-50 flex items-center gap-2"
+                className="px-4 py-2 text-sm font-semibold text-[#1E88E5] border border-[#BBDEFB] rounded-xl hover:bg-[#E3F2FD] flex items-center gap-2"
               >
                 <i className="ri-shopping-cart-2-line"></i>
                 Create PO manually
@@ -931,4 +1018,6 @@ export default function PurchaseRequestsPanel({ showPageActions = true }: Props)
       )}
     </>
   );
-}
+});
+
+export default PurchaseRequestsPanel;

@@ -37,9 +37,13 @@ import ManualPoContextSection, {
 } from './ManualPoContextSection';
 import {
   consumePoCsvImport,
+  downloadPoImportSampleCsv,
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
-import PurchaseRequestsPanel from '../purchase-requests/components/PurchaseRequestsPanel';
+import PurchaseRequestsPanel, {
+  type PurchaseRequestsPanelHandle,
+} from '../purchase-requests/components/PurchaseRequestsPanel';
+import { PM_PAGE_BG } from '../../../constants/pmTheme';
 import SearchCreateField from '../../requester/create-pr/SearchCreateField';
 import POApprovalModal from '../po-approval/components/POApprovalModal';
 import PostRfqApprovalModal from '../../rfq-approval/components/PostRfqApprovalModal';
@@ -1018,6 +1022,7 @@ export default function CreatePOPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const workspacePanelRef = useRef<PurchaseRequestsPanelHandle>(null);
   const prIdParam = searchParams.get('prId');
   const poIdParam = searchParams.get('poId');
   const refPoParam = searchParams.get('refPo');
@@ -3677,13 +3682,49 @@ export default function CreatePOPage() {
   if (!numericPrId && !isEditMode && !isManualMode) {
     return (
       <DashboardLayout>
-        <div className="mb-5">
-          <h1 className="text-2xl font-bold text-gray-900">PO/WO Workspace</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Create a purchase order or work order from a ready PR, or start a manual PO
-          </p>
+        <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+          <div className="p-2 pb-6 sm:p-4 lg:p-6">
+            <header className="mb-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl md:text-3xl">
+                    PO/WO Workspace
+                  </h1>
+                  <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
+                    Create a purchase order or work order from a ready PR, or start a manual PO
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/scm/create-po?manual=1')}
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-transparent bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-colors hover:border-[#90CAF9]"
+                  >
+                    <i className="ri-file-add-line"></i>
+                    Manual PO (No PR)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => workspacePanelRef.current?.openImport()}
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-transparent bg-white px-4 py-2.5 text-sm font-semibold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-colors hover:border-[#90CAF9]"
+                  >
+                    <i className="ri-download-2-line"></i>
+                    Import
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadPoImportSampleCsv}
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#1E88E5] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1565C0]"
+                  >
+                    <i className="ri-file-excel-2-line"></i>
+                    Sample CSV
+                  </button>
+                </div>
+              </div>
+            </header>
+            <PurchaseRequestsPanel ref={workspacePanelRef} />
+          </div>
         </div>
-        <PurchaseRequestsPanel />
       </DashboardLayout>
     );
   }

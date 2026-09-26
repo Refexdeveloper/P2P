@@ -232,13 +232,29 @@ type FulfillmentInvoice = {
   accountsRemarks?: string;
 };
 
-function FieldCard({ label, value }: { label: string; value?: string | number | null }) {
+const softDetailCard =
+  'relative min-w-0 overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-4';
+
+const softDetailWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+
+function SoftDetailField({ label, value }: { label: string; value?: string | number | null }) {
+  const display = value == null || value === '' ? '—' : String(value);
   return (
-    <div className="bg-gray-50 rounded-lg p-3 min-w-0">
-      <p className="text-xs text-gray-500 mb-0.5">{label}</p>
-      <p className="text-sm font-medium text-gray-900 break-words whitespace-pre-wrap">{value || '—'}</p>
+    <div className={softDetailCard}>
+      <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+      <div className="relative z-[1]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+        <div className="mt-1.5 break-words whitespace-pre-wrap text-sm font-semibold text-[#2C3E50]">{display}</div>
+      </div>
     </div>
   );
+}
+
+function FieldCard({ label, value }: { label: string; value?: string | number | null }) {
+  return <SoftDetailField label={label} value={value} />;
 }
 
 function asLineItems(raw: unknown): LineItem[] {
@@ -344,6 +360,8 @@ async function loadAuthPreview(doc: DocRow, poId: number | null): Promise<FilePr
 }
 
 export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = false }: Props) {
+  const expandWrapRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const [tab, setTab] = useState<
     'details' | 'documents' | 'history' | 'acceptance' | 'grn' | 'invoice'
   >('details');
@@ -359,6 +377,30 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
   const [filePreview, setFilePreview] = useState<FilePreview | null>(null);
   const [fileError, setFileError] = useState('');
   const [openingKey, setOpeningKey] = useState('');
+
+  /** Keep expand panel pinned to the visible table viewport (no horizontal scroll of details). */
+  useEffect(() => {
+    if (standalone) return;
+    const el = expandWrapRef.current;
+    if (!el) return;
+    const scrollParent =
+      (el.closest('[data-po-tracker-scroll]') as HTMLElement | null) ||
+      (el.closest('.overflow-x-auto') as HTMLElement | null);
+
+    const update = () => {
+      const w = scrollParent?.clientWidth ?? el.parentElement?.clientWidth ?? 0;
+      if (w > 0) setPanelWidth(w);
+    };
+    update();
+
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    if (scrollParent && ro) ro.observe(scrollParent);
+    window.addEventListener('resize', update);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [standalone]);
 
   useEffect(() => {
     let cancelled = false;
@@ -702,33 +744,42 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     <div
       className={
         standalone
-          ? 'bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden'
-          : 'm-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden'
+          ? 'relative overflow-visible rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]'
+          : 'relative box-border w-full max-w-full overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]'
       }
     >
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-gray-900 truncate">
-                {row.prNumber || (row.prId ? `PR #${row.prId}` : 'Manual PO')}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+            }}
+          />
+          <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-5">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold text-[#2C3E50]">
+                <span className="text-[#1E88E5]">
+                  {row.prNumber || (row.prId ? `PR #${row.prId}` : 'Manual PO')}
+                </span>
                 {(po?.poNumber || row.poNumber) ? ` · ${po?.poNumber || row.poNumber}` : ''}
               </p>
-              <p className="text-xs text-gray-500 truncate">{row.title}</p>
+              <p className="truncate text-xs text-slate-500">{row.title}</p>
             </div>
-            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700">
+            <span className="whitespace-nowrap rounded-lg bg-[#E3F2FD] px-2.5 py-1 text-xs font-semibold text-[#1E88E5]">
               {row.statusLabel}
             </span>
           </div>
 
-          <div className="flex border-b border-gray-100 px-3 overflow-x-auto">
+          <div className="relative z-[1] flex flex-wrap gap-x-1 border-b border-slate-100/80 px-2 sm:px-3">
             {tabs.map((t) => (
               <button
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+                className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors sm:px-4 ${
                   tab === t.key
-                    ? 'border-teal-600 text-teal-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                    ? 'border-[#1E88E5] text-[#1E88E5]'
+                    : 'border-transparent text-slate-500 hover:text-[#2C3E50]'
                 }`}
               >
                 <i className={t.icon}></i>
@@ -737,10 +788,14 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
             ))}
           </div>
 
-          <div className="p-5">
+          <div
+            className={`relative z-[1] max-w-full overflow-visible p-4 sm:p-5 ${
+              tab === 'details' ? 'bg-[#F5F7FA]' : ''
+            }`}
+          >
             {loading && (
-              <div className="py-8 text-center text-sm text-gray-500">
-                <i className="ri-loader-4-line animate-spin text-lg text-teal-600 mr-2"></i>
+              <div className="py-8 text-center text-sm text-slate-500">
+                <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#1E88E5]"></i>
                 Loading details...
               </div>
             )}
@@ -754,99 +809,86 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
 
             {!loading && !error && tab === 'details' && (
               <div className="space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {detailFields.map(([label, value]) => (
-                    <div key={label} className="bg-gray-50 rounded-lg p-3 min-w-0">
-                      <p className="text-xs text-gray-500 mb-0.5">{label}</p>
-                      <p className="text-sm font-medium text-gray-900 break-words" title={value}>
-                        {value}
-                      </p>
-                    </div>
+                    <SoftDetailField key={label} label={label} value={value} />
                   ))}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  <div className="bg-gray-50 rounded-lg p-3 min-w-0 lg:col-span-2">
-                    <p className="text-xs text-gray-500 mb-0.5">Site Address</p>
-                    <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
-                      {siteAddress || '—'}
-                    </p>
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <div className="lg:col-span-2">
+                    <SoftDetailField label="Site Address" value={siteAddress} />
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-3 min-w-0">
-                    <p className="text-xs text-gray-500 mb-0.5">Contact Persons</p>
-                    <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
-                      {contactPersons || '—'}
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3 min-w-0">
-                    <p className="text-xs text-gray-500 mb-0.5">GSTIN</p>
-                    <p className="text-sm font-medium text-gray-900 font-mono break-words">{gstin || '—'}</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3 min-w-0 lg:col-span-2">
-                    <p className="text-xs text-gray-500 mb-0.5">Invoicing Address</p>
-                    <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
-                      {invoicingAddress || '—'}
-                    </p>
+                  <SoftDetailField label="Contact Persons" value={contactPersons} />
+                  <SoftDetailField label="GSTIN" value={gstin} />
+                  <div className="lg:col-span-2">
+                    <SoftDetailField label="Invoicing Address" value={invoicingAddress} />
                   </div>
                 </div>
 
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Scope of Work
                   </h4>
-                  <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words whitespace-pre-wrap">
-                    {scopeOfWorkText || '—'}
-                  </p>
+                  <div className={softDetailCard}>
+                    <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+                    <p className="relative z-[1] min-h-[80px] break-words whitespace-pre-wrap text-sm leading-relaxed text-[#2C3E50]">
+                      {scopeOfWorkText || '—'}
+                    </p>
+                  </div>
                 </div>
 
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Special Instructions / Justification
                   </h4>
-                  <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words">
-                    {String(po?.specialInstructions || pr?.justification || 'No justification provided.')}
-                  </p>
+                  <div className={softDetailCard}>
+                    <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+                    <p className="relative z-[1] min-h-[80px] break-words whitespace-pre-wrap text-sm leading-relaxed text-[#2C3E50]">
+                      {String(po?.specialInstructions || pr?.justification || 'No justification provided.')}
+                    </p>
+                  </div>
                 </div>
 
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Line Items ({lineItems.length})
                   </h4>
                   {lineItems.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-4 text-center">No line items found</p>
+                    <p className="text-sm text-slate-500 py-4 text-center">No line items found</p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[720px] text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-200">
+                    <div className="w-full min-w-0">
+                      <table className="w-full table-fixed text-sm">
+                        <thead className="border-b border-slate-100 bg-[#F8FBFF]">
                           <tr>
-                            <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-10">#</th>
-                            <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Item / Description</th>
-                            <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-[140px]">Category</th>
-                            <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase w-16">Qty</th>
-                            <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-16">UOM</th>
-                            <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase w-[110px]">Unit Price</th>
-                            <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase w-[110px]">Total</th>
+                            <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 w-10">#</th>
+                            <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Item / Description</th>
+                            <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 w-[140px]">Category</th>
+                            <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 w-16">Qty</th>
+                            <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 w-16">UOM</th>
+                            <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 w-[110px]">Unit Price</th>
+                            <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 w-[110px]">Total</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-slate-100">
                           {lineItems.map((item, idx) => (
-                            <tr key={item.id ?? idx} className="hover:bg-gray-50">
-                              <td className="px-3 py-2.5 text-gray-500">{idx + 1}</td>
-                              <td className="px-3 py-2.5 font-medium text-gray-900 break-words">
+                            <tr key={item.id ?? idx} className="hover:bg-[#E3F2FD]/35">
+                              <td className="px-3 py-2.5 text-slate-500">{idx + 1}</td>
+                              <td className="px-3 py-2.5 font-medium text-[#2C3E50] break-words">
                                 {item.itemName || item.description || '—'}
                                 {item.itemName && item.description && item.itemName !== item.description ? (
-                                  <span className="block text-xs font-normal text-gray-500 whitespace-pre-line">
+                                  <span className="block text-xs font-normal text-slate-500 whitespace-pre-line">
                                     {item.description}
                                   </span>
                                 ) : null}
                               </td>
-                              <td className="px-3 py-2.5 text-gray-700">{item.category || '—'}</td>
-                              <td className="px-3 py-2.5 text-right text-gray-700 tabular-nums">{item.quantity ?? '—'}</td>
-                              <td className="px-3 py-2.5 text-gray-700">{item.unit || item.uom || '—'}</td>
-                              <td className="px-3 py-2.5 text-right text-gray-700 tabular-nums whitespace-nowrap">
+                              <td className="px-3 py-2.5 text-slate-700">{item.category || '—'}</td>
+                              <td className="px-3 py-2.5 text-right text-slate-700 tabular-nums">{item.quantity ?? '—'}</td>
+                              <td className="px-3 py-2.5 text-slate-700">{item.unit || item.uom || '—'}</td>
+                              <td className="px-3 py-2.5 text-right text-slate-700 tabular-nums whitespace-nowrap">
                                 {formatCurrency(Number(item.unitPrice || 0))}
                               </td>
-                              <td className="px-3 py-2.5 text-right font-semibold text-gray-900 tabular-nums whitespace-nowrap">
+                              <td className="px-3 py-2.5 text-right font-semibold text-[#2C3E50] tabular-nums whitespace-nowrap">
                                 {formatCurrency(Number(item.total || 0))}
                               </td>
                             </tr>
@@ -858,7 +900,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                 </div>
 
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Manager &amp; L2 Comments
                   </h4>
                   <ManagerL2CommentsHighlight history={history} />
@@ -869,36 +911,36 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
             {!loading && !error && tab === 'documents' && (
               <div className="space-y-3">
                 {documents.length === 0 ? (
-                  <p className="text-sm text-gray-500 py-8 text-center">
+                  <p className="text-sm text-slate-500 py-8 text-center">
                     No documents yet. Vendor quotations appear after RFQ, and PO files appear after the PO is created.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[860px] text-sm">
-                      <thead className="bg-gray-50 border-b border-gray-200">
+                  <div className="w-full min-w-0">
+                    <table className="w-full table-fixed text-sm">
+                      <thead className="border-b border-slate-100 bg-[#F8FBFF]">
                         <tr>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-[150px]">Type</th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">File name</th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Vendor / Notes</th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">File URL</th>
-                          <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase w-[160px]">Actions</th>
+                          <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 w-[150px]">Type</th>
+                          <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">File name</th>
+                          <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Vendor / Notes</th>
+                          <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">File URL</th>
+                          <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 w-[160px]">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100">
+                      <tbody className="divide-y divide-slate-100">
                         {documents.map((doc) => (
-                          <tr key={doc.key} className="hover:bg-gray-50">
+                          <tr key={doc.key} className="hover:bg-[#E3F2FD]/35">
                             <td className="px-3 py-2.5">
                               <span className="inline-flex px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700">
                                 {doc.kind}
                               </span>
                             </td>
-                            <td className="px-3 py-2.5 font-medium text-gray-900 break-words">{doc.fileName}</td>
-                            <td className="px-3 py-2.5 text-gray-600 break-words">
+                            <td className="px-3 py-2.5 font-medium text-[#2C3E50] break-words">{doc.fileName}</td>
+                            <td className="px-3 py-2.5 text-slate-600 break-words">
                               {[doc.vendor, doc.extra].filter(Boolean).join(' · ') || '—'}
                             </td>
                             <td className="px-3 py-2.5">
                               {doc.url ? (
-                                <p className="text-xs text-teal-700 break-all" title={doc.url}>
+                                <p className="text-xs text-[#1E88E5] break-all" title={doc.url}>
                                   {doc.url}
                                 </p>
                               ) : (
@@ -911,7 +953,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                                   type="button"
                                   disabled={!doc.url || Boolean(openingKey)}
                                   onClick={() => handleOpenFile(doc)}
-                                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-gray-50 disabled:opacity-40"
+                                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-[#E3F2FD]/35 disabled:opacity-40"
                                 >
                                   {openingKey === doc.key ? 'Opening…' : 'Open'}
                                 </button>
@@ -919,7 +961,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                                   type="button"
                                   disabled={!doc.url || Boolean(openingKey)}
                                   onClick={() => handleDownloadFile(doc)}
-                                  className="px-2.5 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold hover:bg-teal-700 disabled:opacity-40"
+                                  className="px-2.5 py-1.5 bg-[#1E88E5] text-white rounded-md text-xs font-semibold hover:bg-[#1565C0] disabled:opacity-40"
                                 >
                                   {openingKey === `dl-${doc.key}` ? 'Saving…' : 'Download'}
                                 </button>
@@ -951,7 +993,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                     ).replace(/_/g, ' ')}
                   </span>
                   {po?.vendorAcceptanceMode ? (
-                    <span className="text-xs text-gray-500">via {String(po.vendorAcceptanceMode)}</span>
+                    <span className="text-xs text-slate-500">via {String(po.vendorAcceptanceMode)}</span>
                   ) : null}
                 </div>
                 {!acceptanceFinished ? (
@@ -969,20 +1011,20 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                   />
                   <FieldCard label="Mode" value={String(po?.vendorAcceptanceMode || '—')} />
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-0.5">Vendor remarks</p>
-                  <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                    {String(po?.vendorAcceptanceRemarks || '—')}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-2">
+                <SoftDetailField
+                  label="Vendor remarks"
+                  value={String(po?.vendorAcceptanceRemarks || '—')}
+                />
+                <div className={`${softDetailCard} p-4`}>
+                  <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+                  <div className="relative z-[1]">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Vendor signed / acceptance file
                   </p>
                   {row.poId && String(po?.vendorAcceptanceFileName || '').trim() ? (
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-900 min-w-0">
-                        <i className="ri-file-pdf-2-line text-teal-700 shrink-0"></i>
+                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[#2C3E50] min-w-0">
+                        <i className="ri-file-pdf-2-line text-[#1E88E5] shrink-0"></i>
                         <span className="truncate">{String(po?.vendorAcceptanceFileName)}</span>
                       </span>
                       <button
@@ -997,7 +1039,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                             url: poApi.getVendorAcceptanceFileUrl(row.poId!),
                           })
                         }
-                        className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-40"
+                        className="cursor-pointer rounded-xl border border-[#BBDEFB] bg-white px-3 py-1.5 text-xs font-semibold text-[#1E88E5] hover:bg-[#E3F2FD] disabled:opacity-40"
                       >
                         {openingKey === `accept-${row.poId}` ? 'Opening…' : 'Open'}
                       </button>
@@ -1013,18 +1055,19 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                             url: poApi.getVendorAcceptanceFileUrl(row.poId!),
                           })
                         }
-                        className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-40"
+                        className="cursor-pointer rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-40"
                       >
                         {openingKey === `dl-accept-${row.poId}` ? 'Saving…' : 'Download'}
                       </button>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-slate-500">
                       {acceptanceFinished
                         ? 'No acceptance file uploaded for this PO / WO.'
                         : 'No acceptance file yet — upload when recording acceptance.'}
                     </p>
                   )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1042,35 +1085,30 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                   <FieldCard label="Received by" value={grn.receivedBy} />
                   <FieldCard label="Inspected by" value={grn.inspectedBy} />
                 </div>
-                {grn.remarks ? (
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-500 mb-0.5">Remarks</p>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{grn.remarks}</p>
-                  </div>
-                ) : null}
+                {grn.remarks ? <SoftDetailField label="Remarks" value={grn.remarks} /> : null}
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     GRN line items ({grn.lineItems?.length || 0})
                   </h4>
                   {(grn.lineItems || []).length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-4">No GRN lines</p>
+                    <p className="text-sm text-slate-500 text-center py-4">No GRN lines</p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[760px] text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-200">
+                    <div className="w-full min-w-0">
+                      <table className="w-full table-fixed text-sm">
+                        <thead className="border-b border-slate-100 bg-[#F8FBFF]">
                           <tr>
-                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Item</th>
-                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Ordered</th>
-                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Received</th>
-                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Condition</th>
-                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase">Total</th>
-                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Attachments</th>
+                            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Item</th>
+                            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Ordered</th>
+                            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Received</th>
+                            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Condition</th>
+                            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Total</th>
+                            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Attachments</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-slate-100">
                           {(grn.lineItems || []).map((li, idx) => (
                             <tr key={li.id || idx}>
-                              <td className="px-3 py-2 text-gray-900">{li.description || '—'}</td>
+                              <td className="px-3 py-2 text-[#2C3E50]">{li.description || '—'}</td>
                               <td className="px-3 py-2 text-right tabular-nums">{li.orderedQty ?? '—'}</td>
                               <td className="px-3 py-2 text-right tabular-nums">{li.receivedQty ?? '—'}</td>
                               <td className="px-3 py-2">{li.condition || '—'}</td>
@@ -1096,7 +1134,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                                             url: accountsApi.grnLineAttachmentUrl(file.id),
                                           })
                                         }
-                                        className="text-left text-xs font-semibold text-teal-700 hover:underline disabled:opacity-50 cursor-pointer"
+                                        className="text-left text-xs font-semibold text-[#1E88E5] hover:underline disabled:opacity-50 cursor-pointer"
                                       >
                                         {openingKey === `grn-att-${file.id}`
                                           ? 'Opening…'
@@ -1150,12 +1188,12 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                           url: accountsApi.invoiceFileUrl(invoice.id),
                         })
                       }
-                      className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
+                      className="px-3 py-1.5 text-xs font-semibold text-[#1E88E5] bg-[#E3F2FD] border border-[#BBDEFB] rounded-lg"
                     >
                       <i className="ri-file-invoice-line mr-1"></i>
                       View invoice file
                     </button>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-slate-500">
                       {invoice.invoiceFileName || `Invoice #${invoice.id}`}
                     </span>
                   </div>
@@ -1189,14 +1227,14 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     createPortal(
       <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50">
         <div className="bg-white rounded-xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-xl">
-          <div className="p-4 border-b border-gray-200 flex justify-between items-center gap-3">
-            <span className="font-semibold text-gray-900 truncate">{filePreview.fileName}</span>
+          <div className="p-4 border-b border-slate-200 flex justify-between items-center gap-3">
+            <span className="font-semibold text-[#2C3E50] truncate">{filePreview.fileName}</span>
             <div className="flex items-center gap-2">
               <a
                 href={filePreview.url}
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-[#E3F2FD]/35"
               >
                 Open in new tab
               </a>
@@ -1206,7 +1244,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
                   URL.revokeObjectURL(filePreview.url);
                   setFilePreview(null);
                 }}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xl cursor-pointer"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#E3F2FD] text-slate-500 text-xl cursor-pointer"
               >
                 ×
               </button>
@@ -1219,7 +1257,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
               <iframe
                 title="Document preview"
                 src={filePreview.url}
-                className="w-full h-[75vh] border border-gray-200 rounded-lg bg-white"
+                className="w-full h-[75vh] rounded-xl border border-transparent shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] bg-white"
               />
             )}
           </div>
@@ -1239,9 +1277,20 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
 
   return (
     <tr>
-      <td colSpan={colSpan} className="p-0 bg-slate-50 border-b border-teal-100">
-        {panel}
-        {previewModal}
+      <td colSpan={colSpan} className="max-w-0 bg-transparent p-0 align-top">
+        <div
+          ref={expandWrapRef}
+          className="sticky left-0 z-[5] box-border min-w-0"
+          style={{
+            width: panelWidth ? `${panelWidth}px` : '100%',
+            maxWidth: panelWidth ? `${panelWidth}px` : undefined,
+          }}
+        >
+          <div className="box-border w-full max-w-full overflow-x-hidden px-2 py-2 sm:px-3 sm:py-3">
+            {panel}
+          </div>
+          {previewModal}
+        </div>
       </td>
     </tr>
   );

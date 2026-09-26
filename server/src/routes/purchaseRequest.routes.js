@@ -121,7 +121,7 @@ router.get(
   requireRolesOrPermissions(['Requester'], ['nav.create_pr', 'nav.requester_dashboard', 'nav.track_pr']),
   async (req, res) => {
     try {
-      const stats = await getRequesterStats(req.user.id);
+      const stats = await getRequesterStats(req.user);
       res.json({ data: stats });
     } catch (err) {
       res.status(500).json({ message: err.message });

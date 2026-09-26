@@ -37,12 +37,12 @@ function paramKeys(p: { id: string; label: string }) {
 }
 
 const VENDOR_THEMES = [
-  { bar: 'bg-teal-600 text-white border-teal-700', soft: 'bg-teal-50/70', head: 'bg-teal-100 text-teal-950 border-teal-200', text: 'text-teal-950' },
-  { bar: 'bg-violet-600 text-white border-violet-700', soft: 'bg-violet-50/70', head: 'bg-violet-100 text-violet-950 border-violet-200', text: 'text-violet-950' },
-  { bar: 'bg-sky-600 text-white border-sky-700', soft: 'bg-sky-50/70', head: 'bg-sky-100 text-sky-950 border-sky-200', text: 'text-sky-950' },
-  { bar: 'bg-rose-500 text-white border-rose-600', soft: 'bg-rose-50/70', head: 'bg-rose-100 text-rose-950 border-rose-200', text: 'text-rose-950' },
-  { bar: 'bg-indigo-600 text-white border-indigo-700', soft: 'bg-indigo-50/70', head: 'bg-indigo-100 text-indigo-950 border-indigo-200', text: 'text-indigo-950' },
-  { bar: 'bg-orange-500 text-white border-orange-600', soft: 'bg-orange-50/70', head: 'bg-orange-100 text-orange-950 border-orange-200', text: 'text-orange-950' },
+  { bar: 'bg-[#1E88E5] text-white border-[#1565C0]', soft: 'bg-[#E3F2FD]/70', head: 'bg-[#E3F2FD] text-[#1565C0] border-[#BBDEFB]', text: 'text-[#1565C0]' },
+  { bar: 'bg-[#1565C0] text-white border-[#0D47A1]', soft: 'bg-[#E3F2FD]/50', head: 'bg-[#BBDEFB]/60 text-[#0D47A1] border-[#90CAF9]', text: 'text-[#0D47A1]' },
+  { bar: 'bg-sky-500 text-white border-sky-600', soft: 'bg-sky-50/70', head: 'bg-sky-100 text-sky-900 border-sky-200', text: 'text-sky-900' },
+  { bar: 'bg-violet-500 text-white border-violet-600', soft: 'bg-violet-50/70', head: 'bg-violet-100 text-violet-900 border-violet-200', text: 'text-violet-900' },
+  { bar: 'bg-indigo-500 text-white border-indigo-600', soft: 'bg-indigo-50/70', head: 'bg-indigo-100 text-indigo-900 border-indigo-200', text: 'text-indigo-900' },
+  { bar: 'bg-slate-600 text-white border-slate-700', soft: 'bg-slate-50/70', head: 'bg-slate-100 text-slate-800 border-slate-200', text: 'text-slate-800' },
 ];
 
 function vendorTheme(index: number) {
@@ -50,7 +50,7 @@ function vendorTheme(index: number) {
 }
 
 function columnFill(_isBest: boolean, isRec: boolean, themeSoft: string, extra = '') {
-  if (isRec) return `bg-emerald-50/80 border-emerald-100 ${extra}`;
+  if (isRec) return `bg-[#E3F2FD]/80 border-[#BBDEFB] ${extra}`;
   return `${themeSoft} border-[#E5EAF0] ${extra}`;
 }
 
@@ -276,7 +276,7 @@ function statusValueDisplay(extra: { kind: 'number' | 'text' | 'empty'; value: n
 }
 
 const cardClass =
-  'bg-white rounded-2xl border border-[#E5EAF0] shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden min-w-0 max-w-full';
+  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] min-w-0 max-w-full sm:rounded-[18px]';
 
 const stickyEdge = 'md:shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]';
 
@@ -596,7 +596,7 @@ export default function VendorComparisonMatrix({
                   type="button"
                   disabled={fileBusy === `${busyBase}-view`}
                   onClick={() => void openQuoteFile(file, vendor.name, 'view')}
-                  className={`${btn} border-teal-200 text-teal-700 hover:bg-teal-50 disabled:opacity-50`}
+                  className={`${btn} border-[#BBDEFB] text-[#1E88E5] hover:bg-[#E3F2FD] disabled:opacity-50`}
                 >
                   <i className="ri-eye-line"></i>
                   View
@@ -621,25 +621,34 @@ export default function VendorComparisonMatrix({
   return (
     <div className={`min-w-0 w-full max-w-full overflow-hidden ${compact ? 'space-y-4' : 'space-y-5'} print:space-y-4`}>
       {/* Vendor recommendation justification — highlighted for L1/L2 */}
-      {(data.recommendedVendorName || recommendationJustification) && !compact && (
-        <section className="rounded-xl overflow-hidden border-2 border-emerald-400 bg-emerald-50 shadow-sm ring-2 ring-emerald-300/70">
-          <div className="px-4 py-3 bg-emerald-200/90 border-b border-emerald-400 flex items-center gap-2">
-            <i className="ri-award-fill text-emerald-800 text-lg" aria-hidden />
+      {(data.recommendedVendorName || recommendationJustification) && (
+        <section className="relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
+            }}
+          />
+          <div className="relative z-[1] flex items-center gap-2 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+              <i className="ri-award-fill text-lg" aria-hidden />
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-extrabold tracking-wide uppercase text-emerald-950">
-                Vendor Recommendation Justification
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1E88E5]">
+                Vendor Recommendation
               </p>
-              <p className="text-base font-bold text-emerald-950 mt-0.5 truncate">
+              <p className="mt-0.5 truncate text-sm font-bold text-[#2C3E50]">
                 Recommended: {data.recommendedVendorName || '—'}
               </p>
             </div>
           </div>
           {recommendationJustification ? (
-            <p className="px-4 py-3.5 text-sm text-emerald-950 leading-relaxed whitespace-pre-wrap font-medium">
+            <p className="relative z-[1] whitespace-pre-wrap px-4 py-3.5 text-sm font-medium leading-relaxed text-[#2C3E50]">
               {recommendationJustification}
             </p>
           ) : (
-            <p className="px-4 py-3.5 text-sm italic text-emerald-800">
+            <p className="relative z-[1] px-4 py-3.5 text-sm italic text-slate-500">
               No justification was provided with this recommendation.
             </p>
           )}
@@ -664,14 +673,14 @@ export default function VendorComparisonMatrix({
                 <p className="text-[11px] font-medium text-[#64748B]">Latest quote</p>
                 <p className="text-xl sm:text-2xl font-bold text-[#12284A] mt-0.5 leading-none">{revisionLabel(Math.max(1, totalRounds))}</p>
               </div>
-              <div className="min-w-[100px] flex-1 sm:flex-none rounded-xl bg-[#E6F7F5] border border-[#C7EFE8] px-3 sm:px-4 py-3">
+              <div className="min-w-[100px] flex-1 sm:flex-none rounded-xl bg-[#E3F2FD] border border-[#BBDEFB] px-3 sm:px-4 py-3">
                 <p className="text-[11px] font-medium text-[#64748B]">Date</p>
                 <p className="text-base sm:text-lg font-bold text-[#12284A] mt-0.5 leading-tight">{statementDate}</p>
               </div>
               <button
                 type="button"
                 onClick={handlePrint}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#6C4CCF] text-[#6C4CCF] text-sm font-semibold hover:bg-[#F3F0FF] transition-colors print:hidden"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#1E88E5] text-[#1E88E5] text-sm font-semibold hover:bg-[#E3F2FD] transition-colors print:hidden"
               >
                 <i className="ri-file-pdf-2-line text-base"></i>
                 Download PDF
@@ -682,7 +691,7 @@ export default function VendorComparisonMatrix({
           {/* Site details bar */}
           <div className="mt-5 pt-4 border-t border-[#E5EAF0] flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-sm">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="w-8 h-8 rounded-full bg-[#EEF2FF] text-[#6C4CCF] flex items-center justify-center shrink-0">
+              <span className="w-8 h-8 rounded-full bg-[#EEF2FF] text-[#1E88E5] flex items-center justify-center shrink-0">
                 <i className="ri-map-pin-line"></i>
               </span>
               <p className="text-[#12284A]">
@@ -692,7 +701,7 @@ export default function VendorComparisonMatrix({
             </div>
             <div className="hidden sm:block w-px h-6 bg-[#E5EAF0]" />
             <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-full bg-[#E6F7F5] text-[#008F83] flex items-center justify-center shrink-0">
+              <span className="w-8 h-8 rounded-full bg-[#E3F2FD] text-[#1E88E5] flex items-center justify-center shrink-0">
                 <i className="ri-calendar-line"></i>
               </span>
               <p className="text-[#12284A]">
@@ -712,25 +721,37 @@ export default function VendorComparisonMatrix({
 
       {vendorGroups.length > 0 && (
         <section className={`${cardClass} print:hidden`}>
-          <div className="px-4 sm:px-5 py-3 border-b border-[#E5EAF0] bg-slate-50 flex items-center gap-2">
-            <i className="ri-file-pdf-2-line text-teal-600"></i>
-          <div>
-              <h2 className="text-sm font-bold text-[#12284A]">Final quotation files</h2>
+          <div className="flex items-center gap-2 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3 sm:px-5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+              <i className="ri-file-pdf-2-line"></i>
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-[#2C3E50]">Final quotation files</h2>
               <p className="text-xs text-slate-500">Latest quote from each vendor — view or download</p>
             </div>
           </div>
-          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
             {vendorGroups.map(({ vendor, cols }) => {
               const latestCol = [...cols].reverse().find((c) => c.isLatest) || cols[cols.length - 1];
               return (
-                <div key={`final-file-${vendor.id}`} className="rounded-xl border border-[#E5EAF0] p-3 bg-white">
-                  <p className="text-xs font-bold text-slate-800 truncate mb-2" title={vendor.name}>
+                <div
+                  key={`final-file-${vendor.id}`}
+                  className="relative overflow-hidden rounded-2xl border border-transparent bg-white p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:rounded-[18px]"
+                >
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                      background:
+                        'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.08) 0%, rgba(255,255,255,0) 55%)',
+                    }}
+                  />
+                  <p className="relative z-[1] mb-2 truncate text-xs font-bold text-[#2C3E50]" title={vendor.name}>
                     {vendor.name}
                     {vendor.isRecommended ? (
-                      <span className="ml-1 text-[10px] font-semibold text-emerald-700">Recommended</span>
+                      <span className="ml-1 text-[10px] font-semibold text-[#1E88E5]">Recommended</span>
                     ) : null}
                   </p>
-                  {renderFileActions(latestCol, vendor, 'md')}
+                  <div className="relative z-[1]">{renderFileActions(latestCol, vendor, 'md')}</div>
                 </div>
               );
             })}
@@ -747,7 +768,7 @@ export default function VendorComparisonMatrix({
             Recommended vendor is always first. Green = vendor you chose.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-bold">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1E88E5] text-white text-[11px] font-bold">
               <i className="ri-checkbox-circle-fill" /> Recommended
             </span>
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">
@@ -763,7 +784,7 @@ export default function VendorComparisonMatrix({
                     key={`lbl-${p.id}`}
                     className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
                       isMakeLikeParam(p)
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        ? 'bg-[#E3F2FD] text-[#1565C0] border-[#BBDEFB]'
                         : 'bg-slate-50 text-slate-700 border-slate-200'
                     }`}
                   >
@@ -776,7 +797,7 @@ export default function VendorComparisonMatrix({
         </div>
         {revColumns.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-[#EEF2FF] text-[#6C4CCF] flex items-center justify-center mx-auto mb-3">
+            <div className="w-14 h-14 rounded-2xl bg-[#EEF2FF] text-[#1E88E5] flex items-center justify-center mx-auto mb-3">
               <i className="ri-inbox-line text-2xl"></i>
             </div>
             <p className="text-sm font-semibold text-[#12284A]">No vendor quotations available</p>
@@ -792,13 +813,13 @@ export default function VendorComparisonMatrix({
                     key={`m-card-${col.key}`}
                     className={`rounded-xl border overflow-hidden ${
                       isRecRev
-                        ? 'border-emerald-300 bg-emerald-50/40'
+                        ? 'border-[#90CAF9] bg-[#E3F2FD]/40'
                         : 'border-[#E5EAF0] bg-white'
                     }`}
                   >
                     <div
                       className={`px-3 py-2.5 flex flex-wrap items-start justify-between gap-2 ${
-                        isRecRev ? 'bg-emerald-600 text-white' : theme.bar
+                        isRecRev ? 'bg-[#1E88E5] text-white' : theme.bar
                       }`}
                     >
                       <div className="min-w-0">
@@ -809,7 +830,7 @@ export default function VendorComparisonMatrix({
                       </div>
                       <div className="flex flex-wrap gap-1 justify-end">
                         {isRecRev && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-emerald-800 text-[10px] font-bold">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-[#1E88E5] text-[10px] font-bold">
                             <i className="ri-checkbox-circle-fill text-[10px]"></i>
                             Recommended
                           </span>
@@ -824,7 +845,7 @@ export default function VendorComparisonMatrix({
                           name="vendor-select-mobile"
                           checked={activeVendorId === col.vendorId}
                           onChange={() => onSelectVendor(col.vendorId)}
-                          className="accent-emerald-600"
+                          className="accent-[#1E88E5]"
                         />
                         Select this vendor
                       </label>
@@ -931,13 +952,13 @@ export default function VendorComparisonMatrix({
 
                       <div
                         className={`px-3 py-3 flex items-center justify-between gap-3 ${
-                          isRecRev ? 'bg-emerald-100/70' : 'bg-[#F8FAFC]'
+                          isRecRev ? 'bg-[#E3F2FD]/70' : 'bg-[#F8FBFF]'
                         }`}
                       >
                         <span className="text-sm font-bold text-[#12284A]">Total cost</span>
                         <span
                           className={`text-base font-bold tabular-nums ${
-                            isRecRev ? 'text-emerald-800' : 'text-[#12284A]'
+                            isRecRev ? 'text-[#1E88E5]' : 'text-[#2C3E50]'
                           }`}
                         >
                           {t.landed > 0 ? `₹${formatNum(t.landed)}` : '—'}
@@ -989,14 +1010,14 @@ export default function VendorComparisonMatrix({
                           colSpan={2}
                           className={`px-2 py-2.5 border-b border-l text-center text-xs font-bold whitespace-nowrap align-middle ${
                             isRecRev
-                              ? 'bg-emerald-600 text-white border-emerald-700'
+                              ? 'bg-[#1E88E5] text-white border-[#1565C0]'
                               : theme.bar
                           }`}
                         >
                           <span className="inline-flex flex-col items-center gap-1">
                             <span>{col.revisionLabel}</span>
                             {isRecRev && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-emerald-800 text-[10px] font-bold uppercase tracking-wide">
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-[#1E88E5] text-[10px] font-bold uppercase tracking-wide">
                                 <i className="ri-checkbox-circle-fill text-[10px]"></i>
                                 Recommended
                               </span>
@@ -1020,7 +1041,7 @@ export default function VendorComparisonMatrix({
                           colSpan={2}
                           className={`px-2 py-3 border-b border-l text-center text-xs sm:text-sm font-bold align-middle ${
                             isRecRev
-                              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                              ? 'bg-[#E3F2FD] text-[#1565C0] border-[#BBDEFB]'
                               : theme.head
                           }`}
                         >
@@ -1031,7 +1052,7 @@ export default function VendorComparisonMatrix({
                                 name="vendor-select"
                                 checked={activeVendorId === col.vendorId}
                                 onChange={() => onSelectVendor(col.vendorId)}
-                                className="accent-emerald-600 shrink-0"
+                                className="accent-[#1E88E5] shrink-0"
                               />
                               <span className="inline-block max-w-[160px] lg:max-w-[220px] leading-tight break-words" title={col.vendorName}>
                                 {col.vendorName}
@@ -1252,7 +1273,7 @@ export default function VendorComparisonMatrix({
                           <td
                             className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${colUnit} ${
                               isRecRev
-                                ? 'bg-emerald-50/80 border-emerald-100'
+                                ? 'bg-[#E3F2FD]/80 border-[#BBDEFB]'
                                 : 'bg-[#F8FAFC] border-[#E5EAF0]'
                             }`}
                           >
@@ -1261,20 +1282,20 @@ export default function VendorComparisonMatrix({
                           <td
                             className={`px-2 sm:px-3 py-3 border-b text-right align-middle ${colAmount} ${
                               isRecRev
-                                ? 'bg-emerald-50/80 border-emerald-100'
+                                ? 'bg-[#E3F2FD]/80 border-[#BBDEFB]'
                                 : 'bg-[#F8FAFC] border-[#E5EAF0]'
                             }`}
                           >
                             <div className="flex flex-col items-end gap-1">
                               <span
                                 className={`text-sm sm:text-base font-bold tabular-nums whitespace-nowrap leading-none ${
-                                  isRecRev ? 'text-emerald-800' : 'text-[#12284A]'
+                                  isRecRev ? 'text-[#1E88E5]' : 'text-[#2C3E50]'
                                 }`}
                               >
                                 {t.landed > 0 ? `₹${formatNum(t.landed)}` : '—'}
                               </span>
                               {isRecRev && (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-600 border border-emerald-700 text-[10px] font-bold text-white whitespace-nowrap">
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#1E88E5] border border-[#1565C0] text-[10px] font-bold text-white whitespace-nowrap">
                                   <i className="ri-checkbox-circle-fill text-[10px]"></i>
                                   Recommended
                                 </span>
@@ -1313,12 +1334,12 @@ export default function VendorComparisonMatrix({
                 <article
                   key={`tech-m-${vendor.id}`}
                   className={`rounded-xl border overflow-hidden ${
-                    isRec ? 'border-emerald-300' : 'border-[#E5EAF0]'
+                    isRec ? 'border-[#90CAF9]' : 'border-transparent'
                   }`}
                 >
                   <div
                     className={`px-3 py-2.5 flex items-start justify-between gap-2 ${
-                      isRec ? 'bg-emerald-600 text-white' : tone.bar
+                      isRec ? 'bg-[#1E88E5] text-white' : tone.bar
                     }`}
                   >
                     <p className="text-sm font-bold break-words leading-snug">{vendor.name}</p>
@@ -1393,7 +1414,7 @@ export default function VendorComparisonMatrix({
                       key={`tech-h-${col.key}`}
                       className={`px-3 py-3 border-b border-l text-center text-xs font-bold ${colRev} ${
                         isRecRev
-                          ? 'bg-emerald-600 text-white border-emerald-700'
+                          ? 'bg-[#1E88E5] text-white border-[#1565C0]'
                           : theme.bar
                       }`}
                     >

@@ -32,7 +32,13 @@ const StatusBadge = ({ status, size = 'md' }: StatusBadgeProps) => {
       'Pending HOD Vendor Final': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'HOD Vendor Final' },
       'Pending RFQ Manager Approval': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'RFQ Approval' },
       'Pending CFO Approval': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Pending Mugesh' },
-      'Pending Mugesh Approval': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Pending Mugesh' },
+      'Pending SCM Buyer Create PO': {
+        bg: 'bg-amber-100',
+        text: 'text-amber-700',
+        label: 'Pending Create PO',
+      },
+      'Pending SCM PO': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Pending Create PO' },
+      'Pending Mugesh': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Pending Mugesh' },
       'Pending Mugesh Invoice Upload': {
         bg: 'bg-amber-100',
         text: 'text-amber-700',
@@ -52,7 +58,13 @@ const StatusBadge = ({ status, size = 'md' }: StatusBadgeProps) => {
       'Returned for Rework': { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Returned' },
     };
 
-    return statusMap[status] || { bg: 'bg-slate-100', text: 'text-slate-700', label: status };
+    return (
+      statusMap[status] || {
+        bg: 'bg-slate-100',
+        text: 'text-slate-700',
+        label: status.length > 28 ? `${status.slice(0, 26)}…` : status,
+      }
+    );
   };
 
   const sizeClasses = {

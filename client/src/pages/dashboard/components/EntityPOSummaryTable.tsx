@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { CARD, formatCompactInr } from '../cfoFormat';
+import { formatCompactInr } from '../cfoFormat';
 
 type Entity = {
   entityId?: number | null;
@@ -24,39 +24,53 @@ function entityDetailPath(entity: Entity) {
 
 export default function EntityPOSummaryTable({ entities }: { entities: Entity[] }) {
   return (
-    <div className={`${CARD} overflow-hidden`}>
-      <div className="px-5 py-4 border-b border-gray-100">
-        <h3 className="text-sm font-semibold text-gray-800">Entity-wise PO Summary</h3>
+    <div className="overflow-hidden rounded-2xl border border-white/80 bg-white/95 shadow-lg shadow-slate-200/40 backdrop-blur-sm lg:rounded-3xl">
+      <div className="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-blue-50/40 px-3 py-3 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1E88E5]/10 text-[#1E88E5]">
+            <i className="ri-building-4-line text-lg" aria-hidden />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800 sm:text-base">Entity-wise PO Summary</h3>
+            <p className="text-[11px] text-slate-500 sm:text-xs">
+              {entities.length} entit{entities.length === 1 ? 'y' : 'ies'}
+            </p>
+          </div>
+        </div>
       </div>
+
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/70">
+              <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#7F8C8D] whitespace-nowrap">
                 Entity Name
               </th>
-              <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#7F8C8D] whitespace-nowrap">
                 Total PO Count
               </th>
-              <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#7F8C8D] whitespace-nowrap">
                 Total PO Amount
               </th>
-              <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#7F8C8D] whitespace-nowrap">
                 Approved Amount
               </th>
-              <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#7F8C8D] whitespace-nowrap">
                 Pending Amount
               </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#7F8C8D] whitespace-nowrap">
                 Utilization
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody>
             {!entities.length ? (
               <tr>
-                <td colSpan={6} className="px-5 py-8 text-center text-sm text-gray-500">
-                  No purchase orders found for active entities.
+                <td colSpan={6} className="px-5 py-16 text-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <i className="ri-folder-search-line text-4xl text-slate-200" />
+                    <p className="text-sm text-slate-400">No purchase orders found for active entities.</p>
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -69,63 +83,61 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
                 return (
                   <tr
                     key={`${entity.code}-${entity.entityName}`}
-                    className={`transition-colors ${href ? 'hover:bg-teal-50/50 cursor-pointer' : 'hover:bg-gray-50'}`}
+                    className={`border-b border-slate-100 transition-colors ${
+                      href
+                        ? 'cursor-pointer hover:bg-gradient-to-r hover:from-blue-50/40 hover:to-transparent'
+                        : 'hover:bg-slate-50/80'
+                    }`}
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <div
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
                           style={{ backgroundColor: entity.color }}
-                        ></div>
+                        />
                         <div className="min-w-0">
                           {href ? (
                             <Link
                               to={href}
-                              className="block text-sm font-medium text-teal-700 hover:underline whitespace-nowrap"
+                              className="block whitespace-nowrap text-sm font-semibold text-[#2C3E50] transition-colors hover:text-[#1E88E5]"
                               title={`View POs for ${entity.entityName}`}
                             >
                               {entity.entityName}
                             </Link>
                           ) : (
-                            <p className="text-sm font-medium text-gray-900 whitespace-nowrap">{entity.entityName}</p>
+                            <p className="whitespace-nowrap text-sm font-semibold text-[#2C3E50]">{entity.entityName}</p>
                           )}
-                          <p className="text-xs text-gray-400">{entity.code}</p>
+                          <p className="text-xs text-[#7F8C8D]">{entity.code}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       {href ? (
-                        <Link to={href} className="text-sm font-semibold text-gray-900 hover:text-teal-700">
+                        <Link to={href} className="text-sm font-semibold text-[#2C3E50] hover:text-[#1E88E5]">
                           {entity.totalPOCount}
                         </Link>
                       ) : (
-                        <span className="text-sm font-semibold text-gray-900">{entity.totalPOCount}</span>
+                        <span className="text-sm font-semibold text-[#2C3E50]">{entity.totalPOCount}</span>
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <span className="text-sm font-bold text-gray-900">
-                        {formatCurrency(entity.totalPOAmount)}
-                      </span>
+                      <span className="text-sm font-bold text-[#2C3E50]">{formatCurrency(entity.totalPOAmount)}</span>
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <span className="text-sm font-semibold text-green-600">
-                        {formatCurrency(entity.approvedAmount)}
-                      </span>
+                      <span className="text-sm font-semibold text-[#22C55E]">{formatCurrency(entity.approvedAmount)}</span>
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <span className="text-sm font-semibold text-orange-500">
-                        {formatCurrency(entity.pendingAmount)}
-                      </span>
+                      <span className="text-sm font-semibold text-[#F97316]">{formatCurrency(entity.pendingAmount)}</span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2 min-w-[100px]">
-                        <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                      <div className="flex min-w-[100px] items-center gap-2">
+                        <div className="h-2 flex-1 rounded-full bg-slate-100">
                           <div
-                            className="h-1.5 rounded-full"
+                            className="h-2 rounded-full transition-all"
                             style={{ width: `${utilPct}%`, backgroundColor: entity.color }}
-                          ></div>
+                          />
                         </div>
-                        <span className="text-xs text-gray-500 whitespace-nowrap">{utilPct}%</span>
+                        <span className="whitespace-nowrap text-xs font-bold text-[#7F8C8D]">{utilPct}%</span>
                       </div>
                     </td>
                   </tr>
@@ -134,22 +146,22 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
             )}
           </tbody>
           {entities.length > 0 && (
-            <tfoot className="bg-gray-50 border-t border-gray-200">
+            <tfoot className="border-t border-slate-200 bg-slate-50/80">
               <tr>
-                <td className="px-5 py-3 text-sm font-semibold text-gray-700">Total</td>
-                <td className="px-5 py-3 text-right text-sm font-bold text-gray-900">
+                <td className="px-5 py-3 text-sm font-semibold text-slate-700">Total</td>
+                <td className="px-5 py-3 text-right text-sm font-bold text-[#2C3E50]">
                   {entities.reduce((s, e) => s + e.totalPOCount, 0)}
                 </td>
-                <td className="px-5 py-3 text-right text-sm font-bold text-gray-900">
+                <td className="px-5 py-3 text-right text-sm font-bold text-[#2C3E50]">
                   {formatCurrency(entities.reduce((s, e) => s + e.totalPOAmount, 0))}
                 </td>
-                <td className="px-5 py-3 text-right text-sm font-bold text-green-600">
+                <td className="px-5 py-3 text-right text-sm font-bold text-[#22C55E]">
                   {formatCurrency(entities.reduce((s, e) => s + e.approvedAmount, 0))}
                 </td>
-                <td className="px-5 py-3 text-right text-sm font-bold text-orange-500">
+                <td className="px-5 py-3 text-right text-sm font-bold text-[#F97316]">
                   {formatCurrency(entities.reduce((s, e) => s + e.pendingAmount, 0))}
                 </td>
-                <td className="px-5 py-3"></td>
+                <td className="px-5 py-3" />
               </tr>
             </tfoot>
           )}

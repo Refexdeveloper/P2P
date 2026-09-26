@@ -6,12 +6,10 @@ import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, Categ
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   PM_CARD,
-  PM_HERO_GRADIENT,
   PM_ICON_CHIP_SOLID,
   PM_PAGE_BG,
-  PM_PRIMARY_GRADIENT,
-  PM_TABLE_HEAD,
-  PM_TABLE_WRAP,
+  PM_BTN_PRIMARY,
+  PM_BTN_SECONDARY,
 } from '../../../constants/pmTheme';
 import DepartmentCombobox from './DepartmentCombobox';
 import SearchCreateField from './SearchCreateField';
@@ -124,15 +122,48 @@ const FIELD_SCROLL_ORDER = [
   'lineItems',
 ];
 
-function scrollToFirstError(errs: Record<string, string>) {
-  const first =
+type CreatePrTab = 'basic' | 'items' | 'vendors' | 'scm';
+
+const BILLING_ERROR_KEYS = new Set([
+  'billingLocationId',
+  'billingAddress',
+  'deliveryPoc',
+  'placeOfDelivery',
+  'expectedDeliveryTimeline',
+]);
+
+function firstErrorField(errs: Record<string, string>) {
+  return (
     FIELD_SCROLL_ORDER.find((key) => errs[key]) ||
     Object.keys(errs).find((key) => key.startsWith('item_')) ||
-    Object.keys(errs)[0];
+    Object.keys(errs)[0] ||
+    null
+  );
+}
+
+function tabForErrorField(field: string | null): CreatePrTab {
+  if (!field) return 'basic';
+  if (field === 'lineItems' || field.startsWith('item_')) return 'items';
+  if (field === 'rfqVendors') return 'vendors';
+  if (
+    BILLING_ERROR_KEYS.has(field) ||
+    field === 'scopeOfWork' ||
+    field === 'paymentTerms'
+  ) {
+    return 'scm';
+  }
+  return 'basic';
+}
+
+function scrollToFirstError(errs: Record<string, string>, setTab?: (tab: CreatePrTab) => void) {
+  const first = firstErrorField(errs);
   if (!first) return;
   const field = first.startsWith('item_') ? 'lineItems' : first;
+  if (setTab) setTab(tabForErrorField(first));
   requestAnimationFrame(() => {
-    document.querySelector(`[data-field="${field}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-field="${field}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   });
 }
 
@@ -158,6 +189,7 @@ export default function CreatePRPage() {
   const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
   /** Admin editing any PR (including in-flight) — save via admin API, all fields unlocked */
   const isAdminEditFlow = isEditMode && isAdminEditor;
+  const [activeTab, setActiveTab] = useState<CreatePrTab>('basic');
 
   const [prNumber, setPrNumber] = useState(isEditMode ? '' : 'Auto on save');
   const [prTitle, setPrTitle] = useState('');
@@ -355,6 +387,29 @@ export default function CreatePRPage() {
     vendorSelection === 'own' &&
     purchaseType !== 'sass' &&
     purchaseType !== 'online_purchase';
+
+  const createPrTabs = useMemo(() => {
+    const tabs: { id: CreatePrTab; label: string; icon: string }[] = [
+      { id: 'basic', label: 'Basic Details', icon: 'ri-information-line' },
+      { id: 'items', label: 'Line Items', icon: 'ri-shopping-cart-line' },
+    ];
+    if (showInlineVendorQuotes) {
+      tabs.push({ id: 'vendors', label: 'Vendor Rounds', icon: 'ri-store-2-line' });
+    }
+    tabs.push({
+      id: 'scm',
+      label: 'SCM Team',
+      icon: 'ri-team-line',
+    });
+    return tabs;
+  }, [showInlineVendorQuotes]);
+
+  useEffect(() => {
+    if (!createPrTabs.some((t) => t.id === activeTab)) {
+      setActiveTab('basic');
+    }
+  }, [activeTab, createPrTabs]);
+
   const restoredKeyRef = useRef('');
 
   const applyDraftSnapshot = (draft: CreatePrDraftSnapshot, options?: { preserveRicherLineItems?: boolean }) => {
@@ -1834,7 +1889,7 @@ export default function CreatePRPage() {
       const firstMsg =
         Object.values(newErrors).find(Boolean) || 'Please fill the required fields';
       showToast(firstMsg, 'error');
-      scrollToFirstError(newErrors);
+      scrollToFirstError(newErrors, setActiveTab);
     }
     return ok;
   };
@@ -1847,7 +1902,7 @@ export default function CreatePRPage() {
     const ok = Object.keys(newErrors).length === 0;
     if (!ok) {
       showToast(Object.values(newErrors)[0] || 'Entity is required', 'error');
-      scrollToFirstError(newErrors);
+      scrollToFirstError(newErrors, setActiveTab);
     }
     return ok;
   };
@@ -2622,20 +2677,16 @@ export default function CreatePRPage() {
         </div>
       ) : (
       <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
-      {/* ── Hero Header Banner ── */}
-      <div
-        className="px-4 sm:px-8 py-5 sm:py-6 mb-0"
-        style={{ background: PM_HERO_GRADIENT }}
-      >
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          {/* Left: breadcrumb + title */}
-          <div>
-            <div className="flex items-center gap-2 text-white/80 text-xs mb-2">
-              <Link to={backTo} className="hover:text-white transition-colors cursor-pointer">
+      {/* ── Soft header (matches requester dashboard) ── */}
+      <header className="mb-0 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-4 pb-4 pt-4 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-8 sm:pb-5 sm:pt-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
+              <Link to={backTo} className="cursor-pointer transition-colors hover:text-[#1E88E5]">
                 {isAdminEditFlow || isEditMode ? 'Track PR' : 'Dashboard'}
               </Link>
               <i className="ri-arrow-right-s-line"></i>
-              <span className="text-white/90">
+              <span className="text-slate-600">
                 {isAdminEditFlow
                   ? 'Admin Edit PR'
                   : isEditMode
@@ -2645,7 +2696,7 @@ export default function CreatePRPage() {
                     : 'Create Purchase Requisition'}
               </span>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-800 sm:text-2xl">
               {isAdminEditFlow
                 ? 'Admin Edit Purchase Requisition'
                 : isEditMode
@@ -2654,7 +2705,7 @@ export default function CreatePRPage() {
                     : 'Edit Purchase Requisition'
                   : 'New Purchase Requisition'}
             </h1>
-            <p className="text-white/85 text-sm mt-1">
+            <p className="mt-1 text-sm text-slate-500">
               {isAdminEditFlow
                 ? 'Update any PR field or line item, then save changes'
                 : isReturned
@@ -2667,82 +2718,105 @@ export default function CreatePRPage() {
             </p>
           </div>
 
-          {/* Right: PR Number + Total Amount chips — glass cards on brand gradient */}
-          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full lg:w-auto">
-            {/* PR Number */}
-            <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
-              <div className="w-8 h-8 flex items-center justify-center bg-white/25 rounded-lg shrink-0">
-                <i className="ri-file-list-3-line text-white text-sm"></i>
+          <div className="flex w-full flex-col flex-wrap items-stretch gap-3 sm:flex-row sm:items-center lg:w-auto">
+            <div className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
+                }}
+              />
+              <div className="relative z-[1] flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+                <i className="ri-file-list-3-line text-sm"></i>
               </div>
-              <div className="min-w-0">
-                <p className="text-white/80 text-xs leading-none mb-0.5">PR Number</p>
-                <p className="text-white font-bold text-base tracking-wide truncate tabular-nums">{displayPrNumber}</p>
+              <div className="relative z-[1] min-w-0">
+                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  PR Number
+                </p>
+                <p className="truncate text-sm font-bold tabular-nums tracking-wide text-[#1E88E5]">
+                  {displayPrNumber}
+                </p>
               </div>
             </div>
 
-            {/* Total Amount */}
-            <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
-              <div className="w-8 h-8 flex items-center justify-center bg-white/25 rounded-lg shrink-0">
-                <i className="ri-money-dollar-circle-line text-white text-sm"></i>
+            <div className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
+                }}
+              />
+              <div className="relative z-[1] flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+                <i className="ri-money-dollar-circle-line text-sm"></i>
               </div>
-              <div className="min-w-0">
-                <p className="text-white/80 text-xs leading-none mb-0.5">
+              <div className="relative z-[1] min-w-0">
+                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                   {hideLinePricing ? 'Vendor Path' : 'Total Amount'}
                 </p>
-                <p className="text-white font-bold text-base truncate tabular-nums">
+                <p className="truncate text-sm font-bold tabular-nums text-[#2C3E50]">
                   {hideLinePricing
                     ? 'Own Vendor'
                     : formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
-            </div>  
+            </div>
 
-            {/* Items count */}
-            <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
-              <div className="w-8 h-8 flex items-center justify-center bg-white/25 rounded-lg shrink-0">
-                <i className="ri-shopping-cart-line text-white text-sm"></i>
+            <div className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
+                }}
+              />
+              <div className="relative z-[1] flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+                <i className="ri-shopping-cart-line text-sm"></i>
               </div>
-              <div className="min-w-0">
-                <p className="text-white/80 text-xs leading-none mb-0.5">Line Items</p>
-                <p className="text-white font-bold text-base tabular-nums">{lineItems.length}</p>
+              <div className="relative z-[1] min-w-0">
+                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  Line Items
+                </p>
+                <p className="text-sm font-bold tabular-nums text-[#2C3E50]">{lineItems.length}</p>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* ── Sticky Sub-header (type + status bar) ── */}
-      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] px-3 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${typeColors[requestType]}`}>
+      {/* ── Soft sticky status bar ── */}
+      <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-white/60 bg-white/90 px-3 py-3 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.10)] backdrop-blur-md sm:px-8">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${typeColors[requestType]}`}>
             {requestType}
           </span>
-          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${priorityColors[priority]}`}>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${priorityColors[priority]}`}>
             {priority} Priority
           </span>
           {department && (
-            <span className="text-xs font-medium px-3 py-1 rounded-full bg-[#EEF4FF] text-[#1565C0]">
+            <span className="rounded-full bg-[#E3F2FD] px-3 py-1 text-xs font-medium text-[#1E88E5]">
               <i className="ri-building-line mr-1"></i>{department}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {softSaveHint && (
-            <span className="hidden sm:inline text-xs text-[#43A047] font-medium">
+            <span className="hidden text-xs font-medium text-[#43A047] sm:inline">
               <i className="ri-checkbox-circle-line mr-1"></i>
               {softSaveHint}
             </span>
           )}
-          <span className="text-xs text-[#64748B]">
+          <span className="text-xs text-slate-500">
             {lineItems.length === 0
               ? 'No items yet'
               : hideLinePricing
                 ? `${lineItems.filter((i) => i.description || i.itemName).length}/${lineItems.length} items filled`
                 : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
           </span>
-          <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
             <div
-              className="h-full bg-[#1E88E5] rounded-full transition-all duration-300"
+              className="h-full rounded-full bg-[#1E88E5] transition-all duration-300"
               style={{
                 width: `${
                   lineItems.length > 0
@@ -2795,7 +2869,7 @@ export default function CreatePRPage() {
 
         {isAdminEditFlow && approvalHistory.length > 0 ? (
           <div className={PM_CARD}>
-            <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
+            <div className="relative z-[1] flex items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
               <div>
                 <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Approval History</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -2810,11 +2884,78 @@ export default function CreatePRPage() {
           </div>
         ) : null}
 
+        {/* ── Create PR step tabs (icon + arrows, full-width labels) ── */}
+        <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white/95 px-2 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-4 sm:py-4">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+            }}
+          />
+          <div className="relative z-[1] flex w-full items-center">
+            {createPrTabs.map((tab, index) => {
+              const isActive = activeTab === tab.id;
+              const activeIdx = createPrTabs.findIndex((t) => t.id === activeTab);
+              const isDone = index < activeIdx;
+              return (
+                <div key={tab.id} className="flex min-w-0 flex-1 items-center">
+                  {index > 0 ? (
+                    <i
+                      className={`ri-arrow-right-s-line mx-0.5 shrink-0 text-base sm:mx-1 sm:text-xl ${
+                        isDone || isActive ? 'text-[#1E88E5]' : 'text-slate-300'
+                      }`}
+                      aria-hidden
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex min-w-0 flex-1 cursor-pointer flex-col items-center gap-1.5 rounded-2xl px-1 py-2 transition-colors sm:flex-row sm:justify-center sm:gap-2.5 sm:px-3 ${
+                      isActive ? 'bg-[#E3F2FD]/70' : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <span
+                      className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm transition-all sm:h-10 sm:w-10 sm:text-base ${
+                        isActive
+                          ? 'bg-[#1E88E5] text-white shadow-sm'
+                          : isDone
+                            ? 'bg-[#E3F2FD] text-[#1E88E5]'
+                            : 'border border-slate-200 bg-white text-slate-500 group-hover:border-[#90CAF9] group-hover:text-[#1E88E5]'
+                      }`}
+                    >
+                      <i className={isDone && !isActive ? 'ri-check-line' : tab.icon}></i>
+                      {tab.id === 'items' && lineItems.length > 0 ? (
+                        <span
+                          className={`absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold ${
+                            isActive ? 'bg-white text-[#1E88E5]' : 'bg-[#1E88E5] text-white'
+                          }`}
+                        >
+                          {lineItems.length}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span
+                      className={`w-full text-center text-[10px] font-semibold leading-snug sm:w-auto sm:text-left sm:text-xs sm:whitespace-nowrap ${
+                        isActive ? 'text-[#1E88E5]' : isDone ? 'text-slate-700' : 'text-slate-500'
+                      }`}
+                    >
+                      {tab.label}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {activeTab === 'basic' && (
+          <div className="space-y-6">
         {/* ── Section 1: Basic Information ── */}
         <div className={PM_CARD}>
-          <div className="flex items-center gap-3 px-4 sm:px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
+          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
             <div className={PM_ICON_CHIP_SOLID}>
-              <i className="ri-information-line text-white text-sm"></i>
+              <i className="ri-information-line text-sm"></i>
             </div>
             <div>
               <h2 className="text-sm font-semibold text-[#0F172A]">Basic Information</h2>
@@ -2822,20 +2963,20 @@ export default function CreatePRPage() {
             </div>
           </div>
 
-          <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 w-full min-w-0">
+          <div className="relative z-[1] grid w-full min-w-0 grid-cols-1 items-start gap-x-6 gap-y-5 p-4 sm:grid-cols-2 sm:p-6">
             {/* PR Number */}
-            <div className="w-full min-w-0">
+            <div className="flex w-full min-w-0 flex-col">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">PR Number</label>
-              <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl w-full min-w-0">
-                <i className="ri-lock-line text-slate-400 text-sm shrink-0"></i>
-                <span className="text-sm font-bold text-slate-700 tracking-wide truncate min-w-0">{displayPrNumber}</span>
-                <span className="ml-auto shrink-0 text-xs bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full">On submit</span>
+              <div className="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4">
+                <i className="ri-lock-line shrink-0 text-sm text-slate-400"></i>
+                <span className="min-w-0 truncate text-sm font-bold tracking-wide text-slate-700">{displayPrNumber}</span>
+                <span className="ml-auto shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-500">On submit</span>
               </div>
-              <p className="text-[11px] text-gray-400 mt-1">Official number: PR-EntityCode-FY-#### (assigned when you submit)</p>
+              <p className="mt-1 text-[11px] leading-snug text-slate-400">Official number assigned when you submit</p>
             </div>
 
             {/* PR Title */}
-            <div className="w-full min-w-0 lg:col-span-2 xl:col-span-2" data-field="prTitle">
+            <div className="flex w-full min-w-0 flex-col" data-field="prTitle">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 PR Title <span className="text-red-500">*</span>
               </label>
@@ -2853,15 +2994,15 @@ export default function CreatePRPage() {
                   }
                 }}
                 placeholder="Enter a short title for this purchase request"
-                className={`w-full min-w-0 max-w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white box-border ${
-                  errors.prTitle ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                className={`box-border h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 ${
+                  errors.prTitle ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'
                 }`}
               />
-              {errors.prTitle && <p className="text-xs text-red-500 mt-1">{errors.prTitle}</p>}
+              {errors.prTitle && <p className="mt-1 text-xs text-red-500">{errors.prTitle}</p>}
             </div>
 
             {/* Entity */}
-            <div className="w-full min-w-0">
+            <div className="flex w-full min-w-0 flex-col" data-field="entityId">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Entity <span className="text-red-500">*</span>
               </label>
@@ -2948,7 +3089,7 @@ export default function CreatePRPage() {
             </div>
 
             {/* Purchase Type */}
-            <div className="w-full min-w-0 lg:col-span-2 xl:col-span-3">
+            <div className="w-full min-w-0 sm:col-span-2">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Purchase Type <span className="text-red-500">*</span>
               </label>
@@ -3059,7 +3200,7 @@ export default function CreatePRPage() {
             </div>
 
             {/* Department */}
-            <div>
+            <div className="flex w-full min-w-0 flex-col" data-field="department">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Department <span className="text-red-500">*</span>
               </label>
@@ -3092,7 +3233,7 @@ export default function CreatePRPage() {
             </div>
 
             {/* Required Date */}
-            <div>
+            <div className="flex w-full min-w-0 flex-col" data-field="requiredDate">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Required Date <span className="text-red-500">*</span>
               </label>
@@ -3101,7 +3242,7 @@ export default function CreatePRPage() {
                 value={requiredDate}
                 onChange={e => setRequiredDate(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
-                className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white cursor-pointer ${errors.requiredDate ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                className={`h-11 w-full cursor-pointer rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 ${errors.requiredDate ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
               />
               {errors.requiredDate && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><i className="ri-error-warning-line"></i>{errors.requiredDate}</p>}
             </div>
@@ -3169,17 +3310,17 @@ export default function CreatePRPage() {
             )}
 
             {/* Currency — INR / USD / EUR */}
-            <div>
+            <div className="flex w-full min-w-0 flex-col">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Currency <span className="text-red-500">*</span>
               </label>
-              <div className="inline-flex w-full rounded-xl border border-gray-200 bg-white p-0.5">
+              <div className="inline-flex h-11 w-full items-center rounded-xl border border-gray-200 bg-white p-0.5">
                 {CURRENCY_OPTIONS.map((opt) => (
                   <button
                     key={opt.code}
                     type="button"
                     onClick={() => setCurrency(opt.code)}
-                    className={`flex-1 px-2 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap ${
+                    className={`h-10 flex-1 cursor-pointer whitespace-nowrap rounded-lg px-2 text-xs font-semibold transition-colors ${
                       currency === opt.code
                         ? 'bg-[#1E88E5] text-white shadow-sm ring-2 ring-[#1E88E5]/25'
                         : 'text-gray-600 hover:bg-gray-50'
@@ -3192,7 +3333,7 @@ export default function CreatePRPage() {
             </div>
 
             {/* Request Type — Service only for Work Order */}
-            <div>
+            <div className="flex w-full min-w-0 flex-col">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Request Type <span className="text-red-500">*</span>
               </label>
@@ -3206,7 +3347,7 @@ export default function CreatePRPage() {
                     key={type}
                     type="button"
                     onClick={() => setRequestType(type)}
-                    className={`flex-1 py-2.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer whitespace-nowrap ${
+                    className={`h-11 flex-1 cursor-pointer whitespace-nowrap rounded-xl border text-xs font-semibold transition-all ${
                       requestType === type
                         ? typeColors[type] + ' shadow-sm'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300 bg-white'
@@ -3219,7 +3360,7 @@ export default function CreatePRPage() {
             </div>
 
             {/* Request Category — Product or Service */}
-            <div data-field="requestCategory">
+            <div className="flex w-full min-w-0 flex-col" data-field="requestCategory">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Request Category <span className="text-red-500">*</span>
               </label>
@@ -3238,7 +3379,7 @@ export default function CreatePRPage() {
                         });
                       }
                     }}
-                    className={`flex-1 py-2.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer whitespace-nowrap ${
+                    className={`h-11 flex-1 cursor-pointer whitespace-nowrap rounded-xl border text-xs font-semibold transition-all ${
                       requestCategory === cat
                         ? cat === 'Product'
                           ? 'bg-sky-100 text-sky-700 border-sky-200 shadow-sm'
@@ -3259,7 +3400,7 @@ export default function CreatePRPage() {
             </div>
 
             {/* Project Detail */}
-            <div data-field="projectDetail">
+            <div className="sm:col-span-2" data-field="projectDetail">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Project Detail
               </label>
@@ -3268,12 +3409,12 @@ export default function CreatePRPage() {
                 value={projectDetail}
                 onChange={(e) => setProjectDetail(e.target.value)}
                 placeholder="Project name, code, or reference"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white"
+                className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30"
               />
             </div>
 
             {/* Special Notes */}
-            <div className="md:col-span-2 lg:col-span-3" data-field="specialNotes">
+            <div className="sm:col-span-2" data-field="specialNotes">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Special Notes
               </label>
@@ -3282,19 +3423,19 @@ export default function CreatePRPage() {
                 onChange={(e) => setSpecialNotes(e.target.value)}
                 rows={3}
                 placeholder="Any special instructions or notes for SCM / vendors"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none bg-white"
               />
             </div>
 
             {/* Priority */}
-            <div>
+            <div className="flex w-full min-w-0 flex-col">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">Priority</label>
               <div className="flex gap-2">
                 {priorityOptions.map(p => (
                   <button
                     key={p}
                     onClick={() => setPriority(p)}
-                    className={`flex-1 py-2.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer whitespace-nowrap ${
+                    className={`h-11 flex-1 cursor-pointer whitespace-nowrap rounded-xl border text-xs font-semibold transition-all ${
                       priority === p
                         ? priorityColors[p] + ' border-current shadow-sm'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300 bg-white'
@@ -3308,7 +3449,7 @@ export default function CreatePRPage() {
 
             {purchaseType === 'online_purchase' ? (
               <>
-                <div className="md:col-span-2 lg:col-span-3 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+                <div className="sm:col-span-2 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
                   <p className="text-sm font-semibold text-teal-900">Online Purchase approval path</p>
                   <p className="text-xs text-teal-800 mt-1 leading-relaxed">
                     Select L1 / User Approver → Mugesh L1 → Srivaths (L2) → Mugesh Invoice Upload →
@@ -3316,7 +3457,7 @@ export default function CreatePRPage() {
                     approved once). SCM RFQ is skipped.
                   </p>
                 </div>
-                <div className="md:col-span-2" data-field="approvalUserId">
+                <div className="sm:col-span-2" data-field="approvalUserId">
                   <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                     L1 Manager / User Approver <span className="text-red-500">*</span>
                   </label>
@@ -3341,7 +3482,7 @@ export default function CreatePRPage() {
 
             {purchaseType === 'sass' ? (
               <>
-                <div className="md:col-span-2 lg:col-span-3 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+                <div className="sm:col-span-2 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
                   <p className="text-sm font-semibold text-teal-900">Cloud Subscription approval path</p>
                   <p className="text-xs text-teal-800 mt-1">
                     {String(user?.email || '')
@@ -3362,7 +3503,7 @@ export default function CreatePRPage() {
                     )}
                   </p>
                 </div>
-                <div className="md:col-span-2" data-field="approvalUserId">
+                <div className="sm:col-span-2" data-field="approvalUserId">
                   <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                     L1 Manager / User Approver <span className="text-red-500">*</span>
                   </label>
@@ -3389,7 +3530,7 @@ export default function CreatePRPage() {
             ) : purchaseType === 'online_purchase' ? null : (
               <>
             {/* Request Flow */}
-            <div className="md:col-span-2">
+            <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Flow <span className="text-red-500">*</span>
               </label>
@@ -3399,7 +3540,7 @@ export default function CreatePRPage() {
                   const next = e.target.value === 'functional' ? 'functional' : 'standard';
                   setPrFlow(next);
                 }}
-                className="w-full min-w-0 max-w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white cursor-pointer"
+                className="w-full min-w-0 max-h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 cursor-pointer"
               >
                 <option value="standard">Standard</option>
                 <option value="functional">Functional</option>
@@ -3411,14 +3552,14 @@ export default function CreatePRPage() {
               </p>
             </div>
 
-            <div className="md:col-span-2">
+            <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Vendor Selection <span className="text-red-500">*</span>
               </label>
               <select
                 value={vendorSelection}
                 onChange={(e) => setVendorSelection(e.target.value === 'own' ? 'own' : 'scm')}
-                className="w-full min-w-0 max-w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] bg-white cursor-pointer"
+                className="w-full min-w-0 max-h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 cursor-pointer"
               >
                 <option value="scm">SCM vendor Selection</option>
                 <option value="own">Own vendor</option>
@@ -3435,7 +3576,7 @@ export default function CreatePRPage() {
             </div>
 
             {prFlow === 'functional' && (
-              <div className="md:col-span-2">
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                   Select User Approval <span className="text-red-500">*</span>
                 </label>
@@ -3462,514 +3603,11 @@ export default function CreatePRPage() {
           </div>
         </div>
 
-        {/* ── Section 2: Line Items ── */}
-        <div className={PM_CARD} data-field="lineItems">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
-            <div className="flex items-center gap-3">
-              <div className={PM_ICON_CHIP_SOLID}>
-                <i className="ri-shopping-cart-line text-white text-sm"></i>
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Line Items</h2>
-                <p className="text-xs text-gray-500">Add all items required for this requisition</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={openAddLineItem}
-              disabled={Boolean(lineEditor)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#1E88E5] text-white text-xs font-semibold rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <i className="ri-add-line"></i>
-              Add Line Item
-            </button>
-          </div>
-
-          <div className="p-6 space-y-4">
-            {errors.lineItems && (
-              <p className="text-xs text-red-500 flex items-center gap-1">
-                <i className="ri-error-warning-line"></i>
-                {errors.lineItems}
-              </p>
-            )}
-
-            {lineEditor && (
-              <LineItemEditorForm
-                key={`${lineEditor.mode}-${lineEditor.item.id}`}
-                mode={lineEditor.mode}
-                initial={lineEditor.item}
-                masterItems={masterItems}
-                masterCategories={masterCategories}
-                requestType={requestType}
-                currency={currency}
-                moneySymbol={moneySymbol}
-                hidePricing={hideLinePricing}
-                onSave={saveLineItem}
-                onCancel={closeLineEditor}
-                onMasterItemCreated={rememberMasterItem}
-                onCategoryCreated={rememberCategory}
-                onLiveChange={(item) => {
-                  pendingLineDraftRef.current = item;
-                }}
-              />
-            )}
-
-            <div className={PM_TABLE_WRAP}>
-              {/* Mobile cards */}
-              <div className="md:hidden divide-y divide-slate-100">
-                {lineItems.length === 0 ? (
-                  <div className="px-4 py-10 text-center">
-                    <p className="text-sm font-medium text-gray-600">No line items yet</p>
-                    <p className="text-xs text-gray-400 mt-1">Tap Add Line Item to enter the first item</p>
-                    {!lineEditor && (
-                      <button
-                        type="button"
-                        onClick={openAddLineItem}
-                        className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-[#1E88E5] text-white text-xs font-semibold rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer"
-                      >
-                        <i className="ri-add-line"></i>
-                        Add Line Item
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  lineItems.map((item, index) => {
-                    const isEditing = lineEditor?.mode === 'edit' && lineEditor.item.id === item.id;
-                    return (
-                      <div
-                        key={`line-card-${item.id}-${index}`}
-                        className={`px-4 py-4 ${isEditing ? 'bg-slate-50' : 'bg-white'}`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-slate-100 px-1.5 text-[11px] font-bold text-slate-600">
-                                #{index + 1}
-                              </span>
-                              <p className="text-sm font-semibold text-gray-900 truncate">
-                                {item.itemName || item.description || `Item ${index + 1}`}
-                              </p>
-                            </div>
-                            {item.description && item.description !== item.itemName && (
-                              <p className="text-xs text-gray-400 line-clamp-2 mb-2" title={item.description}>
-                                {item.description}
-                              </p>
-                            )}
-                            <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-2">
-                              <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Category</p>
-                                <p className="text-sm text-gray-800 mt-0.5">{item.category || '—'}</p>
-                              </div>
-                              <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Qty</p>
-                                <p className="text-sm text-gray-800 mt-0.5">
-                                  {item.quantity}{' '}
-                                  <span className="text-xs text-gray-400">{item.unit || 'Nos'}</span>
-                                </p>
-                              </div>
-                              {!hideLinePricing && (
-                                <>
-                                  <div>
-                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Unit Price</p>
-                                    <p className="text-sm text-gray-800 mt-0.5">
-                                      {formatMoney(item.estimatedCost, currency, {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      })}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">GST %</p>
-                                    <p className="text-sm text-gray-800 mt-0.5">
-                                      {item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">HSN</p>
-                                    <p className="text-sm text-gray-800 mt-0.5">{item.hsnCode || '—'}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Amount (incl. GST)</p>
-                                    <p className="text-sm font-semibold text-emerald-700 mt-0.5">
-                                      {formatMoney(
-                                        lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
-                                        currency,
-                                        { minimumFractionDigits: 2, maximumFractionDigits: 2 }
-                                      )}
-                                    </p>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openEditLineItem(item)}
-                              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                              title="Edit"
-                              aria-label={`Edit ${item.itemName || item.description || 'line item'}`}
-                            >
-                              <i className="ri-pencil-line text-base"></i>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteLineItemId(item.id)}
-                              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                              title="Delete"
-                              aria-label={`Delete ${item.itemName || item.description || 'line item'}`}
-                            >
-                              <i className="ri-delete-bin-line text-base"></i>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Desktop table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className={`w-full text-sm ${hideLinePricing ? 'min-w-[520px]' : 'min-w-[720px]'}`}>
-                  <thead className={PM_TABLE_HEAD}>
-                    <tr className="text-left">
-                      <th className="px-3 py-3 w-10">#</th>
-                      <th className="px-3 py-3">Item Name</th>
-                      <th className="px-3 py-3">Category</th>
-                      <th className="px-3 py-3 text-right tabular-nums">Qty</th>
-                      {!hideLinePricing && (
-                        <>
-                          <th className="px-3 py-3 text-right tabular-nums">Unit Price</th>
-                          <th className="px-3 py-3">HSN</th>
-                          <th className="px-3 py-3 text-right tabular-nums">GST %</th>
-                          <th className="px-3 py-3 text-right tabular-nums">Amount (incl. GST)</th>
-                        </>
-                      )}
-                      <th className="px-3 py-3 text-right w-24">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lineItems.length === 0 ? (
-                      <tr>
-                        <td colSpan={hideLinePricing ? 5 : 9} className="px-4 py-10 text-center">
-                          <p className="text-sm font-medium text-gray-600">No line items yet</p>
-                          <p className="text-xs text-gray-400 mt-1">Click Add Line Item to enter the first item</p>
-                          {!lineEditor && (
-                            <button
-                              type="button"
-                              onClick={openAddLineItem}
-                              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-[#1E88E5] text-white text-xs font-semibold rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer"
-                            >
-                              <i className="ri-add-line"></i>
-                              Add Line Item
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ) : (
-                      lineItems.map((item, index) => {
-                        const isEditing = lineEditor?.mode === 'edit' && lineEditor.item.id === item.id;
-                        return (
-                          <tr
-                            key={`line-row-${item.id}-${index}`}
-                            className={`border-b border-gray-100 last:border-b-0 ${isEditing ? 'bg-slate-50' : 'hover:bg-gray-50'}`}
-                          >
-                            <td className="px-3 py-3 text-xs font-semibold text-gray-500">{index + 1}</td>
-                            <td className="px-3 py-3">
-                              <p className="font-medium text-gray-800">{item.itemName || item.description || `Item ${index + 1}`}</p>
-                              {item.description && item.description !== item.itemName && (
-                                <p className="text-xs text-gray-400 mt-0.5 line-clamp-1" title={item.description}>
-                                  {item.description}
-                                </p>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 text-gray-700">{item.category || '—'}</td>
-                            <td className="px-3 py-3 text-right text-gray-700">
-                              {item.quantity} <span className="text-xs text-gray-400">{item.unit || 'Nos'}</span>
-                            </td>
-                            {!hideLinePricing && (
-                              <>
-                                <td className="px-3 py-3 text-right text-gray-700">
-                                  {formatMoney(item.estimatedCost, currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </td>
-                                <td className="px-3 py-3 text-gray-600">{item.hsnCode || '—'}</td>
-                                <td className="px-3 py-3 text-right text-gray-700">
-                                  {item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
-                                </td>
-                                <td className="px-3 py-3 text-right font-semibold text-emerald-700">
-                                  {formatMoney(
-                                    lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
-                                    currency,
-                                    {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    }
-                                  )}
-                                </td>
-                              </>
-                            )}
-                            <td className="px-3 py-3">
-                              <div className="flex items-center justify-end gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => openEditLineItem(item)}
-                                  className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                                  title="Edit"
-                                  aria-label={`Edit ${item.itemName || item.description || 'line item'}`}
-                                >
-                                  <i className="ri-pencil-line text-sm"></i>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteLineItemId(item.id)}
-                                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Delete"
-                                  aria-label={`Delete ${item.itemName || item.description || 'line item'}`}
-                                >
-                                  <i className="ri-delete-bin-line text-sm"></i>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Total Summary Bar */}
-          <div className="mx-6 mb-6 rounded-xl overflow-hidden border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50">
-            <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-6">
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">Total Items</p>
-                  <p className="text-lg font-bold text-gray-800">{lineItems.length}</p>
-                </div>
-                <div className="w-px h-8 bg-emerald-200"></div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-0.5">Total Quantity</p>
-                  <p className="text-lg font-bold text-gray-800">{lineItems.reduce((s, i) => s + i.quantity, 0)}</p>
-                </div>
-                {!hideLinePricing && (
-                  <>
-                <div className="w-px h-8 bg-emerald-200"></div>
-                <div className="text-center">
-                      <p className="text-xs text-gray-500 mb-0.5">Average Unit Price</p>
-                  <p className="text-lg font-bold text-gray-800">
-                        {formatMoney(lineItems.length > 0 ? lineItems.reduce((s, i) => s + i.estimatedCost, 0) / lineItems.length : 0, currency, { maximumFractionDigits: 0 })}
-                  </p>
-                </div>
-                  </>
-                )}
-              </div>
-              {!hideLinePricing ? (
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                    <p className="text-xs text-gray-500 mb-0.5">Estimated Total (incl. GST)</p>
-                  <p className="text-2xl font-extrabold text-emerald-700">
-                      {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-                <div className="w-12 h-12 flex items-center justify-center bg-emerald-500 rounded-xl">
-                  <i className="ri-money-dollar-circle-line text-white text-xl"></i>
-                </div>
-              </div>
-              ) : (
-                <p className="text-xs text-teal-800/80 max-w-xs text-right">
-                  Own Vendor — unit price, GST and totals are collected during RFQ quotation.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {showInlineVendorQuotes && (
-          <div data-field="rfqVendors">
-          <FunctionalOwnRfqSection
-            vendors={vendorMaster}
-            rows={rfqVendors}
-            maxRounds={rfqMaxRounds}
-            currency={currency}
-            error={errors.rfqVendors}
-            prNumber={prNumber}
-            recommendedKey={rfqRecommendedKey}
-            recommendationJustification={rfqRecommendationJustification}
-            existingQuoteNote={
-              existingRfqHasQuotes
-                ? 'Quotes already saved on this PR. Re-upload only if you need to replace them.'
-                : undefined
-            }
-            onMaxRoundsChange={setRfqMaxRounds}
-            onChange={setRfqVendors}
-            onRecommendedChange={({ key, vendorId, vendorName, vendorEmail, justification }) => {
-              setRfqRecommendedKey(key);
-              setRfqRecommendedMeta({
-                vendorId,
-                vendorName,
-                vendorEmail,
-              });
-              setRfqRecommendationJustification(justification);
-            }}
-            onVendorsRefresh={(vendor) => {
-              if (vendor) {
-                setVendorMaster((prev) =>
-                  prev.some((v) => v.id === vendor.id) ? prev : [vendor, ...prev]
-                );
-              }
-            }}
-          />
-          </div>
-        )}
-
-        {askBillingOnCreatePr ? (
-          <PrBillingDeliverySection
-            value={{
-              billingLocationId,
-              billingLocation,
-              billingGstNo,
-              billingAddress,
-              deliveryPoc,
-              deliveryPocEmail,
-              deliveryPocPhone,
-              projectManagerHo,
-              projectManagerContact,
-              projectManagerEmail,
-              placeOfDelivery,
-              expectedDeliveryTimeline,
-              paymentTerms,
-            }}
-            selectedEntity={selectedEntity}
-            billingLocations={billingLocations}
-            errors={errors}
-            requireBillingCore
-            hidePaymentTerms={showScopeAndPaymentTerms}
-            onChange={(patch) => {
-              if (patch.billingLocationId !== undefined) setBillingLocationId(patch.billingLocationId);
-              if (patch.billingLocation !== undefined) setBillingLocation(patch.billingLocation);
-              if (patch.billingGstNo !== undefined) setBillingGstNo(patch.billingGstNo);
-              if (patch.billingAddress !== undefined) setBillingAddress(patch.billingAddress);
-              if (patch.deliveryPoc !== undefined) setDeliveryPoc(patch.deliveryPoc);
-              if (patch.deliveryPocEmail !== undefined) setDeliveryPocEmail(patch.deliveryPocEmail);
-              if (patch.deliveryPocPhone !== undefined) setDeliveryPocPhone(patch.deliveryPocPhone);
-              if (patch.projectManagerHo !== undefined) setProjectManagerHo(patch.projectManagerHo);
-              if (patch.projectManagerContact !== undefined) setProjectManagerContact(patch.projectManagerContact);
-              if (patch.projectManagerEmail !== undefined) setProjectManagerEmail(patch.projectManagerEmail);
-              if (patch.placeOfDelivery !== undefined) setPlaceOfDelivery(patch.placeOfDelivery);
-              if (patch.expectedDeliveryTimeline !== undefined) {
-                setExpectedDeliveryTimeline(patch.expectedDeliveryTimeline);
-              }
-              if (patch.paymentTerms !== undefined) setPaymentTerms(patch.paymentTerms);
-            }}
-            onClearError={(key) => {
-              if (!errors[key]) return;
-              setErrors((prev) => {
-                const next = { ...prev };
-                delete next[key];
-                return next;
-              });
-            }}
-          />
-        ) : (
-          <div className="bg-teal-50 border border-teal-200 rounded-2xl px-5 py-4">
-            <p className="text-sm font-semibold text-teal-900">Billing &amp; delivery on RFQ Entry</p>
-            <p className="text-xs text-teal-800 mt-1">
-              For Standard + Own vendor, billing region, GSTIN, address, POC, place of delivery, timeline,
-              Scope of Work, and payment terms are asked on RFQ Entry after L1 approval — not on this page.
-            </p>
-          </div>
-        )}
-
-        {showScopeAndPaymentTerms && (
-          <div className={PM_CARD} data-field="scopeOfWork">
-            <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
-              <div className={PM_ICON_CHIP_SOLID}>
-                <i className="ri-file-list-3-line text-white text-sm"></i>
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-[#0F172A]">Scope of Work &amp; Payment Terms</h2>
-                <p className="text-xs text-[#64748B]">
-                  Required for Functional + Own Vendor — used when SCM creates the PO
-                </p>
-              </div>
-            </div>
-            <div className="p-6 grid grid-cols-1 gap-5">
-              <div>
-                <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
-                  Scope of Work <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={scopeOfWork}
-                  onChange={(e) => {
-                    setScopeOfWork(e.target.value);
-                    if (errors.scopeOfWork) {
-                      setErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.scopeOfWork;
-                        return next;
-                      });
-                    }
-                  }}
-                  rows={5}
-                  placeholder="Describe the full scope of work, deliverables, and any technical requirements..."
-                  className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none ${
-                    errors.scopeOfWork ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                  }`}
-                />
-                {errors.scopeOfWork ? (
-                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
-                    <i className="ri-error-warning-line"></i>
-                    {errors.scopeOfWork}
-                  </p>
-                ) : (
-                  <p className="text-xs text-gray-400 mt-1.5">{scopeOfWork.length} chars</p>
-                )}
-              </div>
-              <div data-field="paymentTerms">
-                <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
-                  Payment Terms <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={paymentTerms}
-                  onChange={(e) => {
-                    setPaymentTerms(e.target.value);
-                    if (errors.paymentTerms) {
-                      setErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.paymentTerms;
-                        return next;
-                      });
-                    }
-                  }}
-                  rows={4}
-                  placeholder={"e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed..."}
-                  className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none ${
-                    errors.paymentTerms ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                  }`}
-                />
-                {errors.paymentTerms ? (
-                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
-                    <i className="ri-error-warning-line"></i>
-                    {errors.paymentTerms}
-                  </p>
-                ) : (
-                  <p className="text-xs text-gray-400 mt-1.5">
-                    Suggestions: {PR_PAYMENT_TERM_OPTIONS.slice(0, 4).join(' · ')}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* ── Section 4: Business Justification ── */}
-        <div className={PM_CARD}>
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
+        <div className={PM_CARD} data-field="businessJustification">
+          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
             <div className={PM_ICON_CHIP_SOLID}>
-              <i className="ri-article-line text-white text-sm"></i>
+              <i className="ri-article-line text-sm"></i>
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Business Justification</h2>
@@ -3982,7 +3620,7 @@ export default function CreatePRPage() {
               onChange={e => setBusinessJustification(e.target.value)}
               rows={5}
               placeholder="Describe the business need, expected benefits, and why this purchase is necessary for operations..."
-              className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none ${errors.businessJustification ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+              className={`w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none bg-white ${errors.businessJustification ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
             />
             <div className="flex items-center justify-between mt-2">
               {errors.businessJustification
@@ -3996,9 +3634,9 @@ export default function CreatePRPage() {
 
         {/* ── Section 5: Attachments ── */}
         <div className={PM_CARD}>
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-[#EEF4FF]/50">
+          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
             <div className={PM_ICON_CHIP_SOLID}>
-              <i className="ri-attachment-2 text-white text-sm"></i>
+              <i className="ri-attachment-2 text-sm"></i>
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">FSD Document (Functional Specification Document)</h2>
@@ -4055,20 +3693,634 @@ export default function CreatePRPage() {
           </div>
         </div>
 
+          </div>
+        )}
+
+        {activeTab === 'items' && (
+          <div className="space-y-6">
+        {/* ── Section 2: Line Items ── */}
+        <div className={PM_CARD} data-field="lineItems">
+          <div className="relative z-[1] flex items-center justify-between border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
+            <div className="flex items-center gap-3">
+              <div className={PM_ICON_CHIP_SOLID}>
+                <i className="ri-shopping-cart-line text-sm"></i>
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Line Items</h2>
+                <p className="text-xs text-gray-500">Add all items required for this requisition</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={openAddLineItem}
+              disabled={Boolean(lineEditor)}
+              className="flex items-center gap-2 px-4 py-2 bg-[#1E88E5] text-white text-xs font-semibold rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <i className="ri-add-line"></i>
+              Add Line Item
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4">
+            {errors.lineItems && (
+              <p className="text-xs text-red-500 flex items-center gap-1">
+                <i className="ri-error-warning-line"></i>
+                {errors.lineItems}
+              </p>
+            )}
+
+            {lineEditor && (
+              <LineItemEditorForm
+                key={`${lineEditor.mode}-${lineEditor.item.id}`}
+                mode={lineEditor.mode}
+                initial={lineEditor.item}
+                masterItems={masterItems}
+                masterCategories={masterCategories}
+                requestType={requestType}
+                currency={currency}
+                moneySymbol={moneySymbol}
+                hidePricing={hideLinePricing}
+                onSave={saveLineItem}
+                onCancel={closeLineEditor}
+                onMasterItemCreated={rememberMasterItem}
+                onCategoryCreated={rememberCategory}
+                onLiveChange={(item) => {
+                  pendingLineDraftRef.current = item;
+                }}
+              />
+            )}
+
+            {/* Soft dashboard card rows */}
+            <div className="space-y-3 md:hidden">
+              {lineItems.length === 0 ? (
+                <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-10 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                      background:
+                        'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.08) 0%, rgba(255,255,255,0) 55%)',
+                    }}
+                  />
+                  <div className="relative z-[1]">
+                    <p className="text-sm font-medium text-slate-600">No line items yet</p>
+                    <p className="mt-1 text-xs text-slate-400">Tap Add Line Item to enter the first item</p>
+                    {!lineEditor && (
+                      <button
+                        type="button"
+                        onClick={openAddLineItem}
+                        className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#1E88E5] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1565C0]"
+                      >
+                        <i className="ri-add-line"></i>
+                        Add Line Item
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                lineItems.map((item, index) => {
+                  const isEditing = lineEditor?.mode === 'edit' && lineEditor.item.id === item.id;
+                  return (
+                    <div
+                      key={`line-card-${item.id}-${index}`}
+                      className={`relative overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color,box-shadow] sm:rounded-[18px] ${
+                        isEditing
+                          ? 'border-[#90CAF9] shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
+                          : 'hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]'
+                      }`}
+                    >
+                      <div
+                        className="pointer-events-none absolute inset-0"
+                        style={{
+                          background:
+                            'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.08) 0%, rgba(255,255,255,0) 55%)',
+                        }}
+                      />
+                      <div className="relative z-[1] flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex items-center gap-2">
+                            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-xl bg-[#E3F2FD] px-1.5 text-[11px] font-bold text-[#1E88E5]">
+                              #{index + 1}
+                            </span>
+                            <p className="truncate text-sm font-semibold text-[#2C3E50]">
+                              {item.itemName || item.description || `Item ${index + 1}`}
+                            </p>
+                          </div>
+                          {item.description && item.description !== item.itemName && (
+                            <p className="mb-2 line-clamp-2 text-xs text-slate-400" title={item.description}>
+                              {item.description}
+                            </p>
+                          )}
+                          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Category</p>
+                              <p className="mt-0.5 text-[#2C3E50]">{item.category || '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Qty</p>
+                              <p className="mt-0.5 text-[#2C3E50]">
+                                {item.quantity}{' '}
+                                <span className="text-xs text-slate-400">{item.unit || 'Nos'}</span>
+                              </p>
+                            </div>
+                            {!hideLinePricing && (
+                              <>
+                                <div>
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Unit Price</p>
+                                  <p className="mt-0.5 tabular-nums text-[#2C3E50]">
+                                    {formatMoney(item.estimatedCost, currency, {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    })}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">GST %</p>
+                                  <p className="mt-0.5 text-[#2C3E50]">
+                                    {item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">HSN</p>
+                                  <p className="mt-0.5 text-[#2C3E50]">{item.hsnCode || '—'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Amount (incl. GST)</p>
+                                  <p className="mt-0.5 text-sm font-bold tabular-nums text-[#1E88E5]">
+                                    {formatMoney(
+                                      lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
+                                      currency,
+                                      { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                                    )}
+                                  </p>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditLineItem(item)}
+                            className="cursor-pointer rounded-xl p-2 text-slate-500 transition-colors hover:bg-[#E3F2FD] hover:text-[#1E88E5]"
+                            title="Edit"
+                            aria-label={`Edit ${item.itemName || item.description || 'line item'}`}
+                          >
+                            <i className="ri-pencil-line text-base"></i>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteLineItemId(item.id)}
+                            className="cursor-pointer rounded-xl p-2 text-[#F43F5E] transition-colors hover:bg-[#FFE4E6]"
+                            title="Delete"
+                            aria-label={`Delete ${item.itemName || item.description || 'line item'}`}
+                          >
+                            <i className="ri-delete-bin-line text-base"></i>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="relative z-[1] hidden w-full overflow-x-auto md:block">
+              <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+                <thead>
+                  <tr>
+                    <th className="px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">#</th>
+                    <th className="px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Item Name</th>
+                    <th className="px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Category</th>
+                    <th className="px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Qty</th>
+                    {!hideLinePricing && (
+                      <>
+                        <th className="px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Unit Price</th>
+                        <th className="px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">HSN</th>
+                        <th className="px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">GST %</th>
+                        <th className="px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Amount (incl. GST)</th>
+                      </>
+                    )}
+                    <th className="px-3 pb-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineItems.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={hideLinePricing ? 5 : 9}
+                        className="rounded-2xl border border-transparent bg-white px-4 py-12 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
+                      >
+                        <p className="text-sm font-medium text-slate-600">No line items yet</p>
+                        <p className="mt-1 text-xs text-slate-400">Click Add Line Item to enter the first item</p>
+                        {!lineEditor && (
+                          <button
+                            type="button"
+                            onClick={openAddLineItem}
+                            className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#1E88E5] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1565C0]"
+                          >
+                            <i className="ri-add-line"></i>
+                            Add Line Item
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ) : (
+                    lineItems.map((item, index) => {
+                      const isEditing = lineEditor?.mode === 'edit' && lineEditor.item.id === item.id;
+                      const rowBorder = isEditing
+                        ? 'border-[#90CAF9]'
+                        : 'border-transparent group-hover:border-[#90CAF9]';
+                      const rowShadow = isEditing
+                        ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
+                        : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
+                      return (
+                        <tr key={`line-row-${item.id}-${index}`} className="group">
+                          <td
+                            className={`whitespace-nowrap rounded-l-2xl border border-r-0 bg-white px-3 py-4 text-sm font-bold text-[#1E88E5] transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                          >
+                            {index + 1}
+                          </td>
+                          <td className={`max-w-[240px] border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}>
+                            <p className="font-semibold text-[#2C3E50]">
+                              {item.itemName || item.description || `Item ${index + 1}`}
+                            </p>
+                            {item.description && item.description !== item.itemName && (
+                              <p className="mt-0.5 line-clamp-1 text-xs text-slate-400" title={item.description}>
+                                {item.description}
+                              </p>
+                            )}
+                          </td>
+                          <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}>
+                            {item.category || '—'}
+                          </td>
+                          <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 tabular-nums text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}>
+                            {item.quantity}{' '}
+                            <span className="text-xs text-slate-400">{item.unit || 'Nos'}</span>
+                          </td>
+                          {!hideLinePricing && (
+                            <>
+                              <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 tabular-nums text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}>
+                                {formatMoney(item.estimatedCost, currency, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </td>
+                              <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-slate-600 transition-[border-color] sm:py-5 ${rowBorder}`}>
+                                {item.hsnCode || '—'}
+                              </td>
+                              <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 tabular-nums text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}>
+                                {item.gstPercentage != null ? `${item.gstPercentage}%` : '—'}
+                              </td>
+                              <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-sm font-bold tabular-nums text-[#1E88E5] transition-[border-color] sm:py-5 ${rowBorder}`}>
+                                {formatMoney(
+                                  lineInclusiveAmount(item.quantity, item.estimatedCost, item.gstPercentage),
+                                  currency,
+                                  { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                                )}
+                              </td>
+                            </>
+                          )}
+                          <td
+                            className={`whitespace-nowrap rounded-r-2xl border border-l-0 bg-white px-3 py-4 transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                          >
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEditLineItem(item)}
+                                className="cursor-pointer rounded-xl p-1.5 text-slate-500 transition-colors hover:bg-[#E3F2FD] hover:text-[#1E88E5]"
+                                title="Edit"
+                                aria-label={`Edit ${item.itemName || item.description || 'line item'}`}
+                              >
+                                <i className="ri-pencil-line text-sm"></i>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteLineItemId(item.id)}
+                                className="cursor-pointer rounded-xl p-1.5 text-[#F43F5E] transition-colors hover:bg-[#FFE4E6]"
+                                title="Delete"
+                                aria-label={`Delete ${item.itemName || item.description || 'line item'}`}
+                              >
+                                <i className="ri-delete-bin-line text-sm"></i>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Soft primary dashboard summary card */}
+          <div className="relative mx-4 mb-5 overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:mx-6 sm:mb-6 sm:rounded-[18px]">
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
+              }}
+            />
+            <div className="relative z-[1] flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div className="flex flex-wrap items-center gap-5 sm:gap-6">
+                <div className="text-center sm:text-left">
+                  <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Total Items</p>
+                  <p className="text-lg font-bold tabular-nums text-[#2C3E50]">{lineItems.length}</p>
+                </div>
+                <div className="hidden h-8 w-px bg-[#BBDEFB] sm:block"></div>
+                <div className="text-center sm:text-left">
+                  <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Total Quantity</p>
+                  <p className="text-lg font-bold tabular-nums text-[#2C3E50]">{lineItems.reduce((s, i) => s + i.quantity, 0)}</p>
+                </div>
+                {!hideLinePricing && (
+                  <>
+                    <div className="hidden h-8 w-px bg-[#BBDEFB] sm:block"></div>
+                    <div className="text-center sm:text-left">
+                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Average Unit Price</p>
+                      <p className="text-lg font-bold tabular-nums text-[#2C3E50]">
+                        {formatMoney(lineItems.length > 0 ? lineItems.reduce((s, i) => s + i.estimatedCost, 0) / lineItems.length : 0, currency, { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+              {!hideLinePricing ? (
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Estimated Total (incl. GST)</p>
+                    <p className="text-2xl font-extrabold tabular-nums text-[#1E88E5]">
+                      {formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+                    <i className="ri-money-dollar-circle-line text-xl"></i>
+                  </div>
+                </div>
+              ) : (
+                <p className="max-w-xs text-right text-xs text-slate-500">
+                  Own Vendor — unit price, GST and totals are collected during RFQ quotation.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+          </div>
+        )}
+
+        {activeTab === 'vendors' && showInlineVendorQuotes && (
+          <div className="space-y-6">
+          <div data-field="rfqVendors">
+          <FunctionalOwnRfqSection
+            vendors={vendorMaster}
+            rows={rfqVendors}
+            maxRounds={rfqMaxRounds}
+            currency={currency}
+            error={errors.rfqVendors}
+            prNumber={prNumber}
+            recommendedKey={rfqRecommendedKey}
+            recommendationJustification={rfqRecommendationJustification}
+            existingQuoteNote={
+              existingRfqHasQuotes
+                ? 'Quotes already saved on this PR. Re-upload only if you need to replace them.'
+                : undefined
+            }
+            onMaxRoundsChange={setRfqMaxRounds}
+            onChange={setRfqVendors}
+            onRecommendedChange={({ key, vendorId, vendorName, vendorEmail, justification }) => {
+              setRfqRecommendedKey(key);
+              setRfqRecommendedMeta({
+                vendorId,
+                vendorName,
+                vendorEmail,
+              });
+              setRfqRecommendationJustification(justification);
+            }}
+            onVendorsRefresh={(vendor) => {
+              if (vendor) {
+                setVendorMaster((prev) =>
+                  prev.some((v) => v.id === vendor.id) ? prev : [vendor, ...prev]
+                );
+              }
+            }}
+          />
+          </div>
+          </div>
+        )}
+
+        {activeTab === 'scm' && (
+          <div className="space-y-6">
+            <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white/95 px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5">
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+                }}
+              />
+              <div className="relative z-[1] flex items-start gap-3">
+                <div className={PM_ICON_CHIP_SOLID}>
+                  <i className="ri-team-line text-sm"></i>
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-800">SCM Team — Mandatory Fields</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Billing, delivery, scope of work, and payment terms needed for SCM / PO
+                  </p>
+                </div>
+              </div>
+            </div>
+
+        {askBillingOnCreatePr ? (
+          <PrBillingDeliverySection
+            value={{
+              billingLocationId,
+              billingLocation,
+              billingGstNo,
+              billingAddress,
+              deliveryPoc,
+              deliveryPocEmail,
+              deliveryPocPhone,
+              projectManagerHo,
+              projectManagerContact,
+              projectManagerEmail,
+              placeOfDelivery,
+              expectedDeliveryTimeline,
+              paymentTerms,
+            }}
+            selectedEntity={selectedEntity}
+            billingLocations={billingLocations}
+            errors={errors}
+            requireBillingCore
+            hidePaymentTerms={showScopeAndPaymentTerms}
+            onChange={(patch) => {
+              if (patch.billingLocationId !== undefined) setBillingLocationId(patch.billingLocationId);
+              if (patch.billingLocation !== undefined) setBillingLocation(patch.billingLocation);
+              if (patch.billingGstNo !== undefined) setBillingGstNo(patch.billingGstNo);
+              if (patch.billingAddress !== undefined) setBillingAddress(patch.billingAddress);
+              if (patch.deliveryPoc !== undefined) setDeliveryPoc(patch.deliveryPoc);
+              if (patch.deliveryPocEmail !== undefined) setDeliveryPocEmail(patch.deliveryPocEmail);
+              if (patch.deliveryPocPhone !== undefined) setDeliveryPocPhone(patch.deliveryPocPhone);
+              if (patch.projectManagerHo !== undefined) setProjectManagerHo(patch.projectManagerHo);
+              if (patch.projectManagerContact !== undefined) setProjectManagerContact(patch.projectManagerContact);
+              if (patch.projectManagerEmail !== undefined) setProjectManagerEmail(patch.projectManagerEmail);
+              if (patch.placeOfDelivery !== undefined) setPlaceOfDelivery(patch.placeOfDelivery);
+              if (patch.expectedDeliveryTimeline !== undefined) {
+                setExpectedDeliveryTimeline(patch.expectedDeliveryTimeline);
+              }
+              if (patch.paymentTerms !== undefined) setPaymentTerms(patch.paymentTerms);
+            }}
+            onClearError={(key) => {
+              if (!errors[key]) return;
+              setErrors((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+            }}
+          />
+        ) : (
+          <div className="rounded-2xl border border-transparent bg-white px-5 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+            <p className="text-sm font-semibold text-slate-800">Billing &amp; delivery on RFQ Entry</p>
+            <p className="mt-1 text-xs text-slate-500">
+              For Standard + Own vendor, billing region, GSTIN, address, POC, place of delivery, and timeline
+              are asked on RFQ Entry after L1 approval — not on this page.
+            </p>
+          </div>
+        )}
+
+        {showScopeAndPaymentTerms && (
+          <div className={PM_CARD} data-field="scopeOfWork">
+            <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
+              <div className={PM_ICON_CHIP_SOLID}>
+                <i className="ri-file-list-3-line text-sm"></i>
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-[#0F172A]">Scope of Work &amp; Payment Terms</h2>
+                <p className="text-xs text-[#64748B]">
+                  SCM mandatory fields — required for Functional + Own Vendor when creating the PO
+                </p>
+              </div>
+            </div>
+            <div className="p-6 grid grid-cols-1 gap-5">
+              <div>
+                <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
+                  Scope of Work <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={scopeOfWork}
+                  onChange={(e) => {
+                    setScopeOfWork(e.target.value);
+                    if (errors.scopeOfWork) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.scopeOfWork;
+                        return next;
+                      });
+                    }
+                  }}
+                  rows={5}
+                  placeholder="Describe the full scope of work, deliverables, and any technical requirements..."
+                  className={`w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none bg-white ${
+                    errors.scopeOfWork ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                  }`}
+                />
+                {errors.scopeOfWork ? (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <i className="ri-error-warning-line"></i>
+                    {errors.scopeOfWork}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1.5">{scopeOfWork.length} chars</p>
+                )}
+              </div>
+              <div data-field="paymentTerms">
+                <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
+                  Payment Terms <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={paymentTerms}
+                  onChange={(e) => {
+                    setPaymentTerms(e.target.value);
+                    if (errors.paymentTerms) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.paymentTerms;
+                        return next;
+                      });
+                    }
+                  }}
+                  rows={4}
+                  placeholder={"e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed..."}
+                  className={`w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5] resize-none bg-white ${
+                    errors.paymentTerms ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                  }`}
+                />
+                {errors.paymentTerms ? (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <i className="ri-error-warning-line"></i>
+                    {errors.paymentTerms}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Suggestions: {PR_PAYMENT_TERM_OPTIONS.slice(0, 4).join(' · ')}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+          </div>
+        )}
+
+        {/* Tab navigation */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button
+            type="button"
+            disabled={activeTab === createPrTabs[0]?.id}
+            onClick={() => {
+              const idx = createPrTabs.findIndex((t) => t.id === activeTab);
+              if (idx > 0) setActiveTab(createPrTabs[idx - 1].id);
+            }}
+            className={`${PM_BTN_SECONDARY} disabled:opacity-40`}
+          >
+            <i className="ri-arrow-left-line"></i>
+            Previous
+          </button>
+          <button
+            type="button"
+            disabled={activeTab === createPrTabs[createPrTabs.length - 1]?.id}
+            onClick={() => {
+              const idx = createPrTabs.findIndex((t) => t.id === activeTab);
+              if (idx >= 0 && idx < createPrTabs.length - 1) setActiveTab(createPrTabs[idx + 1].id);
+            }}
+            className={`${PM_BTN_PRIMARY} disabled:opacity-40`}
+          >
+            Next
+            <i className="ri-arrow-right-line"></i>
+          </button>
+        </div>
+
         {/* ── Action Buttons ── */}
         {submitError && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{submitError}</div>
         )}
-        <div className={`${PM_CARD} px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4`}>
-          <div className="flex items-center justify-center sm:justify-start gap-2 text-sm text-gray-500">
+        <div className={`${PM_CARD} flex flex-col gap-3 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:px-6`}>
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+            }}
+          />
+          <div className="relative z-[1] flex items-center justify-center gap-2 text-sm text-slate-500 sm:justify-start">
             <i className="ri-shield-check-line text-emerald-500"></i>
             <span>Autosave keeps the same PR# (incl. quotation files). Create New PR starts blank.</span>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            <Link
-              to={backTo}
-              className="w-full sm:w-auto px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap text-center"
-            >
+          <div className="relative z-[1] flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+            <Link to={backTo} className={`${PM_BTN_SECONDARY} w-full whitespace-nowrap sm:w-auto`}>
               Cancel
             </Link>
             {isAdminEditFlow || isPendingEditFlow ? (
@@ -4079,31 +4331,29 @@ export default function CreatePRPage() {
                   void savePR(false);
                 }}
                 disabled={isSubmitting}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-[#1E88E5] hover:bg-[#1565C0] text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
-                style={{ background: PM_PRIMARY_GRADIENT, border: 'none' }}
+                className={`${PM_BTN_PRIMARY} w-full whitespace-nowrap sm:w-auto`}
               >
                 <i className="ri-save-line"></i>
                 {isSubmitting ? 'Saving…' : 'Save Changes'}
               </button>
             ) : (
               <>
-            <button
-              onClick={handleSaveDraft}
-              disabled={isSubmitting}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap disabled:opacity-60"
-            >
-              <i className="ri-save-line"></i>
-              {isSubmitting && submitAction === 'draft' ? 'Saving…' : 'Save Draft'}
-            </button>
-            <button
-              onClick={handleSubmitPR}
-              disabled={isSubmitting}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-opacity hover:opacity-90 text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
-              style={{ background: PM_PRIMARY_GRADIENT }}
-            >
-              <i className={isResubmitFlow ? 'ri-refresh-line' : 'ri-send-plane-fill'}></i>
-              {isResubmitFlow ? 'Resubmit PR' : 'Submit PR'}
-            </button>
+                <button
+                  onClick={handleSaveDraft}
+                  disabled={isSubmitting}
+                  className={`${PM_BTN_SECONDARY} w-full whitespace-nowrap sm:w-auto`}
+                >
+                  <i className="ri-save-line"></i>
+                  {isSubmitting && submitAction === 'draft' ? 'Saving…' : 'Save Draft'}
+                </button>
+                <button
+                  onClick={handleSubmitPR}
+                  disabled={isSubmitting}
+                  className={`${PM_BTN_PRIMARY} w-full whitespace-nowrap sm:w-auto`}
+                >
+                  <i className={isResubmitFlow ? 'ri-refresh-line' : 'ri-send-plane-fill'}></i>
+                  {isResubmitFlow ? 'Resubmit PR' : 'Submit PR'}
+                </button>
               </>
             )}
           </div>
