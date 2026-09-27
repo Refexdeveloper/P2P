@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import TrackPoExpandedRow from '../../scm/track-po/components/TrackPoExpandedRow';
 import { poApi } from '../../../services/api';
+import { PM_PAGE_BG } from '../../../constants/pmTheme';
 
 type TrackRowLite = {
   key: string;
@@ -91,33 +92,35 @@ export default function FinancialPoDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="-m-3 sm:-m-4 lg:-m-6 min-h-full bg-[#F8F9FC] px-4 sm:px-6 lg:px-7 py-6 font-sans">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-[#1565C0] cursor-pointer"
-          >
-            <i className="ri-arrow-left-line" />
-            Back to Financial Insights
-          </button>
-          {row?.poNumber ? (
-            <span className="text-sm font-semibold text-slate-800">{row.poNumber}</span>
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+        <div className="p-2 pb-6 sm:p-4 lg:p-6">
+          <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-600 hover:text-[#1E88E5]"
+            >
+              <i className="ri-arrow-left-line" />
+              Back to Financial Insights
+            </button>
+            {row?.poNumber ? (
+              <span className="text-sm font-bold text-[#1E88E5]">{row.poNumber}</span>
+            ) : null}
+          </header>
+
+          {loading ? (
+            <div className="rounded-2xl border border-transparent bg-white px-6 py-16 text-center text-sm text-slate-500 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+              <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#1E88E5]" />
+              Loading PO details…
+            </div>
+          ) : error ? (
+            <div className="rounded-2xl border border-rose-100 bg-rose-50 px-6 py-8 text-center text-sm text-rose-700">
+              {error}
+            </div>
+          ) : row ? (
+            <TrackPoExpandedRow row={row} standalone />
           ) : null}
         </div>
-
-        {loading ? (
-          <div className="bg-white rounded-xl border border-gray-200 px-6 py-16 text-center text-sm text-slate-500">
-            <i className="ri-loader-4-line animate-spin text-lg text-[#1E88E5] mr-2" />
-            Loading PO details…
-          </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-6 py-8 text-center text-sm text-red-700">
-            {error}
-          </div>
-        ) : row ? (
-          <TrackPoExpandedRow row={row} standalone />
-        ) : null}
       </div>
     </DashboardLayout>
   );

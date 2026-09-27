@@ -284,7 +284,13 @@ export default function TasksPage() {
     department: string;
     entityName: string;
     entityCode: string;
+    entityCostCenter?: string;
     requestType: string;
+    requestCategory?: string;
+    projectDetail?: string;
+    expectedDeliveryTimeline?: string;
+    paymentTerms?: string;
+    specialNotes?: string;
     category: string;
     priority: string;
     status: string;
@@ -408,7 +414,13 @@ export default function TasksPage() {
       department: task.department,
       entityName: task.entityName,
       entityCode: task.entityCode,
+      entityCostCenter: '',
       requestType: task.requestType,
+      requestCategory: '',
+      projectDetail: '',
+      expectedDeliveryTimeline: '',
+      paymentTerms: '',
+      specialNotes: '',
       category: '—',
       priority: task.priority,
       status: task.status,
@@ -484,7 +496,13 @@ export default function TasksPage() {
         department: String(pr.department || task.department),
         entityName: String(pr.entityName || task.entityName || ''),
         entityCode: String(pr.entityCode || task.entityCode || ''),
+        entityCostCenter: String(pr.entityCostCenter || pr.costCenter || ''),
         requestType: String(pr.requestType || task.requestType),
+        requestCategory: String(pr.requestCategory || firstCategory || ''),
+        projectDetail: String(pr.projectDetail || ''),
+        expectedDeliveryTimeline: String(pr.expectedDeliveryTimeline || ''),
+        paymentTerms: String(pr.paymentTerms || ''),
+        specialNotes: String(pr.specialNotes || ''),
         category: firstCategory,
         priority: String(pr.priorityLower || pr.priority || task.priority).toLowerCase(),
         status: task.status === 'pending_approval' ? 'pending_approval' : task.status,
@@ -896,14 +914,14 @@ export default function TasksPage() {
         className="min-h-full font-sans text-[#0F172A]"
         style={{ background: 'linear-gradient(180deg, #edf1ff 0%, #f6f8ff 45%, #f2ecff 100%)' }}
       >
-      <div className="p-2 pb-6 sm:p-4 lg:p-6">
-      <header className="mb-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+      <div className="p-2 pb-4 sm:p-3 lg:p-4">
+      <header className="mb-3 border-b border-white/50 px-1 pb-2 pt-0.5">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0 shrink text-center lg:text-left">
-            <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl md:text-3xl">
+            <h1 className="text-lg font-semibold leading-snug tracking-tight text-slate-800 sm:text-xl">
               {greetingForNow()}, <span className="font-semibold text-slate-900">{user?.name || 'User'}</span>
             </h1>
-            <p className="mt-0.5 text-[11px] font-medium text-slate-500 lg:text-sm">
+            <p className="text-[11px] font-medium text-slate-500">
               Logged in as <span className="text-slate-600">{roleLabel}</span>
             </p>
           </div>
@@ -923,16 +941,16 @@ export default function TasksPage() {
         </div>
       </header>
 
-      <section className="mb-6">
-        <div className="mb-1.5 px-0.5 sm:mb-3">
-          <h2 className="text-xs font-bold tracking-wide text-slate-700 sm:text-base">Task Insights</h2>
+      <section className="mb-3">
+        <div className="mb-1.5 px-0.5">
+          <h2 className="text-xs font-bold tracking-wide text-slate-700 sm:text-sm">Task Insights</h2>
         </div>
         {loading ? (
           <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="min-h-[128px] animate-pulse rounded-2xl border border-slate-200/88 bg-white sm:min-h-[140px]"
+                className="min-h-[92px] animate-pulse rounded-2xl border border-slate-200/88 bg-white sm:min-h-[100px]"
               />
             ))}
           </div>
@@ -959,21 +977,16 @@ export default function TasksPage() {
 
         {/* Desktop (≥992px) inline filters */}
         <div className="relative z-[1] hidden border-b border-slate-100/80 min-[992px]:block">
-          <div className="flex flex-col gap-4 px-4 py-4 sm:px-5 sm:py-5 xl:flex-row xl:items-end xl:justify-between xl:gap-5">
-            <div className="flex shrink-0 items-center gap-3 xl:pb-1">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#DBEAFE] text-[#2563EB] sm:h-11 sm:w-11">
-                <i className="ri-task-line text-lg sm:text-xl" aria-hidden />
+          <div className="flex flex-col gap-2 px-3 py-3 sm:px-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#DBEAFE] text-[#2563EB]">
+                <i className="ri-task-line text-base" aria-hidden />
               </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px]">
-                  Approvals
-                </p>
-                <h2 className="mt-0.5 text-sm font-semibold text-slate-800 sm:text-base">
-                  Purchase Request Approvals
-                </h2>
-              </div>
+              <h2 className="text-sm font-semibold text-slate-800">
+                Purchase Request Approvals
+              </h2>
             </div>
-            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3 xl:justify-end xl:gap-4">
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
               <div className="relative shrink-0">
                 <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input
@@ -981,11 +994,10 @@ export default function TasksPage() {
                   placeholder="Search PR..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-11 w-48 rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
+                  className="h-9 w-44 rounded-xl border border-transparent bg-white pl-9 pr-3 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
                 />
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 py-0.5">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                   {[
                     { key: 'all', label: 'All' },
                     { key: 'pending_approval', label: 'Pending' },
@@ -998,7 +1010,7 @@ export default function TasksPage() {
                       key={tab.key}
                       type="button"
                       onClick={() => setFilter(tab.key)}
-                      className={`h-11 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
+                      className={`h-9 cursor-pointer whitespace-nowrap rounded-xl px-3 text-xs font-semibold transition-all duration-200 ${
                         filter === tab.key
                           ? 'bg-[#2563EB] text-white shadow-[0_8px_24px_-12px_rgba(37,99,235,0.35)]'
                           : 'border border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#93C5FD]/60'
@@ -1010,13 +1022,12 @@ export default function TasksPage() {
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2 px-4 pb-4 sm:gap-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2 px-3 pb-3 sm:px-4">
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="h-11 min-w-[140px] cursor-pointer rounded-2xl border border-transparent bg-white px-3 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
+              className="h-9 min-w-[140px] cursor-pointer rounded-xl border border-transparent bg-white px-3 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
             >
               <option value="all">All Priorities</option>
               <option value="high">High Priority</option>
@@ -1027,7 +1038,7 @@ export default function TasksPage() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="h-11 min-w-[180px] cursor-pointer rounded-2xl border border-transparent bg-white px-3 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
+              className="h-9 min-w-[180px] cursor-pointer rounded-xl border border-transparent bg-white px-3 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
             >
               <option value="sla">Sort: SLA Urgency</option>
               <option value="amount_high">Sort: Amount (High to Low)</option>
@@ -1045,7 +1056,7 @@ export default function TasksPage() {
                   setDateFrom('');
                   setDateTo('');
                 }}
-                className="inline-flex h-11 cursor-pointer items-center gap-1 whitespace-nowrap rounded-2xl px-3 text-sm text-slate-600 transition-colors hover:bg-white hover:text-slate-900"
+                className="inline-flex h-9 cursor-pointer items-center gap-1 whitespace-nowrap rounded-xl px-3 text-sm text-slate-600 transition-colors hover:bg-white hover:text-slate-900"
               >
                 <i className="ri-filter-off-line"></i> Clear Filters
               </button>
@@ -1206,7 +1217,7 @@ export default function TasksPage() {
 
         {/* Desktop table — soft card rows (matches requester) */}
         <div className="relative z-[1] hidden overflow-x-auto px-3 pb-3 pt-1 min-[992px]:block sm:px-4 sm:pb-4">
-          <table className="w-full min-w-[1200px] border-separate border-spacing-x-0 border-spacing-y-3">
+          <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3">
             <thead>
               <tr>
                 {[
@@ -1226,7 +1237,9 @@ export default function TasksPage() {
                     key={label}
                     className={`pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px] ${
                       label === 'PR Number' || label === 'Actions' ? 'px-5' : 'px-3'
-                    } ${label === 'Amount' || label === 'Actions' ? 'text-right' : 'text-left'}`}
+                    } ${label === 'Title' ? 'w-[240px] max-w-[240px]' : 'whitespace-nowrap'} ${
+                      label === 'Amount' || label === 'Actions' ? 'text-right' : 'text-left'
+                    }`}
                   >
                     {label}
                   </th>
@@ -1256,10 +1269,8 @@ export default function TasksPage() {
                     <td
                       className={`whitespace-nowrap rounded-l-2xl border border-r-0 pl-5 pr-3 text-sm font-bold text-[#2563EB] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:rounded-l-[18px] ${cellBase} ${ringHint}`}
                     >
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate" title={task.prNumber}>
-                          {task.prNumber}
-                        </span>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span title={task.prNumber}>{task.prNumber}</span>
                         {sass && (
                           <SassBadge
                             label={
@@ -1274,10 +1285,10 @@ export default function TasksPage() {
                         )}
                       </div>
                     </td>
-                    <td className={`max-w-[200px] border border-x-0 px-3 text-sm text-[#2C3E50] ${cellBase} ${ringHint}`}>
+                    <td className={`w-[240px] max-w-[240px] border border-x-0 px-3 text-sm text-[#2C3E50] ${cellBase} ${ringHint}`}>
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <p className="truncate font-semibold" title={task.title}>
+                          <p className="min-w-0 truncate font-semibold" title={task.title}>
                             {task.title}
                           </p>
                           {(task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) && (
@@ -1296,20 +1307,20 @@ export default function TasksPage() {
                         </p>
                       </div>
                     </td>
-                    <td className={`max-w-[140px] border border-x-0 px-3 text-sm text-[#2C3E50] ${cellBase} ${ringHint}`}>
-                      <div className="min-w-0">
-                        <p className="truncate font-medium" title={task.requester}>
+                    <td className={`whitespace-nowrap border border-x-0 px-3 text-sm text-[#2C3E50] ${cellBase} ${ringHint}`}>
+                      <div>
+                        <p className="font-medium" title={task.requester}>
                           {task.requester}
                         </p>
-                        <p className="truncate text-xs text-slate-500">{task.requesterRole}</p>
+                        <p className="text-xs text-slate-500">{task.requesterRole}</p>
                       </div>
                     </td>
-                    <td className={`max-w-[120px] border border-x-0 px-3 text-sm text-[#2C3E50] ${cellBase} ${ringHint}`}>
-                      <p className="truncate font-medium" title={task.entityName || undefined}>
+                    <td className={`whitespace-nowrap border border-x-0 px-3 text-sm text-[#2C3E50] ${cellBase} ${ringHint}`}>
+                      <p className="font-medium" title={task.entityName || undefined}>
                         {task.entityName || '—'}
                       </p>
                       {task.entityCode ? (
-                        <p className="truncate text-xs text-slate-500">{task.entityCode}</p>
+                        <p className="text-xs text-slate-500">{task.entityCode}</p>
                       ) : null}
                     </td>
                     <td className={`whitespace-nowrap border border-x-0 px-3 text-sm text-[#2C3E50] ${cellBase} ${ringHint}`}>
@@ -1323,10 +1334,8 @@ export default function TasksPage() {
                     <td className={`whitespace-nowrap border border-x-0 px-3 ${cellBase} ${ringHint}`}>
                       <PriorityBadge priority={task.priority} size="sm" />
                     </td>
-                    <td className={`max-w-[140px] border border-x-0 px-3 ${cellBase} ${ringHint}`}>
-                      <div className="max-w-full overflow-hidden">
-                        <StatusBadge status={task.status} size="sm" />
-                      </div>
+                    <td className={`whitespace-nowrap border border-x-0 px-3 ${cellBase} ${ringHint}`}>
+                      <StatusBadge status={task.status} size="sm" />
                     </td>
                     <td className={`whitespace-nowrap border border-x-0 px-3 text-sm ${cellBase} ${ringHint}`}>
                       {slaInfo ? (

@@ -5,7 +5,8 @@ import PrVendorQuotationsPanel from '../../../components/feature/PrVendorQuotati
 import { collapsePrAdminEditHistory } from '../../../components/feature/ApprovalHistoryPanel';
 import { formatMoney } from '../../../constants/currency';
 import { PM_BTN_PRIMARY, PM_BTN_SECONDARY } from '../../../constants/pmTheme';
-import { useEffect, useState } from 'react';
+import { formatPersonRoleSuffix } from '../../../utils/roleDisplay';
+import { useEffect, useState, type ReactNode } from 'react';
 
 interface LineItem {
   itemName?: string;
@@ -37,7 +38,13 @@ interface PRTask {
   department: string;
   entityName?: string;
   entityCode?: string;
+  entityCostCenter?: string;
   requestType: string;
+  requestCategory?: string;
+  projectDetail?: string;
+  expectedDeliveryTimeline?: string;
+  paymentTerms?: string;
+  specialNotes?: string;
   category: string;
   priority: string;
   status: string;
@@ -82,8 +89,30 @@ const softWash = {
     'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
 } as const;
 
-const softField =
-  'rounded-xl border border-transparent bg-[#F8FAFC] p-3 shadow-[0_4px_14px_-10px_rgba(15,23,42,0.10)]';
+const softCard =
+  'relative overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-4';
+const softLabel = 'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
+const softValue = 'mt-1.5 text-sm font-semibold text-[#2C3E50] break-words';
+
+function SoftField({
+  label,
+  children,
+  className = '',
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`${softCard} ${className}`}>
+      <div className="pointer-events-none absolute inset-0" style={softWash} />
+      <div className="relative z-[1]">
+        <p className={softLabel}>{label}</p>
+        <div className={softValue}>{children}</div>
+      </div>
+    </div>
+  );
+}
 
 function canShowActions(status: string, canAct?: boolean) {
   if (typeof canAct === 'boolean') return canAct;
@@ -155,7 +184,7 @@ export default function TaskDetailDrawer({
       <div
         className="relative flex h-full w-full max-w-xl flex-col shadow-[0_24px_64px_-24px_rgba(15,23,42,0.35)] animate-slide-in-right"
         style={{
-          background: 'linear-gradient(180deg, #edf1ff 0%, #f8faff 28%, #ffffff 100%)',
+          background: 'linear-gradient(180deg, #edf1ff 0%, #f6f8ff 45%, #f2ecff 100%)',
         }}
       >
         {/* Header */}
@@ -220,8 +249,8 @@ export default function TaskDetailDrawer({
           </div>
         ) : (
           <>
-            <div className="chip-scroll-fade shrink-0 border-b border-slate-100/80 bg-white/70 px-4 pt-3 backdrop-blur-sm sm:px-6">
-              <div className="chip-scroll gap-1 pb-0">
+            <div className="shrink-0 px-4 pt-4 sm:px-6">
+              <div className="flex flex-wrap gap-2">
                 {(
                   [
                     { id: 'details' as const, label: 'Details' },
@@ -236,10 +265,10 @@ export default function TaskDetailDrawer({
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
                       activeTab === tab.id
-                        ? 'border-[#1E88E5] text-[#1E88E5]'
-                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                        ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
                     }`}
                   >
                     {tab.label}
@@ -264,125 +293,77 @@ export default function TaskDetailDrawer({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className={`${softField} sm:col-span-2`}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Entity
-                      </p>
-                      <p className="break-words text-sm font-medium text-[#2C3E50]">
-                        {task.entityName || '—'}
-                        {task.entityCode ? (
-                          <span className="font-normal text-slate-500"> ({task.entityCode})</span>
-                        ) : null}
-                      </p>
-                    </div>
-                    <div className={softField}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Department
-                      </p>
-                      <p className="break-words text-sm font-medium text-[#2C3E50]">
-                        {task.department || '—'}
-                      </p>
-                    </div>
-                    <div className={softField}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Request Type
-                      </p>
-                      <p className="text-sm font-medium text-[#2C3E50]">{task.requestType || '—'}</p>
-                    </div>
-                    <div className={softField}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Category
-                      </p>
-                      <p className="break-words text-sm font-medium text-[#2C3E50]">
-                        {task.category || '—'}
-                      </p>
-                    </div>
-                    <div className={softField}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Required Date
-                      </p>
-                      <p className="text-sm font-medium text-[#2C3E50]">{formatDate(task.requiredDate)}</p>
-                    </div>
-                    <div className={softField}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        {hideLinePricing ? 'Vendor Path' : 'Total Amount'}
-                      </p>
-                      <p className="text-sm font-bold text-[#1E88E5]">
-                        {hideLinePricing
-                          ? 'Own Vendor'
-                          : formatMoney(Number(task.totalAmount || 0), task.currency, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                      </p>
-                    </div>
-                    <div className={softField}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Current Stage
-                      </p>
-                      <p className="break-words text-sm font-medium text-[#2C3E50]">
-                        {task.currentApprover || '—'}
-                      </p>
-                    </div>
-                    <div className={`${softField} sm:col-span-2`}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Submitted
-                      </p>
-                      <p className="text-sm font-medium text-[#2C3E50]">{formatDate(task.submittedDate)}</p>
-                    </div>
-                    <div className={softField}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Location
-                      </p>
-                      <p className="break-words text-sm font-medium text-[#2C3E50]">
-                        {task.billingLocation || '—'}
-                      </p>
-                    </div>
-                    <div className={softField}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        GSTIN
-                      </p>
-                      <p className="break-all font-mono text-sm font-medium tracking-wide text-[#2C3E50]">
-                        {task.billingGstNo || '—'}
-                      </p>
-                    </div>
-                    <div className={`${softField} sm:col-span-2`}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Billing Address
-                      </p>
-                      <p className="whitespace-pre-wrap break-words text-sm font-medium text-[#2C3E50]">
-                        {task.billingAddress || '—'}
-                      </p>
-                    </div>
-                    <div className={`${softField} sm:col-span-2`}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Site / Delivery Address
-                      </p>
-                      <p className="whitespace-pre-wrap break-words text-sm font-medium text-[#2C3E50]">
-                        {task.placeOfDelivery || '—'}
-                      </p>
-                    </div>
-                    <div className={`${softField} sm:col-span-2`}>
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        POC for Delivery
-                      </p>
-                      <p className="break-words text-sm font-medium text-[#2C3E50]">
-                        {task.deliveryPoc || '—'}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                    <SoftField label="Entity" className="sm:col-span-2">
+                      {task.entityName || '—'}
+                      {task.entityCode ? (
+                        <span className="font-normal text-slate-500"> ({task.entityCode})</span>
+                      ) : null}
+                      {task.entityCostCenter ? (
+                        <p className="mt-1 text-xs font-normal text-slate-500">
+                          Cost Center: {task.entityCostCenter}
+                        </p>
+                      ) : null}
+                    </SoftField>
+                    <SoftField label="Department">{task.department || '—'}</SoftField>
+                    <SoftField label="Request Type">{task.requestType || '—'}</SoftField>
+                    <SoftField label="Request Category">
+                      {task.requestCategory || task.category || '—'}
+                    </SoftField>
+                    <SoftField label="Project Detail" className="sm:col-span-2">
+                      {task.projectDetail || '—'}
+                    </SoftField>
+                    <SoftField label="Required Date">{formatDate(task.requiredDate)}</SoftField>
+                    <SoftField label="Expected Delivery Timeline">
+                      {task.expectedDeliveryTimeline || '—'}
+                    </SoftField>
+                    <SoftField label="Payment Terms">{task.paymentTerms || '—'}</SoftField>
+                    <SoftField label="Total Amount">
+                      {hideLinePricing ? (
+                        'Own Vendor'
+                      ) : (
+                        <span className="tabular-nums">
+                          {formatMoney(Number(task.totalAmount || 0), task.currency, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      )}
+                    </SoftField>
+                    <SoftField label="Current Stage">{task.currentApprover || '—'}</SoftField>
+                    <SoftField label="Submitted Date">{formatDate(task.submittedDate)}</SoftField>
+                    <SoftField label="Billing Region / GST" className="sm:col-span-2">
+                      {task.billingLocation || '—'}
+                      {task.billingGstNo ? (
+                        <span className="mt-0.5 block font-mono text-xs font-normal text-slate-500">
+                          {task.billingGstNo}
+                        </span>
+                      ) : null}
+                    </SoftField>
+                    <SoftField label="Billing Address" className="sm:col-span-2">
+                      <span className="whitespace-pre-wrap">{task.billingAddress || '—'}</span>
+                    </SoftField>
+                    <SoftField label="Place of Delivery">{task.placeOfDelivery || '—'}</SoftField>
+                    <SoftField label="POC for Delivery">{task.deliveryPoc || '—'}</SoftField>
+                  </div>
+
+                  <div>
+                    <h4 className={`${softLabel} mb-2 px-0.5`}>Business Justification</h4>
+                    <div className={softCard}>
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <p className="relative z-[1] whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                        {task.justification || '—'}
                       </p>
                     </div>
                   </div>
-
-                  <div className="overflow-hidden rounded-2xl border border-amber-200/80 bg-amber-50/80 shadow-[0_8px_24px_-12px_rgba(245,158,11,0.25)] sm:rounded-[18px]">
-                    <div className="flex items-center gap-2 border-b border-amber-200/80 bg-amber-100/80 px-3.5 py-2.5">
-                      <i className="ri-lightbulb-flash-line text-amber-700" aria-hidden />
-                      <h4 className="text-xs font-extrabold uppercase tracking-wide text-amber-900">
-                        Business Justification
-                      </h4>
+                  <div>
+                    <h4 className={`${softLabel} mb-2 px-0.5`}>Special Notes</h4>
+                    <div className={softCard}>
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <p className="relative z-[1] whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                        {task.specialNotes || '—'}
+                      </p>
                     </div>
-                    <p className="whitespace-pre-wrap break-words px-3.5 py-3 text-sm font-medium leading-relaxed text-amber-950">
-                      {task.justification || 'No business justification provided.'}
-                    </p>
                   </div>
 
                   {showQuotesTab && (
@@ -601,73 +582,72 @@ export default function TaskDetailDrawer({
               )}
 
               {activeTab === 'history' && (
-                <div>
+                <div className="space-y-3">
                   {approvalHistory.length === 0 ? (
-                    <p className="rounded-2xl bg-white p-3 text-sm text-slate-400 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]">
-                      No approval history yet.
-                    </p>
+                    <div className={`${softCard} py-8 text-center`}>
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <p className="relative z-[1] text-sm text-slate-500">No approval history yet</p>
+                    </div>
                   ) : (
-                    <div className="space-y-0">
-                      {approvalHistory.map((step, idx) => {
-                        const stepStatus = String(step.status || '').toLowerCase();
-                        const done =
-                          stepStatus.includes('approv') ||
-                          stepStatus.includes('complet') ||
-                          stepStatus.includes('submit');
-                        const rejected = stepStatus.includes('reject');
-                        const returned =
-                          stepStatus.includes('return') || stepStatus.includes('rework');
-                        return (
-                          <div
-                            key={`${step.stage}-${step.date}-${idx}`}
-                            className="relative flex items-start gap-3"
-                          >
-                            {idx < approvalHistory.length - 1 && (
-                              <div className="absolute left-[11px] top-6 h-full w-0.5 bg-[#BBDEFB]"></div>
-                            )}
+                    approvalHistory.map((step, idx) => {
+                      const stepStatus = String(step.status || '').toLowerCase();
+                      const done =
+                        stepStatus.includes('approv') ||
+                        stepStatus.includes('complet') ||
+                        stepStatus.includes('submit');
+                      const rejected = stepStatus.includes('reject');
+                      const returned =
+                        stepStatus.includes('return') || stepStatus.includes('rework');
+                      return (
+                        <div key={`${step.stage}-${step.date}-${idx}`} className={softCard}>
+                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                          <div className="relative z-[1] flex gap-3">
                             <div
-                              className={`mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full ${
+                              className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${
                                 done
-                                  ? 'bg-emerald-100'
+                                  ? 'bg-emerald-50 text-emerald-600'
                                   : rejected
-                                    ? 'bg-rose-100'
+                                    ? 'bg-[#FFE4E6] text-[#F43F5E]'
                                     : returned
-                                      ? 'bg-orange-100'
-                                      : 'bg-[#E3F2FD]'
+                                      ? 'bg-orange-50 text-orange-600'
+                                      : 'bg-[#E3F2FD] text-[#1E88E5]'
                               }`}
                             >
                               <i
-                                className={`text-xs ${
-                                  done
-                                    ? 'ri-check-line text-emerald-600'
-                                    : rejected
-                                      ? 'ri-close-line text-rose-600'
-                                      : returned
-                                        ? 'ri-arrow-go-back-line text-orange-600'
-                                        : 'ri-time-line text-[#1E88E5]'
+                                className={`text-sm ${
+                                  rejected
+                                    ? 'ri-close-circle-fill'
+                                    : returned
+                                      ? 'ri-arrow-go-back-fill'
+                                      : 'ri-checkbox-circle-fill'
                                 }`}
                               ></i>
                             </div>
-                            <div className="min-w-0 flex-1 pb-4">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="break-words text-sm font-medium text-[#2C3E50]">
-                                  {step.stage || step.step}
-                                </p>
-                                <span className="text-xs text-slate-400">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="break-words text-sm font-semibold text-[#2C3E50]">
+                                    {step.stage || step.step}
+                                  </p>
+                                  <p className="break-words text-xs text-slate-500">
+                                    {step.approver}
+                                    {formatPersonRoleSuffix(step.role, step.approver)}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">
                                   {formatDateTime(step.date)}
                                 </span>
                               </div>
-                              <p className="break-words text-xs text-slate-500">{step.approver}</p>
-                              {step.remarks && (
-                                <p className="mt-0.5 break-words text-xs italic text-slate-600">
-                                  &ldquo;{step.remarks}&rdquo;
+                              {step.remarks ? (
+                                <p className="mt-2 break-words rounded-xl bg-[#F8FAFC] p-2.5 text-sm text-slate-700">
+                                  {step.remarks}
                                 </p>
-                              )}
+                              ) : null}
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               )}

@@ -68,7 +68,7 @@ export default function TaskStats({
   onSelect: (filter: TaskStatFilter) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
+    <div className="grid grid-cols-1 items-stretch gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
       {cards.map((card) => {
         const selected = selectedFilter === card.filter;
         const theme = KPI_THEME[card.filter] || KPI_THEME.all;
@@ -81,8 +81,8 @@ export default function TaskStats({
             aria-pressed={selected}
             title={`View ${card.title} in table`}
             className={`
-              group relative box-border flex h-full min-h-[128px] w-full cursor-pointer flex-col overflow-hidden
-              rounded-2xl bg-white p-4 text-left sm:min-h-[140px] sm:rounded-[18px] sm:p-5
+              group relative box-border flex h-full min-h-[92px] w-full cursor-pointer flex-col overflow-hidden
+              rounded-2xl bg-white p-3.5 text-left sm:min-h-[100px] sm:rounded-[18px] sm:p-4
               shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]
               border transition-[box-shadow,border-color,transform] duration-200 ease-out
               hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]
@@ -102,7 +102,7 @@ export default function TaskStats({
                   {card.title}
                 </p>
                 <p
-                  className="mt-2 text-3xl font-bold tabular-nums leading-none tracking-tight sm:mt-3 sm:text-[2.15rem]"
+                  className="mt-1.5 text-2xl font-bold tabular-nums leading-none tracking-tight sm:text-3xl"
                   style={{ color: theme.value }}
                 >
                   {Number(card.value) || 0}
@@ -117,14 +117,7 @@ export default function TaskStats({
               </div>
             </div>
 
-            <span
-              className="relative mt-auto inline-flex items-center gap-1 pt-3 text-[12px] font-semibold text-[#6366F1]
-                opacity-0 translate-y-1 transition-all duration-200
-                group-hover:translate-y-0 group-hover:opacity-100"
-            >
-              Click to view
-              <i className="ri-arrow-right-line text-sm" aria-hidden />
-            </span>
+            <span className="sr-only">Click to view {card.title}</span>
           </button>
         );
       })}

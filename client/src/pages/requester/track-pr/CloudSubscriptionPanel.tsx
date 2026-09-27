@@ -92,7 +92,7 @@ export default function CloudSubscriptionPanel({
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
-    <div className="bg-white rounded-lg border border-[#90CAF9] p-4">
+    <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
       {sub ? (
         <>
           <div className="flex items-start justify-between gap-3 mb-3">

@@ -4,7 +4,7 @@ import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatusBadge from '../../../components/base/StatusBadge';
 import PriorityBadge from '../../../components/base/PriorityBadge';
 import PrDocumentsPanel from '../../../components/feature/PrDocumentsPanel';
-import { BRAND_PRIMARY_GRADIENT } from '../../../constants/brandColors';
+import { PM_BTN_PRIMARY, PM_PAGE_BG } from '../../../constants/pmTheme';
 import { prApi, RequesterPrListMeta, accountsApi, type PrAttachmentRecord } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import CloudSubscriptionPanel from './CloudSubscriptionPanel';
@@ -781,6 +781,18 @@ function getSLAStageLabel(status: string) {
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+const softCard =
+  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
+const softLabel = 'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
+const softInput =
+  'h-11 w-full rounded-2xl border border-transparent bg-white px-3.5 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15';
+const midCell =
+  'border border-x-0 border-transparent bg-white px-3 py-4 align-middle transition-[border-color] sm:py-5';
+
 export default function TrackPRPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -989,99 +1001,92 @@ export default function TrackPRPage() {
     return { breached, onTime, currentBreach };
   };
 
+  const statusChips: { id: StatusFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'draft', label: 'Draft' },
+    { id: 'pending_approval', label: 'Pending' },
+    { id: 'approved', label: 'Approved' },
+    { id: 'returned', label: 'Returned' },
+    { id: 'po_issued', label: 'PO Issued' },
+    { id: 'rejected', label: 'Rejected' },
+  ];
+
   return (
     <DashboardLayout>
       {toast && (
-        <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+        <div className="fixed right-4 top-4 z-50 rounded-xl bg-[#1E88E5] px-4 py-2 text-sm text-white shadow-lg">
           {toast}
         </div>
       )}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Track Purchase Requisitions</h1>
-            <p className="text-sm text-gray-600 mt-1">
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+        <div className="space-y-5 p-2 pb-6 sm:p-4 lg:p-6">
+        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-0 sm:pb-4">
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl">
+              Track Purchase Requisitions
+            </h1>
+            <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
               PRs you requested, approved, or were involved in — with SLA tracking (1 day per stage)
             </p>
           </div>
           <button
+            type="button"
             onClick={() => navigate('/requester/create-pr?new=1')}
-            className="px-5 py-2.5 text-white text-sm font-medium rounded-lg transition-opacity hover:opacity-90 flex items-center gap-2 whitespace-nowrap shadow-sm"
-            style={{ background: BRAND_PRIMARY_GRADIENT }}
+            className={PM_BTN_PRIMARY}
           >
             <i className="ri-add-line text-lg"></i>
             Create New PR
           </button>
-        </div>
+        </header>
 
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+          <div className="rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">{error}</div>
         )}
 
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="lg:col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-2">Search PR</label>
-              <div className="relative">
-                <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+        <div className={`${softCard} p-4 sm:p-5`}>
+          <div className="pointer-events-none absolute inset-0" style={softWash} />
+          <div className="relative z-[1] space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px] flex-1">
+                <i className="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input
                   type="text"
                   placeholder="Search by PR number or title..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+                  className={`${softInput} pl-10`}
                 />
               </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400"
-              >
-                <option value="all">All Status</option>
-                <option value="draft">Draft</option>
-                <option value="pending_approval">Pending Approval</option>
-                <option value="approved">Approved</option>
-                <option value="returned">Returned</option>
-                <option value="po_issued">PO Issued</option>
-                <option value="rejected">Rejected</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">Request Type</label>
               <select
                 value={requestTypeFilter}
                 onChange={(e) => setRequestTypeFilter(e.target.value as RequestTypeFilter)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400"
+                className={`${softInput} w-auto min-w-[150px] cursor-pointer`}
               >
                 <option value="all">All Types</option>
                 <option value="Capex">Capex</option>
                 <option value="Opex">Opex</option>
                 <option value="Service">Service</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">Date From</label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">Date To</label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400"
-              />
-            </div>
-            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                From
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className={`${softInput} w-auto cursor-pointer`}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                To
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className={`${softInput} w-auto cursor-pointer`}
+                />
+              </label>
               <button
+                type="button"
                 onClick={() => {
                   setStatusFilter('all');
                   setRequestTypeFilter('all');
@@ -1089,151 +1094,180 @@ export default function TrackPRPage() {
                   setDateFrom('');
                   setDateTo('');
                 }}
-                className="w-full px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
+                className="h-11 cursor-pointer whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]"
               >
-                Clear Filters
+                Clear filters
               </button>
             </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{meta.total}</span> results
-            </p>
-            <div className="flex items-center gap-4 text-xs text-gray-500">
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> On Time
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span> SLA Breached
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> In Progress
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-gray-300 inline-block"></span> Not Started
-              </span>
+            <div className="flex flex-wrap gap-2">
+              {statusChips.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => setStatusFilter(chip.id)}
+                  className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
+                    statusFilter === chip.id
+                      ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100/80 pt-3">
+              <p className="text-sm text-slate-500">
+                Showing <span className="font-semibold text-slate-800">{meta.total}</span> results
+              </p>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span> On Time
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 rounded-full bg-rose-500"></span> SLA Breached
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 rounded-full bg-amber-400"></span> In Progress
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 rounded-full bg-slate-300"></span> Not Started
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className={`${softCard} overflow-x-clip`}>
+          <div className="pointer-events-none absolute inset-0" style={softWash} />
           {loading ? (
-            <div className="px-6 py-12 text-center text-sm text-gray-500">
-              <i className="ri-loader-4-line animate-spin text-lg text-[#1E88E5] mr-2"></i>
+            <div className="relative z-[1] px-6 py-12 text-center text-sm text-slate-500">
+              <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#1E88E5]"></i>
               Loading your purchase requests...
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+              <div className="relative z-[1] overflow-x-auto px-0 pb-3 pt-1">
+                <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+                  <thead>
                     <tr>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         PR Number
                       </th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="w-[240px] max-w-[240px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Title
                       </th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Type
                       </th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Amount
                       </th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Status
                       </th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         SLA
                       </th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Submitted
                       </th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Actions
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody>
                     {paginatedData.map((pr) => {
                       const { breached, onTime, currentBreach } = getSLASummary(pr.approvalHistory);
                       const totalActioned = breached + onTime;
+                      const open = expandedRow === pr.key;
+                      const rowBorder = open
+                        ? 'border-[#90CAF9]'
+                        : 'border-transparent group-hover:border-[#90CAF9]';
+                      const rowShadow = open
+                        ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
+                        : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
                       return (
                         <Fragment key={pr.key}>
-                          <tr
-                            className={`hover:bg-gray-50 transition-colors ${
-                              expandedRow === pr.key ? 'bg-gray-50' : ''
-                            }`}
-                          >
-                            <td className="px-5 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
+                          <tr className="group cursor-pointer" onClick={() => toggleRow(pr.key)}>
+                            <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
+                              <div
+                                className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                              >
                                 <button
-                                  onClick={() => toggleRow(pr.key)}
-                                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                                  type="button"
+                                  className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors ${
+                                    open
+                                      ? 'bg-[#1E88E5] text-white'
+                                      : 'bg-[#E3F2FD] text-[#1E88E5] hover:bg-[#BBDEFB]'
+                                  }`}
+                                  aria-expanded={open}
+                                  aria-label={open ? 'Collapse details' : 'Expand details'}
                                 >
-                                  <i
-                                    className={`ri-arrow-${
-                                      expandedRow === pr.key ? 'down' : 'right'
-                                    }-s-line text-lg`}
-                                  ></i>
+                                  <i className={`ri-arrow-${open ? 'down' : 'right'}-s-line text-base`}></i>
                                 </button>
-                                <span className="text-sm font-semibold text-gray-900">{pr.id}</span>
+                                <span className="text-sm font-bold text-[#1E88E5]">{pr.id}</span>
                               </div>
                             </td>
-                            <td className="px-5 py-4">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-900">{pr.title}</span>
+                            <td
+                              className={`w-[240px] max-w-[240px] ${midCell} ${rowBorder}`}
+                              title={pr.title}
+                            >
+                              <p className="truncate text-sm font-semibold text-[#2C3E50]">{pr.title}</p>
+                              <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                                <p className="truncate text-xs text-slate-500">{pr.department}</p>
                                 <PriorityBadge priority={pr.priority} />
                               </div>
-                              <p className="text-xs text-gray-400 mt-0.5">{pr.department}</p>
                             </td>
-                            <td className="px-5 py-4 whitespace-nowrap">
-                              <span className="text-xs font-medium px-2 py-1 rounded bg-gray-100 text-gray-700">
+                            <td className={`whitespace-nowrap ${midCell} ${rowBorder}`}>
+                              <span className="inline-flex rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[11px] font-semibold text-[#1E88E5]">
                                 {pr.requestType}
                               </span>
                             </td>
-                            <td className="px-5 py-4 whitespace-nowrap">
-                              <span className="text-sm font-semibold text-gray-900">
-                                {formatCurrency(pr.amount)}
-                              </span>
+                            <td className={`whitespace-nowrap ${midCell} text-sm font-bold tabular-nums text-[#2C3E50] ${rowBorder}`}>
+                              {formatCurrency(pr.amount)}
                             </td>
-                            <td className="px-5 py-4 whitespace-nowrap">
-                              <StatusBadge status={pr.statusUI || pr.status} />
+                            <td className={`whitespace-nowrap ${midCell} ${rowBorder}`}>
+                              <StatusBadge status={pr.statusUI || pr.status} size="sm" />
                             </td>
-                            <td className="px-5 py-4 whitespace-nowrap">
+                            <td className={`whitespace-nowrap ${midCell} ${rowBorder}`}>
                               {totalActioned === 0 && !currentBreach ? (
-                                <span className="text-xs text-gray-400">—</span>
+                                <span className="text-xs text-slate-400">—</span>
                               ) : (
                                 <div className="flex items-center gap-1.5">
                                   {breached > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200 whitespace-nowrap">
-                                      <i className="ri-alarm-warning-fill text-xs"></i> {breached}{' '}
-                                      Breached
+                                    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                                      <i className="ri-alarm-warning-fill text-xs"></i> {breached} Breached
                                     </span>
                                   )}
                                   {currentBreach && breached === 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200 whitespace-nowrap">
+                                    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
                                       <i className="ri-alarm-warning-fill text-xs"></i> Overdue
                                     </span>
                                   )}
                                   {breached === 0 && !currentBreach && onTime > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                                    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                                       <i className="ri-checkbox-circle-fill text-xs"></i> On Track
                                     </span>
                                   )}
                                 </div>
                               )}
                             </td>
-                            <td className="px-5 py-4 whitespace-nowrap">
-                              <span className="text-sm text-gray-700">{pr.submittedDate || '—'}</span>
+                            <td className={`whitespace-nowrap ${midCell} text-sm text-slate-500 ${rowBorder}`}>
+                              {pr.submittedDate || '—'}
                             </td>
-                            <td className="px-5 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
+                            <td
+                              className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
                                 <button
+                                  type="button"
                                   onClick={() => toggleRow(pr.key)}
-                                  className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors whitespace-nowrap"
+                                  className="cursor-pointer rounded-xl bg-[#1E88E5] p-2 text-white transition-colors hover:bg-[#1565C0]"
+                                  title={open ? 'Hide details' : 'View details'}
                                 >
-                                  {expandedRow === pr.key ? 'Hide' : 'View Details'}
+                                  <i className="ri-eye-line"></i>
                                 </button>
                                 {(isAdminEditor ||
                                   pr.status === 'draft' ||
@@ -1242,9 +1276,11 @@ export default function TrackPRPage() {
                                     asText(pr.statusRaw).toUpperCase()
                                   )) && (
                                   <button
+                                    type="button"
                                     onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
-                                    className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                    className="inline-flex cursor-pointer items-center gap-1 rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
                                   >
+                                    <i className="ri-edit-line"></i>
                                     Edit
                                   </button>
                                 )}
@@ -1255,7 +1291,7 @@ export default function TrackPRPage() {
                                   <button
                                     type="button"
                                     onClick={() => void openAdminSendBack(pr)}
-                                    className="px-3 py-1.5 text-xs font-medium text-orange-700 border border-orange-300 rounded-md hover:bg-orange-50 transition-colors whitespace-nowrap"
+                                    className="cursor-pointer whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100"
                                     title="Send PR back to any previous workflow step"
                                   >
                                     Send Back
@@ -1266,7 +1302,7 @@ export default function TrackPRPage() {
                                     type="button"
                                     disabled={deletingId === pr.prId}
                                     onClick={() => void handleDeleteDraft(pr)}
-                                    className="px-3 py-1.5 text-xs font-medium text-rose-700 border border-rose-300 rounded-md hover:bg-rose-50 transition-colors whitespace-nowrap disabled:opacity-50"
+                                    className="cursor-pointer whitespace-nowrap rounded-xl bg-[#FFE4E6] px-2.5 py-1.5 text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
                                     title="Delete this draft"
                                   >
                                     {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
@@ -1277,7 +1313,7 @@ export default function TrackPRPage() {
                                     type="button"
                                     disabled={deletingId === pr.prId}
                                     onClick={() => void handleAdminDeletePr(pr)}
-                                    className="px-3 py-1.5 text-xs font-medium text-rose-700 border border-rose-300 rounded-md hover:bg-rose-50 transition-colors whitespace-nowrap disabled:opacity-50"
+                                    className="cursor-pointer whitespace-nowrap rounded-xl bg-[#FFE4E6] px-2.5 py-1.5 text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
                                     title="Permanently delete this purchase request"
                                   >
                                     {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
@@ -1298,7 +1334,7 @@ export default function TrackPRPage() {
                                           : `/scm/rfq-entry/${pr.prId}`
                                       )
                                     }
-                                    className="px-3 py-1.5 text-xs font-medium text-[#1565C0] border border-[#64B5F6] rounded-md hover:bg-[#E3F2FD] transition-colors whitespace-nowrap"
+                                    className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
                                     title="Edit RFQ amounts and quotation files"
                                   >
                                     Edit RFQ
@@ -1314,7 +1350,7 @@ export default function TrackPRPage() {
                                   <button
                                     type="button"
                                     onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
-                                    className="px-3 py-1.5 text-xs font-medium text-indigo-700 border border-indigo-300 rounded-md hover:bg-indigo-50 transition-colors whitespace-nowrap inline-flex items-center gap-1"
+                                    className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
                                     title={`View PO ${pr.poNumber || ''}`.trim()}
                                   >
                                     <i className="ri-file-pdf-2-line" />
@@ -1327,7 +1363,7 @@ export default function TrackPRPage() {
                                     .replace(/[\s-]+/g, '_') !== 'cloud_subscription' &&
                                   pr.poId ? (
                                   <span
-                                    className="px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-md whitespace-nowrap"
+                                    className="whitespace-nowrap rounded-xl bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-600"
                                     title="PO document available after SCM Buyer final verification"
                                   >
                                     {pr.statusUI || 'PO in progress'}
@@ -1339,11 +1375,13 @@ export default function TrackPRPage() {
 
                           {expandedRow === pr.key && (
                             <tr>
-                              <td colSpan={8} className="bg-gray-50 border-b border-gray-200">
+                              <td colSpan={8} className="max-w-0 bg-transparent p-0">
                                 {expandLoadingKey === pr.key && (
-                                  <div className="px-6 py-3 text-xs text-gray-500">Loading PR details…</div>
+                                  <div className="px-4 py-2 text-xs text-slate-500">Loading PR details…</div>
                                 )}
-                                <div className="px-6 py-6">
+                                <div className={`${softCard} my-1 px-4 py-4 sm:px-5 sm:py-5`}>
+                                  <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                  <div className="relative z-[1]">
                                   {(() => {
                                     const prDocCount = pr.attachments?.length || 0;
                                     const hasSassInvoice = Boolean(pr.sassInvoice?.hasFile && pr.sassInvoice?.id);
@@ -1356,29 +1394,29 @@ export default function TrackPRPage() {
                                     return (
                                       <>
                                         {showDocumentsTab ? (
-                                          <div className="mb-4 flex border-b border-gray-200 bg-white rounded-t-lg overflow-x-auto">
+                                          <div className="mb-4 flex flex-wrap gap-2">
                                             <button
                                               type="button"
                                               onClick={() => setExpandTab('overview')}
-                                              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                                              className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all ${
                                                 activeTab === 'overview'
-                                                  ? 'border-[#1E88E5] text-[#1565C0]'
-                                                  : 'border-transparent text-gray-500 hover:text-gray-800'
+                                                  ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                                                  : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
                                               }`}
                                             >
-                                              <i className="ri-information-line"></i>
+                                              <i className="ri-information-line mr-1"></i>
                                               Overview
                                             </button>
                                             <button
                                               type="button"
                                               onClick={() => setExpandTab('documents')}
-                                              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                                              className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all ${
                                                 activeTab === 'documents'
-                                                  ? 'border-[#1E88E5] text-[#1565C0]'
-                                                  : 'border-transparent text-gray-500 hover:text-gray-800'
+                                                  ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                                                  : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
                                               }`}
                                             >
-                                              <i className="ri-file-list-3-line"></i>
+                                              <i className="ri-file-list-3-line mr-1"></i>
                                               Documents ({docCount})
                                             </button>
                                           </div>
@@ -1449,85 +1487,50 @@ export default function TrackPRPage() {
                                         ) : (
                                   <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                                     <div className="lg:col-span-2 space-y-4">
-                                      <div className="bg-white rounded-lg border border-gray-200 p-4">
-                                        <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                                          PR Details
-                                        </h3>
-                                        <div className="grid grid-cols-2 gap-3">
-                                          <div>
-                                            <p className="text-xs text-gray-400 mb-0.5">PR Number</p>
-                                            <p className="text-sm font-medium text-gray-900">
-                                              {pr.id}
-                                            </p>
+                                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        {[
+                                          ['PR Number', pr.id],
+                                          ['Department', pr.department || '—'],
+                                          ['Request Type', pr.requestType || '—'],
+                                          ['Request Category', pr.requestCategory || '—'],
+                                          ['Required Date', pr.requiredDate || '—'],
+                                          ['Total Amount', formatCurrency(pr.amount)],
+                                        ].map(([label, value]) => (
+                                          <div key={label} className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]">
+                                            <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                            <div className="relative z-[1]">
+                                              <p className={softLabel}>{label}</p>
+                                              <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">{value}</p>
+                                            </div>
                                           </div>
-                                          <div>
-                                            <p className="text-xs text-gray-400 mb-0.5">
-                                              Department
-                                            </p>
-                                            <p className="text-sm font-medium text-gray-900">
-                                              {pr.department}
-                                            </p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-400 mb-0.5">
-                                              Request Type
-                                            </p>
-                                            <p className="text-sm font-medium text-gray-900">
-                                              {pr.requestType}
-                                            </p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-400 mb-0.5">
-                                              Request Category
-                                            </p>
-                                            <p className="text-sm font-medium text-gray-900">
-                                              {pr.requestCategory || '—'}
-                                            </p>
-                                          </div>
-                                          <div className="col-span-2">
-                                            <p className="text-xs text-gray-400 mb-0.5">
-                                              Project Detail
-                                            </p>
-                                            <p className="text-sm font-medium text-gray-900">
-                                              {pr.projectDetail || '—'}
-                                            </p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-400 mb-0.5">
-                                              Required Date
-                                            </p>
-                                            <p className="text-sm font-medium text-gray-900">
-                                              {pr.requiredDate}
-                                            </p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-400 mb-0.5">
-                                              Total Amount
-                                            </p>
-                                            <p className="text-sm font-semibold text-gray-900">
-                                              {formatCurrency(pr.amount)}
-                                            </p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-400 mb-0.5">Priority</p>
-                                            <PriorityBadge priority={pr.priority} />
+                                        ))}
+                                        <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2">
+                                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                          <div className="relative z-[1]">
+                                            <p className={softLabel}>Project Detail</p>
+                                            <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">{pr.projectDetail || '—'}</p>
                                           </div>
                                         </div>
-                                        <div className="mt-3 pt-3 border-t border-gray-100">
-                                          <p className="text-xs text-gray-400 mb-1">
-                                            Business Justification
-                                          </p>
-                                          <p className="text-xs text-gray-700 leading-relaxed">
-                                            {pr.justification}
-                                          </p>
+                                        <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]">
+                                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                          <div className="relative z-[1]">
+                                            <p className={softLabel}>Priority</p>
+                                            <div className="mt-1.5"><PriorityBadge priority={pr.priority} /></div>
+                                          </div>
                                         </div>
-                                        <div className="mt-3 pt-3 border-t border-gray-100">
-                                          <p className="text-xs text-gray-400 mb-1">
-                                            Special Notes
-                                          </p>
-                                          <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
-                                            {pr.specialNotes || '—'}
-                                          </p>
+                                        <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2">
+                                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                          <div className="relative z-[1]">
+                                            <p className={softLabel}>Business Justification</p>
+                                            <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{pr.justification || '—'}</p>
+                                          </div>
+                                        </div>
+                                        <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2">
+                                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                          <div className="relative z-[1]">
+                                            <p className={softLabel}>Special Notes</p>
+                                            <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{pr.specialNotes || '—'}</p>
+                                          </div>
                                         </div>
                                       </div>
 
@@ -1543,32 +1546,33 @@ export default function TrackPRPage() {
                                           />
                                         )}
 
-                                      <div className="bg-white rounded-lg border border-gray-200 p-4">
-                                        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                                      <div>
+                                        <h3 className={`${softLabel} mb-2 px-0.5`}>
                                           Line Items ({pr.lineItems.length})
                                         </h3>
                                         {pr.lineItems.length === 0 ? (
-                                          <p className="text-xs text-gray-500">No line items</p>
+                                          <p className="text-xs text-slate-500">No line items</p>
                                         ) : (
                                           <div className="space-y-2">
                                             {pr.lineItems.map((item, idx) => (
                                               <div
                                                 key={idx}
-                                                className="flex items-start justify-between p-2.5 bg-gray-50 rounded-lg"
+                                                className="relative flex items-start justify-between overflow-hidden rounded-2xl bg-white p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]"
                                               >
-                                                <div className="flex-1">
-                                                  <p className="text-xs font-medium text-gray-900">
+                                                <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                                <div className="relative z-[1] min-w-0 flex-1">
+                                                  <p className="text-sm font-semibold text-[#2C3E50]">
                                                     {item.description}
                                                   </p>
-                                                  <p className="text-xs text-gray-400 mt-0.5">
+                                                  <p className="mt-0.5 text-xs text-slate-500">
                                                     {item.category} · {item.quantity} units
                                                   </p>
                                                 </div>
-                                                <div className="text-right ml-3">
-                                                  <p className="text-xs font-semibold text-gray-900">
+                                                <div className="relative z-[1] ml-3 text-right">
+                                                  <p className="text-sm font-bold tabular-nums text-[#2C3E50]">
                                                     {formatCurrency(item.total)}
                                                   </p>
-                                                  <p className="text-xs text-gray-400">
+                                                  <p className="text-xs text-slate-400">
                                                     @{formatCurrency(item.unitCost)}
                                                   </p>
                                                 </div>
@@ -1599,13 +1603,14 @@ export default function TrackPRPage() {
                                     </div>
 
                                     <div className="lg:col-span-3">
-                                      <div className="bg-white rounded-lg border border-gray-200 p-5">
-                                        <div className="flex items-center justify-between mb-5">
+                                      <div className="relative overflow-hidden rounded-2xl bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:p-5">
+                                        <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                        <div className="relative z-[1] mb-5 flex flex-wrap items-center justify-between gap-3">
                                           <div>
-                                            <h3 className="text-sm font-semibold text-gray-900">
+                                            <h3 className="text-sm font-semibold text-[#2C3E50]">
                                               Approval Workflow & SLA Tracking
                                             </h3>
-                                            <p className="text-xs text-gray-400 mt-0.5">
+                                            <p className="mt-0.5 text-xs text-slate-400">
                                               SLA Target: 1 business day per approval stage
                                             </p>
                                           </div>
@@ -1632,7 +1637,7 @@ export default function TrackPRPage() {
                                           </div>
                                         </div>
 
-                                        <div className="space-y-0">
+                                        <div className="relative z-[1] space-y-0">
                                           {pr.approvalHistory.map((stage, idx) => {
                                             const isLast = idx === pr.approvalHistory.length - 1;
                                             const sla = stage.sla;
@@ -1654,7 +1659,7 @@ export default function TrackPRPage() {
                                                   className={`flex-1 pb-5 ${isLast ? 'pb-0' : ''}`}
                                                 >
                                                   <div
-                                                    className={`rounded-lg border p-3.5 ${
+                                                    className={`rounded-2xl border p-3.5 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.12)] ${
                                                       stage.status === 'current' &&
                                                       sla.slaStatus === 'breached'
                                                         ? 'border-red-200 bg-red-50'
@@ -1798,6 +1803,7 @@ export default function TrackPRPage() {
                                       </>
                                     );
                                   })()}
+                                  </div>
                                 </div>
                               </td>
                             </tr>
@@ -1810,35 +1816,38 @@ export default function TrackPRPage() {
               </div>
 
               {totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                  <p className="text-sm text-gray-600">
+                <div className="relative z-[1] flex flex-col gap-3 border-t border-slate-100/80 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-slate-500">
                     Page {currentPage} of {totalPages}
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
+                      type="button"
                       onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                       disabled={currentPage === 1}
-                      className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                      className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Previous
                     </button>
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                       <button
                         key={page}
+                        type="button"
                         onClick={() => setCurrentPage(page)}
-                        className={`w-9 h-9 text-sm font-medium rounded-lg transition-colors ${
+                        className={`flex h-8 min-w-[2rem] cursor-pointer items-center justify-center rounded-xl text-xs font-semibold ${
                           currentPage === page
-                            ? 'bg-gray-900 text-white'
-                            : 'text-gray-700 hover:bg-gray-100'
+                            ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                            : 'border border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]'
                         }`}
                       >
                         {page}
                       </button>
                     ))}
                     <button
+                      type="button"
                       onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                      className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Next
                     </button>
@@ -1847,12 +1856,12 @@ export default function TrackPRPage() {
               )}
 
               {!loading && paginatedData.length === 0 && (
-                <div className="px-6 py-12 text-center">
-                  <i className="ri-file-list-3-line text-5xl text-gray-300 mb-4"></i>
-                  <h3 className="text-sm font-medium text-gray-900 mb-1">
+                <div className="relative z-[1] px-6 py-12 text-center">
+                  <i className="ri-file-list-3-line mb-4 text-5xl text-slate-200"></i>
+                  <h3 className="mb-1 text-sm font-medium text-slate-800">
                     No purchase requisitions found for you
                   </h3>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-slate-500">
                     Only PRs you requested, approved, or were involved in are shown here
                   </p>
                 </div>
@@ -1860,6 +1869,7 @@ export default function TrackPRPage() {
             </>
           )}
         </div>
+      </div>
       </div>
 
       {sendBackModal && (

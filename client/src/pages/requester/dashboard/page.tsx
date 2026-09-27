@@ -633,7 +633,7 @@ export default function RequesterDashboard() {
                   <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-5 pr-4 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px]">
                     PR Number
                   </th>
-                  <th className="whitespace-nowrap px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px]">
+                  <th className="w-[240px] max-w-[240px] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px]">
                     PR Title
                   </th>
                   <th className="whitespace-nowrap px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px]">
@@ -669,11 +669,14 @@ export default function RequesterDashboard() {
                         {request.id}
                       </div>
                     </td>
-                    <td className="border border-x-0 border-transparent bg-white px-3 py-4 align-middle transition-[border-color] group-hover:border-[#90CAF9] sm:py-5">
-                      <p className="whitespace-nowrap text-sm font-semibold text-[#2C3E50]">
+                    <td
+                      className="w-[240px] max-w-[240px] border border-x-0 border-transparent bg-white px-3 py-4 align-middle transition-[border-color] group-hover:border-[#90CAF9] sm:py-5"
+                      title={request.title}
+                    >
+                      <p className="truncate text-sm font-semibold text-[#2C3E50]">
                         {request.title}
                       </p>
-                      <p className="mt-1 whitespace-nowrap text-xs text-slate-500">
+                      <p className="mt-1 truncate text-xs text-slate-500">
                         {request.items} items · {request.requestType}
                       </p>
                     </td>
