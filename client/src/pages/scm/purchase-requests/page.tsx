@@ -5,6 +5,7 @@ import { poApi, rfqApi, PostRfqPendingItem, ScmRfqEntryItem } from '../../../ser
 import { finalizeGoPo, rfqEntryPath } from '../../../utils/scmGoPo';
 import { PM_BTN_PRIMARY, PM_BTN_SECONDARY, PM_PAGE_BG } from '../../../constants/pmTheme';
 import { useAuth } from '../../../contexts/AuthContext';
+import FinancialInsightsDashboard from '../../dashboard/page';
 
 type DashTask = {
   id: string;
@@ -48,6 +49,7 @@ export default function SCMPurchaseRequestsPage() {
   const [acceptanceTasks, setAcceptanceTasks] = useState<DashTask[]>([]);
   const [goPoPrId, setGoPoPrId] = useState<number | null>(null);
   const [goPoError, setGoPoError] = useState('');
+  const [showDetailedView, setShowDetailedView] = useState(false);
 
   const loadQueues = useCallback(async () => {
     try {
@@ -219,6 +221,18 @@ export default function SCMPurchaseRequestsPage() {
     },
   ];
 
+  if (showDetailedView) {
+    return (
+      <DashboardLayout>
+        <FinancialInsightsDashboard
+          embedded
+          backLabel="Back to SCM Buyer Dashboard"
+          onBack={() => setShowDetailedView(false)}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
@@ -237,10 +251,18 @@ export default function SCMPurchaseRequestsPage() {
               <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-end">
                 <button
                   type="button"
+                  onClick={() => setShowDetailedView(true)}
+                  className={PM_BTN_PRIMARY}
+                >
+                  <i className="ri-bar-chart-box-line"></i>
+                  Detailed view
+                </button>
+                <button
+                  type="button"
                   onClick={() => navigate('/rfq-approval')}
                   className={PM_BTN_SECONDARY}
                 >
-                  <i className="ri-bar-chart-box-line"></i>
+                  <i className="ri-file-list-3-line"></i>
                   RFQ Approval
                 </button>
                 <button

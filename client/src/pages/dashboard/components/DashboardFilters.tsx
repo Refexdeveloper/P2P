@@ -28,7 +28,7 @@ const EMPTY: DashboardFiltersValue = {
 };
 
 const fieldClass =
-  'h-11 px-3 border border-[#E6E8F0] rounded-2xl bg-white text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400';
+  'h-11 px-3 border border-slate-200 rounded-2xl bg-white text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]';
 
 const PO_STATUSES = [
   { value: '', label: 'All statuses' },
@@ -298,7 +298,15 @@ export default function DashboardFilters({
 
       {sheet}
 
-      <div className="mb-5 hidden overflow-visible rounded-[16px] border border-[#EEF0F5] bg-white px-4 py-3 min-[992px]:block">
+      <div className="relative mb-5 hidden overflow-visible rounded-2xl border border-transparent bg-white px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] min-[992px]:block">
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+          }}
+        />
+        <div className="relative z-[1]">
       <div className="flex items-end gap-3 flex-wrap">
         <PeriodPicker
           dateFrom={value.dateFrom}
@@ -359,7 +367,7 @@ export default function DashboardFilters({
           <button
             type="button"
             onClick={() => setMoreOpen((v) => !v)}
-            className="h-11 px-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-indigo-600 hover:bg-indigo-50 rounded-2xl whitespace-nowrap"
+            className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-2xl px-3 text-[13px] font-semibold text-[#1E88E5] hover:bg-[#E3F2FD]"
           >
             <i className="ri-filter-3-line"></i>
             More Filters{extraCount ? ` (${extraCount})` : ''}
@@ -437,7 +445,7 @@ export default function DashboardFilters({
                     onChange(draft);
                     setMoreOpen(false);
                   }}
-                  className="h-9 px-4 text-[12px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+                  className="h-9 rounded-lg bg-[#1E88E5] px-4 text-[12px] font-semibold text-white hover:bg-[#1565C0]"
                 >
                   Apply Filters
                 </button>
@@ -445,6 +453,7 @@ export default function DashboardFilters({
             </div>
           ) : null}
         </div>
+      </div>
       </div>
       </div>
     </>

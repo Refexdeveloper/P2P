@@ -263,7 +263,7 @@ export default function PeriodPicker({
                     }
                   }}
                   className={`w-full h-9 rounded-xl text-[12px] font-semibold text-white ${
-                    themeAccent ? 'hover:opacity-90' : 'bg-indigo-600 hover:bg-indigo-700'
+                    themeAccent ? 'hover:opacity-90' : 'bg-[#1E88E5] hover:bg-[#1565C0]'
                   }`}
                   style={themeAccent ? { background: BRAND_PRIMARY_GRADIENT } : undefined}
                 >
@@ -336,16 +336,14 @@ export default function PeriodPicker({
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`h-11 ${fullWidth ? 'w-full' : 'min-w-[168px]'} px-2.5 inline-flex items-center gap-2 bg-white border border-[#E6E8F0] rounded-2xl text-[13px] font-medium text-slate-800 ${
-          themeAccent ? 'hover:border-[rgba(244,85,59,0.45)]' : 'hover:border-indigo-200'
-        }`}
+        className={`h-11 ${fullWidth ? 'w-full' : 'min-w-[168px]'} px-2.5 inline-flex items-center gap-2 bg-white border border-[#E6E8F0] rounded-2xl text-[13px] font-medium text-slate-800 hover:border-[#90CAF9]`}
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label={hideLabel ? 'Period' : undefined}
       >
         <span
           className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-            themeAccent ? '' : 'bg-[#EEF3FF] text-indigo-600'
+            themeAccent ? '' : 'bg-[#E3F2FD] text-[#1E88E5]'
           }`}
           style={
             themeAccent

@@ -8,6 +8,7 @@ import DashboardFilters, { DashboardFiltersValue, EMPTY_DASHBOARD_FILTERS } from
 import { useAuth } from '../../contexts/AuthContext';
 import { masterApi, poApi } from '../../services/api';
 import { getUserDesignation } from '../../utils/roleDisplay';
+import { PM_PAGE_BG } from '../../constants/pmTheme';
 import { parseLooseDate } from './cfoFormat';
 
 type Insights = Awaited<ReturnType<typeof poApi.cfoInsights>>['data'];
@@ -74,9 +75,11 @@ function greetingForNow() {
 export default function Dashboard({
   embedded = false,
   onBack,
+  backLabel = 'Back to dashboard',
 }: {
   embedded?: boolean;
   onBack?: () => void;
+  backLabel?: string;
 } = {}) {
   const { user } = useAuth();
   const [data, setData] = useState<Insights>(EMPTY);
@@ -289,17 +292,17 @@ export default function Dashboard({
   }, [entities, data.entityWisePOSummary, lockedEntityId, user?.entityName]);
 
   const content = (
-      <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full bg-[#F3F6FB] px-4 sm:px-6 lg:px-7 py-6 font-sans`} style={{ background: 'linear-gradient(165deg, #EEF4FF 0%, #F3F6FB 42%, #F3F6FB 100%)' }}>
+      <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full px-4 py-6 font-sans text-[#0F172A] sm:px-6 lg:px-7`} style={{ background: PM_PAGE_BG }}>
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
           <div>
             {embedded && onBack ? (
               <button
                 type="button"
                 onClick={onBack}
-                className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800"
+                className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-[#1E88E5] hover:text-[#1565C0]"
               >
                 <i className="ri-arrow-left-line"></i>
-                Back to SCM Manager Dashboard
+                {backLabel}
               </button>
             ) : null}
             <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">
@@ -315,7 +318,7 @@ export default function Dashboard({
             <button
               type="button"
               onClick={handleExport}
-              className="h-10 px-4 inline-flex items-center gap-2 text-sm font-medium text-indigo-600 bg-white border border-[#E6E8F0] rounded-xl hover:bg-indigo-50 transition-colors"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-transparent bg-white px-4 text-sm font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-colors hover:border-[#90CAF9]"
             >
               <i className="ri-download-2-line"></i>
               Export
@@ -323,7 +326,7 @@ export default function Dashboard({
             <button
               type="button"
               onClick={() => setCustomizeOpen((v) => !v)}
-              className="h-10 px-4 inline-flex items-center gap-2 text-sm font-semibold text-white bg-[#6366F1] hover:bg-indigo-600 rounded-xl shadow-[0_4px_12px_rgba(99,102,241,0.35)] transition-colors"
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1E88E5] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1565C0]"
             >
               <i className="ri-settings-3-line"></i>
               Customize
@@ -395,7 +398,7 @@ export default function Dashboard({
         ) : null}
 
         <div className="flex items-center justify-center gap-2 text-[12px] text-slate-400 pt-2 pb-4">
-          <button type="button" onClick={() => void load()} className="hover:text-indigo-600" title="Refresh">
+          <button type="button" onClick={() => void load()} className="hover:text-[#1E88E5]" title="Refresh">
             <i className="ri-refresh-line"></i>
           </button>
           <span>{updatedLabel}</span>

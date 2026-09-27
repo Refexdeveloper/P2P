@@ -167,6 +167,7 @@ export default function ScmManagerDashboardPage() {
       <DashboardLayout>
         <FinancialInsightsDashboard
           embedded
+          backLabel="Back to SCM Manager Dashboard"
           onBack={() => setShowDetailedView(false)}
         />
       </DashboardLayout>
