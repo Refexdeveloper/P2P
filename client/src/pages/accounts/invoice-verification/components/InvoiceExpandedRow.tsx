@@ -187,7 +187,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
           const meta = kindMeta(file.kind);
           const tone =
             meta.tone === 'teal'
-              ? 'bg-teal-50 text-teal-700 border-teal-200'
+              ? 'bg-[#E3F2FD] text-[#1565C0] border-[#90CAF9]'
               : meta.tone === 'sky'
                 ? 'bg-sky-50 text-sky-800 border-sky-200'
                 : meta.tone === 'amber'
@@ -220,7 +220,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
                   type="button"
                   disabled={openingKey === file.key}
                   onClick={() => void openFile(file, false)}
-                  className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 disabled:opacity-50 whitespace-nowrap"
+                  className="px-3 py-1.5 text-xs font-semibold text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] disabled:opacity-50 whitespace-nowrap"
                 >
                   {openingKey === file.key ? 'Opening…' : 'View'}
                 </button>
@@ -289,7 +289,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <p className="text-xs text-gray-500 mb-1">{isSass ? 'PR / Cloud Amount' : 'PO Amount'}</p>
-          <p className={`text-base font-bold ${invoice.invoiceGrandTotal === invoice.poGrandTotal ? 'text-teal-600' : 'text-red-600'}`}>
+          <p className={`text-base font-bold ${invoice.invoiceGrandTotal === invoice.poGrandTotal ? 'text-[#1E88E5]' : 'text-red-600'}`}>
             ₹{invoice.poGrandTotal.toLocaleString('en-IN')}
           </p>
           <p className="text-xs text-gray-400">{invoice.poNumber}</p>
@@ -303,7 +303,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
             </>
           ) : (
             <>
-              <p className={`text-base font-bold ${invoice.grnReceivedValue === invoice.invoiceGrandTotal ? 'text-teal-600' : 'text-red-600'}`}>
+              <p className={`text-base font-bold ${invoice.grnReceivedValue === invoice.invoiceGrandTotal ? 'text-[#1E88E5]' : 'text-red-600'}`}>
                 ₹{invoice.grnReceivedValue.toLocaleString('en-IN')}
               </p>
               <p className="text-xs text-gray-400">{invoice.grnNumber || '—'}</p>
@@ -316,9 +316,9 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
             {invoice.matchStatus.overallMatch ? (
               <>
                 <div className="w-5 h-5 flex items-center justify-center">
-                  <i className="ri-checkbox-circle-fill text-teal-500 text-lg"></i>
+                  <i className="ri-checkbox-circle-fill text-[#1E88E5] text-lg"></i>
                 </div>
-                <span className="text-sm font-semibold text-teal-600">Full Match</span>
+                <span className="text-sm font-semibold text-[#1E88E5]">Full Match</span>
               </>
             ) : (
               <>
@@ -364,18 +364,18 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
               <div
                 key={check.label}
                 className={`rounded-lg border p-3 sm:p-4 flex items-center gap-3 min-w-0 ${
-                  check.ok ? 'bg-teal-50 border-teal-200' : 'bg-red-50 border-red-200'
+                  check.ok ? 'bg-[#E3F2FD] border-[#90CAF9]' : 'bg-red-50 border-red-200'
                 }`}
               >
                 <div className="w-8 h-8 flex items-center justify-center shrink-0">
                   <i
                     className={`text-2xl ${
-                      check.ok ? 'ri-checkbox-circle-fill text-teal-500' : 'ri-close-circle-fill text-red-500'
+                      check.ok ? 'ri-checkbox-circle-fill text-[#1E88E5]' : 'ri-close-circle-fill text-red-500'
                     }`}
                   ></i>
                 </div>
                 <div className="min-w-0">
-                  <p className={`text-sm font-semibold ${check.ok ? 'text-teal-700' : 'text-red-700'}`}>
+                  <p className={`text-sm font-semibold ${check.ok ? 'text-[#1565C0]' : 'text-red-700'}`}>
                     {check.label}
                   </p>
                   <p className="text-xs text-gray-500 break-words">{check.desc}</p>
@@ -413,7 +413,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
                 <button
                   type="button"
                   onClick={() => setTab('files')}
-                  className="text-xs font-semibold text-teal-700 hover:underline"
+                  className="text-xs font-semibold text-[#1565C0] hover:underline"
                 >
                   Open files tab
                 </button>
@@ -480,7 +480,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
             {invoice.status === 'Pending Manager Approval' && (
               <button
                 onClick={() => onAction('manager_approve', invoice)}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-teal-600 text-white text-sm font-medium rounded-lg hover:from-blue-700 hover:to-teal-700 transition-colors cursor-pointer whitespace-nowrap flex items-center space-x-2"
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-[#1E88E5] text-white text-sm font-medium rounded-lg hover:from-blue-700 hover:to-[#1565C0] transition-colors cursor-pointer whitespace-nowrap flex items-center space-x-2"
               >
                 <div className="w-4 h-4 flex items-center justify-center">
                   <i className="ri-user-star-line text-sm"></i>
@@ -491,7 +491,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
             {(invoice.status === 'Pending Verification' || invoice.status === 'Matched') && (
               <button
                 onClick={() => onAction('approve', invoice)}
-                className="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap flex items-center space-x-2"
+                className="px-4 py-2 bg-[#1E88E5] text-white text-sm font-medium rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap flex items-center space-x-2"
               >
                 <div className="w-4 h-4 flex items-center justify-center">
                   <i className="ri-checkbox-circle-line text-sm"></i>
@@ -565,7 +565,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
                   <td className="px-3 py-3 text-center">
                     <div className="flex justify-center">
                       {item.qtyMatch ? (
-                        <i className="ri-checkbox-circle-fill text-teal-500 text-base"></i>
+                        <i className="ri-checkbox-circle-fill text-[#1E88E5] text-base"></i>
                       ) : (
                         <i className="ri-close-circle-fill text-red-500 text-base"></i>
                       )}
@@ -574,7 +574,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
                   <td className="px-3 py-3 text-center">
                     <div className="flex justify-center">
                       {item.priceMatch ? (
-                        <i className="ri-checkbox-circle-fill text-teal-500 text-base"></i>
+                        <i className="ri-checkbox-circle-fill text-[#1E88E5] text-base"></i>
                       ) : (
                         <i className="ri-close-circle-fill text-red-500 text-base"></i>
                       )}
@@ -583,7 +583,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
                   <td className="px-3 py-3 text-center">
                     <div className="flex justify-center">
                       {isSass || item.grnMatch ? (
-                        <i className="ri-checkbox-circle-fill text-teal-500 text-base"></i>
+                        <i className="ri-checkbox-circle-fill text-[#1E88E5] text-base"></i>
                       ) : (
                         <i className="ri-close-circle-fill text-red-500 text-base"></i>
                       )}
@@ -612,8 +612,8 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
           {invoice.approvalHistory.map((h, i) => (
             <div key={i} className="flex items-start space-x-3">
               <div className="flex flex-col items-center">
-                <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center">
-                  <i className="ri-user-line text-teal-600 text-sm"></i>
+                <div className="w-8 h-8 bg-[#E3F2FD] rounded-full flex items-center justify-center">
+                  <i className="ri-user-line text-[#1E88E5] text-sm"></i>
                 </div>
                 {i < invoice.approvalHistory.length - 1 && (
                   <div className="w-0.5 h-6 bg-gray-200 mt-1"></div>

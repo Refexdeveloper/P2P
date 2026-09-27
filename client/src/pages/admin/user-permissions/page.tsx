@@ -255,13 +255,13 @@ export default function UserPermissionsPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search users..."
-                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
                 />
               </div>
               <select
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
               >
                 <option value="">All roles</option>
                 {roles.map((r) => (
@@ -283,7 +283,7 @@ export default function UserPermissionsPage() {
                   type="button"
                   onClick={() => setSelectedUserId(u.id)}
                   className={`w-full text-left px-5 py-4 hover:bg-gray-50 transition-colors cursor-pointer ${
-                    selectedUserId === u.id ? 'bg-teal-50 border-l-4 border-teal-600' : ''
+                    selectedUserId === u.id ? 'bg-[#E3F2FD] border-l-4 border-[#1E88E5]' : ''
                   }`}
                 >
                   <p className="text-sm font-semibold text-gray-900">{u.name}</p>
@@ -302,7 +302,7 @@ export default function UserPermissionsPage() {
                         {u.entityCode || u.entityName}
                       </span>
                     ) : null}
-                    <span className="text-xs text-teal-600">{u.permissions.length} menus</span>
+                    <span className="text-xs text-[#1E88E5]">{u.permissions.length} menus</span>
                   </div>
                 </button>
               ))}
@@ -314,7 +314,7 @@ export default function UserPermissionsPage() {
                 type="button"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="text-xs font-medium text-teal-700 disabled:text-gray-300 cursor-pointer"
+                className="text-xs font-medium text-[#1565C0] disabled:text-gray-300 cursor-pointer"
               >
                 Previous
               </button>
@@ -325,7 +325,7 @@ export default function UserPermissionsPage() {
                 type="button"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="text-xs font-medium text-teal-700 disabled:text-gray-300 cursor-pointer"
+                className="text-xs font-medium text-[#1565C0] disabled:text-gray-300 cursor-pointer"
               >
                 Next
               </button>
@@ -358,7 +358,7 @@ export default function UserPermissionsPage() {
                     type="button"
                     onClick={handleSave}
                     disabled={saving || !hasChanges}
-                    className="px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50 cursor-pointer flex items-center gap-2 shrink-0"
+                    className="px-5 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-lg hover:bg-[#1565C0] disabled:opacity-50 cursor-pointer flex items-center gap-2 shrink-0"
                   >
                     <i className="ri-save-line"></i>
                     {saving ? 'Saving...' : 'Save Changes'}
@@ -381,7 +381,7 @@ export default function UserPermissionsPage() {
                           showToast(`Menus updated for role: ${nextRole}`, 'success');
                         }
                       }}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
                     >
                       {roles.map((r) => (
                         <option key={r.role} value={r.role}>
@@ -399,7 +399,7 @@ export default function UserPermissionsPage() {
                       onChange={(e) =>
                         setSelectedEntityId(e.target.value ? Number(e.target.value) : '')
                       }
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
                     >
                       <option value="">All entities (no filter)</option>
                       {entityOptions.map((e) => (
@@ -416,7 +416,7 @@ export default function UserPermissionsPage() {
                   <button
                     type="button"
                     onClick={applyRoleDefaults}
-                    className="px-4 py-2.5 border border-teal-200 text-teal-700 text-sm font-medium rounded-lg hover:bg-teal-50 cursor-pointer flex items-center gap-2"
+                    className="px-4 py-2.5 border border-[#90CAF9] text-[#1565C0] text-sm font-medium rounded-lg hover:bg-[#E3F2FD] cursor-pointer flex items-center gap-2"
                   >
                     <i className="ri-refresh-line"></i>
                     Apply role default menus
@@ -452,18 +452,18 @@ export default function UserPermissionsPage() {
                           <label
                             key={item.code}
                             className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                              checked ? 'border-teal-300 bg-teal-50/60' : 'border-gray-200 hover:bg-gray-50'
+                              checked ? 'border-[#64B5F6] bg-[#E3F2FD]/60' : 'border-gray-200 hover:bg-gray-50'
                             }`}
                           >
                             <input
                               type="checkbox"
                               checked={checked}
                               onChange={() => togglePerm(item.code)}
-                              className="mt-0.5 text-teal-600 rounded"
+                              className="mt-0.5 text-[#1E88E5] rounded"
                             />
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
-                                <i className={`${item.icon} text-teal-600`}></i>
+                                <i className={`${item.icon} text-[#1E88E5]`}></i>
                                 {item.label}
                               </p>
                               <p className="text-xs text-gray-400 truncate">{item.path}</p>

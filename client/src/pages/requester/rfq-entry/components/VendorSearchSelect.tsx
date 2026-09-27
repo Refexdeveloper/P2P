@@ -117,7 +117,7 @@ export default function VendorSearchSelect({
     <div ref={rootRef} className="relative flex-1 min-w-0">
       <div
         className={`flex items-center gap-2 h-11 px-3 border rounded-xl bg-white ${
-          open ? 'border-teal-500 ring-2 ring-teal-500/20' : 'border-gray-300'
+          open ? 'border-[#1E88E5] ring-2 ring-[#1E88E5]/20' : 'border-gray-300'
         }`}
       >
         <i className="ri-search-line text-gray-400 shrink-0" />
@@ -189,7 +189,7 @@ export default function VendorSearchSelect({
                     taken
                       ? 'opacity-50 cursor-not-allowed bg-gray-50'
                       : active
-                        ? 'bg-teal-50'
+                        ? 'bg-[#E3F2FD]'
                         : 'hover:bg-gray-50'
                   }`}
                 >
@@ -205,7 +205,7 @@ export default function VendorSearchSelect({
                         Already added
                       </span>
                     ) : String(v.id) === String(value) ? (
-                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">
+                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#1565C0] bg-[#E3F2FD] px-1.5 py-0.5 rounded">
                         Selected
                       </span>
                     ) : null}
@@ -221,10 +221,10 @@ export default function VendorSearchSelect({
                 onRequestCreate(typed);
                 setOpen(false);
               }}
-              className="w-full text-left px-3 py-3 border-t border-teal-100 bg-teal-50/80 hover:bg-teal-50 flex items-center gap-2"
+              className="w-full text-left px-3 py-3 border-t border-[#BBDEFB] bg-[#E3F2FD]/80 hover:bg-[#E3F2FD] flex items-center gap-2"
             >
-              <i className="ri-user-add-line text-teal-700" />
-              <span className="text-sm font-semibold text-teal-800">
+              <i className="ri-user-add-line text-[#1565C0]" />
+              <span className="text-sm font-semibold text-[#1565C0]">
                 {typed ? `Add “${typed}” as new vendor` : 'Vendor not in list? Add new'}
               </span>
             </button>

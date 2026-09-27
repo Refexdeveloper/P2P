@@ -119,12 +119,12 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
 
   return (
     <tr>
-      <td colSpan={8} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
+      <td colSpan={8} className="px-0 py-0 bg-slate-50 border-b border-[#90CAF9]">
         <div className="mx-4 my-4 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gradient-to-r from-[#E3F2FD] to-white border-b border-gray-100">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center shrink-0">
-                <i className="ri-file-text-line text-teal-600 text-lg"></i>
+              <div className="w-10 h-10 bg-[#E3F2FD] rounded-lg flex items-center justify-center shrink-0">
+                <i className="ri-file-text-line text-[#1E88E5] text-lg"></i>
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-bold text-gray-900">{po.poNumber}</p>
@@ -137,7 +137,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
               <button
                 type="button"
                 onClick={onViewPdf}
-                className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
+                className="px-3 py-1.5 text-xs font-semibold text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg"
               >
                 <i className="ri-file-pdf-line mr-1"></i> Signed PO
               </button>
@@ -148,7 +148,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                     disabled={busy}
                     onClick={onSendMail}
                     title="Email requester to upload Vendor Signed PO (CC: L1, SCM Manager, user approvers)"
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg disabled:opacity-50"
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] rounded-lg disabled:opacity-50"
                   >
                     Send Mail
                   </button>
@@ -186,7 +186,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                 onClick={() => setActiveTab(tab.key as typeof activeTab)}
                 className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 whitespace-nowrap ${
                   activeTab === tab.key
-                    ? 'border-teal-600 text-teal-600'
+                    ? 'border-[#1E88E5] text-[#1E88E5]'
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
@@ -214,7 +214,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                 </div>
 
                 <div className="lg:col-span-2 space-y-4">
-                  <div className="bg-teal-50 border border-teal-100 rounded-lg p-4">
+                  <div className="bg-[#E3F2FD] border border-[#BBDEFB] rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Vendor</h4>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
@@ -285,7 +285,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                     </div>
                     <div className="flex justify-between pt-2 border-t border-gray-200">
                       <span className="font-bold">Grand Total</span>
-                      <span className="font-bold text-teal-600">
+                      <span className="font-bold text-[#1E88E5]">
                         {formatCurrency(Number(po.grandTotal) || 0)}
                       </span>
                     </div>
@@ -377,22 +377,22 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                   <p className="font-medium">{po.vendorAcceptedAt || '—'}</p>
                 </div>
                 {completed ? (
-                  <div className="sm:col-span-2 rounded-xl border border-teal-200 bg-teal-50/60 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-2">
+                  <div className="sm:col-span-2 rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/60 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0] mb-2">
                       Vendor signed / acceptance file
                     </p>
                     {fileError ? <p className="text-xs text-red-600 mb-2">{fileError}</p> : null}
                     {po.vendorAcceptanceFileName ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-900 min-w-0">
-                          <i className="ri-file-pdf-2-line text-teal-700 shrink-0"></i>
+                          <i className="ri-file-pdf-2-line text-[#1565C0] shrink-0"></i>
                           <span className="truncate">{po.vendorAcceptanceFileName}</span>
                         </span>
                         <button
                           type="button"
                           disabled={openingFile}
                           onClick={() => void openAcceptanceFile()}
-                          className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 disabled:opacity-50"
+                          className="px-3 py-1.5 text-xs font-semibold text-[#1565C0] bg-white border border-[#90CAF9] rounded-lg hover:bg-[#E3F2FD] disabled:opacity-50"
                         >
                           {openingFile ? 'Opening…' : 'Open'}
                         </button>
@@ -400,7 +400,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                           type="button"
                           disabled={openingFile}
                           onClick={() => void downloadAcceptanceFile()}
-                          className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] disabled:opacity-50"
                         >
                           Download
                         </button>
@@ -424,8 +424,8 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                 ) : (
                   (po.approvalHistory || []).map((h, i) => (
                     <div key={i} className="flex gap-3 border-b border-gray-100 pb-3">
-                      <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
-                        <i className="ri-checkbox-circle-line text-teal-600"></i>
+                      <div className="w-8 h-8 rounded-full bg-[#E3F2FD] flex items-center justify-center shrink-0">
+                        <i className="ri-checkbox-circle-line text-[#1E88E5]"></i>
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-900">

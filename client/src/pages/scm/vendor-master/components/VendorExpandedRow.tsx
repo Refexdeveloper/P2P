@@ -107,16 +107,16 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
 
   return (
     <tr>
-      <td colSpan={colSpan} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
+      <td colSpan={colSpan} className="px-0 py-0 bg-slate-50 border-b border-[#90CAF9]">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-[#E3F2FD] to-white border-b border-gray-100">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                <i className="ri-store-2-line text-teal-600 text-lg"></i>
+              <div className="w-10 h-10 bg-[#E3F2FD] rounded-lg flex items-center justify-center">
+                <i className="ri-store-2-line text-[#1E88E5] text-lg"></i>
               </div>
               <div>
                 <p className="text-sm font-bold text-gray-900">{vendor.name}</p>
-                <p className="text-xs text-teal-600 font-semibold">{vendor.vendorCode}</p>
+                <p className="text-xs text-[#1E88E5] font-semibold">{vendor.vendorCode}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -124,7 +124,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                 <button
                   type="button"
                   onClick={onEdit}
-                  className="px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                  className="px-3 py-1.5 text-xs font-medium text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                 >
                   <i className="ri-edit-line"></i> Edit Vendor
                 </button>
@@ -146,7 +146,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                 onClick={() => setActiveTab(tab.key as 'details' | 'documents')}
                 className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === tab.key
-                    ? 'border-teal-600 text-teal-600'
+                    ? 'border-[#1E88E5] text-[#1E88E5]'
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
@@ -169,7 +169,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
               <div className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {[
-                    { label: 'Vendor Code', value: vendor.vendorCode, icon: 'ri-hashtag', color: 'text-teal-600' },
+                    { label: 'Vendor Code', value: vendor.vendorCode, icon: 'ri-hashtag', color: 'text-[#1E88E5]' },
                     { label: 'Vendor Type', value: vendor.vendorType, icon: 'ri-building-line', color: 'text-gray-900' },
                     { label: 'Category', value: vendor.category || '—', icon: 'ri-price-tag-3-line', color: 'text-gray-900' },
                     { label: 'Created', value: vendor.createdAt, icon: 'ri-calendar-line', color: 'text-gray-700' },
@@ -204,7 +204,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-contacts-line text-teal-500"></i> Contact Information
+                      <i className="ri-contacts-line text-[#1E88E5]"></i> Contact Information
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -236,9 +236,9 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                     )}
                   </div>
 
-                  <div className="bg-teal-50 rounded-lg p-4 border border-teal-100">
+                  <div className="bg-[#E3F2FD] rounded-lg p-4 border border-[#BBDEFB]">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-bank-line text-teal-500"></i> Bank Details
+                      <i className="ri-bank-line text-[#1E88E5]"></i> Bank Details
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -270,18 +270,18 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                       <div
                         key={type}
                         className={`rounded-lg border p-4 ${
-                          doc ? 'border-teal-200 bg-teal-50/50' : 'border-gray-200 bg-gray-50'
+                          doc ? 'border-[#90CAF9] bg-[#E3F2FD]/50' : 'border-gray-200 bg-gray-50'
                         }`}
                       >
                         <div className="flex items-start gap-3 mb-3">
                           <div
                             className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                              doc ? 'bg-teal-100' : 'bg-gray-100'
+                              doc ? 'bg-[#E3F2FD]' : 'bg-gray-100'
                             }`}
                           >
                             <i
                               className={`ri-file-text-line text-lg ${
-                                doc ? 'text-teal-600' : 'text-gray-300'
+                                doc ? 'text-[#1E88E5]' : 'text-gray-300'
                               }`}
                             ></i>
                           </div>
@@ -309,7 +309,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                             <button
                               type="button"
                               onClick={() => handleViewFile(type)}
-                              className="flex-1 px-2 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer flex items-center justify-center gap-1"
+                              className="flex-1 px-2 py-1.5 text-xs font-medium text-[#1565C0] bg-white border border-[#90CAF9] rounded-lg hover:bg-[#E3F2FD] cursor-pointer flex items-center justify-center gap-1"
                             >
                               <i className="ri-eye-line"></i> View
                             </button>
@@ -336,11 +336,11 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                       {otherDocs.map((doc) => (
                         <div
                           key={doc.docType}
-                          className="rounded-lg border border-teal-200 bg-teal-50/50 p-4"
+                          className="rounded-lg border border-[#90CAF9] bg-[#E3F2FD]/50 p-4"
                         >
                           <div className="flex items-start gap-3 mb-3">
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-teal-100">
-                              <i className="ri-file-text-line text-lg text-teal-600"></i>
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#E3F2FD]">
+                              <i className="ri-file-text-line text-lg text-[#1E88E5]"></i>
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-gray-900 truncate">
@@ -361,7 +361,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                             <button
                               type="button"
                               onClick={() => handleViewFile(doc.docType)}
-                              className="flex-1 px-2 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer flex items-center justify-center gap-1"
+                              className="flex-1 px-2 py-1.5 text-xs font-medium text-[#1565C0] bg-white border border-[#90CAF9] rounded-lg hover:bg-[#E3F2FD] cursor-pointer flex items-center justify-center gap-1"
                             >
                               <i className="ri-eye-line"></i> View
                             </button>

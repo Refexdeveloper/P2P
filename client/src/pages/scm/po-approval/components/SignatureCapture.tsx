@@ -327,7 +327,7 @@ export default function SignatureCapture({ onChange }: Props) {
                 }
               }}
               className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1 cursor-pointer ${
-                mode === m.key ? 'bg-teal-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                mode === m.key ? 'bg-[#1E88E5] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}
             >
               <i className={m.icon}></i>
@@ -369,7 +369,7 @@ export default function SignatureCapture({ onChange }: Props) {
         <div className="border border-dashed border-gray-300 rounded-lg p-4 text-center bg-gray-50">
           <i className="ri-image-add-line text-2xl text-gray-400"></i>
           <p className="text-xs text-gray-600 mt-1 mb-3">Upload PNG or JPG signature image</p>
-          <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg cursor-pointer hover:bg-teal-700">
+          <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#1E88E5] text-white text-xs font-semibold rounded-lg cursor-pointer hover:bg-[#1565C0]">
             <i className="ri-upload-2-line"></i>
             Choose File
             <input
@@ -396,7 +396,7 @@ export default function SignatureCapture({ onChange }: Props) {
                 <div
                   key={item.id}
                   className={`relative rounded-lg border bg-white p-2 cursor-pointer ${
-                    selectedGalleryId === item.id ? 'border-teal-500 ring-2 ring-teal-200' : 'border-gray-200'
+                    selectedGalleryId === item.id ? 'border-[#1E88E5] ring-2 ring-[#BBDEFB]' : 'border-gray-200'
                   }`}
                   onClick={() => selectGallery(item)}
                 >
@@ -492,7 +492,7 @@ export default function SignatureCapture({ onChange }: Props) {
             type="checkbox"
             checked={saveToGallery}
             onChange={(e) => setSaveToGallery(e.target.checked)}
-            className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+            className="rounded border-gray-300 text-[#1E88E5] focus:ring-[#1E88E5]"
           />
           Save this signature to my gallery for next time
         </label>

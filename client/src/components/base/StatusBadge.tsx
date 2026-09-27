@@ -50,7 +50,7 @@ const StatusBadge = ({ status, size = 'md' }: StatusBadgeProps) => {
       'Approved — Awaiting PO': { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Approved' },
       'PO Released': { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'PO Released' },
       'PO Released to Vendor': { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'PO Released' },
-      'PO Signed — Pending Release': { bg: 'bg-teal-100', text: 'text-teal-800', label: 'PO Signed' },
+      'PO Signed — Pending Release': { bg: 'bg-[#E3F2FD]', text: 'text-[#1565C0]', label: 'PO Signed' },
       'Sent Back — Revise PO': { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Returned' },
       'Pending SCM Manager PO Sign': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Pending PO Sign' },
       'PO Creation In Progress': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'PO In Progress' },

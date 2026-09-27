@@ -192,8 +192,8 @@ export default function BuyerFinalVerifyPage() {
             label: 'Pending Value',
             value: formatCurrency(totalValue),
             icon: 'ri-money-rupee-circle-line',
-            color: 'text-teal-600',
-            bg: 'bg-teal-50',
+            color: 'text-[#1E88E5]',
+            bg: 'bg-[#E3F2FD]',
           },
           {
             label: 'Workflow Step',
@@ -229,7 +229,7 @@ export default function BuyerFinalVerifyPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search PO, PR, vendor..."
-              className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-72 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-72 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
             />
           </div>
         </div>
@@ -269,7 +269,7 @@ export default function BuyerFinalVerifyPage() {
                         onClick={() => setExpandedId(open ? null : po.id)}
                       >
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <span className="text-sm font-bold text-teal-700">{po.poNumber}</span>
+                          <span className="text-sm font-bold text-[#1565C0]">{po.poNumber}</span>
                         </td>
                         <td className="px-4 py-4">
                           <p className="text-sm font-medium text-gray-900">{po.prNumber}</p>
@@ -317,7 +317,7 @@ export default function BuyerFinalVerifyPage() {
                             <button
                               type="button"
                               onClick={() => openModal(po)}
-                              className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 cursor-pointer"
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] cursor-pointer"
                             >
                               Verify
                             </button>
@@ -437,7 +437,7 @@ export default function BuyerFinalVerifyPage() {
                                     <button
                                       type="button"
                                       onClick={() => openModal(po)}
-                                      className="flex-1 min-w-[160px] px-4 py-2.5 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 cursor-pointer"
+                                      className="flex-1 min-w-[160px] px-4 py-2.5 text-sm font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] cursor-pointer"
                                     >
                                       Verify
                                     </button>
@@ -461,8 +461,8 @@ export default function BuyerFinalVerifyPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeModal} />
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 bg-teal-50">
-              <h3 className="text-base font-bold text-teal-900">Approved PO verification</h3>
+            <div className="px-6 py-4 bg-[#E3F2FD]">
+              <h3 className="text-base font-bold text-[#0D47A1]">Approved PO verification</h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 Email goes to the requester, approvers, and SCM team with the signed PO attached. Vendor is not copied.
               </p>
@@ -471,7 +471,7 @@ export default function BuyerFinalVerifyPage() {
               <div className="bg-gray-50 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-gray-500">{modal.po.poNumber}</span>
-                  <span className="text-sm font-bold text-teal-700">{formatCurrency(modal.po.grandTotal)}</span>
+                  <span className="text-sm font-bold text-[#1565C0]">{formatCurrency(modal.po.grandTotal)}</span>
                 </div>
                 <p className="text-sm font-medium text-gray-800">{modal.po.prTitle}</p>
                 <p className="text-xs text-gray-500 mt-1">{modal.po.vendorName}</p>
@@ -484,7 +484,7 @@ export default function BuyerFinalVerifyPage() {
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
                   placeholder="Optional notes for audit trail"
                 />
               </div>
@@ -506,7 +506,7 @@ export default function BuyerFinalVerifyPage() {
                   type="button"
                   onClick={handleConfirm}
                   disabled={submitting}
-                  className="px-5 py-2 text-sm font-semibold text-white rounded-lg cursor-pointer disabled:opacity-50 bg-teal-600 hover:bg-teal-700"
+                  className="px-5 py-2 text-sm font-semibold text-white rounded-lg cursor-pointer disabled:opacity-50 bg-[#1E88E5] hover:bg-[#1565C0]"
                 >
                   {submitting ? 'Processing...' : 'Verify'}
                 </button>

@@ -349,7 +349,7 @@ export default function RequesterDashboard() {
 
       {requesterTasks.length > 0 && (
         <div className="mb-6 overflow-hidden rounded-2xl border border-white/80 bg-white/95 shadow-lg shadow-slate-200/40 backdrop-blur-sm lg:rounded-3xl">
-          <div className="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-teal-50/40 px-3 py-3 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-white/40 px-3 py-3 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0F766E]/10 text-[#0F766E]">
                 <i className="ri-task-line text-lg" aria-hidden />
@@ -359,7 +359,7 @@ export default function RequesterDashboard() {
                 <p className="text-[11px] text-slate-500 sm:text-xs">Action items assigned to you</p>
               </div>
             </div>
-            <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-[#0F766E]">
+            <span className="rounded-full bg-[#E3F2FD] px-2.5 py-1 text-[11px] font-semibold text-[#0F766E]">
               {requesterTasks.length} pending
             </span>
           </div>
@@ -377,7 +377,7 @@ export default function RequesterDashboard() {
                   key={task.id}
                   className={`flex flex-col gap-4 p-5 transition-colors sm:flex-row sm:items-center sm:justify-between ${
                     isSass
-                      ? 'border-l-4 border-l-[#0F766E] bg-teal-50/80 hover:bg-teal-50'
+                      ? 'border-l-4 border-l-[#0F766E] bg-[#E3F2FD]/80 hover:bg-[#E3F2FD]'
                       : 'hover:bg-gradient-to-r hover:from-blue-50/30 hover:to-transparent'
                   }`}
                 >
@@ -393,7 +393,7 @@ export default function RequesterDashboard() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p
                           className={`text-xs font-semibold uppercase tracking-wide ${
-                            isSass ? 'text-teal-800' : 'text-[#1E88E5]'
+                            isSass ? 'text-[#1565C0]' : 'text-[#1E88E5]'
                           }`}
                         >
                           {task.label || 'RFQ Entry'}

@@ -323,7 +323,7 @@ export default function PrConversationFlow({
               pushUser('Yes, add line item');
               startLineItem(lineItems.length);
             }}
-            className="px-4 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-xl hover:bg-teal-700"
+            className="px-4 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-xl hover:bg-[#1565C0]"
           >
             Yes, Add Line Item
           </button>
@@ -350,7 +350,7 @@ export default function PrConversationFlow({
               pushUser('Yes');
               if (step.type === 'another') startLineItem(step.itemIndex + 1);
             }}
-            className="px-4 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-xl hover:bg-teal-700"
+            className="px-4 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-xl hover:bg-[#1565C0]"
           >
             Yes
           </button>
@@ -381,8 +381,8 @@ export default function PrConversationFlow({
               }}
               className={`px-4 py-2.5 rounded-xl text-sm font-semibold border ${
                 prefillForHeader() === opt.value
-                  ? 'bg-teal-600 text-white border-teal-600'
-                  : 'bg-white text-gray-700 border-gray-200 hover:border-teal-300'
+                  ? 'bg-[#1E88E5] text-white border-[#1E88E5]'
+                  : 'bg-white text-gray-700 border-gray-200 hover:border-[#90CAF9]'
               }`}
             >
               {opt.label}
@@ -568,7 +568,7 @@ export default function PrConversationFlow({
         <button
           type="button"
           onClick={onSwitchToForm}
-          className="text-xs font-semibold text-teal-700 hover:text-teal-900"
+          className="text-xs font-semibold text-[#1565C0] hover:text-[#0D47A1]"
         >
           Switch to Normal Form
         </button>
@@ -576,7 +576,7 @@ export default function PrConversationFlow({
 
       <div className="h-1.5 bg-gray-100">
         <div
-          className="h-full bg-teal-600 transition-all"
+          className="h-full bg-[#1E88E5] transition-all"
           style={{ width: `${Math.min(100, Math.round((progressDone / progressTotal) * 100))}%` }}
         />
       </div>
@@ -587,7 +587,7 @@ export default function PrConversationFlow({
             <div
               className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${
                 msg.role === 'user'
-                  ? 'bg-teal-600 text-white rounded-br-md'
+                  ? 'bg-[#1E88E5] text-white rounded-br-md'
                   : 'bg-white border border-gray-200 text-gray-800 rounded-bl-md'
               }`}
             >
@@ -712,7 +712,7 @@ export default function PrConversationFlow({
             <button
               type="button"
               onClick={() => onConfirm({ answers, skipped, lineItems })}
-              className="px-4 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-xl hover:bg-teal-700"
+              className="px-4 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-xl hover:bg-[#1565C0]"
             >
               Confirm & Create
             </button>

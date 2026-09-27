@@ -213,7 +213,7 @@ export default function CFODashboardPage() {
                   key={entity.id}
                   onClick={() => setSelectedEntity(entity.id === selectedEntity ? 'all' : entity.id)}
                   className={`bg-white rounded-lg p-5 border-2 cursor-pointer hover:shadow-md transition-all ${
-                    selectedEntity === entity.id ? 'border-teal-500 shadow-md' : 'border-gray-200'
+                    selectedEntity === entity.id ? 'border-[#1E88E5] shadow-md' : 'border-gray-200'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-3">
@@ -277,7 +277,7 @@ export default function CFODashboardPage() {
                       placeholder="Search PR ID, title, requester..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                      className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent text-sm"
                     />
                   </div>
                 </div>
@@ -305,7 +305,7 @@ export default function CFODashboardPage() {
                           setSelectedEntity('all');
                           setDropdownOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === 'all' ? 'bg-teal-50' : ''}`}
+                        className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === 'all' ? 'bg-[#E3F2FD]' : ''}`}
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -333,7 +333,7 @@ export default function CFODashboardPage() {
                               setSelectedEntity(entity.id);
                               setDropdownOpen(false);
                             }}
-                            className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === entity.id ? 'bg-teal-50' : ''}`}
+                            className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === entity.id ? 'bg-[#E3F2FD]' : ''}`}
                           >
                             <div className="flex items-center gap-3">
                               <div
@@ -369,7 +369,7 @@ export default function CFODashboardPage() {
                       onClick={() => setPriorityFilter(priority)}
                       className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                         priorityFilter === priority
-                          ? 'bg-teal-600 text-white'
+                          ? 'bg-[#1E88E5] text-white'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >

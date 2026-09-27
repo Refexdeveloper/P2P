@@ -7,7 +7,7 @@ interface Props {
 
 const statusConfig = {
   'Pending Evaluation': { bg: 'bg-amber-100', text: 'text-amber-700', icon: 'ri-time-line' },
-  'In Progress': { bg: 'bg-teal-100', text: 'text-teal-700', icon: 'ri-loader-4-line' },
+  'In Progress': { bg: 'bg-[#E3F2FD]', text: 'text-[#1565C0]', icon: 'ri-loader-4-line' },
   'Completed': { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: 'ri-checkbox-circle-line' },
 };
 
@@ -27,11 +27,11 @@ export default function RFQEvalCard({ rfq, onOpen }: Props) {
   const daysLeft = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 hover:border-teal-300 transition-all cursor-pointer" onClick={() => onOpen(rfq)}>
+    <div className="bg-white border border-gray-200 rounded-xl p-5 hover:border-[#90CAF9] transition-all cursor-pointer" onClick={() => onOpen(rfq)}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <span className="px-2.5 py-0.5 bg-teal-50 text-teal-700 rounded-full text-xs font-bold">{rfq.rfqRef}</span>
+            <span className="px-2.5 py-0.5 bg-[#E3F2FD] text-[#1565C0] rounded-full text-xs font-bold">{rfq.rfqRef}</span>
             <span className="px-2 py-0.5 text-xs text-gray-500">{rfq.prRef}</span>
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${pc.bg} ${pc.text}`}>{rfq.priority}</span>
           </div>
@@ -52,7 +52,7 @@ export default function RFQEvalCard({ rfq, onOpen }: Props) {
         </div>
         <div className="bg-gray-100 rounded-full h-2 overflow-hidden">
           <div
-            className={`h-2 rounded-full transition-all ${rfq.status === 'Completed' ? 'bg-emerald-500' : 'bg-teal-500'}`}
+            className={`h-2 rounded-full transition-all ${rfq.status === 'Completed' ? 'bg-emerald-500' : 'bg-[#1E88E5]'}`}
             style={{ width: `${progress}%` }}
           ></div>
         </div>
@@ -101,7 +101,7 @@ export default function RFQEvalCard({ rfq, onOpen }: Props) {
           className={`px-4 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap ${
             rfq.status === 'Completed'
               ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              : 'bg-teal-600 text-white hover:bg-teal-700'
+              : 'bg-[#1E88E5] text-white hover:bg-[#1565C0]'
           }`}
         >
           {rfq.status === 'Completed' ? 'View Results' : rfq.status === 'In Progress' ? 'Continue Eval' : 'Start Evaluation'}

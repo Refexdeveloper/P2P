@@ -139,7 +139,7 @@ export default function PRApprovalCard({
       case 'Capex':
         return 'bg-indigo-50 text-indigo-700';
       case 'Opex':
-        return 'bg-teal-50 text-teal-700';
+        return 'bg-[#E3F2FD] text-[#1565C0]';
       case 'Service':
         return 'bg-rose-50 text-rose-700';
       default:

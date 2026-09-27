@@ -431,7 +431,7 @@ export default function AdminEmailLogsPage() {
                                     setRetriggerRow(row);
                                     setExtraTo('');
                                   }}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800 hover:bg-teal-100"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-[#90CAF9] bg-[#E3F2FD] px-2.5 py-1 text-xs font-semibold text-[#1565C0] hover:bg-[#BBDEFB]"
                                 >
                                   <i className="ri-refresh-line"></i>
                                   Retrigger
@@ -738,9 +738,9 @@ export default function AdminEmailLogsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => !retriggering && setRetriggerRow(null)} />
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="px-5 py-4 bg-teal-50 border-b border-teal-100">
-              <h3 className="text-base font-bold text-teal-900">Retrigger email</h3>
-              <p className="text-xs text-teal-800 mt-0.5">Rebuild and send this skipped / failed mail again</p>
+            <div className="px-5 py-4 bg-[#E3F2FD] border-b border-[#BBDEFB]">
+              <h3 className="text-base font-bold text-[#0D47A1]">Retrigger email</h3>
+              <p className="text-xs text-[#1565C0] mt-0.5">Rebuild and send this skipped / failed mail again</p>
             </div>
             <div className="px-5 py-4 space-y-3 text-sm">
               <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
@@ -781,7 +781,7 @@ export default function AdminEmailLogsPage() {
                 type="button"
                 disabled={retriggering}
                 onClick={() => void handleRetrigger()}
-                className="rounded-lg bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                className="rounded-lg bg-[#1E88E5] hover:bg-[#1565C0] text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
               >
                 {retriggering ? 'Sending…' : 'Send now'}
               </button>

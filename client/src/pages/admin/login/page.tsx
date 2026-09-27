@@ -50,7 +50,7 @@ export default function AdminLoginPage() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-10 max-w-md w-full text-center">
-          <i className="ri-loader-4-line text-3xl text-teal-600 animate-spin"></i>
+          <i className="ri-loader-4-line text-3xl text-[#1E88E5] animate-spin"></i>
           <h1 className="text-lg font-bold text-slate-900 mt-4">Opening P2P…</h1>
         </div>
       </div>
@@ -58,11 +58,11 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-white flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8">
           <div className="text-center mb-7">
-            <div className="w-14 h-14 bg-teal-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-14 h-14 bg-[#1E88E5] rounded-xl flex items-center justify-center mx-auto mb-4">
               <i className="ri-admin-line text-2xl text-white"></i>
             </div>
             <h1 className="text-xl font-bold text-slate-900">Admin Login</h1>
@@ -82,7 +82,7 @@ export default function AdminLoginPage() {
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1E88E5] focus:border-[#1E88E5] outline-none"
                   placeholder="you@refex.co.in"
                   required
                 />
@@ -101,7 +101,7 @@ export default function AdminLoginPage() {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-11 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                  className="w-full pl-10 pr-11 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1E88E5] focus:border-[#1E88E5] outline-none"
                   placeholder="Enter password"
                   required
                 />
@@ -125,7 +125,7 @@ export default function AdminLoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full bg-[#1E88E5] hover:bg-[#1565C0] disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -144,7 +144,7 @@ export default function AdminLoginPage() {
           <div className="mt-6 pt-5 border-t border-slate-100 text-center">
             <p className="text-xs text-slate-500">
               Prefer RefexOne SSO?{' '}
-              <Link to="/login" className="text-teal-700 font-medium hover:underline">
+              <Link to="/login" className="text-[#1565C0] font-medium hover:underline">
                 Continue via RefexOne
               </Link>
             </p>

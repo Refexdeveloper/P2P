@@ -112,10 +112,10 @@ export default function VendorPoAcceptPage() {
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="bg-gradient-to-r from-teal-700 to-teal-600 px-6 py-5 text-white">
-          <p className="text-teal-100 text-sm">Vendor PO Acceptance</p>
+        <div className="bg-gradient-to-r from-[#1565C0] to-[#1E88E5] px-6 py-5 text-white">
+          <p className="text-sky-100 text-sm">Vendor PO Acceptance</p>
           <h1 className="text-xl font-bold mt-1">{data.poNumber}</h1>
-          <p className="text-sm text-teal-50 mt-1">{data.prTitle || data.prNumber}</p>
+          <p className="text-sm text-sky-100 mt-1">{data.prTitle || data.prNumber}</p>
         </div>
 
         <div className="p-6 space-y-4">
@@ -143,7 +143,7 @@ export default function VendorPoAcceptPage() {
               href={poApi.getVendorAcceptancePdfUrl(token)}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-800 rounded-lg text-sm font-semibold border border-teal-100"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#E3F2FD] text-[#1565C0] rounded-lg text-sm font-semibold border border-[#BBDEFB]"
             >
               <i className="ri-file-pdf-line"></i> Download signed PO PDF
             </a>
@@ -162,7 +162,7 @@ export default function VendorPoAcceptPage() {
                     type="button"
                     onClick={() => setAction(a)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize ${
-                      action === a ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600'
+                      action === a ? 'bg-[#1E88E5] text-white' : 'bg-gray-100 text-gray-600'
                     }`}
                   >
                     {a}
@@ -212,7 +212,7 @@ export default function VendorPoAcceptPage() {
                 type="button"
                 disabled={saving}
                 onClick={submit}
-                className="w-full py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+                className="w-full py-2.5 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold disabled:opacity-50"
               >
                 {saving ? 'Submitting…' : 'Submit response'}
               </button>

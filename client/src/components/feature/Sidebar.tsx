@@ -279,7 +279,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} ${
           nested ? 'px-3 py-2 ml-2' : 'px-3 py-2.5'
         } rounded-lg transition-colors ${
-          isActive ? 'bg-teal-50 text-teal-600' : 'text-gray-700 hover:bg-gray-50'
+          isActive ? 'bg-[#E3F2FD] text-[#1E88E5]' : 'text-gray-700 hover:bg-gray-50'
         }`}
       >
         <div className={`flex items-center ${collapsed ? '' : 'space-x-3'}`}>
@@ -288,7 +288,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             {collapsed && item.badge != null && (
               <span
                 className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 px-0.5 text-white text-[9px] font-semibold rounded-full flex items-center justify-center ${
-                  isAlertBadge ? 'bg-red-600' : 'bg-teal-600'
+                  isAlertBadge ? 'bg-red-600' : 'bg-[#1E88E5]'
                 }`}
               >
                 {item.badge}
@@ -304,7 +304,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         {!collapsed && item.badge != null && (
           <span
             className={`px-2 py-0.5 text-white text-xs font-semibold rounded-full ${
-              isAlertBadge ? 'bg-red-600' : 'bg-teal-600'
+              isAlertBadge ? 'bg-red-600' : 'bg-[#1E88E5]'
             }`}
           >
             {item.badge}
@@ -336,7 +336,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         }`}
       >
         <div className="flex items-center space-x-2 min-w-0">
-          <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 bg-[#1E88E5] rounded-lg flex items-center justify-center shrink-0">
             <i className="ri-shopping-cart-2-line text-white text-lg"></i>
           </div>
           {(!collapsed || mobileOpen) && (
@@ -375,7 +375,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                 <div key={item.key} className="space-y-1">
                   <div
                     className={`flex items-center justify-center px-3 py-2.5 rounded-lg ${
-                      childActive ? 'bg-teal-50 text-teal-600' : 'text-gray-700'
+                      childActive ? 'bg-[#E3F2FD] text-[#1E88E5]' : 'text-gray-700'
                     }`}
                     title={item.label}
                   >
@@ -392,7 +392,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                   type="button"
                   onClick={() => setMastersOpen((v) => !v)}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors cursor-pointer ${
-                    childActive ? 'bg-teal-50 text-teal-700' : 'text-gray-700 hover:bg-gray-50'
+                    childActive ? 'bg-[#E3F2FD] text-[#1565C0]' : 'text-gray-700 hover:bg-gray-50'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
@@ -418,10 +418,10 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
             <div
-              className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center"
+              className="w-10 h-10 bg-[#E3F2FD] rounded-full flex items-center justify-center"
               title={user?.name || 'User'}
             >
-              <span className="text-teal-600 font-semibold text-sm">
+              <span className="text-[#1E88E5] font-semibold text-sm">
                 {user?.name
                   ?.split(' ')
                   .map((n) => n[0])
@@ -439,8 +439,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
           </div>
         ) : (
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center shrink-0">
-              <span className="text-teal-600 font-semibold text-sm">
+            <div className="w-10 h-10 bg-[#E3F2FD] rounded-full flex items-center justify-center shrink-0">
+              <span className="text-[#1E88E5] font-semibold text-sm">
                 {user?.name
                   ?.split(' ')
                   .map((n) => n[0])

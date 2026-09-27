@@ -99,7 +99,7 @@ const PRTable: React.FC<PRTableProps> = ({ data, onApprove, onReject, onRework }
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-sm font-medium text-teal-600">{pr.id}</span>
+                    <span className="text-sm font-medium text-[#1E88E5]">{pr.id}</span>
                     {pr.isOverdue && (
                       <span className="ml-2 inline-flex items-center">
                         <i className="ri-alarm-warning-fill text-red-500 text-sm"></i>
@@ -132,7 +132,7 @@ const PRTable: React.FC<PRTableProps> = ({ data, onApprove, onReject, onRework }
                       {canTakeAction(pr.status) && isRfqApproval(pr) && pr.prId && (
                         <Link
                           to={`/rfq-approval/${pr.prId}`}
-                          className="px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 whitespace-nowrap"
+                          className="px-3 py-1.5 bg-[#1E88E5] text-white text-xs font-semibold rounded-lg hover:bg-[#1565C0] whitespace-nowrap"
                           onClick={(e) => e.stopPropagation()}
                         >
                           Review RFQ

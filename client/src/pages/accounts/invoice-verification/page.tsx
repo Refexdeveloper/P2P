@@ -198,7 +198,7 @@ export default function InvoiceVerificationPage() {
     <DashboardLayout>
       <div className="w-full min-w-0 max-w-full space-y-6">
         {toast && (
-          <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-teal-700 text-white text-sm rounded-lg shadow-lg">
+          <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-[#1565C0] text-white text-sm rounded-lg shadow-lg">
             {toast}
           </div>
         )}
@@ -207,7 +207,7 @@ export default function InvoiceVerificationPage() {
           <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">3-Way Match</h1>
             <div className="flex flex-wrap items-center gap-2 mt-2">
-              <span className="px-3 py-1 bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-sm font-semibold rounded-full shrink-0">
+              <span className="px-3 py-1 bg-gradient-to-r from-[#1E88E5] to-[#42A5F5] text-white text-sm font-semibold rounded-full shrink-0">
                 {isManager ? 'Accounts Manager' : 'Accounts Payable'}
               </span>
               <span className="text-gray-500 text-sm">
@@ -218,7 +218,7 @@ export default function InvoiceVerificationPage() {
           <button
             type="button"
             onClick={load}
-            className="self-start shrink-0 px-4 py-2 text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg cursor-pointer"
+            className="self-start shrink-0 px-4 py-2 text-sm font-semibold text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg cursor-pointer"
           >
             Refresh
           </button>
@@ -235,7 +235,7 @@ export default function InvoiceVerificationPage() {
                 placeholder="Search by invoice, vendor, PO, GRN, or PR..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full min-w-0 pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full min-w-0 pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               />
             </div>
           </div>
@@ -256,7 +256,7 @@ export default function InvoiceVerificationPage() {
                 type="button"
                 onClick={() => setStatusFilter(key as 'all' | InvoiceStatus)}
                 className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                  statusFilter === key ? 'bg-teal-100 text-teal-700' : 'text-gray-600 hover:bg-gray-100'
+                  statusFilter === key ? 'bg-[#E3F2FD] text-[#1565C0]' : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
                 {label} (

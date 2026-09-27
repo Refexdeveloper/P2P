@@ -51,13 +51,13 @@ export default function VendorDashboardPage() {
                 <p className="text-sm font-bold text-amber-700">{fmtAmt(vendorKPIData.totalPendingPayment)}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-4 py-2">
+            <div className="flex items-center gap-2 bg-[#E3F2FD] border border-[#90CAF9] rounded-lg px-4 py-2">
               <div className="w-4 h-4 flex items-center justify-center">
-                <i className="ri-bar-chart-box-line text-teal-500 text-sm"></i>
+                <i className="ri-bar-chart-box-line text-[#1E88E5] text-sm"></i>
               </div>
               <div>
-                <p className="text-xs text-teal-600 font-medium leading-tight">Active Order Value</p>
-                <p className="text-sm font-bold text-teal-700">{fmtAmt(vendorKPIData.totalActiveOrderValue)}</p>
+                <p className="text-xs text-[#1E88E5] font-medium leading-tight">Active Order Value</p>
+                <p className="text-sm font-bold text-[#1565C0]">{fmtAmt(vendorKPIData.totalActiveOrderValue)}</p>
               </div>
             </div>
           </div>
@@ -80,13 +80,13 @@ export default function VendorDashboardPage() {
               { label: 'Payment Received', value: vendorKPIData.paidInvoices, icon: 'ri-checkbox-circle-line', done: false },
             ].map((step, idx, arr) => (
               <div key={step.label} className="flex items-center">
-                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${step.done ? 'bg-teal-50' : 'bg-gray-50'}`}>
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center ${step.done ? 'bg-teal-100' : 'bg-gray-200'}`}>
-                    <i className={`${step.icon} text-sm ${step.done ? 'text-teal-600' : 'text-gray-400'}`}></i>
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${step.done ? 'bg-[#E3F2FD]' : 'bg-gray-50'}`}>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center ${step.done ? 'bg-[#E3F2FD]' : 'bg-gray-200'}`}>
+                    <i className={`${step.icon} text-sm ${step.done ? 'text-[#1E88E5]' : 'text-gray-400'}`}></i>
                   </div>
                   <div>
-                    <p className={`text-xs font-semibold leading-tight ${step.done ? 'text-teal-700' : 'text-gray-500'}`}>{step.label}</p>
-                    <p className={`text-xs ${step.done ? 'text-teal-500' : 'text-gray-400'}`}>{step.value} item{step.value !== 1 ? 's' : ''}</p>
+                    <p className={`text-xs font-semibold leading-tight ${step.done ? 'text-[#1565C0]' : 'text-gray-500'}`}>{step.label}</p>
+                    <p className={`text-xs ${step.done ? 'text-[#1E88E5]' : 'text-gray-400'}`}>{step.value} item{step.value !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
                 {idx < arr.length - 1 && (
@@ -122,7 +122,7 @@ export default function VendorDashboardPage() {
               { icon: 'ri-price-tag-3-line', label: 'Submit Quotation', desc: 'Respond to open RFQs', path: '/scm/vendor-quotation-portal', color: 'text-amber-600 bg-amber-50 hover:bg-amber-100' },
               { icon: 'ri-shake-hands-line', label: 'Accept PO', desc: 'Review & confirm POs', path: '/scm/vendor-po-acceptance', color: 'text-orange-600 bg-orange-50 hover:bg-orange-100' },
               { icon: 'ri-file-invoice-line', label: 'Submit Invoice', desc: 'Send invoices for payment', path: '/scm/vendor-invoice', color: 'text-violet-600 bg-violet-50 hover:bg-violet-100' },
-              { icon: 'ri-search-eye-line', label: 'Track Status', desc: 'Follow up on submissions', path: '/scm/vendor-invoice', color: 'text-teal-600 bg-teal-50 hover:bg-teal-100' },
+              { icon: 'ri-search-eye-line', label: 'Track Status', desc: 'Follow up on submissions', path: '/scm/vendor-invoice', color: 'text-[#1E88E5] bg-[#E3F2FD] hover:bg-[#BBDEFB]' },
             ].map((action) => (
               <a
                 key={action.label}

@@ -202,7 +202,7 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
             </div>
             <div>
               <p className="text-sm text-gray-600">Invoice Amount</p>
-              <p className="font-semibold text-teal-600 text-lg">₹{invoice.invoiceAmount.toLocaleString('en-IN')}</p>
+              <p className="font-semibold text-[#1E88E5] text-lg">₹{invoice.invoiceAmount.toLocaleString('en-IN')}</p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Due Date</p>
@@ -223,7 +223,7 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
               value={formData.paymentDate}
               onChange={(e) => handleInputChange('paymentDate', e.target.value)}
               max={new Date().toISOString().split('T')[0]}
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] ${
                 errors.paymentDate ? 'border-red-300 bg-red-50' : 'border-gray-300'
               }`}
             />
@@ -240,7 +240,7 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
             <select
               value={formData.paymentMode}
               onChange={(e) => handleInputChange('paymentMode', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] ${
                 errors.paymentMode ? 'border-red-300 bg-red-50' : 'border-gray-300'
               }`}
             >
@@ -266,7 +266,7 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
               value={formData.bankAccount}
               onChange={(e) => handleInputChange('bankAccount', e.target.value)}
               placeholder="Enter bank account number or name"
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] ${
                 errors.bankAccount ? 'border-red-300 bg-red-50' : 'border-gray-300'
               }`}
             />
@@ -285,7 +285,7 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
               value={formData.utrReference}
               onChange={(e) => handleInputChange('utrReference', e.target.value)}
               placeholder="Enter UTR or transaction reference number"
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] ${
                 errors.utrReference ? 'border-red-300 bg-red-50' : 'border-gray-300'
               }`}
             />
@@ -307,7 +307,7 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
                 onChange={(e) => handleInputChange('amountPaid', parseFloat(e.target.value) || 0)}
                 step="0.01"
                 min="0"
-                className={`w-full pl-8 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                className={`w-full pl-8 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] ${
                   errors.amountPaid ? 'border-red-300 bg-red-50' : 'border-gray-300'
                 }`}
               />
@@ -329,7 +329,7 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
               onChange={(e) => handleInputChange('remarks', e.target.value)}
               placeholder="Add any additional notes or comments"
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
             />
           </div>
 
@@ -346,10 +346,10 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
                 onDrop={handleDrop}
                 className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
                   isDragging
-                    ? 'border-teal-500 bg-teal-50'
+                    ? 'border-[#1E88E5] bg-[#E3F2FD]'
                     : errors.receiptFile
                     ? 'border-red-300 bg-red-50'
-                    : 'border-gray-300 hover:border-teal-400 hover:bg-gray-50'
+                    : 'border-gray-300 hover:border-[#64B5F6] hover:bg-gray-50'
                 }`}
               >
                 <div className="w-12 h-12 flex items-center justify-center mx-auto mb-3 bg-gray-100 rounded-full">
@@ -358,7 +358,7 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
                 <p className="text-sm text-gray-600 mb-1">
                   Drag and drop your file here, or
                 </p>
-                <label className="inline-block px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap">
+                <label className="inline-block px-4 py-2 bg-[#1E88E5] text-white text-sm font-medium rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap">
                   Browse Files
                   <input
                     type="file"
@@ -374,8 +374,8 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
             ) : (
               <div className="border border-gray-300 rounded-lg p-4 flex items-center justify-between bg-gray-50">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 flex items-center justify-center bg-teal-100 rounded-lg">
-                    <i className={`text-xl text-teal-600 ${
+                  <div className="w-10 h-10 flex items-center justify-center bg-[#E3F2FD] rounded-lg">
+                    <i className={`text-xl text-[#1E88E5] ${
                       formData.receiptFile.type === 'application/pdf' ? 'ri-file-pdf-line' : 'ri-image-line'
                     }`}></i>
                   </div>
@@ -410,7 +410,7 @@ export default function UploadPaymentModal({ isOpen, onClose, invoice, onSubmit 
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+              className="px-5 py-2 text-sm font-medium text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] transition-colors whitespace-nowrap"
             >
               Submit Payment
             </button>

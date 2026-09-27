@@ -1439,7 +1439,7 @@ export default function RfqEntryDetailPage() {
     /note|comment|remark|description/i.test(`${field.id} ${field.label}`);
 
   const quoteFieldControlClass =
-    'w-full h-11 min-h-[44px] box-border px-3 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+    'w-full h-11 min-h-[44px] box-border px-3 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-[#1E88E5] disabled:bg-gray-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
 
   const renderFieldInput = (
     field: RfqFieldDefinition,
@@ -1455,7 +1455,7 @@ export default function RfqEntryDetailPage() {
             checked={Boolean(value)}
             disabled={disabled}
             onChange={(e) => onChange(e.target.checked)}
-            className="w-4 h-4 accent-teal-600 shrink-0"
+            className="w-4 h-4 accent-[#1E88E5] shrink-0"
           />
           {Boolean(value) ? 'Yes' : 'No'}
         </label>
@@ -1468,7 +1468,7 @@ export default function RfqEntryDetailPage() {
           value={value === undefined || value === null ? '' : String(value)}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full min-h-[88px] box-border px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-50"
+          className="w-full min-h-[88px] box-border px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 resize-y focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-[#1E88E5] disabled:bg-gray-50"
           placeholder="e.g. Net 30 Days / 50% advance, balance on delivery"
         />
       );
@@ -1480,7 +1480,7 @@ export default function RfqEntryDetailPage() {
           value={value === undefined || value === null ? '' : String(value)}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full min-h-[88px] box-border px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-50"
+          className="w-full min-h-[88px] box-border px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-900 resize-y focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-[#1E88E5] disabled:bg-gray-50"
           placeholder={field.label}
         />
       );
@@ -1489,7 +1489,7 @@ export default function RfqEntryDetailPage() {
     const isNumber = field.type === 'number' && !isMoney;
     if (isMoney) {
       return (
-        <div className="flex items-center h-11 border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
+        <div className="flex items-center h-11 border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-[#1E88E5] focus-within:border-[#1E88E5]">
           <span className="pl-3 pr-1 text-sm font-semibold text-gray-500 shrink-0 select-none">₹</span>
           <input
             type="text"
@@ -2122,7 +2122,7 @@ export default function RfqEntryDetailPage() {
             <i className="ri-arrow-left-line text-lg"></i>
           </Link>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Purchase request {pr?.prNumber || '—'}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Purchase request {pr?.prNumber || '—'}</p>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mt-0.5">Collect vendor quotes</h1>
             <p className="text-sm text-gray-500 mt-1 max-w-xl">
               {pr?.title || 'Add vendors, get their prices, then pick one to send for approval.'}
@@ -2147,7 +2147,7 @@ export default function RfqEntryDetailPage() {
             <button
               type="button"
               onClick={() => setEditPrOpen(true)}
-              className="px-5 py-2.5 border border-teal-300 text-teal-800 bg-teal-50 text-sm font-semibold rounded-xl hover:bg-teal-100"
+              className="px-5 py-2.5 border border-[#64B5F6] text-[#1565C0] bg-[#E3F2FD] text-sm font-semibold rounded-xl hover:bg-[#BBDEFB]"
             >
               <i className="ri-edit-line mr-1.5"></i>
               Edit PR
@@ -2191,7 +2191,7 @@ export default function RfqEntryDetailPage() {
                       ? 'Write why you picked this vendor'
                       : undefined
               }
-              className="px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+              className="px-5 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-xl disabled:opacity-50"
             >
               {submitting ? (isScm ? 'Create PO…' : 'Submitting...') : isScm ? 'Create PO' : 'Send for approval'}
             </button>
@@ -2236,7 +2236,7 @@ export default function RfqEntryDetailPage() {
                   s.done
                     ? 'border-emerald-200 bg-emerald-50'
                     : active
-                      ? 'border-teal-300 bg-teal-50 shadow-sm'
+                      ? 'border-[#64B5F6] bg-[#E3F2FD] shadow-sm'
                       : 'border-gray-200 bg-white'
                 }`}
               >
@@ -2246,7 +2246,7 @@ export default function RfqEntryDetailPage() {
                       s.done
                         ? 'bg-emerald-600 text-white'
                         : active
-                          ? 'bg-teal-600 text-white'
+                          ? 'bg-[#1E88E5] text-white'
                           : 'bg-gray-100 text-gray-500'
                     }`}
                   >
@@ -2348,7 +2348,7 @@ export default function RfqEntryDetailPage() {
               : 'RFQ finalized. Task completed.'
             : 'RFQ submitted for HOD vendor final → L2 → CFO approval. Task completed.'}
           {canAdminEditFinalizedQuotes ? (
-            <span className="block mt-1 text-teal-800 font-medium">
+            <span className="block mt-1 text-[#1565C0] font-medium">
               Super Admin: you can still Edit existing quotes to update amounts and quotation files.
             </span>
           ) : null}
@@ -2362,7 +2362,7 @@ export default function RfqEntryDetailPage() {
           {!isFinalized && mode === 'entry' && (
             <div className="bg-white border border-gray-200 rounded-2xl p-5">
               <div className="mb-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 1</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Step 1</p>
                 <h2 className="text-base font-bold text-gray-900 mt-0.5">Add vendors</h2>
                 <p className="text-sm text-gray-500 mt-1">Search a vendor, then choose email, type the quote, or upload with AI.</p>
               </div>
@@ -2372,9 +2372,9 @@ export default function RfqEntryDetailPage() {
                   {draftRows.filter((r) => r.vendorId).map((row) => (
                     <div
                       key={row.key}
-                      className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-teal-200 bg-teal-50/60"
+                      className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/60"
                     >
-                      <span className="w-8 h-8 rounded-lg bg-white border border-teal-100 flex items-center justify-center text-teal-700 shrink-0">
+                      <span className="w-8 h-8 rounded-lg bg-white border border-[#BBDEFB] flex items-center justify-center text-[#1565C0] shrink-0">
                         <i className="ri-store-2-line" />
                   </span>
                       <div className="min-w-0 flex-1">
@@ -2412,7 +2412,7 @@ export default function RfqEntryDetailPage() {
                     <button
                       type="button"
                       onClick={() => setAddVendorRowKey(row.key)}
-                    className="text-sm text-teal-700 font-semibold inline-flex items-center gap-1.5"
+                    className="text-sm text-[#1565C0] font-semibold inline-flex items-center gap-1.5"
                     >
                     <i className="ri-user-add-line" />
                     Vendor not in the list? Create new
@@ -2438,9 +2438,9 @@ export default function RfqEntryDetailPage() {
                   type="button"
                   onClick={handleAddManualEntry}
                   disabled={sendingMail || addingManual}
-                  className="text-left rounded-2xl border border-teal-200 bg-teal-50/70 p-4 hover:border-teal-300 disabled:opacity-50"
+                  className="text-left rounded-2xl border border-[#90CAF9] bg-[#E3F2FD]/70 p-4 hover:border-[#90CAF9] disabled:opacity-50"
                 >
-                  <span className="w-9 h-9 rounded-lg bg-teal-600 text-white inline-flex items-center justify-center mb-2">
+                  <span className="w-9 h-9 rounded-lg bg-[#1E88E5] text-white inline-flex items-center justify-center mb-2">
                     <i className="ri-edit-line" />
                   </span>
                   <p className="text-sm font-bold text-gray-900">{addingManual ? 'Adding…' : 'I will type the quote'}</p>
@@ -2471,7 +2471,7 @@ export default function RfqEntryDetailPage() {
                   </p>
                 </div>
                 {comparison && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-xs font-semibold text-teal-800">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#E3F2FD] border border-[#90CAF9] text-xs font-semibold text-[#1565C0]">
                     <i className="ri-refresh-line"></i>
                     Total Rounds:{' '}
                     {comparison.maxRounds != null && comparison.maxRounds > 0
@@ -2504,7 +2504,7 @@ export default function RfqEntryDetailPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 2 &amp; 3</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Step 2 &amp; 3</p>
                   <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
                   <p className="text-sm text-gray-500 mt-1">
                     Tap <strong>Edit</strong> to fill the current round. Use vendor <strong>Re-quote</strong> for the
@@ -2604,7 +2604,7 @@ export default function RfqEntryDetailPage() {
                               <span
                                 className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${
                                   awaitingManualEntry
-                                    ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                                    ? 'bg-[#E3F2FD] text-[#1565C0] border border-[#90CAF9]'
                                     : awaitingVendorEmail
                                       ? 'bg-amber-50 text-amber-700 border border-amber-200'
                                       : row.hasActiveQuote
@@ -2635,7 +2635,7 @@ export default function RfqEntryDetailPage() {
                               type="button"
                               onClick={() => handleSaveManualEntry(row)}
                               disabled={savingManualId === row.invitationId || startingRoundId === row.invitationId}
-                              className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                              className="px-4 py-2 bg-[#1E88E5] text-white text-sm font-semibold rounded-lg hover:bg-[#1565C0] disabled:opacity-50"
                             >
                               {savingManualId === row.invitationId ? 'Saving...' : 'Save quote + file'}
                             </button>
@@ -2647,7 +2647,7 @@ export default function RfqEntryDetailPage() {
                               type="button"
                               onClick={() => void handleSaveExistingQuote(row)}
                               disabled={savingManualId === row.invitationId}
-                              className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                              className="px-4 py-2 bg-[#1E88E5] text-white text-sm font-semibold rounded-lg hover:bg-[#1565C0] disabled:opacity-50"
                             >
                               {savingManualId === row.invitationId ? 'Saving…' : 'Save changes'}
                             </button>
@@ -2692,13 +2692,13 @@ export default function RfqEntryDetailPage() {
                               {saved.map((sf, idx) => (
                                 <span
                                   key={`saved-${sf.id || sf.fileName}-${idx}`}
-                                  className="mb-2 mr-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-teal-700"
+                                  className="mb-2 mr-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-[#1565C0]"
                                 >
                                   <i className="ri-file-look-line" />
                                   <span className="truncate max-w-[220px]">{sf.fileName}</span>
                                   <button
                                     type="button"
-                                    className="text-xs text-gray-500 hover:text-teal-800"
+                                    className="text-xs text-gray-500 hover:text-[#1565C0]"
                                     onClick={() => {
                                       if (sf.id) void openFilePreview(quote?.submissionId || 0, sf.fileName, sf.id);
                                       else if (quote?.submissionId) void openFilePreview(quote.submissionId, sf.fileName);
@@ -2721,7 +2721,7 @@ export default function RfqEntryDetailPage() {
                               {locals.map((lf, idx) => (
                                 <span
                                   key={`local-${lf.name}-${idx}`}
-                                  className="mb-2 mr-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-teal-200 bg-teal-50 text-sm font-medium text-teal-800"
+                                  className="mb-2 mr-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#90CAF9] bg-[#E3F2FD] text-sm font-medium text-[#1565C0]"
                                 >
                                   {lf.name}
                                   <button
@@ -2742,13 +2742,13 @@ export default function RfqEntryDetailPage() {
                                 <label
                                   className={`flex flex-wrap items-center gap-3 px-4 py-3.5 border-2 border-dashed rounded-xl cursor-pointer ${
                                     hasAny
-                                      ? 'border-teal-300 bg-teal-50/40 hover:bg-teal-50'
+                                      ? 'border-[#64B5F6] bg-[#E3F2FD]/40 hover:bg-[#E3F2FD]'
                                       : 'border-red-200 bg-red-50/40 hover:bg-red-50/70'
                                   }`}
                                 >
-                                  <i className={`text-xl shrink-0 ${hasAny ? 'ri-upload-2-line text-teal-700' : 'ri-upload-cloud-2-line text-red-500'}`} />
+                                  <i className={`text-xl shrink-0 ${hasAny ? 'ri-upload-2-line text-[#1565C0]' : 'ri-upload-cloud-2-line text-red-500'}`} />
                                   <div className="min-w-0 flex-1">
-                                    <p className={`text-sm font-semibold ${hasAny ? 'text-teal-800' : 'text-red-700'}`}>
+                                    <p className={`text-sm font-semibold ${hasAny ? 'text-[#1565C0]' : 'text-red-700'}`}>
                                       {hasAny ? 'Add more quotation files' : 'Upload quotation files (required)'}
                                     </p>
                                     <p className="text-xs text-gray-600 mt-0.5">
@@ -2787,7 +2787,7 @@ export default function RfqEntryDetailPage() {
                                 ? getWorkingLines(row.invitationId, savedLines)
                                 : seedQuoteLines(savedLines);
                               const inputClass =
-                                'w-full min-w-[4.5rem] h-10 box-border px-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+                                'w-full min-w-[4.5rem] h-10 box-border px-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
                               return (
                               <div>
                                 <div className="flex items-center justify-between gap-3 mb-3">
@@ -2798,7 +2798,7 @@ export default function RfqEntryDetailPage() {
                                     <button
                                       type="button"
                                       onClick={() => addExtraQuoteLine(row.invitationId)}
-                                      className="text-sm font-semibold text-teal-700 inline-flex items-center gap-1"
+                                      className="text-sm font-semibold text-[#1565C0] inline-flex items-center gap-1"
                                     >
                                       <i className="ri-add-line" />
                                       Add another line item
@@ -2807,18 +2807,18 @@ export default function RfqEntryDetailPage() {
                           </div>
                                 <div className="border border-gray-200 rounded-2xl overflow-hidden">
                                   <table className="w-full text-sm">
-                                    <thead className="bg-teal-50/70">
+                                    <thead className="bg-[#E3F2FD]/70">
                                       <tr>
                                         <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
                                           Item
                                         </th>
-                                        <th className="px-4 py-3 text-center text-xs font-semibold text-teal-700 uppercase w-24">
+                                        <th className="px-4 py-3 text-center text-xs font-semibold text-[#1565C0] uppercase w-24">
                                           Qty
                                         </th>
-                                        <th className="px-4 py-3 text-right text-xs font-semibold text-teal-700 uppercase w-36">
+                                        <th className="px-4 py-3 text-right text-xs font-semibold text-[#1565C0] uppercase w-36">
                                           Quoted unit (₹)
                                         </th>
-                                        <th className="px-4 py-3 text-center text-xs font-semibold text-teal-700 uppercase w-24">
+                                        <th className="px-4 py-3 text-center text-xs font-semibold text-[#1565C0] uppercase w-24">
                                           GST %
                                         </th>
                                         <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-32">
@@ -2879,7 +2879,7 @@ export default function RfqEntryDetailPage() {
                                                   {(li.category || prItem?.category) ? (
                                                     <p className="text-xs text-gray-400">{li.category || prItem?.category}</p>
                                                   ) : li.extra ? (
-                                                    <p className="text-xs text-teal-600">Added on this quote</p>
+                                                    <p className="text-xs text-[#1E88E5]">Added on this quote</p>
                                                   ) : (
                                                     <p className="text-xs text-gray-400">From PR</p>
                                                   )}
@@ -2912,7 +2912,7 @@ export default function RfqEntryDetailPage() {
                                             </td>
                                             <td className="px-4 py-3">
                                               {editable ? (
-                                                <div className="flex items-center h-10 border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-teal-500">
+                                                <div className="flex items-center h-10 border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-[#1E88E5]">
                                                   <span className="pl-2 pr-1 text-sm font-semibold text-gray-500 shrink-0">₹</span>
                                                   <input
                                                     type="text"
@@ -2949,7 +2949,7 @@ export default function RfqEntryDetailPage() {
                                                       Number(e.target.value) || 0
                                                     )
                                                   }
-                                                  className="w-full h-10 px-2 border border-gray-300 rounded-lg text-sm bg-white text-center focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                                  className="w-full h-10 px-2 border border-gray-300 rounded-lg text-sm bg-white text-center focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                                                 >
                                                   {GST_RATES.map((rate) => (
                                                     <option key={rate} value={rate}>
@@ -2984,14 +2984,14 @@ export default function RfqEntryDetailPage() {
                                       )}
                                     </tbody>
                                     <tfoot>
-                                      <tr className="border-t border-teal-200 bg-teal-50">
+                                      <tr className="border-t border-[#90CAF9] bg-[#E3F2FD]">
                                         <td
                                           colSpan={4}
-                                          className="px-4 py-3 text-right text-xs font-bold text-teal-900 uppercase"
+                                          className="px-4 py-3 text-right text-xs font-bold text-[#0D47A1] uppercase"
                                         >
                                           Total quoted amount
                                         </td>
-                                        <td className="px-4 py-3 text-right text-sm font-bold text-teal-800">
+                                        <td className="px-4 py-3 text-right text-sm font-bold text-[#1565C0]">
                                           {formatCurrency(
                                               quoteFieldsEditable
                                                 ? getManualQuoteTotal(row.invitationId)
@@ -3037,9 +3037,9 @@ export default function RfqEntryDetailPage() {
                                     )}
                                   </div>
                                 ))}
-                                <div className="flex flex-col gap-2 min-w-0 rounded-xl border border-teal-200 bg-teal-50/70 p-3.5">
+                                <div className="flex flex-col gap-2 min-w-0 rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/70 p-3.5">
                                     <div className="flex items-center justify-between gap-2">
-                                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-teal-700 leading-none">
+                                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#1565C0] leading-none">
                                         Quoted Price ({currencySymbol(pr?.currency)}) <span className="text-red-500">*</span>
                                       </label>
                                       {quoteFieldsEditable &&
@@ -3047,15 +3047,15 @@ export default function RfqEntryDetailPage() {
                                           <button
                                             type="button"
                                             onClick={() => useLineTotalAsQuotedPrice(row.invitationId)}
-                                            className="text-[10px] font-semibold text-teal-700 hover:text-teal-900 underline"
+                                            className="text-[10px] font-semibold text-[#1565C0] hover:text-[#0D47A1] underline"
                                           >
                                             Use line total
                                           </button>
                                         )}
                                     </div>
                                     {quoteFieldsEditable ? (
-                                      <div className="flex items-center h-11 border border-teal-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
-                                        <span className="pl-3 pr-1 text-sm font-semibold text-teal-600 shrink-0 select-none">
+                                      <div className="flex items-center h-11 border border-[#90CAF9] rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-[#1E88E5] focus-within:border-[#1E88E5]">
+                                        <span className="pl-3 pr-1 text-sm font-semibold text-[#1E88E5] shrink-0 select-none">
                                           {currencySymbol(pr?.currency)}
                                         </span>
                                         <input
@@ -3082,17 +3082,17 @@ export default function RfqEntryDetailPage() {
                                               setQuotedPriceManual(row.invitationId, Math.round(n * 100) / 100);
                                             }
                                           }}
-                                          className="w-full h-full min-w-0 pr-3 text-sm text-right font-bold text-teal-900 outline-none"
+                                          className="w-full h-full min-w-0 pr-3 text-sm text-right font-bold text-[#0D47A1] outline-none"
                                           placeholder="Type total quoted price"
                                         />
                                       </div>
                                     ) : (
-                                      <div className="min-h-[44px] px-3 rounded-xl bg-white border border-teal-100 text-sm font-bold text-teal-800 flex items-center">
+                                      <div className="min-h-[44px] px-3 rounded-xl bg-white border border-[#BBDEFB] text-sm font-bold text-[#1565C0] flex items-center">
                                         {formatCurrency(Number(vals.quotedPrice) || 0, pr?.currency)}
                                       </div>
                                     )}
                                     {quoteFieldsEditable && (
-                                      <p className="text-[11px] text-teal-800/80 leading-snug">
+                                      <p className="text-[11px] text-[#1565C0]/80 leading-snug">
                                         You can type Quoted Price manually. Line table total is{' '}
                                         <span className="font-semibold">
                                           {formatCurrency(getManualQuoteTotal(row.invitationId), pr?.currency)}
@@ -3222,7 +3222,7 @@ export default function RfqEntryDetailPage() {
                 onChange={(e) => setRecommendDraft(e.target.value)}
                 rows={4}
                 placeholder="Example: Lowest price and delivery in 10 days"
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1E88E5] focus:border-[#1E88E5]"
               />
               <p className="text-xs text-gray-500">
                 Required before you send this RFQ for approval. Managers will see this reason.
@@ -3239,7 +3239,7 @@ export default function RfqEntryDetailPage() {
               <button
                 type="button"
                 onClick={() => void confirmRecommend()}
-                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+                className="px-4 py-2 text-sm font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0]"
               >
                 Save choice
               </button>
@@ -3280,7 +3280,7 @@ export default function RfqEntryDetailPage() {
                   if (kind === 'existing') void handleSaveExistingQuote(row, { acceptZero: true });
                   else void handleSaveManualEntry(row, { acceptZero: true });
                 }}
-                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+                className="px-4 py-2 text-sm font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0]"
               >
                 Save anyway
               </button>
@@ -3439,7 +3439,7 @@ export default function RfqEntryDetailPage() {
                   <a
                     href={filePreview.url}
                     download={filePreview.fileName}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 text-white font-semibold"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1E88E5] text-white font-semibold"
                   >
                     <i className="ri-download-line" />
                     Download file

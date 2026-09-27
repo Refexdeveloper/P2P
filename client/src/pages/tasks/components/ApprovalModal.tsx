@@ -119,12 +119,12 @@ export default function ApprovalModal({
         ? 'Upload Cloud Subscription Invoice'
         : 'Approve Purchase Request',
       icon: requireInvoiceUpload ? 'ri-file-upload-line' : 'ri-check-double-line',
-      headerBg: requireInvoiceUpload ? 'bg-teal-50' : 'bg-emerald-50',
-      iconBg: requireInvoiceUpload ? 'bg-teal-100' : 'bg-emerald-100',
-      iconColor: requireInvoiceUpload ? 'text-teal-600' : 'text-emerald-600',
-      titleColor: requireInvoiceUpload ? 'text-teal-900' : 'text-emerald-900',
+      headerBg: requireInvoiceUpload ? 'bg-[#E3F2FD]' : 'bg-emerald-50',
+      iconBg: requireInvoiceUpload ? 'bg-[#E3F2FD]' : 'bg-emerald-100',
+      iconColor: requireInvoiceUpload ? 'text-[#1E88E5]' : 'text-emerald-600',
+      titleColor: requireInvoiceUpload ? 'text-[#0D47A1]' : 'text-emerald-900',
       btnBg: requireInvoiceUpload
-        ? 'bg-teal-600 hover:bg-teal-700'
+        ? 'bg-[#1E88E5] hover:bg-[#1565C0]'
         : 'bg-emerald-600 hover:bg-emerald-700',
       btnIcon: requireInvoiceUpload ? 'ri-upload-2-line' : 'ri-check-double-line',
       btnText: requireInvoiceUpload ? 'Submit Invoice' : 'Confirm Approve',
@@ -281,9 +281,9 @@ export default function ApprovalModal({
           </div>
 
           {type === 'approve' && requireInvoiceUpload && (
-            <div className="mb-4 rounded-lg border border-teal-200 bg-teal-50/70 p-3 space-y-3">
-              <p className="text-sm font-semibold text-teal-900">Upload invoice</p>
-              <p className="text-xs text-teal-800 leading-relaxed">
+            <div className="mb-4 rounded-lg border border-[#90CAF9] bg-[#E3F2FD]/70 p-3 space-y-3">
+              <p className="text-sm font-semibold text-[#0D47A1]">Upload invoice</p>
+              <p className="text-xs text-[#1565C0] leading-relaxed">
                 Cloud Subscription: Mugesh uploads the invoice here. After submit, mail goes to
                 Requester, L1, L2 (Srivaths), and accounts_rgml_refexev@refex.co.in.
               </p>
@@ -293,7 +293,7 @@ export default function ApprovalModal({
                   type="date"
                   value={invoiceDate}
                   onChange={(e) => setInvoiceDate(e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 bg-white"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] bg-white"
                 />
               </div>
               <div>
@@ -307,10 +307,10 @@ export default function ApprovalModal({
                     setInvoiceFile(e.target.files?.[0] || null);
                     setError('');
                   }}
-                  className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-teal-600 file:text-white file:text-sm file:font-semibold file:cursor-pointer"
+                  className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-[#1E88E5] file:text-white file:text-sm file:font-semibold file:cursor-pointer"
                 />
                 {invoiceFile && (
-                  <p className="text-xs text-teal-800 mt-1.5 truncate">Selected: {invoiceFile.name}</p>
+                  <p className="text-xs text-[#1565C0] mt-1.5 truncate">Selected: {invoiceFile.name}</p>
                 )}
               </div>
             </div>
@@ -359,7 +359,7 @@ export default function ApprovalModal({
                   }}
                   className={`flex-1 px-3 py-2.5 text-sm font-semibold rounded-lg border cursor-pointer text-center disabled:opacity-60 ${
                     goToBusinessApproval === false
-                      ? 'bg-teal-600 text-white border-teal-600'
+                      ? 'bg-[#1E88E5] text-white border-[#1E88E5]'
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                   }`}
                 >
@@ -415,7 +415,7 @@ export default function ApprovalModal({
               className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none ${
                 error
                   ? 'border-red-300 focus:ring-red-500/20 focus:border-red-400'
-                  : 'border-gray-200 focus:ring-teal-500/20 focus:border-teal-400'
+                  : 'border-gray-200 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]'
               }`}
             />
             <div className="flex items-center justify-between mt-1">

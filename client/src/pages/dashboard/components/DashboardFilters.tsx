@@ -167,7 +167,7 @@ export default function DashboardFilters({
               aria-labelledby="dashboard-filter-sheet-title"
               className="animate-sheet-up fixed inset-x-0 bottom-0 z-[10041] flex max-h-[88vh] flex-col rounded-t-3xl bg-white shadow-[0_-12px_40px_rgba(16,24,40,0.18)]"
             >
-              <div className="h-1 shrink-0 rounded-t-3xl bg-teal-600" />
+              <div className="h-1 shrink-0 rounded-t-3xl bg-[#1E88E5]" />
               <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#EEF0F5] bg-white px-4 py-3">
                 <h2 id="dashboard-filter-sheet-title" className="text-base font-semibold text-slate-900">
                   Filters
@@ -268,7 +268,7 @@ export default function DashboardFilters({
                 <button
                   type="button"
                   onClick={applySheet}
-                  className="h-11 flex-1 rounded-xl bg-teal-600 text-[13px] font-semibold text-white hover:bg-teal-700"
+                  className="h-11 flex-1 rounded-xl bg-[#1E88E5] text-[13px] font-semibold text-white hover:bg-[#1565C0]"
                 >
                   Apply
                 </button>
@@ -287,7 +287,7 @@ export default function DashboardFilters({
           onClick={() => setSheetOpen(true)}
           className={`flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold ${
             activeCount
-              ? 'bg-teal-600 text-white shadow-sm'
+              ? 'bg-[#1E88E5] text-white shadow-sm'
               : 'border border-[#E6E8F0] bg-white text-slate-800'
           }`}
         >

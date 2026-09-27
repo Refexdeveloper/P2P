@@ -9,7 +9,7 @@ const statusConfig: Record<string, { bg: string; text: string; icon: string }> =
   Draft: { bg: 'bg-gray-100', text: 'text-gray-600', icon: 'ri-draft-line' },
   Submitted: { bg: 'bg-sky-100', text: 'text-sky-700', icon: 'ri-send-plane-line' },
   'Under Verification': { bg: 'bg-amber-100', text: 'text-amber-700', icon: 'ri-search-eye-line' },
-  'Approved for Payment': { bg: 'bg-teal-100', text: 'text-teal-700', icon: 'ri-checkbox-circle-line' },
+  'Approved for Payment': { bg: 'bg-[#E3F2FD]', text: 'text-[#1565C0]', icon: 'ri-checkbox-circle-line' },
   Paid: { bg: 'bg-green-100', text: 'text-green-700', icon: 'ri-money-rupee-circle-line' },
   Discrepancy: { bg: 'bg-red-100', text: 'text-red-700', icon: 'ri-error-warning-line' },
   Rejected: { bg: 'bg-red-100', text: 'text-red-700', icon: 'ri-close-circle-line' },
@@ -36,7 +36,7 @@ export default function VendorInvoiceWidget({ data }: Props) {
         </div>
         <button
           onClick={() => navigate('/scm/vendor-invoice')}
-          className="text-xs text-teal-600 font-medium hover:underline cursor-pointer whitespace-nowrap"
+          className="text-xs text-[#1E88E5] font-medium hover:underline cursor-pointer whitespace-nowrap"
         >
           View All
         </button>
@@ -73,7 +73,7 @@ export default function VendorInvoiceWidget({ data }: Props) {
       <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
         <button
           onClick={() => navigate('/scm/vendor-invoice')}
-          className="w-full text-center text-xs font-semibold text-teal-600 hover:text-teal-700 cursor-pointer whitespace-nowrap"
+          className="w-full text-center text-xs font-semibold text-[#1E88E5] hover:text-[#1565C0] cursor-pointer whitespace-nowrap"
         >
           Submit / Track Invoice <i className="ri-arrow-right-line"></i>
         </button>

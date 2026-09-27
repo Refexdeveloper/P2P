@@ -152,7 +152,7 @@ export default function FinancialEntityDetailPage() {
           <button
             type="button"
             onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-teal-700 cursor-pointer"
+            className="flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-[#1565C0] cursor-pointer"
           >
             <i className="ri-arrow-left-line" />
             Back to Financial Insights
@@ -164,7 +164,7 @@ export default function FinancialEntityDetailPage() {
 
         {loading ? (
           <div className="bg-white rounded-xl border border-gray-200 px-6 py-16 text-center text-sm text-slate-500">
-            <i className="ri-loader-4-line animate-spin text-lg text-teal-600 mr-2" />
+            <i className="ri-loader-4-line animate-spin text-lg text-[#1E88E5] mr-2" />
             Loading entity purchase orders…
           </div>
         ) : error && !summary ? (
@@ -191,7 +191,7 @@ export default function FinancialEntityDetailPage() {
                 </div>
                 <Link
                   to="/dashboard"
-                  className="text-sm font-medium text-teal-700 hover:underline"
+                  className="text-sm font-medium text-[#1565C0] hover:underline"
                 >
                   View all entities
                 </Link>

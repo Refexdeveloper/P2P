@@ -207,7 +207,7 @@ export default function VendorMasterPage() {
             />
             <button
               onClick={openCreate}
-              className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 transition-colors cursor-pointer shadow-sm"
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer shadow-sm"
             >
               <i className="ri-user-add-line"></i>
               Create Vendor
@@ -224,7 +224,7 @@ export default function VendorMasterPage() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-6">
             {[
-              { label: 'Total Vendors', value: stats.total, icon: 'ri-store-2-line', color: 'text-teal-600', bg: 'bg-teal-50' },
+              { label: 'Total Vendors', value: stats.total, icon: 'ri-store-2-line', color: 'text-[#1E88E5]', bg: 'bg-[#E3F2FD]' },
               { label: 'Companies', value: stats.company, icon: 'ri-building-line', color: 'text-blue-600', bg: 'bg-blue-50' },
               { label: 'Individuals', value: stats.individual, icon: 'ri-user-line', color: 'text-purple-600', bg: 'bg-purple-50' },
             ].map((card) => (
@@ -253,7 +253,7 @@ export default function VendorMasterPage() {
                   placeholder="Search vendor, email, code..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 w-full sm:w-72"
+                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] w-full sm:w-72"
                 />
               </div>
             </div>
@@ -266,7 +266,7 @@ export default function VendorMasterPage() {
                 <p className="text-gray-500 text-sm font-medium">No vendors found</p>
                 <button
                   onClick={openCreate}
-                  className="mt-4 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 cursor-pointer"
+                  className="mt-4 px-4 py-2 text-sm font-medium text-[#1E88E5] bg-[#E3F2FD] rounded-lg hover:bg-[#BBDEFB] cursor-pointer"
                 >
                   Create your first vendor
                 </button>
@@ -294,17 +294,17 @@ export default function VendorMasterPage() {
                             onClick={() => toggleRow(v.id)}
                             className={`border-b transition-colors cursor-pointer ${
                               isExpanded
-                                ? 'bg-teal-50 border-teal-200'
-                                : 'hover:bg-teal-50/40 border-gray-100'
+                                ? 'bg-[#E3F2FD] border-[#90CAF9]'
+                                : 'hover:bg-[#E3F2FD]/40 border-gray-100'
                             }`}
                           >
                             <td className="px-4 py-4 w-8">
-                              <div className={`w-6 h-6 flex items-center justify-center rounded transition-all ${isExpanded ? 'bg-teal-100 text-teal-600' : 'text-gray-400'}`}>
+                              <div className={`w-6 h-6 flex items-center justify-center rounded transition-all ${isExpanded ? 'bg-[#E3F2FD] text-[#1E88E5]' : 'text-gray-400'}`}>
                                 <i className={`text-sm transition-transform duration-200 ${isExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}`}></i>
                               </div>
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap">
-                              <span className="text-sm font-bold text-teal-600">{v.vendorCode}</span>
+                              <span className="text-sm font-bold text-[#1E88E5]">{v.vendorCode}</span>
                             </td>
                             <td className="px-4 py-4">
                               <div className="flex items-center gap-2">
@@ -326,7 +326,7 @@ export default function VendorMasterPage() {
                                 <button
                                   type="button"
                                   onClick={() => toggleRow(v.id)}
-                                  className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                                  className="p-1.5 text-[#1E88E5] hover:bg-[#E3F2FD] rounded-lg transition-colors cursor-pointer"
                                   title={isExpanded ? 'Collapse' : 'Expand Details'}
                                 >
                                   <i className={`text-sm ${isExpanded ? 'ri-eye-off-line' : 'ri-eye-line'}`}></i>
@@ -388,7 +388,7 @@ export default function VendorMasterPage() {
                           setPage(1);
                           setExpandedRow(null);
                         }}
-                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
                       >
                         {PAGE_SIZE_OPTIONS.map((size) => (
                           <option key={size} value={size}>{size}</option>

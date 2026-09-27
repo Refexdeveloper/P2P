@@ -83,15 +83,15 @@ export default function RfqExtraQuestionsPanel({
           <p className="text-xs text-gray-500 mt-0.5">
             Price is always compared. Tick anything else you want to see side by side for every vendor.
           </p>
-          <p className="text-xs text-teal-700 mt-1.5 font-medium">{summary}</p>
+          <p className="text-xs text-[#1565C0] mt-1.5 font-medium">{summary}</p>
         </div>
         <i className={`${open ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} text-xl text-gray-400 mt-0.5`} />
       </button>
 
       {open && (
         <div className="mt-4 pt-4 border-t border-gray-100 space-y-5">
-          <label className="flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50/60 px-3 py-3">
-            <input type="checkbox" checked disabled className="mt-0.5 w-4 h-4 accent-teal-600" />
+          <label className="flex items-start gap-3 rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/60 px-3 py-3">
+            <input type="checkbox" checked disabled className="mt-0.5 w-4 h-4 accent-[#1E88E5]" />
             <span>
               <span className="block text-sm font-semibold text-gray-900">Quoted price</span>
               <span className="block text-xs text-gray-500">Always compared. You cannot turn this off.</span>
@@ -108,14 +108,14 @@ export default function RfqExtraQuestionsPanel({
                   <label
                     key={p.id}
                     className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 cursor-pointer ${
-                      on ? 'border-teal-300 bg-teal-50/50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                      on ? 'border-[#64B5F6] bg-[#E3F2FD]/50' : 'border-gray-200 bg-white hover:bg-gray-50'
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={on}
                       onChange={() => togglePreset(p)}
-                      className="mt-0.5 w-4 h-4 accent-teal-600"
+                      className="mt-0.5 w-4 h-4 accent-[#1E88E5]"
                     />
                     <span>
                       <span className="block text-sm font-semibold text-gray-900">{p.label}</span>
@@ -164,7 +164,7 @@ export default function RfqExtraQuestionsPanel({
                   }
                 }}
                 placeholder="Type a question"
-                className="flex-1 h-11 px-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="flex-1 h-11 px-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               />
               <button
                 type="button"

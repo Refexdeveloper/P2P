@@ -663,7 +663,7 @@ function ClauseTableEditor({
           <span className="px-2 py-0.5 text-xs font-medium bg-white border border-gray-200 rounded-full text-gray-500">
             {rows.length} row{rows.length !== 1 ? 's' : ''}
           </span>
-          <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
+          <span className="px-2 py-0.5 bg-[#E3F2FD] text-[#1565C0] rounded text-xs font-medium">
             Rich text · paste keeps bold · shown on {docLabel} PDF
           </span>
         </div>
@@ -681,13 +681,13 @@ function ClauseTableEditor({
                   }
                 }}
                 placeholder="PO number"
-                className="w-36 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400"
+                className="w-36 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
               />
               <button
                 type="button"
                 onClick={loadFromPo.onLoad}
                 disabled={loadFromPo.loading || !loadFromPo.poNumber.trim()}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[#1565C0] bg-white border border-[#90CAF9] rounded-lg hover:bg-[#E3F2FD] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loadFromPo.loading ? (
                   <i className="ri-loader-4-line animate-spin"></i>
@@ -703,7 +703,7 @@ function ClauseTableEditor({
               type="button"
               onClick={onReloadFromMaster}
               disabled={reloadDisabled}
-              className="text-xs font-medium text-teal-700 hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="text-xs font-medium text-[#1565C0] hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Reload from Master
             </button>
@@ -714,7 +714,7 @@ function ClauseTableEditor({
           <button
             type="button"
             onClick={addRow}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] cursor-pointer"
           >
             <i className="ri-add-line"></i>
             Add Row
@@ -879,14 +879,14 @@ function AnnexureIiTableEditor({
           <span className="px-2 py-0.5 text-xs font-medium bg-white border border-gray-200 rounded-full text-gray-500">
             {localRows.length} row{localRows.length !== 1 ? 's' : ''}
           </span>
-          <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-medium">
+          <span className="px-2 py-0.5 bg-[#E3F2FD] text-[#1565C0] rounded text-xs font-medium">
             Each row = one {docLabel} PDF page
           </span>
         </div>
         <button
           type="button"
           onClick={addRow}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] cursor-pointer"
         >
           <i className="ri-add-line"></i>
           Add Row
@@ -955,7 +955,7 @@ function AnnexureIiTableEditor({
                   });
                 }}
                 placeholder="e.g. ANNEXURE-II / ANNEXURE-III / ANNEXURE-IV"
-                className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-gray-50/50"
               />
               <p className="text-[11px] text-gray-400 mt-1">
                 Only this heading appears on the gray PDF bar. Do not put ANNEXURE-III/IV in Section header below.
@@ -1008,7 +1008,7 @@ function AnnexureIiTableEditor({
         <button
           type="button"
           onClick={addRow}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 border border-dashed border-teal-300 rounded-lg hover:bg-teal-50 cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#1565C0] border border-dashed border-[#64B5F6] rounded-lg hover:bg-[#E3F2FD] cursor-pointer"
         >
           <i className="ri-add-line"></i>
           Add another row
@@ -3764,7 +3764,7 @@ export default function CreatePOPage() {
                   }
                 }}
                 disabled={pdfDownloading}
-                className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
               >
                 {pdfDownloading ? 'Preparing…' : 'Download PDF'}
               </button>
@@ -3790,7 +3790,7 @@ export default function CreatePOPage() {
             <p className="text-gray-500 text-sm mb-6">{loadError || "The PR you're trying to create a PO for doesn't exist."}</p>
             <button
               onClick={() => navigate(isEditMode ? editReturnPath : '/scm/create-po')}
-              className="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-medium"
+              className="px-5 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap text-sm font-medium"
             >
               {isBuyerVerifyEdit ? 'Back to Approved PO verification' : isEditMode ? 'Back' : 'Back to Create PO'}
             </button>
@@ -3905,7 +3905,7 @@ export default function CreatePOPage() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-screen bg-gray-50/60">
+      <div className="min-h-full">
         {/* ── Top Header Bar ── */}
         <div className="sticky top-0 z-20 bg-white border-b border-gray-200">
           <div className="px-3 sm:px-6 lg:px-8 py-2.5">
@@ -4033,7 +4033,7 @@ export default function CreatePOPage() {
                   type="button"
                   onClick={handleSendForApproval}
                   disabled={submitting || isBuyerAwaitingManager}
-                  className="px-3.5 py-1.5 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap text-sm font-semibold flex items-center gap-1.5 disabled:opacity-60"
+                  className="px-3.5 py-1.5 bg-[#1E88E5] text-white rounded-md hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap text-sm font-semibold flex items-center gap-1.5 disabled:opacity-60"
                 >
                   <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
                   {submitting
@@ -4061,7 +4061,7 @@ export default function CreatePOPage() {
                   onBlur={() => setPoNumber((v) => v.trim().slice(0, 40))}
                         placeholder="Select entity to auto-fill"
                         maxLength={40}
-                        className="font-semibold text-teal-700 bg-white border border-gray-200 rounded-md px-2 py-1 w-[13rem] text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        className="font-semibold text-[#1565C0] bg-white border border-gray-200 rounded-md px-2 py-1 w-[13rem] text-xs focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                 />
               </label>
               <span>
@@ -4092,21 +4092,21 @@ export default function CreatePOPage() {
                   type="button"
                   onClick={() => setActiveTab(step.key)}
                   className={`flex items-center gap-2.5 px-2 sm:px-3 pb-2.5 pt-1 cursor-pointer border-b-[3px] transition-colors text-left ${
-                    active ? 'border-teal-600 bg-teal-50/40' : 'border-transparent hover:bg-gray-50'
+                    active ? 'border-[#1E88E5] bg-[#E3F2FD]/40' : 'border-transparent hover:bg-gray-50'
                   }`}
                 >
                   <span
                     className={`w-7 h-7 flex items-center justify-center rounded-full text-xs font-bold shrink-0 ${
-                      active ? 'bg-teal-600 text-white' : 'bg-gray-200 text-slate-500'
+                      active ? 'bg-[#1E88E5] text-white' : 'bg-gray-200 text-slate-500'
                     }`}
                   >
                     {step.n}
                   </span>
                   <span className="min-w-0">
-                    <span className={`block text-sm font-semibold leading-tight ${active ? 'text-teal-700' : 'text-slate-600'}`}>
+                    <span className={`block text-sm font-semibold leading-tight ${active ? 'text-[#1565C0]' : 'text-slate-600'}`}>
                       {step.title}
                     </span>
-                    <span className={`hidden sm:block text-[11px] mt-0.5 leading-tight ${active ? 'text-teal-600' : 'text-gray-400'}`}>
+                    <span className={`hidden sm:block text-[11px] mt-0.5 leading-tight ${active ? 'text-[#1E88E5]' : 'text-gray-400'}`}>
                       {step.sub}
                     </span>
                   </span>
@@ -4126,8 +4126,8 @@ export default function CreatePOPage() {
                 {/* Basic Details — PR, PO number, site & delivery */}
                 <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 shadow-sm space-y-6">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-lg">
-                      <i className="ri-file-text-line text-teal-600"></i>
+                    <div className="w-8 h-8 flex items-center justify-center bg-[#E3F2FD] rounded-lg">
+                      <i className="ri-file-text-line text-[#1E88E5]"></i>
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-gray-900">Basic Details</h3>
@@ -4265,12 +4265,12 @@ export default function CreatePOPage() {
                   )}
 
                   {!isManualPoFlow && (
-                    <div className="rounded-xl bg-gradient-to-r from-teal-600 to-teal-700 p-4 sm:p-5 text-white">
+                    <div className="rounded-xl bg-gradient-to-r from-[#1E88E5] to-[#1565C0] p-4 sm:p-5 text-white">
                       <div className="flex items-start justify-between gap-4 flex-wrap">
                         <div>
-                          <p className="text-teal-100 text-xs font-medium uppercase tracking-wider mb-1">Purchase Request</p>
+                          <p className="text-sky-100 text-xs font-medium uppercase tracking-wider mb-1">Purchase Request</p>
                           <h2 className="text-lg font-bold">{pr.title}</h2>
-                          <div className="flex items-center gap-4 mt-2 text-sm text-teal-100 flex-wrap">
+                          <div className="flex items-center gap-4 mt-2 text-sm text-sky-100 flex-wrap">
                             <span className="flex items-center gap-1.5"><i className="ri-hashtag"></i>{pr.prNumber}</span>
                             {(pr.entityCode || pr.entityName) && (
                               <span className="flex items-center gap-1.5">
@@ -4284,7 +4284,7 @@ export default function CreatePOPage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-teal-100 text-xs mb-1">Estimated Value</p>
+                          <p className="text-sky-100 text-xs mb-1">Estimated Value</p>
                           <p className="text-2xl font-bold">{fmt(pr.amount ?? grandTotal)}</p>
                           <span className="inline-block mt-1 px-2 py-0.5 bg-white/20 rounded-full text-xs font-medium">
                             {pr.requestType}
@@ -4294,10 +4294,10 @@ export default function CreatePOPage() {
                     </div>
                   )}
 
-                  <div className="rounded-lg border border-teal-100 bg-teal-50/40 p-4">
+                  <div className="rounded-lg border border-[#BBDEFB] bg-[#E3F2FD]/40 p-4">
                     <div className="flex items-start gap-3 mb-3">
-                      <div className="w-9 h-9 flex items-center justify-center bg-teal-50 rounded-lg shrink-0">
-                        <i className="ri-search-eye-line text-teal-600 text-lg"></i>
+                      <div className="w-9 h-9 flex items-center justify-center bg-[#E3F2FD] rounded-lg shrink-0">
+                        <i className="ri-search-eye-line text-[#1E88E5] text-lg"></i>
                       </div>
                       <div className="min-w-0">
                         <h4 className="text-sm font-bold text-gray-900">
@@ -4323,14 +4323,14 @@ export default function CreatePOPage() {
                           }
                         }}
                         placeholder="e.g. PO-RIL-2026-27-0001"
-                        className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                        className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-white"
                         disabled={referencePoLoading}
                       />
                       <button
                         type="button"
                         onClick={() => void loadPoDetailsByNumber()}
                         disabled={referencePoLoading || !referencePoNumber.trim()}
-                        className="px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-sm font-semibold whitespace-nowrap disabled:opacity-60 flex items-center justify-center gap-2"
+                        className="px-4 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer text-sm font-semibold whitespace-nowrap disabled:opacity-60 flex items-center justify-center gap-2"
                       >
                         {referencePoLoading ? (
                           <>
@@ -4384,7 +4384,7 @@ export default function CreatePOPage() {
                               : 'PO / WO number'
                         }
                         maxLength={40}
-                        className="w-full px-3.5 py-2.5 border border-teal-200 rounded-lg text-sm font-semibold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-teal-50/40"
+                        className="w-full px-3.5 py-2.5 border border-[#90CAF9] rounded-lg text-sm font-semibold text-[#1565C0] focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-[#E3F2FD]/40"
                       />
                       <p className="text-[11px] text-gray-500 mt-1">
                         {poNumber.toUpperCase().startsWith('DRAFT-')
@@ -4402,7 +4402,7 @@ export default function CreatePOPage() {
                         type="date"
                         value={poDate}
                         onChange={(e) => setPoDate(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-gray-50/50"
                       />
                     </div>
                     <div className="sm:col-span-2 lg:col-span-3">
@@ -4414,7 +4414,7 @@ export default function CreatePOPage() {
                         value={poTermsDetails.subject || ''}
                         onChange={(e) => updatePoTermsField('subject', e.target.value)}
                         placeholder={`e.g. Supply of equipment for site / ${docLabel} description`}
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 resize-y min-h-[72px]"
+                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-gray-50/50 resize-y min-h-[72px]"
                       />
                       <p className="text-[11px] text-gray-500 mt-1">
                         Subject prints on the {docLabel === 'Work Order' ? 'WO' : 'PO'} PDF.
@@ -4456,7 +4456,7 @@ export default function CreatePOPage() {
                               onChange={(e) => setNewSiteAddress(e.target.value)}
                               rows={4}
                               placeholder="Enter site address"
-                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-y"
                             />
                             {siteLookupError && addingSiteAddress ? (
                               <p className="text-xs text-red-600">{siteLookupError}</p>
@@ -4476,7 +4476,7 @@ export default function CreatePOPage() {
                                 type="button"
                                 onClick={() => void saveSiteAddressLookup()}
                                 disabled={savingSiteLookup}
-                                className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-60 cursor-pointer"
+                                className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] hover:bg-[#1565C0] rounded-md disabled:opacity-60 cursor-pointer"
                               >
                                 {savingSiteLookup ? 'Saving...' : 'Add'}
                               </button>
@@ -4527,21 +4527,21 @@ export default function CreatePOPage() {
                                 value={newSiteContact.label}
                                 onChange={(e) => setNewSiteContact((prev) => ({ ...prev, label: e.target.value }))}
                                 placeholder="Contact name"
-                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                               />
                               <input
                                 type="email"
                                 value={newSiteContact.email}
                                 onChange={(e) => setNewSiteContact((prev) => ({ ...prev, email: e.target.value }))}
                                 placeholder="Email"
-                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                               />
                                 <input
                                 type="text"
                                 value={newSiteContact.phone}
                                 onChange={(e) => setNewSiteContact((prev) => ({ ...prev, phone: e.target.value }))}
                                 placeholder="Phone"
-                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                               />
                               {siteLookupError && addingSiteContact ? (
                                 <p className="text-xs text-red-600">{siteLookupError}</p>
@@ -4561,7 +4561,7 @@ export default function CreatePOPage() {
                                   type="button"
                                   onClick={() => void saveSiteContactLookup()}
                                   disabled={savingSiteLookup}
-                                  className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-60 cursor-pointer"
+                                  className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] hover:bg-[#1565C0] rounded-md disabled:opacity-60 cursor-pointer"
                                 >
                                   {savingSiteLookup ? 'Saving...' : 'Add'}
                                 </button>
@@ -4576,7 +4576,7 @@ export default function CreatePOPage() {
                             type="email"
                             value={poTermsDetails.siteContactEmail}
                             onChange={(e) => updatePoTermsField('siteContactEmail', e.target.value)}
-                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -4585,7 +4585,7 @@ export default function CreatePOPage() {
                             type="text"
                             value={poTermsDetails.siteContactPhone}
                             onChange={(e) => updatePoTermsField('siteContactPhone', e.target.value)}
-                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                           />
                         </div>
                   </div>
@@ -4633,21 +4633,21 @@ export default function CreatePOPage() {
                             value={newProjectManager.label}
                             onChange={(e) => setNewProjectManager((prev) => ({ ...prev, label: e.target.value }))}
                             placeholder="Project manager name"
-                            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                           />
                           <input
                             type="email"
                             value={newProjectManager.email}
                             onChange={(e) => setNewProjectManager((prev) => ({ ...prev, email: e.target.value }))}
                             placeholder="Email"
-                            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                           />
                           <input
                             type="text"
                             value={newProjectManager.phone}
                             onChange={(e) => setNewProjectManager((prev) => ({ ...prev, phone: e.target.value }))}
                             placeholder="Phone"
-                            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                           />
                           {siteLookupError && addingProjectManager ? (
                             <p className="text-xs text-red-600">{siteLookupError}</p>
@@ -4667,7 +4667,7 @@ export default function CreatePOPage() {
                               type="button"
                               onClick={() => void saveProjectManagerLookup()}
                               disabled={savingSiteLookup}
-                              className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-md disabled:opacity-60 cursor-pointer"
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] hover:bg-[#1565C0] rounded-md disabled:opacity-60 cursor-pointer"
                             >
                               {savingSiteLookup ? 'Saving...' : 'Add'}
                             </button>
@@ -4682,7 +4682,7 @@ export default function CreatePOPage() {
                           type="text"
                           value={poTermsDetails.projectManagerContact}
                           onChange={(e) => updatePoTermsField('projectManagerContact', e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                         />
                             </div>
                       <div className="space-y-1.5">
@@ -4691,7 +4691,7 @@ export default function CreatePOPage() {
                           type="email"
                           value={poTermsDetails.projectManagerEmail}
                           onChange={(e) => updatePoTermsField('projectManagerEmail', e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                         />
                           </div>
                         </div>
@@ -4701,7 +4701,7 @@ export default function CreatePOPage() {
                       <div className="space-y-1.5 md:col-span-2">
                         <label className="block text-xs font-semibold text-gray-700">Invoicing Address</label>
                         {(poTermsDetails.locationName || poTermsDetails.buyerGstNo || locationGstNo) && (
-                          <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-2 text-xs text-teal-900 space-y-1 mb-1.5">
+                          <div className="rounded-lg border border-[#BBDEFB] bg-[#E3F2FD]/50 px-3 py-2 text-xs text-[#0D47A1] space-y-1 mb-1.5">
                             {poTermsDetails.locationName && (
                               <p>
                                 <span className="font-semibold">Location:</span> {poTermsDetails.locationName}
@@ -4742,7 +4742,7 @@ export default function CreatePOPage() {
                           value={poTermsDetails.mailingAddress}
                           onChange={(e) => updatePoTermsField('mailingAddress', e.target.value)}
                           rows={3}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-y"
                         />
                   </div>
                       <div className="space-y-1.5">
@@ -4751,7 +4751,7 @@ export default function CreatePOPage() {
                           value={poTermsDetails.reasonForCancellation}
                           onChange={(e) => updatePoTermsField('reasonForCancellation', e.target.value)}
                           rows={3}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-y"
                       />
                     </div>
                       <div className="space-y-1.5 md:col-span-2">
@@ -4763,7 +4763,7 @@ export default function CreatePOPage() {
                           value={poTermsDetails.quoteNo || ''}
                           onChange={(e) => updatePoTermsField('quoteNo', e.target.value)}
                           placeholder="Vendor quotation number"
-                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-emerald-50/40 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                         />
                         <p className="text-[11px] text-gray-500">
                           Prints on the PDF header as Quote No. It is not listed in Terms &amp; Conditions.
@@ -4784,7 +4784,7 @@ export default function CreatePOPage() {
                         <select
                           value={normalizeIncoterm(incoterms)}
                           onChange={(e) => setIncoterms(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-gray-50/50 cursor-pointer"
                         >
                           {INCOTERMS_OPTIONS.map((o) => (
                             <option key={o.code} value={o.code}>
@@ -4800,7 +4800,7 @@ export default function CreatePOPage() {
                         <select
                           value={normalizeModeOfShipment(poTermsDetails.modeOfShipment)}
                           onChange={(e) => updatePoTermsField('modeOfShipment', e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-gray-50/50 cursor-pointer"
                         >
                           {MODE_OF_SHIPMENT_OPTIONS.map((o) => (
                             <option key={o.value || 'empty'} value={o.value}>
@@ -4817,7 +4817,7 @@ export default function CreatePOPage() {
                           type="date"
                           value={expectedDeliveryDate}
                           onChange={(e) => setExpectedDeliveryDate(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50"
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-gray-50/50"
                         />
                       </div>
                     </div>
@@ -4835,7 +4835,7 @@ export default function CreatePOPage() {
                       onChange={(e) => setSpecialInstructions(e.target.value)}
                       rows={5}
                       placeholder="Add any special instructions, quality requirements, packaging notes, or conditions for the vendor..."
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none bg-gray-50/50"
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none bg-gray-50/50"
                     />
                     <p className="text-xs text-gray-400">{specialInstructions.length}/500 characters</p>
                   </div>
@@ -4868,7 +4868,7 @@ export default function CreatePOPage() {
                             title={opt.label}
                             className={`px-2.5 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors ${
                               currency === opt.code
-                                ? 'bg-teal-600 text-white shadow-sm'
+                                ? 'bg-[#1E88E5] text-white shadow-sm'
                                 : 'text-gray-600 hover:bg-gray-50'
                             }`}
                           >
@@ -4882,7 +4882,7 @@ export default function CreatePOPage() {
                     </span>
                     <button
                       onClick={handleAddLineItem}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
                     >
                       <i className="ri-add-line text-sm"></i> Add Item
                     </button>
@@ -4907,7 +4907,7 @@ export default function CreatePOPage() {
                       {lineItems.map((item, idx) => (
                         <tr key={item.id} className="hover:bg-gray-50/60 transition-colors group align-top">
                           <td className="px-2 py-2.5 align-top">
-                            <span className="mt-1 w-6 h-6 flex items-center justify-center bg-teal-50 text-teal-700 rounded-full text-xs font-bold">
+                            <span className="mt-1 w-6 h-6 flex items-center justify-center bg-[#E3F2FD] text-[#1565C0] rounded-full text-xs font-bold">
                               {idx + 1}
                             </span>
                           </td>
@@ -4917,7 +4917,7 @@ export default function CreatePOPage() {
                               value={item.itemName || ''}
                               onChange={(e) => handleItemNameChange(item.id, e.target.value)}
                               placeholder="Item name"
-                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent bg-gray-50"
                             />
                           </td>
                           <td className="px-2 py-2.5 align-top">
@@ -4937,7 +4937,7 @@ export default function CreatePOPage() {
                               inputMode="decimal"
                               value={item.quantity}
                               onChange={(e) => handleQtyChange(item.id, e.target.value)}
-                              className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                              className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent bg-gray-50"
                             />
                           </td>
                           <td className="px-2 py-2.5 align-top">
@@ -4946,7 +4946,7 @@ export default function CreatePOPage() {
                               value={item.unit || ''}
                               onChange={(e) => handleUnitChange(item.id, e.target.value)}
                               placeholder="Nos"
-                              className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                              className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent bg-gray-50"
                               title="Unit"
                               aria-label="Unit"
                             />
@@ -4964,7 +4964,7 @@ export default function CreatePOPage() {
                                 value={item.unitPrice === 0 ? '' : item.unitPrice}
                                 placeholder="0.00"
                                 onChange={(e) => handlePriceChange(item.id, e.target.value)}
-                                className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                                className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent bg-white"
                                 title="Unit Price"
                                 aria-label="Unit Price"
                           />
@@ -4981,7 +4981,7 @@ export default function CreatePOPage() {
                                 onChange={(e) =>
                                   handleTaxPercentageChange(item.id, parseFloat(e.target.value) || 0)
                                 }
-                                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-gray-50"
+                                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent bg-gray-50"
                               />
                               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">%</span>
                       </div>
@@ -5016,7 +5016,7 @@ export default function CreatePOPage() {
                               <p className="text-sm text-gray-400">No line items yet</p>
                         <button
                                 onClick={handleAddLineItem}
-                                className="mt-1 flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
+                                className="mt-1 flex items-center gap-1.5 px-4 py-2 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer text-xs font-semibold whitespace-nowrap"
                         >
                                 <i className="ri-add-line"></i> Add First Item
                         </button>
@@ -5032,7 +5032,7 @@ export default function CreatePOPage() {
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <button
                       onClick={handleAddLineItem}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 border border-dashed border-teal-400 text-teal-600 rounded-lg hover:bg-teal-50 transition-colors cursor-pointer text-xs font-medium whitespace-nowrap"
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 border border-dashed border-[#42A5F5] text-[#1E88E5] rounded-lg hover:bg-[#E3F2FD] transition-colors cursor-pointer text-xs font-medium whitespace-nowrap"
                     >
                       <i className="ri-add-line text-sm"></i> Add Another Item
                     </button>
@@ -5047,7 +5047,7 @@ export default function CreatePOPage() {
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                         <span className="text-sm font-bold text-gray-900">Grand Total</span>
-                        <span className="text-lg font-bold text-teal-600">{fmt(grandTotal)}</span>
+                        <span className="text-lg font-bold text-[#1E88E5]">{fmt(grandTotal)}</span>
                       </div>
                       <div className="pt-2 border-t border-gray-100">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Amount In Words</p>
@@ -5062,7 +5062,7 @@ export default function CreatePOPage() {
                 <button
                   type="button"
                   onClick={() => setActiveTab('terms')}
-                  className="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-semibold flex items-center gap-2"
+                  className="px-5 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] text-sm font-semibold flex items-center gap-2"
                 >
                   Continue to Terms &amp; Conditions
                   <i className="ri-arrow-right-line"></i>
@@ -5110,8 +5110,8 @@ export default function CreatePOPage() {
                     }}
                     className={`flex-1 min-w-[160px] px-4 py-3 rounded-xl text-left border transition-colors cursor-pointer ${
                       documentType === opt.id
-                        ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-teal-300'
+                        ? 'bg-[#1E88E5] text-white border-[#1E88E5] shadow-sm'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-[#90CAF9]'
                     }`}
                   >
                     <span className="flex items-center gap-2 text-sm font-semibold">
@@ -5120,7 +5120,7 @@ export default function CreatePOPage() {
                     </span>
                     <span
                       className={`block text-[10px] font-normal mt-1 ${
-                        documentType === opt.id ? 'text-teal-100' : 'text-gray-400'
+                        documentType === opt.id ? 'text-sky-100' : 'text-gray-400'
                       }`}
                     >
                       {opt.hint}
@@ -5155,7 +5155,7 @@ export default function CreatePOPage() {
                         onClick={() => applyPoTypeTemplate(option.id, documentType)}
                           className={`px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
                             poType === option.id
-                              ? 'bg-white text-teal-700 shadow-sm'
+                              ? 'bg-white text-[#1565C0] shadow-sm'
                               : 'text-gray-600 hover:text-gray-900'
                           }`}
                         >
@@ -5172,11 +5172,11 @@ export default function CreatePOPage() {
                 ) : templateLoadError ? (
                   <p className="text-xs text-red-600 mt-3">{templateLoadError}</p>
                 ) : (
-                  <div className="mt-4 p-4 bg-teal-50/50 border border-teal-100 rounded-lg text-sm text-gray-700">
-                    <p className="text-xs font-semibold text-teal-800 mb-1">
+                  <div className="mt-4 p-4 bg-[#E3F2FD]/50 border border-[#BBDEFB] rounded-lg text-sm text-gray-700">
+                    <p className="text-xs font-semibold text-[#1565C0] mb-1">
                       Loaded from PO Type Master: {loadedTemplate?.title || PO_TYPE_OPTIONS_BY_DOC[documentType].find((o) => o.id === poType)?.label}
                     </p>
-                    <p className="text-xs text-teal-700 mb-3">
+                    <p className="text-xs text-[#1565C0] mb-3">
                       {loadedTemplate
                         ? `${loadedTemplate.termsCount} terms · ${loadedTemplate.annexureCount} annexure`
                         : 'Switch Short / Long to load terms and annexure'}
@@ -5215,7 +5215,7 @@ export default function CreatePOPage() {
                         const selected = letterheadOptions.find((o) => o.id === id) || null;
                         applyLetterheadBranding(selected);
                       }}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-gray-50/50 cursor-pointer"
                     >
                       <option value="">Select letterhead entity...</option>
                       {letterheadOptions.map((opt) => (
@@ -5249,7 +5249,7 @@ export default function CreatePOPage() {
                         }
                         applyLetterheadLocation(letterheadLocations[idx], idx);
                       }}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50/50 cursor-pointer"
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-gray-50/50 cursor-pointer"
                     >
                       <option value="">Select location...</option>
                       {letterheadLocations.map((loc, idx) => (
@@ -5303,7 +5303,7 @@ export default function CreatePOPage() {
             {/* Terms & Annexure — headings follow Purchase Order / Work Order */}
             <div className="w-full space-y-5">
               {letterheadLoading && (
-                <p className="text-xs text-teal-700 flex items-center gap-1.5">
+                <p className="text-xs text-[#1565C0] flex items-center gap-1.5">
                   <i className="ri-loader-4-line animate-spin"></i>
                   Loading terms &amp; annexure from PO Type Master...
                 </p>
@@ -5367,7 +5367,7 @@ export default function CreatePOPage() {
             <div className="flex justify-end">
               <button
                 onClick={() => setActiveTab('preview')}
-                className="px-6 py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors cursor-pointer text-sm font-semibold flex items-center justify-center gap-2 shadow-sm"
+                className="px-6 py-3 bg-[#1E88E5] text-white rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer text-sm font-semibold flex items-center justify-center gap-2 shadow-sm"
               >
                 <i className="ri-eye-line"></i> Preview {docLabel} Document
               </button>
@@ -5410,7 +5410,7 @@ export default function CreatePOPage() {
                           setPdfDownloading(false);
                         }
                       }}
-                      className="px-3 py-1.5 text-xs font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 cursor-pointer disabled:opacity-50"
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] cursor-pointer disabled:opacity-50"
                     >
                       <i className="ri-download-2-line mr-1"></i>
                       {pdfDownloading ? 'Generating PDF…' : 'Download PDF'}
@@ -5442,7 +5442,7 @@ export default function CreatePOPage() {
                           const win = window.open(previewHtmlUrl, '_blank');
                           win?.focus();
                         }}
-                        className="px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer"
+                        className="px-3 py-1.5 text-xs font-medium text-[#1565C0] border border-[#90CAF9] rounded-lg hover:bg-[#E3F2FD] cursor-pointer"
                       >
                         Open in new tab
                       </button>
@@ -5482,8 +5482,8 @@ export default function CreatePOPage() {
               {/* Submit Actions */}
               <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 flex items-center justify-center bg-teal-50 rounded-lg">
-                    <i className="ri-checkbox-circle-line text-teal-600 text-xl"></i>
+                  <div className="w-10 h-10 flex items-center justify-center bg-[#E3F2FD] rounded-lg">
+                    <i className="ri-checkbox-circle-line text-[#1E88E5] text-xl"></i>
                   </div>
                   <div>
                     <p className="text-sm font-bold text-gray-900">
@@ -5524,7 +5524,7 @@ export default function CreatePOPage() {
                   <button
                     onClick={handleSendForApproval}
                     disabled={submitting || isBuyerAwaitingManager}
-                    className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-sm font-bold whitespace-nowrap shadow-sm flex items-center gap-2 disabled:opacity-50"
+                    className="px-6 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer text-sm font-bold whitespace-nowrap shadow-sm flex items-center gap-2 disabled:opacity-50"
                   >
                     <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
                     {submitting
@@ -5680,13 +5680,13 @@ export default function CreatePOPage() {
       {showScmConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
-            <div className="bg-gradient-to-br from-teal-600 to-teal-700 px-6 py-5">
+            <div className="bg-gradient-to-br from-[#1E88E5] to-[#1565C0] px-6 py-5">
               <h3 className="text-lg font-bold text-white">
                 {isEditMode && poEditStatus === 'draft'
                   ? `Send for approval to ${scmManager?.name || 'Rajeev V'}?`
                   : 'Send for SCM Manager approval?'}
               </h3>
-              <p className="text-teal-100 text-sm mt-1">
+              <p className="text-sky-100 text-sm mt-1">
                 Confirm before moving this {docLabel.toLowerCase()} to the next level
               </p>
             </div>
@@ -5700,7 +5700,7 @@ export default function CreatePOPage() {
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1.5">
                     {docNoLabel}{' '}
-                    <span className="text-teal-600 normal-case font-medium">
+                    <span className="text-[#1E88E5] normal-case font-medium">
                       (default shown — edit only if you need a different number)
                     </span>
                   </label>
@@ -5716,7 +5716,7 @@ export default function CreatePOPage() {
                         : `Default ${docNoLabel}`
                     }
                     maxLength={40}
-                    className="w-full px-3.5 py-2.5 border border-teal-300 rounded-lg text-sm font-bold text-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white disabled:bg-gray-100"
+                    className="w-full px-3.5 py-2.5 border border-[#64B5F6] rounded-lg text-sm font-bold text-[#1565C0] focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-white disabled:bg-gray-100"
                   />
                   <p className="text-[11px] text-gray-500 mt-1">
                     {scmConfirmLoadingNumber
@@ -5739,20 +5739,20 @@ export default function CreatePOPage() {
                   </div>
                   <div className="sm:col-span-2">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Total Amount</p>
-                    <p className="text-base font-bold text-teal-700 mt-0.5">{fmt(grandTotal)}</p>
+                    <p className="text-base font-bold text-[#1565C0] mt-0.5">{fmt(grandTotal)}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-teal-200 bg-teal-50/80 p-4">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-teal-700 mb-2">
+              <div className="rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/80 p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-[#1565C0] mb-2">
                   SCM Manager
                 </p>
                 <p className="text-base font-bold text-gray-900">
                   {scmManager?.name || 'SCM Manager'}
                 </p>
                 {scmManager?.email ? (
-                  <p className="text-sm text-teal-800 mt-0.5 break-all">{scmManager.email}</p>
+                  <p className="text-sm text-[#1565C0] mt-0.5 break-all">{scmManager.email}</p>
                 ) : null}
                 <p className="text-xs text-gray-500 mt-2">
                   They will receive the approval task and email for{' '}
@@ -5777,7 +5777,7 @@ export default function CreatePOPage() {
                   type="button"
                   onClick={() => void executeSendForApproval()}
                   disabled={submitting}
-                  className="flex-1 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-bold disabled:opacity-50"
+                  className="flex-1 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] text-sm font-bold disabled:opacity-50"
                 >
                   {submitting ? 'Sending…' : 'Yes, send to SCM Manager'}
                 </button>
@@ -5791,7 +5791,7 @@ export default function CreatePOPage() {
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 px-8 py-8 text-center">
+            <div className="bg-gradient-to-br from-emerald-500 to-[#1E88E5] px-8 py-8 text-center">
               <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
                 <i className="ri-checkbox-circle-fill text-4xl text-white"></i>
               </div>
@@ -5809,7 +5809,7 @@ export default function CreatePOPage() {
                 ].map((row) => (
                   <div key={row.label} className="flex justify-between text-sm">
                     <span className="text-gray-500">{row.label}</span>
-                    <span className={`font-semibold ${row.highlight ? 'text-teal-600' : 'text-gray-900'}`}>
+                    <span className={`font-semibold ${row.highlight ? 'text-[#1E88E5]' : 'text-gray-900'}`}>
                       {row.value}
                     </span>
                   </div>
@@ -5821,7 +5821,7 @@ export default function CreatePOPage() {
                     setShowSuccessModal(false);
                     setPageMode('pdf');
                   }}
-                  className="flex-1 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors cursor-pointer text-sm font-semibold whitespace-nowrap"
+                  className="flex-1 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer text-sm font-semibold whitespace-nowrap"
                 >
                   View {docLabel} PDF
                 </button>

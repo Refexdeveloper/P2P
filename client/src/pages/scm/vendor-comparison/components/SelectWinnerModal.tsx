@@ -60,7 +60,7 @@ export default function SelectWinnerModal({
         {step === 'confirm' ? (
           <>
             {/* Header */}
-            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 px-6 py-5 border-b border-emerald-100">
+            <div className="bg-gradient-to-r from-emerald-50 to-white px-6 py-5 border-b border-emerald-100">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
                   <i className="ri-trophy-line text-emerald-600 text-2xl"></i>
@@ -78,13 +78,13 @@ export default function SelectWinnerModal({
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Purchase Request</span>
-                  <span className="text-xs font-bold text-teal-600">{prId}</span>
+                  <span className="text-xs font-bold text-[#1E88E5]">{prId}</span>
                 </div>
                 <p className="text-sm font-semibold text-gray-900 mb-3">{prTitle}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-white rounded-lg p-3 border border-gray-100">
                     <p className="text-xs text-gray-500 mb-1">Estimated Value</p>
-                    <p className="text-sm font-bold text-teal-700">{formatCurrency(amount)}</p>
+                    <p className="text-sm font-bold text-[#1565C0]">{formatCurrency(amount)}</p>
                   </div>
                   <div className="bg-white rounded-lg p-3 border border-gray-100">
                     <p className="text-xs text-gray-500 mb-1">Overall Score</p>
@@ -138,7 +138,7 @@ export default function SelectWinnerModal({
                   rows={3}
                   maxLength={500}
                   className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none ${
-                    error ? 'border-red-300 focus:ring-red-500/20' : 'border-gray-200 focus:ring-teal-500/20 focus:border-teal-400'
+                    error ? 'border-red-300 focus:ring-red-500/20' : 'border-gray-200 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]'
                   }`}
                 />
                 <div className="flex items-center justify-between mt-1">
@@ -180,7 +180,7 @@ export default function SelectWinnerModal({
               <span className="font-semibold text-gray-800">{recommendedVendor}</span> has been selected as the winning vendor.
             </p>
             <p className="text-sm text-gray-500 mb-6">
-              The procurement process will now proceed to <span className="font-semibold text-teal-700">PO Creation</span>.
+              The procurement process will now proceed to <span className="font-semibold text-[#1565C0]">PO Creation</span>.
             </p>
 
             <div className="w-full bg-gray-50 rounded-xl p-4 mb-6 text-left space-y-2">
@@ -194,7 +194,7 @@ export default function SelectWinnerModal({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">PO Value</span>
-                <span className="font-semibold text-teal-700">{formatCurrency(amount)}</span>
+                <span className="font-semibold text-[#1565C0]">{formatCurrency(amount)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Next Step</span>

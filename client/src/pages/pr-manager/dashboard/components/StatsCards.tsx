@@ -74,14 +74,14 @@ const StatsCards: React.FC<StatsCardsProps> = ({ stats }) => {
         <div className="text-sm text-gray-600 mt-1">Overdue / SLA Breach</div>
       </div>
 
-      <div className="bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg p-5 text-white hover:shadow-lg transition-shadow">
+      <div className="bg-gradient-to-br from-[#1E88E5] to-[#1E88E5] rounded-lg p-5 text-white hover:shadow-lg transition-shadow">
         <div className="flex items-center justify-between mb-2">
           <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
             <i className="ri-money-rupee-circle-line text-xl text-white"></i>
           </div>
         </div>
         <div className="text-2xl font-bold">₹{(stats.totalSpend / 100000).toFixed(1)}L</div>
-        <div className="text-sm text-teal-50 mt-1">Total Spend Value</div>
+        <div className="text-sm text-sky-100 mt-1">Total Spend Value</div>
       </div>
     </div>
   );

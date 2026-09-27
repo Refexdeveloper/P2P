@@ -261,7 +261,7 @@ export default function RfqEditPrModal({ open, prId, onClose, onSaved, onToast }
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {form ? (
-              <span className="text-sm font-semibold text-teal-700">{money(lineTotal, form.currency)}</span>
+              <span className="text-sm font-semibold text-[#1565C0]">{money(lineTotal, form.currency)}</span>
             ) : null}
             <button
               type="button"
@@ -536,7 +536,7 @@ export default function RfqEditPrModal({ open, prId, onClose, onSaved, onToast }
                     onClick={() =>
                       setForm((prev) => (prev ? { ...prev, lineItems: [...prev.lineItems, newLine()] } : prev))
                     }
-                    className="text-xs font-semibold text-teal-700 cursor-pointer"
+                    className="text-xs font-semibold text-[#1565C0] cursor-pointer"
                   >
                     + Add line
                   </button>
@@ -626,7 +626,7 @@ export default function RfqEditPrModal({ open, prId, onClose, onSaved, onToast }
                                 className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right"
                               />
                             </td>
-                            <td className="px-3 py-2 text-right font-semibold text-teal-700 whitespace-nowrap">
+                            <td className="px-3 py-2 text-right font-semibold text-[#1565C0] whitespace-nowrap">
                               {money(total, form.currency)}
                             </td>
                             <td className="px-2 py-2 text-center">

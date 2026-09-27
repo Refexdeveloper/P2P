@@ -299,7 +299,7 @@ export default function PeriodPicker({
                       {item.current ? (
                         <span
                           className={`inline-flex mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                            themeAccent ? '' : 'bg-teal-50 text-teal-700'
+                            themeAccent ? '' : 'bg-[#E3F2FD] text-[#1565C0]'
                           }`}
                           style={
                             themeAccent

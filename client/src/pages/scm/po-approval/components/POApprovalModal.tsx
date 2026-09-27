@@ -118,7 +118,7 @@ export default function POApprovalModal({
           <div className="bg-gray-50 rounded-lg p-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-bold text-gray-500">{poNumber}</span>
-              <span className="text-sm font-bold text-teal-700">{formatCurrency(grandTotal)}</span>
+              <span className="text-sm font-bold text-[#1565C0]">{formatCurrency(grandTotal)}</span>
             </div>
             <p className="text-sm font-medium text-gray-800">{prTitle}</p>
           </div>
@@ -152,7 +152,7 @@ export default function POApprovalModal({
               className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none ${
                 error.toLowerCase().includes('comment') || error.toLowerCase().includes('remarks')
                   ? 'border-red-300 focus:ring-red-500/20'
-                  : 'border-gray-200 focus:ring-teal-500/20 focus:border-teal-400'
+                  : 'border-gray-200 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]'
               }`}
             />
             <div className="flex items-center justify-between mt-1">

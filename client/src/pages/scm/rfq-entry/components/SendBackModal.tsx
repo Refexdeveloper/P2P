@@ -107,9 +107,9 @@ export default function SendBackModal({
             <p className="text-xs text-gray-400 mt-1 text-right">{reason.length}/500</p>
           </div>
 
-          <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-4 py-3">
-            <i className="ri-information-line text-teal-600"></i>
-            <p className="text-xs text-teal-700">
+          <div className="flex items-center gap-2 bg-[#E3F2FD] border border-[#90CAF9] rounded-lg px-4 py-3">
+            <i className="ri-information-line text-[#1E88E5]"></i>
+            <p className="text-xs text-[#1565C0]">
               Current <span className="font-semibold">Round {currentRound}</span> will be archived. A new editable{' '}
               <span className="font-semibold">Round {currentRound + 1}</span> will be created. Email vendors get a
               re-quote notification.

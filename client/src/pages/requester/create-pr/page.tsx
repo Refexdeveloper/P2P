@@ -3162,22 +3162,22 @@ export default function CreatePRPage() {
                 ))}
               </div>
               {purchaseType === 'sass' && (
-                <div className="mt-3 rounded-xl border border-teal-200 bg-teal-50/80 px-4 py-3 text-sm text-teal-900">
+                <div className="mt-3 rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/80 px-4 py-3 text-sm text-[#0D47A1]">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">
                       {sassSubscriptionMode === 'recurring' ? 'Recurring' : 'One-Time'} Cloud Subscription
                     </span>
                     {sassSubscriptionMode === 'recurring' && sassBillingFrequency && (
-                      <span className="text-xs font-medium uppercase tracking-wide bg-white/80 border border-teal-200 px-2 py-0.5 rounded-lg">
+                      <span className="text-xs font-medium uppercase tracking-wide bg-white/80 border border-[#90CAF9] px-2 py-0.5 rounded-lg">
                         {sassBillingFrequency}
                       </span>
                     )}
                     {sassSubscriptionMode === 'recurring' && sassSubscriptionStartDate && (
-                      <span className="text-xs text-teal-800">Start: {sassSubscriptionStartDate}</span>
+                      <span className="text-xs text-[#1565C0]">Start: {sassSubscriptionStartDate}</span>
                     )}
                     <button
                       type="button"
-                      className="ml-auto text-xs font-semibold text-teal-700 underline"
+                      className="ml-auto text-xs font-semibold text-[#1565C0] underline"
                       onClick={() => {
                         setSassSubscriptionModalStep('mode');
                         setSassSubscriptionModalOpen(true);
@@ -3449,9 +3449,9 @@ export default function CreatePRPage() {
 
             {purchaseType === 'online_purchase' ? (
               <>
-                <div className="sm:col-span-2 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
-                  <p className="text-sm font-semibold text-teal-900">Online Purchase approval path</p>
-                  <p className="text-xs text-teal-800 mt-1 leading-relaxed">
+                <div className="sm:col-span-2 rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/60 px-4 py-3">
+                  <p className="text-sm font-semibold text-[#0D47A1]">Online Purchase approval path</p>
+                  <p className="text-xs text-[#1565C0] mt-1 leading-relaxed">
                     Select L1 / User Approver → Mugesh L1 → Srivaths (L2) → Mugesh Invoice Upload →
                     Completed. If Srivaths is selected as L1, L2 is skipped (same person already
                     approved once). SCM RFQ is skipped.
@@ -3482,9 +3482,9 @@ export default function CreatePRPage() {
 
             {purchaseType === 'sass' ? (
               <>
-                <div className="sm:col-span-2 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
-                  <p className="text-sm font-semibold text-teal-900">Cloud Subscription approval path</p>
-                  <p className="text-xs text-teal-800 mt-1">
+                <div className="sm:col-span-2 rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/60 px-4 py-3">
+                  <p className="text-sm font-semibold text-[#0D47A1]">Cloud Subscription approval path</p>
+                  <p className="text-xs text-[#1565C0] mt-1">
                     {String(user?.email || '')
                       .trim()
                       .toLowerCase() === 'mugesh.m@refex.co.in' ? (
@@ -3674,7 +3674,7 @@ export default function CreatePRPage() {
                             e.stopPropagation();
                             prApi.downloadAttachment(persistPrId, file.existingId as number, file.name);
                           }}
-                          className="text-sm font-medium text-teal-700 hover:underline truncate text-left cursor-pointer"
+                          className="text-sm font-medium text-[#1565C0] hover:underline truncate text-left cursor-pointer"
                         >
                           {file.name}
                         </button>
@@ -4601,9 +4601,9 @@ export default function CreatePRPage() {
       {sassSubscriptionModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 bg-teal-50">
-              <h3 className="text-base font-bold text-teal-900">Cloud Subscription</h3>
-              <p className="text-xs text-teal-700 mt-1">
+            <div className="px-5 py-4 border-b border-gray-100 bg-[#E3F2FD]">
+              <h3 className="text-base font-bold text-[#0D47A1]">Cloud Subscription</h3>
+              <p className="text-xs text-[#1565C0] mt-1">
                 {sassSubscriptionModalStep === 'mode'
                   ? 'What type of subscription is this?'
                   : 'Select Subscription Frequency'}
@@ -4646,7 +4646,7 @@ export default function CreatePRPage() {
                         setSassSubscriptionMode('recurring');
                         setSassSubscriptionModalStep('frequency');
                       }}
-                      className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-teal-400 hover:bg-teal-50/50 transition-colors"
+                      className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-[#64B5F6] hover:bg-[#E3F2FD]/50 transition-colors"
                     >
                       <span className="block text-sm font-semibold text-gray-900">{opt.label}</span>
                       <span className="block text-xs text-gray-500 mt-0.5">{opt.hint}</span>
@@ -4668,8 +4668,8 @@ export default function CreatePRPage() {
                       onClick={() => setSassBillingFrequency(opt.id)}
                       className={`w-full text-left px-4 py-3 rounded-xl border transition-colors ${
                         sassBillingFrequency === opt.id
-                          ? 'border-teal-500 bg-teal-50'
-                          : 'border-gray-200 hover:border-teal-300'
+                          ? 'border-[#1E88E5] bg-[#E3F2FD]'
+                          : 'border-gray-200 hover:border-[#90CAF9]'
                       }`}
                     >
                       <span className="text-sm font-semibold text-gray-900">{opt.label}</span>
@@ -4699,7 +4699,7 @@ export default function CreatePRPage() {
                       setWorkEndDate('');
                       setSassSubscriptionModalOpen(false);
                     }}
-                    className="w-full py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold disabled:opacity-40"
+                    className="w-full py-2.5 rounded-xl bg-[#1E88E5] text-white text-sm font-semibold disabled:opacity-40"
                   >
                     Continue
                   </button>

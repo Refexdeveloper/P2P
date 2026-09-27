@@ -172,7 +172,7 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
                   type="button"
                   disabled={fileBusy === `${busyBase}-view`}
                   onClick={() => void openQuoteFile(file, vendorName, 'view')}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-teal-200 text-teal-700 text-[11px] font-semibold hover:bg-teal-50 disabled:opacity-50 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-[#90CAF9] text-[#1565C0] text-[11px] font-semibold hover:bg-[#E3F2FD] disabled:opacity-50 cursor-pointer"
                 >
                   <i className="ri-eye-line" />
                   View
@@ -329,13 +329,13 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
         })}
 
       {vendors.length > 0 ? (
-        <section className="rounded-xl overflow-hidden border border-teal-200">
-          <div className="px-4 py-3 bg-teal-50 border-b border-teal-200 flex flex-wrap items-center justify-between gap-2">
+        <section className="rounded-xl overflow-hidden border border-[#90CAF9]">
+          <div className="px-4 py-3 bg-[#E3F2FD] border-b border-[#90CAF9] flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-[15px] font-extrabold text-teal-950">Price Negotiation Trend</h2>
-              <p className="text-xs text-teal-700 mt-0.5">How prices changed across quotation rounds.</p>
+              <h2 className="text-[15px] font-extrabold text-[#0D47A1]">Price Negotiation Trend</h2>
+              <p className="text-xs text-[#1565C0] mt-0.5">How prices changed across quotation rounds.</p>
             </div>
-            <span className="inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-[11px] font-bold">
+            <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#E3F2FD] text-[#1565C0] text-[11px] font-bold">
               Total Rounds: {roundsLabel}
             </span>
           </div>
@@ -349,7 +349,7 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
                   {Array.from({ length: totalRounds }, (_, i) => (
                     <th
                       key={`round-h-${i}`}
-                      className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wide text-teal-700"
+                      className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wide text-[#1565C0]"
                     >
                       Quotation Round {i + 1}
                     </th>
@@ -396,10 +396,10 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
                         return (
                           <td
                             key={`${vendor.id}-r${roundNum}`}
-                            className={`px-3 py-3 text-center align-top ${isLast ? 'bg-teal-50/70' : ''}`}
+                            className={`px-3 py-3 text-center align-top ${isLast ? 'bg-[#E3F2FD]/70' : ''}`}
                           >
                             <p className="text-[10px] font-bold uppercase text-slate-400">Price</p>
-                            <p className={`text-sm font-extrabold mt-0.5 ${isLast ? 'text-teal-700' : 'text-slate-900'}`}>
+                            <p className={`text-sm font-extrabold mt-0.5 ${isLast ? 'text-[#1565C0]' : 'text-slate-900'}`}>
                               {price ? money(price) : '—'}
                             </p>
                             {changePct != null ? (

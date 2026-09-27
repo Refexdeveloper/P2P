@@ -186,19 +186,19 @@ function ReceiptModal({ isOpen, grn, onConfirm, onClose }: ReceiptModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-5">
+        <div className="bg-gradient-to-r from-[#1E88E5] to-[#1565C0] px-6 py-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
               <i className="ri-truck-line text-white text-xl"></i>
             </div>
             <div>
               <h3 className="text-white font-bold text-base">Confirm Goods Receipt</h3>
-              <p className="text-teal-100 text-xs mt-0.5">{grn.grnNumber} · {grn.vendor}</p>
+              <p className="text-sky-100 text-xs mt-0.5">{grn.grnNumber} · {grn.vendor}</p>
             </div>
           </div>
         </div>
         <div className="p-6">
-          <div className="bg-teal-50 border border-teal-100 rounded-xl p-4 mb-5">
+          <div className="bg-[#E3F2FD] border border-[#BBDEFB] rounded-xl p-4 mb-5">
             <p className="text-xs text-gray-500 mb-1">PO Reference</p>
             <p className="text-sm font-semibold text-gray-900">{grn.poNumber}</p>
             <p className="text-xs text-gray-500 mt-2 mb-1">Item(s)</p>
@@ -213,7 +213,7 @@ function ReceiptModal({ isOpen, grn, onConfirm, onClose }: ReceiptModalProps) {
             placeholder="Enter receipt notes, condition of goods, any discrepancies..."
             rows={3}
             maxLength={500}
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 resize-none"
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] resize-none"
           />
           <p className="text-xs text-gray-400 text-right mt-1">{remarks.length}/500</p>
           <div className="flex gap-3 mt-4">
@@ -226,7 +226,7 @@ function ReceiptModal({ isOpen, grn, onConfirm, onClose }: ReceiptModalProps) {
             <button
               onClick={() => { if (remarks.trim()) { onConfirm(remarks); setRemarks(''); } }}
               disabled={!remarks.trim()}
-              className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-teal-600 rounded-xl hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-[#1E88E5] rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <i className="ri-check-line mr-1"></i> Confirm Receipt
             </button>
@@ -316,7 +316,7 @@ function GrnLineAttachments({
             type="button"
             onClick={() => void openFile(file)}
             disabled={openingKey === String(file.id)}
-            className="text-xs font-semibold text-teal-700 hover:underline disabled:opacity-50 cursor-pointer"
+            className="text-xs font-semibold text-[#1565C0] hover:underline disabled:opacity-50 cursor-pointer"
           >
             {openingKey === String(file.id) ? 'Opening…' : 'View'}
           </button>
@@ -359,7 +359,7 @@ function GrnLineAttachments({
                     Preview is not available for this file type.{' '}
                     <button
                       type="button"
-                      className="text-teal-700 font-semibold hover:underline cursor-pointer"
+                      className="text-[#1565C0] font-semibold hover:underline cursor-pointer"
                       onClick={() => {
                         const a = document.createElement('a');
                         a.href = preview.url;
@@ -397,13 +397,13 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
 
   return (
     <tr>
-      <td colSpan={10} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
+      <td colSpan={10} className="px-0 py-0 bg-slate-50 border-b border-[#90CAF9]">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {/* Expanded Header */}
-          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-[#E3F2FD] to-white border-b border-gray-100">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                <i className="ri-truck-line text-teal-600 text-lg"></i>
+              <div className="w-10 h-10 bg-[#E3F2FD] rounded-lg flex items-center justify-center">
+                <i className="ri-truck-line text-[#1E88E5] text-lg"></i>
               </div>
               <div>
                 <p className="text-sm font-bold text-gray-900">
@@ -425,7 +425,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
               {grn.awaitingEntry && onEnterGrn && (
                 <button
                   onClick={onEnterGrn}
-                  className="px-4 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
                 >
                   <i className="ri-checkbox-circle-line"></i> Mark as Received
                 </button>
@@ -433,7 +433,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
               {isPending && !grn.awaitingEntry && (
                 <button
                   onClick={onMarkReceived}
-                  className="px-4 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-sm"
                 >
                   <i className="ri-checkbox-circle-line"></i> Confirm Receipt
                 </button>
@@ -461,7 +461,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                 onClick={() => setActiveTab(tab.key as 'details' | 'items' | 'history')}
                 className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === tab.key
-                    ? 'border-teal-600 text-teal-600'
+                    ? 'border-[#1E88E5] text-[#1E88E5]'
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
@@ -478,8 +478,8 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                 {/* Top Summary Row */}
                 <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-2">
                   {[
-                    { label: 'GRN Number', value: grn.grnNumber, icon: 'ri-file-text-line', color: 'text-teal-600' },
-                    { label: 'PO Reference', value: grn.poNumber, icon: 'ri-links-line', color: 'text-teal-600' },
+                    { label: 'GRN Number', value: grn.grnNumber, icon: 'ri-file-text-line', color: 'text-[#1E88E5]' },
+                    { label: 'PO Reference', value: grn.poNumber, icon: 'ri-links-line', color: 'text-[#1E88E5]' },
                     { label: 'Expected Delivery', value: grn.expectedDeliveryDate, icon: 'ri-calendar-line', color: 'text-gray-700' },
                     { label: 'Received Date', value: grn.receivedDate || 'Not yet received', icon: 'ri-truck-line', color: grn.receivedDate ? 'text-emerald-600' : 'text-amber-600' },
                   ].map((item) => (
@@ -496,7 +496,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                 <div className="lg:col-span-2 space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-file-list-3-line text-teal-500"></i> Purchase Request Details
+                      <i className="ri-file-list-3-line text-[#1E88E5]"></i> Purchase Request Details
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
@@ -514,9 +514,9 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                     </div>
                   </div>
 
-                  <div className="bg-teal-50 rounded-lg p-4 border border-teal-100">
+                  <div className="bg-[#E3F2FD] rounded-lg p-4 border border-[#BBDEFB]">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-store-2-line text-teal-500"></i> Vendor Information
+                      <i className="ri-store-2-line text-[#1E88E5]"></i> Vendor Information
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -532,22 +532,22 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
 
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-map-pin-line text-teal-500"></i> Delivery Address
+                      <i className="ri-map-pin-line text-[#1E88E5]"></i> Delivery Address
                     </h4>
                     <p className="text-sm text-gray-800 leading-relaxed">{grn.deliveryAddress}</p>
                   </div>
 
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-user-line text-teal-500"></i> Personnel
+                      <i className="ri-user-line text-[#1E88E5]"></i> Personnel
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <p className="text-xs text-gray-500 mb-1">Received By</p>
                         {grn.receivedBy ? (
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 bg-teal-100 rounded-full flex items-center justify-center">
-                              <span className="text-teal-700 text-xs font-bold">
+                            <div className="w-7 h-7 bg-[#E3F2FD] rounded-full flex items-center justify-center">
+                              <span className="text-[#1565C0] text-xs font-bold">
                                 {grn.receivedBy.split(' ').map(n => n[0]).join('')}
                               </span>
                             </div>
@@ -589,7 +589,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                 <div className="lg:col-span-1">
                   <div className="bg-gray-50 rounded-lg p-4 sticky top-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
-                      <i className="ri-receipt-line text-teal-500"></i> Receipt Summary
+                      <i className="ri-receipt-line text-[#1E88E5]"></i> Receipt Summary
                     </h4>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
@@ -627,7 +627,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                       </div>
                       <div className="flex justify-between text-sm font-bold pt-1 border-t border-gray-200">
                         <span className="text-gray-900">Grand Total</span>
-                        <span className="text-teal-600">{formatCurrency(grn.grandTotal)}</span>
+                        <span className="text-[#1E88E5]">{formatCurrency(grn.grandTotal)}</span>
                       </div>
                     </div>
 
@@ -684,7 +684,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-teal-50 border-t-2 border-teal-200">
+                  <tfoot className="bg-[#E3F2FD] border-t-2 border-[#90CAF9]">
                     <tr>
                       <td colSpan={5} className="px-4 py-3 text-sm font-bold text-gray-700 text-right">Subtotal</td>
                       <td colSpan={2} className="px-4 py-3 text-sm font-bold text-gray-900 text-right">{formatCurrency(grn.subtotal)}</td>
@@ -697,7 +697,7 @@ function ExpandedGRNRow({ grn, onMarkReceived, onApprove, onEnterGrn }: Expanded
                     </tr>
                     <tr>
                       <td colSpan={5} className="px-4 py-3 text-base font-bold text-gray-900 text-right">Grand Total</td>
-                      <td colSpan={2} className="px-4 py-3 text-base font-bold text-teal-600 text-right">{formatCurrency(grn.grandTotal)}</td>
+                      <td colSpan={2} className="px-4 py-3 text-base font-bold text-[#1E88E5] text-right">{formatCurrency(grn.grandTotal)}</td>
                       <td colSpan={2}></td>
                     </tr>
                   </tfoot>
@@ -995,7 +995,7 @@ export default function GRNPage() {
             setPrefillPoNumber(undefined);
             setCreateGRNOpen(true);
           }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-xl hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap shadow-sm"
+          className="flex items-center gap-2 px-5 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap shadow-sm"
         >
           <i className="ri-add-line text-base"></i>
           Enter GRN
@@ -1023,20 +1023,20 @@ export default function GRNPage() {
       </div>
 
       {/* Pending Value Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="bg-gradient-to-r from-[#1E88E5] to-[#1565C0] rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
             <i className="ri-truck-line text-white text-2xl"></i>
           </div>
           <div>
-            <p className="text-teal-100 text-sm">Total Pending Receipt Value</p>
+            <p className="text-sky-100 text-sm">Total Pending Receipt Value</p>
             <p className="text-white text-2xl font-bold">
               {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(stats.totalPendingValue)}
             </p>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-teal-100 text-xs">{stats.pending + stats.partial} GRN{(stats.pending + stats.partial) !== 1 ? 's' : ''} awaiting receipt</p>
+          <p className="text-sky-100 text-xs">{stats.pending + stats.partial} GRN{(stats.pending + stats.partial) !== 1 ? 's' : ''} awaiting receipt</p>
           <p className="text-white text-sm font-medium mt-0.5">Click any row to expand details</p>
         </div>
       </div>
@@ -1063,7 +1063,7 @@ export default function GRNPage() {
                   placeholder="Search GRN, PO, vendor, requester..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 w-72"
+                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] w-72"
                 />
               </div>
               <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -1078,7 +1078,7 @@ export default function GRNPage() {
                     key={tab.key}
                     onClick={() => setFilter(tab.key)}
                     className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                      filter === tab.key ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                      filter === tab.key ? 'bg-white text-[#1565C0] shadow-sm' : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
                     {tab.label}
@@ -1126,14 +1126,14 @@ export default function GRNPage() {
                       onClick={() => toggleRow(grn.grnNumber)}
                       className={`border-b transition-colors cursor-pointer ${
                         isExpanded
-                          ? 'bg-teal-50 border-teal-200'
+                          ? 'bg-[#E3F2FD] border-[#90CAF9]'
                           : isPending
                           ? 'hover:bg-amber-50/40 border-gray-100'
                           : 'hover:bg-gray-50 border-gray-100'
                       }`}
                     >
                       <td className="px-4 py-4 w-8">
-                        <div className={`w-6 h-6 flex items-center justify-center rounded transition-all ${isExpanded ? 'bg-teal-100 text-teal-600' : 'text-gray-400'}`}>
+                        <div className={`w-6 h-6 flex items-center justify-center rounded transition-all ${isExpanded ? 'bg-[#E3F2FD] text-[#1E88E5]' : 'text-gray-400'}`}>
                           <i className={`text-sm transition-transform duration-200 ${isExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}`}></i>
                         </div>
                       </td>
@@ -1151,7 +1151,7 @@ export default function GRNPage() {
                         )}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <p className="text-sm font-semibold text-teal-600">{grn.poNumber}</p>
+                        <p className="text-sm font-semibold text-[#1E88E5]">{grn.poNumber}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{grn.prId}</p>
                       </td>
                       <td className="px-4 py-4">
@@ -1202,7 +1202,7 @@ export default function GRNPage() {
                           {grn.awaitingEntry && (
                             <button
                               onClick={() => openEnterGrn(grn)}
-                              className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 text-[#1E88E5] hover:bg-[#E3F2FD] rounded-lg transition-colors cursor-pointer"
                               title="Mark as Received — enter GRN fields"
                             >
                               <i className="ri-checkbox-circle-line text-sm"></i>
@@ -1211,7 +1211,7 @@ export default function GRNPage() {
                           {isPending && !grn.awaitingEntry && (
                             <button
                               onClick={() => setReceiptModal({ isOpen: true, grn })}
-                              className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                              className="p-1.5 text-[#1E88E5] hover:bg-[#E3F2FD] rounded-lg transition-colors cursor-pointer"
                               title="Confirm Receipt"
                             >
                               <i className="ri-checkbox-circle-line text-sm"></i>
@@ -1264,7 +1264,7 @@ export default function GRNPage() {
             {(searchTerm || filter !== 'all') && (
               <button
                 onClick={() => { setSearchTerm(''); setFilter('all'); }}
-                className="mt-3 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer whitespace-nowrap"
+                className="mt-3 px-4 py-2 text-sm font-medium text-[#1E88E5] bg-[#E3F2FD] rounded-lg hover:bg-[#BBDEFB] transition-colors cursor-pointer whitespace-nowrap"
               >
                 Clear filters
               </button>

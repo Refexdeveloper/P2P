@@ -100,7 +100,7 @@ const ApprovalModal: React.FC<ApprovalModalProps> = ({ pr, action, onClose, onCo
           <div className="p-6 text-center">
             <div className="mb-4">
               <div className="text-sm font-medium text-gray-900 mb-1">PR Number</div>
-              <div className="text-lg font-bold text-teal-600">{pr.id}</div>
+              <div className="text-lg font-bold text-[#1E88E5]">{pr.id}</div>
             </div>
             <div className="text-sm text-gray-600 mb-6">
               {action === 'approve' && 'The purchase request has been approved and forwarded to the next stage.'}
@@ -147,7 +147,7 @@ const ApprovalModal: React.FC<ApprovalModalProps> = ({ pr, action, onClose, onCo
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">PR Number</div>
-                <div className="text-sm font-medium text-teal-600">{pr.id}</div>
+                <div className="text-sm font-medium text-[#1E88E5]">{pr.id}</div>
               </div>
               <div>
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Amount</div>
@@ -185,7 +185,7 @@ const ApprovalModal: React.FC<ApprovalModalProps> = ({ pr, action, onClose, onCo
                   ? 'Enter reason for rejection...'
                   : 'Enter what needs to be reworked...'
               }
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none text-sm"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent resize-none text-sm"
               rows={4}
               maxLength={500}
             />

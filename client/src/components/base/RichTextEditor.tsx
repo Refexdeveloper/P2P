@@ -683,7 +683,7 @@ export default function RichTextEditor({
                     <button
                       type="button"
                       onClick={() => insertBlankTable(tableRows, tableCols)}
-                      className="flex-1 h-7 rounded bg-teal-600 text-white text-[11px] font-semibold hover:bg-teal-700 cursor-pointer"
+                      className="flex-1 h-7 rounded bg-[#1E88E5] text-white text-[11px] font-semibold hover:bg-[#1565C0] cursor-pointer"
                     >
                       Insert
                     </button>

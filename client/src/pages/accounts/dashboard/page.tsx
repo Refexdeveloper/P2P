@@ -87,7 +87,7 @@ export default function AccountsDashboardPage() {
       label: 'Ready for Payment',
       value: data?.invoices.readyForPayment ?? 0,
       href: '/accounts/payment',
-      color: 'from-teal-500 to-emerald-600',
+      color: 'from-[#1E88E5] to-[#1565C0]',
       icon: 'ri-bank-card-line',
     },
   ];
@@ -105,7 +105,7 @@ export default function AccountsDashboardPage() {
           <button
             type="button"
             onClick={load}
-            className="px-4 py-2 text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
+            className="px-4 py-2 text-sm font-semibold text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] cursor-pointer"
           >
             Refresh
           </button>
@@ -132,7 +132,7 @@ export default function AccountsDashboardPage() {
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{c.label}</p>
                       <p className="text-3xl font-bold text-gray-900 mt-2">{c.value}</p>
                     </div>
-                    <div className="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-teal-600">
+                    <div className="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-[#1E88E5]">
                       <i className={`${c.icon} text-xl`} />
                     </div>
                   </div>
@@ -155,14 +155,14 @@ export default function AccountsDashboardPage() {
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-5">
                 <p className="text-xs font-semibold text-gray-500 uppercase">PO paid</p>
-                <p className="text-2xl font-bold text-teal-700 mt-2">{data?.po.paid ?? 0}</p>
+                <p className="text-2xl font-bold text-[#1565C0] mt-2">{data?.po.paid ?? 0}</p>
               </div>
             </div>
 
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="text-base font-bold text-gray-900">Recent invoices</h2>
-                <Link to="/accounts/invoice-verification" className="text-sm font-semibold text-teal-600">
+                <Link to="/accounts/invoice-verification" className="text-sm font-semibold text-[#1E88E5]">
                   Open 3-way match →
                 </Link>
               </div>
@@ -198,7 +198,7 @@ export default function AccountsDashboardPage() {
                           <td className="px-4 py-3 text-gray-700">{row.vendor}</td>
                           <td className="px-4 py-3 text-right font-medium">{formatCurrency(row.amount)}</td>
                           <td className="px-4 py-3">
-                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700">
+                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-[#E3F2FD] text-[#1565C0]">
                               {row.status}
                             </span>
                           </td>

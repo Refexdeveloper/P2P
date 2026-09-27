@@ -177,7 +177,7 @@ function ClauseTable({
         <button
           type="button"
           onClick={addRow}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] cursor-pointer"
         >
           <i className="ri-add-line"></i>
           Add Row
@@ -474,7 +474,7 @@ export default function PoTypeMasterPage() {
             type="button"
             onClick={handleSave}
             disabled={saving || loading || !current || !isDirty}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#1E88E5] text-white text-sm font-medium rounded-lg hover:bg-[#1565C0] disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
           >
             {saving ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-save-line"></i>}
             Save {activeLabel}
@@ -510,7 +510,7 @@ export default function PoTypeMasterPage() {
                   onClick={() => switchPoType(type.id)}
                   className={`relative px-4 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
                     activeType === type.id
-                      ? 'bg-white text-teal-700 shadow-sm'
+                      ? 'bg-white text-[#1565C0] shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
@@ -535,7 +535,7 @@ export default function PoTypeMasterPage() {
             <button
               type="button"
               onClick={handleInitialize}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 cursor-pointer text-sm font-medium"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] cursor-pointer text-sm font-medium"
             >
               <i className="ri-add-line"></i>
               Create {activeLabel}
@@ -557,7 +557,7 @@ export default function PoTypeMasterPage() {
                 value={current.title}
                 onChange={(e) => updateCurrent({ title: e.target.value })}
                 placeholder={`e.g. ${current.poTypeLabel}`}
-                className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
+                className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]"
               />
             </div>
 
@@ -630,7 +630,7 @@ export default function PoTypeMasterPage() {
               type="button"
               onClick={handleSave}
               disabled={saving || !isDirty}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-lg hover:bg-[#1565C0] disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
               {saving ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-save-line"></i>}
               Save Changes

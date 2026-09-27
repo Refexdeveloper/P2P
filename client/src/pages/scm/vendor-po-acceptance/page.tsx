@@ -231,7 +231,7 @@ export default function VendorPOAcceptancePage() {
             type="button"
             onClick={() => setFilter(c.key as typeof filter)}
             className={`bg-white border rounded-xl p-4 text-left ${
-              filter === c.key ? 'ring-2 ring-teal-500/30 border-teal-200' : 'border-gray-200'
+              filter === c.key ? 'ring-2 ring-[#1E88E5]/30 border-[#90CAF9]' : 'border-gray-200'
             }`}
           >
             <p className="text-xs text-gray-500">{c.label}</p>
@@ -247,7 +247,7 @@ export default function VendorPOAcceptancePage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search PO, vendor, PR..."
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
           />
         </div>
 
@@ -282,7 +282,7 @@ export default function VendorPOAcceptancePage() {
                     <Fragment key={po.id}>
                       <tr
                         className={`border-b hover:bg-gray-50 cursor-pointer ${
-                          isExpanded ? 'bg-teal-50/60' : ''
+                          isExpanded ? 'bg-[#E3F2FD]/60' : ''
                         }`}
                         onClick={() => setExpandedId(isExpanded ? null : po.id)}
                       >
@@ -296,7 +296,7 @@ export default function VendorPOAcceptancePage() {
                           </button>
                         </td>
                         <td className="px-3 py-3">
-                          <p className="text-sm font-semibold text-teal-700">{po.poNumber}</p>
+                          <p className="text-sm font-semibold text-[#1565C0]">{po.poNumber}</p>
                         </td>
                         <td className="px-3 py-3 text-sm">
                           <p className="font-medium text-gray-900">{po.vendorName}</p>
@@ -315,7 +315,7 @@ export default function VendorPOAcceptancePage() {
                         <td className="px-3 py-3">
                           <StatusBadge status={(po.vendorAcceptanceStatus as AcceptanceStatus) || 'pending'} />
                           {!pending && po.vendorAcceptanceFileName ? (
-                            <p className="text-[10px] text-teal-700 mt-1 truncate max-w-[120px]" title={po.vendorAcceptanceFileName}>
+                            <p className="text-[10px] text-[#1565C0] mt-1 truncate max-w-[120px]" title={po.vendorAcceptanceFileName}>
                               <i className="ri-attachment-2"></i> {po.vendorAcceptanceFileName}
                             </p>
                           ) : null}
@@ -328,7 +328,7 @@ export default function VendorPOAcceptancePage() {
                                 disabled={busyId === po.id}
                                 onClick={() => openSendMail(po)}
                                 title="Email requester to upload Vendor Signed PO (CC: L1, SCM Manager, user approvers)"
-                                className="px-3 py-1.5 text-xs font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                                className="px-3 py-1.5 text-xs font-semibold bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] disabled:opacity-50"
                               >
                                 {busyId === po.id ? 'Sending…' : 'Send Mail'}
                               </button>
@@ -393,7 +393,7 @@ export default function VendorPOAcceptancePage() {
               value={sendMailComments}
               onChange={(e) => setSendMailComments(e.target.value)}
               rows={4}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
               placeholder="Add instructions or notes for the requester…"
             />
 
@@ -412,7 +412,7 @@ export default function VendorPOAcceptancePage() {
                 type="button"
                 disabled={busyId === sendMailFor.id}
                 onClick={() => void handleSendMail()}
-                className="px-4 py-2 text-sm font-semibold bg-teal-600 text-white rounded-lg disabled:opacity-50"
+                className="px-4 py-2 text-sm font-semibold bg-[#1E88E5] text-white rounded-lg disabled:opacity-50"
               >
                 {busyId === sendMailFor.id ? 'Sending…' : 'Send Mail'}
               </button>
@@ -437,7 +437,7 @@ export default function VendorPOAcceptancePage() {
                   onClick={() => setManualAction(a)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize ${
                     manualAction === a
-                      ? 'bg-teal-600 text-white'
+                      ? 'bg-[#1E88E5] text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
@@ -451,7 +451,7 @@ export default function VendorPOAcceptancePage() {
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               rows={3}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
               placeholder="Vendor confirmation notes…"
             />
 
@@ -490,7 +490,7 @@ export default function VendorPOAcceptancePage() {
                 type="button"
                 disabled={busyId === manualFor.id}
                 onClick={submitManual}
-                className="px-4 py-2 text-sm font-semibold bg-teal-600 text-white rounded-lg disabled:opacity-50"
+                className="px-4 py-2 text-sm font-semibold bg-[#1E88E5] text-white rounded-lg disabled:opacity-50"
               >
                 Save &amp; continue
               </button>

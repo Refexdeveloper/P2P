@@ -276,7 +276,7 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
           onClick={() => setOpen((v) => !v)}
           className="flex items-center gap-2 text-left cursor-pointer"
         >
-          <span className="w-9 h-9 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center">
+          <span className="w-9 h-9 rounded-full bg-[#E3F2FD] text-[#1565C0] flex items-center justify-center">
             <i className="ri-file-info-line"></i>
           </span>
           <div>
@@ -288,7 +288,7 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
           <i className={`ri-arrow-${open ? 'up' : 'down'}-s-line text-gray-400 ml-1`}></i>
         </button>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-teal-700">
+          <span className="text-sm font-semibold text-[#1565C0]">
             {formatCurrency(editing ? lineTotal : meta?.totalAmount || lineTotal, form.currency)}
           </span>
           {canEdit && !editing && (
@@ -298,7 +298,7 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
                 setOpen(true);
                 setEditing(true);
               }}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-teal-600 text-white hover:bg-teal-700 cursor-pointer"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#1E88E5] text-white hover:bg-[#1565C0] cursor-pointer"
             >
               <i className="ri-edit-line mr-1"></i>
               Edit PR
@@ -683,7 +683,7 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
                       prev ? { ...prev, lineItems: [...prev.lineItems, newLine()] } : prev
                     )
                   }
-                  className="text-xs font-semibold text-teal-700 cursor-pointer"
+                  className="text-xs font-semibold text-[#1565C0] cursor-pointer"
                 >
                   + Add line
                 </button>
@@ -762,7 +762,7 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
                             formatCurrency(Number(li.unitCost) || 0, form.currency)
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right font-semibold text-teal-700">
+                        <td className="px-3 py-2 text-right font-semibold text-[#1565C0]">
                           {formatCurrency(total, form.currency)}
                         </td>
                         {editing && (
@@ -793,14 +793,14 @@ export default function PrDetailsEditor({ prId, canEdit, onSaved, onToast }: Pro
                   })}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-teal-200 bg-teal-50">
+                  <tr className="border-t border-[#90CAF9] bg-[#E3F2FD]">
                     <td
                       colSpan={editing ? 4 : 4}
-                      className="px-3 py-2 text-right text-xs font-bold text-teal-900 uppercase"
+                      className="px-3 py-2 text-right text-xs font-bold text-[#0D47A1] uppercase"
                     >
                       PR total
                     </td>
-                    <td className="px-3 py-2 text-right font-bold text-teal-800">
+                    <td className="px-3 py-2 text-right font-bold text-[#1565C0]">
                       {formatCurrency(lineTotal, form.currency)}
                     </td>
                     {editing && <td />}

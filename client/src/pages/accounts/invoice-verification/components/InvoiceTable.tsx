@@ -28,7 +28,7 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
       'Pending Verification': 'bg-orange-100 text-orange-700',
       Matched: 'bg-green-100 text-green-700',
       Discrepancy: 'bg-red-100 text-red-700',
-      'Approved for Payment': 'bg-teal-100 text-teal-700',
+      'Approved for Payment': 'bg-[#E3F2FD] text-[#1565C0]',
       'On Hold': 'bg-yellow-100 text-yellow-700',
       'Pending Manager Approval': 'bg-blue-100 text-blue-700',
       Paid: 'bg-emerald-100 text-emerald-700',
@@ -188,7 +188,7 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
                         <>
                           <button
                             onClick={() => onAction('approve', invoice)}
-                            className="px-2.5 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap"
+                            className="px-2.5 py-1.5 bg-[#1E88E5] text-white text-xs font-medium rounded-lg hover:bg-[#1565C0] transition-colors whitespace-nowrap"
                             title="Send to Manager"
                           >
                             <i className="ri-send-plane-fill"></i>
@@ -212,7 +212,7 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
                     {invoice.status === 'Pending Manager Approval' && (
                       <button
                         onClick={() => onAction('manager_approve', invoice)}
-                        className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-teal-600 text-white text-xs font-semibold rounded-lg hover:from-blue-700 hover:to-teal-700 transition-all whitespace-nowrap"
+                        className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-[#1E88E5] text-white text-xs font-semibold rounded-lg hover:from-blue-700 hover:to-[#1565C0] transition-all whitespace-nowrap"
                       >
                         Manager Approve
                       </button>

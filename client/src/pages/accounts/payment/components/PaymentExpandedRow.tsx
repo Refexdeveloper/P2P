@@ -30,7 +30,7 @@ export default function PaymentExpandedRow({ invoice, onUploadPayment }: Payment
           onClick={() => setActiveTab('summary')}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'summary'
-              ? 'bg-teal-50 text-teal-700'
+              ? 'bg-[#E3F2FD] text-[#1565C0]'
               : 'text-gray-600 hover:text-gray-900'
           }`}
         >
@@ -40,7 +40,7 @@ export default function PaymentExpandedRow({ invoice, onUploadPayment }: Payment
           onClick={() => setActiveTab('payment')}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'payment'
-              ? 'bg-teal-50 text-teal-700'
+              ? 'bg-[#E3F2FD] text-[#1565C0]'
               : 'text-gray-600 hover:text-gray-900'
           }`}
         >
@@ -55,7 +55,7 @@ export default function PaymentExpandedRow({ invoice, onUploadPayment }: Payment
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
             <h4 className="text-sm font-semibold text-gray-900 flex items-center space-x-2">
               <div className="w-5 h-5 flex items-center justify-center">
-                <i className="ri-file-text-line text-teal-600"></i>
+                <i className="ri-file-text-line text-[#1E88E5]"></i>
               </div>
               <span>Invoice Details</span>
             </h4>
@@ -91,7 +91,7 @@ export default function PaymentExpandedRow({ invoice, onUploadPayment }: Payment
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
             <h4 className="text-sm font-semibold text-gray-900 flex items-center space-x-2">
               <div className="w-5 h-5 flex items-center justify-center">
-                <i className="ri-building-line text-teal-600"></i>
+                <i className="ri-building-line text-[#1E88E5]"></i>
               </div>
               <span>Vendor & Department</span>
             </h4>
@@ -117,7 +117,7 @@ export default function PaymentExpandedRow({ invoice, onUploadPayment }: Payment
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3 lg:col-span-2">
             <h4 className="text-sm font-semibold text-gray-900 flex items-center space-x-2">
               <div className="w-5 h-5 flex items-center justify-center">
-                <i className="ri-calculator-line text-teal-600"></i>
+                <i className="ri-calculator-line text-[#1E88E5]"></i>
               </div>
               <span>Billing Summary</span>
             </h4>
@@ -133,9 +133,9 @@ export default function PaymentExpandedRow({ invoice, onUploadPayment }: Payment
                 </div>
               </div>
               <div className="md:col-span-2 flex items-center justify-end">
-                <div className="bg-teal-50 rounded-lg px-6 py-3 border border-teal-200">
-                  <div className="text-xs text-teal-600 font-medium mb-0.5">Grand Total</div>
-                  <div className="text-2xl font-bold text-teal-700">
+                <div className="bg-[#E3F2FD] rounded-lg px-6 py-3 border border-[#90CAF9]">
+                  <div className="text-xs text-[#1E88E5] font-medium mb-0.5">Grand Total</div>
+                  <div className="text-2xl font-bold text-[#1565C0]">
                     {formatCurrency(invoice.invoiceGrandTotal)}
                   </div>
                 </div>
@@ -211,7 +211,7 @@ export default function PaymentExpandedRow({ invoice, onUploadPayment }: Payment
                           </div>
                           <div className="text-xs text-gray-500">{invoice.paymentDetails.receiptFileSize}</div>
                         </div>
-                        <button className="text-teal-600 hover:text-teal-700 cursor-pointer">
+                        <button className="text-[#1E88E5] hover:text-[#1565C0] cursor-pointer">
                           <i className="ri-download-line"></i>
                         </button>
                       </div>
@@ -239,7 +239,7 @@ export default function PaymentExpandedRow({ invoice, onUploadPayment }: Payment
               </p>
               <button
                 onClick={() => onUploadPayment(invoice)}
-                className="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap cursor-pointer"
+                className="px-4 py-2 bg-[#1E88E5] text-white text-sm font-medium rounded-lg hover:bg-[#1565C0] transition-colors whitespace-nowrap cursor-pointer"
               >
                 <i className="ri-upload-line mr-1.5"></i>
                 Upload Payment Details

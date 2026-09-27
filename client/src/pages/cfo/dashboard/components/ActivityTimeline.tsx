@@ -40,7 +40,7 @@ export default function ActivityTimeline({ activities }: ActivityTimelineProps) 
   const getActivityColor = (type: string) => {
     switch (type.toLowerCase()) {
       case 'approved':
-        return 'text-teal-600 bg-teal-50';
+        return 'text-[#1E88E5] bg-[#E3F2FD]';
       case 'rejected':
         return 'text-red-600 bg-red-50';
       case 'submitted':
@@ -55,7 +55,7 @@ export default function ActivityTimeline({ activities }: ActivityTimelineProps) 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
       <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-        <i className="ri-time-line text-teal-600"></i>
+        <i className="ri-time-line text-[#1E88E5]"></i>
         Recent Activity
       </h3>
       <div className="space-y-4">
@@ -81,7 +81,7 @@ export default function ActivityTimeline({ activities }: ActivityTimelineProps) 
                     <span
                       className={
                         href
-                          ? 'text-teal-700 font-medium underline-offset-2 group-hover:underline'
+                          ? 'text-[#1565C0] font-medium underline-offset-2 group-hover:underline'
                           : undefined
                       }
                     >

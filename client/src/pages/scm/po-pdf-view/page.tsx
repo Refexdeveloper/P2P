@@ -140,7 +140,7 @@ export default function POPDFViewPage() {
           <p className="text-lg text-gray-600">{error || 'Purchase Order not found'}</p>
           <button
             onClick={goBack}
-            className="mt-4 px-6 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 cursor-pointer"
+            className="mt-4 px-6 py-2.5 bg-[#1E88E5] text-white rounded-lg text-sm font-medium hover:bg-[#1565C0] cursor-pointer"
           >
             Back
           </button>
@@ -185,7 +185,7 @@ export default function POPDFViewPage() {
             type="button"
             onClick={() => void handleDownload()}
             disabled={pdfDownloading || pdfLoading}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-medium hover:bg-[#1565C0] cursor-pointer disabled:opacity-50"
           >
             <i className="ri-download-2-line mr-1"></i>
             {pdfDownloading ? 'Downloading…' : 'Download PDF'}
@@ -202,7 +202,7 @@ export default function POPDFViewPage() {
         {!docUrl && pdfLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100/90 z-10">
             <div className="text-center">
-              <div className="w-10 h-10 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <div className="w-10 h-10 border-4 border-[#1E88E5] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
               <p className="text-gray-500">Loading PO document…</p>
             </div>
           </div>

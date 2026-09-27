@@ -38,7 +38,7 @@ export default function VendorRFQWidget({ data }: Props) {
         </div>
         <button
           onClick={() => navigate('/scm/vendor-quotation-portal')}
-          className="text-xs text-teal-600 font-medium hover:underline cursor-pointer whitespace-nowrap"
+          className="text-xs text-[#1E88E5] font-medium hover:underline cursor-pointer whitespace-nowrap"
         >
           View All
         </button>
@@ -79,7 +79,7 @@ export default function VendorRFQWidget({ data }: Props) {
       <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
         <button
           onClick={() => navigate('/scm/vendor-quotation-portal')}
-          className="w-full text-center text-xs font-semibold text-teal-600 hover:text-teal-700 cursor-pointer whitespace-nowrap"
+          className="w-full text-center text-xs font-semibold text-[#1E88E5] hover:text-[#1565C0] cursor-pointer whitespace-nowrap"
         >
           Submit Quotation <i className="ri-arrow-right-line"></i>
         </button>

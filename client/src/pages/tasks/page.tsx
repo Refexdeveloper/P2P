@@ -106,7 +106,7 @@ function isSassTask(task: { isSass?: boolean; purchaseType?: string }) {
 
 function SassBadge({ label = 'Cloud Subscription' }: { label?: string }) {
   return (
-    <span className="px-1.5 py-0.5 bg-teal-100 text-teal-800 text-[10px] font-bold rounded tracking-wide flex-shrink-0">
+    <span className="px-1.5 py-0.5 bg-[#E3F2FD] text-[#1565C0] text-[10px] font-bold rounded tracking-wide flex-shrink-0">
       {label}
     </span>
   );
@@ -840,7 +840,7 @@ export default function TasksPage() {
             onClick={() => openModal(task.id, 'approve')}
             className={`cursor-pointer rounded-xl p-2 transition-colors ${
               task.isSassInvoiceUpload || task.requireInvoiceUpload
-                ? 'bg-teal-50 text-teal-600 hover:bg-teal-100'
+                ? 'bg-[#E3F2FD] text-[#1E88E5] hover:bg-[#BBDEFB]'
                 : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
             }`}
             title={
@@ -984,8 +984,8 @@ export default function TasksPage() {
                   className="h-11 w-48 rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
                 />
               </div>
-              <div className="chip-scroll-fade min-w-0 max-w-full flex-1 xl:flex-none xl:max-w-[min(100%,28rem)]">
-                <div className="chip-scroll py-0.5">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 py-0.5">
                   {[
                     { key: 'all', label: 'All' },
                     { key: 'pending_approval', label: 'Pending' },
@@ -1118,7 +1118,7 @@ export default function TasksPage() {
                   task.isOverdue && isPending
                     ? 'ring-1 ring-red-200'
                     : sass
-                      ? 'ring-1 ring-teal-200'
+                      ? 'ring-1 ring-[#BBDEFB]'
                       : ''
                 }`}
               >
@@ -1145,7 +1145,7 @@ export default function TasksPage() {
                       )}
                     </div>
                     {sass && (
-                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-teal-700">
+                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#1565C0]">
                         Cloud Subscription request
                       </p>
                     )}
@@ -1244,7 +1244,7 @@ export default function TasksPage() {
                 const ringHint = rowOverdue
                   ? 'group-hover:border-red-200'
                   : sass
-                    ? 'group-hover:border-teal-200'
+                    ? 'group-hover:border-[#90CAF9]'
                     : 'group-hover:border-[#93C5FD]';
 
                 return (
@@ -1287,7 +1287,7 @@ export default function TasksPage() {
                           )}
                         </div>
                         {sass && (
-                          <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-wide text-teal-700">
+                          <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-wide text-[#1565C0]">
                             Cloud Subscription request
                           </p>
                         )}

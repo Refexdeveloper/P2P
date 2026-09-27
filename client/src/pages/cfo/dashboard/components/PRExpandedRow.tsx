@@ -72,7 +72,7 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
   const getActionColor = (action: string) => {
     switch (action.toLowerCase()) {
       case 'approved':
-        return 'text-teal-600 bg-teal-50';
+        return 'text-[#1E88E5] bg-[#E3F2FD]';
       case 'rejected':
         return 'text-red-600 bg-red-50';
       case 'info requested':
@@ -122,7 +122,7 @@ export default function PRExpandedRow({ pr, entityColor, onRefresh }: PRExpanded
           </button>
           <button
             onClick={() => handleAction('approve')}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 transition-all flex items-center gap-2 whitespace-nowrap"
+            className="px-4 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-medium hover:bg-[#1565C0] transition-all flex items-center gap-2 whitespace-nowrap"
           >
             <i className={requireInvoice ? 'ri-file-upload-line' : 'ri-checkbox-circle-line'}></i>
             {requireInvoice ? 'Approve & Upload Invoice' : 'Approve'}

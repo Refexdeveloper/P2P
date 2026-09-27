@@ -103,7 +103,7 @@ export default function VendorQuotationPortalPage() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-screen bg-gray-50 pb-10">
+      <div className="min-h-full pb-10">
 
         {/* Page Header */}
         <div className="bg-white border-b border-gray-200 px-8 py-5">
@@ -166,7 +166,7 @@ export default function VendorQuotationPortalPage() {
                 placeholder="Search RFQ no., PR no., title..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               />
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -239,7 +239,7 @@ export default function VendorQuotationPortalPage() {
                   return (
                     <Fragment key={rfq.id}>
                       <tr
-                        className="hover:bg-teal-50/40 transition-colors"
+                        className="hover:bg-[#E3F2FD]/40 transition-colors"
                         style={{ borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}
                       >
                         <td className="px-3 py-4">
@@ -254,7 +254,7 @@ export default function VendorQuotationPortalPage() {
                           </button>
                         </td>
                         <td className="px-5 py-4 cursor-pointer" onClick={() => setExpandedId(open ? null : rfq.id)}>
-                          <p className="font-bold text-teal-600 text-xs">{rfq.rfqNumber}</p>
+                          <p className="font-bold text-[#1E88E5] text-xs">{rfq.rfqNumber}</p>
                           <p className="text-xs text-gray-400 mt-0.5">{rfq.prNumber}</p>
                         </td>
                         <td className="px-5 py-4 max-w-xs cursor-pointer" onClick={() => setExpandedId(open ? null : rfq.id)}>
@@ -274,12 +274,12 @@ export default function VendorQuotationPortalPage() {
                           <p className={`text-sm font-semibold ${canSubmit ? 'text-red-600' : 'text-gray-600'}`}>{rfq.dueDate}</p>
                         </td>
                         <td className="px-5 py-4 text-center">
-                          <span className="px-2.5 py-1 bg-teal-50 text-teal-700 rounded-full text-xs font-bold">Q{rfq.currentRound}</span>
+                          <span className="px-2.5 py-1 bg-[#E3F2FD] text-[#1565C0] rounded-full text-xs font-bold">Q{rfq.currentRound}</span>
                         </td>
                         <td className="px-5 py-4 text-right text-gray-500 text-sm">{formatCurrency(rfq.estimatedValue)}</td>
                         <td className="px-5 py-4 text-right">
                           {rfq.quotedValue
-                            ? <span className="font-bold text-teal-600">{formatCurrency(rfq.quotedValue)}</span>
+                            ? <span className="font-bold text-[#1E88E5]">{formatCurrency(rfq.quotedValue)}</span>
                             : <span className="text-gray-300 text-xs">—</span>}
                         </td>
                         <td className="px-5 py-4 text-center">

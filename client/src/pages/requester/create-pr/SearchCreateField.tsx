@@ -183,7 +183,7 @@ export default function SearchCreateField({
               type="button"
               onClick={() => void handleAdd()}
               disabled={saving}
-              className="w-full text-left px-3 py-2.5 text-sm font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border-t border-teal-100 cursor-pointer"
+              className="w-full text-left px-3 py-2.5 text-sm font-semibold text-[#1565C0] bg-[#E3F2FD] hover:bg-[#BBDEFB] border-t border-[#BBDEFB] cursor-pointer"
             >
               <i className="ri-add-line mr-1"></i>
               {saving ? 'Saving…' : `Save “${typed}” as new ${addNoun || 'entry'}`}

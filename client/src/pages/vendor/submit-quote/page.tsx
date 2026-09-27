@@ -247,7 +247,7 @@ export default function VendorSubmitQuotePage() {
             type="checkbox"
             checked={Boolean(value)}
             onChange={(e) => setField(field.id, e.target.checked)}
-            className="accent-teal-600 w-4 h-4"
+            className="accent-[#1E88E5] w-4 h-4"
           />
           {Boolean(value) ? 'Yes' : 'No'}
         </label>
@@ -296,10 +296,10 @@ export default function VendorSubmitQuotePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-teal-50 py-10 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white py-10 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-teal-100 text-teal-800 rounded-full text-xs font-bold mb-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#E3F2FD] text-[#1565C0] rounded-full text-xs font-bold mb-3">
             Round {invitation.round}
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Submit Quotation</h1>
@@ -322,7 +322,7 @@ export default function VendorSubmitQuotePage() {
         )}
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6 overflow-hidden">
-          <div className="bg-teal-700 px-6 py-4 text-white">
+          <div className="bg-[#1565C0] px-6 py-4 text-white">
             <p className="text-xs opacity-80">Purchase Request</p>
             <p className="text-lg font-bold">{pr.prNumber}</p>
             <p className="text-sm opacity-90">{pr.title}</p>
@@ -334,7 +334,7 @@ export default function VendorSubmitQuotePage() {
             </div>
             <div>
               <span className="text-gray-500">Estimated Value</span>
-              <p className="font-bold text-teal-700">{formatCurrency(pr.totalAmount)}</p>
+              <p className="font-bold text-[#1565C0]">{formatCurrency(pr.totalAmount)}</p>
             </div>
           </div>
           <div className="px-6 pb-4">
@@ -355,7 +355,7 @@ export default function VendorSubmitQuotePage() {
 
             <div>
               <p className="text-sm font-bold text-gray-800 mb-2 flex items-center gap-2">
-                <i className="ri-list-check-2 text-teal-600"></i>
+                <i className="ri-list-check-2 text-[#1E88E5]"></i>
                 Line items — enter unit price for each
               </p>
               <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -365,13 +365,13 @@ export default function VendorSubmitQuotePage() {
                       <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase">
                         Description
                       </th>
-                      <th className="text-center px-3 py-2.5 text-xs font-semibold text-teal-700 uppercase">
+                      <th className="text-center px-3 py-2.5 text-xs font-semibold text-[#1565C0] uppercase">
                         Qty *
                       </th>
                       <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase">
                         Est. unit
                       </th>
-                      <th className="text-center px-3 py-2.5 text-xs font-semibold text-teal-700 uppercase">
+                      <th className="text-center px-3 py-2.5 text-xs font-semibold text-[#1565C0] uppercase">
                         Your unit price *
                       </th>
                       <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 uppercase">
@@ -399,7 +399,7 @@ export default function VendorSubmitQuotePage() {
                               required
                               value={line.quantity === '' ? '' : String(line.quantity)}
                               onChange={(e) => updateLineField(line.lineItemId, 'quantity', e.target.value)}
-                              className="w-20 mx-auto block border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              className="w-20 mx-auto block border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                               placeholder="1"
                             />
                           </td>
@@ -413,7 +413,7 @@ export default function VendorSubmitQuotePage() {
                               required
                               value={line.quotedUnitPrice === '' ? '' : String(line.quotedUnitPrice)}
                               onChange={(e) => updateLineField(line.lineItemId, 'quotedUnitPrice', e.target.value)}
-                              className="w-32 mx-auto block border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              className="w-32 mx-auto block border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                               placeholder="0"
                             />
                           </td>
@@ -425,11 +425,11 @@ export default function VendorSubmitQuotePage() {
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t border-teal-200 bg-teal-50">
-                      <td colSpan={4} className="px-3 py-3 text-right text-sm font-bold text-teal-900">
+                    <tr className="border-t border-[#90CAF9] bg-[#E3F2FD]">
+                      <td colSpan={4} className="px-3 py-3 text-right text-sm font-bold text-[#0D47A1]">
                         Total quoted amount
                       </td>
-                      <td className="px-3 py-3 text-right text-base font-bold text-teal-800">
+                      <td className="px-3 py-3 text-right text-base font-bold text-[#1565C0]">
                         {formatCurrency(quoteTotal)}
                       </td>
                     </tr>
@@ -457,8 +457,8 @@ export default function VendorSubmitQuotePage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Quotation File (PDF / Image) *</label>
-              <label className="flex items-center gap-3 px-4 py-3 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-teal-400 hover:bg-teal-50 transition-colors">
-                <i className="ri-upload-cloud-2-line text-xl text-teal-600"></i>
+              <label className="flex items-center gap-3 px-4 py-3 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-[#64B5F6] hover:bg-[#E3F2FD] transition-colors">
+                <i className="ri-upload-cloud-2-line text-xl text-[#1E88E5]"></i>
                 <div className="text-sm">
                   {quotationFile ? (
                     <span className="font-medium text-gray-900">{quotationFile.name}</span>
@@ -475,7 +475,7 @@ export default function VendorSubmitQuotePage() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 disabled:opacity-50"
+              className="w-full py-3 bg-[#1E88E5] text-white font-semibold rounded-lg hover:bg-[#1565C0] disabled:opacity-50"
             >
               {submitting ? 'Submitting...' : `Submit Quotation · ${formatCurrency(quoteTotal)}`}
             </button>
@@ -505,7 +505,7 @@ export default function VendorSubmitQuotePage() {
                   setZeroConfirm(false);
                   void handleSubmit(e as unknown as FormEvent, true);
                 }}
-                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+                className="px-4 py-2 text-sm font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0]"
               >
                 Submit anyway
               </button>

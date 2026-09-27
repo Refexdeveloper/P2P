@@ -1119,7 +1119,7 @@ export default function TrackPRPage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="px-6 py-12 text-center text-sm text-gray-500">
-              <i className="ri-loader-4-line animate-spin text-lg text-teal-600 mr-2"></i>
+              <i className="ri-loader-4-line animate-spin text-lg text-[#1E88E5] mr-2"></i>
               Loading your purchase requests...
             </div>
           ) : (
@@ -1298,7 +1298,7 @@ export default function TrackPRPage() {
                                           : `/scm/rfq-entry/${pr.prId}`
                                       )
                                     }
-                                    className="px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-300 rounded-md hover:bg-teal-50 transition-colors whitespace-nowrap"
+                                    className="px-3 py-1.5 text-xs font-medium text-[#1565C0] border border-[#64B5F6] rounded-md hover:bg-[#E3F2FD] transition-colors whitespace-nowrap"
                                     title="Edit RFQ amounts and quotation files"
                                   >
                                     Edit RFQ
@@ -1362,7 +1362,7 @@ export default function TrackPRPage() {
                                               onClick={() => setExpandTab('overview')}
                                               className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap ${
                                                 activeTab === 'overview'
-                                                  ? 'border-teal-600 text-teal-700'
+                                                  ? 'border-[#1E88E5] text-[#1565C0]'
                                                   : 'border-transparent text-gray-500 hover:text-gray-800'
                                               }`}
                                             >
@@ -1374,7 +1374,7 @@ export default function TrackPRPage() {
                                               onClick={() => setExpandTab('documents')}
                                               className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap ${
                                                 activeTab === 'documents'
-                                                  ? 'border-teal-600 text-teal-700'
+                                                  ? 'border-[#1E88E5] text-[#1565C0]'
                                                   : 'border-transparent text-gray-500 hover:text-gray-800'
                                               }`}
                                             >
@@ -1387,10 +1387,10 @@ export default function TrackPRPage() {
                                         {activeTab === 'documents' && showDocumentsTab ? (
                                           <div className="space-y-4">
                                             {hasSassInvoice && pr.sassInvoice ? (
-                                              <div className="bg-white rounded-lg border border-teal-200 p-4">
+                                              <div className="bg-white rounded-lg border border-[#90CAF9] p-4">
                                                 <div className="flex items-start gap-3 mb-3">
-                                                  <div className="w-10 h-10 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
-                                                    <i className="ri-file-invoice-line text-xl text-teal-600"></i>
+                                                  <div className="w-10 h-10 rounded-lg bg-[#E3F2FD] flex items-center justify-center shrink-0">
+                                                    <i className="ri-file-invoice-line text-xl text-[#1E88E5]"></i>
                                                   </div>
                                                   <div className="min-w-0">
                                                     <h4 className="text-sm font-semibold text-gray-900">
@@ -1406,7 +1406,7 @@ export default function TrackPRPage() {
                                                 </div>
                                                 <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                                                   <div className="w-9 h-9 rounded-lg bg-white border border-gray-200 flex items-center justify-center shrink-0">
-                                                    <i className="ri-file-pdf-line text-teal-600"></i>
+                                                    <i className="ri-file-pdf-line text-[#1E88E5]"></i>
                                                   </div>
                                                   <div className="min-w-0 flex-1">
                                                     <p className="text-sm font-medium text-gray-900 truncate">
@@ -1430,7 +1430,7 @@ export default function TrackPRPage() {
                                                           window.setTimeout(() => setToast(''), 4000);
                                                         });
                                                     }}
-                                                    className="px-3 py-1.5 border border-teal-200 text-teal-700 bg-white rounded-lg text-xs font-semibold hover:bg-teal-50 whitespace-nowrap"
+                                                    className="px-3 py-1.5 border border-[#90CAF9] text-[#1565C0] bg-white rounded-lg text-xs font-semibold hover:bg-[#E3F2FD] whitespace-nowrap"
                                                   >
                                                     Open
                                                   </button>

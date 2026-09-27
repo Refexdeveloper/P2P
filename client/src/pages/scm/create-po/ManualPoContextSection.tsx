@@ -645,7 +645,7 @@ export default function ManualPoContextSection({
                 : 'Click to add optional PR reference fields'}
             </p>
           </div>
-          <span className="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-teal-700">
+          <span className="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-[#1565C0]">
             {prDetailsOpen ? 'Hide' : 'Show'}
             <i className={`ri-arrow-${prDetailsOpen ? 'up' : 'down'}-s-line text-base`} />
           </span>
@@ -658,7 +658,7 @@ export default function ManualPoContextSection({
             <input
               value={prDetails.prNumber}
               onChange={(e) => onPrDetailsChange({ ...prDetails, prNumber: e.target.value })}
-              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="Optional reference"
             />
           </div>
@@ -667,7 +667,7 @@ export default function ManualPoContextSection({
             <input
               value={prDetails.title}
               onChange={(e) => onPrDetailsChange({ ...prDetails, title: e.target.value })}
-              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="Purchase title"
             />
           </div>
@@ -676,7 +676,7 @@ export default function ManualPoContextSection({
             <input
               value={prDetails.department}
               onChange={(e) => onPrDetailsChange({ ...prDetails, department: e.target.value })}
-              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="Department"
             />
           </div>
@@ -685,7 +685,7 @@ export default function ManualPoContextSection({
             <input
               value={prDetails.requester}
               onChange={(e) => onPrDetailsChange({ ...prDetails, requester: e.target.value })}
-              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="Requester name"
             />
           </div>
@@ -694,7 +694,7 @@ export default function ManualPoContextSection({
             <select
               value={prDetails.requestType}
               onChange={(e) => onPrDetailsChange({ ...prDetails, requestType: e.target.value })}
-              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
             >
               <option value="Opex">Opex</option>
               <option value="Capex">Capex</option>
@@ -706,7 +706,7 @@ export default function ManualPoContextSection({
             <select
               value={prDetails.priority}
               onChange={(e) => onPrDetailsChange({ ...prDetails, priority: e.target.value })}
-              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
             >
               <option value="Low">Low</option>
               <option value="Medium">Medium</option>
@@ -720,7 +720,7 @@ export default function ManualPoContextSection({
               value={prDetails.justification}
               onChange={(e) => onPrDetailsChange({ ...prDetails, justification: e.target.value })}
               rows={3}
-              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
               placeholder="Business justification"
             />
           </div>
@@ -730,7 +730,7 @@ export default function ManualPoContextSection({
               value={prDetails.scopeOfWork}
               onChange={(e) => onPrDetailsChange({ ...prDetails, scopeOfWork: e.target.value })}
               rows={3}
-              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
               placeholder="Scope of work / description of services or supply"
             />
           </div>
@@ -739,7 +739,7 @@ export default function ManualPoContextSection({
             <input
               value={prDetails.paymentTerms}
               onChange={(e) => onPrDetailsChange({ ...prDetails, paymentTerms: e.target.value })}
-              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="e.g. Net 30 Days / 50% Advance 50% on completion"
             />
           </div>
@@ -751,7 +751,7 @@ export default function ManualPoContextSection({
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Vendor comparison</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Vendor comparison</p>
             <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
             <p className="text-sm text-gray-500 mt-1">
               Switch tabs, tap <strong>Edit</strong> to fill the round, then <strong>Choose</strong> a vendor.
@@ -765,7 +765,7 @@ export default function ManualPoContextSection({
             <button
               type="button"
               onClick={addVendor}
-              className="px-3 py-1.5 text-xs font-semibold text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-50"
+              className="px-3 py-1.5 text-xs font-semibold text-[#1565C0] border border-[#90CAF9] rounded-lg hover:bg-[#E3F2FD]"
             >
               <i className="ri-add-line mr-1" />
               Add vendor
@@ -779,7 +779,7 @@ export default function ManualPoContextSection({
             <button
               type="button"
               onClick={addVendor}
-              className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700"
+              className="px-4 py-2 bg-[#1E88E5] text-white text-sm font-semibold rounded-lg hover:bg-[#1565C0]"
             >
               <i className="ri-add-line mr-1" />
               Add vendor
@@ -818,7 +818,7 @@ export default function ManualPoContextSection({
         )}
 
         {recommendedQuoteKey ? (
-          <p className="text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
+          <p className="text-xs text-[#1565C0] bg-[#E3F2FD] border border-[#BBDEFB] rounded-lg px-3 py-2">
             Selected vendor will be used on the PO document.
           </p>
         ) : (
@@ -872,7 +872,7 @@ export default function ManualPoContextSection({
                   <button
                     type="button"
                     onClick={() => openAddVendor(editingQuote.vendorName)}
-                    className="mt-2 text-sm text-teal-700 font-semibold inline-flex items-center gap-1.5"
+                    className="mt-2 text-sm text-[#1565C0] font-semibold inline-flex items-center gap-1.5"
                   >
                     <i className="ri-user-add-line" />
                     Vendor not in the list? Add name &amp; email
@@ -884,7 +884,7 @@ export default function ManualPoContextSection({
                     type="email"
                     value={editingQuote.vendorEmail}
                     onChange={(e) => updateEditingQuote({ vendorEmail: e.target.value })}
-                    className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                     placeholder="Filled from vendor master"
                   />
                 </div>
@@ -897,7 +897,7 @@ export default function ManualPoContextSection({
                     min={0}
                     value={editingQuote.quotedPrice}
                     onChange={(e) => updateEditingQuote({ quotedPrice: e.target.value })}
-                    className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                   />
                 </div>
                 <div>
@@ -905,7 +905,7 @@ export default function ManualPoContextSection({
                   <input
                     value={editingQuote.leadTime}
                     onChange={(e) => updateEditingQuote({ leadTime: e.target.value })}
-                    className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                     placeholder="e.g. 15 days"
                   />
                 </div>
@@ -915,7 +915,7 @@ export default function ManualPoContextSection({
                     rows={3}
                     value={editingQuote.paymentTerms}
                     onChange={(e) => updateEditingQuote({ paymentTerms: e.target.value })}
-                    className="w-full min-h-[88px] px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-white text-gray-900 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full min-h-[88px] px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-white text-gray-900 resize-y focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                     placeholder="e.g. Net 30 Days / 50% advance, balance on delivery"
                   />
                 </div>
@@ -923,9 +923,9 @@ export default function ManualPoContextSection({
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">Quotation file(s)</label>
                 <label
-                  className="flex flex-wrap items-center gap-3 px-4 py-3.5 border-2 border-dashed border-teal-200 rounded-xl cursor-pointer bg-teal-50/40 hover:bg-teal-50"
+                  className="flex flex-wrap items-center gap-3 px-4 py-3.5 border-2 border-dashed border-[#90CAF9] rounded-xl cursor-pointer bg-[#E3F2FD]/40 hover:bg-[#E3F2FD]"
                 >
-                  <i className="ri-upload-cloud-2-line text-teal-600 text-xl" />
+                  <i className="ri-upload-cloud-2-line text-[#1E88E5] text-xl" />
                   <span className="text-sm text-gray-700">Upload PDF, Excel, or image</span>
                   <input
                     type="file"
@@ -949,9 +949,9 @@ export default function ManualPoContextSection({
                         className="flex items-center justify-between gap-2 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2"
                       >
                         <span className="truncate flex items-center gap-1.5">
-                          <i className="ri-file-line text-teal-600" />
+                          <i className="ri-file-line text-[#1E88E5]" />
                           {f.name}
-                          <span className="text-[10px] text-teal-700 font-semibold">New</span>
+                          <span className="text-[10px] text-[#1565C0] font-semibold">New</span>
                         </span>
                         <button
                           type="button"
@@ -972,7 +972,7 @@ export default function ManualPoContextSection({
                         className="flex items-center justify-between gap-2 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2"
                       >
                         <span className="truncate flex items-center gap-1.5 min-w-0">
-                          <i className="ri-file-line text-teal-600" />
+                          <i className="ri-file-line text-[#1E88E5]" />
                           <span className="truncate">{f.fileName}</span>
                           <span className="text-[10px] text-gray-500 font-semibold shrink-0">Saved</span>
                         </span>
@@ -991,7 +991,7 @@ export default function ManualPoContextSection({
                                   hasActiveQuote: true,
                                 })
                               }
-                              className="text-teal-700 text-xs font-semibold"
+                              className="text-[#1565C0] text-xs font-semibold"
                             >
                               Preview
                             </button>
@@ -1025,7 +1025,7 @@ export default function ManualPoContextSection({
               <button
                 type="button"
                 onClick={saveEdit}
-                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+                className="px-4 py-2 text-sm font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0]"
               >
                 Save quote
               </button>
@@ -1062,7 +1062,7 @@ export default function ManualPoContextSection({
                     setAddVendorName(e.target.value);
                     setAddVendorError('');
                   }}
-                  className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                   placeholder="Company or vendor name"
                   autoFocus
                 />
@@ -1078,7 +1078,7 @@ export default function ManualPoContextSection({
                     setAddVendorEmail(e.target.value);
                     setAddVendorError('');
                   }}
-                  className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                   placeholder="vendor@example.com"
                 />
               </div>
@@ -1101,7 +1101,7 @@ export default function ManualPoContextSection({
                 type="button"
                 disabled={addVendorSaving}
                 onClick={() => void saveNewVendor()}
-                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] disabled:opacity-50"
               >
                 {addVendorSaving ? 'Adding…' : 'Add vendor'}
               </button>

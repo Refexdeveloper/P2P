@@ -50,8 +50,8 @@ export default function VendorKPIStrip({ data }: Props) {
       value: fmt(data.totalPendingPayment),
       sub: 'Approved for payment',
       icon: 'ri-time-line',
-      color: 'bg-teal-50 text-teal-600 border-teal-200',
-      dot: 'bg-teal-500',
+      color: 'bg-[#E3F2FD] text-[#1E88E5] border-[#90CAF9]',
+      dot: 'bg-[#1E88E5]',
     },
     {
       label: 'Total Received',

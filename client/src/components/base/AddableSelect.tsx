@@ -78,8 +78,8 @@ export default function AddableSelect({
       ) : (
         <div className="flex items-center gap-2 mb-3">
           {icon ? (
-            <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-full shrink-0">
-              <i className={`${icon} text-teal-600`}></i>
+            <div className="w-8 h-8 flex items-center justify-center bg-[#E3F2FD] rounded-full shrink-0">
+              <i className={`${icon} text-[#1E88E5]`}></i>
             </div>
           ) : null}
           <h3 className="text-sm font-bold text-gray-900">{label}</h3>
@@ -99,9 +99,9 @@ export default function AddableSelect({
               ? `w-full flex items-center text-left px-4 py-2.5 pr-9 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 ${
                   disabled ? 'opacity-60 cursor-not-allowed bg-slate-50' : 'cursor-pointer'
                 } ${open ? 'ring-2 ring-slate-400' : ''}`
-              : `w-full text-left px-3.5 py-2.5 pr-9 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+              : `w-full text-left px-3.5 py-2.5 pr-9 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-[#1E88E5] ${
                   disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-                } ${open ? 'ring-2 ring-teal-500' : ''} ${multiline ? 'min-h-[88px] whitespace-pre-wrap' : ''}`
+                } ${open ? 'ring-2 ring-[#1E88E5]' : ''} ${multiline ? 'min-h-[88px] whitespace-pre-wrap' : ''}`
           }
         >
           {value ? (
@@ -140,7 +140,7 @@ export default function AddableSelect({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={`Search ${label.toLowerCase()}...`}
                 className={`w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 ${
-                  compact ? 'focus:ring-slate-400' : 'focus:ring-teal-500'
+                  compact ? 'focus:ring-slate-400' : 'focus:ring-[#1E88E5]'
                 }`}
               />
             </div>
@@ -164,8 +164,8 @@ export default function AddableSelect({
                           ? 'bg-slate-100 text-slate-800'
                           : 'text-gray-800 hover:bg-slate-50'
                         : opt.label === value
-                          ? 'bg-teal-50 text-teal-800'
-                          : 'text-gray-800 hover:bg-teal-50'
+                          ? 'bg-[#E3F2FD] text-[#1565C0]'
+                          : 'text-gray-800 hover:bg-[#E3F2FD]'
                     }`}
                   >
                     <span className="block font-medium whitespace-pre-wrap">{opt.label}</span>
@@ -199,7 +199,7 @@ export default function AddableSelect({
                   className={`w-full px-3 py-2 text-left text-sm font-semibold cursor-pointer inline-flex items-center gap-1.5 ${
                     compact
                       ? 'text-slate-700 hover:bg-slate-100'
-                      : 'text-teal-700 hover:bg-teal-50'
+                      : 'text-[#1565C0] hover:bg-[#E3F2FD]'
                   }`}
                 >
                   <i className="ri-add-line"></i>

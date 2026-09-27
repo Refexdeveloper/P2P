@@ -79,7 +79,7 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
   };
 
   const statusColor: Record<string, string> = {
-    'Ready for PO': 'bg-teal-100 text-teal-700 border border-teal-200',
+    'Ready for PO': 'bg-[#E3F2FD] text-[#1565C0] border border-[#90CAF9]',
     'Pending Approval': 'bg-amber-100 text-amber-700 border border-amber-200',
     'PO Approved': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     'PO Rejected': 'bg-red-100 text-red-700 border border-red-200',
@@ -88,18 +88,18 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
   const actionColor: Record<string, string> = {
     Approved: 'bg-emerald-100 text-emerald-700',
     Cleared: 'bg-emerald-100 text-emerald-700',
-    Completed: 'bg-teal-100 text-teal-700',
+    Completed: 'bg-[#E3F2FD] text-[#1565C0]',
     Submitted: 'bg-gray-100 text-gray-600',
-    Created: 'bg-teal-100 text-teal-700',
+    Created: 'bg-[#E3F2FD] text-[#1565C0]',
     Rejected: 'bg-red-100 text-red-700',
   };
 
   const actionIcon: Record<string, string> = {
     Approved: 'ri-check-line text-emerald-600',
     Cleared: 'ri-shield-check-line text-emerald-600',
-    Completed: 'ri-check-double-line text-teal-600',
+    Completed: 'ri-check-double-line text-[#1E88E5]',
     Submitted: 'ri-file-add-line text-gray-500',
-    Created: 'ri-file-text-line text-teal-600',
+    Created: 'ri-file-text-line text-[#1E88E5]',
     Rejected: 'ri-close-line text-red-600',
   };
 
@@ -107,13 +107,13 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
 
   return (
     <tr>
-      <td colSpan={colSpan} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
+      <td colSpan={colSpan} className="px-0 py-0 bg-slate-50 border-b border-[#90CAF9]">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {/* Expanded Header */}
-          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-[#E3F2FD] to-white border-b border-gray-100">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                <i className="ri-file-list-3-line text-teal-600 text-lg"></i>
+              <div className="w-10 h-10 bg-[#E3F2FD] rounded-lg flex items-center justify-center">
+                <i className="ri-file-list-3-line text-[#1E88E5] text-lg"></i>
               </div>
               <div>
                 <p className="text-sm font-bold text-gray-900">{pr.id}</p>
@@ -146,7 +146,7 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
                 onClick={() => setActiveTab(tab.key as typeof activeTab)}
                 className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === tab.key
-                    ? 'border-teal-600 text-teal-600'
+                    ? 'border-[#1E88E5] text-[#1E88E5]'
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
@@ -164,10 +164,10 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
                 {/* Top summary row */}
                 <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-2">
                   {[
-                    { label: 'PR Number', value: pr.id, icon: 'ri-file-text-line', color: 'text-teal-600' },
+                    { label: 'PR Number', value: pr.id, icon: 'ri-file-text-line', color: 'text-[#1E88E5]' },
                     { label: 'Requested Date', value: pr.requestedDate, icon: 'ri-calendar-line', color: 'text-gray-700' },
                     { label: 'Required By', value: pr.requiredDate, icon: 'ri-calendar-check-line', color: 'text-gray-700' },
-                    { label: 'Estimated Amount', value: formatCurrency(pr.amount), icon: 'ri-money-rupee-circle-line', color: 'text-teal-600' },
+                    { label: 'Estimated Amount', value: formatCurrency(pr.amount), icon: 'ri-money-rupee-circle-line', color: 'text-[#1E88E5]' },
                   ].map((item) => (
                     <div key={item.label} className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
@@ -182,7 +182,7 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
                 <div className="lg:col-span-2 space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-user-line text-teal-500"></i> Requester Information
+                      <i className="ri-user-line text-[#1E88E5]"></i> Requester Information
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
@@ -210,17 +210,17 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
 
                 {/* Right */}
                 <div className="lg:col-span-1">
-                  <div className="bg-teal-50 border border-teal-100 rounded-lg p-4">
+                  <div className="bg-[#E3F2FD] border border-[#BBDEFB] rounded-lg p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
-                      <i className="ri-trophy-line text-teal-500"></i> Recommended Vendor
+                      <i className="ri-trophy-line text-[#1E88E5]"></i> Recommended Vendor
                     </h4>
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
-                        <i className="ri-store-2-line text-teal-600"></i>
+                      <div className="w-10 h-10 bg-[#E3F2FD] rounded-full flex items-center justify-center">
+                        <i className="ri-store-2-line text-[#1E88E5]"></i>
                       </div>
                       <div>
                         <p className="text-sm font-bold text-gray-900">{pr.recommendedVendor}</p>
-                        <p className="text-xs text-teal-600 font-medium">Overall Score: {pr.overallScore}/100</p>
+                        <p className="text-xs text-[#1E88E5] font-medium">Overall Score: {pr.overallScore}/100</p>
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -234,7 +234,7 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-gray-500">Total Value</span>
-                        <span className="text-xs font-bold text-teal-700">{formatCurrency(pr.amount)}</span>
+                        <span className="text-xs font-bold text-[#1565C0]">{formatCurrency(pr.amount)}</span>
                       </div>
                     </div>
                   </div>
@@ -269,10 +269,10 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-teal-50 border-t-2 border-teal-200">
+                  <tfoot className="bg-[#E3F2FD] border-t-2 border-[#90CAF9]">
                     <tr>
                       <td colSpan={4} className="px-4 py-3 text-sm font-bold text-gray-900 text-right">Grand Total</td>
-                      <td className="px-4 py-3 text-base font-bold text-teal-600 text-right">{formatCurrency(pr.amount)}</td>
+                      <td className="px-4 py-3 text-base font-bold text-[#1E88E5] text-right">{formatCurrency(pr.amount)}</td>
                       <td></td>
                     </tr>
                   </tfoot>
@@ -380,7 +380,7 @@ export default function PRExpandedRow({ pr, colSpan, onSelectWinner }: PRExpande
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                       item.action === 'Approved' || item.action === 'Cleared' ? 'bg-emerald-100' :
                       item.action === 'Rejected' ? 'bg-red-100' :
-                      item.action === 'Submitted' ? 'bg-gray-100' : 'bg-teal-100'
+                      item.action === 'Submitted' ? 'bg-gray-100' : 'bg-[#E3F2FD]'
                     }`}>
                       <i className={`text-sm ${actionIcon[item.action] || 'ri-time-line text-gray-500'}`}></i>
                     </div>

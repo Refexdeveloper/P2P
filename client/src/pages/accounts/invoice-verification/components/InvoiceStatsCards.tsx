@@ -56,9 +56,9 @@ const CARDS: Array<{
     key: 'approved',
     label: 'Approved',
     icon: 'ri-shield-check-line',
-    border: 'border-teal-200',
-    text: 'text-teal-600',
-    iconBg: 'bg-teal-100',
+    border: 'border-[#90CAF9]',
+    text: 'text-[#1E88E5]',
+    iconBg: 'bg-[#E3F2FD]',
   },
 ];
 

@@ -142,7 +142,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
               onClick={() => setActiveTab('details')}
               className={`px-4 py-3 text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'details'
-                  ? 'text-teal-600 border-b-2 border-teal-600'
+                  ? 'text-[#1E88E5] border-b-2 border-[#1E88E5]'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
@@ -153,7 +153,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
               onClick={() => setActiveTab('vendors')}
               className={`px-4 py-3 text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'vendors'
-                  ? 'text-teal-600 border-b-2 border-teal-600'
+                  ? 'text-[#1E88E5] border-b-2 border-[#1E88E5]'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
@@ -164,7 +164,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
               onClick={() => setActiveTab('history')}
               className={`px-4 py-3 text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'history'
-                  ? 'text-teal-600 border-b-2 border-teal-600'
+                  ? 'text-[#1E88E5] border-b-2 border-[#1E88E5]'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
@@ -198,7 +198,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Total Amount</p>
-                    <p className="text-lg font-semibold text-teal-600">{formatCurrency(pr.amount)}</p>
+                    <p className="text-lg font-semibold text-[#1E88E5]">{formatCurrency(pr.amount)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Recommended Vendor</p>
@@ -241,7 +241,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
                     <tfoot className="bg-gray-50">
                       <tr>
                         <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">Grand Total:</td>
-                        <td className="px-4 py-3 text-sm font-bold text-teal-600 text-right">{formatCurrency(pr.amount)}</td>
+                        <td className="px-4 py-3 text-sm font-bold text-[#1E88E5] text-right">{formatCurrency(pr.amount)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -442,7 +442,7 @@ export default function PRDetailDrawer({ isOpen, onClose, pr, onCreatePO, onSend
               onClick={() => {
                 if (onCreatePO) onCreatePO(pr.id);
               }}
-              className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap flex items-center gap-2"
+              className="px-6 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors text-sm font-medium cursor-pointer whitespace-nowrap flex items-center gap-2"
             >
               <i className="ri-file-add-line"></i>
               Create Purchase Order

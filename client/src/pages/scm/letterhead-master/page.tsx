@@ -91,7 +91,7 @@ function MediaField({
               type="button"
               onClick={() => switchMode(tab.id)}
               className={`px-2 py-0.5 text-xs font-medium rounded-md cursor-pointer transition-colors ${
-                mode === tab.id ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                mode === tab.id ? 'bg-white text-[#1565C0] shadow-sm' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               {tab.label}
@@ -106,7 +106,7 @@ function MediaField({
           value={value.startsWith('data:') ? '' : value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="https://example.com/logo.png"
-          className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
         />
       )}
 
@@ -123,7 +123,7 @@ function MediaField({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] cursor-pointer"
             >
               <i className="ri-upload-2-line"></i>
               Choose image
@@ -151,7 +151,7 @@ function MediaField({
           onChange={(e) => onChange(e.target.value)}
           rows={4}
           placeholder={'<div class="logo">Your HTML…</div>'}
-          className="w-full px-3 py-2.5 text-sm font-mono border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+          className="w-full px-3 py-2.5 text-sm font-mono border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
         />
       )}
 
@@ -527,7 +527,7 @@ export default function LetterheadMasterPage() {
           </div>
           <button
             onClick={openCreate}
-            className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer flex items-center gap-2"
+            className="px-4 py-2.5 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] cursor-pointer flex items-center gap-2"
           >
             <i className="ri-add-line"></i> Add Letterhead
           </button>
@@ -541,13 +541,13 @@ export default function LetterheadMasterPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search letterheads..."
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               />
             </div>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
             >
               <option value="">All status</option>
               <option value="active">Active</option>
@@ -563,7 +563,7 @@ export default function LetterheadMasterPage() {
               <p className="mt-3 text-sm">No letterheads found</p>
               <button
                 onClick={openCreate}
-                className="mt-4 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer"
+                className="mt-4 px-4 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] cursor-pointer"
               >
                 Add Letterhead
               </button>
@@ -587,7 +587,7 @@ export default function LetterheadMasterPage() {
                         <button
                           type="button"
                           onClick={() => openView(row)}
-                          className="hover:text-teal-700 hover:underline cursor-pointer text-left"
+                          className="hover:text-[#1565C0] hover:underline cursor-pointer text-left"
                         >
                           {row.name}
                         </button>
@@ -633,7 +633,7 @@ export default function LetterheadMasterPage() {
                           </button>
                           <button
                             onClick={() => openEdit(row)}
-                            className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
+                            className="text-[#1E88E5] text-sm font-semibold hover:underline cursor-pointer"
                           >
                             Edit
                           </button>
@@ -738,7 +738,7 @@ export default function LetterheadMasterPage() {
               </button>
               <button
                 onClick={openEditFromView}
-                className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer"
+                className="px-4 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] cursor-pointer"
               >
                 Edit
               </button>
@@ -772,7 +772,7 @@ export default function LetterheadMasterPage() {
                   onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder="e.g. Refex Default Letterhead"
                   disabled={loadingRecord}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                 />
               </div>
               <div>
@@ -783,7 +783,7 @@ export default function LetterheadMasterPage() {
                   value={form.entity}
                   onChange={(e) => onEntityChange(e.target.value)}
                   disabled={loadingRecord}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-white cursor-pointer"
                 >
                   <option value="">Select entity</option>
                   {entities.map((ent) => (
@@ -839,7 +839,7 @@ export default function LetterheadMasterPage() {
                 <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex flex-wrap items-end gap-3 justify-between">
                   <div>
                     <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                      <i className="ri-map-pin-line text-teal-600"></i>
+                      <i className="ri-map-pin-line text-[#1E88E5]"></i>
                       Locations
                     </h3>
                     <p className="text-xs text-gray-500 mt-0.5">
@@ -853,7 +853,7 @@ export default function LetterheadMasterPage() {
                       e.stopPropagation();
                       addLocationRow();
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] cursor-pointer"
                   >
                     <i className="ri-add-line"></i>
                     Add
@@ -890,7 +890,7 @@ export default function LetterheadMasterPage() {
                           return (
                             <tr
                               key={loc.key}
-                              className={highlight ? 'bg-teal-50/60' : 'bg-white'}
+                              className={highlight ? 'bg-[#E3F2FD]/60' : 'bg-white'}
                               onClick={() => setSelectedLocationKey(loc.key)}
                             >
                               <td className="px-3 py-3 text-gray-400">{idx + 1}</td>
@@ -904,7 +904,7 @@ export default function LetterheadMasterPage() {
                                       ? `lh-loc-suggest-${editing?.id || 'new'}`
                                       : undefined
                                   }
-                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                                 />
                               </td>
                               <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
@@ -920,7 +920,7 @@ export default function LetterheadMasterPage() {
                                   }
                                   placeholder="22AAAAA0000A1Z5"
                                   maxLength={15}
-                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                                 />
                               </td>
                               <td className="px-3 py-3 text-center">
@@ -963,7 +963,7 @@ export default function LetterheadMasterPage() {
                         e.stopPropagation();
                         addLocationRow();
                       }}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800 cursor-pointer"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#1565C0] hover:text-[#1565C0] cursor-pointer"
                     >
                       <i className="ri-add-line"></i>
                       Add row
@@ -982,7 +982,7 @@ export default function LetterheadMasterPage() {
                       status: e.target.value as 'active' | 'inactive',
                     }))
                   }
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-white cursor-pointer"
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
@@ -999,7 +999,7 @@ export default function LetterheadMasterPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-60 cursor-pointer"
+                className="px-4 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] disabled:opacity-60 cursor-pointer"
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>

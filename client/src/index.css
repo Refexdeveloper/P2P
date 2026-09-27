@@ -3,11 +3,12 @@
 @tailwind utilities;
 
 :root {
-  --brand-primary: #2978b1;
-  --brand-secondary: #2978b1;
-  --brand-accent: #7cc144;
-  --brand-hero-gradient: linear-gradient(135deg, #2978b1 0%, #1e5f8f 100%);
-  --brand-primary-gradient: linear-gradient(135deg, #2978b1 0%, #3a8bc4 100%);
+  --brand-primary: #1e88e5;
+  --brand-secondary: #1565c0;
+  --brand-accent: #90caf9;
+  --brand-hero-gradient: linear-gradient(135deg, #1e88e5 0%, #1565c0 55%, #2b5aed 100%);
+  --brand-primary-gradient: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+  --pm-page-bg: linear-gradient(180deg, #edf1ff 0%, #f6f8ff 45%, #f2ecff 100%);
 }
 
 html,
