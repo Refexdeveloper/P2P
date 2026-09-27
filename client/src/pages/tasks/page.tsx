@@ -272,6 +272,7 @@ export default function TasksPage() {
   const [sortBy, setSortBy] = useState('date');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [taskPage, setTaskPage] = useState(1);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [drawerDetail, setDrawerDetail] = useState<{
@@ -747,6 +748,26 @@ export default function TasksPage() {
     return result;
   }, [processedTasks, searchTerm, filter, priorityFilter, sortBy, dateFrom, dateTo]);
 
+  const isScmManager = user?.role === 'SCM Manager';
+  const taskPageSize =
+    isScmManager && (filter === 'all' || filter === 'approved')
+      ? 5
+      : filter === 'approved'
+        ? 10
+        : 0;
+  const isPagedView = taskPageSize > 0;
+  const taskTotalPages = isPagedView
+    ? Math.max(1, Math.ceil(filteredTasks.length / taskPageSize))
+    : 1;
+  const taskPageSafe = Math.min(taskPage, taskTotalPages);
+  const pagedTasks = isPagedView
+    ? filteredTasks.slice((taskPageSafe - 1) * taskPageSize, taskPageSafe * taskPageSize)
+    : filteredTasks;
+
+  useEffect(() => {
+    setTaskPage(1);
+  }, [filter, searchTerm, priorityFilter, sortBy, dateFrom, dateTo]);
+
   const stats = useMemo(() => {
     const pending = processedTasks.filter(
       (t) => t.status === 'pending_approval'
@@ -1063,9 +1084,22 @@ export default function TasksPage() {
             )}
 
             <span className="ml-auto self-center whitespace-nowrap text-sm text-slate-500">
-              Showing{' '}
-              <strong className="text-slate-800">{filteredTasks.length}</strong>{' '}
-              request{filteredTasks.length !== 1 ? 's' : ''}
+              {isPagedView && filteredTasks.length > 0 ? (
+                <>
+                  Showing{' '}
+                  <strong className="text-slate-800">
+                    {(taskPageSafe - 1) * taskPageSize + 1}–
+                    {Math.min(taskPageSafe * taskPageSize, filteredTasks.length)}
+                  </strong>{' '}
+                  of <strong className="text-slate-800">{filteredTasks.length}</strong>
+                </>
+              ) : (
+                <>
+                  Showing{' '}
+                  <strong className="text-slate-800">{filteredTasks.length}</strong>{' '}
+                  request{filteredTasks.length !== 1 ? 's' : ''}
+                </>
+              )}
             </span>
           </div>
         </div>
@@ -1102,14 +1136,27 @@ export default function TasksPage() {
             }}
           />
           <p className="mt-2 text-sm text-slate-500">
-            Showing <strong className="text-slate-800">{filteredTasks.length}</strong>{' '}
-            request{filteredTasks.length !== 1 ? 's' : ''}
+            {isPagedView && filteredTasks.length > 0 ? (
+              <>
+                Showing{' '}
+                <strong className="text-slate-800">
+                  {(taskPageSafe - 1) * taskPageSize + 1}–
+                  {Math.min(taskPageSafe * taskPageSize, filteredTasks.length)}
+                </strong>{' '}
+                of <strong className="text-slate-800">{filteredTasks.length}</strong>
+              </>
+            ) : (
+              <>
+                Showing <strong className="text-slate-800">{filteredTasks.length}</strong>{' '}
+                request{filteredTasks.length !== 1 ? 's' : ''}
+              </>
+            )}
           </p>
         </div>
 
         {/* Mobile — soft spaced cards */}
         <div className="relative z-[1] space-y-3 p-3 sm:space-y-4 sm:p-4 min-[992px]:hidden">
-          {filteredTasks.map((task) => {
+          {pagedTasks.map((task) => {
             const slaInfo = getSlaInfo(task);
             const isPending = task.status === 'pending_approval';
             const sass = isSassTask(task);
@@ -1247,7 +1294,7 @@ export default function TasksPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredTasks.map((task) => {
+              {pagedTasks.map((task) => {
                 const slaInfo = getSlaInfo(task);
                 const isPending = task.status === 'pending_approval';
                 const sass = isSassTask(task);
@@ -1368,6 +1415,59 @@ export default function TasksPage() {
             </tbody>
           </table>
         </div>
+
+        {isPagedView && filteredTasks.length > 0 && (
+          <div className="relative z-[1] flex flex-col gap-3 border-t border-slate-100/80 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-5">
+            <p className="text-xs text-slate-500">
+              Page {taskPageSafe} of {taskTotalPages}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                disabled={taskPageSafe <= 1}
+                onClick={() => setTaskPage((p) => Math.max(1, p - 1))}
+                className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#93C5FD] disabled:opacity-40"
+              >
+                Previous
+              </button>
+              {Array.from({ length: taskTotalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === taskTotalPages || Math.abs(p - taskPageSafe) <= 1)
+                .reduce<(number | '…')[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && p - arr[idx - 1] > 1) acc.push('…');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, idx) =>
+                  p === '…' ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 text-xs text-slate-400">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setTaskPage(p)}
+                      className={`flex h-8 min-w-[2rem] cursor-pointer items-center justify-center rounded-xl text-xs font-semibold transition-all ${
+                        taskPageSafe === p
+                          ? 'bg-[#2563EB] text-white shadow-sm'
+                          : 'border border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#93C5FD]'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+              <button
+                type="button"
+                disabled={taskPageSafe >= taskTotalPages}
+                onClick={() => setTaskPage((p) => Math.min(taskTotalPages, p + 1))}
+                className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#93C5FD] disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
 
         {loading && (
           <div className="relative z-[1] p-8 text-center text-sm text-slate-500">Loading your tasks...</div>

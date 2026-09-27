@@ -283,8 +283,7 @@ export default function RequesterDashboard() {
         className="min-h-full font-sans text-[#0F172A]"
         style={{ background: 'linear-gradient(180deg, #edf1ff 0%, #f6f8ff 45%, #f2ecff 100%)' }}
       >
-      <div className="p-2 pb-6 sm:p-4 lg:p-6">
-      <header className="mb-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
+      <header className="mb-3 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-0 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-0">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
           <div className="min-w-0 shrink text-center lg:text-left">
             <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl md:text-3xl">
@@ -314,7 +313,7 @@ export default function RequesterDashboard() {
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
 
-      <section className="mb-6">
+      <section className="mb-4">
         <div className="mb-1.5 px-0.5 sm:mb-3">
           <h2 className="text-xs font-bold tracking-wide text-slate-700 sm:text-base">PR Insights</h2>
         </div>
@@ -336,7 +335,7 @@ export default function RequesterDashboard() {
         )}
       </section>
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
         <Link to="/requester/create-pr?new=1" className={PM_BTN_PRIMARY}>
           <i className="ri-add-line text-lg"></i>
           <span>Create New PR</span>
@@ -348,7 +347,7 @@ export default function RequesterDashboard() {
       </div>
 
       {requesterTasks.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded-2xl border border-white/80 bg-white/95 shadow-lg shadow-slate-200/40 backdrop-blur-sm lg:rounded-3xl">
+        <div className="mb-4 overflow-hidden rounded-2xl border border-white/80 bg-white/95 shadow-lg shadow-slate-200/40 backdrop-blur-sm lg:rounded-3xl">
           <div className="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-white/40 px-3 py-3 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0F766E]/10 text-[#0F766E]">
@@ -846,7 +845,6 @@ export default function RequesterDashboard() {
           deletingDraft={drawerPR ? deletingId === drawerPR.id : false}
         />
       )}
-      </div>
       </div>
     </DashboardLayout>
   );
