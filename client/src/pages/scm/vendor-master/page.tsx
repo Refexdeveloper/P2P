@@ -218,7 +218,7 @@ export default function VendorMasterPage() {
             </button>
           </div>
         )}
-      </div>
+      </header>
 
       {showCreate ? (
         <CreateVendorForm onSuccess={handleCreated} onCancel={closeCreate} />
