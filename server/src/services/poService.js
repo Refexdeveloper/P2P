@@ -3787,7 +3787,7 @@ async function signedPoPdfMailAttachment(po) {
       fileName: String(preferred).replace(/\.html$/i, '.pdf'),
       signed: true,
       signature,
-      forceRegenerate: true,
+      forceRegenerate: false,
     });
     if (po.id && fileName && fileName !== po.signedPdfPath) {
       await pool.query(`UPDATE purchase_orders SET signed_pdf_path = ? WHERE id = ?`, [fileName, po.id]);

@@ -598,21 +598,20 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
       : `${safePoNumber}_draft.pdf`;
     const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
     const signatureOpts = await buildSignatureRenderOptionsAsync(po);
+    const status = String(po.statusRaw || po.status || '').toLowerCase();
     const storedLooksStale =
       Boolean(po.pdfPath) &&
       !String(po.pdfPath).includes(poNumber) &&
       !String(po.pdfPath).startsWith(safePoNumber);
     const vendorBlockIncomplete = !isSigned && !String(po.vendorAddress || '').trim();
+    // Signed PDF after buyer final verify is already on disk. View must not rebuild it.
     const { fullPath, fileName, buffer } = await ensurePoPdf(po, {
       fileName: preferredName,
       signed: isSigned,
       signature: signatureOpts,
-      forceRegenerate:
-        isSigned ||
-        String(po.statusRaw || po.status || '').toLowerCase() === 'draft' ||
-        storedLooksStale ||
-        vendorBlockIncomplete ||
-        !isSigned,
+      forceRegenerate: isSigned
+        ? false
+        : status === 'draft' || storedLooksStale || vendorBlockIncomplete,
     });
     // Persist regenerated PDF path when previous value was HTML-only or mismatched
     if (!isSigned && po.pdfPath !== fileName) {

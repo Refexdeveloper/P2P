@@ -1700,13 +1700,33 @@ function pdfFileMatchesPoNumber(fileName, poNumber) {
   return base.includes(n) || base.startsWith(safe);
 }
 
+/** Statuses after SCM Manager sign and buyer final verify — the signed PDF stays fixed. */
+const SIGNED_PDF_FROZEN_STATUSES = new Set([
+  'approved',
+  'sent_to_vendor',
+  'awaiting_grn',
+  'grn_completed',
+  'invoice_entry',
+  'pending_accounts_approval',
+  'approved_for_payment',
+  'paid',
+]);
+
+function isSignedPdfFrozen(po, isSigned) {
+  if (!isSigned) return false;
+  const status = String(po.statusRaw || po.status || '').trim().toLowerCase();
+  return SIGNED_PDF_FROZEN_STATUSES.has(status);
+}
+
 /**
- * Ensure a real PDF file exists for the PO (regenerate from HTML/template if needed).
- * When the PO is digitally signed, re-embeds the SCM Manager signature image.
+ * Ensure a real PDF file exists for the PO.
+ * After SCM Manager sign and buyer final verify, the stored signed PDF is served as-is.
+ * It is rewritten only when an admin/buyer save calls generatePoPdf, or when forceRegenerate is set.
  */
 export async function ensurePoPdf(po, options = {}) {
   const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || options.signed);
   const isDraft = String(po.statusRaw || po.status || '').toLowerCase() === 'draft';
+  const pdfFrozen = isSignedPdfFrozen(po, isSigned);
   const poNumber = String(po.poNumber || po.po_number || '').trim() || `PO-${po.id || 'draft'}`;
   const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
   const preferredName =
@@ -1726,10 +1746,13 @@ export async function ensurePoPdf(po, options = {}) {
 
   const pdfMtime = fs.existsSync(pdfPath) ? fs.statSync(pdfPath).mtimeMs : 0;
   const poUpdatedMs = Number(po.updatedAtMs || 0);
-  const pdfStale = poUpdatedMs > 0 && pdfMtime > 0 && poUpdatedMs > pdfMtime + 500;
+  // A signed PDF is written at SCM Manager sign (and again only on admin/buyer save).
+  // Later updated_at changes must not rebuild it on View PDF.
+  const pdfStale =
+    !isSigned && poUpdatedMs > 0 && pdfMtime > 0 && poUpdatedMs > pdfMtime + 500;
   const nameMismatch = !pdfFileMatchesPoNumber(pdfName, poNumber);
   const canReuse =
-    !options.forceRegenerate && !isDraft && !pdfStale && !nameMismatch;
+    (pdfFrozen || !options.forceRegenerate) && !isDraft && !pdfStale && !nameMismatch;
 
   if (fs.existsSync(pdfPath) && looksLikePdfFile(pdfPath) && canReuse) {
     return { fullPath: pdfPath, fileName: path.basename(pdfName), isHtml: false };
