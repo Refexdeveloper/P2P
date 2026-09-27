@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import SoftInsightCard from '../../../components/base/SoftInsightCard';
 
 interface Invoice {
   id: string;
@@ -261,54 +262,16 @@ export default function SCMPaymentApprovalPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-          <div className="bg-white rounded-xl p-6 border border-orange-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Pending Release</p>
-                <p className="text-3xl font-bold text-orange-600">{stats.pendingRelease}</p>
-              </div>
-              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                <i className="ri-time-line text-2xl text-orange-600"></i>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border border-green-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Released</p>
-                <p className="text-3xl font-bold text-green-600">{stats.released}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <i className="ri-checkbox-circle-line text-2xl text-green-600"></i>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border border-blue-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Total Amount</p>
-                <p className="text-3xl font-bold text-blue-600">₹{(stats.totalAmount / 100000).toFixed(1)}L</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <i className="ri-money-rupee-circle-line text-2xl text-blue-600"></i>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border border-red-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Overdue</p>
-                <p className="text-3xl font-bold text-red-600">{stats.overdue}</p>
-              </div>
-              <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-                <i className="ri-alarm-warning-line text-2xl text-red-600"></i>
-              </div>
-            </div>
-          </div>
+        <div className="mb-6 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+          <SoftInsightCard title="Pending Release" value={stats.pendingRelease} icon="ri-time-line" theme="orange" />
+          <SoftInsightCard title="Released" value={stats.released} icon="ri-checkbox-circle-line" theme="green" />
+          <SoftInsightCard
+            title="Total Amount"
+            value={`₹${(stats.totalAmount / 100000).toFixed(1)}L`}
+            icon="ri-money-rupee-circle-line"
+            theme="blue"
+          />
+          <SoftInsightCard title="Overdue" value={stats.overdue} icon="ri-alarm-warning-line" theme="rose" />
         </div>
 
         {/* Filters */}

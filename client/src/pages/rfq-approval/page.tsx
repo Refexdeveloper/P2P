@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/feature/DashboardLayout';
+import SoftInsightCard from '../../components/base/SoftInsightCard';
 import { rfqApi, PostRfqPendingItem, ScmRfqEntryItem } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { finalizeGoPo, rfqEntryPath } from '../../utils/scmGoPo';
@@ -85,31 +86,21 @@ export default function RfqApprovalListPage() {
       </div>
 
       {isBuyer && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
-          <div className="text-left bg-white rounded-xl border border-[#64B5F6] ring-1 ring-[#BBDEFB] p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Ready for Go PO</p>
-                <p className="text-3xl font-bold text-gray-900">{goPoCount}</p>
-                <p className="text-xs mt-1 text-[#1565C0]">Finalize RFQ from this queue</p>
-              </div>
-              <div className="w-11 h-11 bg-[#E3F2FD] rounded-xl flex items-center justify-center shrink-0">
-                <i className="ri-shopping-cart-2-line text-xl text-[#1565C0]"></i>
-              </div>
-            </div>
-          </div>
-          <div className="text-left bg-white rounded-xl border border-amber-300 ring-1 ring-amber-200 p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Pending RFQ Approval</p>
-                <p className="text-3xl font-bold text-gray-900">{pendingCount}</p>
-                <p className="text-xs mt-1 text-amber-700">Waiting for SCM Manager</p>
-              </div>
-              <div className="w-11 h-11 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
-                <i className="ri-time-line text-xl text-amber-700"></i>
-              </div>
-            </div>
-          </div>
+        <div className="mb-5 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4">
+          <SoftInsightCard
+            title="Ready for Go PO"
+            value={goPoCount}
+            subtitle="Finalize RFQ from this queue"
+            icon="ri-shopping-cart-2-line"
+            theme="blue"
+          />
+          <SoftInsightCard
+            title="Pending RFQ Approval"
+            value={pendingCount}
+            subtitle="Waiting for SCM Manager"
+            icon="ri-time-line"
+            theme="orange"
+          />
         </div>
       )}
 

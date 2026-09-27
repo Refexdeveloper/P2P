@@ -1379,8 +1379,7 @@ export default function TrackPRPage() {
                                 {expandLoadingKey === pr.key && (
                                   <div className="px-4 py-2 text-xs text-slate-500">Loading PR details…</div>
                                 )}
-                                <div className={`${softCard} my-1 px-4 py-4 sm:px-5 sm:py-5`}>
-                                  <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#e5e7eb] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
                                   <div className="relative z-[1]">
                                   {(() => {
                                     const prDocCount = pr.attachments?.length || 0;

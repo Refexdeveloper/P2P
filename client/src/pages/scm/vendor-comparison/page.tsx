@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import SoftInsightCard from '../../../components/base/SoftInsightCard';
 import { vendorComparisonData } from '../../../mocks/vendor-comparison-data';
 import type { QuotationFile } from '../../../mocks/vendor-comparison-data';
 import { scmPurchaseRequests } from '../../../mocks/scm-purchase-requests';
@@ -186,24 +187,12 @@ export default function VendorComparisonPage() {
         {viewMode === 'pr-list' && (
           <>
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-              {[
-                { label: 'Ready for PO', value: stats.readyForPO, icon: 'ri-checkbox-circle-line', bg: 'bg-[#E3F2FD]', text: 'text-[#1E88E5]', border: 'border-[#BBDEFB]' },
-                { label: 'Pending Approval', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
-                { label: 'PO Approved', value: stats.approved, icon: 'ri-check-double-line', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
-                { label: 'PO Rejected', value: stats.rejected, icon: 'ri-close-circle-line', bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-100' },
-                { label: 'Total PRs', value: scmPurchaseRequests.length, icon: 'ri-file-list-3-line', bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-100' },
-              ].map((card) => (
-                <div key={card.label} className={`bg-white rounded-xl border ${card.border} p-4 flex items-center justify-between`}>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">{card.label}</p>
-                    <p className="text-2xl font-bold text-gray-900">{card.value}</p>
-                  </div>
-                  <div className={`w-10 h-10 ${card.bg} rounded-xl flex items-center justify-center`}>
-                    <i className={`${card.icon} text-xl ${card.text}`}></i>
-                  </div>
-                </div>
-              ))}
+            <div className="mb-6 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-5">
+              <SoftInsightCard title="Ready for PO" value={stats.readyForPO} icon="ri-checkbox-circle-line" theme="blue" />
+              <SoftInsightCard title="Pending Approval" value={stats.pending} icon="ri-time-line" theme="orange" />
+              <SoftInsightCard title="PO Approved" value={stats.approved} icon="ri-check-double-line" theme="green" />
+              <SoftInsightCard title="PO Rejected" value={stats.rejected} icon="ri-close-circle-line" theme="rose" />
+              <SoftInsightCard title="Total PRs" value={scmPurchaseRequests.length} icon="ri-file-list-3-line" theme="violet" />
             </div>
 
             {/* Total Value Banner */}

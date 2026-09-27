@@ -46,132 +46,117 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto w-full min-w-0">
-      <table className="w-full min-w-[1100px] border-collapse table-fixed">
-        <colgroup>
-          <col style={{ width: '14%' }} />
-          <col style={{ width: '16%' }} />
-          <col style={{ width: '14%' }} />
-          <col style={{ width: '9%' }} />
-          <col style={{ width: '9%' }} />
-          <col style={{ width: '10%' }} />
-          <col style={{ width: '12%' }} />
-          <col style={{ width: '7%' }} />
-          <col style={{ width: '9%' }} />
-        </colgroup>
-        <thead className="bg-gray-50 border-b border-gray-200">
+    <div className="relative w-full min-w-0 overflow-x-clip rounded-2xl border border-transparent bg-[#F8FAFC]/90 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(248,250,252,0) 55%)',
+        }}
+      />
+      <div className="relative z-[1] overflow-x-auto px-0 pb-3 pt-1">
+      <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+        <thead>
           <tr>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+            <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               Invoice #
             </th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+            <th className="w-[240px] max-w-[240px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Title
+            </th>
+            <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               Vendor
             </th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+            <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               PO / GRN
             </th>
-            <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+            <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               Amount
             </th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+            <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               Due Date
             </th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-              Match Status
+            <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Match
             </th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+            <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               Status
             </th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-              Priority
-            </th>
-            <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+            <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               Actions
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200">
-          {invoices.map((invoice) => (
+        <tbody>
+          {invoices.map((invoice) => {
+            const isExpanded = expandedRow === invoice.invoiceNumber;
+            const rowBorder = isExpanded ? 'border-[#90CAF9]' : 'border-transparent group-hover:border-[#90CAF9]';
+            const rowShadow = isExpanded
+              ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
+              : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
+            return (
             <Fragment key={invoice.id || invoice.invoiceNumber}>
               <tr
-                className="hover:bg-gray-50 cursor-pointer transition-colors"
-                onClick={() =>
-                  setExpandedRow(expandedRow === invoice.invoiceNumber ? null : invoice.invoiceNumber)
-                }
+                className="group cursor-pointer"
+                onClick={() => setExpandedRow(isExpanded ? null : invoice.invoiceNumber)}
               >
-                <td className="px-3 py-3 align-middle overflow-hidden">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <i
-                      className={`ri-arrow-${
-                        expandedRow === invoice.invoiceNumber ? 'down' : 'right'
-                      }-s-line text-gray-400 shrink-0`}
-                    ></i>
-                    <span
-                      className="font-semibold text-sm text-gray-900 truncate"
-                      title={invoice.invoiceNumber}
+                <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
+                  <div className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
+                    <button
+                      type="button"
+                      className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl ${
+                        isExpanded ? 'bg-[#1E88E5] text-white' : 'bg-[#E3F2FD] text-[#1E88E5]'
+                      }`}
+                      aria-expanded={isExpanded}
                     >
+                      <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-base`}></i>
+                    </button>
+                    <span className="text-sm font-bold text-[#1E88E5]" title={invoice.invoiceNumber}>
                       {invoice.invoiceNumber}
                     </span>
                   </div>
                 </td>
-                <td className="px-3 py-3 align-middle overflow-hidden">
-                  <span className="block text-sm text-gray-700 truncate" title={invoice.vendor}>
-                    {invoice.vendor}
-                  </span>
+                <td className={`w-[240px] max-w-[240px] border border-x-0 bg-white px-3 py-4 align-middle sm:py-5 ${rowBorder}`} title={invoice.prTitle}>
+                  <p className="truncate text-sm font-semibold text-[#2C3E50]">{invoice.prTitle || '—'}</p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">{invoice.prId || '—'}</p>
                 </td>
-                <td className="px-3 py-3 align-middle overflow-hidden">
-                  <div className="text-sm min-w-0">
-                    <div className="text-gray-900 font-medium truncate" title={invoice.poNumber}>
-                      {invoice.poNumber}
-                    </div>
-                    <div className="text-gray-500 truncate" title={invoice.grnNumber}>
-                      {invoice.grnNumber}
-                    </div>
-                  </div>
+                <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle sm:py-5 ${rowBorder}`}>
+                  <p className="text-sm font-semibold text-[#2C3E50]">{invoice.vendor}</p>
                 </td>
-                <td className="px-3 py-3 align-middle text-sm font-semibold text-gray-900 text-right whitespace-nowrap">
+                <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle sm:py-5 ${rowBorder}`}>
+                  <p className="text-sm font-semibold text-[#2C3E50]">{invoice.poNumber}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{invoice.grnNumber || '—'}</p>
+                </td>
+                <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-right align-middle text-sm font-bold tabular-nums text-[#2C3E50] sm:py-5 ${rowBorder}`}>
                   ₹{invoice.invoiceGrandTotal.toLocaleString('en-IN')}
                 </td>
-                <td className="px-3 py-3 align-middle text-sm text-gray-700 whitespace-nowrap">
-                  {invoice.dueDate}
+                <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle text-sm text-slate-600 sm:py-5 ${rowBorder}`}>
+                  {invoice.dueDate || '—'}
                 </td>
-                <td className="px-3 py-3 align-middle overflow-hidden">
+                <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle sm:py-5 ${rowBorder}`}>
                   {invoice.matchStatus.overallMatch ? (
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <i className="ri-checkbox-circle-fill text-green-600 text-lg shrink-0"></i>
-                      <span className="text-sm font-medium text-green-700 truncate">All Match</span>
-                    </div>
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700">
+                      <i className="ri-checkbox-circle-fill"></i> All Match
+                    </span>
                   ) : (
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <i className="ri-error-warning-fill text-red-600 text-lg shrink-0"></i>
-                      <span className="text-sm font-medium text-red-700 truncate">Mismatch</span>
-                    </div>
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-rose-600">
+                      <i className="ri-error-warning-fill"></i> Mismatch
+                    </span>
                   )}
                 </td>
-                <td className="px-3 py-3 align-middle overflow-hidden">
-                  <span
-                    className={`inline-block max-w-full px-2.5 py-1 ${getStatusBadge(
-                      invoice.status
-                    )} text-xs font-semibold rounded-full truncate`}
-                    title={invoice.status}
-                  >
+                <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle sm:py-5 ${rowBorder}`}>
+                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusBadge(invoice.status)}`}>
                     {invoice.status}
                   </span>
-                </td>
-                <td className="px-3 py-3 align-middle">
-                  <span
-                    className={`px-2 py-1 ${getPriorityBadge(
-                      invoice.priority
-                    )} text-xs font-medium rounded uppercase whitespace-nowrap`}
-                  >
+                  <span className={`ml-1.5 inline-flex rounded px-2 py-0.5 text-[10px] font-semibold uppercase ${getPriorityBadge(invoice.priority)}`}>
                     {invoice.priority}
                   </span>
                 </td>
-                <td className="px-3 py-3 align-middle">
-                  <div
-                    className="flex items-center justify-end gap-1.5 flex-wrap"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                <td
+                  className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
                     {(invoice.statusRaw === 'awaiting_upload' || !invoice.hasInvoiceFile) &&
                       invoice.status !== 'Approved for Payment' &&
                       invoice.status !== 'Paid' && (
@@ -221,19 +206,21 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
                 </td>
               </tr>
 
-              {expandedRow === invoice.invoiceNumber && (
+              {isExpanded && (
                 <tr>
-                  <td colSpan={9} className="bg-gray-50 px-3 sm:px-4 py-4">
-                    <div className="min-w-0 w-full max-w-full overflow-hidden">
+                  <td colSpan={9} className="bg-transparent p-0">
+                    <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#e5e7eb] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
                       <InvoiceExpandedRow invoice={invoice} onAction={onAction} />
                     </div>
                   </td>
                 </tr>
               )}
             </Fragment>
-          ))}
+            );
+          })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

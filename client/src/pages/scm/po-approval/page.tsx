@@ -23,10 +23,10 @@ const softCard =
   'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
 
 const KPI_THEMES = [
-  { value: '#F59E0B', iconBg: '#FEF3C7', wash: 'rgba(245, 158, 11, 0.14)' },
-  { value: '#43A047', iconBg: '#E8F5E9', wash: 'rgba(67, 160, 71, 0.14)' },
-  { value: '#EF4444', iconBg: '#FEE2E2', wash: 'rgba(239, 68, 68, 0.12)' },
-  { value: '#1E88E5', iconBg: '#E3F2FD', wash: 'rgba(30, 136, 229, 0.14)' },
+  { value: '#06B6D4', iconBg: '#CFFAFE', wash: 'rgba(6, 182, 212, 0.14)' },
+  { value: '#10B981', iconBg: '#D1FAE5', wash: 'rgba(16, 185, 129, 0.14)' },
+  { value: '#F43F5E', iconBg: '#FFE4E6', wash: 'rgba(244, 63, 94, 0.12)' },
+  { value: '#2563EB', iconBg: '#DBEAFE', wash: 'rgba(37, 99, 235, 0.14)' },
 ] as const;
 
 /** Manager still needs to act */
@@ -733,7 +733,7 @@ export default function POApprovalPage() {
                   key={card.label}
                   type="button"
                   onClick={() => setFilter(card.key)}
-                  className={`group relative box-border flex h-full min-h-[112px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] duration-200 hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:min-h-[128px] sm:rounded-[18px] sm:p-5 ${
+                  className={`group relative box-border flex h-full min-h-[128px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] duration-200 hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:min-h-[140px] sm:rounded-[18px] sm:p-5 ${
                     filter === card.key ? 'border-[#90CAF9]' : 'border-transparent'
                   }`}
                 >

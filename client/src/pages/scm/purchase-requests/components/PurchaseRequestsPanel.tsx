@@ -86,10 +86,10 @@ const softCard =
   'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
 
 const KPI_WASHES = [
-  { value: '#1E88E5', iconBg: '#E3F2FD', wash: 'rgba(30, 136, 229, 0.14)', selectedBorder: 'border-[#90CAF9]' },
+  { value: '#2563EB', iconBg: '#DBEAFE', wash: 'rgba(37, 99, 235, 0.14)', selectedBorder: 'border-[#93C5FD]' },
   { value: '#10B981', iconBg: '#D1FAE5', wash: 'rgba(16, 185, 129, 0.14)', selectedBorder: 'border-[#6EE7B7]' },
-  { value: '#64748B', iconBg: '#F1F5F9', wash: 'rgba(100, 116, 139, 0.12)', selectedBorder: 'border-[#CBD5E1]' },
-  { value: '#F59E0B', iconBg: '#FEF3C7', wash: 'rgba(245, 158, 11, 0.14)', selectedBorder: 'border-[#FCD34D]' },
+  { value: '#8B5CF6', iconBg: '#EDE9FE', wash: 'rgba(139, 92, 246, 0.14)', selectedBorder: 'border-[#C4B5FD]' },
+  { value: '#06B6D4', iconBg: '#CFFAFE', wash: 'rgba(6, 182, 212, 0.14)', selectedBorder: 'border-[#67E8F9]' },
   { value: '#2563EB', iconBg: '#DBEAFE', wash: 'rgba(37, 99, 235, 0.14)', selectedBorder: 'border-[#93C5FD]' },
   { value: '#F43F5E', iconBg: '#FFE4E6', wash: 'rgba(244, 63, 94, 0.12)', selectedBorder: 'border-[#FDA4AF]' },
 ] as const;

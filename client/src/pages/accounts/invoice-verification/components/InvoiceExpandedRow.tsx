@@ -2,6 +2,27 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { InvoiceData } from '../../../../mocks/invoice-data';
 import { accountsApi, poApi, prApi, rfqApi } from '../../../../services/api';
+import { formatPersonRoleSuffix } from '../../../../utils/roleDisplay';
+
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+const fieldCard =
+  'relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]';
+const fieldLabel = 'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
+
+function Field({ label, value, className = '' }: { label: string; value: string; className?: string }) {
+  return (
+    <div className={`${fieldCard} ${className}`}>
+      <div className="pointer-events-none absolute inset-0" style={softWash} />
+      <div className="relative z-[1]">
+        <p className={fieldLabel}>{label}</p>
+        <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">{value || '—'}</p>
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   invoice: InvoiceData;
@@ -278,68 +299,31 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
       document.body
     );
 
+  const money = (n: number) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
   return (
-    <div className="p-2 sm:p-4 space-y-4 min-w-0 w-full max-w-full overflow-hidden">
-      {/* Top summary bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
-        <div className="bg-white rounded-lg border border-gray-200 p-3">
-          <p className="text-xs text-gray-500 mb-1">Invoice Amount</p>
-          <p className="text-base font-bold text-gray-900">₹{invoice.invoiceGrandTotal.toLocaleString('en-IN')}</p>
-          <p className="text-xs text-gray-400">{invoice.invoiceNumber}</p>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-3">
-          <p className="text-xs text-gray-500 mb-1">{isSass ? 'PR / Cloud Amount' : 'PO Amount'}</p>
-          <p className={`text-base font-bold ${invoice.invoiceGrandTotal === invoice.poGrandTotal ? 'text-[#1E88E5]' : 'text-red-600'}`}>
-            ₹{invoice.poGrandTotal.toLocaleString('en-IN')}
-          </p>
-          <p className="text-xs text-gray-400">{invoice.poNumber}</p>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-3">
-          <p className="text-xs text-gray-500 mb-1">GRN Received Value</p>
-          {isSass ? (
-            <>
-              <p className="text-base font-bold text-gray-500">N/A</p>
-              <p className="text-xs text-gray-400">Cloud Subscription — no GRN</p>
-            </>
-          ) : (
-            <>
-              <p className={`text-base font-bold ${invoice.grnReceivedValue === invoice.invoiceGrandTotal ? 'text-[#1E88E5]' : 'text-red-600'}`}>
-                ₹{invoice.grnReceivedValue.toLocaleString('en-IN')}
-              </p>
-              <p className="text-xs text-gray-400">{invoice.grnNumber || '—'}</p>
-            </>
-          )}
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-3">
-          <p className="text-xs text-gray-500 mb-1">Overall Match</p>
-          <div className="flex items-center space-x-2 mt-1">
-            {invoice.matchStatus.overallMatch ? (
-              <>
-                <div className="w-5 h-5 flex items-center justify-center">
-                  <i className="ri-checkbox-circle-fill text-[#1E88E5] text-lg"></i>
-                </div>
-                <span className="text-sm font-semibold text-[#1E88E5]">Full Match</span>
-              </>
-            ) : (
-              <>
-                <div className="w-5 h-5 flex items-center justify-center">
-                  <i className="ri-close-circle-fill text-red-500 text-lg"></i>
-                </div>
-                <span className="text-sm font-semibold text-red-600">Mismatch</span>
-              </>
-            )}
-          </div>
-        </div>
+    <div className="relative z-[1] min-w-0 w-full max-w-full space-y-4 overflow-hidden">
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Field label="Invoice Amount" value={`${money(invoice.invoiceGrandTotal)} · ${invoice.invoiceNumber}`} />
+        <Field
+          label={isSass ? 'PR / Cloud Amount' : 'PO Amount'}
+          value={`${money(invoice.poGrandTotal)} · ${invoice.poNumber}`}
+        />
+        <Field
+          label="GRN Received Value"
+          value={isSass ? 'N/A · Cloud Subscription — no GRN' : `${money(invoice.grnReceivedValue)} · ${invoice.grnNumber || '—'}`}
+        />
+        <Field label="Overall Match" value={invoice.matchStatus.overallMatch ? 'Full Match' : 'Mismatch'} />
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
+      <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (
           <button
             key={t.key}
+            type="button"
             onClick={() => setTab(t.key)}
-            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`cursor-pointer whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold ${
+              tab === t.key ? 'bg-[#1E88E5] text-white' : 'bg-white text-slate-600'
             }`}
           >
             {t.label}
@@ -351,7 +335,7 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
       {tab === 'match' && (
         <div className="space-y-4">
           {/* Match checks */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-0 w-full">
+          <div className="grid min-w-0 w-full grid-cols-1 gap-3 sm:grid-cols-3">
             {[
               { label: 'PO Match', ok: invoice.matchStatus.poMatch, desc: 'Invoice vs Purchase Order' },
               {
@@ -361,24 +345,16 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
               },
               { label: 'Price Match', ok: invoice.matchStatus.priceMatch, desc: 'Unit prices verified' },
             ].map((check) => (
-              <div
-                key={check.label}
-                className={`rounded-lg border p-3 sm:p-4 flex items-center gap-3 min-w-0 ${
-                  check.ok ? 'bg-[#E3F2FD] border-[#90CAF9]' : 'bg-red-50 border-red-200'
-                }`}
-              >
-                <div className="w-8 h-8 flex items-center justify-center shrink-0">
-                  <i
-                    className={`text-2xl ${
-                      check.ok ? 'ri-checkbox-circle-fill text-[#1E88E5]' : 'ri-close-circle-fill text-red-500'
-                    }`}
-                  ></i>
-                </div>
-                <div className="min-w-0">
-                  <p className={`text-sm font-semibold ${check.ok ? 'text-[#1565C0]' : 'text-red-700'}`}>
-                    {check.label}
-                  </p>
-                  <p className="text-xs text-gray-500 break-words">{check.desc}</p>
+              <div key={check.label} className={fieldCard}>
+                <div className="pointer-events-none absolute inset-0" style={softWash} />
+                <div className="relative z-[1] flex items-center gap-3">
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${check.ok ? 'bg-[#D1FAE5] text-[#10B981]' : 'bg-[#FFE4E6] text-[#F43F5E]'}`}>
+                    <i className={check.ok ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'}></i>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[#2C3E50]">{check.label}</p>
+                    <p className="break-words text-xs text-slate-500">{check.ok ? 'Matched' : 'Mismatch'} · {check.desc}</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -423,43 +399,20 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
           </div>
 
           {/* Vendor & Invoice Info */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Invoice Details</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                <span className="text-gray-500">Invoice No.</span>
-                <span className="font-medium text-gray-800">{invoice.invoiceNumber}</span>
-                <span className="text-gray-500">Invoice Date</span>
-                <span className="font-medium text-gray-800">{invoice.invoiceDate}</span>
-                <span className="text-gray-500">Due Date</span>
-                <span className="font-medium text-gray-800">{invoice.dueDate}</span>
-                <span className="text-gray-500">Payment Terms</span>
-                <span className="font-medium text-gray-800">{invoice.paymentTerms}</span>
-                <span className="text-gray-500">Subtotal</span>
-                <span className="font-medium text-gray-800">₹{invoice.invoiceSubtotal.toLocaleString('en-IN')}</span>
-                <span className="text-gray-500">GST</span>
-                <span className="font-medium text-gray-800">₹{invoice.invoiceGST.toLocaleString('en-IN')}</span>
-                <span className="text-gray-500">Grand Total</span>
-                <span className="font-bold text-gray-900">₹{invoice.invoiceGrandTotal.toLocaleString('en-IN')}</span>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vendor Details</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                <span className="text-gray-500">Vendor</span>
-                <span className="font-medium text-gray-800">{invoice.vendor}</span>
-                <span className="text-gray-500">GSTIN</span>
-                <span className="font-medium text-gray-800">{invoice.vendorGSTIN}</span>
-                <span className="text-gray-500">Address</span>
-                <span className="font-medium text-gray-800 text-xs leading-relaxed">{invoice.vendorAddress}</span>
-                <span className="text-gray-500">PR Title</span>
-                <span className="font-medium text-gray-800 text-xs">{invoice.prTitle}</span>
-                <span className="text-gray-500">Department</span>
-                <span className="font-medium text-gray-800">{invoice.department}</span>
-                <span className="text-gray-500">Requester</span>
-                <span className="font-medium text-gray-800">{invoice.requester}</span>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Invoice No." value={invoice.invoiceNumber} />
+            <Field label="Invoice Date" value={invoice.invoiceDate || '—'} />
+            <Field label="Due Date" value={invoice.dueDate || '—'} />
+            <Field label="Payment Terms" value={invoice.paymentTerms || '—'} />
+            <Field label="Subtotal" value={money(invoice.invoiceSubtotal)} />
+            <Field label="GST" value={money(invoice.invoiceGST)} />
+            <Field label="Grand Total" value={money(invoice.invoiceGrandTotal)} />
+            <Field label="Vendor" value={invoice.vendor || '—'} />
+            <Field label="GSTIN" value={invoice.vendorGSTIN || '—'} />
+            <Field label="Department" value={invoice.department || '—'} />
+            <Field label="Requester" value={invoice.requester || '—'} />
+            <Field label="PR Title" value={invoice.prTitle || '—'} />
+            <Field label="Address" value={invoice.vendorAddress || '—'} className="sm:col-span-2 lg:col-span-4" />
           </div>
 
           {/* Accounts Remarks */}
@@ -609,28 +562,28 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
 
       {tab === 'history' && (
         <div className="space-y-3">
-          {invoice.approvalHistory.map((h, i) => (
-            <div key={i} className="flex items-start space-x-3">
-              <div className="flex flex-col items-center">
-                <div className="w-8 h-8 bg-[#E3F2FD] rounded-full flex items-center justify-center">
-                  <i className="ri-user-line text-[#1E88E5] text-sm"></i>
+          {invoice.approvalHistory.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">No history yet</p>
+          ) : (
+            invoice.approvalHistory.map((h, i) => (
+              <div key={i} className={fieldCard}>
+                <div className="pointer-events-none absolute inset-0" style={softWash} />
+                <div className="relative z-[1] flex gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#D1FAE5] text-[#10B981]">
+                    <i className="ri-checkbox-circle-line"></i>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[#2C3E50]">{h.action}</p>
+                    <p className="text-xs text-slate-500">
+                      {h.performedBy}
+                      {formatPersonRoleSuffix(h.role, h.performedBy)} · {h.date}
+                    </p>
+                    {h.notes ? <p className="mt-1 text-xs text-slate-600">{h.notes}</p> : null}
+                  </div>
                 </div>
-                {i < invoice.approvalHistory.length - 1 && (
-                  <div className="w-0.5 h-6 bg-gray-200 mt-1"></div>
-                )}
               </div>
-              <div className="flex-1 bg-white rounded-lg border border-gray-200 p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-semibold text-gray-800">{h.action}</p>
-                  <span className="text-xs text-gray-400">{h.date}</span>
-                </div>
-                <p className="text-xs text-gray-500">
-                  {h.performedBy} — <span className="text-gray-400">{h.role}</span>
-                </p>
-                {h.notes && <p className="text-xs text-gray-600 mt-1 italic">{h.notes}</p>}
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       )}
 

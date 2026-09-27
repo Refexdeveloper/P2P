@@ -22,10 +22,10 @@ const softCard =
   'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
 
 const KPI_THEMES = [
-  { value: '#F59E0B', iconBg: '#FEF3C7', wash: 'rgba(245, 158, 11, 0.14)' },
-  { value: '#EF4444', iconBg: '#FEE2E2', wash: 'rgba(239, 68, 68, 0.12)' },
-  { value: '#1E88E5', iconBg: '#E3F2FD', wash: 'rgba(30, 136, 229, 0.14)' },
-  { value: '#43A047', iconBg: '#E8F5E9', wash: 'rgba(67, 160, 71, 0.14)' },
+  { value: '#06B6D4', iconBg: '#CFFAFE', wash: 'rgba(6, 182, 212, 0.14)' },
+  { value: '#F43F5E', iconBg: '#FFE4E6', wash: 'rgba(244, 63, 94, 0.12)' },
+  { value: '#2563EB', iconBg: '#DBEAFE', wash: 'rgba(37, 99, 235, 0.14)' },
+  { value: '#10B981', iconBg: '#D1FAE5', wash: 'rgba(16, 185, 129, 0.14)' },
 ] as const;
 
 function greetingForNow() {

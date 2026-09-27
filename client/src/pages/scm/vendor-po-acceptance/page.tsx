@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import SoftInsightCard, { type InsightThemeName } from '../../../components/base/SoftInsightCard';
+import { PM_PAGE_BG } from '../../../constants/pmTheme';
 import { poApi } from '../../../services/api';
 import POExpandedRow, { AcceptancePo } from './components/POExpandedRow';
 
@@ -200,179 +202,225 @@ export default function VendorPOAcceptancePage() {
 
   return (
     <DashboardLayout>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Vendor PO Acceptance</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {isRequesterView
-            ? 'Record vendor acceptance after GRN and invoice upload (Work Orders appear right after final verify).'
-            : 'POs awaiting vendor acceptance — send mail to requester to upload Vendor Signed PO, or record manual acceptance.'}
-        </p>
-      </div>
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+        <div className="space-y-4 p-2 pb-6 sm:p-4 lg:p-6">
+          <header className="border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-0 sm:pb-4">
+            <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl">
+              Vendor PO Acceptance
+            </h1>
+            <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
+              {isRequesterView
+                ? 'Record vendor acceptance after GRN and invoice upload (Work Orders appear right after final verify).'
+                : 'POs awaiting vendor acceptance — send mail to requester to upload Vendor Signed PO, or record manual acceptance.'}
+            </p>
+          </header>
 
-      {toast && (
-        <div
-          className={`mb-4 px-4 py-3 rounded-lg text-sm ${
-            toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-          }`}
-        >
-          {toast.text}
-        </div>
-      )}
+          {toast && (
+            <div
+              className={`rounded-xl px-4 py-3 text-sm ${
+                toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+              }`}
+            >
+              {toast.text}
+            </div>
+          )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {[
-          { key: 'pending', label: 'Pending', value: stats.pending },
-          { key: 'accepted', label: 'Accepted', value: stats.accepted },
-          { key: 'rejected', label: 'Rejected', value: stats.rejected },
-          { key: 'all', label: 'Total', value: stats.total },
-        ].map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            onClick={() => setFilter(c.key as typeof filter)}
-            className={`bg-white border rounded-xl p-4 text-left ${
-              filter === c.key ? 'ring-2 ring-[#1E88E5]/30 border-[#90CAF9]' : 'border-gray-200'
-            }`}
-          >
-            <p className="text-xs text-gray-500">{c.label}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{c.value}</p>
-          </button>
-        ))}
-      </div>
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+            {(
+              [
+                { key: 'pending', label: 'Pending', value: stats.pending, icon: 'ri-time-line', theme: 'cyan' },
+                { key: 'accepted', label: 'Accepted', value: stats.accepted, icon: 'ri-checkbox-circle-line', theme: 'green' },
+                { key: 'rejected', label: 'Rejected', value: stats.rejected, icon: 'ri-close-circle-line', theme: 'rose' },
+                { key: 'all', label: 'Total', value: stats.total, icon: 'ri-file-list-3-line', theme: 'blue' },
+              ] as const
+            ).map((c) => (
+              <SoftInsightCard
+                key={c.key}
+                title={c.label}
+                value={c.value}
+                icon={c.icon}
+                theme={c.theme as InsightThemeName}
+                selected={filter === c.key}
+                onClick={() => setFilter(c.key as typeof filter)}
+              />
+            ))}
+          </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap gap-3 items-center justify-between">
-          <h2 className="text-sm font-bold text-gray-900">Purchase orders</h2>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search PO, vendor, PR..."
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
-          />
-        </div>
+          <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+              }}
+            />
+            <div className="relative z-[1]">
+              <div className="relative min-w-[220px] max-w-md">
+                <i className="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search PO, vendor, PR..."
+                  className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                />
+              </div>
+            </div>
+          </div>
 
-        {loading ? (
-          <p className="p-8 text-sm text-gray-500">Loading…</p>
-        ) : filtered.length === 0 ? (
-          <p className="p-8 text-sm text-gray-400 text-center">
-            No POs in this queue. Purchase Orders appear after GRN and invoice upload; Work Orders after final verify.
-          </p>
-        ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  {['', 'PO Number', 'Vendor', 'PR', 'Amount', 'Mode', 'Status', 'Actions'].map((h) => (
-                    <th
-                      key={h || 'expand'}
-                      className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase"
-                    >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-                {filtered.map((po) => {
-                  const pending = (po.vendorAcceptanceStatus || 'pending') === 'pending';
-                  const accepted =
-                    po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
-                  const isExpanded = expandedId === po.id;
-                return (
-                    <Fragment key={po.id}>
-                      <tr
-                        className={`border-b hover:bg-gray-50 cursor-pointer ${
-                          isExpanded ? 'bg-[#E3F2FD]/60' : ''
-                        }`}
-                        onClick={() => setExpandedId(isExpanded ? null : po.id)}
-                      >
-                        <td className="px-2 py-3">
-                          <button
-                            type="button"
-                            className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600"
-                            aria-expanded={isExpanded}
-                          >
-                            <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line`}></i>
-                          </button>
-                        </td>
-                        <td className="px-3 py-3">
-                          <p className="text-sm font-semibold text-[#1565C0]">{po.poNumber}</p>
-                        </td>
-                        <td className="px-3 py-3 text-sm">
-                          <p className="font-medium text-gray-900">{po.vendorName}</p>
-                          <p className="text-xs text-gray-500">{po.vendorEmail}</p>
-                        </td>
-                        <td className="px-3 py-3 text-sm text-gray-700">
-                          <p>{po.prNumber || '—'}</p>
-                          <p className="text-xs text-gray-500 truncate max-w-[180px]">{po.prTitle}</p>
-                        </td>
-                        <td className="px-3 py-3 text-sm font-semibold">
-                          {formatCurrency(Number(po.grandTotal) || 0)}
-                        </td>
-                        <td className="px-3 py-3 text-xs text-gray-600 capitalize">
-                          {po.vendorAcceptanceMode || '—'}
-                        </td>
-                        <td className="px-3 py-3">
-                          <StatusBadge status={(po.vendorAcceptanceStatus as AcceptanceStatus) || 'pending'} />
-                          {!pending && po.vendorAcceptanceFileName ? (
-                            <p className="text-[10px] text-[#1565C0] mt-1 truncate max-w-[120px]" title={po.vendorAcceptanceFileName}>
-                              <i className="ri-attachment-2"></i> {po.vendorAcceptanceFileName}
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                          {pending ? (
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                disabled={busyId === po.id}
-                                onClick={() => openSendMail(po)}
-                                title="Email requester to upload Vendor Signed PO (CC: L1, SCM Manager, user approvers)"
-                                className="px-3 py-1.5 text-xs font-semibold bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] disabled:opacity-50"
-                              >
-                                {busyId === po.id ? 'Sending…' : 'Send Mail'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openManual(po)}
-                                className="px-3 py-1.5 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50"
-                              >
-                                Manual Entry
-                              </button>
-                            </div>
-                          ) : accepted ? (
-                            po.purchaseType === 'work_order' ? (
-                              <button
-                                type="button"
-                                onClick={() => navigate('/requester/vendor-invoice')}
-                                className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg"
-                              >
-                                Upload invoice
-                              </button>
-                            ) : (
-                              <span className="text-xs text-emerald-700 font-medium">Accepted</span>
-                            )
-                          ) : (
-                            <span className="text-xs text-gray-500">Completed</span>
-                          )}
-                      </td>
+          <div className="relative overflow-x-clip rounded-2xl border border-transparent bg-[#F8FAFC]/90 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(248,250,252,0) 55%)',
+              }}
+            />
+            {loading ? (
+              <p className="relative z-[1] p-8 text-sm text-slate-500">Loading…</p>
+            ) : filtered.length === 0 ? (
+              <p className="relative z-[1] p-8 text-center text-sm text-slate-400">
+                No POs in this queue. Purchase Orders appear after GRN and invoice upload; Work Orders after final verify.
+              </p>
+            ) : (
+              <div className="relative z-[1] overflow-x-auto px-0 pb-3 pt-1">
+                <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+                  <thead>
+                    <tr>
+                      <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        PO Number
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Vendor
+                      </th>
+                      <th className="w-[240px] max-w-[240px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        PR
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Amount
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Mode
+                      </th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Status
+                      </th>
+                      <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Actions
+                      </th>
                     </tr>
-                    {isExpanded && (
-                      <POExpandedRow
-                        po={po}
-                          busy={busyId === po.id}
-                          onSendMail={() => openSendMail(po)}
-                          onManual={() => openManual(po)}
-                          onViewPdf={() => viewPdf(po.id)}
-                        />
-                      )}
-                    </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                  </thead>
+                  <tbody>
+                    {filtered.map((po) => {
+                      const pending = (po.vendorAcceptanceStatus || 'pending') === 'pending';
+                      const accepted =
+                        po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
+                      const isExpanded = expandedId === po.id;
+                      const rowBorder = isExpanded
+                        ? 'border-[#90CAF9]'
+                        : 'border-transparent group-hover:border-[#90CAF9]';
+                      const rowShadow = isExpanded
+                        ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
+                        : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
+                      return (
+                        <Fragment key={po.id}>
+                          <tr className="group cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : po.id)}>
+                            <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
+                              <div className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
+                                <button
+                                  type="button"
+                                  className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors ${
+                                    isExpanded ? 'bg-[#1E88E5] text-white' : 'bg-[#E3F2FD] text-[#1E88E5] hover:bg-[#BBDEFB]'
+                                  }`}
+                                  aria-expanded={isExpanded}
+                                  aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+                                >
+                                  <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-base`}></i>
+                                </button>
+                                <span className="text-sm font-bold text-[#1E88E5]">{po.poNumber}</span>
+                              </div>
+                            </td>
+                            <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle transition-[border-color] sm:py-5 ${rowBorder}`}>
+                              <p className="text-sm font-semibold text-[#2C3E50]">{po.vendorName || '—'}</p>
+                              <p className="mt-0.5 text-xs text-slate-500">{po.vendorEmail || '—'}</p>
+                            </td>
+                            <td className={`w-[240px] max-w-[240px] border border-x-0 bg-white px-3 py-4 align-middle transition-[border-color] sm:py-5 ${rowBorder}`} title={po.prTitle}>
+                              <p className="truncate text-sm font-semibold text-[#2C3E50]">{po.prNumber || '—'}</p>
+                              <p className="mt-0.5 truncate text-xs text-slate-500">{po.prTitle || '—'}</p>
+                            </td>
+                            <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-right align-middle text-sm font-bold tabular-nums text-[#2C3E50] transition-[border-color] sm:py-5 ${rowBorder}`}>
+                              {formatCurrency(Number(po.grandTotal) || 0)}
+                            </td>
+                            <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle text-sm capitalize text-slate-600 transition-[border-color] sm:py-5 ${rowBorder}`}>
+                              {po.vendorAcceptanceMode || '—'}
+                            </td>
+                            <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle transition-[border-color] sm:py-5 ${rowBorder}`}>
+                              <StatusBadge status={(po.vendorAcceptanceStatus as AcceptanceStatus) || 'pending'} />
+                              {!pending && po.vendorAcceptanceFileName ? (
+                                <p className="mt-1 max-w-[140px] truncate text-[10px] text-[#1565C0]" title={po.vendorAcceptanceFileName}>
+                                  <i className="ri-attachment-2"></i> {po.vendorAcceptanceFileName}
+                                </p>
+                              ) : null}
+                            </td>
+                            <td
+                              className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
+                                {pending ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={busyId === po.id}
+                                      onClick={() => openSendMail(po)}
+                                      title="Email requester to upload Vendor Signed PO"
+                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
+                                    >
+                                      {busyId === po.id ? 'Sending…' : 'Send Mail'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openManual(po)}
+                                      className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                    >
+                                      Manual Entry
+                                    </button>
+                                  </>
+                                ) : accepted ? (
+                                  po.purchaseType === 'work_order' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => navigate('/requester/vendor-invoice')}
+                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white"
+                                    >
+                                      Upload invoice
+                                    </button>
+                                  ) : (
+                                    <span className="text-xs font-semibold text-emerald-700">Accepted</span>
+                                  )
+                                ) : (
+                                  <span className="text-xs text-slate-500">Completed</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <POExpandedRow
+                              po={po}
+                              busy={busyId === po.id}
+                              onSendMail={() => openSendMail(po)}
+                              onManual={() => openManual(po)}
+                              onViewPdf={() => viewPdf(po.id)}
+                            />
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
-        )}
       </div>
 
       {sendMailFor && (

@@ -950,7 +950,7 @@ export default function TasksPage() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="min-h-[92px] animate-pulse rounded-2xl border border-slate-200/88 bg-white sm:min-h-[100px]"
+                className="min-h-[128px] animate-pulse rounded-2xl border border-slate-200/88 bg-white sm:min-h-[140px]"
               />
             ))}
           </div>

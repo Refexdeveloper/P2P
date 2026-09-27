@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import SoftInsightCard from '../../../components/base/SoftInsightCard';
 import { techEvalRFQs } from '../../../mocks/tech-eval-data';
 import type { TechEvalRFQ, TechEvalRound } from '../../../mocks/tech-eval-data';
 import RFQEvalCard from './components/RFQEvalCard';
@@ -94,23 +95,11 @@ export default function TechEvaluatorPage() {
 
         <div className="px-8 py-6 space-y-6">
           {/* KPI Strip */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { label: 'Total Assigned', value: counts.all, icon: 'ri-file-list-3-line', color: 'text-gray-700', bg: 'bg-gray-50' },
-              { label: 'Pending Evaluation', value: counts.pending, icon: 'ri-time-line', color: 'text-amber-600', bg: 'bg-amber-50' },
-              { label: 'In Progress', value: counts.inProgress, icon: 'ri-loader-4-line', color: 'text-[#1E88E5]', bg: 'bg-[#E3F2FD]' },
-              { label: 'Completed', value: counts.completed, icon: 'ri-checkbox-circle-line', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            ].map(kpi => (
-              <div key={kpi.label} className={`${kpi.bg} border border-gray-200 rounded-xl px-5 py-4 flex items-center gap-4`}>
-                <div className="w-10 h-10 flex items-center justify-center bg-white rounded-lg border border-gray-200">
-                  <i className={`${kpi.icon} ${kpi.color} text-xl`}></i>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">{kpi.label}</p>
-                  <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
-                </div>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+            <SoftInsightCard title="Total Assigned" value={counts.all} icon="ri-file-list-3-line" theme="blue" />
+            <SoftInsightCard title="Pending Evaluation" value={counts.pending} icon="ri-time-line" theme="orange" />
+            <SoftInsightCard title="In Progress" value={counts.inProgress} icon="ri-loader-4-line" theme="cyan" />
+            <SoftInsightCard title="Completed" value={counts.completed} icon="ri-checkbox-circle-line" theme="green" />
           </div>
 
           {/* P2P Flow Banner */}

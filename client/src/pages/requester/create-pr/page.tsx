@@ -2678,10 +2678,10 @@ export default function CreatePRPage() {
       ) : (
       <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
       {/* ── Soft header (matches requester dashboard) ── */}
-      <header className="mb-0 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-4 pb-4 pt-4 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-8 sm:pb-5 sm:pt-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+      <header className="mb-0 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-2 pt-0.5 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-0 sm:pb-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
           <div className="min-w-0">
-            <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
+            <div className="mb-1 flex items-center gap-2 text-xs text-slate-500">
               <Link to={backTo} className="cursor-pointer transition-colors hover:text-[#1E88E5]">
                 {isAdminEditFlow || isEditMode ? 'Track PR' : 'Dashboard'}
               </Link>
@@ -2696,7 +2696,7 @@ export default function CreatePRPage() {
                     : 'Create Purchase Requisition'}
               </span>
             </div>
-            <h1 className="text-xl font-semibold tracking-tight text-slate-800 sm:text-2xl">
+            <h1 className="text-lg font-semibold tracking-tight text-slate-800 sm:text-xl">
               {isAdminEditFlow
                 ? 'Admin Edit Purchase Requisition'
                 : isEditMode
@@ -2719,7 +2719,7 @@ export default function CreatePRPage() {
           </div>
 
           <div className="flex w-full flex-col flex-wrap items-stretch gap-3 sm:flex-row sm:items-center lg:w-auto">
-            <div className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
+            <div className="relative flex w-full items-center gap-2 overflow-hidden rounded-2xl border border-transparent bg-white px-3 py-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
@@ -2740,7 +2740,7 @@ export default function CreatePRPage() {
               </div>
             </div>
 
-            <div className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
+            <div className="relative flex w-full items-center gap-2 overflow-hidden rounded-2xl border border-transparent bg-white px-3 py-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
@@ -2763,7 +2763,7 @@ export default function CreatePRPage() {
               </div>
             </div>
 
-            <div className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
+            <div className="relative flex w-full items-center gap-2 overflow-hidden rounded-2xl border border-transparent bg-white px-3 py-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
@@ -2786,7 +2786,7 @@ export default function CreatePRPage() {
       </header>
 
       {/* ── Soft sticky status bar ── */}
-      <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-white/60 bg-white/90 px-3 py-3 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.10)] backdrop-blur-md sm:px-8">
+      <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-white/60 bg-white/90 px-1 py-2 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.10)] backdrop-blur-md sm:px-0">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${typeColors[requestType]}`}>
             {requestType}
@@ -2834,7 +2834,7 @@ export default function CreatePRPage() {
       </div>
 
       {/* ── Main Content ── */}
-      <div className="p-3 sm:p-6 lg:p-8 space-y-6 w-full min-w-0 max-w-full">
+      <div className="w-full min-w-0 max-w-full space-y-4 pt-3">
 
         {isReturned && (
           <div className="p-5 bg-orange-50 border border-orange-200 rounded-xl space-y-4">
@@ -2869,7 +2869,7 @@ export default function CreatePRPage() {
 
         {isAdminEditFlow && approvalHistory.length > 0 ? (
           <div className={PM_CARD}>
-            <div className="relative z-[1] flex items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
+            <div className="relative z-[1] flex items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
               <div>
                 <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Approval History</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -2885,7 +2885,7 @@ export default function CreatePRPage() {
         ) : null}
 
         {/* ── Create PR step tabs (icon + arrows, full-width labels) ── */}
-        <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white/95 px-2 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-4 sm:py-4">
+        <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white/95 px-2 py-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-3 sm:py-2.5">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -2950,10 +2950,10 @@ export default function CreatePRPage() {
         </div>
 
         {activeTab === 'basic' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
         {/* ── Section 1: Basic Information ── */}
         <div className={PM_CARD}>
-          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
+          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
             <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-information-line text-sm"></i>
             </div>
@@ -2963,7 +2963,7 @@ export default function CreatePRPage() {
             </div>
           </div>
 
-          <div className="relative z-[1] grid w-full min-w-0 grid-cols-1 items-start gap-x-6 gap-y-5 p-4 sm:grid-cols-2 sm:p-6">
+          <div className="relative z-[1] grid w-full min-w-0 grid-cols-1 items-start gap-x-4 gap-y-3 p-3 sm:grid-cols-2 sm:p-4">
             {/* PR Number */}
             <div className="flex w-full min-w-0 flex-col">
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">PR Number</label>
@@ -3605,7 +3605,7 @@ export default function CreatePRPage() {
 
         {/* ── Section 4: Business Justification ── */}
         <div className={PM_CARD} data-field="businessJustification">
-          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
+          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
             <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-article-line text-sm"></i>
             </div>
@@ -3614,7 +3614,7 @@ export default function CreatePRPage() {
               <p className="text-xs text-gray-500">Explain the business need and expected benefits</p>
             </div>
           </div>
-          <div className="p-6">
+          <div className="p-3 sm:p-4">
             <textarea
               value={businessJustification}
               onChange={e => setBusinessJustification(e.target.value)}
@@ -3634,7 +3634,7 @@ export default function CreatePRPage() {
 
         {/* ── Section 5: Attachments ── */}
         <div className={PM_CARD}>
-          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
+          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
             <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-attachment-2 text-sm"></i>
             </div>
@@ -3643,16 +3643,16 @@ export default function CreatePRPage() {
               <p className="text-xs text-gray-500">Upload FSD / functional specification documents</p>
             </div>
           </div>
-          <div className="p-6">
+          <div className="p-3 sm:p-4">
             <div
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${isDragging ? 'border-slate-500 bg-slate-50' : 'border-gray-200 hover:border-slate-400 hover:bg-gray-50'}`}
+              className={`cursor-pointer rounded-xl border-2 border-dashed p-4 text-center transition-all ${isDragging ? 'border-slate-500 bg-slate-50' : 'border-gray-200 hover:border-slate-400 hover:bg-gray-50'}`}
             >
-              <div className="w-14 h-14 flex items-center justify-center bg-slate-100 rounded-2xl mx-auto mb-3">
-                <i className="ri-upload-cloud-2-line text-2xl text-slate-500"></i>
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                <i className="ri-upload-cloud-2-line text-lg text-slate-500"></i>
               </div>
               <p className="text-sm font-medium text-gray-700 mb-1">Drop files here or click to browse</p>
               <p className="text-xs text-gray-400">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG — Max 25MB each</p>
@@ -3697,10 +3697,10 @@ export default function CreatePRPage() {
         )}
 
         {activeTab === 'items' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
         {/* ── Section 2: Line Items ── */}
         <div className={PM_CARD} data-field="lineItems">
-          <div className="relative z-[1] flex items-center justify-between border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
+          <div className="relative z-[1] flex items-center justify-between border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
             <div className="flex items-center gap-3">
               <div className={PM_ICON_CHIP_SOLID}>
                 <i className="ri-shopping-cart-line text-sm"></i>
@@ -3721,7 +3721,7 @@ export default function CreatePRPage() {
             </button>
           </div>
 
-          <div className="p-6 space-y-4">
+          <div className="space-y-3 p-3 sm:p-4">
             {errors.lineItems && (
               <p className="text-xs text-red-500 flex items-center gap-1">
                 <i className="ri-error-warning-line"></i>
@@ -3753,7 +3753,7 @@ export default function CreatePRPage() {
             {/* Soft dashboard card rows */}
             <div className="space-y-3 md:hidden">
               {lineItems.length === 0 ? (
-                <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-10 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+                <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-6 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
                   <div
                     className="pointer-events-none absolute inset-0"
                     style={{
@@ -3908,7 +3908,7 @@ export default function CreatePRPage() {
                     <tr>
                       <td
                         colSpan={hideLinePricing ? 5 : 9}
-                        className="rounded-2xl border border-transparent bg-white px-4 py-12 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
+                        className="rounded-2xl border border-transparent bg-white px-4 py-6 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
                       >
                         <p className="text-sm font-medium text-slate-600">No line items yet</p>
                         <p className="mt-1 text-xs text-slate-400">Click Add Line Item to enter the first item</p>
@@ -4070,7 +4070,7 @@ export default function CreatePRPage() {
         )}
 
         {activeTab === 'vendors' && showInlineVendorQuotes && (
-          <div className="space-y-6">
+          <div className="space-y-4">
           <div data-field="rfqVendors">
           <FunctionalOwnRfqSection
             vendors={vendorMaster}
@@ -4110,7 +4110,7 @@ export default function CreatePRPage() {
         )}
 
         {activeTab === 'scm' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white/95 px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5">
               <div
                 className="pointer-events-none absolute inset-0"
@@ -4192,7 +4192,7 @@ export default function CreatePRPage() {
 
         {showScopeAndPaymentTerms && (
           <div className={PM_CARD} data-field="scopeOfWork">
-            <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-6 sm:py-4">
+            <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
               <div className={PM_ICON_CHIP_SOLID}>
                 <i className="ri-file-list-3-line text-sm"></i>
               </div>
@@ -4203,7 +4203,7 @@ export default function CreatePRPage() {
                 </p>
               </div>
             </div>
-            <div className="p-6 grid grid-cols-1 gap-5">
+            <div className="grid grid-cols-1 gap-3 p-3 sm:p-4">
               <div>
                 <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                   Scope of Work <span className="text-red-500">*</span>

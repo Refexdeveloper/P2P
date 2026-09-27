@@ -1,5 +1,6 @@
 import { Fragment, useState, useMemo } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import SoftInsightCard from '../../../components/base/SoftInsightCard';
 import { vendorRFQData, type VendorRFQItem, type RFQItemStatus } from '../../../mocks/vendor-quotation-portal-data';
 import PRDetailModal from './components/PRDetailModal';
 import QuoteSubmitModal from './components/QuoteSubmitModal';
@@ -136,25 +137,13 @@ export default function VendorQuotationPortalPage() {
           )}
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            {[
-              { label: 'Total RFQs',       value: stats.total,                        icon: 'ri-file-list-3-line',         color: '#6366f1', bg: '#eef2ff' },
-              { label: 'Pending Quote',     value: stats.pending,                      icon: 'ri-time-line',                color: '#d97706', bg: '#fffbeb' },
-              { label: 'Re-quote Req.',     value: stats.reQuote,                      icon: 'ri-refresh-line',             color: '#dc2626', bg: '#fef2f2' },
-              { label: 'Submitted',         value: stats.submitted,                    icon: 'ri-send-plane-line',          color: '#2563eb', bg: '#eff6ff' },
-              { label: 'Accepted',          value: stats.accepted,                     icon: 'ri-checkbox-circle-line',     color: '#059669', bg: '#ecfdf5' },
-              { label: 'Total Quote Value', value: formatCurrency(stats.totalValue),   icon: 'ri-money-rupee-circle-line',  color: '#0f766e', bg: '#f0fdfa' },
-            ].map(s => (
-              <div key={s.label} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-gray-500 font-medium">{s.label}</p>
-                  <div className="w-8 h-8 flex items-center justify-center rounded-lg" style={{ background: s.bg }}>
-                    <i className={`${s.icon} text-base`} style={{ color: s.color }}></i>
-                  </div>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{s.value}</p>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
+            <SoftInsightCard title="Total RFQs" value={stats.total} icon="ri-file-list-3-line" theme="violet" />
+            <SoftInsightCard title="Pending Quote" value={stats.pending} icon="ri-time-line" theme="orange" />
+            <SoftInsightCard title="Re-quote Req." value={stats.reQuote} icon="ri-refresh-line" theme="rose" />
+            <SoftInsightCard title="Submitted" value={stats.submitted} icon="ri-send-plane-line" theme="blue" />
+            <SoftInsightCard title="Accepted" value={stats.accepted} icon="ri-checkbox-circle-line" theme="green" />
+            <SoftInsightCard title="Total Quote Value" value={formatCurrency(stats.totalValue)} icon="ri-money-rupee-circle-line" theme="cyan" />
           </div>
 
           {/* Filters */}
