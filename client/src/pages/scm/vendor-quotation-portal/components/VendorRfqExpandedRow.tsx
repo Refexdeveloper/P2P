@@ -26,7 +26,7 @@ export default function VendorRfqExpandedRow({ rfq, colSpan = 11, onQuote }: Pro
 
   return (
     <tr>
-      <td colSpan={colSpan} className="p-0 bg-slate-50 border-b border-[#BBDEFB]">
+      <td colSpan={colSpan} className="p-0 bg-[#F5F7FA] border-b border-[#BBDEFB]">
         <div className="m-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-gradient-to-r from-[#E3F2FD] to-white border-b border-gray-100">
             <div className="min-w-0">

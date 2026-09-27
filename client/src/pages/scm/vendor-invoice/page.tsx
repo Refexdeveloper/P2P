@@ -377,7 +377,7 @@ export default function VendorInvoicePage() {
                         </tr>
                         {open && (
                           <tr>
-                            <td colSpan={7} className="px-4 py-4 bg-slate-50">
+                            <td colSpan={7} className="px-4 py-4 bg-[#F5F7FA]">
                               <div className="bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <div className="bg-gray-50 rounded-lg p-3">
                                   <p className="text-xs text-gray-500">PR</p>

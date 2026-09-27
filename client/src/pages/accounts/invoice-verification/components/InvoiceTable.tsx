@@ -209,7 +209,7 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
               {isExpanded && (
                 <tr>
                   <td colSpan={9} className="bg-transparent p-0">
-                    <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#e5e7eb] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
+                    <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
                       <InvoiceExpandedRow invoice={invoice} onAction={onAction} />
                     </div>
                   </td>

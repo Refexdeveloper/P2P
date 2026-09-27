@@ -393,7 +393,7 @@ export default function SCMPaymentApprovalPage() {
 
                   {expandedRow === invoice.id && (
                     <tr>
-                      <td colSpan={9} className="bg-gray-50 px-6 py-6">
+                      <td colSpan={9} className="bg-[#F5F7FA] px-6 py-6">
                         <div className="flex gap-2 mb-4 border-b border-gray-200">
                           <button
                             onClick={() => setActiveTab('summary')}

@@ -48,7 +48,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
 
   return (
     <tr>
-      <td colSpan={10} className="px-0 py-0 bg-slate-50 border-b border-[#90CAF9]">
+      <td colSpan={10} className="px-0 py-0 bg-[#F5F7FA] border-b border-[#90CAF9]">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 overflow-hidden">
           {/* Header */}
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-[#E3F2FD] to-white border-b border-gray-100">

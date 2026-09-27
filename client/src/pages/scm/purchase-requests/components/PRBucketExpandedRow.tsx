@@ -659,7 +659,7 @@ export default function PRBucketExpandedRow({
           }}
         >
           <div className="box-border w-full max-w-full overflow-x-hidden px-2 py-2 sm:px-3 sm:py-3">
-            <div className="relative box-border w-full max-w-full overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+            <div className="relative box-border w-full max-w-full overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
           <div
             className="pointer-events-none absolute inset-0"
             style={{

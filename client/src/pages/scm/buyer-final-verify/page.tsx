@@ -343,7 +343,7 @@ export default function BuyerFinalVerifyPage() {
                           {open && (
                             <tr>
                               <td colSpan={7} className="max-w-0 bg-transparent p-0">
-                                <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#e5e7eb] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
+                                <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
                                   <p className="text-sm font-semibold text-[#2C3E50]">{po.poNumber} — Final verify checklist</p>
                                   <p className="mt-0.5 text-xs text-slate-500">
                                     Confirm signed PDF and commercial terms. Vendor is not emailed from this step.

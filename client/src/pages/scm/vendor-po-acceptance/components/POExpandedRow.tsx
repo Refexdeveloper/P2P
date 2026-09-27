@@ -141,7 +141,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
   return (
     <tr>
       <td colSpan={7} className="bg-transparent p-0">
-        <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#e5e7eb] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
+        <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
           <div className="relative z-[1] space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">

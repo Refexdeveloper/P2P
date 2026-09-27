@@ -167,7 +167,7 @@ export default function PaymentTable({
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={8} className="px-0 py-0 bg-gray-50">
+                      <td colSpan={8} className="px-0 py-0 bg-[#F5F7FA]">
                         {renderExpanded(invoice)}
                       </td>
                     </tr>

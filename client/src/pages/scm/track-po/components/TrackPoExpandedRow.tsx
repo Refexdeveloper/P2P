@@ -744,8 +744,8 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     <div
       className={
         standalone
-          ? 'relative overflow-visible rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]'
-          : 'relative box-border w-full max-w-full overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]'
+          ? 'relative overflow-visible rounded-2xl border border-transparent bg-[#F5F7FA] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]'
+          : 'relative box-border w-full max-w-full overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]'
       }
     >
           <div

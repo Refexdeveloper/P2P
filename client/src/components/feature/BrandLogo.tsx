@@ -1,7 +1,7 @@
 /** Refex One brand mark for navbar / sidebar */
 export const BRAND_LOGO_URL =
   (import.meta.env.VITE_BRAND_LOGO_URL as string | undefined)?.trim() ||
-  '/refexone-logo.png';
+  'https://refexone.com/refexone-logo.png';
 
 type BrandLogoProps = {
   className?: string;

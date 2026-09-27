@@ -68,7 +68,7 @@ export default function TaskStats({
   onSelect: (filter: TaskStatFilter) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-3 xl:grid-cols-6">
+    <div className="grid w-full grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
       {cards.map((card) => {
         const selected = selectedFilter === card.filter;
         const theme = KPI_THEME[card.filter] || KPI_THEME.all;

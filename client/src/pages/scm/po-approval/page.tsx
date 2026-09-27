@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useEffect, useCallback, Fragment } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, Fragment } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import ApprovalHistoryPanel, {
@@ -114,11 +114,31 @@ interface ExpandedRowProps {
 }
 
 function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onViewPdf, isPending }: ExpandedRowProps) {
+  const expandWrapRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'comparison' | 'history'>('details');
   const [comparisonData, setComparisonData] = useState<(VendorComparisonData & { source?: string }) | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState('');
   const [filePreview, setFilePreview] = useState<{ url: string; fileName: string } | null>(null);
+
+  useEffect(() => {
+    const el = expandWrapRef.current;
+    if (!el) return;
+    const scrollParent = el.closest('[data-po-approval-scroll]') as HTMLElement | null;
+    const update = () => {
+      const w = scrollParent?.clientWidth ?? el.parentElement?.clientWidth ?? 0;
+      if (w > 0) setPanelWidth(w);
+    };
+    update();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    if (scrollParent && ro) ro.observe(scrollParent);
+    window.addEventListener('resize', update);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
 
   useEffect(() => {
     if (activeTab !== 'comparison') return;
@@ -186,9 +206,17 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
 
   return (
     <tr>
-      <td colSpan={9} className="p-0 max-w-0 bg-transparent">
-        <div className="min-w-0 w-full max-w-full my-3 sm:my-4 px-1 sm:px-2">
-        <div className={`${softCard} min-w-0 max-w-full`}>
+      <td colSpan={9} className="max-w-0 bg-transparent p-0 align-top">
+        <div
+          ref={expandWrapRef}
+          className="sticky left-0 z-[5] box-border min-w-0"
+          style={{
+            width: panelWidth ? `${panelWidth}px` : '100%',
+            maxWidth: panelWidth ? `${panelWidth}px` : '100%',
+          }}
+        >
+        <div className="box-border w-full max-w-full overflow-x-hidden px-2 py-2 sm:px-3">
+        <div className="relative min-w-0 max-w-full overflow-x-hidden rounded-2xl border border-transparent bg-[#F5F7FA] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
           <div className="pointer-events-none absolute inset-0" style={softWash} />
           {/* Expanded Header */}
           <div className="relative z-[1] flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-3 px-3 sm:px-6 py-3 sm:py-4 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40">
@@ -243,7 +271,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
           </div>
 
           {/* Tabs */}
-          <div className="relative z-[1] flex border-b border-slate-100 px-2 sm:px-6 bg-white overflow-x-auto">
+          <div className="relative z-[1] flex flex-wrap border-b border-slate-100 bg-white px-2 sm:px-6">
             {[
               { key: 'details', label: 'PO Details', icon: 'ri-information-line' },
               { key: 'items', label: 'Line Items', icon: 'ri-list-check-2' },
@@ -266,7 +294,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
           </div>
 
           {/* Tab Content */}
-          <div className="relative z-[1] p-3 sm:p-6 min-w-0 max-w-full overflow-x-auto">
+          <div className="relative z-[1] min-w-0 max-w-full overflow-x-hidden p-3 sm:p-6">
             {activeTab === 'details' && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* PO Summary */}
@@ -469,11 +497,13 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                         </span>
                       )}
                     </div>
-                    <VendorComparisonMatrix
-                      data={comparisonData}
-                      poId={poId}
-                      onPreviewFile={handlePreviewFile}
-                    />
+                    <div className="max-w-full overflow-x-auto">
+                      <VendorComparisonMatrix
+                        data={comparisonData}
+                        poId={poId}
+                        onPreviewFile={handlePreviewFile}
+                      />
+                    </div>
                   </div>
                 ) : (
                   <p className="text-sm text-gray-500 italic py-8 text-center">No vendor comparison data available.</p>
@@ -488,6 +518,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
               </div>
             )}
           </div>
+        </div>
         </div>
         </div>
 
@@ -917,8 +948,8 @@ export default function POApprovalPage() {
               })}
             </div>
 
-            <div className="relative z-[1] hidden overflow-x-auto px-2 pb-3 pt-1 md:block sm:px-3 sm:pb-4">
-              <table className="w-full min-w-0 border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+            <div data-po-approval-scroll className="relative z-[1] hidden overflow-x-auto px-2 pb-3 pt-1 md:block sm:px-3 sm:pb-4">
+              <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
                 <thead>
                   <tr>
                     {[
@@ -934,8 +965,10 @@ export default function POApprovalPage() {
                     ].map((h) => (
                       <th
                         key={h || 'expand'}
-                        className={`whitespace-nowrap px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 ${
-                          h === 'Actions' ? 'text-right' : ''
+                        className={`whitespace-nowrap bg-[#F8FAFC] px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 ${
+                          h === 'Actions'
+                            ? 'sticky right-0 z-30 bg-[#F8FAFC] pr-4 text-right shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.35)]'
+                            : ''
                         }`}
                       >
                         {h}
@@ -1008,7 +1041,7 @@ export default function POApprovalPage() {
                             <StatusBadge status={po.status} />
                           </td>
                           <td
-                            className={`whitespace-nowrap rounded-r-2xl border border-l-0 bg-white px-3 py-4 transition-[border-color] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                            className={`sticky right-0 z-20 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white px-3 py-4 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.35)] transition-[border-color] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="flex items-center justify-end gap-1">

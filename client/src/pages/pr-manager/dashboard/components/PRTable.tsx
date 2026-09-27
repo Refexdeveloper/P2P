@@ -177,7 +177,7 @@ const PRTable: React.FC<PRTableProps> = ({ data, onApprove, onReject, onRework }
                 </tr>
                 {expandedRow === pr.id && (
                   <tr>
-                    <td colSpan={10} className="px-0 py-0 bg-gray-50">
+                    <td colSpan={10} className="px-0 py-0 bg-[#F5F7FA]">
                       <PRExpandedRow
                         pr={pr}
                         onApprove={onApprove}

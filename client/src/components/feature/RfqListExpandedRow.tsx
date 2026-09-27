@@ -280,7 +280,7 @@ export default function RfqListExpandedRow({
     <tr>
       {/* max-w-0 keeps wide expand content from stretching / double-scrolling the parent table */}
       <td colSpan={colSpan} className="max-w-0 bg-transparent p-0 align-top">
-        <div className="relative m-2 box-border w-full max-w-full overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:m-3 sm:rounded-[18px]">
+        <div className="relative m-2 box-border w-full max-w-full overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:m-3 sm:rounded-[18px]">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
