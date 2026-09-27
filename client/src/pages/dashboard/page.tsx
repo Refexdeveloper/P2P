@@ -5,6 +5,7 @@ import EntityPOSummaryTable from './components/EntityPOSummaryTable';
 import RecentPOTable from './components/RecentPOTable';
 import TopVendorsTable from './components/TopVendorsTable';
 import DashboardFilters, { DashboardFiltersValue, EMPTY_DASHBOARD_FILTERS } from './components/DashboardFilters';
+import BuyerInsightCharts from './components/BuyerInsightCharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { masterApi, poApi } from '../../services/api';
 import { getUserDesignation } from '../../utils/roleDisplay';
@@ -76,10 +77,12 @@ export default function Dashboard({
   embedded = false,
   onBack,
   backLabel = 'Back to dashboard',
+  showCharts = false,
 }: {
   embedded?: boolean;
   onBack?: () => void;
   backLabel?: string;
+  showCharts?: boolean;
 } = {}) {
   const { user } = useAuth();
   const [data, setData] = useState<Insights>(EMPTY);
@@ -382,6 +385,16 @@ export default function Dashboard({
             kpis={kpis}
             previousTotal={previousTotal}
             previousMonthLabel={previousMonthLabel}
+          />
+        ) : null}
+
+        {showCharts ? (
+          <BuyerInsightCharts
+            trend={filteredTrend.map((p) => ({ month: String(p.month || ''), total: Number(p.total || 0) }))}
+            entities={filteredEntities}
+            vendors={filteredVendors}
+            approvedAmount={kpis.approvedPOAmount}
+            pendingAmount={kpis.pendingPOAmount}
           />
         ) : null}
 

@@ -76,7 +76,7 @@ export default function RfqExtraQuestionsPanel({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4">
+    <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-5 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
       <button type="button" onClick={onToggle} className="w-full flex items-start justify-between gap-3 text-left">
         <div>
           <p className="text-sm font-semibold text-gray-900">What do you want to compare?</p>

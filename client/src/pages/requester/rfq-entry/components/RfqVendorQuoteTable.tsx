@@ -370,8 +370,8 @@ export default function RfqVendorQuoteTable({
               onClick={() => setActiveTab('all')}
               className={`px-4 py-2 rounded-t-lg text-sm font-bold border-b-2 ${
                 activeTab === 'all'
-                  ? 'bg-slate-900 text-white border-transparent'
-                  : 'text-gray-600 hover:bg-gray-50 border-transparent'
+                  ? 'bg-[#1E88E5] text-white border-transparent'
+                  : 'text-[#1565C0] hover:bg-[#E3F2FD] border-transparent'
               }`}
             >
               All rounds

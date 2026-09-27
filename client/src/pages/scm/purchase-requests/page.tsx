@@ -226,6 +226,7 @@ export default function SCMPurchaseRequestsPage() {
       <DashboardLayout>
         <FinancialInsightsDashboard
           embedded
+          showCharts
           backLabel="Back to SCM Buyer Dashboard"
           onBack={() => setShowDetailedView(false)}
         />

@@ -35,6 +35,7 @@ import {
 } from './rfqEntryDraftStorage';
 import { currencySymbol, formatMoney } from '../../../constants/currency';
 import { PR_PAYMENT_TERM_OPTIONS } from '../../../constants/prRequisition';
+import { PM_PAGE_BG } from '../../../constants/pmTheme';
 
 const REQUESTER_SCORE_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
 
@@ -2115,31 +2116,41 @@ export default function RfqEntryDetailPage() {
         </div>
       )}
 
-      <div className="w-full max-w-full">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
+      <div className="min-h-full w-full max-w-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+      <div className="relative mb-5 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5">
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+          }}
+        />
+        <div className="relative z-[1] flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-3">
-          <Link to={listPath} className="w-10 h-10 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-gray-50">
+          <Link to={listPath} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-transparent bg-white text-slate-600 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9] hover:text-[#1E88E5]" title="Back to list">
             <i className="ri-arrow-left-line text-lg"></i>
           </Link>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Purchase request {pr?.prNumber || '—'}</p>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mt-0.5">Collect vendor quotes</h1>
-            <p className="text-sm text-gray-500 mt-1 max-w-xl">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Purchase request {pr?.prNumber || '—'}</p>
+            <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+              {isScm ? 'SCM RFQ entry' : 'Collect vendor quotes'}
+            </h1>
+            <p className="mt-1 max-w-xl text-sm text-slate-500">
               {pr?.title || 'Add vendors, get their prices, then pick one to send for approval.'}
             </p>
               {isScm && config?.requesterSubmittedAt && !config?.finalizedAt && (
-              <span className="inline-flex mt-2 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-semibold">
+              <span className="mt-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
                 SCM final check
                 </span>
               )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white">
-            <button type="button" onClick={() => setMode('entry')} className={`px-4 py-2.5 text-sm font-medium ${mode === 'entry' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl bg-[#E3F2FD] p-1">
+            <button type="button" onClick={() => setMode('entry')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${mode === 'entry' ? 'bg-[#1E88E5] text-white shadow-sm' : 'text-[#1565C0] hover:bg-white/70'}`}>
               Work on quotes
                 </button>
-            <button type="button" onClick={() => setMode('preview')} className={`px-4 py-2.5 text-sm font-medium border-l border-gray-200 ${mode === 'preview' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+            <button type="button" onClick={() => setMode('preview')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${mode === 'preview' ? 'bg-[#1E88E5] text-white shadow-sm' : 'text-[#1565C0] hover:bg-white/70'}`}>
               Compare prices
             </button>
             </div>
@@ -2191,11 +2202,12 @@ export default function RfqEntryDetailPage() {
                       ? 'Write why you picked this vendor'
                       : undefined
               }
-              className="px-5 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+              className="rounded-xl bg-[#1E88E5] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#1565C0] disabled:opacity-50"
             >
               {submitting ? (isScm ? 'Create PO…' : 'Submitting...') : isScm ? 'Create PO' : 'Send for approval'}
             </button>
           )}
+        </div>
         </div>
       </div>
 
@@ -2232,29 +2244,44 @@ export default function RfqEntryDetailPage() {
             return (
               <div
                 key={s.n}
-                className={`rounded-2xl border px-4 py-3 ${
+                className={`relative min-h-[108px] overflow-hidden rounded-2xl border bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] ${
                   s.done
-                    ? 'border-emerald-200 bg-emerald-50'
+                    ? 'border-emerald-200'
                     : active
-                      ? 'border-[#64B5F6] bg-[#E3F2FD] shadow-sm'
-                      : 'border-gray-200 bg-white'
+                      ? 'border-[#90CAF9]'
+                      : 'border-transparent'
                 }`}
               >
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    background: s.done
+                      ? 'radial-gradient(120% 90% at 100% 0%, rgba(16,185,129,0.14) 0%, rgba(255,255,255,0) 55%)'
+                      : 'radial-gradient(120% 90% at 100% 0%, rgba(30,136,229,0.12) 0%, rgba(255,255,255,0) 55%)',
+                  }}
+                />
+                <div className="relative z-[1]">
                 <div className="flex items-center gap-2">
                   <span
-                    className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center ${
+                    className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold ${
                       s.done
-                        ? 'bg-emerald-600 text-white'
+                        ? 'bg-[#D1FAE5] text-[#10B981]'
                         : active
                           ? 'bg-[#1E88E5] text-white'
-                          : 'bg-gray-100 text-gray-500'
+                          : 'bg-[#E3F2FD] text-[#1E88E5]'
                     }`}
                   >
                     {s.done ? <i className="ri-check-line" /> : s.n}
                   </span>
-                  <p className="text-sm font-semibold text-gray-900">{s.title}</p>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      {s.done ? 'Done' : active ? 'Do this now' : `Step ${s.n}`}
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900">{s.title}</p>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1.5 pl-9">{s.hint}</p>
+                <p className="mt-2 pl-10 text-xs text-slate-500">{s.hint}</p>
+                </div>
               </div>
             );
           })}
@@ -2262,7 +2289,7 @@ export default function RfqEntryDetailPage() {
       )}
 
       {prId && pr && (
-        <div className="mb-5 bg-white rounded-xl border border-indigo-100 shadow-sm p-4 sm:p-5">
+        <div className="relative mb-5 overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-5">
           <PrDocumentsPanel
             prId={Number(pr.id || prId)}
             attachments={pr.attachments}
@@ -2273,20 +2300,27 @@ export default function RfqEntryDetailPage() {
 
       {!isScm && pr && (
         <div className="mb-5 space-y-5">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-indigo-50/40">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-                <i className="ri-file-list-3-line text-white text-sm"></i>
+          <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+              }}
+            />
+            <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+                <i className="ri-file-list-3-line text-lg"></i>
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">Scope of Work &amp; Payment Terms</h2>
-                <p className="text-xs text-gray-500">Required for SCM Create PO — fill here on RFQ Entry</p>
+                <h2 className="text-sm font-semibold text-[#2C3E50]">Scope of Work &amp; Payment Terms</h2>
+                <p className="text-xs text-slate-500">Required before Create PO. Fill this on RFQ entry.</p>
               </div>
             </div>
-            <div className="p-5 grid grid-cols-1 gap-4">
+            <div className="relative z-[1] grid grid-cols-1 gap-4 p-5">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Scope of Work <span className="text-red-500">*</span>
+                <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  Scope of Work <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   value={scopeOfWork}
@@ -2294,13 +2328,13 @@ export default function RfqEntryDetailPage() {
                   disabled={isFinalized}
                   rows={5}
                   placeholder="Describe the full scope of work, deliverables, and any technical requirements..."
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 resize-none disabled:bg-gray-50"
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
                 />
                 <p className="text-xs text-gray-400 mt-1.5">{scopeOfWork.length} chars</p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Payment Terms <span className="text-red-500">*</span>
+                <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  Payment Terms <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   value={billing.paymentTerms}
@@ -2308,7 +2342,7 @@ export default function RfqEntryDetailPage() {
                   disabled={isFinalized}
                   rows={4}
                   placeholder={"e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed..."}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 resize-none disabled:bg-gray-50"
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
                 />
                 <p className="text-xs text-gray-400 mt-1.5">
                   Suggestions: {PR_PAYMENT_TERM_OPTIONS.slice(0, 4).join(' · ')}
@@ -2360,12 +2394,20 @@ export default function RfqEntryDetailPage() {
       ) : (
         <div className="space-y-4 pb-4">
           {!isFinalized && mode === 'entry' && (
-            <div className="bg-white border border-gray-200 rounded-2xl p-5">
-              <div className="mb-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Step 1</p>
-                <h2 className="text-base font-bold text-gray-900 mt-0.5">Add vendors</h2>
-                <p className="text-sm text-gray-500 mt-1">Search a vendor, then choose email, type the quote, or upload with AI.</p>
+            <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white p-5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+                }}
+              />
+              <div className="relative z-[1] mb-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Step 1</p>
+                <h2 className="mt-0.5 text-base font-semibold text-[#2C3E50]">Add vendors</h2>
+                <p className="mt-1 text-sm text-slate-500">Search a vendor, then email them, type the quote yourself, or upload the file with AI.</p>
               </div>
+              <div className="relative z-[1]">
 
               {draftRows.filter((r) => r.vendorId).length > 0 && (
                 <div className="space-y-2 mb-4">
@@ -2449,14 +2491,15 @@ export default function RfqEntryDetailPage() {
                 <button
                   type="button"
                   onClick={openRfqChat}
-                  className="text-left rounded-2xl border border-slate-200 bg-slate-50 p-4 hover:border-slate-300"
+                  className="rounded-2xl border border-[#DDD6FE] bg-[#EDE9FE]/70 p-4 text-left hover:border-[#C4B5FD]"
                 >
-                  <span className="w-9 h-9 rounded-lg bg-slate-900 text-white inline-flex items-center justify-center mb-2">
+                  <span className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#8B5CF6] text-white">
                     <i className="ri-robot-2-line" />
                   </span>
                   <p className="text-sm font-bold text-gray-900">Upload with AI</p>
                   <p className="text-xs text-gray-600 mt-1">Chat asks the vendor name, then you upload the quotation file.</p>
                 </button>
+              </div>
               </div>
             </div>
           )}
@@ -2590,7 +2633,7 @@ export default function RfqEntryDetailPage() {
                   return (
                     <div key={row.id} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
                       <div className="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
-                      <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 bg-gray-50/80">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-[#E3F2FD]/50 px-5 py-4">
                         <div className="flex items-start gap-3 min-w-0">
                           <span className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-sm font-bold text-gray-600 shrink-0">
                             {i + 1}
@@ -3324,7 +3367,7 @@ export default function RfqEntryDetailPage() {
                   startEditExistingQuote(row, quote);
                   setQuotePopupId(row.invitationId);
                 }}
-                className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800"
+                className="rounded-lg bg-[#1E88E5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1565C0]"
               >
                 Edit existing Q{quoteAsk.existingRound}
               </button>
