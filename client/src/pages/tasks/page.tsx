@@ -1182,7 +1182,7 @@ export default function TasksPage() {
               >
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-col items-start gap-1">
                       <p className="text-sm font-bold text-[#2563EB]">{task.prNumber}</p>
                       {sass && (
                         <SassBadge
@@ -1314,10 +1314,10 @@ export default function TasksPage() {
                     className="group cursor-pointer"
                   >
                     <td
-                      className={`whitespace-nowrap rounded-l-2xl border border-r-0 pl-5 pr-3 text-sm font-bold text-[#2563EB] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:rounded-l-[18px] ${cellBase} ${ringHint}`}
+                      className={`rounded-l-2xl border border-r-0 pl-5 pr-3 text-sm font-bold text-[#2563EB] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:rounded-l-[18px] ${cellBase} ${ringHint}`}
                     >
-                      <div className="flex items-center gap-1.5 whitespace-nowrap">
-                        <span title={task.prNumber}>{task.prNumber}</span>
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="whitespace-nowrap" title={task.prNumber}>{task.prNumber}</span>
                         {sass && (
                           <SassBadge
                             label={
