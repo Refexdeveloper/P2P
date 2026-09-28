@@ -3690,34 +3690,17 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
 
   const verifyRemarks =
     remarks?.trim() || 'Final verified by SCM Buyer';
-  const isWo = isWorkOrderPo(rows[0]);
-  const token = rows[0].vendor_acceptance_token || newVendorAcceptanceToken();
 
-  if (isWo) {
-    await pool.query(
-      `UPDATE purchase_orders SET
-         status = 'sent_to_vendor',
-         vendor_acceptance_status = 'pending',
-         vendor_acceptance_token = ?,
-         vendor_acceptance_mode = NULL,
-         vendor_notified_at = NULL,
-         updated_at = NOW()
-       WHERE id = ?`,
-      [token, poId]
-    );
-  } else {
-    await pool.query(
-      `UPDATE purchase_orders SET
-         status = 'awaiting_grn',
-         vendor_acceptance_status = NULL,
-         vendor_acceptance_token = ?,
-         vendor_acceptance_mode = NULL,
-         vendor_notified_at = NULL,
-         updated_at = NOW()
-       WHERE id = ?`,
-      [token, poId]
-    );
-  }
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'awaiting_grn',
+       vendor_acceptance_status = NULL,
+       vendor_acceptance_mode = NULL,
+       vendor_notified_at = NULL,
+       updated_at = NOW()
+     WHERE id = ?`,
+    [poId]
+  );
 
   await pool.query(
     `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
@@ -3797,9 +3780,6 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   if (rows[0].pr_id) {
     const requesterId = await getPoRequesterId(rows[0]);
     if (requesterId) {
-      if (isWo) {
-        await upsertVendorAcceptanceTask(rows[0].pr_id, requesterId);
-      }
       try {
         const [reqRows] = await pool.query(
           `SELECT u.email, u.name FROM users u WHERE u.id = ? LIMIT 1`,
@@ -3809,17 +3789,16 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
         if (reqUser?.email) {
           queuePoWorkflowNotification(updated, {
             action: 'assign',
-            stageLabel: isWo ? 'Vendor PO Acceptance' : 'GRN — Goods Receipt',
+            stageLabel: 'GRN — Goods Receipt',
             recipientEmails: [reqUser.email],
             recipientName: reqUser.name || updated.requester || 'Requester',
             actorName: user.name,
             actorRole: user.role,
             remarks: verifyRemarks,
-            portalUrl: poPortalUrl(isWo ? '/requester/vendor-po-acceptance' : '/grn'),
-            ctaLabel: isWo ? 'Open Vendor Acceptance' : 'Open GRN',
+            portalUrl: poPortalUrl('/grn'),
+            ctaLabel: 'Open GRN',
             bccOps: false,
             notifyWhatsApp: false,
-            attachments: isWo ? attachments : undefined,
           });
         }
       } catch (err) {

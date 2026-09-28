@@ -74,7 +74,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
             </span>
             <button
               onClick={handleViewPDF}
-              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap"
+              className="px-4 py-2 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors text-sm font-medium cursor-pointer whitespace-nowrap"
             >
               <i className="ri-file-pdf-line mr-2"></i>
               View PDF
@@ -87,7 +87,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
               onClick={() => setActiveTab('details')}
               className={`px-4 py-3 text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'details'
-                  ? 'text-teal-600 border-b-2 border-teal-600'
+                  ? 'text-[#1E88E5] border-b-2 border-[#1E88E5]'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
@@ -98,7 +98,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
               onClick={() => setActiveTab('history')}
               className={`px-4 py-3 text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'history'
-                  ? 'text-teal-600 border-b-2 border-teal-600'
+                  ? 'text-[#1E88E5] border-b-2 border-[#1E88E5]'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
@@ -111,7 +111,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
           {activeTab === 'details' && (
             <div className="space-y-6">
               {/* PO Summary */}
-              <div className="bg-teal-50 border border-teal-200 rounded-lg p-6">
+              <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">PO Summary</h3>
                 <div className="grid grid-cols-2 gap-6">
                   <div>
@@ -120,7 +120,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 mb-1">PR Reference</p>
-                    <p className="text-sm font-semibold text-teal-600">{po.prId}</p>
+                    <p className="text-sm font-semibold text-[#1E88E5]">{po.prId}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 mb-1">PO Date</p>
@@ -210,7 +210,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
                   </div>
                   <div className="pt-3 border-t border-gray-300 flex justify-between items-center">
                     <span className="text-base font-semibold text-gray-900">Grand Total</span>
-                    <span className="text-2xl font-bold text-teal-600">{formatCurrency(po.grandTotal)}</span>
+                    <span className="text-2xl font-bold text-[#1E88E5]">{formatCurrency(po.grandTotal)}</span>
                   </div>
                 </div>
               </div>
@@ -317,7 +317,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
           </button>
           <button
             onClick={handleViewPDF}
-            className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap"
+            className="px-6 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors text-sm font-medium cursor-pointer whitespace-nowrap"
           >
             <i className="ri-file-pdf-line mr-2"></i>
             View PDF

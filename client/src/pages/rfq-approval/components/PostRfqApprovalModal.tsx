@@ -146,7 +146,7 @@ export default function PostRfqApprovalModal({
                   onClick={() => setGoToBusinessApproval(false)}
                   className={`flex-1 px-3 py-2.5 text-sm font-semibold rounded-lg border cursor-pointer text-center ${
                     goToBusinessApproval === false
-                      ? 'bg-teal-600 text-white border-teal-600'
+                      ? 'bg-[#1E88E5] text-white border-[#1E88E5]'
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                   }`}
                 >
@@ -188,7 +188,7 @@ export default function PostRfqApprovalModal({
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               rows={4}
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent"
               placeholder={`Enter remarks for ${action}...`}
             />
           </div>

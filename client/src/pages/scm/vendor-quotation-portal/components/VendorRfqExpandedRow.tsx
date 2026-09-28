@@ -26,9 +26,9 @@ export default function VendorRfqExpandedRow({ rfq, colSpan = 11, onQuote }: Pro
 
   return (
     <tr>
-      <td colSpan={colSpan} className="p-0 bg-slate-50 border-b border-teal-100">
+      <td colSpan={colSpan} className="p-0 bg-[#F5F7FA] border-b border-[#BBDEFB]">
         <div className="m-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-gradient-to-r from-[#E3F2FD] to-white border-b border-gray-100">
             <div className="min-w-0">
               <p className="text-sm font-bold text-gray-900 truncate">
                 {rfq.rfqNumber} · {rfq.prNumber} — {rfq.prTitle}
@@ -40,12 +40,12 @@ export default function VendorRfqExpandedRow({ rfq, colSpan = 11, onQuote }: Pro
                 <button
                   type="button"
                   onClick={onQuote}
-                  className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-xs font-semibold cursor-pointer"
+                  className="px-3 py-1.5 bg-[#1E88E5] text-white rounded-md text-xs font-semibold cursor-pointer"
                 >
                   Submit Quote
                 </button>
               )}
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700">
+              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#E3F2FD] text-[#1565C0]">
                 {rfq.status}
               </span>
             </div>
@@ -59,7 +59,7 @@ export default function VendorRfqExpandedRow({ rfq, colSpan = 11, onQuote }: Pro
                 onClick={() => setTab(t.key)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                   tab === t.key
-                    ? 'border-teal-600 text-teal-600'
+                    ? 'border-[#1E88E5] text-[#1E88E5]'
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
@@ -141,11 +141,11 @@ export default function VendorRfqExpandedRow({ rfq, colSpan = 11, onQuote }: Pro
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-teal-50 border-t">
+                    <tr className="bg-[#E3F2FD] border-t">
                       <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase">
                         Estimated Total
                       </td>
-                      <td className="px-3 py-2.5 text-right text-sm font-bold text-teal-700">
+                      <td className="px-3 py-2.5 text-right text-sm font-bold text-[#1565C0]">
                         {formatCurrency(rfq.estimatedValue)}
                       </td>
                     </tr>
@@ -163,7 +163,7 @@ export default function VendorRfqExpandedRow({ rfq, colSpan = 11, onQuote }: Pro
                     <div key={h.round} className="bg-gray-50 border border-gray-100 rounded-lg p-4">
                       <div className="flex items-center justify-between gap-3 mb-1">
                         <p className="text-sm font-semibold text-gray-900">Round Q{h.round}</p>
-                        <span className="text-xs font-semibold text-teal-700 capitalize">{h.status.replace(/-/g, ' ')}</span>
+                        <span className="text-xs font-semibold text-[#1565C0] capitalize">{h.status.replace(/-/g, ' ')}</span>
                       </div>
                       <p className="text-xs text-gray-500 mb-2">{h.submittedDate}</p>
                       <div className="flex flex-wrap gap-4 text-sm">

@@ -181,7 +181,7 @@ export default function RfqApprovalDetailPage() {
     return (
       <DashboardLayout>
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error || 'Not found'}</div>
-        <Link to={backPath} className="text-teal-600 text-sm mt-4 inline-block">← {backLabel}</Link>
+        <Link to={backPath} className="text-[#1E88E5] text-sm mt-4 inline-block">← {backLabel}</Link>
       </DashboardLayout>
     );
   }
@@ -198,12 +198,12 @@ export default function RfqApprovalDetailPage() {
         <div className="min-w-0">
           <Link
             to={backPath}
-            className="text-sm text-teal-600 hover:text-teal-800 mb-2 inline-flex items-center gap-1"
+            className="text-sm text-[#1E88E5] hover:text-[#1565C0] mb-2 inline-flex items-center gap-1"
           >
             <i className="ri-arrow-left-line"></i> {backLabel}
           </Link>
           <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 break-words leading-snug">
-            <span className="block sm:inline text-teal-800">{data.pr.prNumber}</span>
+            <span className="block sm:inline text-[#1565C0]">{data.pr.prNumber}</span>
             <span className="hidden sm:inline"> — </span>
             <span className="block sm:inline mt-1 sm:mt-0 text-base sm:text-xl md:text-2xl font-semibold sm:font-bold text-gray-900">
               {data.pr.title}
@@ -273,7 +273,7 @@ export default function RfqApprovalDetailPage() {
       </div>
 
       {data.canApprove && user?.role === 'SCM Buyer' && (
-        <div className="mb-4 p-3 bg-teal-50 border border-teal-200 rounded-lg text-sm text-teal-800">
+        <div className="mb-4 p-3 bg-[#E3F2FD] border border-[#90CAF9] rounded-lg text-sm text-[#1565C0]">
           <i className="ri-information-line mr-1"></i>
           After approval you will be redirected to <strong>Create PO</strong> for this purchase request.
         </div>
@@ -339,6 +339,12 @@ export default function RfqApprovalDetailPage() {
         stageLabel={data.stageLabel || user?.role || 'Approval'}
         prId={Number(prId)}
         askBusinessApproval={Boolean(data.askBusinessApproval)}
+        useAdminTargets={Boolean(
+          user?.isSuperAdmin ||
+            user?.role === 'Super Admin' ||
+            user?.role === 'SCM Manager' ||
+            user?.role === 'SCM Buyer'
+        )}
         onClose={() => setModal((m) => ({ ...m, open: false }))}
         onConfirm={handleApprove}
       />

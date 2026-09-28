@@ -17,9 +17,9 @@ export default function InvoiceActionModal({ type, invoice, onSubmit, onClose }:
       title: 'Approve for Manager Review',
       desc: 'Confirm that the 3-way match is verified. This will send the invoice to Accounts Manager for final approval.',
       icon: 'ri-checkbox-circle-line',
-      iconColor: 'text-teal-600',
-      iconBg: 'bg-teal-100',
-      btnColor: 'bg-teal-600 hover:bg-teal-700',
+      iconColor: 'text-[#1E88E5]',
+      iconBg: 'bg-[#E3F2FD]',
+      btnColor: 'bg-[#1E88E5] hover:bg-[#1565C0]',
       btnLabel: 'Send to Manager',
       placeholder: 'Add verification remarks (optional)...',
       successTitle: 'Sent to Manager',
@@ -55,7 +55,7 @@ export default function InvoiceActionModal({ type, invoice, onSubmit, onClose }:
       icon: 'ri-user-star-line',
       iconColor: 'text-blue-600',
       iconBg: 'bg-blue-100',
-      btnColor: 'bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700',
+      btnColor: 'bg-gradient-to-r from-blue-600 to-[#1E88E5] hover:from-blue-700 hover:to-[#1565C0]',
       btnLabel: 'Authorize Payment',
       placeholder: 'Add manager approval remarks (optional)...',
       successTitle: 'Payment Authorized',
@@ -98,7 +98,7 @@ export default function InvoiceActionModal({ type, invoice, onSubmit, onClose }:
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">New Status</span>
-                <span className="font-medium text-teal-600">
+                <span className="font-medium text-[#1E88E5]">
                   {type === 'manager_approve' ? 'Approved for Payment' : type === 'approve' ? 'Pending Manager Approval' : type === 'hold' ? 'On Hold' : 'Discrepancy'}
                 </span>
               </div>
@@ -166,7 +166,7 @@ export default function InvoiceActionModal({ type, invoice, onSubmit, onClose }:
                   'Payment terms and due date verified',
                 ].map((item, idx) => (
                   <div key={idx} className="flex items-center space-x-2">
-                    <i className="ri-checkbox-circle-fill text-teal-600 text-sm"></i>
+                    <i className="ri-checkbox-circle-fill text-[#1E88E5] text-sm"></i>
                     <span className="text-xs text-gray-700">{item}</span>
                   </div>
                 ))}
@@ -184,7 +184,7 @@ export default function InvoiceActionModal({ type, invoice, onSubmit, onClose }:
               onChange={(e) => setRemarks(e.target.value.slice(0, 500))}
               placeholder={c.placeholder}
               rows={3}
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
             />
             <p className="text-xs text-gray-400 text-right mt-0.5">{remarks.length}/500</p>
           </div>

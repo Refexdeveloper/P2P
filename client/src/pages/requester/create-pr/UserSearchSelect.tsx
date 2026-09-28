@@ -19,7 +19,7 @@ interface Props {
 }
 
 const AVATAR_TONES = [
-  'bg-teal-600',
+  'bg-[#1E88E5]',
   'bg-slate-700',
   'bg-indigo-600',
   'bg-cyan-700',
@@ -54,7 +54,7 @@ function roleBadgeClass(role: string) {
   if (r.includes('hod') || r.includes('pr manager')) return 'bg-amber-50 text-amber-800 border-amber-200';
   if (r.includes('requester')) return 'bg-slate-100 text-slate-700 border-slate-200';
   if (r.includes('admin')) return 'bg-rose-50 text-rose-700 border-rose-200';
-  return 'bg-teal-50 text-teal-800 border-teal-200';
+  return 'bg-[#E3F2FD] text-[#1565C0] border-[#90CAF9]';
 }
 
 export default function UserSearchSelect({
@@ -243,7 +243,7 @@ export default function UserSearchSelect({
                           onMouseEnter={() => setHighlight(idx)}
                           onClick={() => pick(u)}
                           className={`w-full text-left px-3 py-2.5 flex items-center gap-3 border-b border-slate-50 last:border-0 ${
-                            active ? 'bg-teal-50' : 'hover:bg-slate-50'
+                            active ? 'bg-[#E3F2FD]' : 'hover:bg-slate-50'
                           } ${isSelected ? 'ring-inset' : ''}`}
                         >
                           <span
@@ -270,7 +270,7 @@ export default function UserSearchSelect({
                               {selectedIds.indexOf(u.id) + 1}
                             </span>
                           ) : active ? (
-                            <i className="ri-arrow-right-s-line text-teal-600 shrink-0" />
+                            <i className="ri-arrow-right-s-line text-[#1E88E5] shrink-0" />
                           ) : null}
                         </button>
                       );
@@ -348,7 +348,7 @@ export default function UserSearchSelect({
       )}
       <div
         className={`flex items-center gap-2 h-12 px-3.5 border rounded-2xl bg-white ${
-          open ? 'border-teal-500 ring-2 ring-teal-500/15' : error ? 'border-red-400' : 'border-slate-200'
+          open ? 'border-[#1E88E5] ring-2 ring-[#1E88E5]/15' : error ? 'border-red-400' : 'border-slate-200'
         }`}
       >
         <i className="ri-user-search-line text-slate-400 shrink-0" />

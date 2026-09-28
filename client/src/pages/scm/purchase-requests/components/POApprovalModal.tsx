@@ -75,23 +75,23 @@ export default function POApprovalModal({
         {/* Content */}
         <div className="p-6 space-y-6">
           {/* PO Summary */}
-          <div className="bg-teal-50 border border-teal-200 rounded-lg p-6">
+          <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-lg p-6">
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <p className="text-xs text-teal-700 font-medium mb-1">PO Number</p>
-                <p className="text-lg font-bold text-teal-900">{po.poNumber}</p>
+                <p className="text-xs text-[#1565C0] font-medium mb-1">PO Number</p>
+                <p className="text-lg font-bold text-[#0D47A1]">{po.poNumber}</p>
               </div>
               <div>
-                <p className="text-xs text-teal-700 font-medium mb-1">PR Reference</p>
-                <p className="text-lg font-semibold text-teal-900">{po.prId}</p>
+                <p className="text-xs text-[#1565C0] font-medium mb-1">PR Reference</p>
+                <p className="text-lg font-semibold text-[#0D47A1]">{po.prId}</p>
               </div>
               <div>
-                <p className="text-xs text-teal-700 font-medium mb-1">Vendor</p>
+                <p className="text-xs text-[#1565C0] font-medium mb-1">Vendor</p>
                 <p className="text-base font-semibold text-gray-900">{po.vendor}</p>
               </div>
               <div>
-                <p className="text-xs text-teal-700 font-medium mb-1">Grand Total</p>
-                <p className="text-xl font-bold text-teal-600">{formatCurrency(po.grandTotal)}</p>
+                <p className="text-xs text-[#1565C0] font-medium mb-1">Grand Total</p>
+                <p className="text-xl font-bold text-[#1E88E5]">{formatCurrency(po.grandTotal)}</p>
               </div>
             </div>
           </div>
@@ -156,7 +156,7 @@ export default function POApprovalModal({
               </div>
               <div className="pt-2 border-t border-gray-300 flex justify-between items-center">
                 <span className="text-base font-semibold text-gray-900">Grand Total</span>
-                <span className="text-xl font-bold text-teal-600">{formatCurrency(po.grandTotal)}</span>
+                <span className="text-xl font-bold text-[#1E88E5]">{formatCurrency(po.grandTotal)}</span>
               </div>
             </div>
           </div>
@@ -203,7 +203,7 @@ export default function POApprovalModal({
               onChange={(e) => setRemarks(e.target.value)}
               placeholder="Enter your remarks for approval or rejection..."
               rows={4}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent resize-none"
             />
           </div>
         </div>

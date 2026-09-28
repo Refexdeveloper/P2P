@@ -48,13 +48,13 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
 
   return (
     <tr>
-      <td colSpan={10} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
+      <td colSpan={10} className="px-0 py-0 bg-[#F5F7FA] border-b border-[#90CAF9]">
         <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 overflow-hidden">
           {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-[#E3F2FD] to-white border-b border-gray-100">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-teal-100 rounded-xl flex items-center justify-center">
-                <i className="ri-file-invoice-line text-teal-600 text-lg"></i>
+              <div className="w-10 h-10 bg-[#E3F2FD] rounded-xl flex items-center justify-center">
+                <i className="ri-file-invoice-line text-[#1E88E5] text-lg"></i>
               </div>
               <div>
                 <p className="text-sm font-bold text-gray-900">{invoice.invoiceNumber}</p>
@@ -65,7 +65,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
               {status === 'Draft' && (
                 <button
                   onClick={onSubmit}
-                  className="px-4 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                  className="px-4 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                 >
                   <i className="ri-send-plane-line"></i> Submit Invoice
                 </button>
@@ -89,7 +89,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                 onClick={() => setActiveTab(tab.key as 'details' | 'lineitems' | 'tracking')}
                 className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === tab.key
-                    ? 'border-teal-600 text-teal-600'
+                    ? 'border-[#1E88E5] text-[#1E88E5]'
                     : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`}
               >
@@ -112,7 +112,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                     { label: 'Payment Due', value: invoice.dueDate, icon: 'ri-calendar-line' },
                   ].map((item) => (
                     <div key={item.label} className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-400 flex items-center gap-1 mb-1"><i className={`${item.icon} text-xs text-teal-500`}></i>{item.label}</p>
+                      <p className="text-xs text-gray-400 flex items-center gap-1 mb-1"><i className={`${item.icon} text-xs text-[#1E88E5]`}></i>{item.label}</p>
                       <p className="text-sm font-semibold text-gray-900">{item.value}</p>
                     </div>
                   ))}
@@ -120,13 +120,13 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
 
                 {/* Vendor & GRN info */}
                 <div className="lg:col-span-2 space-y-4">
-                  <div className="bg-teal-50 border border-teal-100 rounded-xl p-4">
+                  <div className="bg-[#E3F2FD] border border-[#BBDEFB] rounded-xl p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-store-2-line text-teal-500"></i> Vendor Details
+                      <i className="ri-store-2-line text-[#1E88E5]"></i> Vendor Details
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div><p className="text-xs text-gray-400 mb-0.5">Vendor Name</p><p className="text-sm font-semibold text-gray-900">{invoice.vendorName}</p></div>
-                      <div><p className="text-xs text-gray-400 mb-0.5">Vendor Code</p><p className="text-sm font-semibold text-teal-600">{invoice.vendorCode}</p></div>
+                      <div><p className="text-xs text-gray-400 mb-0.5">Vendor Code</p><p className="text-sm font-semibold text-[#1E88E5]">{invoice.vendorCode}</p></div>
                       <div><p className="text-xs text-gray-400 mb-0.5">Contact Person</p><p className="text-sm font-medium text-gray-900">{invoice.vendorContact}</p></div>
                       <div><p className="text-xs text-gray-400 mb-0.5">Email</p><p className="text-sm font-medium text-gray-900">{invoice.vendorEmail}</p></div>
                     </div>
@@ -134,7 +134,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
 
                   <div className="bg-gray-50 rounded-xl p-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-bank-card-line text-teal-500"></i> Bank & Payment Details
+                      <i className="ri-bank-card-line text-[#1E88E5]"></i> Bank & Payment Details
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div><p className="text-xs text-gray-400 mb-0.5">Bank Name</p><p className="text-sm font-semibold text-gray-900">{invoice.bankName}</p></div>
@@ -161,7 +161,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                     <div className="grid grid-cols-2 gap-3">
                       <div><p className="text-xs text-gray-400 mb-0.5">GRN Number</p><p className="text-sm font-semibold text-violet-600">{invoice.grnNumber}</p></div>
                       <div><p className="text-xs text-gray-400 mb-0.5">GRN Date</p><p className="text-sm font-semibold text-gray-900">{invoice.grnDate}</p></div>
-                      <div><p className="text-xs text-gray-400 mb-0.5">PO Reference</p><p className="text-sm font-semibold text-teal-600">{invoice.poNumber}</p></div>
+                      <div><p className="text-xs text-gray-400 mb-0.5">PO Reference</p><p className="text-sm font-semibold text-[#1E88E5]">{invoice.poNumber}</p></div>
                       <div><p className="text-xs text-gray-400 mb-0.5">Department</p><p className="text-sm font-medium text-gray-900">{invoice.department}</p></div>
                     </div>
                   </div>
@@ -187,7 +187,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                 <div className="lg:col-span-1">
                   <div className="bg-gray-50 rounded-xl p-4 sticky top-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
-                      <i className="ri-receipt-line text-teal-500"></i> Invoice Summary
+                      <i className="ri-receipt-line text-[#1E88E5]"></i> Invoice Summary
                     </h4>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
@@ -201,7 +201,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                       <div className="pt-3 border-t-2 border-gray-200">
                         <div className="flex justify-between items-center">
                           <span className="text-sm font-bold text-gray-900">Total Amount</span>
-                          <span className="text-xl font-bold text-teal-600">{formatCurrency(invoice.grandTotal)}</span>
+                          <span className="text-xl font-bold text-[#1E88E5]">{formatCurrency(invoice.grandTotal)}</span>
                         </div>
                       </div>
                     </div>
@@ -229,7 +229,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                     {status === 'Draft' && (
                       <button
                         onClick={onSubmit}
-                        className="mt-4 w-full py-2 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
+                        className="mt-4 w-full py-2 text-xs font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
                       >
                         <i className="ri-send-plane-line"></i> Submit Invoice
                       </button>
@@ -267,7 +267,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                           <td className="px-4 py-3.5">
                             <p className="text-sm font-semibold text-gray-900">{item.description}</p>
                           </td>
-                          <td className="px-4 py-3.5 text-xs font-medium text-teal-600">{item.poLineRef}</td>
+                          <td className="px-4 py-3.5 text-xs font-medium text-[#1E88E5]">{item.poLineRef}</td>
                           <td className="px-4 py-3.5 text-sm text-gray-700">{item.unit}</td>
                           <td className="px-4 py-3.5 text-center text-sm text-gray-700">{item.poQty}</td>
                           <td className="px-4 py-3.5 text-center text-sm text-gray-700">{item.deliveredQty}</td>
@@ -283,7 +283,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                       );
                     })}
                   </tbody>
-                  <tfoot className="bg-teal-50 border-t-2 border-teal-200">
+                  <tfoot className="bg-[#E3F2FD] border-t-2 border-[#90CAF9]">
                     <tr>
                       <td colSpan={7} className="px-4 py-3 text-sm font-semibold text-gray-700 text-right">Subtotal</td>
                       <td colSpan={2} className="px-4 py-3 text-sm font-bold text-right">{formatCurrency(invoice.subtotal)}</td>
@@ -294,7 +294,7 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                     </tr>
                     <tr>
                       <td colSpan={7} className="px-4 py-3 text-base font-bold text-gray-900 text-right">Grand Total</td>
-                      <td colSpan={2} className="px-4 py-3 text-base font-bold text-teal-600 text-right">{formatCurrency(invoice.grandTotal)}</td>
+                      <td colSpan={2} className="px-4 py-3 text-base font-bold text-[#1E88E5] text-right">{formatCurrency(invoice.grandTotal)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -316,17 +316,17 @@ export default function InvoiceDetailRow({ invoice, status, onSubmit, onResubmit
                             step.done
                               ? isDiscrepancyStep
                                 ? 'bg-red-100 border-2 border-red-400'
-                                : 'bg-teal-100 border-2 border-teal-500'
+                                : 'bg-[#E3F2FD] border-2 border-[#1E88E5]'
                               : 'bg-gray-100 border-2 border-gray-300'
                           }`}>
                             {step.done ? (
-                              <i className={`text-sm ${isDiscrepancyStep ? 'ri-error-warning-line text-red-600' : 'ri-check-line text-teal-600'}`}></i>
+                              <i className={`text-sm ${isDiscrepancyStep ? 'ri-error-warning-line text-red-600' : 'ri-check-line text-[#1E88E5]'}`}></i>
                             ) : (
                               <i className="ri-time-line text-gray-400 text-sm"></i>
                             )}
                           </div>
                           {!isLast && (
-                            <div className={`w-0.5 flex-1 my-1 ${step.done && !isDiscrepancyStep ? 'bg-teal-300' : 'bg-gray-200'}`} style={{ minHeight: 28 }}></div>
+                            <div className={`w-0.5 flex-1 my-1 ${step.done && !isDiscrepancyStep ? 'bg-[#64B5F6]' : 'bg-gray-200'}`} style={{ minHeight: 28 }}></div>
                           )}
                         </div>
 

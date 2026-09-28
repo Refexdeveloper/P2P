@@ -228,7 +228,7 @@ export default function VendorInvoicePage() {
     <DashboardLayout>
       <div className="p-8 space-y-6">
         {toast && (
-          <div className="fixed top-4 right-4 z-50 max-w-md px-4 py-3 bg-teal-700 text-white text-sm rounded-lg shadow-lg break-all">
+          <div className="fixed top-4 right-4 z-50 max-w-md px-4 py-3 bg-[#1565C0] text-white text-sm rounded-lg shadow-lg break-all">
             {toast}
           </div>
         )}
@@ -251,7 +251,7 @@ export default function VendorInvoicePage() {
             {!isRequesterView && (
               <Link
                 to="/accounts/invoice-verification"
-                className="px-3 py-2 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
+                className="px-3 py-2 text-xs font-semibold text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg"
               >
                 Accounts verification →
               </Link>
@@ -333,7 +333,7 @@ export default function VendorInvoicePage() {
                             ) : null}
                       </td>
                           <td className="px-4 py-3">
-                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700">
+                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-[#E3F2FD] text-[#1565C0]">
                               {row.status}
                             </span>
                       </td>
@@ -344,7 +344,7 @@ export default function VendorInvoicePage() {
                                     type="button"
                                     disabled={busyId === row.id}
                                     onClick={() => void handleViewInvoice(row)}
-                                    className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 disabled:opacity-50 cursor-pointer"
+                                    className="px-3 py-1.5 text-xs font-semibold text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] disabled:opacity-50 cursor-pointer"
                                   >
                                     {busyId === row.id ? 'Opening…' : 'View file'}
                                   </button>
@@ -354,7 +354,7 @@ export default function VendorInvoicePage() {
                                     type="button"
                                     disabled={busyId === row.id || !row.vendorEmail}
                                     onClick={() => handleSendMail(row)}
-                                    className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 cursor-pointer"
+                                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] disabled:opacity-50 cursor-pointer"
                                     title={!row.vendorEmail ? 'Vendor email missing' : 'Email vendor invoice link'}
                                   >
                                     {busyId === row.id ? 'Sending…' : row.vendorNotifiedAt ? 'Resend Mail' : 'Send Mail'}
@@ -377,7 +377,7 @@ export default function VendorInvoicePage() {
                         </tr>
                         {open && (
                           <tr>
-                            <td colSpan={7} className="px-4 py-4 bg-slate-50">
+                            <td colSpan={7} className="px-4 py-4 bg-[#F5F7FA]">
                               <div className="bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <div className="bg-gray-50 rounded-lg p-3">
                                   <p className="text-xs text-gray-500">PR</p>
@@ -398,7 +398,7 @@ export default function VendorInvoicePage() {
                                       type="button"
                                       disabled={busyId === row.id}
                                       onClick={() => void handleViewInvoice(row)}
-                                      className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
+                                      className="px-3 py-1.5 text-xs font-semibold text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg"
                                     >
                                       <i className="ri-file-invoice-line mr-1" />
                                       {busyId === row.id
@@ -413,7 +413,7 @@ export default function VendorInvoicePage() {
                                         type="button"
                                         disabled={busyId === row.id || !row.vendorEmail}
                                         onClick={() => handleSendMail(row)}
-                                        className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg disabled:opacity-50 cursor-pointer"
+                                        className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] rounded-lg disabled:opacity-50 cursor-pointer"
                                       >
                                         {busyId === row.id ? 'Sending…' : row.vendorNotifiedAt ? 'Resend Mail' : 'Send Mail'}
                             </button>

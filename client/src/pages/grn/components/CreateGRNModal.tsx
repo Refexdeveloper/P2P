@@ -481,11 +481,11 @@ export default function CreateGRNModal({
     );
 
   const OriginalPoPanel = ({ po }: { po: ApprovedPo }) => (
-    <div className="bg-teal-50 border border-teal-100 rounded-xl p-4 mb-5">
+    <div className="bg-[#E3F2FD] border border-[#BBDEFB] rounded-xl p-4 mb-5">
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <i className="ri-file-list-3-line text-teal-600 text-sm"></i>
-          <span className="text-xs font-bold text-teal-700 uppercase tracking-wide">
+          <i className="ri-file-list-3-line text-[#1E88E5] text-sm"></i>
+          <span className="text-xs font-bold text-[#1565C0] uppercase tracking-wide">
             Original PO Data
           </span>
         </div>
@@ -498,7 +498,7 @@ export default function CreateGRNModal({
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
         <div>
           <p className="text-xs text-gray-500">PO Number</p>
-          <p className="font-bold text-teal-700">{po.poNumber}</p>
+          <p className="font-bold text-[#1565C0]">{po.poNumber}</p>
         </div>
         <div>
           <p className="text-xs text-gray-500">PR</p>
@@ -542,7 +542,7 @@ export default function CreateGRNModal({
         </div>
       </div>
       {po.lineItems.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-teal-100 overflow-x-auto">
+        <div className="mt-3 pt-3 border-t border-[#BBDEFB] overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-gray-500">
@@ -555,7 +555,7 @@ export default function CreateGRNModal({
             </thead>
             <tbody>
               {po.lineItems.map((li, idx) => (
-                <tr key={li.id} className="border-t border-teal-50">
+                <tr key={li.id} className="border-t border-[#E3F2FD]">
                   <td className="py-1.5 pr-2 text-gray-500">{idx + 1}</td>
                   <td
                     className="py-1.5 pr-2 font-medium text-gray-800 max-w-[220px] truncate"
@@ -580,7 +580,7 @@ export default function CreateGRNModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
-        <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-5 flex-shrink-0">
+        <div className="bg-gradient-to-r from-[#1E88E5] to-[#1565C0] px-6 py-5 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
@@ -590,7 +590,7 @@ export default function CreateGRNModal({
                 <h2 className="text-white font-bold text-lg">
                   {lockedFromPo ? 'Enter GRN' : 'Create New GRN'}
                 </h2>
-                <p className="text-teal-100 text-xs mt-0.5">
+                <p className="text-sky-100 text-xs mt-0.5">
                   {lockedFromPo && selectedPOData
                     ? `Using original PO ${selectedPOData.poNumber} — Step ${step + 1} of ${steps.length}`
                     : `Goods Receipt Note — Step ${step + 1} of ${steps.length}`}
@@ -612,9 +612,9 @@ export default function CreateGRNModal({
                   <div
                     className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                       idx < step
-                        ? 'bg-white text-teal-600'
+                        ? 'bg-white text-[#1E88E5]'
                         : idx === step
-                          ? 'bg-white text-teal-600 ring-2 ring-white/50'
+                          ? 'bg-white text-[#1E88E5] ring-2 ring-white/50'
                           : 'bg-white/20 text-white/60'
                     }`}
                   >
@@ -674,7 +674,7 @@ export default function CreateGRNModal({
                   placeholder="Search by PO number, vendor, title..."
                   value={poSearch}
                   onChange={(e) => setPOSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                  className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
                 />
               </div>
 
@@ -698,13 +698,13 @@ export default function CreateGRNModal({
                       onClick={() => handleSelectPO(po.poNumber)}
                       className={`border-2 rounded-xl p-4 cursor-pointer transition-all ${
                         selectedPO === po.poNumber
-                          ? 'border-teal-500 bg-teal-50'
-                          : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
+                          ? 'border-[#1E88E5] bg-[#E3F2FD]'
+                          : 'border-gray-200 hover:border-[#90CAF9] hover:bg-gray-50'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <span className="text-sm font-bold text-teal-600">{po.poNumber}</span>
+                          <span className="text-sm font-bold text-[#1E88E5]">{po.poNumber}</span>
                           <p className="text-sm font-medium text-gray-900 mt-0.5 truncate">{po.prTitle}</p>
                           <p className="text-xs text-gray-500 mt-1">
                             {po.vendor} · {po.department} · {po.lineItems.length} items
@@ -739,7 +739,7 @@ export default function CreateGRNModal({
                       setReceivedByUserId(e.target.value ? Number(e.target.value) : '')
                     }
                     disabled={loadingUsers}
-                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 bg-white ${
+                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] bg-white ${
                       errors.receivedBy ? 'border-red-300' : 'border-gray-200'
                     }`}
                   >
@@ -761,7 +761,7 @@ export default function CreateGRNModal({
                     type="text"
                     value={inspectedBy}
                     onChange={(e) => setInspectedBy(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
                     placeholder="Optional"
                   />
                 </div>
@@ -773,7 +773,7 @@ export default function CreateGRNModal({
                     type="date"
                     value={receivedDate}
                     onChange={(e) => setReceivedDate(e.target.value)}
-                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 ${
+                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] ${
                       errors.receivedDate ? 'border-red-300' : 'border-gray-200'
                     }`}
                   />
@@ -787,7 +787,7 @@ export default function CreateGRNModal({
                     value={deliveryAddress}
                     onChange={(e) => setDeliveryAddress(e.target.value)}
                     rows={2}
-                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 ${
+                    className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] ${
                       errors.deliveryAddress ? 'border-red-300' : 'border-gray-200'
                     }`}
                   />
@@ -801,7 +801,7 @@ export default function CreateGRNModal({
                     value={generalRemarks}
                     onChange={(e) => setGeneralRemarks(e.target.value)}
                     rows={2}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
                     placeholder="Optional remarks"
                   />
                 </div>
@@ -887,7 +887,7 @@ export default function CreateGRNModal({
                             (optional · max {MAX_GRN_LINE_FILES} · 10 MB each)
                           </span>
                         </label>
-                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg cursor-pointer hover:bg-teal-100">
+                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg cursor-pointer hover:bg-[#BBDEFB]">
                           <i className="ri-attachment-2"></i>
                           Add files
                           <input
@@ -1001,7 +1001,7 @@ export default function CreateGRNModal({
                 </table>
               </div>
 
-              <div className="bg-teal-50 border border-teal-100 rounded-xl p-4 space-y-2">
+              <div className="bg-[#E3F2FD] border border-[#BBDEFB] rounded-xl p-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal</span>
                   <span className="font-semibold">{formatCurrency(computedSubtotal)}</span>
@@ -1010,9 +1010,9 @@ export default function CreateGRNModal({
                   <span className="text-gray-600">GST ({gstPct}%)</span>
                   <span className="font-semibold">{formatCurrency(computedTax)}</span>
                 </div>
-                <div className="flex justify-between text-base font-bold pt-2 border-t border-teal-200">
+                <div className="flex justify-between text-base font-bold pt-2 border-t border-[#90CAF9]">
                   <span>Grand Total</span>
-                  <span className="text-teal-600">{formatCurrency(computedGrandTotal)}</span>
+                  <span className="text-[#1E88E5]">{formatCurrency(computedGrandTotal)}</span>
                 </div>
               </div>
 
@@ -1043,7 +1043,7 @@ export default function CreateGRNModal({
               <button
                 onClick={handleNext}
                 disabled={contentStep === 0 && !selectedPO}
-                className="px-5 py-2.5 text-sm font-semibold text-white bg-teal-600 rounded-xl hover:bg-teal-700 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2 disabled:opacity-50"
+                className="px-5 py-2.5 text-sm font-semibold text-white bg-[#1E88E5] rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2 disabled:opacity-50"
               >
                 Next <i className="ri-arrow-right-line"></i>
               </button>

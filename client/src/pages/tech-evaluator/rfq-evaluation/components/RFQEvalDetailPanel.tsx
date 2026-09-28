@@ -12,7 +12,7 @@ const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 
 const roundBadgeColors = [
-  'bg-teal-100 text-teal-700',
+  'bg-[#E3F2FD] text-[#1565C0]',
   'bg-amber-100 text-amber-700',
   'bg-violet-100 text-violet-700',
   'bg-rose-100 text-rose-700',
@@ -56,10 +56,10 @@ export default function RFQEvalDetailPanel({ rfq, onClose, onUpdate }: Props) {
     <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-teal-50 to-white">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-[#E3F2FD] to-white">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-2.5 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-bold">{rfq.rfqRef}</span>
+              <span className="px-2.5 py-0.5 bg-[#E3F2FD] text-[#1565C0] rounded-full text-xs font-bold">{rfq.rfqRef}</span>
               <span className="px-2 py-0.5 text-xs text-gray-500">{rfq.prRef}</span>
               <span className="px-2.5 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs">{rfq.department}</span>
             </div>
@@ -86,7 +86,7 @@ export default function RFQEvalDetailPanel({ rfq, onClose, onUpdate }: Props) {
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === tab ? 'bg-teal-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                activeTab === tab ? 'bg-[#1E88E5] text-white' : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
               {tab === 'scoring' ? (
@@ -118,7 +118,7 @@ export default function RFQEvalDetailPanel({ rfq, onClose, onUpdate }: Props) {
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-gray-900">{vendor.vendorName}</span>
                             {vendor.source === 'vendor-portal' && (
-                              <span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold flex items-center gap-1">
+                              <span className="px-2 py-0.5 bg-[#E3F2FD] text-[#1565C0] rounded-full text-xs font-semibold flex items-center gap-1">
                                 <i className="ri-global-line text-xs"></i>Portal
                               </span>
                             )}
@@ -158,7 +158,7 @@ export default function RFQEvalDetailPanel({ rfq, onClose, onUpdate }: Props) {
                           className={`px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                             isEvaluated
                               ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                              : 'bg-teal-600 text-white hover:bg-teal-700'
+                              : 'bg-[#1E88E5] text-white hover:bg-[#1565C0]'
                           }`}
                         >
                           <i className={isEvaluated ? 'ri-edit-line' : 'ri-star-line'}></i>
@@ -186,7 +186,7 @@ export default function RFQEvalDetailPanel({ rfq, onClose, onUpdate }: Props) {
                               {i < vendor.rounds.length - 1 && (
                                 <button
                                   onClick={() => setScoringTarget({ vendor, roundIndex: i })}
-                                  className="text-teal-600 hover:text-teal-800 cursor-pointer"
+                                  className="text-[#1E88E5] hover:text-[#1565C0] cursor-pointer"
                                   title="Score this round"
                                 >
                                   <i className="ri-edit-line"></i>
@@ -260,7 +260,7 @@ export default function RFQEvalDetailPanel({ rfq, onClose, onUpdate }: Props) {
                                   {idx === 0 && <i className="ri-trophy-fill text-amber-500 text-sm"></i>}
                                   <span className="font-semibold text-gray-900">{vendor.vendorName}</span>
                                   {vendor.source === 'vendor-portal' && (
-                                    <span className="px-1.5 py-0.5 bg-teal-100 text-teal-600 rounded text-xs">Portal</span>
+                                    <span className="px-1.5 py-0.5 bg-[#E3F2FD] text-[#1E88E5] rounded text-xs">Portal</span>
                                   )}
                                 </div>
                                 <p className="text-xs text-gray-400 mt-0.5">Q{vendor.currentRound} · {vendor.leadTime}d</p>
@@ -310,7 +310,7 @@ export default function RFQEvalDetailPanel({ rfq, onClose, onUpdate }: Props) {
               Close
             </button>
             {allEvaluated && (
-              <button className="px-6 py-2.5 bg-teal-600 text-white rounded-xl hover:bg-teal-700 font-medium text-sm cursor-pointer whitespace-nowrap flex items-center gap-2">
+              <button className="px-6 py-2.5 bg-[#1E88E5] text-white rounded-xl hover:bg-[#1565C0] font-medium text-sm cursor-pointer whitespace-nowrap flex items-center gap-2">
                 <i className="ri-send-plane-line"></i>
                 Submit Evaluation to SCM
               </button>

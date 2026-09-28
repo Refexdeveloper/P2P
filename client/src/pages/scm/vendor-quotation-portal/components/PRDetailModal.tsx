@@ -25,8 +25,8 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
         {/* Header */}
         <div className="flex items-start justify-between px-7 py-5 border-b border-gray-100">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 flex items-center justify-center bg-teal-50 rounded-xl">
-              <i className="ri-file-list-3-line text-teal-600 text-2xl"></i>
+            <div className="w-12 h-12 flex items-center justify-center bg-[#E3F2FD] rounded-xl">
+              <i className="ri-file-list-3-line text-[#1E88E5] text-2xl"></i>
             </div>
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -49,7 +49,7 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
                 </span>
               </div>
               <div className="flex items-center gap-4 text-xs text-gray-500">
-                <span className="font-semibold text-teal-600">{rfq.rfqNumber}</span>
+                <span className="font-semibold text-[#1E88E5]">{rfq.rfqNumber}</span>
                 <span>·</span>
                 <span>{rfq.prNumber}</span>
                 <span>·</span>
@@ -102,7 +102,7 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
               >
                 {tab}
                 {tab === 'Quote History' && rfq.quoteHistory.length > 0 && (
-                  <span className="ml-1.5 px-1.5 py-0.5 bg-teal-600 text-white rounded-full text-xs">{rfq.quoteHistory.length}</span>
+                  <span className="ml-1.5 px-1.5 py-0.5 bg-[#1E88E5] text-white rounded-full text-xs">{rfq.quoteHistory.length}</span>
                 )}
               </button>
             ))}
@@ -153,22 +153,22 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
                   </div>
                 </div>
 
-                <div className="bg-teal-50 rounded-xl p-4">
-                  <p className="text-xs font-bold text-teal-600 uppercase tracking-wider mb-3">Financials</p>
+                <div className="bg-[#E3F2FD] rounded-xl p-4">
+                  <p className="text-xs font-bold text-[#1E88E5] uppercase tracking-wider mb-3">Financials</p>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-xs text-teal-600">Estimated Budget</p>
-                      <p className="text-xl font-bold text-teal-700">{formatCurrency(rfq.estimatedValue)}</p>
+                      <p className="text-xs text-[#1E88E5]">Estimated Budget</p>
+                      <p className="text-xl font-bold text-[#1565C0]">{formatCurrency(rfq.estimatedValue)}</p>
                     </div>
                     {rfq.quotedValue && (
                       <div>
-                        <p className="text-xs text-teal-600">Your Last Quote</p>
+                        <p className="text-xs text-[#1E88E5]">Your Last Quote</p>
                         <p className="text-lg font-bold text-gray-900">{formatCurrency(rfq.quotedValue)}</p>
                       </div>
                     )}
                     <div>
-                      <p className="text-xs text-teal-600">Quote Round</p>
-                      <p className="text-sm font-bold text-teal-700">Q{rfq.currentRound}</p>
+                      <p className="text-xs text-[#1E88E5]">Quote Round</p>
+                      <p className="text-sm font-bold text-[#1565C0]">Q{rfq.currentRound}</p>
                     </div>
                   </div>
                 </div>
@@ -205,7 +205,7 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
                   <tfoot>
                     <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f0fdfa' }}>
                       <td colSpan={3} className="px-5 py-3 text-right font-bold text-gray-800">Total Estimated Value</td>
-                      <td className="px-5 py-3 text-right font-bold text-teal-700 text-base">{formatCurrency(rfq.estimatedValue)}</td>
+                      <td className="px-5 py-3 text-right font-bold text-[#1565C0] text-base">{formatCurrency(rfq.estimatedValue)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -227,8 +227,8 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
                     <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Est. Total</th>
                     {rfq.quotedValue && (
                       <>
-                        <th className="px-5 py-3 text-right text-xs font-semibold text-teal-600 uppercase">Quoted Unit</th>
-                        <th className="px-5 py-3 text-right text-xs font-semibold text-teal-600 uppercase">Quoted Total</th>
+                        <th className="px-5 py-3 text-right text-xs font-semibold text-[#1E88E5] uppercase">Quoted Unit</th>
+                        <th className="px-5 py-3 text-right text-xs font-semibold text-[#1E88E5] uppercase">Quoted Total</th>
                       </>
                     )}
                   </tr>
@@ -250,10 +250,10 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
                       <td className="px-5 py-4 text-right font-semibold text-gray-900">{formatCurrency(item.estimatedUnitPrice * item.quantity)}</td>
                       {rfq.quotedValue && (
                         <>
-                          <td className="px-5 py-4 text-right font-semibold text-teal-600">
+                          <td className="px-5 py-4 text-right font-semibold text-[#1E88E5]">
                             {item.quotedUnitPrice ? formatCurrency(item.quotedUnitPrice) : <span className="text-gray-300">—</span>}
                           </td>
-                          <td className="px-5 py-4 text-right font-bold text-teal-700">
+                          <td className="px-5 py-4 text-right font-bold text-[#1565C0]">
                             {item.quotedTotal ? formatCurrency(item.quotedTotal) : <span className="text-gray-300">—</span>}
                           </td>
                         </>
@@ -264,11 +264,11 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
                 <tfoot>
                   <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f0fdfa' }}>
                     <td colSpan={rfq.quotedValue ? 5 : 4} className="px-5 py-3 text-right font-bold text-gray-800">Total</td>
-                    <td className="px-5 py-3 text-right font-bold text-teal-700">{formatCurrency(rfq.estimatedValue)}</td>
+                    <td className="px-5 py-3 text-right font-bold text-[#1565C0]">{formatCurrency(rfq.estimatedValue)}</td>
                     {rfq.quotedValue && (
                       <>
                         <td></td>
-                        <td className="px-5 py-3 text-right font-bold text-teal-700">{formatCurrency(rfq.quotedValue)}</td>
+                        <td className="px-5 py-3 text-right font-bold text-[#1565C0]">{formatCurrency(rfq.quotedValue)}</td>
                       </>
                     )}
                   </tr>
@@ -305,7 +305,7 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
                           <span className="text-sm font-medium text-gray-800">{att}</span>
                         </div>
                         <div className="w-7 h-7 flex items-center justify-center">
-                          <i className="ri-download-line text-teal-600"></i>
+                          <i className="ri-download-line text-[#1E88E5]"></i>
                         </div>
                       </div>
                     ))}
@@ -386,7 +386,7 @@ export default function PRDetailModal({ rfq, onClose, onUploadQuotation }: Props
             {canSubmit && (
               <button
                 onClick={() => onUploadQuotation(rfq)}
-                className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium text-sm flex items-center gap-2 whitespace-nowrap cursor-pointer transition-colors"
+                className="px-6 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] font-medium text-sm flex items-center gap-2 whitespace-nowrap cursor-pointer transition-colors"
               >
                 <i className="ri-upload-cloud-2-line"></i>
                 {rfq.status === 'Re-quote Requested' ? `Re-Submit Quotation (Round ${rfq.currentRound})` : 'Upload Quotation'}

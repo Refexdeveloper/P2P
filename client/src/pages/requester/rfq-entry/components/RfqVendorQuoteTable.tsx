@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { currencySymbol, formatMoney, normalizeCurrency } from '../../../../constants/currency';
 
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+
 const roundColors = [
-  { header: 'text-emerald-600', badge: 'bg-teal-100 text-teal-700', tab: 'bg-teal-600 text-white', idle: 'text-teal-700 hover:bg-teal-50' },
+  { header: 'text-[#1E88E5]', badge: 'bg-[#E3F2FD] text-[#1E88E5]', tab: 'bg-[#1E88E5] text-white', idle: 'text-[#1E88E5] hover:bg-[#E3F2FD]' },
   { header: 'text-amber-600', badge: 'bg-amber-100 text-amber-700', tab: 'bg-amber-500 text-white', idle: 'text-amber-700 hover:bg-amber-50' },
   { header: 'text-violet-600', badge: 'bg-violet-100 text-violet-700', tab: 'bg-violet-600 text-white', idle: 'text-violet-700 hover:bg-violet-50' },
   { header: 'text-rose-600', badge: 'bg-rose-100 text-rose-700', tab: 'bg-rose-600 text-white', idle: 'text-rose-700 hover:bg-rose-50' },
@@ -63,6 +68,8 @@ interface Props {
   /** Super Admin: allow Edit on existing quotes after RFQ finalize / PO sign */
   allowEditWhenFinalized?: boolean;
   maxRounds?: number | null;
+  /** Hard ceiling for “Next round” (Create PR uses 4). Defaults to 20. */
+  roundCeiling?: number | null;
   /** PR currency for price / reduction display (INR | USD | EUR). */
   currency?: string | null;
   onEdit: (row: RfqQuoteTableRow, targetRound?: number) => void;
@@ -72,6 +79,8 @@ interface Props {
   onSendBack?: (row: RfqQuoteTableRow) => void;
   onViewFile?: (row: RfqQuoteTableRow) => void;
   onNextRound?: (nextRound: number) => void;
+  /** Delete a quotation round (Q2+) for all vendors — does NOT remove the vendor */
+  onRemoveRound?: (round: number) => void;
   removingId?: number | null;
   resendingId?: number | null;
   preferredTab?: number | null;
@@ -181,6 +190,8 @@ export default function RfqVendorQuoteTable({
   quotedCount,
   isFinalized,
   allowEditWhenFinalized = false,
+  maxRounds = null,
+  roundCeiling = null,
   onEdit,
   onChoose,
   onRemove,
@@ -188,6 +199,7 @@ export default function RfqVendorQuoteTable({
   onSendBack,
   onViewFile,
   onNextRound,
+  onRemoveRound,
   removingId,
   resendingId,
   preferredTab,
@@ -199,13 +211,32 @@ export default function RfqVendorQuoteTable({
   const formatCurrency = (n: number) =>
     formatMoney(n, moneyCode, { maximumFractionDigits: 0, minimumFractionDigits: 0 });
   const dataRounds = usedRoundCount(rows);
+  const ceiling =
+    roundCeiling != null && Number(roundCeiling) > 0
+      ? Math.min(20, Math.max(1, Number(roundCeiling)))
+      : 20;
+  /** Current open rounds from parent (after delete). Fall back to data/added tabs. */
+  const currentMax =
+    maxRounds != null && Number(maxRounds) > 0 ? Math.min(ceiling, Math.max(1, Number(maxRounds))) : null;
   const [addedTabs, setAddedTabs] = useState(0);
-  const roundCount = Math.max(dataRounds, addedTabs, 1);
+  const roundCount = Math.max(
+    1,
+    Math.min(ceiling, currentMax != null ? currentMax : Math.max(dataRounds, addedTabs, 1))
+  );
   const [activeTab, setActiveTab] = useState<RoundTab>(dataRounds);
 
   useEffect(() => {
-    setAddedTabs((prev) => Math.max(prev, dataRounds));
-  }, [dataRounds]);
+    if (currentMax != null) {
+      setAddedTabs(currentMax);
+      setActiveTab((tab) => {
+        if (tab === 'all') return tab;
+        const n = Number(tab);
+        return n > currentMax ? currentMax : tab;
+      });
+      return;
+    }
+    setAddedTabs((prev) => Math.min(ceiling, Math.max(prev, dataRounds)));
+  }, [dataRounds, currentMax, ceiling]);
 
   useEffect(() => {
     const tab = Number(preferredTab);
@@ -219,10 +250,24 @@ export default function RfqVendorQuoteTable({
 
   const addNextRound = () => {
     const next = roundCount + 1;
-    if (next > 20) return;
+    if (next > ceiling) return;
     setAddedTabs(next);
     setActiveTab(next);
     onNextRound?.(next);
+  };
+
+  const deleteRoundTab = (round: number) => {
+    if (round <= 1 || !onRemoveRound) return;
+    onRemoveRound(round);
+    const nextCount = Math.max(1, roundCount - 1);
+    setAddedTabs(nextCount);
+    setActiveTab((tab) => {
+      if (tab === 'all') return 'all';
+      const n = Number(tab);
+      if (n === round) return Math.max(1, round - 1);
+      if (n > round) return Math.max(1, n - 1);
+      return tab;
+    });
   };
 
   const stats = rows.map((row) => {
@@ -259,44 +304,64 @@ export default function RfqVendorQuoteTable({
       : `Round Q${activeTab} — tap Edit to fill this round`;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div className="px-5 sm:px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+    <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+      <div className="pointer-events-none absolute inset-0" style={softWash} />
+      <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4 sm:px-6">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-lg">
-            <i className="ri-bar-chart-grouped-line text-teal-600 text-lg" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+            <i className="ri-bar-chart-grouped-line text-lg" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-gray-900">Quotation Comparison Summary</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{tabLabel}</p>
+            <h2 className="text-base font-bold text-[#2C3E50]">Quotation Comparison Summary</h2>
+            <p className="mt-0.5 text-xs text-slate-500">{tabLabel}</p>
           </div>
         </div>
-        <span className="px-3 py-1 rounded-full bg-gray-50 border border-gray-200 text-xs font-semibold text-gray-600">
+        <span className="rounded-full bg-[#E3F2FD] px-3 py-1 text-xs font-semibold text-[#1E88E5]">
           {quotedInTab} of {rows.length} {activeTab === 'all' ? 'quoted' : `quoted in Q${activeTab}`}
         </span>
       </div>
 
-      <div className="px-5 sm:px-6 pt-3 pb-0 border-b border-gray-100 overflow-x-auto">
+      <div className="relative z-[1] overflow-x-auto border-b border-slate-100/80 px-5 pb-0 pt-3 sm:px-6">
         <div className="flex items-center gap-1.5 min-w-max">
           {Array.from({ length: roundCount }, (_, i) => i + 1).map((r) => {
             const color = roundStyle(r);
             const selected = activeTab === r;
             const count = stats.filter((s) => s.prices[r - 1] != null).length;
             return (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setActiveTab(r)}
-                className={`px-4 py-2 rounded-t-lg text-sm font-bold border-b-2 transition-colors ${
-                  selected
-                    ? `${color.tab} border-transparent`
-                    : `bg-transparent border-transparent ${color.idle}`
-                }`}
-              >
-                Q{r}
-                <span className={`ml-1.5 text-[11px] font-semibold ${selected ? 'text-white/80' : 'opacity-70'}`}>
-                  {count}/{rows.length}
-                </span>
-              </button>
+              <div key={r} className="inline-flex items-stretch">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(r)}
+                  className={`px-4 py-2 rounded-t-lg text-sm font-bold border-b-2 transition-colors ${
+                    selected
+                      ? `${color.tab} border-transparent`
+                      : `bg-transparent border-transparent ${color.idle}`
+                  } ${r > 1 && onRemoveRound && !isFinalized ? 'rounded-tr-none' : ''}`}
+                >
+                  Q{r}
+                  <span className={`ml-1.5 text-[11px] font-semibold ${selected ? 'text-white/80' : 'opacity-70'}`}>
+                    {count}/{rows.length}
+                  </span>
+                </button>
+                {r > 1 && onRemoveRound && !isFinalized && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteRoundTab(r);
+                    }}
+                    className={`px-2 py-2 rounded-t-lg border-b-2 border-transparent text-xs font-bold ${
+                      selected
+                        ? 'bg-red-600 text-white hover:bg-red-700'
+                        : 'text-red-600 hover:bg-red-50'
+                    }`}
+                    title={`Delete round Q${r} only (vendors stay)`}
+                    aria-label={`Delete round Q${r}`}
+                  >
+                    <i className="ri-close-line text-base" />
+                  </button>
+                )}
+              </div>
             );
           })}
           {roundCount > 1 && (
@@ -305,18 +370,18 @@ export default function RfqVendorQuoteTable({
               onClick={() => setActiveTab('all')}
               className={`px-4 py-2 rounded-t-lg text-sm font-bold border-b-2 ${
                 activeTab === 'all'
-                  ? 'bg-slate-900 text-white border-transparent'
-                  : 'text-gray-600 hover:bg-gray-50 border-transparent'
+                  ? 'bg-[#1E88E5] text-white border-transparent'
+                  : 'text-[#1565C0] hover:bg-[#E3F2FD] border-transparent'
               }`}
             >
               All rounds
             </button>
           )}
-          {!isFinalized && roundCount < 20 && (
+          {!isFinalized && roundCount < ceiling && (
             <button
               type="button"
               onClick={addNextRound}
-              className="ml-1 px-3 py-2 rounded-t-lg text-sm font-bold text-teal-700 hover:bg-teal-50 border-b-2 border-transparent inline-flex items-center gap-1"
+              className="ml-1 px-3 py-2 rounded-t-lg text-sm font-bold text-[#1E88E5] hover:bg-[#E3F2FD] border-b-2 border-transparent inline-flex items-center gap-1"
             >
               <i className="ri-add-line" />
               Next round
@@ -325,10 +390,10 @@ export default function RfqVendorQuoteTable({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[720px]">
+      <div className="relative z-[1] overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm">
           <thead>
-            <tr className="bg-gray-50">
+            <tr className="bg-[#F8FBFF]">
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Vendor</th>
               {visibleRounds.map((r) => (
                 <th
@@ -379,7 +444,7 @@ export default function RfqVendorQuoteTable({
                   Boolean(file.storedName) ||
                   Boolean(row.hasLocalQuotationFile));
               return (
-                <tr key={row.id} className={`hover:bg-gray-50 ${isRecommended ? 'bg-teal-50/40' : ''}`}>
+                <tr key={row.id} className={`hover:bg-[#E3F2FD]/35 ${isRecommended ? 'bg-[#E3F2FD]/50' : ''}`}>
                   <td className="px-5 py-3.5">
                     <p className="text-sm font-semibold text-gray-900">{row.vendorName}</p>
                     <div className="flex flex-wrap items-center gap-1 mt-1">
@@ -391,13 +456,13 @@ export default function RfqVendorQuoteTable({
                         ) : null
                       )}
                       {awaitingManual && (
-                        <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-teal-50 text-teal-700">Your turn</span>
+                        <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-[#E3F2FD] text-[#1E88E5]">Your turn</span>
                       )}
                       {awaitingEmail && (
                         <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700">Waiting</span>
                       )}
                         {isRecommended && (
-                          <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">Selected</span>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-[#1E88E5] text-white">Selected</span>
                         )}
                       {tabRound && !hasTabQuote && row.hasActiveQuote && (
                         <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-500">No Q{tabRound}</span>
@@ -444,7 +509,7 @@ export default function RfqVendorQuoteTable({
                   <td className="px-5 py-3.5 min-w-[140px]">
                     <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
                       <div
-                        className="h-2.5 rounded-full bg-teal-400"
+                        className="h-2.5 rounded-full bg-[#1E88E5]"
                         style={{ width: `${highest > 0 && (barValue ?? 0) > 0 ? Math.min(100, ((barValue ?? 0) / highest) * 100) : 0}%` }}
                       />
                     </div>
@@ -468,8 +533,8 @@ export default function RfqVendorQuoteTable({
                                     isPdfFileName(file.fileName)
                                       ? 'ri-file-pdf-2-line text-red-500'
                                       : isImageFileName(file.fileName)
-                                        ? 'ri-image-line text-teal-600'
-                                        : 'ri-attachment-2 text-teal-600'
+                                        ? 'ri-image-line text-[#1E88E5]'
+                                        : 'ri-attachment-2 text-[#1E88E5]'
                                   }`}
                                 />
                                 {file.fileName}
@@ -488,7 +553,7 @@ export default function RfqVendorQuoteTable({
                                       quotationStoredName: file.storedName ?? null,
                                     })
                                   }
-                                  className="inline-flex items-center gap-1 self-start px-2.5 py-1 rounded-md border border-teal-200 bg-teal-50 text-teal-800 text-[11px] font-semibold hover:bg-teal-100"
+                                  className="inline-flex items-center gap-1 self-start px-2.5 py-1 rounded-lg bg-[#E3F2FD] text-[#1E88E5] text-[11px] font-semibold hover:bg-[#BBDEFB]"
                                 >
                                   <i className="ri-eye-line" />
                                   {isImageFileName(file.fileName) || isPdfFileName(file.fileName)
@@ -522,7 +587,7 @@ export default function RfqVendorQuoteTable({
                               ? 'Admin: update quote amount or files'
                               : 'Fill quote fields'
                         }
-                        className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none disabled:hover:bg-slate-900 inline-flex items-center gap-1"
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1565C0] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#1E88E5]"
                       >
                         <i className="ri-edit-line" />
                         Edit
@@ -533,8 +598,8 @@ export default function RfqVendorQuoteTable({
                         onClick={() => onChoose(row)}
                         className={`px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none ${
                           isRecommended
-                            ? 'bg-teal-600 text-white border-teal-600'
-                            : 'bg-white text-gray-700 border-gray-200'
+                            ? 'border-[#1E88E5] bg-[#1E88E5] text-white'
+                            : 'border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]'
                         }`}
                       >
                         {isRecommended ? 'Selected' : 'Choose'}
@@ -566,8 +631,13 @@ export default function RfqVendorQuoteTable({
                           disabled={removingId === row.invitationId}
                           onClick={() => onRemove(row)}
                           className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs font-semibold"
+                          title="Remove this vendor and all of their quotation rounds"
                         >
-                          {removingId === row.invitationId ? '…' : 'Remove'}
+                          {removingId === row.invitationId
+                            ? '…'
+                            : onRemoveRound
+                              ? 'Remove vendor'
+                              : 'Remove'}
                         </button>
                       )}
                     </div>

@@ -51,7 +51,7 @@ export default function RecentApprovalsCard({ rows }: { rows: ApprovalRow[] }) {
                   </p>
                   <p
                     className={`text-[11px] truncate ${
-                      href ? 'text-teal-700 font-medium underline-offset-2 group-hover:underline' : 'text-slate-400'
+                      href ? 'text-[#1565C0] font-medium underline-offset-2 group-hover:underline' : 'text-slate-400'
                     }`}
                     title={href ? `Open PO details — ${row.entity}` : row.entity}
                   >

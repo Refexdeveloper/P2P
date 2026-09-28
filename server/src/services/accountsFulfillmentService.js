@@ -816,20 +816,6 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
   );
 
   try {
-    const { isSassPurchaseType } = await import('./sassWorkflow.js');
-    const [poTypeRows] = await pool.query(`SELECT purchase_type FROM purchase_orders WHERE id = ?`, [
-      inv.po_id,
-    ]);
-    const skipVendorAcceptance = isSassPurchaseType(poTypeRows[0]?.purchase_type);
-    if (!skipVendorAcceptance) {
-      const { openVendorAcceptanceStageForPo } = await import('./poService.js');
-      await openVendorAcceptanceStageForPo(inv.po_id);
-    }
-  } catch (err) {
-    console.warn('Open vendor acceptance after invoice upload failed:', err.message);
-  }
-
-  try {
     const {
       isSassPurchaseType,
       completeSassInvoiceUploadTask,

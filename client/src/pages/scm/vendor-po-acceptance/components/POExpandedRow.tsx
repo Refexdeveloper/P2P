@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { accountsApi, poApi } from '../../../../services/api';
+import { formatPersonRoleSuffix } from '../../../../utils/roleDisplay';
 
 export type AcceptancePo = {
   id: number;
@@ -71,15 +72,38 @@ const formatCurrency = (amount: number) =>
     amount || 0
   );
 
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+const fieldCard =
+  'relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]';
+const fieldLabel = 'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
+
+function Field({ label, value, className = '' }: { label: string; value: string; className?: string }) {
+  return (
+    <div className={`${fieldCard} ${className}`}>
+      <div className="pointer-events-none absolute inset-0" style={softWash} />
+      <div className="relative z-[1]">
+        <p className={fieldLabel}>{label}</p>
+        <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">{value || '—'}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, busy }: Props) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'details' | 'items' | 'response' | 'history'>('details');
-  const [openingFile, setOpeningFile] = useState(false);
-  const [fileError, setFileError] = useState('');
   const pending = !po.vendorAcceptanceStatus || po.vendorAcceptanceStatus === 'pending';
   const accepted =
     po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
+  const completed = !pending && Boolean(po.vendorAcceptanceStatus);
   const isWorkOrder = po.purchaseType === 'work_order';
+  const [activeTab, setActiveTab] = useState<'details' | 'items' | 'response' | 'history'>(
+    completed ? 'response' : 'details'
+  );
+  const [openingFile, setOpeningFile] = useState(false);
+  const [fileError, setFileError] = useState('');
 
   const openAcceptanceFile = async () => {
     setFileError('');
@@ -96,211 +120,146 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
     }
   };
 
+  const downloadAcceptanceFile = async () => {
+    setFileError('');
+    setOpeningFile(true);
+    try {
+      const blob = await accountsApi.fetchAuthFile(poApi.getVendorAcceptanceFileUrl(po.id));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = String(po.vendorAcceptanceFileName || 'vendor-acceptance.pdf').replace(/^.*[/\\]/, '');
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : 'Could not download acceptance file');
+    } finally {
+      setOpeningFile(false);
+    }
+  };
+
   return (
     <tr>
-      <td colSpan={8} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
-        <div className="mx-4 my-4 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center shrink-0">
-                <i className="ri-file-text-line text-teal-600 text-lg"></i>
-              </div>
+      <td colSpan={7} className="bg-transparent p-0">
+        <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
+          <div className="relative z-[1] space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-bold text-gray-900">{po.poNumber}</p>
-                <p className="text-xs text-gray-500 truncate">
+                <p className="text-sm font-bold text-[#2C3E50]">{po.poNumber}</p>
+                <p className="truncate text-xs text-slate-500">
                   {po.prTitle || po.prNumber || 'Purchase order'} · {po.vendorName}
                 </p>
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={onViewPdf}
-                className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg"
-              >
-                <i className="ri-file-pdf-line mr-1"></i> Signed PO
-              </button>
-              {pending && (
-                <>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={onSendMail}
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 rounded-lg disabled:opacity-50"
-                  >
-                    Send Mail
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onManual}
-                    className="px-3 py-1.5 text-xs font-semibold border border-gray-300 rounded-lg"
-                  >
-                    Manual Entry
-                  </button>
-                </>
-              )}
-              {accepted && isWorkOrder && (
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => navigate('/requester/vendor-invoice')}
-                  className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg"
+                  onClick={onViewPdf}
+                  className="cursor-pointer rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]"
                 >
-                  Upload invoice <i className="ri-arrow-right-line ml-1"></i>
+                  <i className="ri-file-pdf-line mr-1"></i> Signed PO
                 </button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex border-b border-gray-100 px-5 overflow-x-auto">
-            {[
-              { key: 'details', label: 'PO Details', icon: 'ri-information-line' },
-              { key: 'items', label: 'Line Items', icon: 'ri-list-check-2' },
-              { key: 'response', label: 'Vendor Response', icon: 'ri-reply-line' },
-              { key: 'history', label: 'History', icon: 'ri-history-line' },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key as typeof activeTab)}
-                className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 whitespace-nowrap ${
-                  activeTab === tab.key
-                    ? 'border-teal-600 text-teal-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                <i className={tab.icon}></i>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="p-5">
-            {activeTab === 'details' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-3 grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  {[
-                    { label: 'PO Number', value: po.poNumber },
-                    { label: 'PR', value: po.prNumber || '—' },
-                    { label: 'Created', value: po.createdAt || '—' },
-                    { label: 'Expected Delivery', value: po.expectedDeliveryDate || '—' },
-                  ].map((item) => (
-                    <div key={item.label} className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">{item.label}</p>
-                      <p className="text-sm font-semibold text-gray-900">{item.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="lg:col-span-2 space-y-4">
-                  <div className="bg-teal-50 border border-teal-100 rounded-lg p-4">
-                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Vendor</h4>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <p className="text-xs text-gray-500">Name</p>
-                        <p className="font-semibold">{po.vendorName || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Email</p>
-                        <p className="font-medium">{po.vendorEmail || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Phone</p>
-                        <p className="font-medium">{po.vendorPhone || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">GST</p>
-                        <p className="font-medium">{po.vendorGst || '—'}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-xs text-gray-500">Address</p>
-                        <p className="font-medium">{po.vendorAddress || '—'}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Delivery</h4>
-                    <div className="grid grid-cols-2 gap-3 text-sm mb-2">
-                      <div>
-                        <p className="text-xs text-gray-500">Payment Terms</p>
-                        <p className="font-semibold">{po.paymentTerms || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Incoterms</p>
-                        <p className="font-semibold">{po.incoterms || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Department</p>
-                        <p className="font-medium">{po.department || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Requester</p>
-                        <p className="font-medium">{po.requester || '—'}</p>
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500">Delivery Address</p>
-                    <p className="text-sm text-gray-800">{po.deliveryAddress || '—'}</p>
-                  </div>
-
-                  {po.specialInstructions ? (
-                    <div className="bg-amber-50 border border-amber-100 rounded-lg p-4">
-                      <h4 className="text-xs font-bold text-amber-700 uppercase mb-2">Special instructions</h4>
-                      <p className="text-sm text-gray-700">{po.specialInstructions}</p>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 h-fit">
-                  <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Billing</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Subtotal</span>
-                      <span className="font-medium">{formatCurrency(Number(po.subtotal) || 0)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">GST ({po.gstPercentage ?? 18}%)</span>
-                      <span className="font-medium">{formatCurrency(Number(po.taxAmount) || 0)}</span>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t border-gray-200">
-                      <span className="font-bold">Grand Total</span>
-                      <span className="font-bold text-teal-600">
-                        {formatCurrency(Number(po.grandTotal) || 0)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-gray-200 text-sm">
-                    <p className="text-xs text-gray-500 mb-1">Signed by</p>
-                    <p className="font-semibold">{po.signatureName || '—'}</p>
-                    <p className="text-xs text-gray-500">{po.signedAt || ''}</p>
-                    {po.signerComments ? (
-                      <p className="text-xs text-gray-600 mt-2">{po.signerComments}</p>
-                    ) : null}
-                  </div>
-                  {accepted && isWorkOrder && (
+                {pending && (
+                  <>
                     <button
                       type="button"
-                      onClick={() => navigate('/requester/vendor-invoice')}
-                      className="mt-4 w-full py-2 text-xs font-semibold text-white bg-emerald-600 rounded-lg"
+                      disabled={busy}
+                      onClick={onSendMail}
+                      title="Email requester to upload Vendor Signed PO (CC: L1, SCM Manager, user approvers)"
+                      className="cursor-pointer rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                     >
-                      Next: upload vendor invoice
+                      Send Mail
                     </button>
-                  )}
-                  {accepted && !isWorkOrder && (
-                    <p className="mt-4 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-                      GRN and invoice are complete — acceptance recorded for Accounts verification.
-                    </p>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={onManual}
+                      className="cursor-pointer rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+                    >
+                      Manual Entry
+                    </button>
+                  </>
+                )}
+                {accepted && isWorkOrder && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/requester/vendor-invoice')}
+                    className="cursor-pointer rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
+                  >
+                    Upload invoice <i className="ri-arrow-right-line ml-1"></i>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'details', label: 'Details' },
+                { key: 'items', label: 'Line Items' },
+                { key: 'response', label: 'Vendor Response' },
+                { key: 'history', label: 'History' },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key as typeof activeTab)}
+                  className={`cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-semibold ${
+                    activeTab === tab.key ? 'bg-[#1E88E5] text-white' : 'bg-white text-slate-600'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === 'details' && (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="PO Number" value={po.poNumber} />
+                <Field label="PR" value={po.prNumber || '—'} />
+                <Field label="Created" value={po.createdAt || '—'} />
+                <Field label="Expected Delivery" value={po.expectedDeliveryDate || '—'} />
+                <Field label="Vendor" value={po.vendorName || '—'} />
+                <Field label="Email" value={po.vendorEmail || '—'} />
+                <Field label="Phone" value={po.vendorPhone || '—'} />
+                <Field label="GST" value={po.vendorGst || '—'} />
+                <Field label="Address" value={po.vendorAddress || '—'} className="sm:col-span-2 lg:col-span-4" />
+                <Field label="Payment Terms" value={po.paymentTerms || '—'} />
+                <Field label="Incoterms" value={po.incoterms || '—'} />
+                <Field label="Department" value={po.department || '—'} />
+                <Field label="Requester" value={po.requester || '—'} />
+                <Field label="Delivery Address" value={po.deliveryAddress || '—'} className="sm:col-span-2 lg:col-span-4" />
+                <Field label="Subtotal" value={formatCurrency(Number(po.subtotal) || 0)} />
+                <Field label={`GST (${po.gstPercentage ?? 18}%)`} value={formatCurrency(Number(po.taxAmount) || 0)} />
+                <Field label="Grand Total" value={formatCurrency(Number(po.grandTotal) || 0)} />
+                <Field
+                  label="Signed By"
+                  value={[po.signatureName, po.signedAt, po.signerComments].filter(Boolean).join(' · ') || '—'}
+                />
+                {po.specialInstructions ? (
+                  <Field label="Special Instructions" value={po.specialInstructions} className="sm:col-span-2 lg:col-span-4" />
+                ) : null}
+                {accepted && isWorkOrder && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/requester/vendor-invoice')}
+                    className="cursor-pointer rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-semibold text-white sm:col-span-2 lg:col-span-4"
+                  >
+                    Next: upload vendor invoice
+                  </button>
+                )}
+                {accepted && !isWorkOrder && (
+                  <div className="rounded-2xl bg-white px-3.5 py-3 text-xs font-medium text-emerald-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2 lg:col-span-4">
+                    GRN and invoice are complete — acceptance recorded for Accounts verification.
+                  </div>
+                )}
               </div>
             )}
 
             {activeTab === 'items' && (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-2xl bg-white p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead>
                     <tr>
                       {['#', 'Item', 'Description', 'Qty', 'Unit Price', 'Disc', 'Total'].map((h) => (
-                        <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500">
+                        <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                           {h}
                         </th>
                       ))}
@@ -308,10 +267,10 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                   </thead>
                   <tbody>
                     {(po.lineItems || []).map((li, idx) => (
-                      <tr key={String(li.id || idx)} className="border-b">
+                      <tr key={String(li.id || idx)} className="border-t border-slate-100">
                         <td className="px-3 py-2">{idx + 1}</td>
                         <td className="px-3 py-2 font-medium">{li.itemName || '—'}</td>
-                        <td className="px-3 py-2 text-gray-600 max-w-xs truncate" title={li.description}>
+                        <td className="max-w-xs truncate px-3 py-2 text-slate-600" title={li.description}>
                           {(li.description || '').replace(/<[^>]+>/g, ' ') || '—'}
                         </td>
                         <td className="px-3 py-2">{li.quantity ?? 0}</td>
@@ -322,7 +281,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                     ))}
                     {!po.lineItems?.length && (
                       <tr>
-                        <td colSpan={7} className="px-3 py-8 text-center text-gray-400">
+                        <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
                           No line items
                         </td>
                       </tr>
@@ -333,68 +292,88 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
             )}
 
             {activeTab === 'response' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-1">Acceptance status</p>
-                  <p className="font-semibold capitalize">{po.vendorAcceptanceStatus || 'pending'}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-1">Mode</p>
-                  <p className="font-semibold capitalize">{po.vendorAcceptanceMode || '—'}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4 sm:col-span-2">
-                  <p className="text-xs text-gray-500 mb-1">Remarks</p>
-                  <p className="font-medium">{po.vendorAcceptanceRemarks || '—'}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-1">Confirmed delivery</p>
-                  <p className="font-medium">{po.vendorDeliveryConfirmedDate || '—'}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-1">Responded at</p>
-                  <p className="font-medium">{po.vendorAcceptedAt || '—'}</p>
-                </div>
-                {po.vendorAcceptanceFileName ? (
-                  <div className="sm:col-span-2">
-                    {fileError ? (
-                      <p className="text-xs text-red-600 mb-2">{fileError}</p>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={openingFile}
-                      onClick={() => void openAcceptanceFile()}
-                      className="text-teal-700 text-sm font-semibold hover:underline disabled:opacity-50"
-                    >
-                      <i className="ri-attachment-2 mr-1"></i>
-                      {openingFile ? 'Opening…' : po.vendorAcceptanceFileName}
-                    </button>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Acceptance Status" value={po.vendorAcceptanceStatus || 'pending'} />
+                <Field label="Mode" value={po.vendorAcceptanceMode || '—'} />
+                <Field label="Remarks" value={po.vendorAcceptanceRemarks || '—'} className="sm:col-span-2" />
+                <Field label="Confirmed Delivery" value={po.vendorDeliveryConfirmedDate || '—'} />
+                <Field label="Responded At" value={po.vendorAcceptedAt || '—'} />
+                {completed ? (
+                  <div className={`${fieldCard} sm:col-span-2`}>
+                    <div className="pointer-events-none absolute inset-0" style={softWash} />
+                    <div className="relative z-[1]">
+                      <p className={fieldLabel}>Vendor signed / acceptance file</p>
+                      {fileError ? <p className="mt-2 text-xs text-rose-600">{fileError}</p> : null}
+                      {po.vendorAcceptanceFileName ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-[#2C3E50]">
+                            <i className="ri-file-pdf-2-line shrink-0 text-[#1565C0]"></i>
+                            <span className="truncate">{po.vendorAcceptanceFileName}</span>
+                          </span>
+                          <button
+                            type="button"
+                            disabled={openingFile}
+                            onClick={() => void openAcceptanceFile()}
+                            className="cursor-pointer rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] disabled:opacity-50"
+                          >
+                            {openingFile ? 'Opening…' : 'Open'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={openingFile}
+                            onClick={() => void downloadAcceptanceFile()}
+                            className="cursor-pointer rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                          >
+                            Download
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-sm text-slate-500">No acceptance file was uploaded for this response.</p>
+                      )}
+                    </div>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="rounded-2xl bg-white px-3.5 py-3 text-sm text-slate-500 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2">
+                    Vendor signed PO file will appear here after acceptance is completed.
+                  </div>
+                )}
               </div>
             )}
 
             {activeTab === 'history' && (
               <div className="space-y-3">
                 {(po.approvalHistory || []).length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-6">No history yet</p>
+                  <p className="py-6 text-center text-sm text-slate-400">No history yet</p>
                 ) : (
-                  (po.approvalHistory || []).map((h, i) => (
-                    <div key={i} className="flex gap-3 border-b border-gray-100 pb-3">
-                      <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
-                        <i className="ri-checkbox-circle-line text-teal-600"></i>
+                  (po.approvalHistory || []).map((h, i) => {
+                    const action = String(h.action || '').toLowerCase();
+                    const rejected = action.includes('reject');
+                    const returned = action.includes('return') || action.includes('send back');
+                    return (
+                      <div key={i} className={fieldCard}>
+                        <div className="pointer-events-none absolute inset-0" style={softWash} />
+                        <div className="relative z-[1] flex gap-3">
+                          <div
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
+                              rejected ? 'bg-[#FFE4E6] text-[#F43F5E]' : returned ? 'bg-[#FFEDD5] text-[#F97316]' : 'bg-[#D1FAE5] text-[#10B981]'
+                            }`}
+                          >
+                            <i className={rejected ? 'ri-close-circle-line' : returned ? 'ri-arrow-go-back-line' : 'ri-checkbox-circle-line'}></i>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[#2C3E50]">
+                              {h.stage || 'Step'} · {h.action || '—'}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {h.approver || 'System'}
+                              {formatPersonRoleSuffix(h.role, h.approver)} · {h.date || ''}
+                            </p>
+                            {h.remarks ? <p className="mt-1 text-xs text-slate-600">{h.remarks}</p> : null}
+                          </div>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">
-                          {h.stage} · {h.action}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {h.approver || 'System'}
-                          {h.role ? ` (${h.role})` : ''} · {h.date || ''}
-                        </p>
-                        {h.remarks ? <p className="text-xs text-gray-600 mt-1">{h.remarks}</p> : null}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}

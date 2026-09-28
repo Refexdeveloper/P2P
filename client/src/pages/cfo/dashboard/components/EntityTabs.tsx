@@ -26,7 +26,7 @@ export default function EntityTabs({ entities, selectedEntity, onSelectEntity }:
             onClick={() => onSelectEntity('all')}
             className={`px-6 py-3 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
               selectedEntity === 'all'
-                ? 'bg-gradient-to-r from-teal-500 to-emerald-600 text-white shadow-lg'
+                ? 'bg-gradient-to-r from-[#1E88E5] to-[#1565C0] text-white shadow-lg'
                 : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
             }`}
           >

@@ -115,7 +115,7 @@ export default function EvaluatePRPage() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-full">
         {/* Sticky Header */}
         <div className="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm">
           <div className="px-8 py-4">

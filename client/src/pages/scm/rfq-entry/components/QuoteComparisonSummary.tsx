@@ -8,7 +8,7 @@ const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 
 const roundColors = [
-  { bg: 'bg-teal-100', text: 'text-teal-700', ring: 'ring-teal-400' },
+  { bg: 'bg-[#E3F2FD]', text: 'text-[#1565C0]', ring: 'ring-[#42A5F5]' },
   { bg: 'bg-amber-100', text: 'text-amber-700', ring: 'ring-amber-400' },
   { bg: 'bg-violet-100', text: 'text-violet-700', ring: 'ring-violet-400' },
   { bg: 'bg-rose-100', text: 'text-rose-700', ring: 'ring-rose-400' },
@@ -67,8 +67,8 @@ export default function QuoteComparisonSummary({ quotations }: Props) {
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 flex items-center justify-center bg-teal-50 rounded-lg">
-            <i className="ri-bar-chart-grouped-line text-teal-600 text-lg"></i>
+          <div className="w-8 h-8 flex items-center justify-center bg-[#E3F2FD] rounded-lg">
+            <i className="ri-bar-chart-grouped-line text-[#1E88E5] text-lg"></i>
           </div>
           <div>
             <h2 className="text-base font-bold text-gray-900">Quotation Comparison Summary</h2>
@@ -233,7 +233,7 @@ export default function QuoteComparisonSummary({ quotations }: Props) {
                           <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
                             <div
                               className={`h-2.5 rounded-full transition-all ${
-                                isPositiveReduction ? 'bg-emerald-500' : isNegative ? 'bg-red-500' : 'bg-teal-400'
+                                isPositiveReduction ? 'bg-emerald-500' : isNegative ? 'bg-red-500' : 'bg-[#42A5F5]'
                               }`}
                               style={{ width: `${Math.min(100, (v.latestPrice / highestPrice) * 100)}%` }}
                             ></div>
@@ -244,7 +244,7 @@ export default function QuoteComparisonSummary({ quotations }: Props) {
                       <div className="flex items-center gap-2">
                         <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
                           <div
-                            className="h-2.5 rounded-full bg-teal-400"
+                            className="h-2.5 rounded-full bg-[#42A5F5]"
                             style={{ width: `${highestPrice > 0 ? Math.min(100, (v.q1Price / highestPrice) * 100) : 0}%` }}
                           ></div>
                         </div>

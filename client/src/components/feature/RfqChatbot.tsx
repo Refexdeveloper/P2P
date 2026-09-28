@@ -367,7 +367,7 @@ export default function RfqChatbot({
           onClick={() => openBot()}
           className={
             fabClassName ||
-            'fixed bottom-5 right-5 z-[70] flex items-center gap-2 rounded-full bg-teal-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-teal-700 cursor-pointer'
+            'fixed bottom-5 right-5 z-[70] flex items-center gap-2 rounded-full bg-[#1E88E5] px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-[#1565C0] cursor-pointer'
           }
         >
           <i className="ri-upload-cloud-2-line text-lg" />
@@ -376,11 +376,11 @@ export default function RfqChatbot({
       )}
 
       {open && (
-        <div className="fixed bottom-4 right-4 z-[80] flex h-[min(680px,calc(100dvh-2rem))] w-[min(420px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-teal-200 bg-white shadow-2xl">
-          <div className="flex items-center justify-between bg-teal-700 px-4 py-3 text-white">
+        <div className="fixed bottom-4 right-4 z-[80] flex h-[min(680px,calc(100dvh-2rem))] w-[min(420px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-[#90CAF9] bg-white shadow-2xl">
+          <div className="flex items-center justify-between bg-[#1565C0] px-4 py-3 text-white">
             <div>
               <p className="text-sm font-semibold">RFQ Assistant</p>
-              <p className="text-[11px] text-teal-100">Search vendor → upload file → save quote</p>
+              <p className="text-[11px] text-sky-100">Search vendor → upload file → save quote</p>
             </div>
             <button
               type="button"
@@ -397,7 +397,7 @@ export default function RfqChatbot({
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                    msg.role === 'user' ? 'bg-teal-700 text-white' : 'bg-white text-slate-800 border border-gray-200'
+                    msg.role === 'user' ? 'bg-[#1565C0] text-white' : 'bg-white text-slate-800 border border-gray-200'
                   }`}
                 >
                   {msg.text}
@@ -418,7 +418,7 @@ export default function RfqChatbot({
                         type="button"
                         disabled={busy}
                         onClick={() => applyVendor(item, true)}
-                        className="w-full rounded-lg px-2.5 py-2 text-left text-xs hover:bg-teal-50 cursor-pointer"
+                        className="w-full rounded-lg px-2.5 py-2 text-left text-xs hover:bg-[#E3F2FD] cursor-pointer"
                       >
                         <p className="font-medium text-slate-800">{item.name}</p>
                         <p className="text-[11px] text-gray-400">
@@ -436,7 +436,7 @@ export default function RfqChatbot({
             )}
 
             {step === 'file' && (
-              <div className="rounded-xl border border-dashed border-teal-300 bg-white p-3">
+              <div className="rounded-xl border border-dashed border-[#64B5F6] bg-white p-3">
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
@@ -445,11 +445,11 @@ export default function RfqChatbot({
                     e.preventDefault();
                     handleFiles(Array.from(e.dataTransfer.files || []));
                   }}
-                  className="w-full rounded-lg bg-teal-50 px-3 py-4 text-center text-sm text-teal-800 hover:bg-teal-100 cursor-pointer"
+                  className="w-full rounded-lg bg-[#E3F2FD] px-3 py-4 text-center text-sm text-[#1565C0] hover:bg-[#BBDEFB] cursor-pointer"
                 >
                   <i className="ri-upload-cloud-2-line mr-1 text-lg" />
                   Drop or click to upload quotation
-                  <span className="mt-1 block text-[11px] text-teal-600/80">PDF, JPG, PNG · 5MB</span>
+                  <span className="mt-1 block text-[11px] text-[#1E88E5]/80">PDF, JPG, PNG · 5MB</span>
                 </button>
                 <input
                   ref={fileRef}
@@ -463,7 +463,7 @@ export default function RfqChatbot({
                 />
                 {file && (
                   <div className="mt-2 flex items-center gap-2 rounded-lg border border-gray-200 px-2 py-1.5">
-                    <i className="ri-file-pdf-line text-teal-600" />
+                    <i className="ri-file-pdf-line text-[#1E88E5]" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium text-slate-800">{file.name}</p>
                       <p className="text-[11px] text-gray-400">{formatSize(file.size)}</p>
@@ -481,7 +481,7 @@ export default function RfqChatbot({
                     push('user', `Uploaded ${file.name}`);
                     ask('price', 'What is the total quoted amount? Example: 137000');
                   }}
-                  className="mt-3 w-full rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-40 cursor-pointer"
+                  className="mt-3 w-full rounded-lg bg-[#1565C0] px-3 py-2 text-sm font-medium text-white disabled:opacity-40 cursor-pointer"
                 >
                   Continue
                 </button>
@@ -505,7 +505,7 @@ export default function RfqChatbot({
                   type="button"
                   disabled={busy}
                   onClick={() => void saveQuote()}
-                  className="mt-3 w-full rounded-lg bg-teal-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50 cursor-pointer"
+                  className="mt-3 w-full rounded-lg bg-[#1565C0] px-3 py-2 text-xs font-medium text-white disabled:opacity-50 cursor-pointer"
                 >
                   {busy ? 'Saving…' : 'Save quote + file'}
                 </button>
@@ -562,12 +562,12 @@ export default function RfqChatbot({
                         ? 'Upload file above'
                         : 'Type your answer…'
               }
-              className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-300 disabled:bg-gray-50"
+              className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-gray-50"
             />
             <button
               type="submit"
               disabled={busy || !input.trim() || step === 'file' || step === 'review' || step === 'done'}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-700 text-white disabled:opacity-40 cursor-pointer"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1565C0] text-white disabled:opacity-40 cursor-pointer"
             >
               <i className="ri-send-plane-2-fill" />
             </button>

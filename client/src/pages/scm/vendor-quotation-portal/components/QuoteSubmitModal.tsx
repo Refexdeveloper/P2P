@@ -64,8 +64,8 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 flex items-center justify-center bg-teal-100 rounded-lg">
-              <i className="ri-price-tag-3-line text-teal-600 text-xl"></i>
+            <div className="w-10 h-10 flex items-center justify-center bg-[#E3F2FD] rounded-lg">
+              <i className="ri-price-tag-3-line text-[#1E88E5] text-xl"></i>
             </div>
             <div>
               <h2 className="text-lg font-bold text-gray-900">
@@ -117,7 +117,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
           {/* Line Items Table */}
           <div>
             <p className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
-              <i className="ri-list-check-2 text-teal-600"></i>
+              <i className="ri-list-check-2 text-[#1E88E5]"></i>
               Line Items — Enter Your Prices
             </p>
             <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -127,7 +127,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Qty</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Est. Price</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-teal-600 uppercase">Your Unit Price*</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-[#1E88E5] uppercase">Your Unit Price*</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Lead Time (Days)</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Line Total</th>
                   </tr>
@@ -147,7 +147,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
                           min="0"
                           value={Number.isFinite(line.quotedUnitPrice) ? line.quotedUnitPrice : ''}
                           onChange={e => updateLine(line.id, 'quotedUnitPrice', e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
-                          className="w-32 mx-auto block border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-32 mx-auto block border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent"
                           placeholder="0"
                         />
                       </td>
@@ -157,7 +157,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
                           min="1"
                           value={line.leadTimeDays || ''}
                           onChange={e => updateLine(line.id, 'leadTimeDays', parseInt(e.target.value) || 0)}
-                          className="w-20 mx-auto block border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-20 mx-auto block border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent"
                           placeholder="14"
                         />
                       </td>
@@ -178,7 +178,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
               <select
                 value={paymentTerms}
                 onChange={e => setPaymentTerms(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               >
                 <option>Net 15</option>
                 <option>Net 30</option>
@@ -198,14 +198,14 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
                 rows={2}
                 maxLength={500}
                 placeholder="Any special conditions, discounts, or remarks..."
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
               />
             </div>
           </div>
 
           {/* Billing Summary */}
-          <div className="bg-teal-50 border border-teal-200 rounded-xl p-5">
-            <p className="text-sm font-bold text-teal-800 mb-3 flex items-center gap-2">
+          <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-5">
+            <p className="text-sm font-bold text-[#1565C0] mb-3 flex items-center gap-2">
               <i className="ri-calculator-line"></i> Quote Summary
             </p>
             <div className="space-y-2">
@@ -217,9 +217,9 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
                 <span className="text-gray-600">GST @ 18%</span>
                 <span className="font-semibold text-gray-900">{formatCurrency(gst)}</span>
               </div>
-              <div className="border-t border-teal-300 pt-2 flex justify-between">
-                <span className="font-bold text-teal-800">Grand Total (incl. GST)</span>
-                <span className="font-bold text-teal-700 text-lg">{formatCurrency(grandTotal)}</span>
+              <div className="border-t border-[#64B5F6] pt-2 flex justify-between">
+                <span className="font-bold text-[#1565C0]">Grand Total (incl. GST)</span>
+                <span className="font-bold text-[#1565C0] text-lg">{formatCurrency(grandTotal)}</span>
               </div>
               {rfq.estimatedValue > 0 && (
                 <div className="flex justify-between text-xs pt-1">
@@ -259,7 +259,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
             </button>
             <button
               onClick={() => handleSubmit()}
-              className="px-6 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium text-sm flex items-center gap-2 whitespace-nowrap cursor-pointer"
+              className="px-6 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] font-medium text-sm flex items-center gap-2 whitespace-nowrap cursor-pointer"
             >
               <i className="ri-send-plane-fill"></i>
               {isReQuote ? 'Re-Submit Quotation' : 'Submit Quotation'}
@@ -290,7 +290,7 @@ export default function QuoteSubmitModal({ rfq, onClose, onSubmit }: Props) {
                   setZeroConfirm(false);
                   handleSubmit(true);
                 }}
-                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+                className="px-4 py-2 text-sm font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0]"
               >
                 Submit anyway
               </button>

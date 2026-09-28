@@ -4,7 +4,9 @@ import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatD
 import PrVendorQuotationsPanel from '../../../components/feature/PrVendorQuotationsPanel';
 import { collapsePrAdminEditHistory } from '../../../components/feature/ApprovalHistoryPanel';
 import { formatMoney } from '../../../constants/currency';
-import { useEffect, useState } from 'react';
+import { PM_BTN_PRIMARY, PM_BTN_SECONDARY } from '../../../constants/pmTheme';
+import { formatPersonRoleSuffix } from '../../../utils/roleDisplay';
+import { useEffect, useState, type ReactNode } from 'react';
 
 interface LineItem {
   itemName?: string;
@@ -36,7 +38,13 @@ interface PRTask {
   department: string;
   entityName?: string;
   entityCode?: string;
+  entityCostCenter?: string;
   requestType: string;
+  requestCategory?: string;
+  projectDetail?: string;
+  expectedDeliveryTimeline?: string;
+  paymentTerms?: string;
+  specialNotes?: string;
   category: string;
   priority: string;
   status: string;
@@ -75,6 +83,36 @@ interface TaskDetailDrawerProps {
 }
 
 const CLOSED_STATUSES = new Set(['approved', 'rejected', 'returned']);
+
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+
+const softCard =
+  'relative overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-4';
+const softLabel = 'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
+const softValue = 'mt-1.5 text-sm font-semibold text-[#2C3E50] break-words';
+
+function SoftField({
+  label,
+  children,
+  className = '',
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`${softCard} ${className}`}>
+      <div className="pointer-events-none absolute inset-0" style={softWash} />
+      <div className="relative z-[1]">
+        <p className={softLabel}>{label}</p>
+        <div className={softValue}>{children}</div>
+      </div>
+    </div>
+  );
+}
 
 function canShowActions(status: string, canAct?: boolean) {
   if (typeof canAct === 'boolean') return canAct;
@@ -142,44 +180,49 @@ export default function TaskDetailDrawer({
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative flex h-full w-full max-w-xl flex-col bg-white shadow-2xl animate-slide-in-right">
+      <div className="absolute inset-0 bg-slate-900/25 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        className="relative flex h-full w-full max-w-xl flex-col shadow-[0_24px_64px_-24px_rgba(15,23,42,0.35)] animate-slide-in-right"
+        style={{
+          background: 'linear-gradient(180deg, #edf1ff 0%, #f6f8ff 45%, #f2ecff 100%)',
+        }}
+      >
         {/* Header */}
-        <div
-          className={`shrink-0 border-b px-4 py-3 sm:px-6 sm:py-4 z-10 ${
-            isInvoiceFlow ? 'bg-teal-50 border-teal-200' : 'bg-white border-gray-200'
-          }`}
-        >
-          <div className="flex items-start gap-3">
+        <div className="relative z-10 shrink-0 overflow-hidden border-b border-white/60 bg-gradient-to-b from-[#edf1ff]/95 to-[#eef2ff]/90 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="pointer-events-none absolute inset-0" style={softWash} />
+          <div className="relative z-[1] flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+              <i className="ri-file-list-3-line text-lg"></i>
+            </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-bold tracking-wide text-gray-500 break-all">
+              <p className="break-all text-[11px] font-bold tracking-wide text-[#1E88E5]">
                 {task.prNumber}
               </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {isOnlinePurchase && (
-                  <span className="px-2 py-0.5 bg-sky-700 text-white text-[10px] font-bold rounded tracking-wide">
+                  <span className="rounded-full bg-[#1E88E5] px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">
                     ONLINE PURCHASE
                   </span>
                 )}
                 {isSass && !isOnlinePurchase && (
-                  <span className="px-2 py-0.5 bg-teal-600 text-white text-[10px] font-bold rounded tracking-wide">
+                  <span className="rounded-full bg-[#1565C0] px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">
                     CLOUD SUBSCRIPTION
                   </span>
                 )}
                 <StatusBadge status={task.status} size="sm" />
                 <PriorityBadge priority={(task.priority || 'medium').toLowerCase()} size="sm" />
               </div>
-              <h3 className="mt-2 text-base font-semibold text-gray-900 leading-snug break-words">
+              <h3 className="mt-2 break-words text-base font-semibold leading-snug text-[#2C3E50]">
                 {task.title}
               </h3>
               {isOnlinePurchase && (
-                <p className="text-xs text-sky-900 mt-1.5 font-medium break-words">
+                <p className="mt-1.5 break-words text-xs font-medium text-[#1565C0]">
                   Online Purchase path: User Approval → Mugesh L1 → Srivaths L2 → Mugesh Invoice Upload →
                   Completed (SCM skipped)
                 </p>
               )}
               {isSass && !isOnlinePurchase && (
-                <p className="text-xs text-teal-800 mt-1.5 font-medium break-words">
+                <p className="mt-1.5 break-words text-xs font-medium text-[#1565C0]">
                   {String(task.requesterEmail || task.requester || '')
                     .toLowerCase()
                     .includes('mugesh')
@@ -191,23 +234,23 @@ export default function TaskDetailDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white text-slate-500 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-colors hover:border hover:border-[#90CAF9] hover:text-[#1E88E5]"
               aria-label="Close"
             >
-              <i className="ri-close-line text-lg text-gray-500"></i>
+              <i className="ri-close-line text-lg"></i>
             </button>
           </div>
         </div>
 
         {loading ? (
-          <div className="flex-1 px-6 py-16 text-center text-gray-500 overflow-y-auto">
-            <i className="ri-loader-4-line text-2xl animate-spin text-amber-600"></i>
-            <p className="text-sm mt-3">Loading PR details…</p>
+          <div className="flex-1 overflow-y-auto px-6 py-16 text-center text-slate-500">
+            <i className="ri-loader-4-line animate-spin text-2xl text-[#1E88E5]"></i>
+            <p className="mt-3 text-sm">Loading PR details…</p>
           </div>
         ) : (
           <>
-            <div className="chip-scroll-fade shrink-0 border-b border-gray-100 px-4 pt-3 sm:px-6">
-              <div className="chip-scroll gap-1 pb-0">
+            <div className="shrink-0 px-4 pt-4 sm:px-6">
+              <div className="flex flex-wrap gap-2">
                 {(
                   [
                     { id: 'details' as const, label: 'Details' },
@@ -222,10 +265,10 @@ export default function TaskDetailDrawer({
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
                       activeTab === tab.id
-                        ? 'border-gray-900 text-gray-900'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                        ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
                     }`}
                   >
                     {tab.label}
@@ -234,119 +277,111 @@ export default function TaskDetailDrawer({
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 space-y-5 sm:px-6">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
               {activeTab === 'details' && (
                 <>
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                  <div className="relative flex items-center gap-3 overflow-hidden rounded-2xl border border-transparent bg-white p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+                    <div className="pointer-events-none absolute inset-0" style={softWash} />
+                    <div className="relative z-[1] flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#E3F2FD] text-sm font-bold text-[#1E88E5]">
                       {task.requesterAvatar || 'R'}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 break-words">{task.requester}</p>
-                      <p className="text-xs text-gray-500 break-words">
+                    <div className="relative z-[1] min-w-0">
+                      <p className="break-words text-sm font-semibold text-[#2C3E50]">{task.requester}</p>
+                      <p className="break-words text-xs text-slate-500">
                         {task.requesterRole} &middot; {task.department || '—'}
                       </p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="bg-gray-50 rounded-xl p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Entity</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">
-                        {task.entityName || '—'}
-                        {task.entityCode ? (
-                          <span className="text-gray-500 font-normal"> ({task.entityCode})</span>
-                        ) : null}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Department</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{task.department || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Request Type</p>
-                      <p className="text-sm font-medium text-gray-900">{task.requestType || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Category</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{task.category || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Required Date</p>
-                      <p className="text-sm font-medium text-gray-900">{formatDate(task.requiredDate)}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">{hideLinePricing ? 'Vendor Path' : 'Total Amount'}</p>
-                      <p className="text-sm font-bold text-gray-900">
-                        {hideLinePricing
-                          ? 'Own Vendor'
-                          : formatMoney(Number(task.totalAmount || 0), task.currency, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Current Stage</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{task.currentApprover || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Submitted</p>
-                      <p className="text-sm font-medium text-gray-900">{formatDate(task.submittedDate)}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">Location</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{task.billingLocation || '—'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-0.5">GSTIN</p>
-                      <p className="text-sm font-medium text-gray-900 font-mono tracking-wide break-all">
-                        {task.billingGstNo || '—'}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Billing Address</p>
-                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
-                        {task.billingAddress || '—'}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">Site / Delivery Address</p>
-                      <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">
-                        {task.placeOfDelivery || '—'}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3 sm:col-span-2">
-                      <p className="text-xs text-gray-500 mb-0.5">POC for Delivery</p>
-                      <p className="text-sm font-medium text-gray-900 break-words">{task.deliveryPoc || '—'}</p>
-                    </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                    <SoftField label="Entity" className="sm:col-span-2">
+                      {task.entityName || '—'}
+                      {task.entityCode ? (
+                        <span className="font-normal text-slate-500"> ({task.entityCode})</span>
+                      ) : null}
+                      {task.entityCostCenter ? (
+                        <p className="mt-1 text-xs font-normal text-slate-500">
+                          Cost Center: {task.entityCostCenter}
+                        </p>
+                      ) : null}
+                    </SoftField>
+                    <SoftField label="Department">{task.department || '—'}</SoftField>
+                    <SoftField label="Request Type">{task.requestType || '—'}</SoftField>
+                    <SoftField label="Request Category">
+                      {task.requestCategory || task.category || '—'}
+                    </SoftField>
+                    <SoftField label="Project Detail" className="sm:col-span-2">
+                      {task.projectDetail || '—'}
+                    </SoftField>
+                    <SoftField label="Required Date">{formatDate(task.requiredDate)}</SoftField>
+                    <SoftField label="Expected Delivery Timeline">
+                      {task.expectedDeliveryTimeline || '—'}
+                    </SoftField>
+                    <SoftField label="Payment Terms">{task.paymentTerms || '—'}</SoftField>
+                    <SoftField label="Total Amount">
+                      {hideLinePricing ? (
+                        'Own Vendor'
+                      ) : (
+                        <span className="tabular-nums">
+                          {formatMoney(Number(task.totalAmount || 0), task.currency, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      )}
+                    </SoftField>
+                    <SoftField label="Current Stage">{task.currentApprover || '—'}</SoftField>
+                    <SoftField label="Submitted Date">{formatDate(task.submittedDate)}</SoftField>
+                    <SoftField label="Billing Region / GST" className="sm:col-span-2">
+                      {task.billingLocation || '—'}
+                      {task.billingGstNo ? (
+                        <span className="mt-0.5 block font-mono text-xs font-normal text-slate-500">
+                          {task.billingGstNo}
+                        </span>
+                      ) : null}
+                    </SoftField>
+                    <SoftField label="Billing Address" className="sm:col-span-2">
+                      <span className="whitespace-pre-wrap">{task.billingAddress || '—'}</span>
+                    </SoftField>
+                    <SoftField label="Place of Delivery">{task.placeOfDelivery || '—'}</SoftField>
+                    <SoftField label="POC for Delivery">{task.deliveryPoc || '—'}</SoftField>
                   </div>
 
-                  <div className="rounded-xl overflow-hidden border-2 border-amber-300 bg-amber-50 ring-2 ring-amber-200/50">
-                    <div className="px-3.5 py-2.5 bg-amber-100 border-b border-amber-300 flex items-center gap-2">
-                      <i className="ri-lightbulb-flash-line text-amber-700" aria-hidden />
-                      <h4 className="text-xs font-extrabold text-amber-900 uppercase tracking-wide">
-                        Business Justification
-                      </h4>
+                  <div>
+                    <h4 className={`${softLabel} mb-2 px-0.5`}>Business Justification</h4>
+                    <div className={softCard}>
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <p className="relative z-[1] whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                        {task.justification || '—'}
+                      </p>
                     </div>
-                    <p className="px-3.5 py-3 text-sm text-amber-950 leading-relaxed whitespace-pre-wrap font-medium break-words">
-                      {task.justification || 'No business justification provided.'}
-                    </p>
+                  </div>
+                  <div>
+                    <h4 className={`${softLabel} mb-2 px-0.5`}>Special Notes</h4>
+                    <div className={softCard}>
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <p className="relative z-[1] whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                        {task.specialNotes || '—'}
+                      </p>
+                    </div>
                   </div>
 
                   {showQuotesTab && (
                     <button
                       type="button"
                       onClick={() => setActiveTab('quotes')}
-                      className="w-full flex items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-left hover:bg-teal-100/70"
+                      className="relative flex w-full cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
                     >
-                      <span>
-                        <span className="block text-sm font-semibold text-teal-900">View vendor quotations</span>
-                        <span className="block text-xs text-teal-700 mt-0.5">
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <span className="relative z-[1]">
+                        <span className="block text-sm font-semibold text-[#1565C0]">
+                          View vendor quotations
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-500">
                           Prices, rounds, and quotation files on this PR
                         </span>
                       </span>
-                      <i className="ri-arrow-right-s-line text-teal-700 text-lg" />
+                      <i className="relative z-[1] ri-arrow-right-s-line text-lg text-[#1E88E5]" />
                     </button>
                   )}
                 </>
@@ -366,7 +401,9 @@ export default function TaskDetailDrawer({
                 <>
                   <div className="space-y-3 md:hidden">
                     {lineItems.length === 0 ? (
-                      <p className="text-sm text-gray-400 bg-gray-50 rounded-xl p-4 text-center">No line items</p>
+                      <p className="rounded-2xl bg-white p-4 text-center text-sm text-slate-400 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]">
+                        No line items
+                      </p>
                     ) : (
                       lineItems.map((item, idx) => {
                         const name = String(item.itemName || item.description || '—').trim() || '—';
@@ -375,20 +412,23 @@ export default function TaskDetailDrawer({
                         return (
                           <div
                             key={idx}
-                            className="rounded-xl border border-gray-200 bg-white p-4"
+                            className="relative overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
                           >
-                            <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="pointer-events-none absolute inset-0" style={softWash} />
+                            <div className="relative z-[1] mb-3 flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-slate-100 px-1.5 text-[11px] font-bold text-slate-600">
+                                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-lg bg-[#E3F2FD] px-1.5 text-[11px] font-bold text-[#1E88E5]">
                                   #{idx + 1}
                                 </span>
-                                <p className="mt-1.5 text-sm font-semibold text-gray-900 break-words">{name}</p>
+                                <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">
+                                  {name}
+                                </p>
                                 {showDesc ? (
-                                  <p className="text-xs text-gray-400 mt-0.5 break-words">{desc}</p>
+                                  <p className="mt-0.5 break-words text-xs text-slate-400">{desc}</p>
                                 ) : null}
                               </div>
                               {!hideLinePricing && (
-                                <p className="shrink-0 text-sm font-bold text-gray-900">
+                                <p className="shrink-0 text-sm font-bold text-[#1E88E5]">
                                   {formatMoney(Number(item.total || 0), task.currency, {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2,
@@ -396,22 +436,26 @@ export default function TaskDetailDrawer({
                                 </p>
                               )}
                             </div>
-                            <div className={`grid gap-3 ${hideLinePricing ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                            <div
+                              className={`relative z-[1] grid gap-3 ${hideLinePricing ? 'grid-cols-1' : 'grid-cols-2'}`}
+                            >
                               <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Qty</p>
-                                <p className="text-sm text-gray-800 mt-0.5">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  Qty
+                                </p>
+                                <p className="mt-0.5 text-sm text-[#2C3E50]">
                                   {Number(item.qty) || 0}
                                   {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
-                                    <span className="text-xs text-gray-400 ml-1">{item.unit}</span>
+                                    <span className="ml-1 text-xs text-slate-400">{item.unit}</span>
                                   ) : null}
                                 </p>
                               </div>
                               {!hideLinePricing && (
                                 <div>
-                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                                     Unit Cost
                                   </p>
-                                  <p className="text-sm text-gray-800 mt-0.5">
+                                  <p className="mt-0.5 text-sm text-[#2C3E50]">
                                     {formatMoney(Number(item.unitCost || 0), task.currency, {
                                       minimumFractionDigits: 2,
                                       maximumFractionDigits: 2,
@@ -425,9 +469,9 @@ export default function TaskDetailDrawer({
                       })
                     )}
                     {!hideLinePricing && lineItems.length > 0 && (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 flex items-center justify-between">
-                        <p className="text-sm font-semibold text-gray-700">Grand Total</p>
-                        <p className="text-sm font-bold text-gray-900">
+                      <div className="flex items-center justify-between rounded-2xl border border-[#BBDEFB]/80 bg-[#E3F2FD]/40 px-4 py-3 sm:rounded-[18px]">
+                        <p className="text-sm font-semibold text-slate-700">Grand Total</p>
+                        <p className="text-sm font-bold text-[#1E88E5]">
                           {formatMoney(Number(task.totalAmount || 0), task.currency, {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
@@ -437,24 +481,28 @@ export default function TaskDetailDrawer({
                     )}
                   </div>
 
-                  <div className="hidden md:block border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="hidden overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] md:block sm:rounded-[18px]">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-gray-50">
-                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">#</th>
-                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
+                        <tr className="bg-[#F8FAFC]">
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                            #
+                          </th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                             Item Name
                           </th>
-                          <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                             Description
                           </th>
-                          <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Qty</th>
+                          <th className="px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                            Qty
+                          </th>
                           {!hideLinePricing && (
                             <>
-                              <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
+                              <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                                 Unit Cost
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
+                              <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                                 Total
                               </th>
                             </>
@@ -466,7 +514,7 @@ export default function TaskDetailDrawer({
                           <tr>
                             <td
                               colSpan={hideLinePricing ? 4 : 6}
-                              className="px-3 py-6 text-center text-gray-400 text-sm"
+                              className="px-3 py-6 text-center text-sm text-slate-400"
                             >
                               No line items
                             </td>
@@ -477,25 +525,27 @@ export default function TaskDetailDrawer({
                             const desc = String(item.description || '').trim();
                             const showDesc = desc && desc !== name;
                             return (
-                              <tr key={idx} className="border-t border-gray-100">
-                                <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
-                                <td className="px-3 py-2 font-medium text-gray-900">{name}</td>
-                                <td className="px-3 py-2 text-gray-600">{showDesc ? desc : '—'}</td>
-                                <td className="px-3 py-2 text-center text-gray-700 tabular-nums">
+                              <tr key={idx} className="border-t border-slate-100">
+                                <td className="px-3 py-2 text-slate-500">{idx + 1}</td>
+                                <td className="px-3 py-2 font-medium text-[#2C3E50]">{name}</td>
+                                <td className="px-3 py-2 text-slate-600">{showDesc ? desc : '—'}</td>
+                                <td className="px-3 py-2 text-center tabular-nums text-slate-700">
                                   {Number(item.qty) || 0}
                                   {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
-                                    <span className="text-xs text-gray-400 font-normal ml-1">{item.unit}</span>
+                                    <span className="ml-1 text-xs font-normal text-slate-400">
+                                      {item.unit}
+                                    </span>
                                   ) : null}
                                 </td>
                                 {!hideLinePricing && (
                                   <>
-                                    <td className="px-3 py-2 text-right text-gray-700">
+                                    <td className="px-3 py-2 text-right text-slate-700">
                                       {formatMoney(Number(item.unitCost || 0), task.currency, {
                                         minimumFractionDigits: 2,
                                         maximumFractionDigits: 2,
                                       })}
                                     </td>
-                                    <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                    <td className="px-3 py-2 text-right font-semibold text-[#1E88E5]">
                                       {formatMoney(Number(item.total || 0), task.currency, {
                                         minimumFractionDigits: 2,
                                         maximumFractionDigits: 2,
@@ -510,11 +560,14 @@ export default function TaskDetailDrawer({
                       </tbody>
                       {!hideLinePricing && (
                         <tfoot>
-                          <tr className="border-t-2 border-gray-200 bg-gray-50">
-                            <td colSpan={5} className="px-3 py-2 text-right font-bold text-gray-700 uppercase text-xs">
+                          <tr className="border-t-2 border-[#BBDEFB] bg-[#E3F2FD]/40">
+                            <td
+                              colSpan={5}
+                              className="px-3 py-2 text-right text-xs font-bold uppercase text-slate-700"
+                            >
                               Grand Total
                             </td>
-                            <td className="px-3 py-2 text-right font-bold text-gray-900">
+                            <td className="px-3 py-2 text-right font-bold text-[#1E88E5]">
                               {formatMoney(Number(task.totalAmount || 0), task.currency, {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
@@ -529,65 +582,72 @@ export default function TaskDetailDrawer({
               )}
 
               {activeTab === 'history' && (
-                <div>
+                <div className="space-y-3">
                   {approvalHistory.length === 0 ? (
-                    <p className="text-sm text-gray-400 bg-gray-50 rounded-xl p-3">No approval history yet.</p>
+                    <div className={`${softCard} py-8 text-center`}>
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <p className="relative z-[1] text-sm text-slate-500">No approval history yet</p>
+                    </div>
                   ) : (
-                    <div className="space-y-0">
-                      {approvalHistory.map((step, idx) => {
-                        const stepStatus = String(step.status || '').toLowerCase();
-                        const done =
-                          stepStatus.includes('approv') ||
-                          stepStatus.includes('complet') ||
-                          stepStatus.includes('submit');
-                        const rejected = stepStatus.includes('reject');
-                        const returned = stepStatus.includes('return') || stepStatus.includes('rework');
-                        return (
-                          <div key={`${step.stage}-${step.date}-${idx}`} className="flex items-start gap-3 relative">
-                            {idx < approvalHistory.length - 1 && (
-                              <div className="absolute left-[11px] top-6 w-0.5 h-full bg-gray-200"></div>
-                            )}
+                    approvalHistory.map((step, idx) => {
+                      const stepStatus = String(step.status || '').toLowerCase();
+                      const done =
+                        stepStatus.includes('approv') ||
+                        stepStatus.includes('complet') ||
+                        stepStatus.includes('submit');
+                      const rejected = stepStatus.includes('reject');
+                      const returned =
+                        stepStatus.includes('return') || stepStatus.includes('rework');
+                      return (
+                        <div key={`${step.stage}-${step.date}-${idx}`} className={softCard}>
+                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                          <div className="relative z-[1] flex gap-3">
                             <div
-                              className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                              className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${
                                 done
-                                  ? 'bg-emerald-100'
+                                  ? 'bg-emerald-50 text-emerald-600'
                                   : rejected
-                                    ? 'bg-red-100'
+                                    ? 'bg-[#FFE4E6] text-[#F43F5E]'
                                     : returned
-                                      ? 'bg-orange-100'
-                                      : 'bg-gray-100'
+                                      ? 'bg-orange-50 text-orange-600'
+                                      : 'bg-[#E3F2FD] text-[#1E88E5]'
                               }`}
                             >
                               <i
-                                className={`text-xs ${
-                                  done
-                                    ? 'ri-check-line text-emerald-600'
-                                    : rejected
-                                      ? 'ri-close-line text-red-600'
-                                      : returned
-                                        ? 'ri-arrow-go-back-line text-orange-600'
-                                        : 'ri-time-line text-gray-400'
+                                className={`text-sm ${
+                                  rejected
+                                    ? 'ri-close-circle-fill'
+                                    : returned
+                                      ? 'ri-arrow-go-back-fill'
+                                      : 'ri-checkbox-circle-fill'
                                 }`}
                               ></i>
                             </div>
-                            <div className="pb-4 flex-1 min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-medium text-gray-900 break-words">
-                                  {step.stage || step.step}
-                                </p>
-                                <span className="text-xs text-gray-400">{formatDateTime(step.date)}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="break-words text-sm font-semibold text-[#2C3E50]">
+                                    {step.stage || step.step}
+                                  </p>
+                                  <p className="break-words text-xs text-slate-500">
+                                    {step.approver}
+                                    {formatPersonRoleSuffix(step.role, step.approver)}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">
+                                  {formatDateTime(step.date)}
+                                </span>
                               </div>
-                              <p className="text-xs text-gray-500 break-words">{step.approver}</p>
-                              {step.remarks && (
-                                <p className="text-xs text-gray-600 mt-0.5 italic break-words">
-                                  &ldquo;{step.remarks}&rdquo;
+                              {step.remarks ? (
+                                <p className="mt-2 break-words rounded-xl bg-[#F8FAFC] p-2.5 text-sm text-slate-700">
+                                  {step.remarks}
                                 </p>
-                              )}
+                              ) : null}
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               )}
@@ -597,46 +657,47 @@ export default function TaskDetailDrawer({
 
         {/* Footer — pinned so L1/L2 always see Approve / Send Back / Reject */}
         {showActions && (
-          <div className="shrink-0 bg-white border-t border-gray-200 px-4 py-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => onApprove(task.id)}
-              className={`flex-1 px-4 py-2.5 text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 ${
-                task.requireInvoiceUpload || task.isSassInvoiceUpload
-                  ? 'bg-teal-600 hover:bg-teal-700'
-                  : 'bg-emerald-600 hover:bg-emerald-700'
-              }`}
-            >
-              <i
-                className={
-                  task.requireInvoiceUpload || task.isSassInvoiceUpload
-                    ? 'ri-file-upload-line'
-                    : 'ri-check-double-line'
-                }
-              ></i>
-              {task.isSassInvoiceUpload || task.requireInvoiceUpload ? 'Upload Invoice' : 'Approve'}
-            </button>
-            {!task.isSassInvoiceUpload && (
-              <div className="flex gap-2 sm:contents">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => onReturn(task.id)}
-                  className="flex-1 px-4 py-2.5 bg-white text-orange-600 text-sm font-semibold rounded-lg border border-orange-300 hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <i className="ri-arrow-go-back-line"></i> Send Back
-                </button>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => onReject(task.id)}
-                  className="flex-1 px-4 py-2.5 bg-white text-red-600 text-sm font-semibold rounded-lg border border-red-300 hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <i className="ri-close-circle-line"></i> Reject
-                </button>
-              </div>
-            )}
+          <div className="relative shrink-0 border-t border-slate-100/80 bg-white/90 px-4 py-3 backdrop-blur-sm sm:px-6 sm:py-4">
+            <div className="pointer-events-none absolute inset-0 opacity-60" style={softWash} />
+            <div className="relative z-[1] flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => onApprove(task.id)}
+                className={`${PM_BTN_PRIMARY} flex-1 disabled:opacity-50 ${
+                  task.requireInvoiceUpload || task.isSassInvoiceUpload ? '' : ''
+                }`}
+              >
+                <i
+                  className={
+                    task.requireInvoiceUpload || task.isSassInvoiceUpload
+                      ? 'ri-file-upload-line'
+                      : 'ri-check-double-line'
+                  }
+                ></i>
+                {task.isSassInvoiceUpload || task.requireInvoiceUpload ? 'Upload Invoice' : 'Approve'}
+              </button>
+              {!task.isSassInvoiceUpload && (
+                <div className="flex gap-2 sm:contents">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => onReturn(task.id)}
+                    className={`${PM_BTN_SECONDARY} flex-1 !text-orange-600 hover:!border-orange-200 disabled:opacity-50`}
+                  >
+                    <i className="ri-arrow-go-back-line"></i> Send Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => onReject(task.id)}
+                    className={`${PM_BTN_SECONDARY} flex-1 !text-rose-600 hover:!border-rose-200 disabled:opacity-50`}
+                  >
+                    <i className="ri-close-circle-line"></i> Reject
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

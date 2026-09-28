@@ -21,7 +21,7 @@ interface VendorQuoteRowProps {
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 
-const roundBadgeColors = ['bg-teal-100 text-teal-700', 'bg-amber-100 text-amber-700', 'bg-violet-100 text-violet-700', 'bg-rose-100 text-rose-700'];
+const roundBadgeColors = ['bg-[#E3F2FD] text-[#1565C0]', 'bg-amber-100 text-amber-700', 'bg-violet-100 text-violet-700', 'bg-rose-100 text-rose-700'];
 
 export default function VendorQuoteRow({
   quotation, index, vendorOptions, isRecommended, isBest,
@@ -60,11 +60,11 @@ export default function VendorQuoteRow({
 
   return (
     <div className={`border rounded-xl overflow-hidden transition-all ${
-      isRecommended ? 'border-teal-400 shadow-sm' : isBest ? 'border-emerald-300' : 'border-gray-200'
+      isRecommended ? 'border-[#42A5F5] shadow-sm' : isBest ? 'border-emerald-300' : 'border-gray-200'
     }`}>
       {/* Vendor Header Bar */}
       <div className={`px-5 py-3 flex items-center justify-between ${
-        isRecommended ? 'bg-teal-50' : isBest ? 'bg-emerald-50' : isFromPortal ? 'bg-blue-50/40' : 'bg-gray-50'
+        isRecommended ? 'bg-[#E3F2FD]' : isBest ? 'bg-emerald-50' : isFromPortal ? 'bg-blue-50/40' : 'bg-gray-50'
       }`}>
         <div className="flex items-center gap-3 flex-wrap">
           <span className="w-7 h-7 flex items-center justify-center rounded-full bg-white border border-gray-200 text-xs font-bold text-gray-600">{index + 1}</span>
@@ -73,7 +73,7 @@ export default function VendorQuoteRow({
           <select
             value={quotation.vendorName}
             onChange={e => onUpdate(quotation.id, 'vendorName', e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-teal-500 focus:border-teal-500 cursor-pointer bg-white"
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#1E88E5] focus:border-[#1E88E5] cursor-pointer bg-white"
           >
             <option value="">Select Vendor</option>
             {vendorOptions.map(v => <option key={v} value={v}>{v}</option>)}
@@ -81,7 +81,7 @@ export default function VendorQuoteRow({
 
           {/* Vendor Portal badge */}
           {isFromPortal && (
-            <span className="flex items-center gap-1 px-2.5 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">
+            <span className="flex items-center gap-1 px-2.5 py-0.5 bg-[#E3F2FD] text-[#1565C0] rounded-full text-xs font-semibold">
               <i className="ri-global-line text-xs"></i>
               Vendor Portal
             </span>
@@ -112,7 +112,7 @@ export default function VendorQuoteRow({
           )}
 
           {isRecommended && (
-            <span className="px-2.5 py-0.5 bg-teal-600 text-white rounded-full text-xs font-bold flex items-center gap-1">
+            <span className="px-2.5 py-0.5 bg-[#1E88E5] text-white rounded-full text-xs font-bold flex items-center gap-1">
               <i className="ri-star-fill text-xs"></i> Recommended
             </span>
           )}
@@ -127,7 +127,7 @@ export default function VendorQuoteRow({
               type="button"
               onClick={() => onResendEmail(quotation.id)}
               disabled={saving}
-              className="px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50"
+              className="px-3 py-1.5 text-xs font-medium text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] cursor-pointer flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50"
             >
               <i className="ri-mail-send-line"></i>
               Resend RFQ Email
@@ -167,14 +167,14 @@ export default function VendorQuoteRow({
 
       {/* Vendor Portal submitted info banner */}
       {isLockedPortalQuote && currentQ.vendorSubmitted && (
-        <div className="px-5 py-2.5 bg-teal-50 border-b border-teal-100 flex items-center gap-2">
-          <i className="ri-checkbox-circle-fill text-teal-600 text-sm"></i>
-          <span className="text-xs text-teal-700 font-semibold">
+        <div className="px-5 py-2.5 bg-[#E3F2FD] border-b border-[#BBDEFB] flex items-center gap-2">
+          <i className="ri-checkbox-circle-fill text-[#1E88E5] text-sm"></i>
+          <span className="text-xs text-[#1565C0] font-semibold">
             Vendor submitted this quotation via Vendor Portal
             {currentQ.vendorSubmittedDate && ` on ${currentQ.vendorSubmittedDate}`}
           </span>
           {currentQ.vendorNotes && (
-            <span className="text-xs text-teal-600 ml-2 italic">&ldquo;{currentQ.vendorNotes}&rdquo;</span>
+            <span className="text-xs text-[#1E88E5] ml-2 italic">&ldquo;{currentQ.vendorNotes}&rdquo;</span>
           )}
         </div>
       )}
@@ -207,14 +207,14 @@ export default function VendorQuoteRow({
                     : null;
                   const isLast = i === quotation.quotes.length - 1;
                   return (
-                    <tr key={i} className={isLast ? 'bg-teal-50' : 'bg-white'}>
+                    <tr key={i} className={isLast ? 'bg-[#E3F2FD]' : 'bg-white'}>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5">
                           <span className={`px-2 py-0.5 rounded-full font-bold ${roundBadgeColors[i % roundBadgeColors.length]}`}>
                             Q{i + 1}
                           </span>
                           {q.vendorSubmitted && (
-                            <span className="px-1.5 py-0.5 bg-teal-100 text-teal-600 rounded text-xs flex items-center gap-0.5">
+                            <span className="px-1.5 py-0.5 bg-[#E3F2FD] text-[#1E88E5] rounded text-xs flex items-center gap-0.5">
                               <i className="ri-global-line text-xs"></i>Portal
                             </span>
                           )}
@@ -237,13 +237,13 @@ export default function VendorQuoteRow({
                         ) : q.technicalScore || '—'}
                       </td>
                       <td className="px-3 py-2 text-gray-700">{q.commercialScore || '—'}</td>
-                      <td className="px-3 py-2 font-bold text-teal-600">{q.overallScore || '—'}</td>
+                      <td className="px-3 py-2 font-bold text-[#1E88E5]">{q.overallScore || '—'}</td>
                       <td className="px-3 py-2">
                         <span className={`px-2 py-0.5 rounded-full font-semibold ${
                           q.status === 'sent-back' ? 'bg-amber-100 text-amber-700' :
                           q.status === 'tech-evaluated' ? 'bg-emerald-100 text-emerald-700' :
                           q.status === 'pending-tech-eval' ? 'bg-violet-100 text-violet-700' :
-                          isLast ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-600'
+                          isLast ? 'bg-[#E3F2FD] text-[#1565C0]' : 'bg-gray-100 text-gray-600'
                         }`}>
                           {q.status === 'sent-back' ? 'Sent Back' :
                            q.status === 'tech-evaluated' ? 'Tech Evaluated' :
@@ -279,7 +279,7 @@ export default function VendorQuoteRow({
             Round {currentRoundIdx + 1} — Active
           </span>
           {isLockedPortalQuote ? (
-            <span className="text-xs text-teal-600 font-semibold flex items-center gap-1">
+            <span className="text-xs text-[#1E88E5] font-semibold flex items-center gap-1">
               <i className="ri-global-line"></i>
               Quote received from vendor email form
             </span>
@@ -296,7 +296,7 @@ export default function VendorQuoteRow({
               type="number"
               value={currentQ.quotedPrice || ''}
               onChange={e => updateCurrent('quotedPrice', parseFloat(e.target.value) || 0)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="0"
             />
           </div>
@@ -308,7 +308,7 @@ export default function VendorQuoteRow({
               type="number"
               value={currentQ.leadTime || ''}
               onChange={e => updateCurrent('leadTime', parseInt(e.target.value) || 0)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="0"
             />
           </div>
@@ -321,7 +321,7 @@ export default function VendorQuoteRow({
               value={currentQ.paymentTerms || ''}
               onChange={(e) => updateCurrent('paymentTerms', e.target.value)}
               disabled={isLockedPortalQuote}
-              className="w-full min-h-[88px] px-3 py-2 border border-gray-300 rounded-lg text-sm resize-y focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50"
+              className="w-full min-h-[88px] px-3 py-2 border border-gray-300 rounded-lg text-sm resize-y focus:ring-2 focus:ring-[#1E88E5] disabled:bg-gray-50"
               placeholder="e.g. Net 30 Days / 50% advance, balance on delivery"
             />
           </div>
@@ -334,7 +334,7 @@ export default function VendorQuoteRow({
               value={currentQ.warranty || ''}
               onChange={e => updateCurrent('warranty', e.target.value)}
               disabled={isLockedPortalQuote}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="e.g. 1 Year"
             />
           </div>
@@ -347,7 +347,7 @@ export default function VendorQuoteRow({
               value={currentQ.deliveryTerms || ''}
               onChange={e => updateCurrent('deliveryTerms', e.target.value)}
               disabled={isLockedPortalQuote}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="e.g. DDP, FOB"
             />
           </div>
@@ -371,13 +371,13 @@ export default function VendorQuoteRow({
           {/* Commercial Score — always editable by SCM Buyer */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-              Commercial Score: <span className="text-teal-600 font-bold">{currentQ.commercialScore}</span>
+              Commercial Score: <span className="text-[#1E88E5] font-bold">{currentQ.commercialScore}</span>
             </label>
             <input
               type="range" min="0" max="100"
               value={currentQ.commercialScore}
               onChange={e => handleScoreChange('commercialScore', parseInt(e.target.value))}
-              className="w-full cursor-pointer accent-teal-600"
+              className="w-full cursor-pointer accent-[#1E88E5]"
             />
           </div>
 
@@ -390,7 +390,7 @@ export default function VendorQuoteRow({
                   <i className="ri-lock-line text-xs mr-0.5"></i>Tech Evaluator
                 </span>
               ) : (
-                <span className="text-teal-600 font-bold">{currentQ.technicalScore}</span>
+                <span className="text-[#1E88E5] font-bold">{currentQ.technicalScore}</span>
               )}
             </label>
             {isFromPortal ? (
@@ -407,7 +407,7 @@ export default function VendorQuoteRow({
                 type="range" min="0" max="100"
                 value={currentQ.technicalScore}
                 onChange={e => handleScoreChange('technicalScore', parseInt(e.target.value))}
-                className="w-full cursor-pointer accent-teal-600"
+                className="w-full cursor-pointer accent-[#1E88E5]"
               />
             )}
           </div>
@@ -419,12 +419,12 @@ export default function VendorQuoteRow({
               <div className="flex-1 bg-gray-200 rounded-full h-2.5">
                 <div
                   className={`h-2.5 rounded-full transition-all ${
-                    isBest ? 'bg-emerald-500' : 'bg-teal-500'
+                    isBest ? 'bg-emerald-500' : 'bg-[#1E88E5]'
                   }`}
                   style={{ width: `${currentQ.overallScore}%` }}
                 ></div>
               </div>
-              <span className={`text-base font-bold w-10 text-right ${isBest ? 'text-emerald-600' : 'text-teal-600'}`}>
+              <span className={`text-base font-bold w-10 text-right ${isBest ? 'text-emerald-600' : 'text-[#1E88E5]'}`}>
                 {currentQ.overallScore}
               </span>
             </div>
@@ -434,17 +434,17 @@ export default function VendorQuoteRow({
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Quotation File</label>
             {isLockedPortalQuote && currentQ.quotationFileName ? (
-              <div className="flex items-center gap-2 px-3 py-2 bg-teal-50 border border-teal-200 rounded-lg">
-                <i className="ri-file-check-line text-teal-600 text-sm"></i>
-                <span className="text-xs text-teal-700 font-medium truncate max-w-[120px]" title={currentQ.quotationFileName}>
+              <div className="flex items-center gap-2 px-3 py-2 bg-[#E3F2FD] border border-[#90CAF9] rounded-lg">
+                <i className="ri-file-check-line text-[#1E88E5] text-sm"></i>
+                <span className="text-xs text-[#1565C0] font-medium truncate max-w-[120px]" title={currentQ.quotationFileName}>
                   {currentQ.quotationFileName}
                 </span>
-                <span className="text-xs text-teal-500 ml-auto whitespace-nowrap">Portal Upload</span>
+                <span className="text-xs text-[#1E88E5] ml-auto whitespace-nowrap">Portal Upload</span>
               </div>
             ) : (
               <>
-                <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-teal-400 hover:bg-teal-50 transition-colors text-xs text-gray-500 whitespace-nowrap">
-                  <i className="ri-upload-2-line text-teal-500"></i>
+                <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-[#64B5F6] hover:bg-[#E3F2FD] transition-colors text-xs text-gray-500 whitespace-nowrap">
+                  <i className="ri-upload-2-line text-[#1E88E5]"></i>
                   {currentQ.quotationFileName ? 'Change File' : 'Upload File'}
                   <input
                     type="file"
@@ -475,7 +475,7 @@ export default function VendorQuoteRow({
               value={currentQ.vendorNotes || ''}
               onChange={e => updateCurrent('vendorNotes', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-[#1E88E5]"
               placeholder="Additional comments from vendor or manual entry notes"
             />
           </div>
@@ -488,7 +488,7 @@ export default function VendorQuoteRow({
               type="button"
               onClick={() => onSaveManual!(quotation.id)}
               disabled={saving}
-              className="px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
+              className="px-5 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
             >
               <i className="ri-save-line"></i>
               {saving ? 'Saving...' : 'Save Quotation & Notify Requester'}
@@ -501,11 +501,11 @@ export default function VendorQuoteRow({
           <label className="flex items-center gap-2.5 cursor-pointer select-none">
             <div
               onClick={() => onToggleRecommend(quotation.id)}
-              className={`w-11 h-6 rounded-full relative transition-colors ${isRecommended ? 'bg-teal-600' : 'bg-gray-300'}`}
+              className={`w-11 h-6 rounded-full relative transition-colors ${isRecommended ? 'bg-[#1E88E5]' : 'bg-gray-300'}`}
             >
               <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isRecommended ? 'right-0.5' : 'left-0.5'}`}></span>
             </div>
-            <span className={`text-sm font-medium ${isRecommended ? 'text-teal-700' : 'text-gray-500'}`}>
+            <span className={`text-sm font-medium ${isRecommended ? 'text-[#1565C0]' : 'text-gray-500'}`}>
               {isRecommended ? 'Recommended Vendor' : 'Mark as Recommended'}
             </span>
           </label>

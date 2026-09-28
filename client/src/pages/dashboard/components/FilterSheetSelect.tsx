@@ -100,11 +100,11 @@ export default function FilterSheetSelect({
                     setOpen(false);
                   }}
                   className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px] ${
-                    active ? 'bg-teal-50 font-semibold text-teal-800' : 'text-slate-700 hover:bg-slate-50'
+                    active ? 'bg-[#E3F2FD] font-semibold text-[#1565C0]' : 'text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <span className="truncate">{opt.label}</span>
-                  {active ? <i className="ri-check-line text-teal-600"></i> : null}
+                  {active ? <i className="ri-check-line text-[#1E88E5]"></i> : null}
                 </button>
               );
             })}
@@ -127,7 +127,7 @@ export default function FilterSheetSelect({
         aria-expanded={open}
         aria-label={label}
         className={`flex h-11 w-full items-center gap-2 rounded-2xl border border-[#E6E8F0] bg-white px-3 text-left text-[13px] text-slate-700 ${
-          disabled ? 'cursor-not-allowed bg-slate-50 text-slate-600' : 'hover:border-teal-300'
+          disabled ? 'cursor-not-allowed bg-slate-50 text-slate-600' : 'hover:border-[#90CAF9]'
         }`}
       >
         <span className="min-w-0 flex-1 truncate">{display}</span>

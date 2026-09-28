@@ -135,7 +135,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
 
         {/* Header */}
-        <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-5 flex-shrink-0">
+        <div className="bg-gradient-to-r from-[#1E88E5] to-[#1565C0] px-6 py-5 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
@@ -143,7 +143,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
               </div>
               <div>
                 <h2 className="text-white font-bold text-lg">GRN Approval — PO vs GRN Check</h2>
-                <p className="text-teal-100 text-xs mt-0.5">{grn.grnNumber} · {grn.vendor} · {grn.poNumber}</p>
+                <p className="text-sky-100 text-xs mt-0.5">{grn.grnNumber} · {grn.vendor} · {grn.poNumber}</p>
               </div>
             </div>
             <button onClick={handleClose} className="w-8 h-8 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-lg transition-colors cursor-pointer">
@@ -179,7 +179,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
               );
             })}
             <div className="ml-auto flex items-center gap-2">
-              <span className="text-teal-100 text-xs">{summary.matched}/{summary.totalItems} items fully matched</span>
+              <span className="text-sky-100 text-xs">{summary.matched}/{summary.totalItems} items fully matched</span>
             </div>
           </div>
         </div>
@@ -195,7 +195,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
               key={tab.key}
               onClick={() => setActiveTab(tab.key as 'summary' | 'items' | 'po')}
               className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
-                activeTab === tab.key ? 'border-teal-600 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-800'
+                activeTab === tab.key ? 'border-[#1E88E5] text-[#1E88E5]' : 'border-transparent text-gray-500 hover:text-gray-800'
               }`}
             >
               <i className={tab.icon}></i>{tab.label}
@@ -276,9 +276,9 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
 
               {/* GRN vs PO Value Comparison */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-teal-50 border border-teal-100 rounded-xl p-4">
+                <div className="bg-[#E3F2FD] border border-[#BBDEFB] rounded-xl p-4">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                    <i className="ri-file-text-line text-teal-500"></i> PO Value
+                    <i className="ri-file-text-line text-[#1E88E5]"></i> PO Value
                   </p>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
@@ -289,16 +289,16 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
                       <span className="text-gray-600">GST ({po?.gstPercentage ?? 0}%)</span>
                       <span className="font-semibold">{formatCurrency(po?.taxAmount ?? 0)}</span>
                     </div>
-                    <div className="flex justify-between text-base font-bold pt-2 border-t border-teal-200">
+                    <div className="flex justify-between text-base font-bold pt-2 border-t border-[#90CAF9]">
                       <span>Grand Total</span>
-                      <span className="text-teal-600">{formatCurrency(po?.grandTotal ?? 0)}</span>
+                      <span className="text-[#1E88E5]">{formatCurrency(po?.grandTotal ?? 0)}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                    <i className="ri-truck-line text-teal-500"></i> GRN Received Value
+                    <i className="ri-truck-line text-[#1E88E5]"></i> GRN Received Value
                   </p>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
@@ -430,7 +430,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                    <i className="ri-file-text-line text-teal-500"></i> PO Information
+                    <i className="ri-file-text-line text-[#1E88E5]"></i> PO Information
                   </p>
                   <div className="space-y-2">
                     {[
@@ -448,9 +448,9 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
                     ))}
                   </div>
                 </div>
-                <div className="bg-teal-50 border border-teal-100 rounded-xl p-4">
+                <div className="bg-[#E3F2FD] border border-[#BBDEFB] rounded-xl p-4">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                    <i className="ri-store-2-line text-teal-500"></i> Vendor & Department
+                    <i className="ri-store-2-line text-[#1E88E5]"></i> Vendor & Department
                   </p>
                   <div className="space-y-2">
                     {[
@@ -502,7 +502,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-teal-50 border-t-2 border-teal-200">
+                  <tfoot className="bg-[#E3F2FD] border-t-2 border-[#90CAF9]">
                     <tr>
                       <td colSpan={3} className="px-4 py-2 text-sm text-gray-600 text-right">Subtotal</td>
                       <td colSpan={2} className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">{formatCurrency(po.subtotal)}</td>
@@ -513,7 +513,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
                     </tr>
                     <tr>
                       <td colSpan={3} className="px-4 py-3 text-base font-bold text-gray-900 text-right">Grand Total</td>
-                      <td colSpan={2} className="px-4 py-3 text-base font-bold text-teal-600 text-right">{formatCurrency(po.grandTotal)}</td>
+                      <td colSpan={2} className="px-4 py-3 text-base font-bold text-[#1E88E5] text-right">{formatCurrency(po.grandTotal)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -536,7 +536,7 @@ export default function GRNApprovalModal({ isOpen, grn, onApprove, onReject, onC
                 placeholder={action === 'approve' ? 'Enter approval remarks...' : 'Enter rejection reason...'}
                 rows={2}
                 maxLength={500}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 resize-none bg-white"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] resize-none bg-white"
               />
               <p className="text-xs text-gray-400 text-right mt-1">{remarks.length}/500</p>
             </div>

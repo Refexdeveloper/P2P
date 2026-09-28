@@ -20,12 +20,14 @@ interface ApprovalModalProps {
   askBusinessApproval?: boolean;
   /** Cloud Subscription Mugesh invoice-upload task */
   requireInvoiceUpload?: boolean;
+  /** Load full admin send-back catalog (any step, incl. Edit PR + RFQ Entry) */
+  useAdminTargets?: boolean;
   onConfirm: (
     remarks: string,
     returnTo?: string,
     goToBusinessApproval?: boolean,
     invoice?: InvoiceUploadPayload
-  ) => void;
+  ) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -52,6 +54,7 @@ export default function ApprovalModal({
   prId,
   askBusinessApproval = false,
   requireInvoiceUpload = false,
+  useAdminTargets = false,
   onConfirm,
   onClose,
 }: ApprovalModalProps) {
@@ -64,6 +67,10 @@ export default function ApprovalModal({
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  /** If API says Business choice is required, force-show Yes/No even if task flag was missing */
+  const [forceAskBusiness, setForceAskBusiness] = useState(false);
+
+  const needsBusinessChoice = Boolean(askBusinessApproval || forceAskBusiness);
 
   useEffect(() => {
     if (!isOpen) {
@@ -75,6 +82,7 @@ export default function ApprovalModal({
       setInvoiceFile(null);
       setSubmitting(false);
       setError('');
+      setForceAskBusiness(false);
       return;
     }
     if (type !== 'return' || !prId) return;
@@ -82,7 +90,7 @@ export default function ApprovalModal({
     let cancelled = false;
     setTargetsLoading(true);
     prApi
-      .sendBackTargets(prId)
+      .sendBackTargets(prId, useAdminTargets ? { admin: true } : undefined)
       .then((res) => {
         if (cancelled) return;
         const list = res.data || [];
@@ -101,7 +109,7 @@ export default function ApprovalModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, type, prId]);
+  }, [isOpen, type, prId, useAdminTargets]);
 
   if (!isOpen) return null;
 
@@ -111,12 +119,12 @@ export default function ApprovalModal({
         ? 'Upload Cloud Subscription Invoice'
         : 'Approve Purchase Request',
       icon: requireInvoiceUpload ? 'ri-file-upload-line' : 'ri-check-double-line',
-      headerBg: requireInvoiceUpload ? 'bg-teal-50' : 'bg-emerald-50',
-      iconBg: requireInvoiceUpload ? 'bg-teal-100' : 'bg-emerald-100',
-      iconColor: requireInvoiceUpload ? 'text-teal-600' : 'text-emerald-600',
-      titleColor: requireInvoiceUpload ? 'text-teal-900' : 'text-emerald-900',
+      headerBg: requireInvoiceUpload ? 'bg-[#E3F2FD]' : 'bg-emerald-50',
+      iconBg: requireInvoiceUpload ? 'bg-[#E3F2FD]' : 'bg-emerald-100',
+      iconColor: requireInvoiceUpload ? 'text-[#1E88E5]' : 'text-emerald-600',
+      titleColor: requireInvoiceUpload ? 'text-[#0D47A1]' : 'text-emerald-900',
       btnBg: requireInvoiceUpload
-        ? 'bg-teal-600 hover:bg-teal-700'
+        ? 'bg-[#1E88E5] hover:bg-[#1565C0]'
         : 'bg-emerald-600 hover:bg-emerald-700',
       btnIcon: requireInvoiceUpload ? 'ri-upload-2-line' : 'ri-check-double-line',
       btnText: requireInvoiceUpload ? 'Submit Invoice' : 'Confirm Approve',
@@ -152,6 +160,7 @@ export default function ApprovalModal({
   }[type];
 
   const handleSubmit = async () => {
+    if (submitting) return;
     if (config.requireRemarks && !remarks.trim()) {
       setError('Please enter remarks');
       return;
@@ -165,8 +174,8 @@ export default function ApprovalModal({
       setError('Select a previous stage to send back to');
       return;
     }
-    if (type === 'approve' && askBusinessApproval && goToBusinessApproval === null) {
-      setError('Select Yes or No for Business / CFO Approval');
+    if (type === 'approve' && needsBusinessChoice && goToBusinessApproval === null) {
+      setError('Select Yes or No for Business / CFO Approval before approving');
       return;
     }
     if (type === 'approve' && requireInvoiceUpload) {
@@ -176,10 +185,12 @@ export default function ApprovalModal({
       }
     }
 
+    setSubmitting(true);
+    setError('');
+
     let invoice: InvoiceUploadPayload | undefined;
     if (type === 'approve' && requireInvoiceUpload && invoiceFile) {
       try {
-        setSubmitting(true);
         const fileData = await readFileAsBase64(invoiceFile);
         invoice = {
           fileName: invoiceFile.name,
@@ -193,17 +204,30 @@ export default function ApprovalModal({
       }
     }
 
-    onConfirm(
-      remarks.trim(),
-      type === 'return' ? selectedReturnTo : undefined,
-      type === 'approve' && askBusinessApproval ? Boolean(goToBusinessApproval) : undefined,
-      invoice
-    );
-    setRemarks('');
-    setReturnTo('');
-    setInvoiceFile(null);
-    setSubmitting(false);
-    setError('');
+    try {
+      await onConfirm(
+        remarks.trim(),
+        type === 'return' ? selectedReturnTo : undefined,
+        type === 'approve' && needsBusinessChoice ? Boolean(goToBusinessApproval) : undefined,
+        invoice
+      );
+      // Parent closes modal on success — only reset local fields here
+      setRemarks('');
+      setReturnTo('');
+      setInvoiceFile(null);
+      setError('');
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Approval failed. Please try again or contact support.';
+      if (/business\s*\/\s*cfo|go to business/i.test(message)) {
+        setForceAskBusiness(true);
+      }
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleClose = () => {
@@ -215,8 +239,11 @@ export default function ApprovalModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
+    <div className="fixed inset-0 z-[80] flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={submitting ? undefined : handleClose}
+      />
 
       <div
         className={`relative bg-white rounded-xl shadow-2xl w-full mx-4 overflow-hidden ${
@@ -254,9 +281,9 @@ export default function ApprovalModal({
           </div>
 
           {type === 'approve' && requireInvoiceUpload && (
-            <div className="mb-4 rounded-lg border border-teal-200 bg-teal-50/70 p-3 space-y-3">
-              <p className="text-sm font-semibold text-teal-900">Upload invoice</p>
-              <p className="text-xs text-teal-800 leading-relaxed">
+            <div className="mb-4 rounded-lg border border-[#90CAF9] bg-[#E3F2FD]/70 p-3 space-y-3">
+              <p className="text-sm font-semibold text-[#0D47A1]">Upload invoice</p>
+              <p className="text-xs text-[#1565C0] leading-relaxed">
                 Cloud Subscription: Mugesh uploads the invoice here. After submit, mail goes to
                 Requester, L1, L2 (Srivaths), and accounts_rgml_refexev@refex.co.in.
               </p>
@@ -266,7 +293,7 @@ export default function ApprovalModal({
                   type="date"
                   value={invoiceDate}
                   onChange={(e) => setInvoiceDate(e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 bg-white"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] bg-white"
                 />
               </div>
               <div>
@@ -280,19 +307,29 @@ export default function ApprovalModal({
                     setInvoiceFile(e.target.files?.[0] || null);
                     setError('');
                   }}
-                  className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-teal-600 file:text-white file:text-sm file:font-semibold file:cursor-pointer"
+                  className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-[#1E88E5] file:text-white file:text-sm file:font-semibold file:cursor-pointer"
                 />
                 {invoiceFile && (
-                  <p className="text-xs text-teal-800 mt-1.5 truncate">Selected: {invoiceFile.name}</p>
+                  <p className="text-xs text-[#1565C0] mt-1.5 truncate">Selected: {invoiceFile.name}</p>
                 )}
               </div>
             </div>
           )}
 
-          {type === 'approve' && askBusinessApproval && (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-sm font-semibold text-amber-900 mb-1">Go to Business Approval?</p>
+          {type === 'approve' && needsBusinessChoice && (
+            <div
+              className={`mb-4 rounded-lg border p-3 ${
+                goToBusinessApproval === null
+                  ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-200'
+                  : 'border-amber-200 bg-amber-50'
+              }`}
+            >
+              <p className="text-sm font-semibold text-amber-900 mb-1">
+                Go to Business Approval? <span className="text-red-500">*</span>
+              </p>
               <p className="text-xs text-amber-800 mb-3 leading-relaxed">
+                Required before L1 approve.
+                <br />
                 <strong>Yes</strong> → L2 Manager → CFO (if a CFO user is available)
                 <br />
                 <strong>No</strong> → L2 Manager → SCM RFQ (skip CFO)
@@ -300,11 +337,12 @@ export default function ApprovalModal({
               <div className="flex gap-2">
                 <button
                   type="button"
+                  disabled={submitting}
                   onClick={() => {
                     setGoToBusinessApproval(true);
                     setError('');
                   }}
-                  className={`flex-1 px-3 py-2.5 text-sm font-semibold rounded-lg border cursor-pointer text-center ${
+                  className={`flex-1 px-3 py-2.5 text-sm font-semibold rounded-lg border cursor-pointer text-center disabled:opacity-60 ${
                     goToBusinessApproval === true
                       ? 'bg-emerald-600 text-white border-emerald-600'
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -314,13 +352,14 @@ export default function ApprovalModal({
                 </button>
                 <button
                   type="button"
+                  disabled={submitting}
                   onClick={() => {
                     setGoToBusinessApproval(false);
                     setError('');
                   }}
-                  className={`flex-1 px-3 py-2.5 text-sm font-semibold rounded-lg border cursor-pointer text-center ${
+                  className={`flex-1 px-3 py-2.5 text-sm font-semibold rounded-lg border cursor-pointer text-center disabled:opacity-60 ${
                     goToBusinessApproval === false
-                      ? 'bg-teal-600 text-white border-teal-600'
+                      ? 'bg-[#1E88E5] text-white border-[#1E88E5]'
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                   }`}
                 >
@@ -344,15 +383,19 @@ export default function ApprovalModal({
                 disabled={targetsLoading || !targets.length}
                 className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 bg-white"
               >
-                {targetsLoading && <option value="">Loading previous stages...</option>}
-                {!targetsLoading && !targets.length && <option value="">No previous stages</option>}
+                {targetsLoading && <option value="">Loading stages...</option>}
+                {!targetsLoading && !targets.length && <option value="">No stages available</option>}
                 {targets.map((t) => (
                   <option key={t.key} value={t.key}>
                     {t.label}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">PR will return to the selected stage for action.</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {useAdminTargets
+                  ? 'Admin: any step — Requester (Edit PR), RFQ Entry, or approval stages.'
+                  : 'PR will return to the selected previous stage for action.'}
+              </p>
             </div>
           )}
 
@@ -372,21 +415,24 @@ export default function ApprovalModal({
               className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none ${
                 error
                   ? 'border-red-300 focus:ring-red-500/20 focus:border-red-400'
-                  : 'border-gray-200 focus:ring-teal-500/20 focus:border-teal-400'
+                  : 'border-gray-200 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]'
               }`}
             />
             <div className="flex items-center justify-between mt-1">
-              {error ? (
-                <p className="text-xs text-red-600 flex items-center gap-1">
-                  <i className="ri-error-warning-line" />
-                  {error}
-                </p>
-              ) : (
-                <span />
-              )}
+              <span />
               <span className="text-xs text-gray-400">{remarks.length}/500</span>
             </div>
           </div>
+
+          {error ? (
+            <div
+              role="alert"
+              className="mt-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-800 flex items-start gap-2"
+            >
+              <i className="ri-error-warning-fill text-base shrink-0 mt-0.5" />
+              <span className="break-words font-medium">{error}</span>
+            </div>
+          ) : null}
         </div>
 
         <div className="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3 border-t border-gray-100">

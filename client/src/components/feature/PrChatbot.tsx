@@ -852,8 +852,8 @@ export default function PrChatbot() {
             ))}
 
             {items.length > 0 && step !== 'review' && step !== 'done' && (
-              <div className="rounded-xl border border-teal-200 bg-teal-50 p-2">
-                <p className="px-1 pb-1.5 text-[11px] font-semibold text-teal-800">
+              <div className="rounded-xl border border-[#90CAF9] bg-[#E3F2FD] p-2">
+                <p className="px-1 pb-1.5 text-[11px] font-semibold text-[#1565C0]">
                   Line items added ({items.length})
                 </p>
                 <ul className="space-y-1">
@@ -1107,7 +1107,7 @@ export default function PrChatbot() {
                 </Link>
                 <Link
                   to="/requester/track-pr"
-                  className="flex-1 rounded-lg bg-teal-600 px-3 py-2 text-center text-xs font-medium text-white"
+                  className="flex-1 rounded-lg bg-[#1E88E5] px-3 py-2 text-center text-xs font-medium text-white"
                 >
                   Track PR
                 </Link>

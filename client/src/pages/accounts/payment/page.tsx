@@ -148,7 +148,7 @@ export default function PaymentPage() {
     <DashboardLayout>
       <div className="p-6 space-y-6">
         {toast && (
-          <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-teal-700 text-white text-sm rounded-lg shadow-lg">
+          <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-[#1565C0] text-white text-sm rounded-lg shadow-lg">
             {toast}
           </div>
         )}
@@ -160,11 +160,11 @@ export default function PaymentPage() {
               Upload payment proof for manager-approved invoices (updates PO to Paid)
             </p>
           </div>
-          <div className="flex items-center space-x-2 bg-teal-50 border border-teal-200 rounded-lg px-4 py-2">
-            <i className="ri-bank-card-line text-teal-600 text-base"></i>
-            <span className="text-sm font-medium text-teal-700">Accounts Team</span>
+          <div className="flex items-center space-x-2 bg-[#E3F2FD] border border-[#90CAF9] rounded-lg px-4 py-2">
+            <i className="ri-bank-card-line text-[#1E88E5] text-base"></i>
+            <span className="text-sm font-medium text-[#1565C0]">Accounts Team</span>
             {pendingCount > 0 && (
-              <span className="ml-1 px-2 py-0.5 bg-teal-600 text-white text-xs font-semibold rounded-full">
+              <span className="ml-1 px-2 py-0.5 bg-[#1E88E5] text-white text-xs font-semibold rounded-full">
                 {pendingCount}
               </span>
             )}
@@ -205,7 +205,7 @@ export default function PaymentPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search invoice / PO / vendor"
-                className="pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                className="pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
               />
             </div>
           </div>

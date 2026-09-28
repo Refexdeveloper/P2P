@@ -144,7 +144,7 @@ export default function RefexOneLaunchPage() {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-10 max-w-lg w-full text-center">
         {!error ? (
           <>
-            <i className="ri-loader-4-line text-3xl text-teal-600 animate-spin"></i>
+            <i className="ri-loader-4-line text-3xl text-[#1E88E5] animate-spin"></i>
             <h1 className="text-lg font-bold text-slate-900 mt-4">P2P SSO</h1>
             <p className="text-sm text-slate-600 mt-2">{status}</p>
           </>

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import SoftInsightCard from '../../../components/base/SoftInsightCard';
+import { PM_PAGE_BG } from '../../../constants/pmTheme';
 import MasterImportExport from '../../../components/feature/MasterImportExport';
 import { vendorApi, VendorRecord, VendorPagination, VendorListStats } from '../../../services/api';
 import CreateVendorForm from './components/CreateVendorForm';
@@ -29,6 +31,7 @@ export default function VendorMasterPage() {
   const [vendorDetails, setVendorDetails] = useState<Record<number, VendorRecord>>({});
   const [detailsLoading, setDetailsLoading] = useState<number | null>(null);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -137,6 +140,33 @@ export default function VendorMasterPage() {
     loadVendors();
   };
 
+  const handleDelete = async (vendor: VendorRecord) => {
+    const label = vendor.vendorCode || vendor.name || `#${vendor.id}`;
+    if (
+      !window.confirm(
+        `Delete vendor ${label}?\n\nThis removes the vendor and uploaded KYC documents. Existing POs keep the vendor name/email already saved.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(vendor.id);
+    try {
+      const res = await vendorApi.delete(vendor.id);
+      if (expandedRow === vendor.id) setExpandedRow(null);
+      setVendorDetails((prev) => {
+        const next = { ...prev };
+        delete next[vendor.id];
+        return next;
+      });
+      showToast(res.message || 'Vendor deleted', 'success');
+      await loadVendors();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete vendor', 'error');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const toggleRow = async (vendorId: number) => {
     if (expandedRow === vendorId) {
       setExpandedRow(null);
@@ -155,16 +185,18 @@ export default function VendorMasterPage() {
     }
   };
 
-  const COL_COUNT = 9;
+  const COL_COUNT = 8;
   const rangeFrom = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
   const rangeTo = Math.min(pagination.page * pagination.limit, pagination.total);
 
   return (
     <DashboardLayout>
-      <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+      <div className="space-y-4 p-2 pb-6 sm:p-4 lg:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-0 sm:pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Vendor Master</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage registered vendors for RFQ and PO workflows</p>
+          <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl">Vendor Master</h1>
+          <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">Manage registered vendors for RFQ and PO workflows</p>
         </div>
         {!showCreate && !editingVendor && (
           <div className="flex items-center gap-3 flex-wrap">
@@ -179,14 +211,14 @@ export default function VendorMasterPage() {
             />
             <button
               onClick={openCreate}
-              className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700 transition-colors cursor-pointer shadow-sm"
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#1E88E5] text-white text-sm font-semibold rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer shadow-sm"
             >
               <i className="ri-user-add-line"></i>
               Create Vendor
             </button>
           </div>
         )}
-      </div>
+      </header>
 
       {showCreate ? (
         <CreateVendorForm onSuccess={handleCreated} onCancel={closeCreate} />
@@ -194,41 +226,31 @@ export default function VendorMasterPage() {
         <CreateVendorForm vendor={editingVendor} onSuccess={handleUpdated} onCancel={closeEdit} />
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-6">
-            {[
-              { label: 'Total Vendors', value: stats.total, icon: 'ri-store-2-line', color: 'text-teal-600', bg: 'bg-teal-50' },
-              { label: 'Companies', value: stats.company, icon: 'ri-building-line', color: 'text-blue-600', bg: 'bg-blue-50' },
-              { label: 'Individuals', value: stats.individual, icon: 'ri-user-line', color: 'text-purple-600', bg: 'bg-purple-50' },
-            ].map((card) => (
-              <div key={card.label} className="bg-white rounded-xl border border-gray-200 p-5 flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">{card.label}</p>
-                  <p className="text-3xl font-bold text-gray-900">{card.value}</p>
-                </div>
-                <div className={`w-12 h-12 ${card.bg} rounded-xl flex items-center justify-center`}>
-                  <i className={`${card.icon} text-2xl ${card.color}`}></i>
-                </div>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3 sm:gap-4">
+            <SoftInsightCard title="Total Vendors" value={stats.total} icon="ri-store-2-line" theme="blue" />
+            <SoftInsightCard title="Companies" value={stats.company} icon="ri-building-line" theme="cyan" />
+            <SoftInsightCard title="Individuals" value={stats.individual} icon="ri-user-line" theme="violet" />
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-base font-bold text-gray-900">Vendor List</h2>
-                <p className="text-xs text-gray-400 mt-1">Click any row to expand vendor details and documents</p>
-              </div>
-              <div className="relative">
-                <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+          <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+            <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)' }} />
+            <div className="relative z-[1]">
+              <div className="relative min-w-[220px] max-w-md">
+                <i className="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input
                   type="text"
                   placeholder="Search vendor, email, code..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 w-full sm:w-72"
+                  className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
                 />
               </div>
             </div>
+          </div>
+
+          <div className="relative overflow-x-clip rounded-2xl border border-transparent bg-[#F8FAFC]/90 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+            <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(248,250,252,0) 55%)' }} />
+            <div className="relative z-[1]">
 
             {loading ? (
               <p className="px-6 py-12 text-sm text-gray-500 text-center">Loading vendors...</p>
@@ -238,78 +260,59 @@ export default function VendorMasterPage() {
                 <p className="text-gray-500 text-sm font-medium">No vendors found</p>
                 <button
                   onClick={openCreate}
-                  className="mt-4 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 cursor-pointer"
+                  className="mt-4 px-4 py-2 text-sm font-medium text-[#1E88E5] bg-[#E3F2FD] rounded-lg hover:bg-[#BBDEFB] cursor-pointer"
                 >
                   Create your first vendor
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-100">
+              <div className="overflow-x-auto px-0 pb-1 pt-1">
+                <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+                  <thead>
                     <tr>
-                      {['', 'Vendor Code', 'Vendor Name', 'Type', 'Email', 'Phone', 'Category', 'Created', 'Actions'].map((h) => (
-                        <th key={h || 'expand'} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                          {h}
-                        </th>
-                      ))}
+                      <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Vendor Code</th>
+                      <th className="w-[240px] max-w-[240px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Vendor Name</th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Type</th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Email</th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Phone</th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Category</th>
+                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Created</th>
+                      <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {vendors.map((v) => {
                       const isExpanded = expandedRow === v.id;
                       const detail = vendorDetails[v.id] || v;
+                      const rowBorder = isExpanded ? 'border-[#90CAF9]' : 'border-transparent group-hover:border-[#90CAF9]';
+                      const rowShadow = isExpanded ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]' : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
 
                       return (
                         <Fragment key={v.id}>
-                          <tr
-                            onClick={() => toggleRow(v.id)}
-                            className={`border-b transition-colors cursor-pointer ${
-                              isExpanded
-                                ? 'bg-teal-50 border-teal-200'
-                                : 'hover:bg-teal-50/40 border-gray-100'
-                            }`}
-                          >
-                            <td className="px-4 py-4 w-8">
-                              <div className={`w-6 h-6 flex items-center justify-center rounded transition-all ${isExpanded ? 'bg-teal-100 text-teal-600' : 'text-gray-400'}`}>
-                                <i className={`text-sm transition-transform duration-200 ${isExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}`}></i>
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className="text-sm font-bold text-teal-600">{v.vendorCode}</span>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <i className="ri-store-2-line text-gray-500 text-sm"></i>
-                                </div>
-                                <span className="text-sm font-medium text-gray-900">{v.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600">{v.vendorType}</span>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{v.email}</td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{v.phone || '—'}</td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{v.category || '—'}</td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{v.createdAt}</td>
-                            <td className="px-4 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleRow(v.id)}
-                                  className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
-                                  title={isExpanded ? 'Collapse' : 'Expand Details'}
-                                >
-                                  <i className={`text-sm ${isExpanded ? 'ri-eye-off-line' : 'ri-eye-line'}`}></i>
+                          <tr className="group cursor-pointer" onClick={() => toggleRow(v.id)}>
+                            <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
+                              <div className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
+                                <button type="button" className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl ${isExpanded ? 'bg-[#1E88E5] text-white' : 'bg-[#E3F2FD] text-[#1E88E5]'}`} aria-expanded={isExpanded}>
+                                  <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-base`}></i>
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => openEdit(v.id)}
-                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Edit Vendor"
-                                >
-                                  <i className="ri-edit-line text-sm"></i>
+                                <span className="text-sm font-bold text-[#1E88E5]">{v.vendorCode}</span>
+                              </div>
+                            </td>
+                            <td className={`w-[240px] max-w-[240px] border border-x-0 bg-white px-3 py-4 align-middle sm:py-5 ${rowBorder}`} title={v.name}>
+                              <p className="truncate text-sm font-semibold text-[#2C3E50]">{v.name}</p>
+                            </td>
+                            <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle text-sm text-slate-600 sm:py-5 ${rowBorder}`}>{v.vendorType}</td>
+                            <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle text-sm text-slate-600 sm:py-5 ${rowBorder}`}>{v.email}</td>
+                            <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle text-sm text-slate-600 sm:py-5 ${rowBorder}`}>{v.phone || '—'}</td>
+                            <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle text-sm text-slate-600 sm:py-5 ${rowBorder}`}>{v.category || '—'}</td>
+                            <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle text-sm text-slate-500 sm:py-5 ${rowBorder}`}>{v.createdAt}</td>
+                            <td className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]" onClick={(e) => e.stopPropagation()}>
+                              <div className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
+                                <button type="button" onClick={() => openEdit(v.id)} className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white" title="Edit Vendor">
+                                  Edit
+                                </button>
+                                <button type="button" onClick={() => void handleDelete(v)} disabled={deletingId === v.id} className="cursor-pointer whitespace-nowrap rounded-xl bg-white px-2.5 py-1.5 text-xs font-semibold text-rose-600 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] disabled:opacity-50" title="Delete Vendor">
+                                  {deletingId === v.id ? 'Deleting…' : 'Delete'}
                                 </button>
                               </div>
                             </td>
@@ -347,7 +350,7 @@ export default function VendorMasterPage() {
                           setPage(1);
                           setExpandedRow(null);
                         }}
-                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
                       >
                         {PAGE_SIZE_OPTIONS.map((size) => (
                           <option key={size} value={size}>{size}</option>
@@ -386,8 +389,11 @@ export default function VendorMasterPage() {
               </div>
             )}
           </div>
+          </div>
         </>
       )}
+      </div>
+      </div>
 
       {toast && (
         <div className="fixed bottom-6 right-6 z-50">

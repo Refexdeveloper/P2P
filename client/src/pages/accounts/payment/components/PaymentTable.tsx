@@ -97,7 +97,7 @@ export default function PaymentTable({
                   <tr
                     key={invoice.invoiceNumber}
                     className={`hover:bg-gray-50 transition-colors cursor-pointer ${
-                      isExpanded ? 'bg-teal-50/30' : ''
+                      isExpanded ? 'bg-[#E3F2FD]/30' : ''
                     }`}
                     onClick={() => onToggleRow(invoice.invoiceNumber)}
                   >
@@ -154,7 +154,7 @@ export default function PaymentTable({
                               e.stopPropagation();
                               onUploadPayment(invoice);
                             }}
-                            className="px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors whitespace-nowrap cursor-pointer"
+                            className="px-3 py-1.5 bg-[#1E88E5] text-white text-xs font-medium rounded-lg hover:bg-[#1565C0] transition-colors whitespace-nowrap cursor-pointer"
                           >
                             <i className="ri-upload-line mr-1"></i>
                             Upload Payment
@@ -167,7 +167,7 @@ export default function PaymentTable({
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={8} className="px-0 py-0 bg-gray-50">
+                      <td colSpan={8} className="px-0 py-0 bg-[#F5F7FA]">
                         {renderExpanded(invoice)}
                       </td>
                     </tr>

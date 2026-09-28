@@ -89,7 +89,7 @@ export default function RenewCloudSubscriptionPage() {
     <DashboardLayout>
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="mb-6">
-          <Link to="/requester/track-pr" className="text-sm text-teal-700 font-medium hover:underline">
+          <Link to="/requester/track-pr" className="text-sm text-[#1565C0] font-medium hover:underline">
             ← Back to Track PR
           </Link>
           <h1 className="text-2xl font-bold text-gray-900 mt-2">Renew Cloud Subscription</h1>
@@ -157,7 +157,7 @@ export default function RenewCloudSubscriptionPage() {
                 </div>
                 <div className="col-span-2">
                   <p className="text-xs text-gray-400">New Subscription Period</p>
-                  <p className="font-medium text-teal-800">
+                  <p className="font-medium text-[#1565C0]">
                     Continues from current expiry for one {freqLabel.toLowerCase() || 'billing'} period
                   </p>
                 </div>
@@ -206,7 +206,7 @@ export default function RenewCloudSubscriptionPage() {
                 <button
                   type="button"
                   onClick={() => setConfirming(true)}
-                  className="px-4 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-[#1E88E5] text-white text-sm font-semibold"
                 >
                   Renew Subscription
                 </button>
@@ -239,7 +239,7 @@ export default function RenewCloudSubscriptionPage() {
                 type="button"
                 disabled={submitting}
                 onClick={() => void continueRenewal()}
-                className="px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-[#1E88E5] text-white text-sm font-semibold disabled:opacity-50"
               >
                 {submitting ? 'Submitting…' : 'Continue Renewal'}
               </button>

@@ -28,7 +28,7 @@ const SLAAlerts: React.FC<SLAAlertsProps> = ({ data }) => {
             className="bg-red-50 border border-red-200 rounded-lg p-3 hover:shadow-sm transition-shadow"
           >
             <div className="flex items-start justify-between mb-2">
-              <div className="text-sm font-medium text-teal-600">{alert.id}</div>
+              <div className="text-sm font-medium text-[#1E88E5]">{alert.id}</div>
               <PriorityBadge priority={alert.priority} />
             </div>
             <div className="text-sm text-gray-900 font-medium mb-2">{alert.title}</div>

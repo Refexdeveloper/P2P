@@ -92,18 +92,18 @@ export default function CloudSubscriptionPanel({
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
-    <div className="bg-white rounded-lg border border-teal-200 p-4">
+    <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
       {sub ? (
         <>
           <div className="flex items-start justify-between gap-3 mb-3">
             <div>
-              <h3 className="text-sm font-semibold text-teal-900">Cloud Subscription</h3>
-              <p className="text-xs text-teal-700 mt-0.5">{sub.subscriptionNumber}</p>
+              <h3 className="text-sm font-semibold text-[#0D47A1]">Cloud Subscription</h3>
+              <p className="text-xs text-[#1565C0] mt-0.5">{sub.subscriptionNumber}</p>
             </div>
             {sub.canRenew && (
               <Link
                 to={`/requester/cloud-subscriptions/${sub.id}/renew`}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-teal-600 text-white"
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#1E88E5] text-white"
               >
                 Renew Subscription
               </Link>
@@ -149,7 +149,7 @@ export default function CloudSubscriptionPanel({
             </div>
           </div>
           {history.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-teal-100">
+            <div className="mt-4 pt-3 border-t border-[#BBDEFB]">
               <h4 className="text-xs font-semibold text-gray-700 mb-2">Renewal History</h4>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-xs">
@@ -177,13 +177,13 @@ export default function CloudSubscriptionPanel({
           )}
         </>
       ) : (
-        <h3 className="text-sm font-semibold text-teal-900 mb-3">Cloud Subscription</h3>
+        <h3 className="text-sm font-semibold text-[#0D47A1] mb-3">Cloud Subscription</h3>
       )}
       {sassInvoice?.hasFile ? (
-        <div className={`${sub ? 'mt-4 pt-3 border-t border-teal-100' : ''}`}>
+        <div className={`${sub ? 'mt-4 pt-3 border-t border-[#BBDEFB]' : ''}`}>
           <h4 className="text-xs font-semibold text-gray-700 mb-2">Uploaded Invoice</h4>
-          <div className="flex items-center gap-3 rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-2">
-            <i className="ri-file-invoice-line text-teal-600"></i>
+          <div className="flex items-center gap-3 rounded-lg border border-[#BBDEFB] bg-[#E3F2FD]/50 px-3 py-2">
+            <i className="ri-file-invoice-line text-[#1E88E5]"></i>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-gray-900 truncate">
                 {sassInvoice.fileName || `Invoice-${sassInvoice.id}`}
@@ -196,7 +196,7 @@ export default function CloudSubscriptionPanel({
               type="button"
               disabled={opening}
               onClick={() => void openInvoice()}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-teal-600 text-white disabled:opacity-50"
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#1E88E5] text-white disabled:opacity-50"
             >
               {opening ? 'Opening…' : 'Open'}
             </button>

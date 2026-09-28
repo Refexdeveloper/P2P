@@ -48,7 +48,27 @@ function mimeFromFileName(fileName: string, fallback = 'application/octet-stream
   return fallback;
 }
 
-export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit }: Props) {
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+const fieldCard =
+  'relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]';
+const fieldLabel = 'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
+
+function Field({ label, value, className = '' }: { label: string; value: string; className?: string }) {
+  return (
+    <div className={`${fieldCard} ${className}`}>
+      <div className="pointer-events-none absolute inset-0" style={softWash} />
+      <div className="relative z-[1]">
+        <p className={fieldLabel}>{label}</p>
+        <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">{value || '—'}</p>
+      </div>
+    </div>
+  );
+}
+
+export default function VendorExpandedRow({ vendor, loading, colSpan = 8, onEdit }: Props) {
   const [activeTab, setActiveTab] = useState<'details' | 'documents'>(
     vendor.documents?.length ? 'documents' : 'details'
   );
@@ -105,161 +125,83 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
     }
   };
 
+  const msmeValue =
+    vendor.msme && vendor.msme !== 'no' && vendor.msme !== 'yes'
+      ? vendor.msme
+      : vendor.msme === 'yes'
+        ? 'Yes'
+        : '—';
+
   return (
     <tr>
-      <td colSpan={colSpan} className="px-0 py-0 bg-slate-50 border-b border-teal-200">
-        <div className="mx-6 my-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                <i className="ri-store-2-line text-teal-600 text-lg"></i>
+      <td colSpan={colSpan} className="bg-transparent p-0">
+        <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
+          <div className="relative z-[1] space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[#2C3E50]">{vendor.name}</p>
+                <p className="text-xs font-semibold text-[#1E88E5]">{vendor.vendorCode}</p>
               </div>
-              <div>
-                <p className="text-sm font-bold text-gray-900">{vendor.name}</p>
-                <p className="text-xs text-teal-600 font-semibold">{vendor.vendorCode}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+                  >
+                    <i className="ri-edit-line"></i> Edit Vendor
+                  </button>
+                )}
+                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold capitalize text-emerald-700">
+                  {vendor.status}
+                </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {onEdit && (
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'details', label: 'Details' },
+                { key: 'documents', label: 'Documents' },
+              ].map((tab) => (
                 <button
+                  key={tab.key}
                   type="button"
-                  onClick={onEdit}
-                  className="px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                  onClick={() => setActiveTab(tab.key as 'details' | 'documents')}
+                  className={`cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-semibold ${
+                    activeTab === tab.key ? 'bg-[#1E88E5] text-white' : 'bg-white text-slate-600'
+                  }`}
                 >
-                  <i className="ri-edit-line"></i> Edit Vendor
+                  {tab.label}
                 </button>
-              )}
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 capitalize">
-                {vendor.status}
-              </span>
+              ))}
             </div>
-          </div>
 
-          <div className="flex border-b border-gray-100 px-6 bg-white">
-            {[
-              { key: 'details', label: 'Vendor Details', icon: 'ri-information-line' },
-              { key: 'documents', label: 'Vendor Documents', icon: 'ri-folder-open-line' },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key as 'details' | 'documents')}
-                className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
-                  activeTab === tab.key
-                    ? 'border-teal-600 text-teal-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                <i className={tab.icon}></i>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="p-6">
             {error && (
-              <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                {error}
-              </div>
+              <div className="rounded-2xl bg-white px-4 py-3 text-sm text-rose-700">{error}</div>
             )}
 
             {loading ? (
-              <p className="text-sm text-gray-500 text-center py-6">Loading vendor details...</p>
+              <p className="py-6 text-center text-sm text-slate-500">Loading vendor details...</p>
             ) : activeTab === 'details' ? (
-              <div className="space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {[
-                    { label: 'Vendor Code', value: vendor.vendorCode, icon: 'ri-hashtag', color: 'text-teal-600' },
-                    { label: 'Vendor Type', value: vendor.vendorType, icon: 'ri-building-line', color: 'text-gray-900' },
-                    { label: 'Category', value: vendor.category || '—', icon: 'ri-price-tag-3-line', color: 'text-gray-900' },
-                    { label: 'Created', value: vendor.createdAt, icon: 'ri-calendar-line', color: 'text-gray-700' },
-                    {
-                      label: 'MSME',
-                      value: vendor.msme && vendor.msme !== 'no' && vendor.msme !== 'yes' ? vendor.msme : (vendor.msme === 'yes' ? 'Yes' : '—'),
-                      icon: 'ri-building-4-line',
-                      color: 'text-gray-900',
-                    },
-                    {
-                      label: 'MSME Category',
-                      value: vendor.msmeType || '—',
-                      icon: 'ri-list-check-2',
-                      color: 'text-gray-900',
-                    },
-                    {
-                      label: 'Documents Complete',
-                      value: vendor.documentsComplete === 'yes' ? 'Yes' : 'No',
-                      icon: 'ri-checkbox-circle-line',
-                      color: vendor.documentsComplete === 'yes' ? 'text-emerald-700' : 'text-amber-700',
-                    },
-                  ].map((item) => (
-                    <div key={item.label} className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                        <i className={`${item.icon} text-xs`}></i>{item.label}
-                      </p>
-                      <p className={`text-sm font-semibold ${item.color}`}>{item.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-contacts-line text-teal-500"></i> Contact Information
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Contact Name</p>
-                        <p className="text-sm font-medium text-gray-900">{vendor.contactName || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Email</p>
-                        <p className="text-sm font-medium text-gray-900">{vendor.email}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Phone</p>
-                        <p className="text-sm font-medium text-gray-900">{vendor.phone || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">GST Number</p>
-                        <p className="text-sm font-medium text-gray-900">{vendor.gstNumber || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">PAN Number</p>
-                        <p className="text-sm font-medium text-gray-900">{vendor.panNumber || '—'}</p>
-                      </div>
-                    </div>
-                    {vendor.address && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <p className="text-xs text-gray-500 mb-0.5">Address</p>
-                        <p className="text-sm text-gray-800 leading-relaxed">{vendor.address}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-teal-50 rounded-lg p-4 border border-teal-100">
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-bank-line text-teal-500"></i> Bank Details
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Bank Name</p>
-                        <p className="text-sm font-medium text-gray-900">{vendor.bankName || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Branch</p>
-                        <p className="text-sm font-medium text-gray-900">{vendor.branch || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Account Number</p>
-                        <p className="text-sm font-medium text-gray-900">{vendor.accountNumber || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">IFSC Code</p>
-                        <p className="text-sm font-medium text-gray-900">{vendor.ifscCode || '—'}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="Vendor Code" value={vendor.vendorCode} />
+                <Field label="Vendor Type" value={vendor.vendorType || '—'} />
+                <Field label="Category" value={vendor.category || '—'} />
+                <Field label="Created" value={vendor.createdAt || '—'} />
+                <Field label="MSME" value={msmeValue} />
+                <Field label="MSME Category" value={vendor.msmeType || '—'} />
+                <Field label="Documents Complete" value={vendor.documentsComplete === 'yes' ? 'Yes' : 'No'} />
+                <Field label="Status" value={vendor.status || '—'} />
+                <Field label="Contact Name" value={vendor.contactName || '—'} />
+                <Field label="Email" value={vendor.email || '—'} />
+                <Field label="Phone" value={vendor.phone || '—'} />
+                <Field label="GST Number" value={vendor.gstNumber || '—'} />
+                <Field label="PAN Number" value={vendor.panNumber || '—'} />
+                <Field label="Bank Name" value={vendor.bankName || '—'} />
+                <Field label="Branch" value={vendor.branch || '—'} />
+                <Field label="Account Number" value={vendor.accountNumber || '—'} />
+                <Field label="IFSC Code" value={vendor.ifscCode || '—'} />
+                <Field label="Address" value={vendor.address || '—'} className="sm:col-span-2 lg:col-span-4" />
               </div>
             ) : (
               <div className="space-y-4">
@@ -267,21 +209,18 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                   {docTypes.map((type) => {
                     const doc = docMap[type];
                     return (
-                      <div
-                        key={type}
-                        className={`rounded-lg border p-4 ${
-                          doc ? 'border-teal-200 bg-teal-50/50' : 'border-gray-200 bg-gray-50'
-                        }`}
-                      >
+                      <div key={type} className={fieldCard}>
+                        <div className="pointer-events-none absolute inset-0" style={softWash} />
+                        <div className="relative z-[1]">
                         <div className="flex items-start gap-3 mb-3">
                           <div
                             className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                              doc ? 'bg-teal-100' : 'bg-gray-100'
+                              doc ? 'bg-[#E3F2FD]' : 'bg-gray-100'
                             }`}
                           >
                             <i
                               className={`ri-file-text-line text-lg ${
-                                doc ? 'text-teal-600' : 'text-gray-300'
+                                doc ? 'text-[#1E88E5]' : 'text-gray-300'
                               }`}
                             ></i>
                           </div>
@@ -309,7 +248,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                             <button
                               type="button"
                               onClick={() => handleViewFile(type)}
-                              className="flex-1 px-2 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer flex items-center justify-center gap-1"
+                              className="flex-1 px-2 py-1.5 text-xs font-medium text-[#1565C0] bg-white border border-[#90CAF9] rounded-lg hover:bg-[#E3F2FD] cursor-pointer flex items-center justify-center gap-1"
                             >
                               <i className="ri-eye-line"></i> View
                             </button>
@@ -322,6 +261,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                             </button>
                           </div>
                         )}
+                        </div>
                       </div>
                     );
                   })}
@@ -334,13 +274,12 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {otherDocs.map((doc) => (
-                        <div
-                          key={doc.docType}
-                          className="rounded-lg border border-teal-200 bg-teal-50/50 p-4"
-                        >
+                        <div key={doc.docType} className={fieldCard}>
+                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                          <div className="relative z-[1]">
                           <div className="flex items-start gap-3 mb-3">
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-teal-100">
-                              <i className="ri-file-text-line text-lg text-teal-600"></i>
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#E3F2FD]">
+                              <i className="ri-file-text-line text-lg text-[#1E88E5]"></i>
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-gray-900 truncate">
@@ -361,7 +300,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                             <button
                               type="button"
                               onClick={() => handleViewFile(doc.docType)}
-                              className="flex-1 px-2 py-1.5 text-xs font-medium text-teal-700 bg-white border border-teal-200 rounded-lg hover:bg-teal-50 cursor-pointer flex items-center justify-center gap-1"
+                              className="flex-1 px-2 py-1.5 text-xs font-medium text-[#1565C0] bg-white border border-[#90CAF9] rounded-lg hover:bg-[#E3F2FD] cursor-pointer flex items-center justify-center gap-1"
                             >
                               <i className="ri-eye-line"></i> View
                             </button>
@@ -372,6 +311,7 @@ export default function VendorExpandedRow({ vendor, loading, colSpan = 9, onEdit
                             >
                               <i className="ri-download-line"></i> Download
                             </button>
+                          </div>
                           </div>
                         </div>
                       ))}

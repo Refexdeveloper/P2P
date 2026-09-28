@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import SoftInsightCard from '../../../components/base/SoftInsightCard';
 import { vendorComparisonData } from '../../../mocks/vendor-comparison-data';
 import type { QuotationFile } from '../../../mocks/vendor-comparison-data';
 import { scmPurchaseRequests } from '../../../mocks/scm-purchase-requests';
@@ -11,7 +12,7 @@ const formatCurrency = (amount: number) =>
 
 const StatusBadge = ({ status }: { status: string }) => {
   const map: Record<string, string> = {
-    'Ready for PO': 'bg-teal-100 text-teal-700 border border-teal-200',
+    'Ready for PO': 'bg-[#E3F2FD] text-[#1565C0] border border-[#90CAF9]',
     'Pending Approval': 'bg-amber-100 text-amber-700 border border-amber-200',
     'PO Approved': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
     'PO Rejected': 'bg-red-100 text-red-700 border border-red-200',
@@ -166,13 +167,13 @@ export default function VendorComparisonPage() {
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
               <button
                 onClick={() => setViewMode('pr-list')}
-                className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${viewMode === 'pr-list' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${viewMode === 'pr-list' ? 'bg-white text-[#1565C0] shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 <i className="ri-list-check-2"></i> PR List
               </button>
               <button
                 onClick={() => setViewMode('comparison')}
-                className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${viewMode === 'comparison' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${viewMode === 'comparison' ? 'bg-white text-[#1565C0] shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 <i className="ri-bar-chart-grouped-line"></i> Comparison View
               </button>
@@ -186,39 +187,27 @@ export default function VendorComparisonPage() {
         {viewMode === 'pr-list' && (
           <>
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-              {[
-                { label: 'Ready for PO', value: stats.readyForPO, icon: 'ri-checkbox-circle-line', bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-100' },
-                { label: 'Pending Approval', value: stats.pending, icon: 'ri-time-line', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
-                { label: 'PO Approved', value: stats.approved, icon: 'ri-check-double-line', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' },
-                { label: 'PO Rejected', value: stats.rejected, icon: 'ri-close-circle-line', bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-100' },
-                { label: 'Total PRs', value: scmPurchaseRequests.length, icon: 'ri-file-list-3-line', bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-100' },
-              ].map((card) => (
-                <div key={card.label} className={`bg-white rounded-xl border ${card.border} p-4 flex items-center justify-between`}>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">{card.label}</p>
-                    <p className="text-2xl font-bold text-gray-900">{card.value}</p>
-                  </div>
-                  <div className={`w-10 h-10 ${card.bg} rounded-xl flex items-center justify-center`}>
-                    <i className={`${card.icon} text-xl ${card.text}`}></i>
-                  </div>
-                </div>
-              ))}
+            <div className="mb-6 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-5">
+              <SoftInsightCard title="Ready for PO" value={stats.readyForPO} icon="ri-checkbox-circle-line" theme="blue" />
+              <SoftInsightCard title="Pending Approval" value={stats.pending} icon="ri-time-line" theme="orange" />
+              <SoftInsightCard title="PO Approved" value={stats.approved} icon="ri-check-double-line" theme="green" />
+              <SoftInsightCard title="PO Rejected" value={stats.rejected} icon="ri-close-circle-line" theme="rose" />
+              <SoftInsightCard title="Total PRs" value={scmPurchaseRequests.length} icon="ri-file-list-3-line" theme="violet" />
             </div>
 
             {/* Total Value Banner */}
-            <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="bg-gradient-to-r from-[#1E88E5] to-[#1565C0] rounded-xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
                   <i className="ri-money-rupee-circle-line text-white text-2xl"></i>
                 </div>
                 <div>
-                  <p className="text-teal-100 text-sm">Total Procurement Value Under Comparison</p>
+                  <p className="text-sky-100 text-sm">Total Procurement Value Under Comparison</p>
                   <p className="text-white text-2xl font-bold">{formatCurrency(stats.totalValue)}</p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-teal-100 text-xs">{stats.readyForPO} PR{stats.readyForPO !== 1 ? 's' : ''} ready for PO creation</p>
+                <p className="text-sky-100 text-xs">{stats.readyForPO} PR{stats.readyForPO !== 1 ? 's' : ''} ready for PO creation</p>
                 <p className="text-white text-sm font-medium mt-0.5">Click any row to expand full details</p>
               </div>
             </div>
@@ -237,7 +226,7 @@ export default function VendorComparisonPage() {
                         placeholder="Search PR, vendor, department..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 w-64"
+                        className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] w-64"
                       />
                     </div>
                     <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -251,7 +240,7 @@ export default function VendorComparisonPage() {
                         <button
                           key={tab.key}
                           onClick={() => setStatusFilter(tab.key)}
-                          className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${statusFilter === tab.key ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${statusFilter === tab.key ? 'bg-white text-[#1565C0] shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                         >
                           {tab.label}
                         </button>
@@ -289,15 +278,15 @@ export default function VendorComparisonPage() {
                             onClick={() => setExpandedRow(prev => prev === pr.id ? null : pr.id)}
                             className={`border-b transition-colors cursor-pointer ${
                               isExpanded
-                                ? 'bg-teal-50 border-teal-200'
+                                ? 'bg-[#E3F2FD] border-[#90CAF9]'
                                 : isReady
-                                ? 'hover:bg-teal-50/30 border-gray-100'
+                                ? 'hover:bg-[#E3F2FD]/30 border-gray-100'
                                 : 'hover:bg-gray-50 border-gray-100'
                             }`}
                           >
                             {/* Expand */}
                             <td className="px-4 py-4 w-8">
-                              <div className={`w-6 h-6 flex items-center justify-center rounded transition-all ${isExpanded ? 'bg-teal-100 text-teal-600' : 'text-gray-400'}`}>
+                              <div className={`w-6 h-6 flex items-center justify-center rounded transition-all ${isExpanded ? 'bg-[#E3F2FD] text-[#1E88E5]' : 'text-gray-400'}`}>
                                 <i className={`text-sm transition-transform duration-200 ${isExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}`}></i>
                               </div>
                             </td>
@@ -319,8 +308,8 @@ export default function VendorComparisonPage() {
                             {/* Requester */}
                             <td className="px-4 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 bg-teal-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <span className="text-teal-700 text-xs font-bold">
+                                <div className="w-7 h-7 bg-[#E3F2FD] rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="text-[#1565C0] text-xs font-bold">
                                     {pr.requester.split(' ').map(n => n[0]).join('')}
                                   </span>
                                 </div>
@@ -424,7 +413,7 @@ export default function VendorComparisonPage() {
                   {(searchTerm || statusFilter !== 'all') && (
                     <button
                       onClick={() => { setSearchTerm(''); setStatusFilter('all'); }}
-                      className="mt-3 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer whitespace-nowrap"
+                      className="mt-3 px-4 py-2 text-sm font-medium text-[#1E88E5] bg-[#E3F2FD] rounded-lg hover:bg-[#BBDEFB] transition-colors cursor-pointer whitespace-nowrap"
                     >
                       Clear filters
                     </button>
@@ -444,9 +433,9 @@ export default function VendorComparisonPage() {
             <div className="bg-white border border-gray-200 rounded-xl px-6 py-4 mb-6 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-gray-900">
-                  RFQ: <span className="text-teal-600">{vendorComparisonData.rfqReference}</span>
+                  RFQ: <span className="text-[#1E88E5]">{vendorComparisonData.rfqReference}</span>
                   <span className="mx-2 text-gray-300">|</span>
-                  PR: <span className="text-teal-600">{vendorComparisonData.prReference}</span>
+                  PR: <span className="text-[#1E88E5]">{vendorComparisonData.prReference}</span>
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">{vendorComparisonData.department} · {vendorComparisonData.requestType} · Budget: {vendorComparisonData.estimatedBudget}</p>
               </div>
@@ -465,8 +454,8 @@ export default function VendorComparisonPage() {
             {/* PR Details Card */}
             <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
-                  <i className="ri-file-list-3-line text-teal-600"></i>
+                <div className="w-8 h-8 bg-[#E3F2FD] rounded-lg flex items-center justify-center">
+                  <i className="ri-file-list-3-line text-[#1E88E5]"></i>
                 </div>
                 <h2 className="text-base font-semibold text-gray-900">Purchase Request Details</h2>
               </div>
@@ -503,7 +492,7 @@ export default function VendorComparisonPage() {
               return (
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
                   <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
-                    <i className="ri-line-chart-line text-teal-600"></i>
+                    <i className="ri-line-chart-line text-[#1E88E5]"></i>
                     <p className="text-sm font-semibold text-gray-900">Price Negotiation Trend</p>
                     <span className="text-xs text-gray-400 ml-1">— how prices changed across rounds</span>
                   </div>
@@ -564,11 +553,11 @@ export default function VendorComparisonPage() {
                                 const isLast = i === rounds.length - 1;
                                 const fileMeta = vendor.quotationFiles?.find((f) => f.fileName === round.quotationFile);
                                 return (
-                                  <td key={i} className={`px-4 py-4 text-center align-top ${isLast ? 'bg-teal-50/60' : ''}`}>
+                                  <td key={i} className={`px-4 py-4 text-center align-top ${isLast ? 'bg-[#E3F2FD]/60' : ''}`}>
                                     <div className="inline-flex flex-col items-center gap-1.5 min-w-[120px]">
                                       <div>
                                         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Price</p>
-                                        <p className={`text-sm font-bold ${isLast ? 'text-teal-700' : 'text-gray-900'}`}>
+                                        <p className={`text-sm font-bold ${isLast ? 'text-[#1565C0]' : 'text-gray-900'}`}>
                                           {formatCurrency(round.quotedPrice)}
                                         </p>
                                         {changePct !== null && (
@@ -603,10 +592,10 @@ export default function VendorComparisonPage() {
                                             title={round.quotationFile}
                                           >
                                             <i className="ri-file-pdf-2-line text-red-500 text-sm flex-shrink-0"></i>
-                                            <span className="text-xs font-medium text-teal-700 truncate">
+                                            <span className="text-xs font-medium text-[#1565C0] truncate">
                                               {round.quotationFile}
                                             </span>
-                                            <i className="ri-eye-line text-teal-600 text-xs flex-shrink-0"></i>
+                                            <i className="ri-eye-line text-[#1E88E5] text-xs flex-shrink-0"></i>
                                           </button>
                                         ) : (
                                           <span className="text-xs text-gray-300">—</span>

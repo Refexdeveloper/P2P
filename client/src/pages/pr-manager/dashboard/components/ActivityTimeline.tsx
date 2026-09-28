@@ -15,7 +15,7 @@ const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ data }) => {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5">
       <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-        <i className="ri-time-line text-teal-600"></i>
+        <i className="ri-time-line text-[#1E88E5]"></i>
         Recent Activity
       </h3>
       <div className="space-y-4 max-h-[400px] overflow-y-auto">

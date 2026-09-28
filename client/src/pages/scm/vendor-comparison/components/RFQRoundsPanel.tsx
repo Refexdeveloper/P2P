@@ -25,7 +25,7 @@ const RoundStatusBadge = ({ status }: { status: QuoteRoundDetail['status'] }) =>
 
 const SourceBadge = ({ source }: { source: QuoteRoundDetail['submittedBy'] }) => (
   source === 'vendor-portal'
-    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-teal-50 text-teal-600 border border-teal-200 whitespace-nowrap">
+    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-[#E3F2FD] text-[#1E88E5] border border-[#90CAF9] whitespace-nowrap">
         <i className="ri-global-line text-xs"></i> Vendor Portal
       </span>
     : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200 whitespace-nowrap">
@@ -54,8 +54,8 @@ function VendorRoundsCard({ vendor }: { vendor: Vendor }) {
       {/* Vendor Header */}
       <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <i className="ri-store-2-line text-teal-600"></i>
+          <div className="w-9 h-9 bg-[#E3F2FD] rounded-lg flex items-center justify-center flex-shrink-0">
+            <i className="ri-store-2-line text-[#1E88E5]"></i>
           </div>
           <div>
             <p className="text-sm font-bold text-gray-900">{vendor.name}</p>
@@ -66,7 +66,7 @@ function VendorRoundsCard({ vendor }: { vendor: Vendor }) {
           {finalRound && (
             <div className="text-right">
               <p className="text-xs text-gray-400">Final Quote</p>
-              <p className="text-sm font-bold text-teal-700">{formatCurrency(finalRound.quotedPrice)}</p>
+              <p className="text-sm font-bold text-[#1565C0]">{formatCurrency(finalRound.quotedPrice)}</p>
             </div>
           )}
           <RoundStatusBadge status={finalRound?.status || 'active'} />
@@ -83,13 +83,13 @@ function VendorRoundsCard({ vendor }: { vendor: Vendor }) {
               onClick={() => setActiveRound(r.round)}
               className={`relative flex flex-col items-center px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                 activeRound === r.round
-                  ? 'border-teal-600 text-teal-700'
+                  ? 'border-[#1E88E5] text-[#1565C0]'
                   : 'border-transparent text-gray-500 hover:text-gray-800'
               }`}
             >
               <span className="flex items-center gap-1.5">
                 <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
-                  activeRound === r.round ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-600'
+                  activeRound === r.round ? 'bg-[#1E88E5] text-white' : 'bg-gray-200 text-gray-600'
                 }`}>{r.round}</span>
                 Round {r.round}
               </span>
@@ -120,8 +120,8 @@ function VendorRoundsCard({ vendor }: { vendor: Vendor }) {
 
           {/* Key metrics grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <div className="bg-teal-50 border border-teal-100 rounded-lg p-3">
-              <p className="text-xs text-teal-600 mb-1 flex items-center gap-1">
+            <div className="bg-[#E3F2FD] border border-[#BBDEFB] rounded-lg p-3">
+              <p className="text-xs text-[#1E88E5] mb-1 flex items-center gap-1">
                 <i className="ri-money-rupee-circle-line"></i> Quoted Price
               </p>
               <p className="text-base font-bold text-gray-900">{formatCurrency(currentRound.quotedPrice)}</p>
@@ -152,7 +152,7 @@ function VendorRoundsCard({ vendor }: { vendor: Vendor }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             {[
               { label: 'Technical Score', value: currentRound.technicalScore, color: 'bg-violet-500' },
-              { label: 'Commercial Score', value: currentRound.commercialScore, color: 'bg-teal-500' },
+              { label: 'Commercial Score', value: currentRound.commercialScore, color: 'bg-[#1E88E5]' },
               { label: 'Overall Score', value: currentRound.overallScore, color: 'bg-emerald-500' },
             ].map((score) => (
               <div key={score.label} className="bg-gray-50 rounded-lg p-3">
@@ -213,7 +213,7 @@ function VendorRoundsCard({ vendor }: { vendor: Vendor }) {
                 <p className="text-xs font-semibold text-gray-800 truncate">{currentRound.quotationFile}</p>
                 <p className="text-xs text-gray-400">Round {currentRound.round} Quotation</p>
               </div>
-              <button className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-teal-600 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer whitespace-nowrap">
+              <button className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-[#1E88E5] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] transition-colors cursor-pointer whitespace-nowrap">
                 <i className="ri-download-line"></i> Download
               </button>
             </div>
@@ -234,9 +234,9 @@ export default function RFQRoundsPanel({ vendors }: RFQRoundsPanelProps) {
   return (
     <div>
       {/* Summary Banner */}
-      <div className="bg-gradient-to-r from-teal-50 to-violet-50 border border-teal-100 rounded-xl p-4 mb-5 flex items-center gap-4">
-        <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
-          <i className="ri-refresh-line text-teal-600 text-lg"></i>
+      <div className="bg-gradient-to-r from-[#E3F2FD] to-violet-50 border border-[#BBDEFB] rounded-xl p-4 mb-5 flex items-center gap-4">
+        <div className="w-10 h-10 bg-[#E3F2FD] rounded-lg flex items-center justify-center flex-shrink-0">
+          <i className="ri-refresh-line text-[#1E88E5] text-lg"></i>
         </div>
         <div className="flex-1">
           <p className="text-sm font-bold text-gray-900">RFQ Negotiation Rounds</p>
@@ -247,7 +247,7 @@ export default function RFQRoundsPanel({ vendors }: RFQRoundsPanelProps) {
         <div className="flex items-center gap-4 text-center">
           <div>
             <p className="text-xs text-gray-500">Total Rounds</p>
-            <p className="text-lg font-bold text-teal-700">{vendorsWithRounds.reduce((s, v) => s + (v.quoteRounds?.length || 0), 0)}</p>
+            <p className="text-lg font-bold text-[#1565C0]">{vendorsWithRounds.reduce((s, v) => s + (v.quoteRounds?.length || 0), 0)}</p>
           </div>
           <div>
             <p className="text-xs text-gray-500">Sent Back</p>
@@ -267,7 +267,7 @@ export default function RFQRoundsPanel({ vendors }: RFQRoundsPanelProps) {
       {/* Price Trend Table — price + file per quotation round */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-5">
         <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
-          <i className="ri-line-chart-line text-teal-600"></i>
+          <i className="ri-line-chart-line text-[#1E88E5]"></i>
           <p className="text-sm font-semibold text-gray-900">Price Negotiation Trend</p>
           <span className="text-xs text-gray-400 ml-1">— how prices changed across rounds</span>
         </div>
@@ -320,11 +320,11 @@ export default function RFQRoundsPanel({ vendors }: RFQRoundsPanelProps) {
                         ? ((change / prevRound.quotedPrice) * 100).toFixed(1)
                         : null;
                       return (
-                        <td key={i} className={`px-4 py-4 text-center align-top ${isLast ? 'bg-teal-50/60' : ''}`}>
+                        <td key={i} className={`px-4 py-4 text-center align-top ${isLast ? 'bg-[#E3F2FD]/60' : ''}`}>
                           <div className="inline-flex flex-col items-center gap-1.5 min-w-[120px]">
                             <div>
                               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Price</p>
-                              <p className={`text-sm font-bold ${isLast ? 'text-teal-700' : 'text-gray-900'}`}>
+                              <p className={`text-sm font-bold ${isLast ? 'text-[#1565C0]' : 'text-gray-900'}`}>
                                 {formatCurrency(round.quotedPrice)}
                               </p>
                               {changePct !== null && (

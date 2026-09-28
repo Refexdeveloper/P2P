@@ -139,7 +139,7 @@ export default function ItemMasterPage() {
             />
             <button
               onClick={openCreate}
-              className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer flex items-center gap-2"
+              className="px-4 py-2.5 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] cursor-pointer flex items-center gap-2"
             >
               <i className="ri-add-line"></i> Add Item
             </button>
@@ -154,7 +154,7 @@ export default function ItemMasterPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by code, name, or HSN..."
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               />
             </div>
           </div>
@@ -179,7 +179,7 @@ export default function ItemMasterPage() {
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.id} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-bold text-teal-600">{row.itemCode}</td>
+                      <td className="px-4 py-3 text-sm font-bold text-[#1E88E5]">{row.itemCode}</td>
                       <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{row.description || '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{row.hsnCode || '—'}</td>
@@ -197,7 +197,7 @@ export default function ItemMasterPage() {
                       <td className="px-4 py-3">
                         <button
                           onClick={() => openEdit(row)}
-                          className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
+                          className="text-[#1E88E5] text-sm font-semibold hover:underline cursor-pointer"
                         >
                           Edit
                         </button>
@@ -253,7 +253,7 @@ export default function ItemMasterPage() {
               {error && <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}
               {editing && (
                 <div className="text-xs text-gray-500">
-                  Code: <span className="font-semibold text-teal-600">{editing.itemCode}</span>
+                  Code: <span className="font-semibold text-[#1E88E5]">{editing.itemCode}</span>
                 </div>
               )}
               <div>
@@ -262,7 +262,7 @@ export default function ItemMasterPage() {
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="Enter item name"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                 />
               </div>
               <div>
@@ -272,7 +272,7 @@ export default function ItemMasterPage() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={3}
                   placeholder="Enter item description"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -282,7 +282,7 @@ export default function ItemMasterPage() {
                     value={form.hsnCode}
                     onChange={(e) => setForm({ ...form, hsnCode: e.target.value })}
                     placeholder="e.g. 8471"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                   />
                 </div>
                 <div>
@@ -294,7 +294,7 @@ export default function ItemMasterPage() {
                     step={0.01}
                     value={form.gstPercentage}
                     onChange={(e) => setForm({ ...form, gstPercentage: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                   />
                 </div>
               </div>
@@ -303,7 +303,7 @@ export default function ItemMasterPage() {
                 <select
                   value={form.categoryId}
                   onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-white cursor-pointer"
                 >
                   <option value="">Select category</option>
                   {categories.map((c) => (
@@ -317,7 +317,7 @@ export default function ItemMasterPage() {
                   <input
                     value={form.unit}
                     onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                   />
                 </div>
                 <div>
@@ -325,7 +325,7 @@ export default function ItemMasterPage() {
                   <select
                     value={form.status}
                     onChange={(e) => setForm({ ...form, status: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-white cursor-pointer"
                   >
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
@@ -338,7 +338,7 @@ export default function ItemMasterPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-60 cursor-pointer"
+                className="px-4 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] disabled:opacity-60 cursor-pointer"
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>

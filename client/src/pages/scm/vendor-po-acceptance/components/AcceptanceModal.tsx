@@ -144,7 +144,7 @@ export default function AcceptanceModal({
                 type="date"
                 value={deliveryDate}
                 onChange={(e) => setDeliveryDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               />
               <p className="text-xs text-gray-400 mt-1">Confirm when you can deliver. Leave blank to use the PO delivery date.</p>
             </div>
@@ -165,7 +165,7 @@ export default function AcceptanceModal({
               }}
               placeholder={config.remarksPlaceholder}
               rows={4}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 resize-none"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] resize-none"
             />
             <div className="flex items-center justify-between mt-1">
               <p className={`text-xs ${error ? 'text-red-500 font-medium' : 'text-gray-400'}`}>

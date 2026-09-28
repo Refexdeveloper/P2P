@@ -62,7 +62,7 @@ function FooterLogoCell({
             if (value.startsWith('data:')) onChange('');
           }}
           className={`px-2 py-0.5 text-[10px] font-semibold rounded cursor-pointer ${
-            mode === 'url' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'
+            mode === 'url' ? 'bg-white text-[#1565C0] shadow-sm' : 'text-gray-500'
           }`}
         >
           URL
@@ -71,7 +71,7 @@ function FooterLogoCell({
           type="button"
           onClick={() => setMode('upload')}
           className={`px-2 py-0.5 text-[10px] font-semibold rounded cursor-pointer ${
-            mode === 'upload' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'
+            mode === 'upload' ? 'bg-white text-[#1565C0] shadow-sm' : 'text-gray-500'
           }`}
         >
           Upload
@@ -83,7 +83,7 @@ function FooterLogoCell({
           value={value.startsWith('data:') ? '' : value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="https://…/footer.png"
-          className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
+          className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
         />
       ) : (
         <div className="flex items-center gap-1.5">
@@ -97,7 +97,7 @@ function FooterLogoCell({
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="px-2 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-md cursor-pointer"
+            className="px-2 py-1.5 text-xs font-medium text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-md cursor-pointer"
           >
             <i className="ri-upload-2-line"></i> Image
           </button>
@@ -297,7 +297,7 @@ export default function EntityMasterPage() {
             />
           <button
             onClick={openCreate}
-            className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer flex items-center gap-2"
+            className="px-4 py-2.5 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] cursor-pointer flex items-center gap-2"
           >
             <i className="ri-add-line"></i> Add Entity
           </button>
@@ -312,7 +312,7 @@ export default function EntityMasterPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search entities, cost centers, locations, GST..."
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               />
             </div>
           </div>
@@ -347,7 +347,7 @@ export default function EntityMasterPage() {
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {(row.locations || []).length > 0 ? (
                           <div className="space-y-0.5">
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700">
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-[#E3F2FD] text-[#1565C0]">
                               {(row.locations || []).length} location{(row.locations || []).length !== 1 ? 's' : ''}
                             </span>
                             <p className="text-xs text-gray-500 truncate max-w-[200px]" title={(row.locations || []).map((l) => l.location).join(', ')}>
@@ -371,7 +371,7 @@ export default function EntityMasterPage() {
                     <td className="px-4 py-3">
                       <button
                         onClick={() => openEdit(row)}
-                        className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
+                        className="text-[#1E88E5] text-sm font-semibold hover:underline cursor-pointer"
                       >
                         Edit
                       </button>
@@ -433,7 +433,7 @@ export default function EntityMasterPage() {
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="e.g. Refex Green Mobility Limited"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                 />
               </div>
               <div>
@@ -448,7 +448,7 @@ export default function EntityMasterPage() {
                   }
                   placeholder="e.g. RGML"
                   maxLength={10}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                 />
                 <p className="text-xs text-gray-400 mt-1">Used in PR/PO numbers: PR-CODE-2025-26-0001</p>
               </div>
@@ -458,7 +458,7 @@ export default function EntityMasterPage() {
                   value={form.costCenter}
                   onChange={(e) => setForm({ ...form, costCenter: e.target.value })}
                   placeholder="e.g. CC-1001"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                 />
               </div>
                 <div className="sm:col-span-2">
@@ -467,7 +467,7 @@ export default function EntityMasterPage() {
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                     rows={2}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
                 />
               </div>
               <div>
@@ -475,7 +475,7 @@ export default function EntityMasterPage() {
                 <select
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-white cursor-pointer"
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
@@ -488,7 +488,7 @@ export default function EntityMasterPage() {
                 <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex flex-wrap items-end gap-3 justify-between">
                   <div>
                     <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                      <i className="ri-map-pin-line text-teal-600"></i>
+                      <i className="ri-map-pin-line text-[#1E88E5]"></i>
                       Locations
                     </h3>
                     <p className="text-xs text-gray-500 mt-0.5">
@@ -503,7 +503,7 @@ export default function EntityMasterPage() {
                       <select
                         value={selectedLocationKey}
                         onChange={(e) => setSelectedLocationKey(e.target.value)}
-                        className="min-w-[180px] px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
+                        className="min-w-[180px] px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1E88E5] cursor-pointer"
                       >
                         <option value="">Select location…</option>
                         {locations.map((l, idx) => (
@@ -516,7 +516,7 @@ export default function EntityMasterPage() {
                     <button
                       type="button"
                       onClick={addLocationRow}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] cursor-pointer"
                     >
                       <i className="ri-add-line"></i>
                       Add
@@ -561,7 +561,7 @@ export default function EntityMasterPage() {
                           return (
                             <tr
                               key={loc.key}
-                              className={highlight ? 'bg-teal-50/60' : 'bg-white'}
+                              className={highlight ? 'bg-[#E3F2FD]/60' : 'bg-white'}
                               onClick={() => setSelectedLocationKey(loc.key)}
                             >
                               <td className="px-3 py-3 text-gray-400">{idx + 1}</td>
@@ -570,7 +570,7 @@ export default function EntityMasterPage() {
                                   value={loc.location}
                                   onChange={(e) => updateLocation(loc.key, { location: e.target.value })}
                                   placeholder="e.g. Chennai / Vizag"
-                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                                 />
                               </td>
                               <td className="px-3 py-3">
@@ -583,7 +583,7 @@ export default function EntityMasterPage() {
                                   }
                                   placeholder="22AAAAA0000A1Z5"
                                   maxLength={15}
-                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                                 />
                               </td>
                               <td className="px-3 py-3">
@@ -592,7 +592,7 @@ export default function EntityMasterPage() {
                                   onChange={(e) => updateLocation(loc.key, { billingAddress: e.target.value })}
                                   placeholder="Full billing address"
                                   rows={2}
-                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
                                 />
                               </td>
                               <td className="px-3 py-3">
@@ -601,7 +601,7 @@ export default function EntityMasterPage() {
                                   onChange={(e) => updateLocation(loc.key, { siteAddress: e.target.value })}
                                   placeholder="Full site / delivery address"
                                   rows={2}
-                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
                                 />
                               </td>
                               <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
@@ -636,7 +636,7 @@ export default function EntityMasterPage() {
                     <button
                       type="button"
                       onClick={addLocationRow}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800 cursor-pointer"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#1565C0] hover:text-[#1565C0] cursor-pointer"
                     >
                       <i className="ri-add-line"></i>
                       Add row
@@ -652,7 +652,7 @@ export default function EntityMasterPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-60 cursor-pointer"
+                className="px-4 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] disabled:opacity-60 cursor-pointer"
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>

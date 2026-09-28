@@ -76,10 +76,10 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-teal-50 to-white">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-[#E3F2FD] to-white">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-2.5 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-bold">{rfqRef}</span>
+              <span className="px-2.5 py-0.5 bg-[#E3F2FD] text-[#1565C0] rounded-full text-xs font-bold">{rfqRef}</span>
               <span className="px-2.5 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">Round {round.round}</span>
               {vendor.source === 'vendor-portal' && (
                 <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold flex items-center gap-1">
@@ -88,7 +88,7 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
               )}
             </div>
             <h2 className="text-lg font-bold text-gray-900">{vendor.vendorName}</h2>
-            <p className="text-sm text-gray-500">Technical Evaluation — Quoted: <span className="font-semibold text-teal-600">{formatCurrency(round.quotedPrice)}</span> · Lead Time: {vendor.leadTime} days</p>
+            <p className="text-sm text-gray-500">Technical Evaluation — Quoted: <span className="font-semibold text-[#1E88E5]">{formatCurrency(round.quotedPrice)}</span> · Lead Time: {vendor.leadTime} days</p>
           </div>
           <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 cursor-pointer">
             <i className="ri-close-line text-xl text-gray-500"></i>
@@ -106,7 +106,7 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
                 <p className="text-sm font-semibold text-gray-800">{vendor.quotationFileName}</p>
                 <p className="text-xs text-gray-500">Vendor submitted quotation document</p>
               </div>
-              <button className="px-3 py-1.5 text-xs font-medium text-teal-700 border border-teal-300 rounded-lg hover:bg-teal-50 cursor-pointer whitespace-nowrap">
+              <button className="px-3 py-1.5 text-xs font-medium text-[#1565C0] border border-[#64B5F6] rounded-lg hover:bg-[#E3F2FD] cursor-pointer whitespace-nowrap">
                 <i className="ri-eye-line mr-1"></i>View
               </button>
             </div>
@@ -115,7 +115,7 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
           {/* Scoring Criteria */}
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <i className="ri-star-line text-teal-600"></i>
+              <i className="ri-star-line text-[#1E88E5]"></i>
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Technical Scoring Criteria</h3>
               <span className="text-xs text-gray-400">(Weighted auto-calculation)</span>
             </div>
@@ -125,7 +125,7 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 flex items-center justify-center">
-                        <i className={`${c.icon} text-teal-600 text-sm`}></i>
+                        <i className={`${c.icon} text-[#1E88E5] text-sm`}></i>
                       </div>
                       <div>
                         <span className="text-sm font-semibold text-gray-800">{c.label}</span>
@@ -141,13 +141,13 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
                       type="range" min="0" max="100"
                       value={scores[c.key]}
                       onChange={e => setScores(prev => ({ ...prev, [c.key]: parseInt(e.target.value) }))}
-                      className="flex-1 cursor-pointer accent-teal-600"
+                      className="flex-1 cursor-pointer accent-[#1E88E5]"
                     />
                     <input
                       type="number" min="0" max="100"
                       value={scores[c.key]}
                       onChange={e => setScores(prev => ({ ...prev, [c.key]: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                      className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-teal-500"
+                      className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-[#1E88E5]"
                     />
                   </div>
                   <div className="mt-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
@@ -161,7 +161,7 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
           {/* Commercial Score */}
           <div className="border-t border-gray-100 pt-5">
             <div className="flex items-center gap-2 mb-3">
-              <i className="ri-line-chart-line text-teal-600"></i>
+              <i className="ri-line-chart-line text-[#1E88E5]"></i>
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Commercial Score</h3>
               <span className="text-xs text-gray-400">(Entered by SCM Buyer / override here)</span>
             </div>
@@ -170,13 +170,13 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
                 type="range" min="0" max="100"
                 value={commercialScore}
                 onChange={e => setCommercialScore(parseInt(e.target.value))}
-                className="flex-1 cursor-pointer accent-teal-600"
+                className="flex-1 cursor-pointer accent-[#1E88E5]"
               />
               <input
                 type="number" min="0" max="100"
                 value={commercialScore}
                 onChange={e => setCommercialScore(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-                className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-teal-500"
+                className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-[#1E88E5]"
               />
               <span className={`text-lg font-bold w-12 text-right ${getScoreColor(commercialScore)}`}>{commercialScore}</span>
             </div>
@@ -185,7 +185,7 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
           {/* Remarks */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              <i className="ri-chat-3-line mr-1 text-teal-600"></i>
+              <i className="ri-chat-3-line mr-1 text-[#1E88E5]"></i>
               Technical Evaluation Remarks
             </label>
             <textarea
@@ -194,7 +194,7 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
               rows={3}
               maxLength={500}
               placeholder="Add detailed technical evaluation notes, observations, and recommendations..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 resize-none"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#1E88E5] resize-none"
             />
             <p className="text-xs text-gray-400 text-right mt-1">{remarks.length}/500</p>
           </div>
@@ -229,7 +229,7 @@ export default function VendorScoringModal({ vendor, rfqRef, roundIndex, onSave,
               <button
                 onClick={handleSave}
                 disabled={remarks.trim() === ''}
-                className="px-6 py-2.5 bg-teal-600 text-white rounded-xl hover:bg-teal-700 font-medium text-sm cursor-pointer whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-2.5 bg-[#1E88E5] text-white rounded-xl hover:bg-[#1565C0] font-medium text-sm cursor-pointer whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <i className="ri-save-line"></i>
                 Save Evaluation

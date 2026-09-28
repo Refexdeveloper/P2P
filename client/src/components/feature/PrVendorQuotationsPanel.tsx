@@ -43,6 +43,14 @@ function linesForQuote(q: QuoteRound): QuoteLineItem[] {
   return [];
 }
 
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+
+const softCard =
+  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
+
 interface Props {
   prId: number;
   currency?: string | null;
@@ -90,7 +98,6 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
           null;
         setRecommendedVendorName(recommended?.vendorName || '');
         onPresenceRef.current?.(withQuotes.length > 0);
-        // Auto-expand recommended vendor's latest round line items
         const expandTarget = recommended || withQuotes[0];
         if (expandTarget) {
           const quotes = [...(expandTarget.quotes || [])]
@@ -155,36 +162,44 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
   };
 
   if (loading) {
-    return <p className="text-sm text-gray-500 py-6 text-center">Loading vendor quotations…</p>;
+    return (
+      <div className={`${softCard} px-4 py-8 text-center`}>
+        <div className="pointer-events-none absolute inset-0" style={softWash} />
+        <p className="relative z-[1] text-sm text-slate-500">Loading vendor quotations…</p>
+      </div>
+    );
   }
   if (!rows.length) {
-    if (error) return <p className="text-sm text-red-600 py-4">{error}</p>;
+    if (error) return <p className="py-4 text-sm text-red-600">{error}</p>;
     if (!recommendationJustification && !recommendedVendorName) return null;
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 sm:space-y-4">
       {error && <p className="text-xs text-red-600">{error}</p>}
 
       {(recommendedVendorName || recommendationJustification) && (
-        <section className="rounded-xl overflow-hidden border-2 border-emerald-400 bg-emerald-50 shadow-sm ring-2 ring-emerald-300/70">
-          <div className="px-3.5 py-2.5 bg-emerald-200/90 border-b border-emerald-400 flex items-center gap-2">
-            <i className="ri-award-fill text-emerald-800 text-lg" aria-hidden />
+        <section className={softCard}>
+          <div className="pointer-events-none absolute inset-0" style={softWash} />
+          <div className="relative z-[1] flex items-start gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/50 px-4 py-3.5 sm:px-5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+              <i className="ri-award-fill text-base" aria-hidden />
+            </div>
             <div className="min-w-0">
-              <h4 className="text-[11px] font-extrabold text-emerald-950 uppercase tracking-wide">
-                Vendor Recommendation Justification
-              </h4>
-              <p className="text-sm font-bold text-emerald-950 mt-0.5 truncate">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Vendor Recommendation
+              </p>
+              <p className="mt-0.5 truncate text-sm font-semibold text-[#2C3E50]">
                 {recommendedVendorName || 'Recommended vendor'}
               </p>
             </div>
           </div>
           {recommendationJustification ? (
-            <p className="px-3.5 py-3 text-sm text-emerald-950 leading-relaxed whitespace-pre-wrap font-medium">
+            <p className="relative z-[1] whitespace-pre-wrap px-4 py-3.5 text-sm leading-relaxed text-slate-700 sm:px-5">
               {recommendationJustification}
             </p>
           ) : (
-            <p className="px-3.5 py-3 text-sm italic text-emerald-800">
+            <p className="relative z-[1] px-4 py-3.5 text-sm italic text-slate-500 sm:px-5">
               No justification was provided with this recommendation.
             </p>
           )}
@@ -192,14 +207,14 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
       )}
 
       {rows.length > 0 && (
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
           <div>
-            <h4 className="text-sm font-semibold text-gray-900">Vendor quotations</h4>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Round prices, line items, and quotation files — recommended round expands by default
+            <h4 className="text-sm font-semibold text-slate-800">Vendor quotations</h4>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Round prices, line items, and quotation files
             </p>
           </div>
-          <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+          <span className="rounded-full bg-[#E3F2FD] px-2.5 py-1 text-[11px] font-semibold text-[#1E88E5]">
             {rows.length} vendor{rows.length === 1 ? '' : 's'} · up to Q{maxRound}
           </span>
         </div>
@@ -212,76 +227,68 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
         return (
           <div
             key={row.invitationId}
-            className={`rounded-xl overflow-hidden ${
-              isRecommended
-                ? 'border-2 border-emerald-500 bg-emerald-50/40 shadow-sm ring-2 ring-emerald-200/80'
-                : 'border border-gray-200'
+            className={`${softCard} ${
+              isRecommended ? 'ring-2 ring-[#90CAF9]/80' : ''
             }`}
           >
-            <div
-              className={`px-3.5 py-2.5 border-b flex items-center justify-between gap-2 ${
-                isRecommended
-                  ? 'bg-emerald-100/90 border-emerald-200'
-                  : 'bg-slate-50 border-gray-100'
-              }`}
-            >
+            <div className="pointer-events-none absolute inset-0" style={softWash} />
+            <div className="relative z-[1] flex items-center justify-between gap-2 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3 sm:px-5">
               <div className="min-w-0">
-                <p
-                  className={`text-sm font-semibold truncate ${
-                    isRecommended ? 'text-emerald-950' : 'text-gray-900'
-                  }`}
-                >
-                  {row.vendorName}
-                </p>
+                <p className="truncate text-sm font-semibold text-[#2C3E50]">{row.vendorName}</p>
                 {latest && (
-                  <p className={`text-xs mt-0.5 ${isRecommended ? 'text-emerald-800/80' : 'text-gray-500'}`}>
+                  <p className="mt-0.5 text-xs text-slate-500">
                     Latest Q{latest.round}: {formatMoney(Number(latest.quotedPrice))}
                     {latest.paymentTerms ? ` · ${latest.paymentTerms}` : ''}
                   </p>
                 )}
               </div>
               {isRecommended && (
-                <span className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold uppercase">
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#1E88E5] px-2.5 py-1 text-[10px] font-bold uppercase text-white">
                   <i className="ri-checkbox-circle-fill text-[10px]" />
                   Recommended
                 </span>
               )}
             </div>
 
-            <div className="divide-y divide-gray-100 bg-white">
+            <div className="relative z-[1] divide-y divide-slate-100/80">
               {quotes.map((quote) => {
                 const round = Number(quote.round) || 1;
                 const key = `${row.invitationId}-r${round}`;
                 const lines = linesForQuote(quote);
                 const open = expandedRound === key;
                 return (
-                  <div key={key} className={isRecommended && quote === latest ? 'bg-emerald-50/30' : ''}>
-                    <div className="px-3.5 py-2.5 flex items-center gap-3">
+                  <div key={key}>
+                    <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
                       <span
-                        className={`w-8 h-8 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${
                           isRecommended && quote === latest
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-teal-50 text-teal-700'
+                            ? 'bg-[#1E88E5] text-white'
+                            : 'bg-[#E3F2FD] text-[#1E88E5]'
                         }`}
                       >
                         Q{round}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-gray-900">{formatMoney(Number(quote.quotedPrice))}</p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {[quote.leadTime ? `${quote.leadTime} days` : '', quote.paymentTerms].filter(Boolean).join(' · ') ||
-                            'Quoted'}
-                          {lines.length ? ` · ${lines.length} line item${lines.length === 1 ? '' : 's'}` : ''}
+                        <p className="text-sm font-bold tabular-nums text-[#2C3E50]">
+                          {formatMoney(Number(quote.quotedPrice))}
+                        </p>
+                        <p className="truncate text-xs text-slate-500">
+                          {[quote.leadTime ? `${quote.leadTime} days` : '', quote.paymentTerms]
+                            .filter(Boolean)
+                            .join(' · ') || 'Quoted'}
+                          {lines.length
+                            ? ` · ${lines.length} line item${lines.length === 1 ? '' : 's'}`
+                            : ''}
                         </p>
                       </div>
                       {lines.length > 0 && (
                         <button
                           type="button"
                           onClick={() => setExpandedRound(open ? null : key)}
-                          className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border ${
+                          className={`inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                             open
-                              ? 'bg-slate-900 text-white border-slate-900'
-                              : 'text-slate-700 bg-white border-gray-200 hover:bg-gray-50'
+                              ? 'bg-[#1E88E5] text-white'
+                              : 'border border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]'
                           }`}
                         >
                           <i className={open ? 'ri-arrow-up-s-line' : 'ri-list-check-2'} />
@@ -291,24 +298,23 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                       {(() => {
                         const files = allQuotationFilesForQuote(quote);
                         if (!files.length) {
-                          return <span className="text-[11px] text-gray-400">No file</span>;
+                          return <span className="text-[11px] text-slate-400">No file</span>;
                         }
                         return (
-                          <div className="flex flex-col gap-1.5 shrink-0 max-w-[180px]">
+                          <div className="flex max-w-[180px] shrink-0 flex-col gap-1.5">
                             {files.map((file, idx) => (
                               <div key={`${file.fileName}-${idx}`} className="flex flex-col gap-0.5">
-                                <p className="text-[10px] text-slate-600 truncate" title={file.fileName}>
+                                <p
+                                  className="truncate text-[10px] text-slate-600"
+                                  title={file.fileName}
+                                >
                                   <i className="ri-attachment-2 mr-0.5" />
                                   {file.fileName}
                                 </p>
                                 <button
                                   type="button"
                                   onClick={() => void openFile(file)}
-                                  className={`inline-flex items-center gap-1 self-start px-2 py-1 text-[10px] font-semibold rounded-md ${
-                                    isRecommended
-                                      ? 'text-emerald-800 bg-emerald-100 border border-emerald-300 hover:bg-emerald-200'
-                                      : 'text-teal-700 bg-teal-50 border border-teal-100 hover:bg-teal-100'
-                                  }`}
+                                  className="inline-flex cursor-pointer items-center gap-1 self-start rounded-lg bg-[#E3F2FD] px-2 py-1 text-[10px] font-semibold text-[#1E88E5] transition-colors hover:bg-[#BBDEFB]"
                                 >
                                   <i className="ri-eye-line" />
                                   Preview
@@ -321,17 +327,29 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                     </div>
 
                     {open && lines.length > 0 && (
-                      <div className="px-3.5 pb-3">
-                        <div className="border border-emerald-100 rounded-lg overflow-hidden bg-white">
+                      <div className="px-4 pb-4 sm:px-5">
+                        <div className="overflow-hidden rounded-xl border border-transparent bg-[#F8FAFC] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)]">
                           <table className="w-full text-xs">
                             <thead>
-                              <tr className="bg-emerald-50/80 text-emerald-900">
-                                <th className="text-left px-2.5 py-1.5 font-semibold">#</th>
-                                <th className="text-left px-2.5 py-1.5 font-semibold">Description</th>
-                                <th className="text-center px-2.5 py-1.5 font-semibold">Qty</th>
-                                <th className="text-right px-2.5 py-1.5 font-semibold">Unit</th>
-                                <th className="text-center px-2.5 py-1.5 font-semibold">GST</th>
-                                <th className="text-right px-2.5 py-1.5 font-semibold">Total</th>
+                              <tr>
+                                <th className="px-2.5 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  #
+                                </th>
+                                <th className="px-2.5 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  Description
+                                </th>
+                                <th className="px-2.5 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  Qty
+                                </th>
+                                <th className="px-2.5 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  Unit
+                                </th>
+                                <th className="px-2.5 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  GST
+                                </th>
+                                <th className="px-2.5 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  Total
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
@@ -343,17 +361,19 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                                   Number(li.quotedTotal) ||
                                   Math.round(qty * unit * (1 + (gst || 0) / 100) * 100) / 100;
                                 return (
-                                  <tr key={`${key}-${idx}`} className="border-t border-gray-100">
-                                    <td className="px-2.5 py-1.5 text-gray-500">{idx + 1}</td>
-                                    <td className="px-2.5 py-1.5 text-gray-900 font-medium">
+                                  <tr key={`${key}-${idx}`} className="border-t border-slate-100/80">
+                                    <td className="px-2.5 py-2 text-slate-500">{idx + 1}</td>
+                                    <td className="px-2.5 py-2 font-medium text-[#2C3E50]">
                                       {String(li.description || '—')}
                                     </td>
-                                    <td className="px-2.5 py-1.5 text-center tabular-nums">{qty}</td>
-                                    <td className="px-2.5 py-1.5 text-right tabular-nums">{formatMoney(unit)}</td>
-                                    <td className="px-2.5 py-1.5 text-center text-gray-600">
+                                    <td className="px-2.5 py-2 text-center tabular-nums">{qty}</td>
+                                    <td className="px-2.5 py-2 text-right tabular-nums">
+                                      {formatMoney(unit)}
+                                    </td>
+                                    <td className="px-2.5 py-2 text-center text-slate-600">
                                       {gst != null ? `${gst}%` : '—'}
                                     </td>
-                                    <td className="px-2.5 py-1.5 text-right font-semibold tabular-nums text-emerald-800">
+                                    <td className="px-2.5 py-2 text-right font-semibold tabular-nums text-[#1E88E5]">
                                       {formatMoney(total)}
                                     </td>
                                   </tr>
@@ -361,11 +381,14 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                               })}
                             </tbody>
                             <tfoot>
-                              <tr className="border-t border-emerald-100 bg-emerald-50/50">
-                                <td colSpan={5} className="px-2.5 py-2 text-right text-[11px] font-bold text-emerald-900 uppercase">
+                              <tr className="border-t border-slate-100/80 bg-white/70">
+                                <td
+                                  colSpan={5}
+                                  className="px-2.5 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500"
+                                >
                                   Round total
                                 </td>
-                                <td className="px-2.5 py-2 text-right text-sm font-bold text-emerald-800">
+                                <td className="px-2.5 py-2 text-right text-sm font-bold tabular-nums text-[#1E88E5]">
                                   {formatMoney(Number(quote.quotedPrice) || 0)}
                                 </td>
                               </tr>
@@ -383,26 +406,34 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
       })}
 
       {preview && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-xl">
-            <div className="p-4 border-b flex justify-between items-center gap-3">
-              <span className="font-semibold text-gray-900 truncate">{preview.fileName}</span>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/25 p-4 backdrop-blur-[2px]">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:rounded-[18px]">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <span className="truncate font-semibold text-slate-800">{preview.fileName}</span>
               <button
                 type="button"
                 onClick={() => {
                   URL.revokeObjectURL(preview.url);
                   setPreview(null);
                 }}
-                className="w-8 h-8 rounded-lg hover:bg-gray-100"
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl bg-white text-slate-500 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:text-[#1E88E5]"
               >
-                ×
+                <i className="ri-close-line text-lg" />
               </button>
             </div>
-            <div className="p-4 flex-1 overflow-auto bg-slate-100/80">
+            <div className="flex-1 overflow-auto bg-[#F8FAFC] p-4">
               {/\.pdf$/i.test(preview.fileName) ? (
-                <iframe title="quotation" src={preview.url} className="w-full h-[70vh] border rounded bg-white" />
+                <iframe
+                  title="quotation"
+                  src={preview.url}
+                  className="h-[70vh] w-full rounded-xl border-0 bg-white"
+                />
               ) : (
-                <img src={preview.url} alt="" className="max-h-[70vh] max-w-full mx-auto object-contain" />
+                <img
+                  src={preview.url}
+                  alt=""
+                  className="mx-auto max-h-[70vh] max-w-full object-contain"
+                />
               )}
             </div>
           </div>

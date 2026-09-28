@@ -394,7 +394,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.vendorName}
               onChange={(e) => update('vendorName', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               placeholder="Enter vendor name"
             />
           </div>
@@ -407,7 +407,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
                     type="radio"
                     checked={form.vendorType === t}
                     onChange={() => update('vendorType', t)}
-                    className="text-teal-600"
+                    className="text-[#1E88E5]"
                   />
                   <span className="text-sm text-gray-700">{t}</span>
                 </label>
@@ -420,7 +420,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
               type="email"
               value={form.email}
               onChange={(e) => update('email', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               placeholder="vendor@example.com"
             />
           </div>
@@ -429,7 +429,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.phone}
               onChange={(e) => update('phone', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               placeholder="9876543210"
             />
           </div>
@@ -438,7 +438,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.contactName}
               onChange={(e) => update('contactName', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               placeholder="Primary contact person"
             />
           </div>
@@ -447,7 +447,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.gstNumber}
               onChange={(e) => update('gstNumber', e.target.value.toUpperCase())}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm uppercase focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm uppercase focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               placeholder="22AAAAA0000A1Z5"
             />
           </div>
@@ -456,7 +456,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.panNumber}
               onChange={(e) => update('panNumber', e.target.value.toUpperCase())}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm uppercase focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm uppercase focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               placeholder="ABCDE1234F"
             />
           </div>
@@ -466,7 +466,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
               <select
                 value={form.category}
                 onChange={(e) => update('category', e.target.value)}
-                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               >
                 <option value="">Select category</option>
                 {categoryOptions.map((c) => (
@@ -479,7 +479,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
                   setShowAddCategory((open) => !open);
                   setError('');
                 }}
-                className="px-3 py-2.5 text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 cursor-pointer whitespace-nowrap flex items-center gap-1"
+                className="px-3 py-2.5 text-sm font-semibold text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] cursor-pointer whitespace-nowrap flex items-center gap-1"
               >
                 <i className="ri-add-line"></i>
                 Add
@@ -496,21 +496,21 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
                       handleAddCategory();
                     }
                   }}
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
                   placeholder="New category name"
                 />
                 <button
                   type="button"
                   onClick={handleAddCategory}
                   disabled={addingCategory}
-                  className="px-3 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 cursor-pointer"
+                  className="px-3 py-2 text-sm font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] disabled:opacity-50 cursor-pointer"
                 >
                   {addingCategory ? 'Adding...' : 'Save'}
                 </button>
               </div>
             )}
             {form.category && (
-              <p className="mt-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2 py-1 inline-flex items-center gap-1">
+              <p className="mt-1.5 text-xs text-[#1565C0] bg-[#E3F2FD] border border-[#BBDEFB] rounded-md px-2 py-1 inline-flex items-center gap-1">
                 <i className="ri-price-tag-3-line"></i>
                 Selected: <span className="font-semibold">{form.category}</span>
               </p>
@@ -521,7 +521,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.msme}
               onChange={(e) => update('msme', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               placeholder="UDYAM / MSME number"
             />
           </div>
@@ -530,7 +530,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <select
               value={form.msmeType}
               onChange={(e) => update('msmeType', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
             >
               <option value="">Select MSME category</option>
               {MSME_TYPES.map((t) => (
@@ -538,7 +538,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
               ))}
             </select>
             {form.msmeType && (
-              <p className="mt-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2 py-1 inline-flex items-center gap-1">
+              <p className="mt-1.5 text-xs text-[#1565C0] bg-[#E3F2FD] border border-[#BBDEFB] rounded-md px-2 py-1 inline-flex items-center gap-1">
                 <i className="ri-building-4-line"></i>
                 Selected: <span className="font-semibold">{form.msmeType}</span>
               </p>
@@ -550,7 +550,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
               value={form.address}
               onChange={(e) => update('address', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
               placeholder="Complete address"
             />
           </div>
@@ -565,7 +565,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.accountNumber}
               onChange={(e) => update('accountNumber', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
             />
           </div>
           <div>
@@ -573,7 +573,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.ifscCode}
               onChange={(e) => update('ifscCode', e.target.value.toUpperCase())}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm uppercase focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm uppercase focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
             />
           </div>
           <div>
@@ -581,7 +581,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.bankName}
               onChange={(e) => update('bankName', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
             />
           </div>
           <div>
@@ -589,7 +589,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <input
               value={form.branch}
               onChange={(e) => update('branch', e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
             />
           </div>
         </div>
@@ -610,7 +610,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
                     name="documentsComplete"
                     checked={form.documentsComplete === v}
                     onChange={() => update('documentsComplete', v)}
-                    className="text-teal-600"
+                    className="text-[#1E88E5]"
                   />
                   <span className="text-sm text-gray-700">{v === 'yes' ? 'Yes' : 'No'}</span>
                 </label>
@@ -619,11 +619,11 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
           </div>
         </div>
 
-        <div className="mb-5 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
+        <div className="mb-5 rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/40 p-4">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div>
-              <p className="text-sm font-semibold text-teal-900">All Documents</p>
-              <p className="text-xs text-teal-700 mt-0.5">
+              <p className="text-sm font-semibold text-[#0D47A1]">All Documents</p>
+              <p className="text-xs text-[#1565C0] mt-0.5">
                 Select multiple files at once (PDF/images). Names with GST, PAN, Cheque, MSME, KYC
                 are auto-mapped; other files are stored as extra documents.
               </p>
@@ -638,10 +638,10 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
               </button>
             )}
           </div>
-          <label className="flex flex-col items-center justify-center w-full min-h-[7rem] border-2 border-dashed border-teal-300 rounded-lg cursor-pointer hover:bg-white/70 transition-colors px-4 py-5">
-            <i className="ri-upload-cloud-2-line text-3xl text-teal-500 mb-1"></i>
-            <span className="text-sm font-medium text-teal-800">Click to select multiple files</span>
-            <span className="text-xs text-teal-600 mt-1">Hold Ctrl/Cmd to pick many files</span>
+          <label className="flex flex-col items-center justify-center w-full min-h-[7rem] border-2 border-dashed border-[#64B5F6] rounded-lg cursor-pointer hover:bg-white/70 transition-colors px-4 py-5">
+            <i className="ri-upload-cloud-2-line text-3xl text-[#1E88E5] mb-1"></i>
+            <span className="text-sm font-medium text-[#1565C0]">Click to select multiple files</span>
+            <span className="text-xs text-[#1E88E5] mt-1">Hold Ctrl/Cmd to pick many files</span>
             <input
               type="file"
               className="hidden"
@@ -655,9 +655,9 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
               {allFiles.map((doc, idx) => (
                 <li
                   key={`${doc.name}-${doc.file.size}-${idx}`}
-                  className="flex items-center gap-2 rounded-lg border border-teal-100 bg-white px-3 py-2"
+                  className="flex items-center gap-2 rounded-lg border border-[#BBDEFB] bg-white px-3 py-2"
                 >
-                  <i className="ri-file-text-line text-teal-600"></i>
+                  <i className="ri-file-text-line text-[#1E88E5]"></i>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-900 truncate">{doc.name}</p>
                     <p className="text-xs text-gray-500">{(doc.file.size / 1024).toFixed(1)} KB</p>
@@ -675,11 +675,11 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             </ul>
           )}
           {existingOtherDocs.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-teal-100">
+            <div className="mt-3 pt-3 border-t border-[#BBDEFB]">
               <p className="text-xs font-semibold text-gray-600 mb-2">Already uploaded (extra)</p>
               <ul className="space-y-1">
                 {existingOtherDocs.map((d) => (
-                  <li key={d.docType} className="text-xs text-teal-700 flex items-center gap-1.5">
+                  <li key={d.docType} className="text-xs text-[#1565C0] flex items-center gap-1.5">
                     <i className="ri-checkbox-circle-line"></i>
                     <span className="truncate">{d.fileName}</span>
                   </li>
@@ -697,7 +697,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
             <div key={type}>
               <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
               {existingDocs[type] && !files[type] && (
-                <p className="text-xs text-teal-600 mb-2 flex items-center gap-1">
+                <p className="text-xs text-[#1E88E5] mb-2 flex items-center gap-1">
                   <i className="ri-file-text-line"></i>
                   Current: {existingDocs[type]}
                 </p>
@@ -717,7 +717,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
                 <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2 flex-1 min-w-0">
-                      <i className="ri-file-text-line text-teal-600 text-lg flex-shrink-0"></i>
+                      <i className="ri-file-text-line text-[#1E88E5] text-lg flex-shrink-0"></i>
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{files[type]!.name}</p>
                         <p className="text-xs text-gray-500">{(files[type]!.file.size / 1024).toFixed(1)} KB</p>
@@ -745,7 +745,7 @@ export default function CreateVendorForm({ vendor, onSuccess, onCancel, compact 
         <button
           type="submit"
           disabled={submitting}
-          className="px-6 py-2.5 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 cursor-pointer flex items-center gap-2"
+          className="px-6 py-2.5 text-sm font-semibold text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] disabled:opacity-50 cursor-pointer flex items-center gap-2"
         >
           <i className="ri-save-line"></i>
           {submitting ? 'Saving...' : isEdit ? 'Update Vendor' : 'Save Vendor'}

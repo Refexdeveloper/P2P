@@ -10,6 +10,14 @@ import { PR_PAYMENT_TERM_OPTIONS } from '../../../constants/prRequisition';
 import { formatMoney, currencySymbol, normalizeCurrency } from '../../../constants/currency';
 import type { CurrencyCode } from '../../../constants/currency';
 
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+
+const softCard =
+  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
+
 export type SavedQuotationFile = {
   id?: number | null;
   fileName: string;
@@ -199,28 +207,34 @@ export default function FunctionalOwnRfqSection({
 
   const commitVendor = (vendor: { id: string; name: string; email: string }) => {
     const existing = rows.find((r) => r.vendorId === vendor.id);
-    if (existing) return { row: existing, nextRows: rows };
+    if (existing) return { row: existing, nextRows: rows, isNew: false };
     const row: FunctionalRfqVendorRow = {
       ...newFunctionalRfqVendorRow(visibleRounds),
       vendorId: vendor.id,
       name: vendor.name,
       email: vendor.email,
     };
-    return { row, nextRows: [...rows, row] };
+    return { row, nextRows: [...rows, row], isNew: true };
   };
 
-  const requireSelectedVendor = () => {
-    if (!selectedSearch) {
-      setLocalError('Search and select a vendor first');
-      return null;
-    }
+  /**
+   * Add vendor (if needed) and always open the quote popup for amount + file.
+   */
+  const addVendorAndOpenQuote = (
+    vendor: { id: string; name: string; email: string },
+    round = 1
+  ) => {
     setLocalError('');
-    setSearchVendorId('');
-    return commitVendor({
-      id: String(selectedSearch.id),
-      name: selectedSearch.name,
-      email: selectedSearch.email || '',
+    const added = commitVendor({
+      id: String(vendor.id),
+      name: vendor.name,
+      email: vendor.email || '',
     });
+    setSearchVendorId('');
+    openQuote(added.row, round, added.nextRows);
+    if (added.isNew) {
+      showToast(`${vendor.name} added — enter quoted amount and upload quotation file`);
+    }
   };
 
   const applyRows = (nextRows: FunctionalRfqVendorRow[], round = visibleRounds) => {
@@ -232,9 +246,53 @@ export default function FunctionalOwnRfqSection({
     return { synced, nextVisible };
   };
 
+  /**
+   * Delete one quotation round (Q2+) for every vendor — vendors stay.
+   * Higher rounds are renumbered down so tabs stay Q1, Q2, Q3… with no gaps.
+   */
+  const removeRound = (round: number) => {
+    const target = Math.min(4, Math.max(1, Number(round) || 1));
+    if (target <= 1) {
+      showToast('Round Q1 cannot be deleted');
+      return;
+    }
+    if (target > visibleRounds) return;
+
+    const nextVisible = Math.max(1, visibleRounds - 1);
+    onMaxRoundsChange(nextVisible);
+
+    const trimmed = rows.map((r) => {
+      const renumbered = r.quotes
+        .filter((q) => q.round !== target)
+        .map((q) => (q.round > target ? { ...q, round: q.round - 1 } : q))
+        .filter((q) => q.round >= 1 && q.round <= nextVisible);
+      return { ...r, quotes: syncQuotes(renumbered, nextVisible) };
+    });
+    onChange(trimmed);
+    setFocusTab(Math.min(focusTab, nextVisible));
+    if (quoteRound === target) {
+      setQuoteRound(Math.max(1, target - 1));
+    } else if (quoteRound > target) {
+      setQuoteRound(quoteRound - 1);
+    }
+    if (quoteKey) {
+      const saved = trimmed.find((r) => r.key === quoteKey);
+      if (saved) setQuoteDraft(saved);
+    }
+    showToast(`Round Q${target} deleted. Vendors kept. Save draft to confirm.`);
+  };
+
   const openQuote = (row: FunctionalRfqVendorRow, round = 1, baseRows: FunctionalRfqVendorRow[] = rows) => {
-    const { synced, nextVisible } = applyRows(baseRows, round);
-    const saved = synced.find((r) => r.key === row.key) || row;
+    const nextVisible = Math.min(4, Math.max(visibleRounds, round, 1));
+    if (nextVisible !== visibleRounds) onMaxRoundsChange(nextVisible);
+    const synced = baseRows.map((r) => ({ ...r, quotes: syncQuotes(r.quotes, nextVisible) }));
+    const saved =
+      synced.find((r) => r.key === row.key) ||
+      ({ ...row, quotes: syncQuotes(row.quotes || [], nextVisible) } as FunctionalRfqVendorRow);
+    const withRow = synced.some((r) => r.key === saved.key) ? synced : [...synced, saved];
+    onChange(withRow);
+    setFocusTab(nextVisible);
+    // Set draft + key after list update so modal always has quote slots to show
     setQuoteDraft(saved);
     setQuoteKey(saved.key);
     setQuoteRound(Math.min(nextVisible, Math.max(1, round)));
@@ -245,8 +303,18 @@ export default function FunctionalOwnRfqSection({
     setQuoteDraft(null);
   };
 
-  const editing = (quoteKey && rows.find((r) => r.key === quoteKey)) || (quoteKey && quoteDraft?.key === quoteKey ? quoteDraft : null);
-  const editingQuotes = editing ? syncQuotes(editing.quotes, visibleRounds) : [];
+  const editing =
+    (quoteKey && rows.find((r) => r.key === quoteKey)) ||
+    (quoteKey && quoteDraft?.key === quoteKey ? quoteDraft : null) ||
+    null;
+  // Prefer draft quotes when parent rows have not flushed the new vendor yet
+  const editingSource =
+    quoteDraft?.key === quoteKey && quoteDraft
+      ? quoteDraft
+      : editing;
+  const editingQuotes = editingSource
+    ? syncQuotes(editingSource.quotes, Math.max(visibleRounds, quoteRound, 1))
+    : [];
   const editingQuote = editingQuotes.find((q) => q.round === quoteRound);
 
   const updateQuote = (key: string, round: number, patch: Partial<FunctionalRfqQuote>) => {
@@ -397,59 +465,68 @@ export default function FunctionalOwnRfqSection({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {steps.map((s) => {
           const active = guideStep === s.n;
           return (
             <div
               key={s.n}
-              className={`rounded-2xl border px-4 py-3 ${
+              className={`${softCard} px-4 py-3.5 ${
                 s.done
-                  ? 'border-emerald-200 bg-emerald-50'
+                  ? 'ring-1 ring-[#90CAF9]/70'
                   : active
-                    ? 'border-teal-300 bg-teal-50 shadow-sm'
-                    : 'border-gray-200 bg-white'
+                    ? 'ring-2 ring-[#90CAF9]'
+                    : ''
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div className="pointer-events-none absolute inset-0" style={softWash} />
+              <div className="relative z-[1] flex items-center gap-2.5">
                 <span
-                  className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center ${
+                  className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold ${
                     s.done
-                      ? 'bg-emerald-600 text-white'
+                      ? 'bg-[#1E88E5] text-white'
                       : active
-                        ? 'bg-teal-600 text-white'
-                        : 'bg-gray-100 text-gray-500'
+                        ? 'bg-[#1E88E5] text-white'
+                        : 'bg-[#E3F2FD] text-[#1E88E5]'
                   }`}
                 >
                   {s.done ? <i className="ri-check-line" /> : s.n}
                 </span>
-                <p className="text-sm font-semibold text-gray-900">{s.title}</p>
+                <p className="text-sm font-semibold text-[#2C3E50]">{s.title}</p>
               </div>
-              <p className="text-xs text-gray-500 mt-1.5 pl-9">{s.hint}</p>
+              <p className="relative z-[1] mt-1.5 pl-10 text-xs text-slate-500">{s.hint}</p>
             </div>
           );
         })}
       </div>
 
       {existingQuoteNote && (
-        <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-sm text-teal-800">{existingQuoteNote}</div>
+        <div className="rounded-xl border border-transparent bg-[#E3F2FD]/70 px-3.5 py-3 text-sm text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)]">
+          {existingQuoteNote}
+        </div>
       )}
       {(localError || error) && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{localError || error}</div>
+        <div className="rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">{localError || error}</div>
       )}
       {toast && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">{toast}</div>
+        <div className="rounded-xl border border-transparent bg-[#E3F2FD]/80 px-3.5 py-3 text-sm text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)]">
+          {toast}
+        </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-2xl p-5">
-        <div className="mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 1</p>
-          <h2 className="text-base font-bold text-gray-900 mt-0.5">Add vendors</h2>
-          <p className="text-sm text-gray-500 mt-1">Search a vendor, then choose email, type the quote, or upload with AI.</p>
+      <div className={softCard}>
+        <div className="pointer-events-none absolute inset-0" style={softWash} />
+        <div className="relative z-[1] border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1E88E5]">Step 1</p>
+          <h2 className="mt-0.5 text-base font-bold text-[#2C3E50]">Add vendors</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Type and select a vendor — a popup opens for quoted amount and quotation file.
+          </p>
         </div>
 
+        <div className="relative z-[1] space-y-4 p-5">
         {rows.length > 0 && (
-          <div className="space-y-2 mb-4">
+          <div className="space-y-2.5">
             {rows.map((row) => {
               const round1 = row.quotes.find((q) => q.round === 1);
               const hasQuote =
@@ -459,14 +536,15 @@ export default function FunctionalOwnRfqSection({
               return (
                 <div
                   key={row.key}
-                  className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-teal-200 bg-teal-50/60"
+                  className="relative flex items-center gap-3 overflow-hidden rounded-2xl border border-transparent bg-white px-3.5 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
                 >
-                  <span className="w-8 h-8 rounded-lg bg-white border border-teal-100 flex items-center justify-center text-teal-700 shrink-0">
+                  <div className="pointer-events-none absolute inset-0" style={softWash} />
+                  <span className="relative z-[1] flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
                     <i className="ri-store-2-line" />
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{row.name || 'Vendor'}</p>
-                    <p className="text-xs text-gray-500 truncate">
+                  <div className="relative z-[1] min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[#2C3E50]">{row.name || 'Vendor'}</p>
+                    <p className="truncate text-xs text-slate-500">
                       {row.email || 'No email on file'}
                       {hasQuote ? ` · ${moneyFmt(Number(round1?.quotedPrice))}` : ' · Quote pending'}
                     </p>
@@ -474,14 +552,14 @@ export default function FunctionalOwnRfqSection({
                   <button
                     type="button"
                     onClick={() => openQuote(row, 1)}
-                    className="text-sm font-semibold text-teal-700 px-2"
+                    className="relative z-[1] cursor-pointer rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1565C0]"
                   >
                     {hasQuote ? 'Edit' : 'Quote'}
                   </button>
                   <button
                     type="button"
                     onClick={() => onChange(rows.filter((x) => x.key !== row.key))}
-                    className="text-sm text-gray-500 hover:text-red-600 px-2"
+                    className="relative z-[1] cursor-pointer px-2 text-sm text-slate-400 transition-colors hover:text-rose-500"
                   >
                     Remove
                   </button>
@@ -491,95 +569,129 @@ export default function FunctionalOwnRfqSection({
           </div>
         )}
 
-        <div className="space-y-2 mb-4">
-          <label className="text-xs font-semibold text-gray-600">Search vendor</label>
+        <div className="space-y-2">
+          <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Search vendor</label>
           <VendorSearchSelect
             vendors={vendors}
             value={searchVendorId}
             takenIds={takenIds}
-            onChange={setSearchVendorId}
-            placeholder="Type name, vendor code, or email"
+            onChange={(id) => {
+              setSearchVendorId(id);
+              if (!id) return;
+              const v = vendors.find((x) => String(x.id) === String(id));
+              if (!v) return;
+              // Selecting a vendor immediately opens quote popup (amount + file)
+              addVendorAndOpenQuote({
+                id: String(v.id),
+                name: v.name,
+                email: v.email || '',
+              });
+            }}
+            placeholder="Type name, vendor code, or email — then enter quote"
             emptyHint="No match. Use Create new to add them to Vendor Master."
           />
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
-            className="text-sm text-teal-700 font-semibold inline-flex items-center gap-1.5"
+            className="inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-[#1E88E5] hover:text-[#1565C0]"
           >
             <i className="ri-user-add-line" />
             Vendor not in the list? Create new
           </button>
         </div>
 
-        <p className="text-sm font-semibold text-gray-800 mb-2">How do you want to get the quote?</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <p className="text-sm font-semibold text-[#2C3E50]">Or choose how to add the quote</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <button
             type="button"
             onClick={() => {
-              const added = requireSelectedVendor();
-              if (!added) return;
-              applyRows(added.nextRows);
-              showToast('Vendor added. On Create PR, type the quote or upload with AI — email invite happens at SCM RFQ if needed.');
+              if (!selectedSearch) {
+                setLocalError('Search and select a vendor first');
+                return;
+              }
+              addVendorAndOpenQuote({
+                id: String(selectedSearch.id),
+                name: selectedSearch.name,
+                email: selectedSearch.email || '',
+              });
             }}
-            className="text-left rounded-2xl border border-amber-200 bg-amber-50/70 p-4 hover:border-amber-300"
+            className="relative cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color,box-shadow] hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)] sm:rounded-[18px]"
           >
-            <span className="w-9 h-9 rounded-lg bg-amber-500 text-white inline-flex items-center justify-center mb-2">
+            <div className="pointer-events-none absolute inset-0" style={softWash} />
+            <span className="relative z-[1] mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
               <i className="ri-mail-send-line" />
             </span>
-            <p className="text-sm font-bold text-gray-900">Email the vendor</p>
-            <p className="text-xs text-gray-600 mt-1">Add them now. Attach the quote here if you already have it.</p>
+            <p className="relative z-[1] text-sm font-bold text-[#2C3E50]">Email the vendor</p>
+            <p className="relative z-[1] mt-1 text-xs text-slate-500">Add them and attach the quote amount + file now.</p>
           </button>
           <button
             type="button"
             onClick={() => {
-              const added = requireSelectedVendor();
-              if (!added) return;
-              openQuote(added.row, 1, added.nextRows);
+              if (!selectedSearch) {
+                setLocalError('Search and select a vendor first');
+                return;
+              }
+              addVendorAndOpenQuote({
+                id: String(selectedSearch.id),
+                name: selectedSearch.name,
+                email: selectedSearch.email || '',
+              });
             }}
-            className="text-left rounded-2xl border border-teal-200 bg-teal-50/70 p-4 hover:border-teal-300"
+            className="relative cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color,box-shadow] hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)] sm:rounded-[18px]"
           >
-            <span className="w-9 h-9 rounded-lg bg-teal-600 text-white inline-flex items-center justify-center mb-2">
+            <div className="pointer-events-none absolute inset-0" style={softWash} />
+            <span className="relative z-[1] mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#1E88E5] text-white">
               <i className="ri-edit-line" />
             </span>
-            <p className="text-sm font-bold text-gray-900">I will type the quote</p>
-            <p className="text-xs text-gray-600 mt-1">You already have the price. Fill it here and attach the file.</p>
+            <p className="relative z-[1] text-sm font-bold text-[#2C3E50]">I will type the quote</p>
+            <p className="relative z-[1] mt-1 text-xs text-slate-500">Opens popup for quoted amount and quotation file upload.</p>
           </button>
           <button
             type="button"
             onClick={() => {
               setLocalError('');
               if (selectedSearch) {
-                const added = requireSelectedVendor();
-                if (added) applyRows(added.nextRows);
+                const added = commitVendor({
+                  id: String(selectedSearch.id),
+                  name: selectedSearch.name,
+                  email: selectedSearch.email || '',
+                });
+                applyRows(added.nextRows);
+                setSearchVendorId('');
                 openRfqChat({ vendor: selectedSearch });
                 return;
               }
               openRfqChat();
             }}
-            className="text-left rounded-2xl border border-slate-200 bg-slate-50 p-4 hover:border-slate-300"
+            className="relative cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color,box-shadow] hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)] sm:rounded-[18px]"
           >
-            <span className="w-9 h-9 rounded-lg bg-slate-900 text-white inline-flex items-center justify-center mb-2">
+            <div className="pointer-events-none absolute inset-0" style={softWash} />
+            <span className="relative z-[1] mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-white">
               <i className="ri-robot-2-line" />
             </span>
-            <p className="text-sm font-bold text-gray-900">Upload with AI</p>
-            <p className="text-xs text-gray-600 mt-1">Chat asks the vendor name, then you upload the quotation file.</p>
+            <p className="relative z-[1] text-sm font-bold text-[#2C3E50]">Upload with AI</p>
+            <p className="relative z-[1] mt-1 text-xs text-slate-500">Chat asks the vendor name, then you upload the quotation file.</p>
           </button>
+        </div>
         </div>
       </div>
 
       {rows.length > 0 && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Step 2 &amp; 3</p>
-              <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Switch tabs, tap <strong>Edit</strong> to fill the round, then <strong>Choose</strong> a vendor. Fill <strong>Q1</strong> first — tap <strong>Re-quote</strong> to add and show <strong>Q2</strong>.
-              </p>
+          <div className={`${softCard} px-5 py-4`}>
+            <div className="pointer-events-none absolute inset-0" style={softWash} />
+            <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1E88E5]">Step 2 &amp; 3</p>
+                <h2 className="mt-0.5 text-base font-bold text-[#2C3E50]">Get quotes and pick a vendor</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Switch tabs to edit each round. Click the <strong>×</strong> on Q2/Q3/Q4 to delete that round only (vendors stay). <strong>Remove vendor</strong> deletes that vendor and all their rounds.
+                </p>
+              </div>
+              <span className="rounded-full bg-[#E3F2FD] px-3 py-1.5 text-xs font-semibold text-[#1E88E5]">
+                {quotedCount} of {rows.length} quotes received
+              </span>
             </div>
-            <span className="px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-semibold text-gray-600">
-              {quotedCount} of {rows.length} quotes received
-            </span>
           </div>
           <RfqVendorQuoteTable
             rows={comparisonRows}
@@ -591,7 +703,17 @@ export default function FunctionalOwnRfqSection({
             }
             quotedCount={quotedCount}
             maxRounds={visibleRounds}
+            roundCeiling={4}
             preferredTab={focusTab}
+            onNextRound={(next) => {
+              const capped = Math.min(4, Math.max(1, Number(next) || 1));
+              if (capped > visibleRounds) {
+                onMaxRoundsChange(capped);
+                onChange(rows.map((r) => ({ ...r, quotes: syncQuotes(r.quotes, capped) })));
+              }
+              setFocusTab(capped);
+            }}
+            onRemoveRound={removeRound}
             onEdit={(tableRow, targetRound) => {
               const row = rows.find((r) => r.key === tableRow.id);
               if (!row) return;
@@ -657,37 +779,58 @@ export default function FunctionalOwnRfqSection({
         </div>
       )}
 
-      {editing && editingQuote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
+      {editingSource && editingQuote && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.18)] sm:rounded-[18px]">
+            <div className="pointer-events-none absolute inset-0" style={softWash} />
+            <div className="relative z-[1] flex items-center justify-between border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4">
               <div>
-                <h3 className="text-base font-bold text-gray-900">Edit quote — {editing.name}</h3>
-                <p className="text-xs text-gray-500 mt-1">First upload the quotation file, then fill quoted price. Those are required for round 1.</p>
+                <h3 className="text-base font-bold text-[#2C3E50]">
+                  Enter quote — {editingSource.name}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Upload the quotation file and enter the quoted amount (required for round 1).
+                </p>
               </div>
-              <button type="button" onClick={closeQuote} className="w-8 h-8 rounded-lg hover:bg-gray-100">
+              <button type="button" onClick={closeQuote} className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl text-slate-500 hover:bg-[#E3F2FD] hover:text-[#1E88E5]">
                 ×
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              <div className="flex flex-wrap gap-2">
+            <div className="relative z-[1] flex-1 space-y-5 overflow-y-auto p-5">
+              <div className="flex flex-wrap items-center gap-2">
                 {editingQuotes.map((q) => (
                   <button
                     key={q.round}
                     type="button"
                     onClick={() => setQuoteRound(q.round)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
-                      quoteRound === q.round ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600'
+                    className={`cursor-pointer rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
+                      quoteRound === q.round
+                        ? 'bg-[#1E88E5] text-white'
+                        : 'border border-transparent bg-white text-slate-600 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#90CAF9]'
                     }`}
                   >
                     Round {q.round}
                     {q.round === 1 ? ' *' : ''}
                   </button>
                 ))}
+                {quoteRound > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const r = quoteRound;
+                      removeRound(r);
+                      closeQuote();
+                    }}
+                    className="ml-auto inline-flex cursor-pointer items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100"
+                  >
+                    <i className="ri-delete-bin-line" />
+                    Delete round {quoteRound} only
+                  </button>
+                )}
               </div>
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-3">
-                  Quotation files {quoteRound === 1 ? <span className="text-red-500">*</span> : null}
+                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                  Quotation files {quoteRound === 1 ? <span className="text-rose-500">*</span> : null}
                 </p>
                 {(() => {
                   const locals = localQuoteFiles(editingQuote);
@@ -696,30 +839,30 @@ export default function FunctionalOwnRfqSection({
                   return (
                     <>
                 <label
-                  className={`flex flex-wrap items-center gap-3 px-4 py-3.5 border-2 border-dashed rounded-xl cursor-pointer ${
+                  className={`flex cursor-pointer flex-wrap items-center gap-3 rounded-2xl border-2 border-dashed px-4 py-3.5 sm:rounded-[18px] ${
                     hasAny
-                      ? 'border-teal-300 bg-teal-50/40 hover:bg-teal-50'
-                      : 'border-red-200 bg-red-50/40 hover:bg-red-50/70'
+                      ? 'border-[#90CAF9] bg-[#E3F2FD]/40 hover:bg-[#E3F2FD]/70'
+                      : 'border-rose-200 bg-rose-50/40 hover:bg-rose-50/70'
                   }`}
                 >
                   <i
-                    className={`text-xl shrink-0 ${
-                      hasAny ? 'ri-upload-2-line text-teal-700' : 'ri-upload-cloud-2-line text-red-500'
+                    className={`shrink-0 text-xl ${
+                      hasAny ? 'ri-upload-2-line text-[#1E88E5]' : 'ri-upload-cloud-2-line text-rose-500'
                     }`}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-semibold ${hasAny ? 'text-teal-800' : 'text-red-700'}`}>
+                    <p className={`text-sm font-semibold ${hasAny ? 'text-[#1565C0]' : 'text-rose-700'}`}>
                       {hasAny
                         ? `Add more files (${locals.length + saved.length} attached)`
                         : 'Upload quotation files (required)'}
                     </p>
-                    <p className="text-xs text-gray-600 mt-0.5">PDF, Word, Excel, or photo · you can select multiple</p>
+                    <p className="mt-0.5 text-xs text-slate-500">PDF, Word, Excel, or photo · you can select multiple</p>
                   </div>
                   <input
                     type="file"
                     multiple
                     accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
-                    className="text-xs max-w-full"
+                    className="max-w-full text-xs"
                     onChange={(e) => {
                       const picked = Array.from(e.target.files || []);
                       e.target.value = '';
@@ -738,17 +881,17 @@ export default function FunctionalOwnRfqSection({
                     {saved.map((sf, idx) => (
                       <li
                         key={`saved-${sf.id || sf.fileName}-${idx}`}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-teal-200 bg-teal-50/50 text-xs"
+                        className="flex items-center gap-2 rounded-xl border border-transparent bg-[#E3F2FD]/50 px-3 py-2 text-xs shadow-[0_8px_24px_-12px_rgba(15,23,42,0.06)]"
                       >
-                        <i className="ri-file-check-line text-teal-700 shrink-0" />
-                        <span className="min-w-0 flex-1 truncate font-medium text-teal-800" title={sf.fileName}>
+                        <i className="ri-file-check-line shrink-0 text-[#1E88E5]" />
+                        <span className="min-w-0 flex-1 truncate font-medium text-[#1565C0]" title={sf.fileName}>
                           {sf.fileName}
                         </span>
                         <button
                           type="button"
                           disabled={fileViewBusy || (!sf.id && !editingQuote.savedSubmissionId)}
                           onClick={() => void openQuotationPreview(editingQuote, { saved: sf })}
-                          className="text-teal-700 font-semibold hover:underline disabled:opacity-50"
+                          className="cursor-pointer font-semibold text-[#1E88E5] hover:underline disabled:opacity-50"
                         >
                           Open
                         </button>
@@ -761,7 +904,7 @@ export default function FunctionalOwnRfqSection({
                               savedFileName: nextSaved[0]?.fileName,
                             });
                           }}
-                          className="text-gray-400 hover:text-red-600"
+                          className="cursor-pointer text-slate-400 hover:text-rose-500"
                           title="Remove"
                         >
                           <i className="ri-close-line" />
@@ -771,17 +914,17 @@ export default function FunctionalOwnRfqSection({
                     {locals.map((lf, idx) => (
                       <li
                         key={`local-${lf.name}-${idx}`}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs"
+                        className="flex items-center gap-2 rounded-xl border border-transparent bg-white px-3 py-2 text-xs shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)]"
                       >
-                        <i className="ri-file-add-line text-slate-600 shrink-0" />
+                        <i className="ri-file-add-line shrink-0 text-slate-500" />
                         <span className="min-w-0 flex-1 truncate font-medium text-slate-800" title={lf.name}>
                           {lf.name}
                         </span>
-                        <span className="text-[10px] text-slate-500">New</span>
+                        <span className="text-[10px] text-slate-400">New</span>
                         <button
                           type="button"
                           onClick={() => void openQuotationPreview(editingQuote, { file: lf })}
-                          className="text-teal-700 font-semibold hover:underline"
+                          className="cursor-pointer font-semibold text-[#1E88E5] hover:underline"
                         >
                           Open
                         </button>
@@ -794,7 +937,7 @@ export default function FunctionalOwnRfqSection({
                               file: nextFiles[0] || null,
                             });
                           }}
-                          className="text-gray-400 hover:text-red-600"
+                          className="cursor-pointer text-slate-400 hover:text-rose-500"
                           title="Remove"
                         >
                           <i className="ri-close-line" />
@@ -807,15 +950,15 @@ export default function FunctionalOwnRfqSection({
                   );
                 })()}
                 {fileViewError ? (
-                  <p className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                  <p className="mt-2 flex items-center gap-1 text-xs text-rose-600">
                     <i className="ri-error-warning-line" />
                     {fileViewError}
                   </p>
                 ) : null}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Quoted price ({moneySym}) *
                   </label>
                   <input
@@ -824,25 +967,25 @@ export default function FunctionalOwnRfqSection({
                     step="0.01"
                     value={editingQuote.quotedPrice}
                     onChange={(e) => updateQuote(editing.key, quoteRound, { quotedPrice: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    className="box-border h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Lead time (days)</label>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Lead time (days)</label>
                   <input
                     type="number"
                     min="0"
                     value={editingQuote.leadTime}
                     onChange={(e) => updateQuote(editing.key, quoteRound, { leadTime: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    className="box-border h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Payment terms</label>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Payment terms</label>
                   <select
                     value={editingQuote.paymentTerms}
                     onChange={(e) => updateQuote(editing.key, quoteRound, { paymentTerms: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                    className="box-border h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30"
                   >
                     <option value="">Select</option>
                     {PR_PAYMENT_TERM_OPTIONS.map((term) => (
@@ -852,11 +995,11 @@ export default function FunctionalOwnRfqSection({
                 </div>
               </div>
             </div>
-            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+            <div className="relative z-[1] flex justify-end gap-2 border-t border-slate-100/80 px-5 py-4">
               <button
                 type="button"
                 onClick={closeQuote}
-                className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+                className="cursor-pointer rounded-xl border border-transparent bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
               >
                 Close
               </button>
@@ -873,9 +1016,9 @@ export default function FunctionalOwnRfqSection({
                   }
                   setLocalError('');
                   closeQuote();
-                  showToast(`Quote saved for ${editing.name}`);
+                  showToast(`Quote saved for ${editingSource.name}`);
                 }}
-                className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700"
+                className="cursor-pointer rounded-xl bg-[#1E88E5] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1565C0]"
               >
                 Save quote + file
               </button>
@@ -885,49 +1028,50 @@ export default function FunctionalOwnRfqSection({
       )}
 
       {recommendModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.18)] sm:rounded-[18px]">
+            <div className="pointer-events-none absolute inset-0" style={softWash} />
+            <div className="relative z-[1] flex items-center justify-between border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4">
               <div>
-                <h3 className="text-base font-bold text-gray-900">Choose this vendor</h3>
-                <p className="text-xs text-gray-500 mt-0.5">{recommendModal.vendorName}</p>
+                <h3 className="text-base font-bold text-[#2C3E50]">Choose this vendor</h3>
+                <p className="mt-0.5 text-xs text-slate-500">{recommendModal.vendorName}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setRecommendModal(null)}
-                className="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl text-slate-500 hover:bg-[#E3F2FD] hover:text-[#1E88E5]"
               >
                 ×
               </button>
             </div>
-            <div className="p-5 space-y-3">
-              <label className="block text-sm font-semibold text-gray-700">
-                Why this vendor? <span className="text-red-500">*</span>
+            <div className="relative z-[1] space-y-3 p-5">
+              <label className="block text-sm font-semibold text-[#2C3E50]">
+                Why this vendor? <span className="text-rose-500">*</span>
               </label>
               <textarea
                 value={recommendDraft}
                 onChange={(e) => setRecommendDraft(e.target.value)}
                 rows={4}
                 placeholder="Example: Lowest price and delivery in 10 days"
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30"
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-slate-500">
                 Saved with the draft. Managers will see this reason.
               </p>
-              {localError && <p className="text-xs text-red-600">{localError}</p>}
+              {localError && <p className="text-xs text-rose-600">{localError}</p>}
             </div>
-            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+            <div className="relative z-[1] flex justify-end gap-2 border-t border-slate-100/80 px-5 py-4">
               <button
                 type="button"
                 onClick={() => setRecommendModal(null)}
-                className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+                className="cursor-pointer rounded-xl border border-transparent bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmRecommend}
-                className="px-4 py-2 bg-teal-600 text-white text-sm font-semibold rounded-lg hover:bg-teal-700"
+                className="cursor-pointer rounded-xl bg-[#1E88E5] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1565C0]"
               >
                 Confirm choose
               </button>
@@ -937,23 +1081,30 @@ export default function FunctionalOwnRfqSection({
       )}
 
       {createOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-transparent bg-white p-6 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.18)] sm:rounded-[18px]">
+            <div className="pointer-events-none absolute inset-0" style={softWash} />
+            <div className="relative z-[1]">
             <CreateVendorForm
               compact
               onSuccess={(vendor) => {
                 setCreateOpen(false);
                 onVendorsRefresh?.(vendor);
                 if (vendor) {
-                  setSearchVendorId(String(vendor.id));
-                  showToast(`Vendor ${vendor.name} added`);
+                  addVendorAndOpenQuote({
+                    id: String(vendor.id),
+                    name: vendor.name,
+                    email: vendor.email || '',
+                  });
                 }
               }}
               onCancel={() => setCreateOpen(false)}
             />
+            </div>
           </div>
         </div>
       )}
+
 
       <RfqChatbot
         prNumber={prNumber}

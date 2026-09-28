@@ -49,7 +49,7 @@ const PRExpandedRow: React.FC<PRExpandedRowProps> = ({ pr, onApprove, onReject, 
           onClick={() => setActiveTab('details')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'details'
-              ? 'border-teal-500 text-teal-600'
+              ? 'border-[#1E88E5] text-[#1E88E5]'
               : 'border-transparent text-gray-600 hover:text-gray-900'
           }`}
         >
@@ -59,7 +59,7 @@ const PRExpandedRow: React.FC<PRExpandedRowProps> = ({ pr, onApprove, onReject, 
           onClick={() => setActiveTab('items')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'items'
-              ? 'border-teal-500 text-teal-600'
+              ? 'border-[#1E88E5] text-[#1E88E5]'
               : 'border-transparent text-gray-600 hover:text-gray-900'
           }`}
         >
@@ -69,7 +69,7 @@ const PRExpandedRow: React.FC<PRExpandedRowProps> = ({ pr, onApprove, onReject, 
           onClick={() => setActiveTab('history')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'history'
-              ? 'border-teal-500 text-teal-600'
+              ? 'border-[#1E88E5] text-[#1E88E5]'
               : 'border-transparent text-gray-600 hover:text-gray-900'
           }`}
         >
@@ -160,7 +160,7 @@ const PRExpandedRow: React.FC<PRExpandedRowProps> = ({ pr, onApprove, onReject, 
                     <td className="px-4 py-3 text-sm text-gray-600">{index + 1}</td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.item}</td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#E3F2FD] text-[#1565C0]">
                         {item.category}
                       </span>
                     </td>
@@ -173,7 +173,7 @@ const PRExpandedRow: React.FC<PRExpandedRowProps> = ({ pr, onApprove, onReject, 
               <tfoot className="bg-gray-50 border-t-2 border-gray-300">
                 <tr>
                   <td colSpan={5} className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">Total Amount:</td>
-                  <td className="px-4 py-3 text-base font-bold text-teal-600 text-right">₹{totalAmount.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-base font-bold text-[#1E88E5] text-right">₹{totalAmount.toLocaleString()}</td>
                 </tr>
               </tfoot>
             </table>

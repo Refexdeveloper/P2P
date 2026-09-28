@@ -13,7 +13,7 @@ const DepartmentBudget: React.FC<DepartmentBudgetProps> = ({ data }) => {
   const getColorClass = (percentage: number) => {
     if (percentage >= 90) return 'bg-red-500';
     if (percentage >= 75) return 'bg-orange-500';
-    if (percentage >= 50) return 'bg-teal-500';
+    if (percentage >= 50) return 'bg-[#1E88E5]';
     return 'bg-green-500';
   };
 
@@ -27,7 +27,7 @@ const DepartmentBudget: React.FC<DepartmentBudgetProps> = ({ data }) => {
             <span className="text-gray-600">&lt;50%</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 bg-teal-500 rounded"></div>
+            <div className="w-3 h-3 bg-[#1E88E5] rounded"></div>
             <span className="text-gray-600">50-75%</span>
           </div>
           <div className="flex items-center gap-1">

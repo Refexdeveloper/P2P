@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import { PM_BTN_PRIMARY, PM_BTN_SECONDARY, PM_PAGE_BG } from '../../../constants/pmTheme';
 import { poApi, rfqApi, taskApi, PostRfqPendingItem } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import FinancialInsightsDashboard from '../../dashboard/page';
@@ -11,6 +12,28 @@ const formatCurrency = (amount: number) =>
     currency: 'INR',
     maximumFractionDigits: 0,
   }).format(amount);
+
+const softWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+
+const softCard =
+  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
+
+const KPI_THEMES = [
+  { value: '#06B6D4', iconBg: '#CFFAFE', wash: 'rgba(6, 182, 212, 0.14)' },
+  { value: '#F43F5E', iconBg: '#FFE4E6', wash: 'rgba(244, 63, 94, 0.12)' },
+  { value: '#2563EB', iconBg: '#DBEAFE', wash: 'rgba(37, 99, 235, 0.14)' },
+  { value: '#10B981', iconBg: '#D1FAE5', wash: 'rgba(16, 185, 129, 0.14)' },
+] as const;
+
+function greetingForNow() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 type PoRow = {
   id: number;
@@ -94,15 +117,16 @@ export default function ScmManagerDashboardPage() {
 
   const pendingValue = pendingPos.reduce((s, p) => s + (Number(p.grandTotal) || 0), 0);
   const rfqEntryCount = rfqPending.length;
+  const needsAction = rfqEntryCount > 0 || taskCount > 0 || pendingPos.length > 0;
 
-  const cards = [
+  const kpiCards = [
     {
       label: 'PO Pending Approval',
       value: pendingPos.length,
       sub: pendingValue ? formatCurrency(pendingValue) : 'Awaiting your sign-off',
       icon: 'ri-checkbox-circle-line',
-      color: 'amber',
       to: '/scm/po-approval',
+      theme: KPI_THEMES[0],
       highlight: pendingPos.length > 0,
     },
     {
@@ -112,17 +136,19 @@ export default function ScmManagerDashboardPage() {
         ? `${rfqEntryCount} vendor / post-RFQ awaiting you`
         : 'No RFQ entry pending',
       icon: 'ri-file-list-line',
-      color: 'rose',
       to: '/rfq-approval',
+      theme: KPI_THEMES[1],
       highlight: rfqEntryCount > 0,
     },
     {
       label: 'My Tasks Pending',
       value: taskCount,
-      sub: taskCount ? `${taskCount} open workflow task${taskCount === 1 ? '' : 's'}` : 'No tasks pending',
+      sub: taskCount
+        ? `${taskCount} open workflow task${taskCount === 1 ? '' : 's'}`
+        : 'No tasks pending',
       icon: 'ri-task-line',
-      color: 'rose',
       to: '/tasks',
+      theme: KPI_THEMES[2],
       highlight: taskCount > 0,
     },
     {
@@ -130,48 +156,18 @@ export default function ScmManagerDashboardPage() {
       value: approvedPos,
       sub: 'Signed / sent / buyer verify',
       icon: 'ri-check-double-line',
-      color: 'emerald',
       to: '/scm/po-approval',
+      theme: KPI_THEMES[3],
       highlight: false,
     },
-  ] as const;
-
-  const colorMap: Record<string, { bg: string; text: string; border: string; iconBg: string; ring: string }> = {
-    amber: {
-      bg: 'bg-amber-50',
-      text: 'text-amber-700',
-      border: 'border-amber-100',
-      iconBg: 'bg-amber-100',
-      ring: 'ring-amber-200',
-    },
-    teal: {
-      bg: 'bg-teal-50',
-      text: 'text-teal-700',
-      border: 'border-teal-100',
-      iconBg: 'bg-teal-100',
-      ring: 'ring-teal-200',
-    },
-    emerald: {
-      bg: 'bg-emerald-50',
-      text: 'text-emerald-700',
-      border: 'border-emerald-100',
-      iconBg: 'bg-emerald-100',
-      ring: 'ring-emerald-200',
-    },
-    rose: {
-      bg: 'bg-rose-50',
-      text: 'text-rose-700',
-      border: 'border-rose-200',
-      iconBg: 'bg-rose-100',
-      ring: 'ring-rose-300',
-    },
-  };
+  ];
 
   if (showDetailedView) {
     return (
       <DashboardLayout>
         <FinancialInsightsDashboard
           embedded
+          backLabel="Back to SCM Manager Dashboard"
           onBack={() => setShowDetailedView(false)}
         />
       </DashboardLayout>
@@ -180,271 +176,348 @@ export default function ScmManagerDashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">SCM Manager Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Welcome{user?.name ? `, ${user.name}` : ''} — PO sign-off, RFQ Entry &amp; My Tasks
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowDetailedView(true)}
-            className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm inline-flex items-center gap-1.5"
-          >
-            <i className="ri-bar-chart-box-line"></i>
-            Detailed view
-          </button>
-          <button
-            type="button"
-            onClick={() => load()}
-            className="px-3 py-1.5 text-xs font-semibold border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
-          >
-            <i className="ri-refresh-line mr-1"></i>
-            Refresh
-          </button>
-        </div>
-      </div>
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+        <div className="p-2 pb-6 sm:p-4 lg:p-6">
+          <header className="mb-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+              <div className="min-w-0 shrink text-center lg:text-left">
+                <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl md:text-3xl">
+                  {greetingForNow()},{' '}
+                  <span className="font-semibold text-slate-900">
+                    {user?.name || 'SCM Manager'}
+                  </span>
+                </h1>
+                <p className="mt-0.5 text-[11px] font-medium text-slate-500 lg:text-sm">
+                  SCM Manager Dashboard — PO sign-off, RFQ Entry &amp; My Tasks
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-end">
+                <button type="button" onClick={() => load()} className={PM_BTN_SECONDARY}>
+                  <i className="ri-refresh-line"></i>
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDetailedView(true)}
+                  className={PM_BTN_PRIMARY}
+                >
+                  <i className="ri-bar-chart-box-line"></i>
+                  Detailed view
+                </button>
+              </div>
+            </div>
+          </header>
 
-      {loading ? <p className="text-sm text-gray-500 mb-6">Loading dashboard…</p> : null}
+          {loading ? (
+            <p className="mb-6 text-sm text-slate-500">Loading dashboard…</p>
+          ) : null}
 
-      {(rfqEntryCount > 0 || taskCount > 0) && (
-        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 flex flex-wrap items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-600 text-white text-xs font-bold">
-            Action needed
-          </span>
-          {rfqEntryCount > 0 && (
-            <button
-              type="button"
-              onClick={() => navigate('/rfq-approval')}
-              className="text-sm font-semibold text-rose-800 hover:underline cursor-pointer"
+          {needsAction && (
+            <div
+              className={`${softCard} mb-5 border border-[#BBDEFB]/80 bg-gradient-to-r from-white to-[#E3F2FD]/50`}
             >
-              RFQ Entry pending: {rfqEntryCount}
-            </button>
+              <div className="pointer-events-none absolute inset-0" style={softWash} />
+              <div className="relative z-[1] flex flex-wrap items-center gap-3 px-4 py-3.5 sm:px-5">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1E88E5] px-2.5 py-1 text-xs font-bold text-white">
+                  Action needed
+                </span>
+                {pendingPos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/scm/po-approval')}
+                    className="cursor-pointer text-sm font-semibold text-[#1565C0] hover:underline"
+                  >
+                    PO pending: {pendingPos.length}
+                  </button>
+                )}
+                {rfqEntryCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/rfq-approval')}
+                    className="cursor-pointer text-sm font-semibold text-[#1565C0] hover:underline"
+                  >
+                    RFQ Entry pending: {rfqEntryCount}
+                  </button>
+                )}
+                {taskCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/tasks')}
+                    className="cursor-pointer text-sm font-semibold text-[#1565C0] hover:underline"
+                  >
+                    My Tasks pending: {taskCount}
+                  </button>
+                )}
+              </div>
+            </div>
           )}
-          {taskCount > 0 && (
-            <button
-              type="button"
-              onClick={() => navigate('/tasks')}
-              className="text-sm font-semibold text-rose-800 hover:underline cursor-pointer"
-            >
-              My Tasks pending: {taskCount}
-            </button>
-          )}
-        </div>
-      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        {cards.map((card) => {
-          const c = colorMap[card.color];
-          return (
-            <button
-              key={card.label}
-              type="button"
-              onClick={() => navigate(card.to)}
-              className={`text-left bg-white rounded-xl border p-5 hover:shadow-md transition-shadow cursor-pointer ${
-                card.highlight ? `${c.border} ring-2 ${c.ring} ${c.bg}` : `${c.border}`
+          <section className="mb-6">
+            <div className="mb-1.5 px-0.5 sm:mb-3">
+              <h2 className="text-xs font-bold tracking-wide text-slate-700 sm:text-base">
+                Work Insights
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+              {kpiCards.map((card) => (
+                <button
+                  key={card.label}
+                  type="button"
+                  onClick={() => navigate(card.to)}
+                  className={`group relative box-border flex h-full min-h-[128px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] duration-200 hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:min-h-[140px] sm:rounded-[18px] sm:p-5 ${
+                    card.highlight ? 'border-[#90CAF9]' : 'border-transparent'
+                  }`}
+                >
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                      background: `radial-gradient(120% 90% at 100% 0%, ${card.theme.wash} 0%, rgba(255,255,255,0) 55%)`,
+                    }}
+                  />
+                  <div className="relative z-[1] flex flex-1 items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px]">
+                        {card.label}
+                      </p>
+                      <p
+                        className="mt-2 text-3xl font-bold tabular-nums leading-none tracking-tight sm:mt-3 sm:text-[2.15rem]"
+                        style={{ color: card.theme.value }}
+                      >
+                        {card.value}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-500">{card.sub}</p>
+                    </div>
+                    <div
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11"
+                      style={{ backgroundColor: card.theme.iconBg, color: card.theme.value }}
+                    >
+                      <i className={`${card.icon} text-lg sm:text-xl`} aria-hidden />
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <div className={softCard}>
+              <div className="pointer-events-none absolute inset-0" style={softWash} />
+              <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-4 sm:px-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FEF3C7] text-[#F59E0B]">
+                    <i className="ri-checkbox-circle-line text-lg"></i>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-semibold text-[#2C3E50] sm:text-base">PO Approvals</h2>
+                    <p className="text-xs text-slate-500">Sign &amp; approve purchase orders</p>
+                  </div>
+                </div>
+                <Link
+                  to="/scm/po-approval"
+                  className="text-xs font-semibold text-[#1E88E5] transition-colors hover:text-[#1565C0]"
+                >
+                  Open queue →
+                </Link>
+              </div>
+              <div className="relative z-[1] max-h-[420px] space-y-2 overflow-y-auto p-3">
+                {pendingPos.length === 0 ? (
+                  <p className="px-2 py-8 text-center text-sm text-slate-400">
+                    No POs pending your approval
+                  </p>
+                ) : (
+                  pendingPos.map((po) => (
+                    <button
+                      key={po.id || po.poNumber}
+                      type="button"
+                      onClick={() => navigate('/scm/po-approval')}
+                      className="relative flex w-full cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border border-transparent bg-white px-3.5 py-3 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
+                    >
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <div className="relative z-[1] min-w-0">
+                        <p className="truncate text-sm font-bold text-[#1E88E5]">{po.poNumber}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          {po.vendorName || '—'} · {po.prTitle || 'PO'}
+                        </p>
+                      </div>
+                      <p className="relative z-[1] shrink-0 text-sm font-bold tabular-nums text-[#2C3E50]">
+                        {formatCurrency(Number(po.grandTotal) || 0)}
+                      </p>
+                    </button>
+                  ))
+                )}
+              </div>
+              {pendingPos.length > 0 && (
+                <div className="relative z-[1] flex items-center justify-between border-t border-slate-100/80 px-4 py-2.5 text-xs text-slate-600 sm:px-5">
+                  <span>
+                    {pendingPos.length} pending PO{pendingPos.length !== 1 ? 's' : ''}
+                  </span>
+                  <Link
+                    to="/scm/po-approval"
+                    className="font-semibold text-[#1E88E5] hover:text-[#1565C0]"
+                  >
+                    View all →
+                  </Link>
+                </div>
+              )}
+              {rejectedPos > 0 && (
+                <div className="relative z-[1] border-t border-rose-100 bg-rose-50/70 px-4 py-3 text-xs text-rose-700 sm:px-5">
+                  {rejectedPos} rejected PO{rejectedPos !== 1 ? 's' : ''} in history
+                </div>
+              )}
+            </div>
+
+            <div
+              className={`${softCard} ${
+                rfqEntryCount > 0 ? 'ring-1 ring-[#90CAF9]' : ''
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="pointer-events-none absolute inset-0" style={softWash} />
+              <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-4 sm:px-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FEE2E2] text-[#EF4444]">
+                    <i className="ri-file-list-line text-lg"></i>
+                  </div>
+                  <div>
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-[#2C3E50] sm:text-base">
+                      RFQ Entry
+                      {rfqEntryCount > 0 && (
+                        <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#1E88E5] px-1.5 text-[11px] font-bold text-white">
+                          {rfqEntryCount}
+                        </span>
+                      )}
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      SCM Manager vendor / post-RFQ decisions
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  to="/rfq-approval"
+                  className="text-xs font-semibold text-[#1E88E5] transition-colors hover:text-[#1565C0]"
+                >
+                  Open queue →
+                </Link>
+              </div>
+              <div className="relative z-[1] max-h-[420px] space-y-2 overflow-y-auto p-3">
+                {rfqPending.length === 0 ? (
+                  <p className="px-2 py-8 text-center text-sm text-slate-400">No RFQ entry pending</p>
+                ) : (
+                  rfqPending.map((item) => (
+                    <button
+                      key={item.prId}
+                      type="button"
+                      onClick={() => navigate(`/rfq-approval/${item.prId}`)}
+                      className="relative flex w-full cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border border-transparent bg-white px-3.5 py-3 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
+                    >
+                      <div className="pointer-events-none absolute inset-0" style={softWash} />
+                      <div className="relative z-[1] min-w-0">
+                        <p className="truncate text-sm font-bold text-[#1E88E5]">
+                          {item.prNumber || `PR #${item.prId}`}
+                        </p>
+                        <p className="truncate text-xs text-slate-500">
+                          {item.title || item.stageLabel || 'RFQ entry'}
+                        </p>
+                      </div>
+                      <i className="relative z-[1] ri-arrow-right-s-line text-lg text-slate-400"></i>
+                    </button>
+                  ))
+                )}
+              </div>
+              {rfqPending.length > 0 && (
+                <div className="relative z-[1] flex items-center justify-between border-t border-slate-100/80 px-4 py-2.5 text-xs text-slate-600 sm:px-5">
+                  <span>
+                    {rfqPending.length} RFQ entr{rfqPending.length !== 1 ? 'ies' : 'y'} pending
+                  </span>
+                  <Link
+                    to="/rfq-approval"
+                    className="font-semibold text-[#1E88E5] hover:text-[#1565C0]"
+                  >
+                    View all →
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div
+            className={`${softCard} mb-5 ${taskCount > 0 ? 'ring-1 ring-[#90CAF9]' : ''}`}
+          >
+            <div className="pointer-events-none absolute inset-0" style={softWash} />
+            <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-4 sm:px-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+                  <i className="ri-task-line text-lg"></i>
+                </div>
                 <div>
-                  <p className="text-xs text-gray-500 mb-1 flex items-center gap-2">
-                    {card.label}
-                    {card.highlight && (
-                      <span className="inline-flex min-w-[18px] h-[18px] px-1 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold">
-                        {card.value}
+                  <h2 className="flex items-center gap-2 text-sm font-semibold text-[#2C3E50] sm:text-base">
+                    My Tasks
+                    {taskCount > 0 && (
+                      <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#1E88E5] px-1.5 text-[11px] font-bold text-white">
+                        {taskCount}
                       </span>
                     )}
-                  </p>
-                  <p className={`text-3xl font-bold ${card.highlight ? c.text : 'text-gray-900'}`}>
-                    {card.value}
-                  </p>
-                  <p className={`text-xs mt-1 ${c.text}`}>{card.sub}</p>
-                </div>
-                <div className={`w-11 h-11 ${c.iconBg} rounded-xl flex items-center justify-center shrink-0`}>
-                  <i className={`${card.icon} text-xl ${c.text}`}></i>
+                  </h2>
+                  <p className="text-xs text-slate-500">Workflow tasks pending your action</p>
                 </div>
               </div>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-gray-900">PO Approvals</h2>
-              <p className="text-xs text-gray-500">Sign &amp; approve purchase orders</p>
-            </div>
-            <Link
-              to="/scm/po-approval"
-              className="text-xs font-semibold text-teal-700 hover:text-teal-900"
-            >
-              Open queue →
-            </Link>
-          </div>
-          <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
-            {pendingPos.length === 0 ? (
-              <p className="px-5 py-8 text-sm text-gray-400 text-center">No POs pending your approval</p>
-            ) : (
-              pendingPos.map((po) => (
-                <button
-                  key={po.id || po.poNumber}
-                  type="button"
-                  onClick={() => navigate('/scm/po-approval')}
-                  className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 text-left"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-teal-700 truncate">{po.poNumber}</p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {po.vendorName || '—'} · {po.prTitle || 'PO'}
-                    </p>
-                  </div>
-                  <p className="text-sm font-bold text-gray-900 whitespace-nowrap">
-                    {formatCurrency(Number(po.grandTotal) || 0)}
-                  </p>
-                </button>
-              ))
-            )}
-          </div>
-          {pendingPos.length > 0 && (
-            <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-600 flex items-center justify-between">
-              <span>
-                {pendingPos.length} pending PO{pendingPos.length !== 1 ? 's' : ''}
-              </span>
-              <Link to="/scm/po-approval" className="font-semibold text-teal-700 hover:text-teal-900">
-                View all →
+              <Link
+                to="/tasks"
+                className="text-xs font-semibold text-[#1E88E5] transition-colors hover:text-[#1565C0]"
+              >
+                Open My Tasks →
               </Link>
             </div>
-          )}
-          {rejectedPos > 0 && (
-            <div className="px-5 py-3 bg-red-50 border-t border-red-100 text-xs text-red-700">
-              {rejectedPos} rejected PO{rejectedPos !== 1 ? 's' : ''} in history
-            </div>
-          )}
-        </div>
-
-        <div
-          className={`bg-white rounded-xl border shadow-sm overflow-hidden ${
-            rfqEntryCount > 0 ? 'border-rose-200 ring-1 ring-rose-100' : 'border-gray-200'
-          }`}
-        >
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                RFQ Entry
-                {rfqEntryCount > 0 && (
-                  <span className="inline-flex min-w-[20px] h-5 px-1.5 items-center justify-center rounded-full bg-red-600 text-white text-[11px] font-bold">
-                    {rfqEntryCount}
-                  </span>
-                )}
-              </h2>
-              <p className="text-xs text-gray-500">SCM Manager vendor / post-RFQ decisions</p>
-            </div>
-            <Link to="/rfq-approval" className="text-xs font-semibold text-teal-700 hover:text-teal-900">
-              Open queue →
-            </Link>
-          </div>
-          <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
-            {rfqPending.length === 0 ? (
-              <p className="px-5 py-8 text-sm text-gray-400 text-center">No RFQ entry pending</p>
-            ) : (
-              rfqPending.map((item) => (
+            <div className="relative z-[1] px-5 py-8 text-center">
+              {taskCount === 0 ? (
+                <p className="text-sm text-slate-400">No tasks pending</p>
+              ) : (
                 <button
-                  key={item.prId}
                   type="button"
-                  onClick={() => navigate(`/rfq-approval/${item.prId}`)}
-                  className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-rose-50/60 text-left"
+                  onClick={() => navigate('/tasks')}
+                  className={PM_BTN_PRIMARY}
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-teal-700 truncate">
-                      {item.prNumber || `PR #${item.prId}`}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {item.title || item.stageLabel || 'RFQ entry'}
-                    </p>
-                  </div>
-                  <i className="ri-arrow-right-s-line text-gray-400 text-lg"></i>
+                  <i className="ri-task-line"></i>
+                  {taskCount} task{taskCount === 1 ? '' : 's'} pending — open My Tasks
                 </button>
-              ))
-            )}
-          </div>
-          {rfqPending.length > 0 && (
-            <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-600 flex items-center justify-between">
-              <span>
-                {rfqPending.length} RFQ entr{rfqPending.length !== 1 ? 'ies' : 'y'} pending
-              </span>
-              <Link to="/rfq-approval" className="font-semibold text-teal-700 hover:text-teal-900">
-                View all →
-              </Link>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        className={`bg-white rounded-xl border shadow-sm overflow-hidden mb-6 ${
-          taskCount > 0 ? 'border-rose-200 ring-1 ring-rose-100' : 'border-gray-200'
-        }`}
-      >
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              My Tasks
-              {taskCount > 0 && (
-                <span className="inline-flex min-w-[20px] h-5 px-1.5 items-center justify-center rounded-full bg-red-600 text-white text-[11px] font-bold">
-                  {taskCount}
-                </span>
               )}
-            </h2>
-            <p className="text-xs text-gray-500">Workflow tasks pending your action</p>
+            </div>
           </div>
-          <Link to="/tasks" className="text-xs font-semibold text-teal-700 hover:text-teal-900">
-            Open My Tasks →
-          </Link>
-        </div>
-        <div className="px-5 py-6 text-center">
-          {taskCount === 0 ? (
-            <p className="text-sm text-gray-400">No tasks pending</p>
-          ) : (
-            <button
-              type="button"
-              onClick={() => navigate('/tasks')}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 cursor-pointer"
-            >
-              <i className="ri-task-line"></i>
-              {taskCount} task{taskCount === 1 ? '' : 's'} pending — open My Tasks
-            </button>
-          )}
-        </div>
-      </div>
 
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <p className="text-teal-100 text-sm">Quick actions</p>
-          <p className="text-white text-lg font-bold mt-0.5">Jump to your queues</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            to="/scm/po-approval"
-            className="px-4 py-2 bg-white text-teal-800 rounded-lg text-sm font-semibold hover:bg-teal-50"
-          >
-            PO Approval
-          </Link>
-          <Link
-            to="/rfq-approval"
-            className="px-4 py-2 bg-teal-500/30 text-white border border-white/30 rounded-lg text-sm font-semibold hover:bg-teal-500/50"
-          >
-            RFQ Entry
-          </Link>
-          <Link
-            to="/tasks"
-            className="px-4 py-2 bg-white/15 text-white border border-white/30 rounded-lg text-sm font-semibold hover:bg-white/25"
-          >
-            My Tasks
-          </Link>
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#1E88E5] to-[#1565C0] p-5 shadow-[0_14px_32px_-14px_rgba(21,101,192,0.45)] sm:rounded-[18px]">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-40"
+              style={{
+                background:
+                  'radial-gradient(90% 120% at 100% 0%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 55%)',
+              }}
+            />
+            <div className="relative z-[1] flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-sm text-sky-100">Quick actions</p>
+                <p className="mt-0.5 text-lg font-bold text-white">Jump to your queues</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to="/scm/po-approval"
+                  className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#1565C0] transition-colors hover:bg-sky-50"
+                >
+                  PO Approval
+                </Link>
+                <Link
+                  to="/rfq-approval"
+                  className="rounded-xl border border-white/35 bg-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/25"
+                >
+                  RFQ Entry
+                </Link>
+                <Link
+                  to="/tasks"
+                  className="rounded-xl border border-white/35 bg-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/25"
+                >
+                  My Tasks
+                </Link>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </DashboardLayout>

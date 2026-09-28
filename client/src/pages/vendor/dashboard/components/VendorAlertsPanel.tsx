@@ -28,7 +28,7 @@ export default function VendorAlertsPanel({ alerts }: Props) {
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 flex items-center justify-center">
-            <i className="ri-notification-3-line text-teal-600 text-lg"></i>
+            <i className="ri-notification-3-line text-[#1E88E5] text-lg"></i>
           </div>
           <h3 className="font-semibold text-gray-900 text-sm">Alerts &amp; Activity</h3>
         </div>

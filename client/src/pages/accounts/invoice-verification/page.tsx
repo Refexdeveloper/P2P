@@ -5,6 +5,7 @@ import InvoiceTable from './components/InvoiceTable';
 import InvoiceActionModal from './components/InvoiceActionModal';
 import { InvoiceData, InvoiceStatus } from '../../../mocks/invoice-data';
 import { accountsApi } from '../../../services/api';
+import { PM_PAGE_BG } from '../../../constants/pmTheme';
 import { useAuth } from '../../../contexts/AuthContext';
 
 function mapApiInvoice(raw: Record<string, unknown>): InvoiceData {
@@ -196,76 +197,77 @@ export default function InvoiceVerificationPage() {
 
   return (
     <DashboardLayout>
-      <div className="w-full min-w-0 max-w-full space-y-6">
+      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
+        <div className="w-full min-w-0 max-w-full space-y-4 p-2 pb-6 sm:p-4 lg:p-6">
         {toast && (
-          <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-teal-700 text-white text-sm rounded-lg shadow-lg">
+          <div className="fixed top-4 right-4 z-50 rounded-xl bg-[#1565C0] px-4 py-3 text-sm text-white shadow-lg">
             {toast}
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <header className="flex flex-col gap-3 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:flex-row sm:items-start sm:justify-between sm:px-0 sm:pb-4">
           <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">3-Way Match</h1>
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              <span className="px-3 py-1 bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-sm font-semibold rounded-full shrink-0">
-                {isManager ? 'Accounts Manager' : 'Accounts Payable'}
-              </span>
-              <span className="text-gray-500 text-sm">
-                Invoice vs PO vs GRN · open a row to review files in detail
-              </span>
-            </div>
+            <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl">3-Way Match</h1>
+            <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
+              {isManager ? 'Accounts Manager' : 'Accounts Payable'} · Invoice vs PO vs GRN · open a row to review the match
+            </p>
           </div>
           <button
             type="button"
             onClick={load}
-            className="self-start shrink-0 px-4 py-2 text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg cursor-pointer"
+            className="inline-flex cursor-pointer items-center gap-2 self-start rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]"
           >
+            <i className="ri-refresh-line"></i>
             Refresh
           </button>
-        </div>
+        </header>
 
-        <InvoiceStatsCards invoices={invoices} />
+        <InvoiceStatsCards invoices={invoices} filter={statusFilter} onFilter={setStatusFilter} />
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full min-w-0">
-          <div className="p-3 sm:p-4 border-b border-gray-200">
-            <div className="relative w-full min-w-0">
-              <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+            }}
+          />
+          <div className="relative z-[1] space-y-3">
+            <div className="relative w-full min-w-0 max-w-md">
+              <i className="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
               <input
                 type="text"
                 placeholder="Search by invoice, vendor, PO, GRN, or PR..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full min-w-0 pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="box-border h-11 w-full min-w-0 rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
               />
             </div>
-          </div>
-
-          <div className="flex gap-1 p-2 flex-wrap">
-            {(
-              [
-                ['all', 'All'],
-                ['Pending Verification', 'Pending / Upload'],
-                ['Pending Manager Approval', 'Pending Manager'],
-                ['Approved for Payment', 'Approved'],
-                ['Discrepancy', 'Discrepancy'],
-                ['On Hold', 'On Hold'],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setStatusFilter(key as 'all' | InvoiceStatus)}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                  statusFilter === key ? 'bg-teal-100 text-teal-700' : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {label} (
-                {key === 'all'
-                  ? invoices.length
-                  : invoices.filter((i) => i.status === key).length}
-                )
-              </button>
-            ))}
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ['all', 'All'],
+                  ['Pending Verification', 'Pending'],
+                  ['Matched', 'Matched'],
+                  ['Pending Manager Approval', 'Manager'],
+                  ['Approved for Payment', 'Approved'],
+                  ['Discrepancy', 'Discrepancy'],
+                  ['On Hold', 'On Hold'],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setStatusFilter(key as 'all' | InvoiceStatus)}
+                  className={`cursor-pointer whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold ${
+                    statusFilter === key ? 'bg-[#1E88E5] text-white' : 'bg-[#F8FAFC] text-slate-600'
+                  }`}
+                >
+                  {label} (
+                  {key === 'all' ? invoices.length : invoices.filter((i) => i.status === key).length})
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -278,6 +280,7 @@ export default function InvoiceVerificationPage() {
         ) : (
           <InvoiceTable invoices={filteredInvoices} onAction={handleAction} />
         )}
+        </div>
       </div>
 
       {actionModal && (

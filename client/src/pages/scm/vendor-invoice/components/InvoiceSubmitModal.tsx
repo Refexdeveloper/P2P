@@ -30,11 +30,11 @@ export default function InvoiceSubmitModal({ invoice, mode, isOpen, onClose, onC
       <div className="absolute inset-0 bg-black/40" onClick={onClose}></div>
       <div className="relative bg-white rounded-2xl w-full max-w-lg mx-4 overflow-hidden">
         {/* Header */}
-        <div className={`px-6 py-5 border-b border-gray-100 ${mode === 'resubmit' ? 'bg-amber-50' : 'bg-teal-50'}`}>
+        <div className={`px-6 py-5 border-b border-gray-100 ${mode === 'resubmit' ? 'bg-amber-50' : 'bg-[#E3F2FD]'}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${mode === 'resubmit' ? 'bg-amber-100' : 'bg-teal-100'}`}>
-                <i className={`text-xl ${mode === 'resubmit' ? 'ri-refresh-line text-amber-600' : 'ri-send-plane-line text-teal-600'}`}></i>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${mode === 'resubmit' ? 'bg-amber-100' : 'bg-[#E3F2FD]'}`}>
+                <i className={`text-xl ${mode === 'resubmit' ? 'ri-refresh-line text-amber-600' : 'ri-send-plane-line text-[#1E88E5]'}`}></i>
               </div>
               <div>
                 <p className="text-sm font-bold text-gray-900">{mode === 'resubmit' ? 'Re-submit Invoice' : 'Submit Invoice'}</p>
@@ -52,7 +52,7 @@ export default function InvoiceSubmitModal({ invoice, mode, isOpen, onClose, onC
           <div className="bg-gray-50 rounded-xl p-4 space-y-2.5">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">PO Number</span>
-              <span className="font-semibold text-teal-600">{invoice.poNumber}</span>
+              <span className="font-semibold text-[#1E88E5]">{invoice.poNumber}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Vendor</span>
@@ -68,7 +68,7 @@ export default function InvoiceSubmitModal({ invoice, mode, isOpen, onClose, onC
             </div>
             <div className="pt-2 border-t border-gray-200 flex justify-between">
               <span className="text-sm font-bold text-gray-800">Invoice Amount</span>
-              <span className="text-base font-black text-teal-600">{formatCurrency(invoice.grandTotal)}</span>
+              <span className="text-base font-black text-[#1E88E5]">{formatCurrency(invoice.grandTotal)}</span>
             </div>
           </div>
 
@@ -107,7 +107,7 @@ export default function InvoiceSubmitModal({ invoice, mode, isOpen, onClose, onC
               rows={3}
               maxLength={500}
               placeholder={mode === 'resubmit' ? 'Explain how the discrepancy was resolved...' : 'Any notes for the accounts team...'}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 resize-none"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5] resize-none"
             />
             <p className="text-right text-xs text-gray-400 mt-0.5">{remarks.length}/500</p>
           </div>
@@ -118,7 +118,7 @@ export default function InvoiceSubmitModal({ invoice, mode, isOpen, onClose, onC
               type="checkbox"
               checked={confirmed}
               onChange={(e) => setConfirmed(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-teal-600 cursor-pointer"
+              className="mt-0.5 w-4 h-4 accent-[#1E88E5] cursor-pointer"
             />
             <span className="text-xs text-gray-600 leading-relaxed">
               I confirm that all details in this invoice are accurate and the goods/services have been delivered as per the PO terms.
@@ -141,7 +141,7 @@ export default function InvoiceSubmitModal({ invoice, mode, isOpen, onClose, onC
               confirmed && (mode !== 'resubmit' || remarks.trim())
                 ? mode === 'resubmit'
                   ? 'bg-amber-600 hover:bg-amber-700 cursor-pointer'
-                  : 'bg-teal-600 hover:bg-teal-700 cursor-pointer'
+                  : 'bg-[#1E88E5] hover:bg-[#1565C0] cursor-pointer'
                 : 'bg-gray-300 cursor-not-allowed'
             }`}
           >

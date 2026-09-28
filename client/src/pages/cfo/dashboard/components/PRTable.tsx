@@ -154,7 +154,7 @@ export default function PRTable({ prs, entities, onRefresh }: PRTableProps) {
               </tr>
               {expandedRow === pr.id && (
                 <tr key={`${pr.id}-expanded`}>
-                  <td colSpan={8} className="bg-gray-50 border-t border-gray-100">
+                  <td colSpan={8} className="bg-[#F5F7FA] border-t border-gray-100">
                     <PRExpandedRow pr={pr as any} entityColor={getEntityColor(pr.entity)} onRefresh={onRefresh} />
                   </td>
                 </tr>

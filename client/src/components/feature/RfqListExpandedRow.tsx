@@ -38,6 +38,12 @@ interface PRDetail {
   deliveryPoc?: string;
   placeOfDelivery?: string;
   submittedDate: string;
+  /** When PR entered SCM RFQ Entry / SCM Verify */
+  prDate?: string;
+  scmRfqEntryDate?: string;
+  entityName?: string;
+  entityCode?: string;
+  scopeOfWork?: string;
   totalAmount: number;
   justification: string;
   specialNotes?: string;
@@ -76,6 +82,27 @@ function normalizeHistory(raw: unknown): ApprovalHistoryEntry[] {
   });
 }
 
+/** Soft white card + primary blue pastel wash (dashboard detail tiles) */
+const softDetailCard =
+  'relative min-w-0 overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-4';
+
+const softDetailWash = {
+  background:
+    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+} as const;
+
+function SoftDetailField({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className={softDetailCard}>
+      <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+      <div className="relative z-[1]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+        <div className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">{value?.trim() ? value : '—'}</div>
+      </div>
+    </div>
+  );
+}
+
 function HighlightInfoCard({
   label,
   value,
@@ -89,29 +116,20 @@ function HighlightInfoCard({
   tone: 'address' | 'notes';
   className?: string;
 }) {
-  const styles = {
-    address: {
-      box: 'bg-gradient-to-br from-teal-50 via-cyan-50 to-emerald-50 border-teal-200',
-      icon: 'bg-teal-600 text-white',
-      label: 'text-teal-700',
-      value: 'text-teal-950',
-    },
-    notes: {
-      box: 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 border-amber-200',
-      icon: 'bg-amber-500 text-white',
-      label: 'text-amber-800',
-      value: 'text-amber-950',
-    },
-  }[tone];
+  const iconStyles =
+    tone === 'address'
+      ? 'bg-[#E3F2FD] text-[#1E88E5]'
+      : 'bg-amber-50 text-amber-600';
 
   return (
-    <div className={`rounded-xl border p-4 min-h-[120px] flex gap-3 ${styles.box} ${className}`}>
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${styles.icon}`}>
+    <div className={`${softDetailCard} flex min-h-[120px] gap-3 ${className}`}>
+      <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+      <div className={`relative z-[1] flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconStyles}`}>
         <i className={`${icon} text-lg`}></i>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className={`text-[11px] font-semibold uppercase tracking-wider mb-1.5 ${styles.label}`}>{label}</p>
-        <p className={`text-sm font-semibold leading-relaxed whitespace-pre-wrap break-words ${styles.value}`}>
+      <div className="relative z-[1] min-w-0 flex-1">
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+        <p className="break-words text-sm font-semibold leading-relaxed whitespace-pre-wrap text-[#2C3E50]">
           {value?.trim() ? value : '—'}
         </p>
       </div>
@@ -199,6 +217,11 @@ export default function RfqListExpandedRow({
             deliveryPoc: String(d.deliveryPoc || ''),
             placeOfDelivery: String(d.placeOfDelivery || ''),
             submittedDate: String(d.submittedDate || ''),
+            prDate: String(d.prDate || d.scmRfqEntryDate || ''),
+            scmRfqEntryDate: String(d.scmRfqEntryDate || d.prDate || ''),
+            entityName: String(d.entityName || ''),
+            entityCode: String(d.entityCode || ''),
+            scopeOfWork: String(d.scopeOfWork || ''),
             totalAmount: Number(d.totalAmount || 0),
             justification: String(d.justification || ''),
             specialNotes: String(d.specialNotes || ''),
@@ -255,36 +278,44 @@ export default function RfqListExpandedRow({
 
   return (
     <tr>
-      <td colSpan={colSpan} className="p-0 bg-slate-50 border-b border-teal-100">
-        <div className="m-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-gradient-to-r from-teal-50 to-white border-b border-gray-100">
+      {/* max-w-0 keeps wide expand content from stretching / double-scrolling the parent table */}
+      <td colSpan={colSpan} className="max-w-0 bg-transparent p-0 align-top">
+        <div className="relative m-2 box-border w-full max-w-full overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:m-3 sm:rounded-[18px]">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+            }}
+          />
+          <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-5">
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-gray-900 truncate" title={pr ? `${pr.prNumber} — ${pr.title}` : undefined}>
-                {pr?.prNumber || `PR #${prId}`}
+              <p className="truncate text-sm font-bold text-[#2C3E50]" title={pr ? `${pr.prNumber} — ${pr.title}` : undefined}>
+                <span className="text-[#1E88E5]">{pr?.prNumber || `PR #${prId}`}</span>
                 {pr?.title ? ` — ${pr.title}` : ''}
               </p>
-                <p className="text-xs text-gray-500">PR details · Documents · Line items · Vendor comparison · Approval history</p>
+              <p className="text-xs text-slate-500">PR details · Documents · Line items · Vendor comparison · Approval history</p>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+            <div className="flex max-w-full flex-shrink-0 flex-wrap items-center gap-2">
               {actionSlot}
               {(pr?.statusUI || statusLabel) && (
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700 whitespace-nowrap">
+                <span className="whitespace-nowrap rounded-full bg-[#E3F2FD] px-2.5 py-1 text-xs font-semibold text-[#1E88E5]">
                   {pr?.statusUI || statusLabel}
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex border-b border-gray-100 px-3 overflow-x-auto">
+          <div className="relative z-[1] flex flex-wrap gap-x-1 border-b border-slate-100/80 px-2 sm:px-3">
             {tabs.map((t) => (
               <button
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+                className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors sm:px-4 ${
                   tab === t.key
-                    ? 'border-teal-600 text-teal-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                    ? 'border-[#1E88E5] text-[#1E88E5]'
+                    : 'border-transparent text-slate-500 hover:text-[#2C3E50]'
                 }`}
               >
                 <i className={t.icon}></i>
@@ -293,10 +324,14 @@ export default function RfqListExpandedRow({
             ))}
           </div>
 
-          <div className="p-5">
+          <div
+            className={`relative z-[1] max-w-full overflow-x-auto p-4 sm:p-5 ${
+              tab === 'details' ? 'bg-[#F5F7FA]' : ''
+            }`}
+          >
             {loading && (
-              <div className="py-8 text-center text-sm text-gray-500">
-                <i className="ri-loader-4-line animate-spin text-lg text-teal-600 mr-2"></i>
+              <div className="py-8 text-center text-sm text-slate-500">
+                <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#1E88E5]"></i>
                 Loading details...
               </div>
             )}
@@ -307,9 +342,16 @@ export default function RfqListExpandedRow({
 
             {!loading && !error && pr && tab === 'details' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {[
                     ['PR Number', pr.prNumber],
+                    ['PR Date', pr.prDate || pr.scmRfqEntryDate || '—'],
+                    [
+                      'Entity',
+                      pr.entityCode && pr.entityName
+                        ? `${pr.entityCode} — ${pr.entityName}`
+                        : pr.entityName || pr.entityCode || '—',
+                    ],
                     ['Department', pr.department],
                     ['Requester', pr.requester],
                     ['Request Type', pr.requestType],
@@ -340,29 +382,32 @@ export default function RfqListExpandedRow({
                     ],
                     ['Status', pr.statusUI || '—'],
                   ].map(([label, value]) => (
-                    <div key={label} className="bg-gray-50 rounded-lg p-3 min-w-0">
-                      <p className="text-xs text-gray-500 mb-0.5">{label}</p>
-                      <p className="text-sm font-medium text-gray-900 break-words" title={String(value || '')}>
-                        {value || '—'}
-                      </p>
-                    </div>
+                    <SoftDetailField key={label} label={label} value={value} />
                   ))}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <HighlightInfoCard
+                  label="Scope of Work"
+                  value={pr.scopeOfWork}
+                  icon="ri-file-list-3-line"
+                  tone="notes"
+                  className="min-h-[100px]"
+                />
+
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   <HighlightInfoCard
                     label="Place of Delivery"
                     value={pr.placeOfDelivery}
                     icon="ri-map-pin-line"
                     tone="address"
-                    className="lg:col-span-2 min-h-[120px]"
+                    className="min-h-[120px] lg:col-span-2"
                   />
                   <HighlightInfoCard
                     label="Billing Address"
                     value={pr.billingAddress}
                     icon="ri-building-line"
                     tone="address"
-                    className="lg:col-span-2 min-h-[120px]"
+                    className="min-h-[120px] lg:col-span-2"
                   />
                 </div>
 
@@ -375,23 +420,29 @@ export default function RfqListExpandedRow({
                 />
 
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Business Justification
                   </h4>
-                  <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 break-words whitespace-pre-wrap min-h-[80px]">
-                    {pr.justification || 'No justification provided.'}
-                  </p>
+                  <div className={softDetailCard}>
+                    <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+                    <p className="relative z-[1] min-h-[80px] break-words whitespace-pre-wrap text-sm leading-relaxed text-[#2C3E50]">
+                      {pr.justification || 'No justification provided.'}
+                    </p>
+                  </div>
                 </div>
 
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Manager &amp; L2 Comments
                   </h4>
                   <ManagerL2CommentsHighlight history={pr.approvalHistory} />
                 </div>
 
-                <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
-                  <PrDocumentsPanel prId={pr.id} attachments={pr.attachments} compact />
+                <div className={softDetailCard}>
+                  <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+                  <div className="relative z-[1]">
+                    <PrDocumentsPanel prId={pr.id} attachments={pr.attachments} compact />
+                  </div>
                 </div>
               </div>
             )}
@@ -401,12 +452,12 @@ export default function RfqListExpandedRow({
             )}
 
             {!loading && !error && pr && tab === 'items' && (
-              <div className="overflow-x-auto">
+              <div className="min-w-0 w-full max-w-full overflow-x-auto">
                 {pr.lineItems.length === 0 ? (
                   <p className="text-sm text-gray-500 py-6 text-center">No line items found</p>
                 ) : (
-                  <table className="w-full min-w-[640px] text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-200">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-slate-100 bg-[#F8FBFF]">
                       <tr>
                         <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-10">#</th>
                         <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
@@ -447,7 +498,7 @@ export default function RfqListExpandedRow({
                         <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600 uppercase">
                           Grand Total
                         </td>
-                        <td className="px-3 py-2.5 text-right text-sm font-bold text-teal-700 tabular-nums whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-right text-sm font-bold tabular-nums text-[#1E88E5] whitespace-nowrap">
                           {formatCurrency(pr.totalAmount)}
                         </td>
                       </tr>
@@ -459,7 +510,7 @@ export default function RfqListExpandedRow({
 
             {!loading && !error && pr && tab === 'vendors' && (
               comparison ? (
-                <div className="min-w-0 w-full max-w-full">
+                <div className="min-w-0 w-full max-w-full space-y-4 rounded-2xl bg-[#F5F7FA] p-3 sm:rounded-[18px] sm:p-4">
                   <VendorComparisonMatrix
                     data={comparison}
                     compact
@@ -469,15 +520,27 @@ export default function RfqListExpandedRow({
                   />
                 </div>
               ) : (
-                <div className="py-8 text-center text-sm text-gray-500">
-                  <i className="ri-store-2-line text-2xl text-gray-300 mb-2 block"></i>
-                  No vendor comparison data yet — open RFQ entry to add vendors and quotes
+                <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-10 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                      background:
+                        'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+                    }}
+                  />
+                  <div className="relative z-[1]">
+                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E3F2FD] text-[#1E88E5]">
+                      <i className="ri-store-2-line text-xl"></i>
+                    </div>
+                    <p className="text-sm font-medium text-slate-600">No vendor comparison data yet</p>
+                    <p className="mt-1 text-xs text-slate-400">Open RFQ entry to add vendors and quotes</p>
+                  </div>
                 </div>
               )
             )}
 
             {!loading && !error && pr && tab === 'history' && (
-              <div className="space-y-4">
+              <div className="space-y-4 rounded-2xl bg-[#F5F7FA] p-3 sm:rounded-[18px] sm:p-4">
                 <ManagerL2CommentsHighlight history={pr.approvalHistory} />
                 <ApprovalHistoryPanel history={pr.approvalHistory} />
               </div>

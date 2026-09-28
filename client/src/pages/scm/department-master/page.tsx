@@ -90,7 +90,7 @@ export default function DepartmentMasterPage() {
           </div>
           <button
             onClick={openCreate}
-            className="px-4 py-2.5 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 cursor-pointer flex items-center gap-2"
+            className="px-4 py-2.5 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] cursor-pointer flex items-center gap-2"
           >
             <i className="ri-add-line"></i> Add Department
           </button>
@@ -104,7 +104,7 @@ export default function DepartmentMasterPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search departments..."
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
               />
             </div>
           </div>
@@ -146,7 +146,7 @@ export default function DepartmentMasterPage() {
                       <td className="px-4 py-3">
                         <button
                           onClick={() => openEdit(row)}
-                          className="text-teal-600 text-sm font-semibold hover:underline cursor-pointer"
+                          className="text-[#1E88E5] text-sm font-semibold hover:underline cursor-pointer"
                         >
                           Edit
                         </button>
@@ -179,7 +179,7 @@ export default function DepartmentMasterPage() {
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="e.g. Procurement"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                 />
               </div>
               <div>
@@ -188,7 +188,7 @@ export default function DepartmentMasterPage() {
                   value={form.code}
                   onChange={(e) => setForm({ ...form, code: e.target.value })}
                   placeholder="e.g. PROC"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
                 />
               </div>
               <div>
@@ -197,7 +197,7 @@ export default function DepartmentMasterPage() {
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={3}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] resize-none"
                 />
               </div>
               <div>
@@ -205,7 +205,7 @@ export default function DepartmentMasterPage() {
                 <select
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-white cursor-pointer"
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
@@ -219,7 +219,7 @@ export default function DepartmentMasterPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-60 cursor-pointer"
+                className="px-4 py-2 bg-[#1E88E5] text-white rounded-lg text-sm font-semibold hover:bg-[#1565C0] disabled:opacity-60 cursor-pointer"
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>
