@@ -823,6 +823,39 @@ async function getRecommendedVendor(prId) {
   return inv[0];
 }
 
+function vendorNameKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(private|limited|pvt|ltd|llp|inc|corp|company|co)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sameVendorName(a, b) {
+  const left = vendorNameKey(a);
+  const right = vendorNameKey(b);
+  return Boolean(left && right && left === right);
+}
+
+function recommendedQuoteFromRounds(rounds) {
+  const list = Array.isArray(rounds) ? rounds : [];
+  for (const round of list) {
+    const quotes = Array.isArray(round?.vendorQuotes) ? round.vendorQuotes : [];
+    const hit = quotes.find(
+      (quote) => quote && (quote.recommended === true || quote.recommended === 1 || quote.recommended === 'true')
+    );
+    const name = String(hit?.vendorName || hit?.vendor_name || '').trim();
+    if (!name) continue;
+    return {
+      vendor_name: name,
+      vendor_email: String(hit.vendorEmail || hit.vendor_email || '').trim(),
+    };
+  }
+  return null;
+}
+
 function roundMoney(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
@@ -905,7 +938,33 @@ async function enrichPO(row) {
   }
   const lineItems = await getLineItems(row.id);
 
-  const vendor = await lookupVendorMaster(row.vendor_email, row.vendor_name);
+  let sourceVendorName = String(row.vendor_name || '').trim();
+  let sourceVendorEmail = String(row.vendor_email || '').trim();
+  if (row.pr_id) {
+    try {
+      const recommended = await getRecommendedVendor(row.pr_id);
+      if (String(recommended?.vendor_name || '').trim()) {
+        sourceVendorName = String(recommended.vendor_name).trim();
+        sourceVendorEmail = String(recommended.vendor_email || sourceVendorEmail).trim();
+      }
+    } catch {
+      /* keep the vendor stored on the PO */
+    }
+  } else {
+    const manualRecommended = recommendedQuoteFromRounds(
+      parseManualContextJson(row.manual_context_json)?.comparisonRounds
+    );
+    if (manualRecommended) {
+      sourceVendorName = manualRecommended.vendor_name;
+      sourceVendorEmail = manualRecommended.vendor_email || sourceVendorEmail;
+    }
+  }
+  const vendor = await lookupVendorMaster(sourceVendorEmail, sourceVendorName);
+  const masterIsSame =
+    sameVendorName(sourceVendorName, vendor.name) ||
+    (sourceVendorEmail &&
+      vendor.email &&
+      sourceVendorEmail.toLowerCase() === String(vendor.email).trim().toLowerCase());
   const [creatorRows] = await pool.query(`SELECT name, role FROM users WHERE id = ?`, [row.created_by]);
   const creator = creatorRows[0] || {};
   const [cancelledByRows] = row.cancelled_by
@@ -927,12 +986,12 @@ async function enrichPO(row) {
     prTitle: pr?.title || '',
     department: pr?.department || '',
     requester: pr?.requester || '',
-    vendorName: vendor.name || row.vendor_name,
-    vendorEmail: vendor.email || row.vendor_email,
-    vendorAddress: vendor.address || '',
-    vendorGst: vendor.gst_number || '',
-    vendorPan: vendor.pan_number || '',
-    vendorPhone: vendor.phone || '',
+    vendorName: masterIsSame ? vendor.name || sourceVendorName : sourceVendorName,
+    vendorEmail: masterIsSame ? vendor.email || sourceVendorEmail : sourceVendorEmail,
+    vendorAddress: masterIsSame ? vendor.address || '' : '',
+    vendorGst: masterIsSame ? vendor.gst_number || '' : '',
+    vendorPan: masterIsSame ? vendor.pan_number || '' : '',
+    vendorPhone: masterIsSame ? vendor.phone || '' : '',
     deliveryAddress: row.delivery_address,
     expectedDeliveryDate: formatDate(row.expected_delivery_date),
     poDate: formatDate(row.po_date) || formatDate(row.created_at),
@@ -1593,45 +1652,13 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
   const gst = String(extras.gst || extras.gstNumber || extras.gst_number || '').trim();
   const select = `SELECT name, email, address, gst_number, pan_number, phone FROM vendors`;
 
-  const nameKey = (value) =>
-    String(value || '')
-      .toLowerCase()
-      .replace(/&/g, ' and ')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .replace(/\b(private|limited|pvt|ltd|llp|inc|corp|company|co)\b/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-  const pickBestName = (rows, key) => {
-    if (!rows?.length || !key) return null;
-    return (
-      rows.find((row) => nameKey(row.name) === key) ||
-      rows.find((row) => {
-        const k = nameKey(row.name);
-        return k && key && (k.includes(key) || key.includes(k));
-      }) ||
-      null
-    );
-  };
-
-  // Name first — email on the PO is often a generic inbox, not Vendor Master contact.
+  // Exact name, GST, or email only — a partial name must not swap in a different vendor.
   if (name) {
     const [byName] = await pool.query(
       `${select} WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1`,
       [name]
     );
     if (byName[0]) return byName[0];
-
-    const key = nameKey(name);
-    const tokens = key.split(' ').filter((t) => t.length >= 3);
-    for (const token of tokens) {
-      const [fuzzy] = await pool.query(
-        `${select} WHERE LOWER(name) LIKE ? LIMIT 40`,
-        [`%${token}%`]
-      );
-      const hit = pickBestName(fuzzy, key);
-      if (hit) return hit;
-    }
   }
   if (gst) {
     const [byGst] = await pool.query(
@@ -1646,18 +1673,6 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
       [email]
     );
     if (byEmail[0]) return byEmail[0];
-
-    // Same company domain (e.g. support@tuv-nord.com → kkashyap@tuv-nord.com on master)
-    const domain = email.includes('@') ? email.split('@')[1].trim().toLowerCase() : '';
-    if (domain && domain.includes('.')) {
-      const [byDomain] = await pool.query(
-        `${select} WHERE LOWER(email) LIKE ? LIMIT 40`,
-        [`%@${domain}`]
-      );
-      const key = nameKey(name);
-      const hit = pickBestName(byDomain, key) || (byDomain.length === 1 ? byDomain[0] : null);
-      if (hit) return hit;
-    }
   }
   return {};
 }
@@ -1668,6 +1683,12 @@ async function overlayVendorMasterOnPo(po) {
     gst: po.vendorGst,
   });
   if (!master?.email && !master?.name && !master?.address) return po;
+  const same =
+    sameVendorName(po.vendorName, master.name) ||
+    (po.vendorEmail &&
+      master.email &&
+      String(po.vendorEmail).trim().toLowerCase() === String(master.email).trim().toLowerCase());
+  if (!same) return po;
   return {
     ...po,
     vendorName: master.name || po.vendorName,
@@ -1686,8 +1707,10 @@ async function resolvePoDraftContent(prId, body) {
   if (!pr) throw new Error('PR not found');
 
   let vendor;
+  let usingRecommendedVendor = false;
   try {
     vendor = await getRecommendedVendor(prId);
+    usingRecommendedVendor = Boolean(String(vendor?.vendor_name || '').trim());
   } catch (err) {
     const name = String(body?.vendorName || '').trim();
     const email = String(body?.vendorEmail || '').trim();
@@ -1697,7 +1720,7 @@ async function resolvePoDraftContent(prId, body) {
       vendor_email: email || `${name.replace(/\s+/g, '.').toLowerCase()}@imported.local`,
     };
   }
-  if (body?.vendorName) {
+  if (!usingRecommendedVendor && body?.vendorName) {
     vendor = {
       ...vendor,
       vendor_name: String(body.vendorName).trim() || vendor.vendor_name,
@@ -1705,6 +1728,11 @@ async function resolvePoDraftContent(prId, body) {
     };
   }
   const vendorMaster = await lookupVendorMaster(vendor.vendor_email, vendor.vendor_name);
+  const masterIsSame =
+    sameVendorName(vendor.vendor_name, vendorMaster.name) ||
+    (vendor.vendor_email &&
+      vendorMaster.email &&
+      String(vendor.vendor_email).trim().toLowerCase() === String(vendorMaster.email).trim().toLowerCase());
 
   const {
     lineItems = [],
@@ -1827,24 +1855,20 @@ async function resolvePoDraftContent(prId, body) {
     prTitle: pr.title,
     department: pr.department,
     requester: pr.requester,
-    vendorName: vendorMaster.name || vendor.vendor_name,
-    vendorEmail: vendorMaster.email || vendor.vendor_email,
+    vendorName: masterIsSame ? vendorMaster.name || vendor.vendor_name : vendor.vendor_name,
+    vendorEmail: masterIsSame ? vendorMaster.email || vendor.vendor_email : vendor.vendor_email,
     vendorAddress:
       String(body?.vendorAddress || body?.vendor_address || '').trim() ||
-      vendorMaster.address ||
-      '',
+      (masterIsSame ? vendorMaster.address || '' : ''),
     vendorGst:
       String(body?.vendorGst || body?.vendor_gst || body?.gstNumber || '').trim() ||
-      vendorMaster.gst_number ||
-      '',
+      (masterIsSame ? vendorMaster.gst_number || '' : ''),
     vendorPan:
       String(body?.vendorPan || body?.vendor_pan || body?.panNumber || '').trim() ||
-      vendorMaster.pan_number ||
-      '',
+      (masterIsSame ? vendorMaster.pan_number || '' : ''),
     vendorPhone:
       String(body?.vendorPhone || body?.vendor_phone || body?.phone || '').trim() ||
-      vendorMaster.phone ||
-      '',
+      (masterIsSame ? vendorMaster.phone || '' : ''),
     deliveryAddress,
     expectedDeliveryDate,
     poDate,
@@ -1881,8 +1905,9 @@ async function resolvePoDraftContent(prId, body) {
 /** Build PO draft payload without a Purchase Request (manual create). */
 export async function resolveManualPoDraftContent(body = {}, options = {}) {
   const forPreview = Boolean(options.forPreview);
-  let vendorName = String(body.vendorName || '').trim();
-  let vendorEmail = String(body.vendorEmail || '').trim();
+  const manualRecommended = recommendedQuoteFromRounds(body.comparisonRounds);
+  let vendorName = String(manualRecommended?.vendor_name || body.vendorName || '').trim();
+  let vendorEmail = String(manualRecommended?.vendor_email || body.vendorEmail || '').trim();
   if (!vendorName) {
     if (forPreview) vendorName = 'Vendor Name';
     else throw new Error('Vendor name is required');
@@ -1893,8 +1918,13 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
   }
 
   const vendorMaster = await lookupVendorMaster(vendorEmail, vendorName);
-  if (vendorMaster.email) vendorEmail = vendorMaster.email;
-  if (vendorMaster.name) vendorName = vendorMaster.name;
+  const masterIsSame =
+    sameVendorName(vendorName, vendorMaster.name) ||
+    (vendorEmail &&
+      vendorMaster.email &&
+      vendorEmail.toLowerCase() === String(vendorMaster.email).trim().toLowerCase());
+  if (masterIsSame && vendorMaster.email) vendorEmail = vendorMaster.email;
+  if (masterIsSame && vendorMaster.name) vendorName = vendorMaster.name;
   const {
     lineItems = [],
     deliveryAddress = '',
@@ -2023,20 +2053,16 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     vendorEmail,
     vendorAddress:
       String(body.vendorAddress || body.vendor_address || '').trim() ||
-      vendorMaster.address ||
-      '',
+      (masterIsSame ? vendorMaster.address || '' : ''),
     vendorGst:
       String(body.vendorGst || body.vendor_gst || body.gstNumber || '').trim() ||
-      vendorMaster.gst_number ||
-      '',
+      (masterIsSame ? vendorMaster.gst_number || '' : ''),
     vendorPan:
       String(body.vendorPan || body.vendor_pan || body.panNumber || '').trim() ||
-      vendorMaster.pan_number ||
-      '',
+      (masterIsSame ? vendorMaster.pan_number || '' : ''),
     vendorPhone:
       String(body.vendorPhone || body.vendor_phone || body.phone || '').trim() ||
-      vendorMaster.phone ||
-      '',
+      (masterIsSame ? vendorMaster.phone || '' : ''),
     deliveryAddress,
     expectedDeliveryDate,
     poDate,

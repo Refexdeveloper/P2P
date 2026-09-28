@@ -506,11 +506,6 @@ function matchVendorFromMaster(
   if (name) {
     const byName = vendors.find((v) => normalizeVendorMatchKey(v.name) === name);
     if (byName) return byName;
-    const byPartial = vendors.find((v) => {
-      const vn = normalizeVendorMatchKey(v.name);
-      return vn.length >= 3 && name.length >= 3 && (vn.includes(name) || name.includes(vn));
-    });
-    if (byPartial) return byPartial;
   }
   if (gst) {
     const byGst = vendors.find(
@@ -521,20 +516,6 @@ function matchVendorFromMaster(
   if (email) {
     const byEmail = vendors.find((v) => String(v.email || '').trim().toLowerCase() === email);
     if (byEmail) return byEmail;
-    const domain = email.includes('@') ? email.split('@')[1] : '';
-    if (domain) {
-      const sameDomain = vendors.filter(
-        (v) => String(v.email || '').trim().toLowerCase().endsWith(`@${domain}`)
-      );
-      if (sameDomain.length === 1) return sameDomain[0];
-      if (name && sameDomain.length > 1) {
-        const byDomainName = sameDomain.find((v) => {
-          const vn = normalizeVendorMatchKey(v.name);
-          return vn === name || vn.includes(name) || name.includes(vn);
-        });
-        if (byDomainName) return byDomainName;
-      }
-    }
   }
   return null;
 }
@@ -2688,12 +2669,29 @@ export default function CreatePOPage() {
       paymentTermsText: poTermsDetails.paymentTermsText || paymentTerms,
     });
 
+    const recommendedManual = isManualPoFlow
+      ? findRecommendedManualQuote(manualComparisonRounds)
+      : undefined;
     const vendorNameForPo = isManualPoFlow
-      ? manualVendorName.trim() || importedVendorName.trim() || vendorMeta.name.trim() || undefined
-      : importedVendorName.trim() || pr?.recommendedVendor || vendorMeta.name.trim() || undefined;
+      ? recommendedManual?.vendorName.trim() ||
+        manualVendorName.trim() ||
+        importedVendorName.trim() ||
+        vendorMeta.name.trim() ||
+        undefined
+      : pr?.recommendedVendor?.trim() ||
+        importedVendorName.trim() ||
+        vendorMeta.name.trim() ||
+        undefined;
     const vendorEmailFromForm = isManualPoFlow
-      ? manualVendorEmail.trim() || importedVendorEmail.trim() || vendorMeta.email.trim() || undefined
-      : importedVendorEmail.trim() || pr?.vendorEmail || vendorMeta.email.trim() || undefined;
+      ? recommendedManual?.vendorEmail.trim() ||
+        manualVendorEmail.trim() ||
+        importedVendorEmail.trim() ||
+        vendorMeta.email.trim() ||
+        undefined
+      : pr?.vendorEmail?.trim() ||
+        importedVendorEmail.trim() ||
+        vendorMeta.email.trim() ||
+        undefined;
     const masterVendor = matchVendorFromMaster(masterVendors, {
       name: vendorNameForPo,
       email: vendorEmailFromForm,
@@ -2784,6 +2782,7 @@ export default function CreatePOPage() {
     selectedManualEntity,
     manualVendorName,
     manualVendorEmail,
+    manualComparisonRounds,
     manualPrDetails,
     importedVendorName,
     importedVendorEmail,
