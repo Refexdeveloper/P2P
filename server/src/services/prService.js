@@ -1034,12 +1034,21 @@ async function resolveSelectedApprovalUsers(ids, requesterId) {
   return resolved;
 }
 
-function nextIdInApprovalChain(pr, actingUserId) {
+async function nextIdInApprovalChain(pr, actingUser) {
   const chain = functionalApprovalChainFromPr(pr);
   if (chain.length <= 1) return null;
-  const current = Number(pr.approval_user_id) || Number(actingUserId);
-  let idx = chain.indexOf(current);
-  if (idx < 0) idx = chain.indexOf(Number(actingUserId));
+  const actingUserId = Number(actingUser?.id ?? actingUser);
+  let idx = chain.indexOf(Number(pr.approval_user_id) || actingUserId);
+  if (idx < 0) idx = chain.indexOf(actingUserId);
+  if (idx < 0 && actingUser?.email && chain.length) {
+    const [rows] = await pool.query(
+      `SELECT id, email FROM users WHERE id IN (${chain.map(() => '?').join(',')})`,
+      chain
+    );
+    const email = String(actingUser.email || '').toLowerCase().trim();
+    const match = rows.find((row) => String(row.email || '').toLowerCase().trim() === email);
+    if (match) idx = chain.indexOf(Number(match.id));
+  }
   if (idx < 0) return null;
   return chain[idx + 1] || null;
 }
@@ -2206,19 +2215,65 @@ export async function getRequesterStats(user) {
     overdueSla: Number(overdueRows[0]?.cnt || 0),
     returnedForRework: counts[PR_STATUS.RETURNED] || 0,
     poIssued: counts[PR_STATUS.APPROVED] || 0,
-    rfqEntryPending: scopeAll ? 0 : await countRequesterRfqTasks(userId),
+    rfqEntryPending: scopeAll ? 0 : await countRequesterRfqTasks(user),
   };
 }
 
-async function countRequesterRfqTasks(userId) {
+function requesterIdentityParams(userOrId) {
+  const userId = typeof userOrId === 'object' ? userOrId.id : userOrId;
+  const userEmail =
+    typeof userOrId === 'object' ? String(userOrId.email || '').toLowerCase().trim() : '';
+  return { userId, userEmail };
+}
+
+/** Same person may have more than one user row after SSO. Match id or email. */
+function requesterOwnsPrSql(ruAlias = 'ru') {
+  return `(pr.requester_id = ? OR (? <> '' AND LOWER(TRIM(${ruAlias}.email)) = ?))`;
+}
+
+async function countRequesterRfqTasks(userOrId) {
+  const { userId, userEmail } = requesterIdentityParams(userOrId);
   const [rows] = await pool.query(
     `SELECT COUNT(*) AS cnt FROM workflow_tasks wt
      JOIN purchase_requests pr ON pr.id = wt.pr_id
+     JOIN users ru ON ru.id = pr.requester_id
      WHERE wt.assigned_role = 'Requester' AND wt.task_type = 'RFQ_ENTRY' AND wt.status = 'pending'
-     AND pr.requester_id = ?`,
-    [userId]
+       AND ${requesterOwnsPrSql('ru')}
+       AND COALESCE(pr.purchase_type, '') NOT IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')`,
+    [userId, userEmail, userEmail]
   );
   return rows[0].cnt;
+}
+
+/**
+ * L1 (standard own vendor) leaves the PR approved with no requester RFQ task when the
+ * insert was skipped. Put that task back so RFQ Entry shows for this requester.
+ */
+async function ensureOwnVendorRequesterRfqTasks(userOrId) {
+  const { userId, userEmail } = requesterIdentityParams(userOrId);
+  if (!userId) return;
+  await pool.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+     SELECT pr.id, 'RFQ_ENTRY', 'Requester', pr.requester_id, 'pending', DATE_ADD(CURDATE(), INTERVAL 5 DAY)
+     FROM purchase_requests pr
+     JOIN users ru ON ru.id = pr.requester_id
+     LEFT JOIN rfq_configs rc ON rc.pr_id = pr.id
+     WHERE pr.status = ?
+       AND COALESCE(pr.pr_flow, 'standard') <> 'functional'
+       AND pr.vendor_selection = 'own'
+       AND COALESCE(pr.purchase_type, '') NOT IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')
+       AND rc.requester_submitted_at IS NULL
+       AND rc.finalized_at IS NULL
+       AND ${requesterOwnsPrSql('ru')}
+       AND NOT EXISTS (
+         SELECT 1 FROM workflow_tasks wt
+         WHERE wt.pr_id = pr.id
+           AND wt.task_type = 'RFQ_ENTRY'
+           AND wt.assigned_role = 'Requester'
+           AND wt.status = 'pending'
+       )`,
+    [PR_STATUS.APPROVED, userId, userEmail, userEmail]
+  );
 }
 
 export async function getManagerStats() {
@@ -2748,7 +2803,7 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
             skipToScmRfq = false;
           }
         } else if (isFunctional) {
-          const nextApproverId = nextIdInApprovalChain(pr, user.id);
+          const nextApproverId = await nextIdInApprovalChain(pr, user);
           if (nextApproverId) {
             nextFunctionalApprover = await resolveSelectedApprovalUser(nextApproverId);
             newStatus = PR_STATUS.PENDING_HOD_APPROVAL;
@@ -4293,7 +4348,9 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
   }
 }
 
-export async function listRequesterTasks(userId) {
+export async function listRequesterTasks(userOrId) {
+  await ensureOwnVendorRequesterRfqTasks(userOrId);
+  const { userId, userEmail } = requesterIdentityParams(userOrId);
   const [rows] = await pool.query(
     `SELECT wt.id, wt.pr_id, wt.task_type, wt.due_date, wt.created_at,
             pr.pr_number, pr.title, pr.total_amount, pr.status AS pr_status, pr.request_type,
@@ -4303,17 +4360,34 @@ export async function listRequesterTasks(userId) {
      FROM workflow_tasks wt
      JOIN purchase_requests pr ON pr.id = wt.pr_id
      JOIN departments d ON d.id = pr.department_id
+     JOIN users ru ON ru.id = pr.requester_id
+     LEFT JOIN users au ON au.id = wt.assigned_user_id
      LEFT JOIN purchase_orders po ON po.pr_id = pr.id AND po.status = 'sent_to_vendor'
      WHERE wt.status = 'pending'
        AND (
-         (wt.assigned_role = 'Requester' AND pr.requester_id = ?
-           AND NOT (wt.task_type = 'RFQ_ENTRY' AND pr.pr_flow = 'functional')
-           AND NOT (wt.task_type = 'RFQ_ENTRY' AND pr.purchase_type IN ('sass', 'online_purchase')))
-         OR (wt.task_type = 'PR_APPROVAL' AND wt.assigned_user_id = ?)
-         OR (wt.task_type = 'PO_VENDOR_ACCEPTANCE' AND wt.assigned_user_id = ?)
+         (wt.assigned_role = 'Requester' AND ${requesterOwnsPrSql('ru')}
+           AND NOT (wt.task_type = 'RFQ_ENTRY' AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')))
+         OR (wt.task_type = 'PR_APPROVAL' AND (
+           wt.assigned_user_id = ?
+           OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+         ))
+         OR (wt.task_type = 'PO_VENDOR_ACCEPTANCE' AND (
+           wt.assigned_user_id = ?
+           OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+         ))
        )
      ORDER BY wt.created_at DESC`,
-    [userId, userId, userId]
+    [
+      userId,
+      userEmail,
+      userEmail,
+      userId,
+      userEmail,
+      userEmail,
+      userId,
+      userEmail,
+      userEmail,
+    ]
   );
 
   return rows.map((r) => {

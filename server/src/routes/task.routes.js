@@ -13,7 +13,7 @@ const canRequesterRfq = requireRolesOrPermissions(
 
 router.get('/requester', canRequesterRfq, async (req, res) => {
   try {
-    const tasks = await listRequesterTasks(req.user.id);
+    const tasks = await listRequesterTasks(req.user);
     res.json({ data: tasks });
   } catch (err) {
     res.status(500).json({ message: err.message });

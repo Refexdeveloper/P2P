@@ -2941,8 +2941,16 @@ export async function listScmRfqEntryPrs(user) {
            NOT IN ('sass', 'saas', 'cloud_subscription')
        AND (rc.finalized_at IS NULL)
        AND (
-         COALESCE(pr.vendor_selection, 'scm') = 'scm'
-         OR (pr.vendor_selection = 'own' AND rc.requester_submitted_at IS NOT NULL)
+         LOWER(TRIM(COALESCE(pr.vendor_selection, 'scm'))) = 'scm'
+         OR (LOWER(TRIM(pr.vendor_selection)) = 'own' AND rc.requester_submitted_at IS NOT NULL)
+         OR COALESCE(pr.pr_flow, 'standard') = 'functional'
+         OR EXISTS (
+           SELECT 1 FROM workflow_tasks scm_wt
+           WHERE scm_wt.pr_id = pr.id
+             AND scm_wt.task_type = 'RFQ_ENTRY'
+             AND scm_wt.assigned_role = 'SCM Buyer'
+             AND scm_wt.status = 'pending'
+         )
        )
      ORDER BY pr.updated_at DESC`,
     [PR_STATUS.APPROVED]
