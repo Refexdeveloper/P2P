@@ -4145,6 +4145,56 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
 
 const ADMIN_SEND_BACK_ROLES_LOCAL = ADMIN_SEND_BACK_ROLES;
 
+async function reopenPurchaseOrderForAdminSendBack(conn, poId, poStatus) {
+  try {
+    await conn.query(`DELETE FROM payments WHERE po_id = ?`, [poId]);
+    await conn.query(`DELETE FROM invoices WHERE po_id = ?`, [poId]);
+    const [grns] = await conn.query(`SELECT id FROM grn_headers WHERE po_id = ?`, [poId]);
+    const grnIds = (grns || []).map((row) => Number(row.id)).filter((id) => id > 0);
+    if (grnIds.length) {
+      const ph = grnIds.map(() => '?').join(',');
+      const [lines] = await conn.query(
+        `SELECT id FROM grn_line_items WHERE grn_id IN (${ph})`,
+        grnIds
+      );
+      const lineIds = (lines || []).map((row) => Number(row.id)).filter((id) => id > 0);
+      if (lineIds.length) {
+        const linePh = lineIds.map(() => '?').join(',');
+        await conn.query(
+          `DELETE FROM grn_line_attachments WHERE grn_line_item_id IN (${linePh})`,
+          lineIds
+        );
+      }
+      await conn.query(`DELETE FROM grn_line_items WHERE grn_id IN (${ph})`, grnIds);
+      await conn.query(`DELETE FROM grn_headers WHERE po_id = ?`, [poId]);
+    }
+  } catch (err) {
+    console.warn('Admin send-back fulfillment clear:', err.message);
+  }
+
+  const clearSign = poStatus === 'pending_approval';
+  await conn.query(
+    `UPDATE purchase_orders SET
+       status = ?,
+       signed_at = ${clearSign ? 'NULL' : 'signed_at'},
+       signer_id = ${clearSign ? 'NULL' : 'signer_id'},
+       signature_name = ${clearSign ? 'NULL' : 'signature_name'},
+       signer_comments = ${clearSign ? 'NULL' : 'signer_comments'},
+       signed_pdf_path = ${clearSign ? 'NULL' : 'signed_pdf_path'},
+       vendor_acceptance_status = NULL,
+       vendor_acceptance_mode = NULL,
+       vendor_acceptance_remarks = NULL,
+       vendor_notified_at = NULL,
+       vendor_accepted_at = NULL,
+       cancellation_reason = NULL,
+       cancelled_by = NULL,
+       cancelled_at = NULL,
+       updated_at = NOW()
+     WHERE id = ?`,
+    [poStatus, poId]
+  );
+}
+
 /**
  * Admin override: send PR back to any workflow step (Track PR).
  * Does not require the actor to hold the current approval task.
@@ -4178,17 +4228,40 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
       admin: true,
     });
 
-    await conn.query(
-      `UPDATE purchase_orders
-       SET status = 'cancelled',
-           cancellation_reason = ?,
-           cancelled_by = ?,
-           cancelled_at = NOW(),
-           updated_at = NOW()
-       WHERE pr_id = ?
-         AND status NOT IN ('cancelled', 'rejected')`,
-      [`Send-back from workflow: ${remarksText.slice(0, 450)}`, user.id, prId]
-    );
+    const poStepStatus = applyResult.target?.poStatus || '';
+    if (poStepStatus) {
+      const [livePo] = await conn.query(
+        `SELECT id FROM purchase_orders
+         WHERE pr_id = ? AND status NOT IN ('cancelled', 'rejected')
+         ORDER BY id DESC LIMIT 1`,
+        [prId]
+      );
+      const [anyPo] = livePo.length
+        ? [livePo]
+        : await conn.query(
+            `SELECT id FROM purchase_orders WHERE pr_id = ? ORDER BY id DESC LIMIT 1`,
+            [prId]
+          );
+      const poId = Number(anyPo[0]?.id || 0);
+      if (!poId) {
+        throw new Error(
+          'This PR has no purchase order. Send it back to SCM Buyer Create PO or an earlier step.'
+        );
+      }
+      await reopenPurchaseOrderForAdminSendBack(conn, poId, poStepStatus);
+    } else {
+      await conn.query(
+        `UPDATE purchase_orders
+         SET status = 'cancelled',
+             cancellation_reason = ?,
+             cancelled_by = ?,
+             cancelled_at = NOW(),
+             updated_at = NOW()
+         WHERE pr_id = ?
+           AND status NOT IN ('cancelled', 'rejected')`,
+        [`Send-back from workflow: ${remarksText.slice(0, 450)}`, user.id, prId]
+      );
+    }
 
     await conn.query(
       `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,

@@ -107,6 +107,38 @@ export const SEND_BACK_TARGET_DEFS = {
     resetRfqSubmit: false,
     resetRfqFinalize: false,
   },
+  SCM_PO: {
+    key: 'SCM_PO',
+    label: 'SCM Buyer Create PO',
+    status: PR_STATUS.PENDING_SCM_PO,
+    stage: STAGE.SCM_PO_CREATE,
+    taskType: 'RFQ_POST_APPROVAL',
+    assignedRole: 'SCM Buyer',
+    resetRfqSubmit: false,
+    resetRfqFinalize: false,
+  },
+  PO_MANAGER_SIGN: {
+    key: 'PO_MANAGER_SIGN',
+    label: 'SCM Manager PO Sign',
+    status: PR_STATUS.APPROVED,
+    stage: STAGE.PO_CREATED,
+    taskType: 'PO_APPROVAL',
+    assignedRole: 'SCM Manager',
+    resetRfqSubmit: false,
+    resetRfqFinalize: false,
+    poStatus: 'pending_approval',
+  },
+  PO_BUYER_VERIFY: {
+    key: 'PO_BUYER_VERIFY',
+    label: 'SCM Buyer Final Verify',
+    status: PR_STATUS.APPROVED,
+    stage: STAGE.PO_CREATED,
+    taskType: 'PO_BUYER_VERIFY',
+    assignedRole: 'SCM Buyer',
+    resetRfqSubmit: false,
+    resetRfqFinalize: false,
+    poStatus: 'pending_buyer_verify',
+  },
 };
 
 const FUNCTIONAL_PREVIOUS_BY_STATUS = {
@@ -163,6 +195,9 @@ const ADMIN_ANY_STEP_KEYS = [
   'L2_VENDOR',
   'CFO_VENDOR',
   'SCM_MANAGER',
+  'SCM_PO',
+  'PO_MANAGER_SIGN',
+  'PO_BUYER_VERIFY',
 ];
 
 const OWN_ONLY_KEYS = new Set(['REQUESTER_RFQ', 'HOD_VENDOR', 'L2_VENDOR', 'CFO_VENDOR']);

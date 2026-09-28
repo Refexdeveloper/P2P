@@ -1284,15 +1284,12 @@ export default function TrackPRPage() {
                                     Edit
                                   </button>
                                 )}
-                                {isAdminEditor &&
-                                  pr.status !== 'draft' &&
-                                  pr.status !== 'returned' &&
-                                  pr.status !== 'rejected' && (
+                                {isAdminEditor && pr.status !== 'draft' && (
                                   <button
                                     type="button"
                                     onClick={() => void openAdminSendBack(pr)}
                                     className="cursor-pointer whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100"
-                                    title="Send PR back to any previous workflow step"
+                                    title="Send PR back to any workflow step"
                                   >
                                     Send Back
                                   </button>
@@ -1884,7 +1881,7 @@ export default function TrackPRPage() {
               {sendBackModal.title}
             </p>
             <p className="text-xs text-gray-500 mt-2">
-              Admin: send to any step — Requester (Edit PR), Requester RFQ Entry, SCM RFQ Entry, or any approval stage.
+              Admin: send to any step — Edit PR, RFQ Entry, approvals, Create PO, SCM Manager PO Sign, or SCM Buyer Final Verify.
             </p>
 
             <label className="block text-xs font-semibold text-gray-700 mt-4 mb-1">
