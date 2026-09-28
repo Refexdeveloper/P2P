@@ -692,7 +692,10 @@ export default function RfqEntryDetailPage() {
         .replace(/[\s-]+/g, '_');
       if (
         isScm &&
-        (purchaseType === 'sass' || purchaseType === 'saas' || purchaseType === 'cloud_subscription')
+        (purchaseType === 'sass' ||
+          purchaseType === 'saas' ||
+          purchaseType === 'cloud_subscription' ||
+          Boolean((data as { rfqClosed?: boolean }).rfqClosed))
       ) {
         navigate('/scm/rfq-entry', { replace: true });
         return;

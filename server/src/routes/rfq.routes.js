@@ -189,6 +189,7 @@ router.get('/pr/:prId', async (req, res) => {
         invitations: data.invitations,
         quotations: mapInvitationsToQuotations(data.invitations),
         tableRows: mapInvitationsToTableRows(data.invitations, data.config),
+        rfqClosed: Boolean(data.rfqClosed),
       },
     });
   } catch (err) {

@@ -2264,6 +2264,11 @@ async function ensureOwnVendorRequesterRfqTasks(userOrId) {
        AND COALESCE(pr.purchase_type, '') NOT IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')
        AND rc.requester_submitted_at IS NULL
        AND rc.finalized_at IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM purchase_orders po_done
+         WHERE po_done.pr_id = pr.id
+           AND po_done.status NOT IN ('draft', 'cancelled', 'rejected')
+       )
        AND ${requesterOwnsPrSql('ru')}
        AND NOT EXISTS (
          SELECT 1 FROM workflow_tasks wt

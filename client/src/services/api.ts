@@ -585,7 +585,16 @@ export interface RfqFieldDefinition {
 
 export const rfqApi = {
   getByPr: (prId: number) =>
-    request<{ data: { pr: unknown; config: unknown; invitations: unknown[]; quotations: unknown[]; tableRows: unknown[] } }>(`/api/rfq/pr/${prId}`),
+    request<{
+      data: {
+        pr: unknown;
+        config: unknown;
+        invitations: unknown[];
+        quotations: unknown[];
+        tableRows: unknown[];
+        rfqClosed?: boolean;
+      };
+    }>(`/api/rfq/pr/${prId}`),
   saveConfig: (prId: number, body: Record<string, unknown>) =>
     request<{ data: { config: unknown }; message: string }>(`/api/rfq/pr/${prId}/config`, {
       method: 'PUT',

@@ -1473,7 +1473,18 @@ export async function getRfqByPrId(user, prId) {
   }
   const config = await getOrCreateRfqConfig(prId);
   const invitations = await getInvitationsWithSubmissions(prId);
-  return { pr, invitations, config };
+  let rfqClosed = false;
+  if (isScmViewer) {
+    const [openPo] = await pool.query(
+      `SELECT id FROM purchase_orders
+       WHERE pr_id = ?
+         AND status NOT IN ('draft', 'cancelled', 'rejected')
+       LIMIT 1`,
+      [prId]
+    );
+    rfqClosed = Boolean(openPo.length);
+  }
+  return { pr, invitations, config, rfqClosed };
 }
 
 export async function getRfqByToken(token) {
@@ -2940,6 +2951,11 @@ export async function listScmRfqEntryPrs(user) {
        AND LOWER(REPLACE(REPLACE(COALESCE(pr.purchase_type, ''), '-', '_'), ' ', '_'))
            NOT IN ('sass', 'saas', 'cloud_subscription')
        AND (rc.finalized_at IS NULL)
+       AND NOT EXISTS (
+         SELECT 1 FROM purchase_orders po_done
+         WHERE po_done.pr_id = pr.id
+           AND po_done.status NOT IN ('draft', 'cancelled', 'rejected')
+       )
        AND (
          LOWER(TRIM(COALESCE(pr.vendor_selection, 'scm'))) = 'scm'
          OR (LOWER(TRIM(pr.vendor_selection)) = 'own' AND rc.requester_submitted_at IS NOT NULL)
