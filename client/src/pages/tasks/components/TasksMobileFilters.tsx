@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FilterSheetSelect from '../../dashboard/components/FilterSheetSelect';
-import PeriodPicker from '../../dashboard/components/PeriodPicker';
-import { BRAND } from '../../../constants/brandColors';
 
 export type TasksFilterValue = {
   search: string;
@@ -52,7 +50,6 @@ function countActive(value: TasksFilterValue) {
   if (value.status !== 'all') n += 1;
   if (value.priority !== 'all') n += 1;
   if (value.sortBy !== 'date') n += 1;
-  if (value.dateFrom || value.dateTo) n += 1;
   return n;
 }
 
@@ -98,8 +95,8 @@ export default function TasksMobileFilters({
       status: draft.status,
       priority: draft.priority,
       sortBy: draft.sortBy,
-      dateFrom: draft.dateFrom,
-      dateTo: draft.dateTo,
+      dateFrom: value.dateFrom,
+      dateTo: value.dateTo,
     });
     setSheetOpen(false);
   };
@@ -125,7 +122,7 @@ export default function TasksMobileFilters({
               aria-labelledby="tasks-filter-sheet-title"
               className="animate-sheet-up fixed inset-x-0 bottom-0 z-[10041] flex max-h-[88vh] flex-col rounded-t-3xl bg-white shadow-[0_-12px_40px_rgba(16,24,40,0.18)]"
             >
-              <div className="h-1 shrink-0 rounded-t-3xl" style={{ backgroundColor: BRAND.primary }} />
+              <div className="h-1 shrink-0 rounded-t-3xl bg-[#1E88E5]" />
               <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#EEF0F5] bg-white px-4 py-3">
                 <h2 id="tasks-filter-sheet-title" className="text-base font-semibold text-slate-900">
                   Filters
@@ -142,23 +139,23 @@ export default function TasksMobileFilters({
 
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-4">
                 <div>
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Search
                   </p>
                   <div className="relative">
-                    <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-[#1E88E5]" />
                     <input
                       type="text"
                       value={draft.search}
                       onChange={(e) => setDraft((prev) => ({ ...prev, search: e.target.value }))}
                       placeholder="Search PR..."
-                      className="h-11 w-full rounded-2xl border border-[#E6E8F0] bg-white pl-10 pr-3 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[rgba(41,120,177,0.25)]"
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-[13px] text-slate-700 outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     Status
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -169,32 +166,17 @@ export default function TasksMobileFilters({
                           key={opt.value}
                           type="button"
                           onClick={() => setDraft((prev) => ({ ...prev, status: opt.value }))}
-                          className={`px-3.5 py-2 text-xs font-semibold rounded-full transition-colors whitespace-nowrap cursor-pointer ${
-                            active ? 'text-white shadow-sm' : 'bg-gray-100 text-gray-700'
+                          className={`cursor-pointer whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors active:scale-[0.98] ${
+                            active
+                              ? 'bg-[#1E88E5] text-white shadow-[0_8px_20px_-10px_rgba(21,101,192,0.55)]'
+                              : 'bg-[#E3F2FD] text-[#1565C0]'
                           }`}
-                          style={active ? { backgroundColor: BRAND.secondary } : undefined}
                         >
                           {opt.label}
                         </button>
                       );
                     })}
                   </div>
-                </div>
-
-                <div>
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                    Date
-                  </p>
-                  <PeriodPicker
-                    dateFrom={draft.dateFrom}
-                    dateTo={draft.dateTo}
-                    onChange={({ dateFrom, dateTo }) =>
-                      setDraft((prev) => ({ ...prev, dateFrom, dateTo }))
-                    }
-                    fullWidth
-                    portalZIndex={10060}
-                    themeAccent
-                  />
                 </div>
 
                 <FilterSheetSelect
@@ -218,15 +200,14 @@ export default function TasksMobileFilters({
                 <button
                   type="button"
                   onClick={clearSheet}
-                  className="h-11 flex-1 rounded-xl border border-[#E6E8F0] text-[13px] font-semibold text-slate-700 hover:bg-slate-50"
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-white text-[13px] font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] active:scale-[0.98]"
                 >
                   Clear
                 </button>
                 <button
                   type="button"
                   onClick={applySheet}
-                  className="h-11 flex-1 rounded-xl text-[13px] font-semibold text-white hover:opacity-90"
-                  style={{ backgroundColor: BRAND.primary }}
+                  className="h-11 flex-1 rounded-xl bg-[#1E88E5] text-[13px] font-semibold text-white shadow-[0_8px_20px_-10px_rgba(21,101,192,0.55)] hover:bg-[#1565C0] active:scale-[0.98]"
                 >
                   Apply
                 </button>
@@ -239,19 +220,17 @@ export default function TasksMobileFilters({
 
   return (
     <>
-      <div className="min-[992px]:hidden mb-3">
+      <div className="min-[992px]:hidden w-full">
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
-          className={`flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-semibold ${
-            activeCount ? 'text-white shadow-sm' : 'border border-[#E6E8F0] bg-white text-slate-800'
+          className={`flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold active:scale-[0.98] ${
+            activeCount
+              ? 'bg-[#1E88E5] text-white shadow-[0_8px_20px_-10px_rgba(21,101,192,0.55)]'
+              : 'border border-transparent bg-white text-slate-800 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]'
           }`}
-          style={activeCount ? { backgroundColor: BRAND.primary } : undefined}
         >
-          <i
-            className="ri-filter-3-line text-lg"
-            style={!activeCount ? { color: BRAND.primary } : undefined}
-          ></i>
+          <i className={`ri-filter-3-line text-lg ${activeCount ? 'text-white' : 'text-[#1E88E5]'}`}></i>
           Filters{activeCount ? ` (${activeCount})` : ''}
         </button>
       </div>

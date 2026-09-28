@@ -1433,6 +1433,160 @@ export async function getPoCreateContext(user, prId) {
   };
 }
 
+function displayChoice(value, allowed, fallback) {
+  const raw = String(value || '').trim().toLowerCase();
+  return allowed.find((option) => option.toLowerCase() === raw) || fallback;
+}
+
+/** Manual Create PO: type a PR number and fill details plus every vendor quote round. */
+export async function getManualPoPrefillByPrNumber(prNumber) {
+  const number = String(prNumber || '').trim();
+  if (number.length < 3) throw new Error('Enter a PR reference number');
+  const [idRows] = await pool.query(
+    `SELECT id FROM purchase_requests WHERE LOWER(TRIM(pr_number)) = LOWER(?) LIMIT 1`,
+    [number]
+  );
+  if (!idRows.length) return null;
+
+  const pr = await getPurchaseRequestById(idRows[0].id);
+  if (!pr) return null;
+
+  const [quoteRows] = await pool.query(
+    `SELECT ri.id AS invitation_id, ri.vendor_name, ri.vendor_email, ri.round AS invite_round,
+            vqs.id AS submission_id, vqs.round AS submission_round, vqs.quoted_price,
+            vqs.lead_time_days, vqs.payment_terms, vqs.delivery_terms, vqs.quotation_file_name
+     FROM rfq_invitations ri
+     LEFT JOIN vendor_quotation_submissions vqs
+       ON vqs.rfq_invitation_id = ri.id
+      AND vqs.status IN ('submitted', 'sent_back', 'accepted')
+     WHERE ri.pr_id = ?
+     ORDER BY ri.id, vqs.id`,
+    [pr.id]
+  );
+  const [cfgRows] = await pool.query(
+    `SELECT recommended_invitation_id FROM rfq_configs WHERE pr_id = ? LIMIT 1`,
+    [pr.id]
+  );
+  const recommendedId = Number(cfgRows[0]?.recommended_invitation_id || 0);
+
+  const latest = new Map();
+  for (const row of quoteRows) {
+    const round = Math.max(1, Number(row.submission_round) || Number(row.invite_round) || 1);
+    latest.set(`${row.invitation_id}::${round}`, { ...row, round });
+  }
+
+  const emails = [
+    ...new Set(
+      [...latest.values()]
+        .map((row) => String(row.vendor_email || '').trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+  const vendorIds = new Map();
+  if (emails.length) {
+    const [vendorRows] = await pool.query(
+      `SELECT id, email FROM vendors WHERE LOWER(TRIM(email)) IN (${emails.map(() => '?').join(',')})`,
+      emails
+    );
+    for (const vendor of vendorRows) {
+      vendorIds.set(String(vendor.email || '').trim().toLowerCase(), String(vendor.id));
+    }
+  }
+
+  let recommendedRound = 0;
+  if (recommendedId) {
+    for (const row of latest.values()) {
+      if (Number(row.invitation_id) === recommendedId) {
+        recommendedRound = Math.max(recommendedRound, row.round);
+      }
+    }
+  }
+
+  const byRound = new Map();
+  for (const row of latest.values()) {
+    if (!byRound.has(row.round)) byRound.set(row.round, []);
+    const email = String(row.vendor_email || '').trim();
+    const fileName = String(row.quotation_file_name || '').trim();
+    byRound.get(row.round).push({
+      vendorId: vendorIds.get(email.toLowerCase()) || '',
+      vendorName: row.vendor_name || '',
+      vendorEmail: email,
+      quotedPrice: row.quoted_price != null && row.submission_id ? Number(row.quoted_price) : '',
+      leadTime: row.lead_time_days != null && row.submission_id ? String(row.lead_time_days) : '',
+      paymentTerms: row.payment_terms || pr.paymentTerms || 'Net 30 Days',
+      recommended: recommendedId > 0 && Number(row.invitation_id) === recommendedId && row.round === recommendedRound,
+      files: fileName ? [{ fileName }] : [],
+    });
+  }
+
+  const comparisonRounds = [...byRound.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([round, vendorQuotes]) => ({
+      round,
+      label: `Round ${round}`,
+      notes: '',
+      vendorQuotes,
+    }));
+
+  const recommendedRow =
+    [...latest.values()].find(
+      (row) => Number(row.invitation_id) === recommendedId && row.round === recommendedRound && row.submission_id
+    ) ||
+    [...latest.values()]
+      .filter((row) => row.submission_id)
+      .sort((a, b) => b.round - a.round)[0] ||
+    null;
+
+  const lineItems = await lookupUnitsFromItemMaster(pr.lineItems || []);
+  const vendorName = recommendedRow?.vendor_name || pr.vendorName || '';
+  const vendorEmail = recommendedRow?.vendor_email || pr.vendorEmail || '';
+
+  return {
+    pr: {
+      id: pr.id,
+      prNumber: pr.prNumber,
+      title: pr.title || '',
+      department: pr.department || '',
+      requester: pr.requester || '',
+      justification: pr.justification || '',
+      scopeOfWork: pr.scopeOfWork || '',
+      paymentTerms: pr.paymentTerms || '',
+      requestType: displayChoice(pr.requestType, ['Opex', 'Capex', 'Service'], 'Opex'),
+      priority: displayChoice(pr.priority, ['Low', 'Medium', 'High', 'Critical'], 'Medium'),
+      entityId: pr.entityId || null,
+      entityName: pr.entityName || '',
+      entityCode: pr.entityCode || '',
+      entityCostCenter: pr.entityCostCenter || '',
+      currency: pr.currency,
+      purchaseType: pr.purchaseType === 'work_order' ? 'work_order' : 'purchase_order',
+      purchaseTypeLabel: pr.purchaseTypeLabel || '',
+      placeOfDelivery: pr.placeOfDelivery || '',
+      billingAddress: pr.billingAddress || '',
+      billingGstNo: pr.billingGstNo || '',
+      billingLocation: pr.billingLocation || '',
+      deliveryPoc: pr.deliveryPoc || '',
+      deliveryPocEmail: pr.deliveryPocEmail || '',
+      deliveryPocPhone: pr.deliveryPocPhone || '',
+      projectManagerHo: pr.projectManagerHo || '',
+      projectManagerContact: pr.projectManagerContact || '',
+      projectManagerEmail: pr.projectManagerEmail || '',
+      requiredDate: pr.requiredDate || '',
+      lineItems,
+    },
+    comparisonRounds,
+    vendor: vendorName
+      ? {
+          name: vendorName,
+          email: vendorEmail,
+          paymentTerms: recommendedRow?.payment_terms || pr.paymentTerms || 'Net 30 Days',
+          deliveryTerms: recommendedRow?.delivery_terms || '',
+          quotedPrice: recommendedRow?.quoted_price != null ? Number(recommendedRow.quoted_price) : 0,
+          leadTime: Number(recommendedRow?.lead_time_days) || 0,
+        }
+      : null,
+  };
+}
+
 async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
   const email = String(vendorEmail || '').trim();
   const name = String(vendorName || '').trim();

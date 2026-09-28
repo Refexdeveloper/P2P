@@ -898,6 +898,14 @@ export const poApi = {
     request<{
       data: { pr: Record<string, unknown>; vendor: Record<string, unknown>; draftPoId?: number | null };
     }>(`/api/po/pr/${prId}/context`),
+  prefillByPrNumber: (prNumber: string) =>
+    request<{
+      data: {
+        pr: Record<string, unknown>;
+        comparisonRounds: Array<Record<string, unknown>>;
+        vendor: Record<string, unknown> | null;
+      };
+    }>(`/api/po/pr-reference?number=${encodeURIComponent(prNumber)}`),
   nextNumber: (params: { entityId: number; purchaseType?: 'purchase_order' | 'work_order' }) => {
     const qs = new URLSearchParams();
     qs.set('entityId', String(params.entityId));

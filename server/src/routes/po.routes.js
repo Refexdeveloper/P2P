@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireRoles, requireRolesOrPermissions } from '../middleware/auth.js';
 import {
   getPoCreateContext,
+  getManualPoPrefillByPrNumber,
   createPurchaseOrder,
   createManualPurchaseOrder,
   savePurchaseOrderDraft,
@@ -356,6 +357,16 @@ router.put('/letterhead/:poType', letterheadRoles, async (req, res) => {
   try {
     const data = await saveLetterhead(req.params.poType, req.body);
     res.json({ data, message: `${data.poTypeLabel} template saved` });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/pr-reference', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
+  try {
+    const data = await getManualPoPrefillByPrNumber(req.query.number);
+    if (!data) return res.status(404).json({ message: 'Purchase request not found' });
+    res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

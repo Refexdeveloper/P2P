@@ -287,6 +287,7 @@ type Props = {
   poId?: number | null;
   currencySymbol: string;
   currency?: string | null;
+  prReferenceStatus?: { state: 'idle' | 'loading' | 'found' | 'missing'; message: string };
 };
 
 export default function ManualPoContextSection({
@@ -299,8 +300,14 @@ export default function ManualPoContextSection({
   poId,
   currencySymbol,
   currency,
+  prReferenceStatus,
 }: Props) {
   const [prDetailsOpen, setPrDetailsOpen] = useState(false);
+  useEffect(() => {
+    if (prReferenceStatus?.state === 'found' || prReferenceStatus?.state === 'loading') {
+      setPrDetailsOpen(true);
+    }
+  }, [prReferenceStatus]);
   const [preferredTab, setPreferredTab] = useState<number | null>(1);
   const [editTarget, setEditTarget] = useState<{
     vendorKey: string;
@@ -659,8 +666,21 @@ export default function ManualPoContextSection({
               value={prDetails.prNumber}
               onChange={(e) => onPrDetailsChange({ ...prDetails, prNumber: e.target.value })}
               className="w-full h-11 px-3.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
-              placeholder="Optional reference"
+              placeholder="PR number — fills quotes and details"
             />
+            {prReferenceStatus?.message ? (
+              <p
+                className={`mt-1.5 text-xs ${
+                  prReferenceStatus.state === 'missing'
+                    ? 'text-amber-700'
+                    : prReferenceStatus.state === 'found'
+                      ? 'text-emerald-700'
+                      : 'text-[#1565C0]'
+                }`}
+              >
+                {prReferenceStatus.message}
+              </p>
+            ) : null}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Title</label>

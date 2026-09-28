@@ -5,6 +5,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import RichTextEditor from '../../../components/base/RichTextEditor';
 import AddableSelect from '../../../components/base/AddableSelect';
 import {
+  ApiError,
   poApi,
   prApi,
   poLetterheadApi,
@@ -1211,6 +1212,11 @@ export default function CreatePOPage() {
   const [manualComparisonRounds, setManualComparisonRounds] = useState<ManualComparisonRound[]>([
     emptyComparisonRound(1),
   ]);
+  const [prReferenceStatus, setPrReferenceStatus] = useState<{
+    state: 'idle' | 'loading' | 'found' | 'missing';
+    message: string;
+  }>({ state: 'idle', message: '' });
+  const appliedPrReferenceRef = useRef('');
   const [masterVendors, setMasterVendors] = useState<VendorRecord[]>([]);
   const csvAppliedRef = useRef(false);
   const brandingAutoApplied = useRef(false);
@@ -1676,6 +1682,193 @@ export default function CreatePOPage() {
       leadTime: Number(recommended.leadTime) || prev.leadTime,
     }));
   }, [isManualPoFlow, manualComparisonRounds]);
+
+  useEffect(() => {
+    if (!isManualMode) return;
+    const number = String(manualPrDetails.prNumber || '').trim();
+    if (number.length < 4) {
+      setPrReferenceStatus({ state: 'idle', message: '' });
+      return;
+    }
+    const key = number.toLowerCase();
+    if (appliedPrReferenceRef.current === key) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setPrReferenceStatus({ state: 'loading', message: 'Looking up purchase request…' });
+      void poApi
+        .prefillByPrNumber(number)
+        .then((res) => {
+          if (cancelled) return;
+          const data = res.data;
+          const prData = (data?.pr || {}) as Record<string, unknown>;
+          const text = (value: unknown) => String(value ?? '').trim();
+          appliedPrReferenceRef.current = key;
+          const title = text(prData.title);
+          const paymentTermsText = text(prData.paymentTerms);
+          const scopeOfWork = text(prData.scopeOfWork);
+          const justification = text(prData.justification);
+          const docType = prData.purchaseType === 'work_order' ? 'work_order' : 'purchase_order';
+          setManualPrDetails({
+            prNumber: text(prData.prNumber) || number,
+            title,
+            department: text(prData.department),
+            requester: text(prData.requester),
+            justification,
+            scopeOfWork,
+            paymentTerms: paymentTermsText,
+            requestType: text(prData.requestType) || 'Opex',
+            priority: text(prData.priority) || 'Medium',
+          });
+          const rounds = hydrateComparisonRoundsFromStored(
+            (data.comparisonRounds || []) as unknown as Parameters<
+              typeof hydrateComparisonRoundsFromStored
+            >[0]
+          );
+          if (rounds.length) setManualComparisonRounds(rounds);
+          const vendor = (data.vendor || null) as Record<string, unknown> | null;
+          const vendorTerms = text(vendor?.paymentTerms) || paymentTermsText;
+          if (vendor && text(vendor.name)) {
+            setManualVendorName(text(vendor.name));
+            setManualVendorEmail(text(vendor.email));
+            if (vendorTerms) setPaymentTerms(vendorTerms);
+            if (text(vendor.deliveryTerms)) setIncoterms(normalizeIncoterm(text(vendor.deliveryTerms)));
+            setVendorMeta((prev) => ({
+              ...prev,
+              name: text(vendor.name),
+              email: text(vendor.email),
+              paymentTerms: vendorTerms || prev.paymentTerms,
+              quotedPrice: Number(vendor.quotedPrice) || prev.quotedPrice,
+              leadTime: Number(vendor.leadTime) || prev.leadTime,
+            }));
+          } else if (paymentTermsText) {
+            setPaymentTerms(paymentTermsText);
+          }
+          const rawLines = Array.isArray(prData.lineItems) ? prData.lineItems : [];
+          if (rawLines.length) {
+            const mapped = rawLines.map((li, index) => {
+              const row = li as Record<string, unknown>;
+              const quantity = Number(row.quantity) || 0;
+              const unitPrice = Number(row.unitPrice ?? row.unitCost) || 0;
+              return {
+                id: Number(row.id) || index + 1,
+                itemName: text(row.itemName || row.description),
+                description: text(row.description || row.itemName),
+                quantity,
+                unitPrice,
+                taxPercentage: Number(row.gstPercentage) || 18,
+                total: calcLineTotal(quantity, unitPrice),
+                unit: text(row.unit) || 'Nos',
+              };
+            });
+            prLineItemsHydratedRef.current = true;
+            lineItemsDraftRef.current = mapped;
+            setLineItems(mapped);
+          }
+          const entityId = Number(prData.entityId || 0);
+          if (entityId > 0) {
+            setManualEntityId(entityId);
+            const fromList = entityOptions.find((e) => Number(e.id) === entityId);
+            const snapshot: EntityRecord =
+              fromList ||
+              ({
+                id: entityId,
+                code: text(prData.entityCode),
+                name: text(prData.entityName) || `Entity #${entityId}`,
+                costCenter: text(prData.entityCostCenter),
+                description: '',
+                status: 'active',
+              } as EntityRecord);
+            setManualEntitySnapshot(snapshot);
+            if (snapshot.name) setEntity(snapshot.name);
+          }
+          setDocumentType(docType);
+          if (!userEditedDraftRef.current) {
+            setPoType(defaultPoTypeForDocument(docType));
+          }
+          const prCurrency = normalizeCurrency(text(prData.currency) || DEFAULT_CURRENCY);
+          setCurrency(prCurrency);
+          if (justification) setSpecialInstructions(justification);
+          if (scopeOfWork) prScopeOfWorkRef.current = scopeOfWork;
+          const place = text(prData.placeOfDelivery);
+          if (place) setDeliveryAddress(place);
+          const requiredDate = text(prData.requiredDate);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(requiredDate)) setExpectedDeliveryDate(requiredDate);
+          const billing = text(prData.billingAddress);
+          setPoTermsDetails((prev) => ({
+            ...prev,
+            subject: title || prev.subject,
+            paymentTermsText: vendorTerms || prev.paymentTermsText,
+            siteAddress: place || prev.siteAddress,
+            siteContactPerson: text(prData.deliveryPoc) || prev.siteContactPerson,
+            siteContactEmail: text(prData.deliveryPocEmail) || prev.siteContactEmail,
+            siteContactPhone: text(prData.deliveryPocPhone) || prev.siteContactPhone,
+            projectManagerHo: text(prData.projectManagerHo) || prev.projectManagerHo,
+            projectManagerEmail: text(prData.projectManagerEmail) || prev.projectManagerEmail,
+            projectManagerContact: text(prData.projectManagerContact) || prev.projectManagerContact,
+            invoicingAddress: billing ? addressLinesToHtml(billing) : prev.invoicingAddress,
+            buyerGstNo: text(prData.billingGstNo) || prev.buyerGstNo,
+          }));
+          setPr((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  id: Number(prData.id) || prev.id,
+                  prNumber: text(prData.prNumber) || number,
+                  title,
+                  department: text(prData.department),
+                  entityId: entityId || null,
+                  entityName: text(prData.entityName),
+                  entityCode: text(prData.entityCode),
+                  requester: text(prData.requester),
+                  purchaseType: docType,
+                  purchaseTypeLabel:
+                    text(prData.purchaseTypeLabel) ||
+                    (docType === 'work_order' ? 'Work Order' : 'Purchase Order'),
+                  recommendedVendor: text(vendor?.name),
+                  vendorEmail: text(vendor?.email),
+                  currency: prCurrency,
+                  lineItems: rawLines.map((li) => {
+                    const row = li as Record<string, unknown>;
+                    return {
+                      id: Number(row.id) || 0,
+                      description: text(row.description || row.itemName),
+                      quantity: Number(row.quantity) || 0,
+                      unitPrice: Number(row.unitPrice ?? row.unitCost) || 0,
+                      category: text(row.category),
+                      unit: text(row.unit) || 'Nos',
+                    };
+                  }),
+                }
+              : prev
+          );
+          const quoteCount = rounds.reduce((sum, round) => sum + round.vendorQuotes.length, 0);
+          const label = text(prData.prNumber) || number;
+          setPrReferenceStatus({
+            state: 'found',
+            message: quoteCount
+              ? `Filled from ${label} — ${quoteCount} vendor quote${quoteCount === 1 ? '' : 's'}.`
+              : `Filled from ${label}. No vendor quotes on this request yet.`,
+          });
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          const status = err instanceof ApiError ? err.status : 0;
+          setPrReferenceStatus({
+            state: 'missing',
+            message:
+              status === 404
+                ? 'No purchase request with that number. You can still fill the form.'
+                : err instanceof Error
+                  ? err.message
+                  : 'Could not look up that PR.',
+          });
+        });
+    }, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isManualMode, manualPrDetails.prNumber, entityOptions]);
 
   const selectedManualEntity = useMemo(() => {
     if (manualEntityId === '') return null;
@@ -4268,6 +4461,7 @@ export default function CreatePOPage() {
                       poId={editPoId || createdPoId}
                       currencySymbol={moneySymbol}
                       currency={currency}
+                      prReferenceStatus={prReferenceStatus}
                     />
                   )}
 

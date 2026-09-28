@@ -947,7 +947,25 @@ export default function TasksPage() {
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-center lg:w-auto lg:justify-end">
-            <div className="min-w-[168px] sm:w-[200px]">
+            <TasksMobileFilters
+              value={{
+                search: searchTerm,
+                status: filter,
+                priority: priorityFilter,
+                sortBy,
+                dateFrom,
+                dateTo,
+              }}
+              onApply={(next) => {
+                setSearchTerm(next.search);
+                setFilter(next.status);
+                setPriorityFilter(next.priority);
+                setSortBy(next.sortBy);
+                setDateFrom(next.dateFrom);
+                setDateTo(next.dateTo);
+              }}
+            />
+            <div className="hidden min-w-[168px] min-[992px]:block sm:w-[200px]">
               <PeriodPicker
                 dateFrom={dateFrom}
                 dateTo={dateTo}
@@ -1107,7 +1125,7 @@ export default function TasksPage() {
         {/* Phone / tablet — Filters bottom sheet */}
         <div className="relative z-[1] border-b border-slate-100/80 px-4 pb-2 pt-4 min-[992px]:hidden">
           <div className="mb-3 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#DBEAFE] text-[#2563EB]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
               <i className="ri-task-line text-lg" aria-hidden />
             </div>
             <div>
@@ -1117,25 +1135,7 @@ export default function TasksPage() {
               <h2 className="text-base font-semibold text-slate-800">Purchase Request Approvals</h2>
             </div>
           </div>
-          <TasksMobileFilters
-            value={{
-              search: searchTerm,
-              status: filter,
-              priority: priorityFilter,
-              sortBy,
-              dateFrom,
-              dateTo,
-            }}
-            onApply={(next) => {
-              setSearchTerm(next.search);
-              setFilter(next.status);
-              setPriorityFilter(next.priority);
-              setSortBy(next.sortBy);
-              setDateFrom(next.dateFrom);
-              setDateTo(next.dateTo);
-            }}
-          />
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="text-sm text-slate-500">
             {isPagedView && filteredTasks.length > 0 ? (
               <>
                 Showing{' '}
