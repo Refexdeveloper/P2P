@@ -1620,37 +1620,40 @@ export default function CreatePOPage() {
 
   useEffect(() => {
     if (!isManualPoFlow) return;
+    const text = (value: unknown) => String(value ?? '').trim();
+    const title = text(manualPrDetails.title);
+    const justification = text(manualPrDetails.justification);
+    const paymentTermsText = text(manualPrDetails.paymentTerms);
+    const scopeOfWork = text(manualPrDetails.scopeOfWork);
     setPr((prev) =>
       prev
         ? {
             ...prev,
-            prNumber: manualPrDetails.prNumber || '—',
-            title: manualPrDetails.title,
-            department: manualPrDetails.department,
-            requester: manualPrDetails.requester,
+            prNumber: text(manualPrDetails.prNumber) || '—',
+            title,
+            department: text(manualPrDetails.department),
+            requester: text(manualPrDetails.requester),
             requestType: manualPrDetails.requestType,
             priority: manualPrDetails.priority,
           }
         : prev
     );
-    if (manualPrDetails.title.trim()) {
+    if (title) {
       setPoTermsDetails((prev) =>
-        prev.subject?.trim() ? prev : { ...prev, subject: manualPrDetails.title.trim() }
+        text(prev.subject) ? prev : { ...prev, subject: title }
       );
     }
-    if (manualPrDetails.justification.trim()) {
-      setSpecialInstructions((prev) => (prev.trim() ? prev : manualPrDetails.justification.trim()));
+    if (justification) {
+      setSpecialInstructions((prev) => (text(prev) ? prev : justification));
     }
-    if (manualPrDetails.paymentTerms.trim()) {
-      setPaymentTerms((prev) => (prev.trim() && prev !== 'Net 30 Days' ? prev : manualPrDetails.paymentTerms.trim()));
+    if (paymentTermsText) {
+      setPaymentTerms((prev) => (text(prev) && prev !== 'Net 30 Days' ? prev : paymentTermsText));
       setPoTermsDetails((prev) =>
-        prev.paymentTermsText?.trim()
-          ? prev
-          : { ...prev, paymentTermsText: manualPrDetails.paymentTerms.trim() }
+        text(prev.paymentTermsText) ? prev : { ...prev, paymentTermsText }
       );
     }
-    if (manualPrDetails.scopeOfWork.trim()) {
-      prScopeOfWorkRef.current = manualPrDetails.scopeOfWork.trim();
+    if (scopeOfWork) {
+      prScopeOfWorkRef.current = scopeOfWork;
     }
   }, [isManualPoFlow, manualPrDetails]);
 
@@ -1658,14 +1661,16 @@ export default function CreatePOPage() {
     if (!isManualPoFlow) return;
     const recommended = findRecommendedManualQuote(manualComparisonRounds);
     if (!recommended) return;
-    if (recommended.vendorName.trim()) setManualVendorName(recommended.vendorName.trim());
-    if (recommended.vendorEmail.trim()) setManualVendorEmail(recommended.vendorEmail.trim());
+    const vendorName = String(recommended.vendorName ?? '').trim();
+    const vendorEmail = String(recommended.vendorEmail ?? '').trim();
+    if (vendorName) setManualVendorName(vendorName);
+    if (vendorEmail) setManualVendorEmail(vendorEmail);
     if (recommended.vendorId) setManualVendorId(recommended.vendorId);
     if (recommended.paymentTerms) setPaymentTerms(recommended.paymentTerms);
     setVendorMeta((prev) => ({
       ...prev,
-      name: recommended.vendorName.trim() || prev.name,
-      email: recommended.vendorEmail.trim() || prev.email,
+      name: vendorName || prev.name,
+      email: vendorEmail || prev.email,
       paymentTerms: recommended.paymentTerms || prev.paymentTerms,
       quotedPrice: Number(recommended.quotedPrice) || prev.quotedPrice,
       leadTime: Number(recommended.leadTime) || prev.leadTime,
@@ -2169,6 +2174,8 @@ export default function CreatePOPage() {
           department: '',
           requester: '',
           justification: '',
+          scopeOfWork: '',
+          paymentTerms: '',
           requestType: 'Opex',
           priority: 'Medium',
         });
