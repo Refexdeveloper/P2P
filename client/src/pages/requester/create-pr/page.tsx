@@ -3529,50 +3529,58 @@ export default function CreatePRPage() {
               </>
             ) : purchaseType === 'online_purchase' ? null : (
               <>
+            <div className="grid grid-cols-1 items-start gap-4 sm:col-span-2 sm:grid-cols-2">
             {/* Request Flow */}
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
+            <div className="min-w-0">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[#7F8C8D]">
                 Flow <span className="text-red-500">*</span>
               </label>
-              <select
-                value={prFlow}
-                onChange={(e) => {
-                  const next = e.target.value === 'functional' ? 'functional' : 'standard';
-                  setPrFlow(next);
-                }}
-                className="w-full min-w-0 max-h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 cursor-pointer"
-              >
-                <option value="standard">Standard</option>
-                <option value="functional">Functional</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1.5">
+              <div className="relative">
+                <select
+                  value={prFlow}
+                  onChange={(e) => {
+                    const next = e.target.value === 'functional' ? 'functional' : 'standard';
+                    setPrFlow(next);
+                  }}
+                  className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-gray-200 bg-white pl-4 pr-10 text-sm text-[#2C3E50] focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30"
+                >
+                  <option value="standard">Standard</option>
+                  <option value="functional">Functional</option>
+                </select>
+                <i className="ri-arrow-down-s-line pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-base text-slate-400" />
+              </div>
+              <p className="mt-2 text-xs leading-5 text-gray-500">
                 {prFlow === 'standard'
                   ? 'Standard: current L1 / L2 / Mugesh / RFQ path (Own vendor or SCM vendor).'
                   : 'Functional: shortened path — quotes on Create PR for Own vendor, selected user approval, then SCM RFQ / Final RFQ.'}
               </p>
             </div>
 
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
+            <div className="min-w-0">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[#7F8C8D]">
                 Vendor Selection <span className="text-red-500">*</span>
               </label>
-              <select
-                value={vendorSelection}
-                onChange={(e) => setVendorSelection(e.target.value === 'own' ? 'own' : 'scm')}
-                className="w-full min-w-0 max-h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 cursor-pointer"
-              >
-                <option value="scm">SCM vendor Selection</option>
-                <option value="own">Own vendor</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1.5">
+              <div className="relative">
+                <select
+                  value={vendorSelection}
+                  onChange={(e) => setVendorSelection(e.target.value === 'own' ? 'own' : 'scm')}
+                  className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-gray-200 bg-white pl-4 pr-10 text-sm text-[#2C3E50] focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30"
+                >
+                  <option value="scm">SCM vendor Selection</option>
+                  <option value="own">Own vendor</option>
+                </select>
+                <i className="ri-arrow-down-s-line pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-base text-slate-400" />
+              </div>
+              <p className="mt-2 text-xs leading-5 text-gray-500">
                 {prFlow === 'standard'
                   ? vendorSelection === 'own'
-                    ? 'L1 → your RFQ entry (billing & delivery are asked there) → L1 vendor final → L2 → (optional Mugesh) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
-                    : 'L1 → L2 → Mugesh → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off. Billing & delivery are filled on this page.'
+                    ? 'L1 → your RFQ entry (billing and delivery are asked there) → L1 vendor final → L2 → (optional Mugesh) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
+                    : 'L1 → L2 → Mugesh → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off. Billing and delivery are filled on this page.'
                   : vendorSelection === 'own'
                     ? 'Enter vendor quotes on this page, pick approvers in order, then SCM Final RFQ → Buyer Final Verify → Create PO → SCM Manager approval.'
-                    : 'No inline RFQ. Pick approvers in order; then SCM RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval. Billing & delivery are filled on this page.'}
+                    : 'No inline RFQ. Pick approvers in order, then SCM RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval. Billing and delivery are filled on this page.'}
               </p>
+            </div>
             </div>
 
             {prFlow === 'functional' && (
