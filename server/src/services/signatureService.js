@@ -372,6 +372,12 @@ export function buildSignatureRenderOptions(po = {}) {
       dsc
   );
 
+  if (requesterPoSign && String(po.poSignStep || po.po_sign_step || '') !== 'signed') {
+    imageDataUrl = null;
+    imagePath = '';
+    dsc = null;
+  }
+
   if (looksSigned && !imageDataUrl && !dsc && !requesterPoSign) {
     getDefaultScmManagerSignatureDataUrl();
     imagePath = DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
@@ -380,7 +386,7 @@ export function buildSignatureRenderOptions(po = {}) {
 
   if (!name && !imageDataUrl && !dsc && !requesterPoSign) return undefined;
   return {
-    name: name || dsc?.holderName || (requesterPoSign ? 'Mugesh' : getPreferredScmManagerName() || 'SCM Manager'),
+    name: name || dsc?.holderName || (requesterPoSign ? 'Mugesh.M' : getPreferredScmManagerName() || 'SCM Manager'),
     designation:
       String(po.signerDesignation || po.signer_designation || '').trim() ||
       (requesterPoSign ? 'IT Infrastructure Head' : ''),
@@ -395,6 +401,10 @@ export function buildSignatureRenderOptions(po = {}) {
 export async function buildSignatureRenderOptionsAsync(po = {}) {
   const sync = buildSignatureRenderOptions(po);
   if (sync?.imageDataUrl || sync?.dsc) return sync;
+  const requesterPoSign =
+    ['l1', 'mugesh', 'requester', 'signed'].includes(String(po.poSignStep || po.po_sign_step || '')) ||
+    String(po.poCreationBy || po.po_creation_by || '') === 'requester';
+  if (requesterPoSign && String(po.poSignStep || po.po_sign_step || '') !== 'signed') return sync;
   const imagePath = po.signatureImagePath || po.signature_image_path || '';
   if (!imagePath) return sync;
   const fromGcs = await signatureFileToDataUrlAsync(imagePath);

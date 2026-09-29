@@ -38,6 +38,7 @@ import {
   assertRequesterPoDocumentAccess,
   decideRequesterPoL1,
   uploadMugeshSignedPo,
+  sendBackMugeshPoToRequester,
 } from '../services/poService.js';
 import { getPoFulfillmentSummary } from '../services/accountsFulfillmentService.js';
 import { sendStoredFile } from '../utils/sendStoredFile.js';
@@ -769,7 +770,16 @@ router.post('/:id/requester-l1', requireRoles('HOD Approver', 'Super Admin'), as
 router.post('/:id/mugesh-sign', async (req, res) => {
   try {
     const data = await uploadMugeshSignedPo(req.user, Number(req.params.id), req.body || {});
-    res.json({ data, message: 'Signed PO uploaded. Vendor acceptance is with the requester.' });
+    res.json({ data, message: 'Signed PO uploaded. Buyer Final Verify is with the requester.' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/mugesh-send-back', async (req, res) => {
+  try {
+    const data = await sendBackMugeshPoToRequester(req.user, Number(req.params.id), req.body?.remarks);
+    res.json({ data, message: 'PO sent back to the requester. SCM team was not notified.' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

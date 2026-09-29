@@ -1520,9 +1520,21 @@ function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Orde
   );
 }
 
+function isMugeshSignName(name) {
+  return String(name || '').trim().toLowerCase().startsWith('mugesh');
+}
+
+function mugeshDisplayName(name) {
+  return isMugeshSignName(name) ? 'Mugesh.M' : String(name || '');
+}
+
 function specialNotesInnerHtml(po, options = {}) {
   const signature = options.signature;
   const entityLabel = po.entity || 'Refex Group of Companies';
+  const mugeshApproval =
+    options.mugeshApproval === true ||
+    isMugeshSignName(signature?.name) ||
+    isMugeshSignName(options.signatory?.name);
   const td = po.poTermsDetails || {};
   const siteAddress = td.siteAddress || po.deliveryAddress || '';
   return `
@@ -1561,19 +1573,21 @@ function specialNotesInnerHtml(po, options = {}) {
         </div>` : ''}
       </div>
       <p>${escapeHtml(signature.date)}<br>
-      <strong>Authorized Signatory${signature.dsc ? ' (DSC)' : ''}</strong><br>
-      Name: ${escapeHtml(signature.name)}<br>
+      ${mugeshApproval ? '' : `<strong>Authorized Signatory${signature.dsc ? ' (DSC)' : ''}</strong><br>`}
+      Name: ${escapeHtml(mugeshApproval ? 'Mugesh.M' : signature.name)}<br>
       Designation: ${escapeHtml(
         signature.designation ||
-          (String(signature.name || '').trim().toLowerCase().startsWith('mugesh')
-            ? 'IT Infrastructure Head'
-            : 'SCM - Head')
+          (isMugeshSignName(signature.name) ? 'IT Infrastructure Head' : 'SCM - Head')
       )}</p>` : options.signatory ? `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>
-      <p><strong>Authorized Signatory</strong><br>
-      Name: ${escapeHtml(options.signatory.name || 'Mugesh')}<br>
-      Designation: ${escapeHtml(options.signatory.designation || 'IT Infrastructure Head')}</p>` : `
+      <p>${mugeshApproval ? '' : '<strong>Authorized Signatory</strong><br>'}
+      Name: ${escapeHtml(mugeshApproval ? 'Mugesh.M' : mugeshDisplayName(options.signatory.name || ''))}<br>
+      Designation: ${escapeHtml(options.signatory.designation || (mugeshApproval ? 'IT Infrastructure Head' : 'SCM - Head'))}</p>` : mugeshApproval ? `
+      <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
+      <div class="sig-space"></div>
+      <p>Name: Mugesh.M<br>
+      Designation: IT Infrastructure Head</p>` : `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>
       <p><strong>Authorized Signatory</strong><br>

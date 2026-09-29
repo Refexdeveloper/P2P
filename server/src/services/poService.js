@@ -38,7 +38,7 @@ import {
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 import { wrapPortalUrlWithSso } from './refexOneSamlService.js';
-import { buildSignatureRenderOptions } from './signatureService.js';
+import { buildSignatureRenderOptions, parseDataUrlImage, saveSignatureFile } from './signatureService.js';
 
 function todayYmd() {
   const d = new Date();
@@ -1050,6 +1050,7 @@ async function enrichPO(row) {
     signatureName: row.signature_name,
     signerDesignation: row.signer_designation || '',
     poSignStep: row.po_sign_step || null,
+    poCreationBy: pr?.poCreationBy === 'requester' ? 'requester' : 'scm',
     signatureImagePath: row.signature_image_path || null,
     signatureImageDataUrl:
       row.signed_at || row.signature_image_path || row.signed_pdf_path || row.signature_image_data
@@ -5882,6 +5883,84 @@ export async function decideRequesterPoL1(user, poId, action, remarks) {
   throw new Error('Unsupported action');
 }
 
+export async function sendBackMugeshPoToRequester(user, poId, remarks) {
+  if (!isMugeshActor(user) && user.role !== 'Super Admin') {
+    throw new Error('Only Mugesh can send this PO back');
+  }
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  const po = rows[0];
+  if (po.status !== 'pending_approval' || String(po.po_sign_step || '') !== 'mugesh') {
+    throw new Error('PO is not waiting for Mugesh sign and upload');
+  }
+  const prRow = po.pr_id ? await loadPrPoCreation(po.pr_id) : null;
+  if (!prIsRequesterPo(prRow)) {
+    throw new Error('Send back from Mugesh is only for a requester-created PO');
+  }
+  if (!remarks?.trim()) throw new Error('Send-back remarks are required');
+
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'draft',
+       po_sign_step = 'requester',
+       signed_pdf_path = NULL,
+       signer_id = NULL,
+       signature_name = NULL,
+       signature_image_path = NULL,
+       signature_image_data = NULL,
+       signer_comments = NULL,
+       signer_designation = NULL,
+       signed_at = NULL,
+       updated_at = NOW()
+     WHERE id = ?`,
+    [poId]
+  );
+  await pool.query(
+    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND status = 'pending'
+       AND task_type IN ('PO_MUGESH_SIGN', 'PO_APPROVAL', 'PO_BUYER_VERIFY')`,
+    [po.pr_id]
+  );
+  await pool.query(
+    `UPDATE purchase_requests SET status = 'PENDING_SCM_PO', current_stage = 'SCM_PO_CREATE', updated_at = NOW()
+     WHERE id = ?`,
+    [po.pr_id]
+  );
+  const requesterId = Number(prRow.requester_id);
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 2);
+  await pool.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+     VALUES (?, 'PO_REVISION', 'Requester', ?, 'pending', ?)`,
+    [po.pr_id, requesterId, dueDate.toISOString().split('T')[0]]
+  );
+  await pool.query(
+    `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+     VALUES (?, 'PO_MUGESH_SENT_BACK', ?, 'return', ?)`,
+    [po.pr_id, user.id, remarks.trim()]
+  );
+
+  const updated = await getPurchaseOrderById(poId);
+  const [reqRows] = await pool.query(`SELECT email, name FROM users WHERE id = ?`, [requesterId]);
+  if (reqRows[0]?.email) {
+    queuePoWorkflowNotification(updated, {
+      action: 'sendback',
+      stageLabel: 'Mugesh Sign — Sent Back',
+      recipientEmails: [reqRows[0].email],
+      recipientName: reqRows[0].name || updated.requester || 'Requester',
+      actorName: 'Mugesh.M',
+      actorRole: 'IT Infrastructure Head',
+      remarks: remarks.trim(),
+      portalUrl: poPortalUrl(`/scm/create-po?poId=${poId}&from=tasks`),
+      ctaLabel: 'Revise PO',
+      bccOps: false,
+      notifyWhatsApp: false,
+      ccEmails: [],
+    });
+  }
+  return updated;
+}
+
 export async function uploadMugeshSignedPo(user, poId, body = {}) {
   if (!isMugeshActor(user) && user.role !== 'Super Admin') {
     throw new Error('Only Mugesh can sign and upload this PO');
@@ -5892,9 +5971,9 @@ export async function uploadMugeshSignedPo(user, poId, body = {}) {
   if (po.status !== 'pending_approval' || String(po.po_sign_step || '') !== 'mugesh') {
     throw new Error('PO is not waiting for Mugesh sign and upload');
   }
-  const fileName = String(body.fileName || body.file_name || '').trim();
-  const fileData = body.fileData || body.file_data || '';
-  if (!fileName || !fileData) throw new Error('Signed PO document is required');
+  const fileData = body.fileData || body.file_data || body.signatureImage || '';
+  if (!fileData) throw new Error('Upload your signature image');
+  const parsed = parseDataUrlImage(String(fileData));
 
   const signerId = isMugeshActor(user) ? user.id : (await resolveMugeshSigner()).id;
   const [signerRows] = await pool.query(
@@ -5904,45 +5983,14 @@ export async function uploadMugeshSignedPo(user, poId, body = {}) {
   const signer = signerRows[0];
   if (!signer) throw new Error('Signer user was not found');
   const designation = (await designationForUser(signer)) || 'IT Infrastructure Head';
-
-  const poNumber = String(po.po_number || `PO-${poId}`).trim();
-  const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
-  const storedName = `${safePoNumber}_signed.pdf`;
-  ensurePoUploadDir();
-  const raw = String(fileData).includes(',') ? String(fileData).split(',').pop() : String(fileData);
-  const buffer = Buffer.from(raw, 'base64');
-  if (!buffer.length) throw new Error('Signed PO document is empty');
-  const fullPath = path.join(PO_UPLOAD_DIR, storedName);
-  fs.writeFileSync(fullPath, buffer);
-  await awaitGcsUpload(`purchase-orders/${storedName}`, buffer);
-
-  let signatureImagePath = null;
-  let signatureImageData = null;
-  const [gallery] = await pool.query(
-    `SELECT image_path FROM user_signatures WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
-    [signer.id]
-  );
-  if (gallery[0]?.image_path) {
-    try {
-      const { signatureFileToDataUrlAsync, parseDataUrlImage } = await import('./signatureService.js');
-      const dataUrl = await signatureFileToDataUrlAsync(gallery[0].image_path);
-      if (dataUrl) {
-        const parsed = parseDataUrlImage(dataUrl);
-        signatureImageData = parsed.buffer;
-        signatureImagePath = gallery[0].image_path;
-      }
-    } catch (err) {
-      console.warn('Mugesh signature image was not attached:', err.message);
-    }
-  }
+  const signatureImagePath = await saveSignatureFile(parsed.buffer, parsed.ext, `mugesh_${poId}_${Date.now()}`);
 
   await pool.query(
     `UPDATE purchase_orders SET
        status = 'pending_buyer_verify',
        po_sign_step = 'signed',
-       signed_pdf_path = ?,
        signer_id = ?,
-       signature_name = ?,
+       signature_name = 'Mugesh.M',
        signature_image_path = ?,
        signature_image_data = ?,
        signer_designation = ?,
@@ -5951,12 +5999,10 @@ export async function uploadMugeshSignedPo(user, poId, body = {}) {
        updated_at = NOW()
      WHERE id = ?`,
     [
-      storedName,
       signer.id,
-      signer.name || 'Mugesh',
       signatureImagePath,
-      signatureImageData,
-      designation || null,
+      parsed.buffer,
+      designation || 'IT Infrastructure Head',
       String(body.remarks || '').trim() || null,
       poId,
     ]
@@ -5983,6 +6029,37 @@ export async function uploadMugeshSignedPo(user, poId, body = {}) {
   }
 
   const updated = await getPurchaseOrderById(poId);
+  try {
+    const safeNo = String(updated.poNumber || 'PO').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
+    const { fileName } = await generatePoPdf(
+      {
+        ...updated,
+        poCreationBy: 'requester',
+        poSignStep: 'signed',
+        signatureName: 'Mugesh.M',
+        signatureImagePath,
+        signatureImageData: parsed.buffer,
+      },
+      {
+        fileName: `${safeNo}_signed.pdf`,
+        signed: true,
+        signature: {
+          name: 'Mugesh.M',
+          designation: designation || 'IT Infrastructure Head',
+          imageDataUrl: parsed.dataUrl,
+          date: updated.signedAt || '',
+        },
+      }
+    );
+    await pool.query(
+      `UPDATE purchase_orders SET pdf_path = ?, signed_pdf_path = ?, updated_at = NOW() WHERE id = ?`,
+      [fileName, fileName, poId]
+    );
+    updated.pdfPath = fileName;
+    updated.signedPdfPath = fileName;
+  } catch (pdfErr) {
+    console.warn(`Mugesh signed PDF failed for ${updated?.poNumber || poId}:`, pdfErr.message);
+  }
   const requesterId = await getPoRequesterId(po);
   if (po.pr_id && requesterId) {
     const dueDate = new Date();
@@ -6008,7 +6085,7 @@ export async function uploadMugeshSignedPo(user, poId, body = {}) {
         stageLabel: 'Buyer Final Verify',
         recipientEmails: [reqRows[0].email],
         recipientName: reqRows[0].name || updated.requester || 'Requester',
-        actorName: signer.name || 'Mugesh',
+        actorName: 'Mugesh.M',
         actorRole: designation || user.role,
         remarks: String(body.remarks || '').trim() || 'Signed PO is ready for buyer final verification',
         portalUrl: poPortalUrl('/scm/buyer-final-verify'),

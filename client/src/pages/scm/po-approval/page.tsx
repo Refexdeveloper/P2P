@@ -262,22 +262,20 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                   >
                     <i className="ri-quill-pen-line"></i> {mugeshMode ? 'Sign & Upload' : 'Sign & Approve'}
                   </button>
-                  {!mugeshMode && (
-                  <>
                   <button
                     type="button"
                     onClick={onSendBack}
                     className="px-3 py-1.5 sm:px-4 text-xs font-semibold text-orange-700 bg-white border border-orange-200 rounded-xl hover:bg-orange-50 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                   >
-                    <i className="ri-arrow-go-back-line"></i> Send Back
+                    <i className="ri-arrow-go-back-line"></i> {mugeshMode ? 'Send Back to Requester' : 'Send Back'}
                   </button>
+                  {!mugeshMode && (
                   <button
                     onClick={onReject}
                     className="px-3 py-1.5 sm:px-4 text-xs font-semibold text-rose-600 bg-white border border-rose-200 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                   >
                     <i className="ri-close-circle-line"></i> Reject PO
                   </button>
-                  </>
                   )}
                 </>
               )}
@@ -732,8 +730,16 @@ export default function POApprovalPage() {
         navigate(`/scm/po-pdf-view?poId=${modal.poId}&from=po-approval`);
         return;
       } else if (modal.type === 'sendback') {
-        const res = await poApi.sendBack(modal.poId, remarks);
-        showToast(res.message || `${modal.poNumber} sent back to SCM Buyer for revision`, 'success');
+        const res = mugeshMode
+          ? await poApi.mugeshSendBack(modal.poId, remarks)
+          : await poApi.sendBack(modal.poId, remarks);
+        showToast(
+          res.message ||
+            (mugeshMode
+              ? `${modal.poNumber} sent back to the requester`
+              : `${modal.poNumber} sent back to SCM Buyer for revision`),
+          'success'
+        );
       } else {
         await poApi.reject(modal.poId, remarks);
         showToast(`${modal.poNumber} has been rejected`, 'error');
@@ -1150,16 +1156,15 @@ export default function POApprovalPage() {
                                   >
                                     <i className="ri-quill-pen-line text-sm"></i>
                                   </button>
-                                  {!mugeshMode && (
-                                  <>
                                   <button
                                     type="button"
                                     onClick={() => openModal(po.poNumber, 'sendback')}
                                     className="cursor-pointer rounded-xl p-1.5 text-orange-600 transition-colors hover:bg-orange-50"
-                                    title="Send Back to Buyer"
+                                    title={mugeshMode ? 'Send Back to Requester' : 'Send Back to Buyer'}
                                   >
                                     <i className="ri-arrow-go-back-line text-sm"></i>
                                   </button>
+                                  {!mugeshMode && (
                                   <button
                                     type="button"
                                     onClick={() => openModal(po.poNumber, 'reject')}
@@ -1168,7 +1173,6 @@ export default function POApprovalPage() {
                                   >
                                     <i className="ri-close-line text-sm"></i>
                                   </button>
-                                  </>
                                   )}
                                 </>
                               )}
@@ -1230,13 +1234,13 @@ export default function POApprovalPage() {
             <h2 className="text-lg font-semibold text-slate-800">Sign & Upload</h2>
             <p className="mt-1 text-sm text-slate-500">{upload.poNumber}</p>
             <p className="mt-2 text-xs text-slate-500">
-              Authorized signatory is Mugesh. Your designation from the user profile is printed on the PO.
+              Upload your signature image. It is placed inside this PO. Name: Mugesh.M. Designation: IT Infrastructure Head. After upload, Buyer Final Verify goes to the requester.
             </p>
             <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Signed PO
+              Signature image
               <input
                 type="file"
-                accept="application/pdf,.pdf"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
                 className="mt-1 block w-full text-sm"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -1289,6 +1293,12 @@ export default function POApprovalPage() {
         poNumber={modal.poNumber}
         prTitle={modal.prTitle}
         grandTotal={modal.grandTotal}
+        sendBackTitle={mugeshMode ? 'Send back to requester' : undefined}
+        sendBackHint={
+          mugeshMode
+            ? 'This PO returns to the requester who created it. SCM Buyer and SCM Manager are not notified.'
+            : undefined
+        }
         onConfirm={handleConfirm}
         onClose={() => setModal(prev => ({ ...prev, isOpen: false }))}
       />
