@@ -1442,14 +1442,69 @@ async function getFullPoApprovalHistory(row) {
   return history.map(({ sortAt: _sortAt, ...entry }) => entry);
 }
 
+async function requesterHasCreatePoTask(prId, userId) {
+  const [rows] = await pool.query(
+    `SELECT id FROM workflow_tasks
+     WHERE pr_id = ? AND status = 'pending' AND assigned_role = 'Requester'
+       AND task_type = 'RFQ_POST_APPROVAL' AND assigned_user_id = ?
+     LIMIT 1`,
+    [prId, userId]
+  );
+  return Boolean(rows.length);
+}
+
+async function reopenCancelledPoAsRequesterDraft(prId, requesterUserId = null) {
+  const [rows] = await pool.query(
+    `SELECT id FROM purchase_orders
+     WHERE pr_id = ? AND status = 'cancelled'
+     ORDER BY id DESC LIMIT 1`,
+    [prId]
+  );
+  const [draftRows] = await pool.query(
+    `SELECT id FROM purchase_orders WHERE pr_id = ? AND status = 'draft' ORDER BY id DESC LIMIT 1`,
+    [prId]
+  );
+  if (draftRows.length || !rows.length) return draftRows[0]?.id || null;
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'draft',
+       po_sign_step = 'requester',
+       signed_at = NULL,
+       signer_id = NULL,
+       signature_name = NULL,
+       signature_image_path = NULL,
+       signer_comments = NULL,
+       signer_designation = NULL,
+       signed_pdf_path = NULL,
+       cancellation_reason = NULL,
+       cancelled_by = NULL,
+       cancelled_at = NULL,
+       created_by = COALESCE(?, created_by),
+       updated_at = NOW()
+     WHERE id = ?`,
+    [requesterUserId || null, rows[0].id]
+  );
+  return rows[0].id;
+}
+
 export async function getPoCreateContext(user, prId) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
   if (user.role === 'Requester') {
-    if (pr.poCreationBy !== 'requester' || Number(pr.requesterId) !== Number(user.id)) {
+    if (Number(pr.requesterId) !== Number(user.id)) {
       throw new Error('Only the PR requester can create this PO');
     }
-  } else if (user.role !== 'SCM Buyer') {
+    const handedToRequester =
+      pr.poCreationBy === 'requester' || (await requesterHasCreatePoTask(prId, user.id));
+    if (!handedToRequester) {
+      throw new Error('Only the PR requester can create this PO');
+    }
+    if (pr.poCreationBy !== 'requester') {
+      await pool.query(`UPDATE purchase_requests SET po_creation_by = 'requester' WHERE id = ?`, [prId]);
+      pr.poCreationBy = 'requester';
+    }
+    await reopenCancelledPoAsRequesterDraft(prId, user.id);
+  } else if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
     throw new Error('Unauthorized');
   }
 
@@ -1465,7 +1520,7 @@ export async function getPoCreateContext(user, prId) {
 
   let draftSql = `SELECT id FROM purchase_orders WHERE pr_id = ? AND status = 'draft'`;
   const draftParams = [prId];
-  if (!canEditAnyScmPurchaseOrder(user)) {
+  if (user.role !== 'Requester' && !canEditAnyScmPurchaseOrder(user)) {
     draftSql += ` AND created_by = ?`;
     draftParams.push(user.id);
   }
@@ -2290,7 +2345,18 @@ export async function buildPoPreviewForPo(user, poId, body) {
 }
 
 export async function createPurchaseOrder(user, prId, body) {
-  const prFlag = await loadPrPoCreation(prId);
+  let prFlag = await loadPrPoCreation(prId);
+  if (
+    user.role === 'Requester' &&
+    prFlag &&
+    !prIsRequesterPo(prFlag) &&
+    Number(prFlag.requester_id) === Number(user.id) &&
+    (await requesterHasCreatePoTask(prId, user.id))
+  ) {
+    await pool.query(`UPDATE purchase_requests SET po_creation_by = 'requester' WHERE id = ?`, [prId]);
+    await reopenCancelledPoAsRequesterDraft(prId, user.id);
+    prFlag = await loadPrPoCreation(prId);
+  }
   const requesterCreates = prIsRequesterPo(prFlag);
   if (requesterCreates) {
     const isOwner = user.role === 'Requester' && Number(prFlag.requester_id) === Number(user.id);
@@ -2962,7 +3028,18 @@ async function persistDraftLineItems(conn, poId, lineItems) {
 export async function savePurchaseOrderDraft(user, body = {}) {
   const poId = Number(body.poId || body.id || 0) || null;
   const prId = Number(body.prId || 0) || null;
-  const prFlag = prId ? await loadPrPoCreation(prId) : null;
+  let prFlag = prId ? await loadPrPoCreation(prId) : null;
+  if (
+    user.role === 'Requester' &&
+    prFlag &&
+    !prIsRequesterPo(prFlag) &&
+    Number(prFlag.requester_id) === Number(user.id) &&
+    (await requesterHasCreatePoTask(prId, user.id))
+  ) {
+    await pool.query(`UPDATE purchase_requests SET po_creation_by = 'requester' WHERE id = ?`, [prId]);
+    await reopenCancelledPoAsRequesterDraft(prId, user.id);
+    prFlag = await loadPrPoCreation(prId);
+  }
   const requesterDraft =
     user.role === 'Requester' && prIsRequesterPo(prFlag) && Number(prFlag.requester_id) === Number(user.id);
   if (!requesterDraft && user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
@@ -4191,7 +4268,15 @@ export async function assertRequesterPoDocumentAccess(user, poId) {
   }
 
   const status = String(po.statusRaw || '').trim().toLowerCase();
-  const requesterCreated = String(prRows[0].po_creation_by || 'scm') === 'requester';
+  let requesterCreated = String(prRows[0].po_creation_by || 'scm') === 'requester';
+  if (!requesterCreated && (await requesterHasCreatePoTask(po.prId, user.id))) {
+    await pool.query(`UPDATE purchase_requests SET po_creation_by = 'requester' WHERE id = ?`, [po.prId]);
+    requesterCreated = true;
+  }
+  if (requesterCreated && status === 'cancelled') {
+    await reopenCancelledPoAsRequesterDraft(po.prId, user.id);
+    return getPurchaseOrderById(Number(poId));
+  }
   if (requesterCreated) {
     if (!REQUESTER_CREATED_PO_STATUSES.has(status)) {
       throw new Error('This purchase order is not available yet');
@@ -5057,7 +5142,21 @@ export async function cancelPurchaseOrder(user, poId, body = {}) {
 
 /** Restore a cancelled PO as an editable draft (keeps PO number + line items). */
 export async function retrieveCancelledPurchaseOrder(user, poId) {
-  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
+  const [ownerRows] = await pool.query(
+    `SELECT po.pr_id, pr.requester_id, pr.po_creation_by
+     FROM purchase_orders po
+     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+     WHERE po.id = ? LIMIT 1`,
+    [poId]
+  );
+  const owner = ownerRows[0];
+  const requesterOwns =
+    user.role === 'Requester' &&
+    owner &&
+    Number(owner.requester_id) === Number(user.id) &&
+    (String(owner.po_creation_by || 'scm') === 'requester' ||
+      (owner.pr_id && (await requesterHasCreatePoTask(owner.pr_id, user.id))));
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role) && !requesterOwns) {
     throw new Error('You are not allowed to retrieve cancelled purchase orders');
   }
 
@@ -5118,7 +5217,40 @@ export async function retrieveCancelledPurchaseOrder(user, poId) {
     [user.id, poId]
   );
 
-  if (row.pr_id) {
+  if (row.pr_id && requesterOwns) {
+    await pool.query(
+      `UPDATE purchase_orders SET po_sign_step = 'requester', created_by = ? WHERE id = ?`,
+      [user.id, poId]
+    );
+    await pool.query(
+      `UPDATE purchase_requests
+       SET po_creation_by = 'requester', status = 'PENDING_SCM_PO', current_stage = 'SCM_PO_CREATE', updated_at = NOW()
+       WHERE id = ?`,
+      [row.pr_id]
+    );
+    await pool.query(
+      `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+       WHERE pr_id = ? AND status = 'pending'
+         AND assigned_role IN ('SCM Buyer', 'SCM Manager')
+         AND task_type IN ('PO_REVISION', 'PO_BUYER_VERIFY', 'PO_APPROVAL', 'RFQ_ENTRY', 'RFQ_POST_APPROVAL')`,
+      [row.pr_id]
+    );
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 2);
+    const [openCreate] = await pool.query(
+      `SELECT id FROM workflow_tasks
+       WHERE pr_id = ? AND status = 'pending' AND assigned_role = 'Requester' AND task_type = 'RFQ_POST_APPROVAL'
+       LIMIT 1`,
+      [row.pr_id]
+    );
+    if (!openCreate.length) {
+      await pool.query(
+        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+         VALUES (?, 'RFQ_POST_APPROVAL', 'Requester', ?, 'pending', ?)`,
+        [row.pr_id, user.id, dueDate.toISOString().split('T')[0]]
+      );
+    }
+  } else if (row.pr_id) {
     await pool.query(
       `UPDATE purchase_requests
        SET status = 'APPROVED', current_stage = 'PO_CREATED', updated_at = NOW()

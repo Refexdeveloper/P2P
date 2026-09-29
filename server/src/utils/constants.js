@@ -288,7 +288,7 @@ export function resolveRequesterPrDisplay(
   };
 }
 
-export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelection = 'scm', purchaseType = 'purchase_order') {
+export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelection = 'scm', purchaseType = 'purchase_order', poCreationBy = 'scm') {
   const rawType = String(purchaseType || '')
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
@@ -343,7 +343,10 @@ export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelectio
     [PR_STATUS.PENDING_RFQ_L2_APPROVAL]: 'Pending L2 Manager Approval',
     [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: 'Pending Mugesh Approval',
     [PR_STATUS.PENDING_BUSINESS_APPROVAL]: 'Pending SCM Manager Vendor Approval',
-    [PR_STATUS.PENDING_SCM_PO]: 'Pending SCM Buyer Create PO',
+    [PR_STATUS.PENDING_SCM_PO]:
+      String(poCreationBy || 'scm') === 'requester'
+        ? 'Pending Requester Create PO'
+        : 'Pending SCM Buyer Create PO',
     [PR_STATUS.AWAITING_INVOICE]: 'Awaiting Invoice Upload',
     [PR_STATUS.APPROVED]: 'Approved',
     [PR_STATUS.REJECTED]: 'Rejected',

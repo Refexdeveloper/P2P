@@ -2054,10 +2054,20 @@ export default function CreatePOPage() {
         statusRaw.includes('buyer_verify');
       const allowBuyerVerifyEdit = fromBuyerVerify && isBuyerVerifyStatus;
       const isCancelled = statusRaw === 'cancelled' || statusRaw === 'canceled';
-      const allowAdminAnyEdit = isAdminPoEditor && !isCancelled;
-      if (!isPendingApproval && !allowBuyerVerifyEdit && !isBuyerVerifyStatus && !isDraft && !allowAdminAnyEdit) {
+      if (isCancelled && user?.role === 'Requester') {
+        const retrieved = await poApi.retrieve(editPoId);
+        const next = (retrieved.data || {}) as Record<string, unknown>;
+        Object.assign(po, next);
+        const nextStatus = String(next.statusRaw || next.status || 'draft').toLowerCase().replace(/\s+/g, '_');
+        setPoEditStatus(nextStatus);
+      }
+      const statusAfter = String(po.statusRaw || po.status || '').toLowerCase().replace(/\s+/g, '_');
+      const cancelledAfter = statusAfter === 'cancelled' || statusAfter === 'canceled';
+      const draftAfter = statusAfter === 'draft';
+      const allowAdminAnyEdit = isAdminPoEditor && !cancelledAfter;
+      if (!isPendingApproval && !allowBuyerVerifyEdit && !isBuyerVerifyStatus && !draftAfter && !isDraft && !allowAdminAnyEdit) {
         setLoadError(
-          isCancelled
+          cancelledAfter
             ? 'Cancelled POs cannot be edited. Retrieve the PO as a draft first.'
             : 'Only draft, pending, or buyer-verify POs can be edited'
         );
@@ -2265,7 +2275,7 @@ export default function CreatePOPage() {
     } finally {
       setLoading(false);
     }
-  }, [isEditMode, editPoId, searchParams, isAdminPoEditor]);
+  }, [isEditMode, editPoId, searchParams, isAdminPoEditor, user?.role]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -2377,7 +2387,7 @@ export default function CreatePOPage() {
       let existingDraftId = Number(
         (res.data as { draftPoId?: number | null })?.draftPoId || 0
       );
-      if (!existingDraftId) {
+      if (!existingDraftId && user?.role !== 'Requester') {
         try {
           const listed = await poApi.list();
           const hit = ((listed.data || []) as Array<Record<string, unknown>>).find((row) => {
@@ -2496,7 +2506,7 @@ export default function CreatePOPage() {
     } finally {
       if (!redirectedToDraft) setLoading(false);
     }
-  }, [numericPrId, isEditMode, isManualMode, navigate, fromParam]);
+  }, [numericPrId, isEditMode, isManualMode, navigate, fromParam, user?.role]);
 
   useEffect(() => {
     loadContext();

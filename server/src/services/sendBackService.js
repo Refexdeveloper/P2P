@@ -122,10 +122,17 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
     await db.query(`UPDATE rfq_configs SET ${sets.join(', ')} WHERE pr_id = ?`, params);
   }
 
-  await db.query(
-    `UPDATE purchase_requests SET status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
-    [newStatus, newStage, pr.id]
-  );
+  if (target.key === 'REQUESTER_PO') {
+    await db.query(
+      `UPDATE purchase_requests SET po_creation_by = 'requester', status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
+      [newStatus, newStage, pr.id]
+    );
+  } else {
+    await db.query(
+      `UPDATE purchase_requests SET status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
+      [newStatus, newStage, pr.id]
+    );
+  }
 
   let assignee = { userId: null, email: null, name: null };
   const [reqRows] = await db.query(`SELECT id, email, name FROM users WHERE id = ?`, [pr.requester_id]);

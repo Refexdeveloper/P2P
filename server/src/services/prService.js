@@ -828,7 +828,7 @@ async function enrichPR(row) {
     totalAmount: Number(row.total_amount),
     status: row.status,
     statusFrontend: mapStatusToFrontend(row.status),
-    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type),
+    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type, row.po_creation_by),
     vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
     prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
     poCreationBy: row.po_creation_by === 'requester' ? 'requester' : 'scm',
@@ -2072,7 +2072,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
       totalAmount: Number(row.total_amount || 0),
       status: row.status,
       statusFrontend: mapStatusToFrontend(row.status),
-        statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type),
+        statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type, row.po_creation_by),
       priorityLower: mapPriorityToFrontend(row.priority),
       submittedDate: formatDate(row.submitted_at || row.created_at),
       createdAt: formatDate(row.created_at),
@@ -2301,7 +2301,7 @@ function mapScmBucketSummary(row) {
     totalAmount: Number(row.total_amount),
     status: row.status,
     statusFrontend: mapStatusToFrontend(row.status),
-    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type),
+    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type, row.po_creation_by),
     vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
     prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
     recommendedVendor: row.recommended_vendor_name || '',
@@ -4415,6 +4415,35 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
         );
       }
       await reopenPurchaseOrderForAdminSendBack(conn, poId, poStepStatus, applyResult.target?.poSignStep || null);
+    } else if (applyResult.target?.key === 'REQUESTER_PO') {
+      const [anyPo] = await conn.query(
+        `SELECT id FROM purchase_orders
+         WHERE pr_id = ? AND status <> 'rejected'
+         ORDER BY id DESC LIMIT 1`,
+        [prId]
+      );
+      const poId = Number(anyPo[0]?.id || 0);
+      if (poId) {
+        await conn.query(
+          `UPDATE purchase_orders SET
+             status = 'draft',
+             po_sign_step = 'requester',
+             signed_at = NULL,
+             signer_id = NULL,
+             signature_name = NULL,
+             signature_image_path = NULL,
+             signer_comments = NULL,
+             signer_designation = NULL,
+             signed_pdf_path = NULL,
+             cancellation_reason = NULL,
+             cancelled_by = NULL,
+             cancelled_at = NULL,
+             created_by = ?,
+             updated_at = NOW()
+           WHERE id = ?`,
+          [pr.requester_id || null, poId]
+        );
+      }
     } else {
       await conn.query(
         `UPDATE purchase_orders
