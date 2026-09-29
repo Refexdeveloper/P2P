@@ -1881,7 +1881,7 @@ export default function TrackPRPage() {
               {sendBackModal.title}
             </p>
             <p className="text-xs text-gray-500 mt-2">
-              Admin: send to any step — Edit PR, RFQ Entry, approvals, Create PO, SCM Manager PO Sign, or SCM Buyer Final Verify.
+              Admin: send to any step — Edit PR, RFQ Entry, approvals, Requester Create PO, Mugesh Sign &amp; Upload, or Buyer Final Verify.
             </p>
 
             <label className="block text-xs font-semibold text-gray-700 mt-4 mb-1">

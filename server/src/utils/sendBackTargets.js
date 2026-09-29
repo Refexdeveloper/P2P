@@ -230,8 +230,11 @@ const ADMIN_ANY_STEP_KEYS = [
   'CFO_VENDOR',
   'SCM_MANAGER',
   'SCM_PO',
+  'REQUESTER_PO',
   'PO_MANAGER_SIGN',
+  'PO_MUGESH_SIGN',
   'PO_BUYER_VERIFY',
+  'PO_REQUESTER_VERIFY',
 ];
 
 /** Requester-created PO: same early steps, then requester PO steps. No SCM Buyer / SCM Manager. */
