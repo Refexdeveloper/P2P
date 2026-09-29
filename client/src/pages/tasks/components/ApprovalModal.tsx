@@ -20,6 +20,8 @@ interface ApprovalModalProps {
   askBusinessApproval?: boolean;
   /** Cloud Subscription Mugesh invoice-upload task */
   requireInvoiceUpload?: boolean;
+  /** Requester PO — Mugesh uploads the signed PO */
+  signedUpload?: boolean;
   /** Load full admin send-back catalog (any step, incl. Edit PR + RFQ Entry) */
   useAdminTargets?: boolean;
   onConfirm: (
@@ -54,6 +56,7 @@ export default function ApprovalModal({
   prId,
   askBusinessApproval = false,
   requireInvoiceUpload = false,
+  signedUpload = false,
   useAdminTargets = false,
   onConfirm,
   onClose,
@@ -115,10 +118,12 @@ export default function ApprovalModal({
 
   const config = {
     approve: {
-      title: requireInvoiceUpload
-        ? 'Upload Cloud Subscription Invoice'
-        : 'Approve Purchase Request',
-      icon: requireInvoiceUpload ? 'ri-file-upload-line' : 'ri-check-double-line',
+      title: signedUpload
+        ? 'Sign & Upload'
+        : requireInvoiceUpload
+          ? 'Upload Cloud Subscription Invoice'
+          : 'Approve Purchase Request',
+      icon: signedUpload || requireInvoiceUpload ? 'ri-file-upload-line' : 'ri-check-double-line',
       headerBg: requireInvoiceUpload ? 'bg-[#E3F2FD]' : 'bg-emerald-50',
       iconBg: requireInvoiceUpload ? 'bg-[#E3F2FD]' : 'bg-emerald-100',
       iconColor: requireInvoiceUpload ? 'text-[#1E88E5]' : 'text-emerald-600',
@@ -127,7 +132,7 @@ export default function ApprovalModal({
         ? 'bg-[#1E88E5] hover:bg-[#1565C0]'
         : 'bg-emerald-600 hover:bg-emerald-700',
       btnIcon: requireInvoiceUpload ? 'ri-upload-2-line' : 'ri-check-double-line',
-      btnText: requireInvoiceUpload ? 'Submit Invoice' : 'Confirm Approve',
+      btnText: signedUpload ? 'Sign & Upload' : requireInvoiceUpload ? 'Submit Invoice' : 'Confirm Approve',
       placeholder: 'Enter approval remarks...',
       requireRemarks: true,
     },
@@ -178,9 +183,9 @@ export default function ApprovalModal({
       setError('Select Yes or No for Business / CFO Approval before approving');
       return;
     }
-    if (type === 'approve' && requireInvoiceUpload) {
+    if (type === 'approve' && (requireInvoiceUpload || signedUpload)) {
       if (!invoiceFile) {
-        setError('Please upload the invoice file');
+        setError(signedUpload ? 'Please upload the signed PO document' : 'Please upload the invoice file');
         return;
       }
     }
@@ -189,7 +194,7 @@ export default function ApprovalModal({
     setError('');
 
     let invoice: InvoiceUploadPayload | undefined;
-    if (type === 'approve' && requireInvoiceUpload && invoiceFile) {
+    if (type === 'approve' && (requireInvoiceUpload || signedUpload) && invoiceFile) {
       try {
         const fileData = await readFileAsBase64(invoiceFile);
         invoice = {
@@ -280,7 +285,33 @@ export default function ApprovalModal({
             <p className="text-sm font-medium text-gray-800">{prTitle}</p>
           </div>
 
-          {type === 'approve' && requireInvoiceUpload && (
+          {type === 'approve' && signedUpload && (
+            <div className="mb-4 rounded-lg border border-[#90CAF9] bg-[#E3F2FD]/70 p-3 space-y-3">
+              <p className="text-sm font-semibold text-[#0D47A1]">Signed PO document</p>
+              <p className="text-xs text-[#1565C0] leading-relaxed">
+                Review the PO, sign it, then upload the signed document.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Signed document <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp"
+                  onChange={(e) => {
+                    setInvoiceFile(e.target.files?.[0] || null);
+                    setError('');
+                  }}
+                  className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-[#1E88E5] file:text-white file:text-sm file:font-semibold file:cursor-pointer"
+                />
+                {invoiceFile && (
+                  <p className="text-xs text-[#1565C0] mt-1.5 truncate">Selected: {invoiceFile.name}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {type === 'approve' && requireInvoiceUpload && !signedUpload && (
             <div className="mb-4 rounded-lg border border-[#90CAF9] bg-[#E3F2FD]/70 p-3 space-y-3">
               <p className="text-sm font-semibold text-[#0D47A1]">Upload invoice</p>
               <p className="text-xs text-[#1565C0] leading-relaxed">

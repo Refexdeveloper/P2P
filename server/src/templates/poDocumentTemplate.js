@@ -1563,7 +1563,12 @@ function specialNotesInnerHtml(po, options = {}) {
       <p>${escapeHtml(signature.date)}<br>
       <strong>Authorized Signatory${signature.dsc ? ' (DSC)' : ''}</strong><br>
       Name: ${escapeHtml(signature.name)}<br>
-      Designation: SCM - Head</p>` : `
+      Designation: ${escapeHtml(signature.designation || 'SCM - Head')}</p>` : options.signatory ? `
+      <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
+      <div class="sig-space"></div>
+      <p><strong>Authorized Signatory</strong><br>
+      Name: ${escapeHtml(options.signatory.name || 'Mugesh')}<br>
+      Designation: ${escapeHtml(options.signatory.designation || '')}</p>` : `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>
       <p><strong>Authorized Signatory</strong><br>

@@ -251,6 +251,10 @@ const MIGRATIONS = [
   `ALTER TABLE rfq_configs ADD COLUMN send_back_remarks TEXT NULL`,
   // WhatsApp notify — optional mobile with country code preferred (e.g. 9198xxxxxxxx)
   `ALTER TABLE users ADD COLUMN phone VARCHAR(20) NULL`,
+  `ALTER TABLE users ADD COLUMN designation VARCHAR(150) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN po_creation_by ENUM('scm', 'requester') NOT NULL DEFAULT 'scm'`,
+  `ALTER TABLE purchase_orders ADD COLUMN signer_designation VARCHAR(150) NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN po_sign_step VARCHAR(20) NULL`,
   `ALTER TABLE users ADD COLUMN entity_id INT NULL`,
   `CREATE TABLE IF NOT EXISTS email_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,

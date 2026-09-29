@@ -220,6 +220,7 @@ export default function CreatePRPage() {
   >('purchase_order');
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
   const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
+  const [poCreationBy, setPoCreationBy] = useState<'scm' | 'requester'>('scm');
   const [approvalUserIds, setApprovalUserIds] = useState<number[]>([]);
   const [vendorMaster, setVendorMaster] = useState<VendorRecord[]>([]);
   const [rfqMaxRounds, setRfqMaxRounds] = useState(1);
@@ -449,6 +450,7 @@ export default function CreatePRPage() {
     setSassSubscriptionStartDate(draft.sassSubscriptionStartDate || '');
     setVendorSelection(draft.vendorSelection === 'own' ? 'own' : 'scm');
     setPrFlow(draft.prFlow === 'functional' ? 'functional' : 'standard');
+    setPoCreationBy(draft.poCreationBy === 'requester' ? 'requester' : 'scm');
     setApprovalUserIds(Array.isArray(draft.approvalUserIds) ? draft.approvalUserIds : []);
     setRfqMaxRounds(draft.rfqMaxRounds || 1);
     setRfqRecommendedKey(draft.rfqRecommendedKey || null);
@@ -700,6 +702,9 @@ export default function CreatePRPage() {
           loadedPurchaseType === 'sass' || pr.vendorSelection === 'own' ? 'own' : 'scm'
         );
         setPrFlow(pr.prFlow === 'functional' ? 'functional' : 'standard');
+        setPoCreationBy(
+          (pr as { poCreationBy?: string }).poCreationBy === 'requester' ? 'requester' : 'scm'
+        );
         setApprovalUserIds(
           Array.isArray(pr.approvalUserIds) && pr.approvalUserIds.length
             ? pr.approvalUserIds.map((id) => Number(id)).filter((id) => id > 0)
@@ -1000,6 +1005,7 @@ export default function CreatePRPage() {
       projectDetail,
       specialNotes,
       vendorSelection,
+      poCreationBy,
       prFlow,
       approvalUserIds,
       rfqMaxRounds,
@@ -1080,6 +1086,7 @@ export default function CreatePRPage() {
     projectDetail,
     specialNotes,
     vendorSelection,
+    poCreationBy,
     prFlow,
     approvalUserIds,
     rfqMaxRounds,
@@ -1371,9 +1378,10 @@ export default function CreatePRPage() {
                   if (!sub && !q.file && !q.files?.length) return q;
                   const locals = localQuoteFiles(q);
                   const saved = filesFromSubmission(sub);
-                  const remainingLocals = locals.filter(
-                    (f) => !saved.some((s) => s.fileName === f.name)
-                  );
+                  const serverHasFile = saved.length > 0;
+                  const remainingLocals = serverHasFile
+                    ? locals.filter((f) => !saved.some((s) => s.fileName === f.name))
+                    : locals;
                   return {
                     ...q,
                     quotedPrice: q.quotedPrice || (sub?.quotedPrice != null ? String(sub.quotedPrice) : ''),
@@ -2048,6 +2056,10 @@ export default function CreatePRPage() {
         : undefined,
     vendorSelection:
       purchaseType === 'sass' || purchaseType === 'online_purchase' ? 'own' : vendorSelection,
+    poCreationBy:
+      prFlow === 'standard' && purchaseType !== 'sass' && purchaseType !== 'online_purchase'
+        ? poCreationBy
+        : 'scm',
     vendorId:
       purchaseType === 'sass' && rfqRecommendedMeta.vendorId
         ? Number(rfqRecommendedMeta.vendorId)
@@ -2353,10 +2365,11 @@ export default function CreatePRPage() {
                     if (!sub?.id && !sub?.quotationFileName && !sub?.quotationFiles?.length) return q;
                     const saved = filesFromSubmission(sub);
                     const keepLocal = localQuoteFiles(q);
+                    const serverHasFile = saved.length > 0 || Boolean(sub.quotationFileName);
                     return {
                       ...q,
-                      file: sub.id ? null : q.file,
-                      files: sub.id ? [] : keepLocal,
+                      file: serverHasFile ? null : keepLocal[0] || q.file,
+                      files: serverHasFile ? [] : keepLocal,
                       savedFiles: saved.length ? saved : q.savedFiles,
                       savedFileName: saved[0]?.fileName || sub.quotationFileName || q.savedFileName,
                       savedSubmissionId: sub.id ? Number(sub.id) : q.savedSubmissionId,
@@ -3574,14 +3587,42 @@ export default function CreatePRPage() {
               <p className="mt-2 text-xs leading-5 text-gray-500">
                 {prFlow === 'standard'
                   ? vendorSelection === 'own'
-                    ? 'L1 → your RFQ entry (billing and delivery are asked there) → L1 vendor final → L2 → (optional Mugesh) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
-                    : 'L1 → L2 → Mugesh → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off. Billing and delivery are filled on this page.'
+                    ? poCreationBy === 'requester'
+                      ? 'L1 → your RFQ entry (billing and delivery are asked there) → L1 vendor final → L2 → (optional Mugesh) → SCM Final RFQ → you create the PO → L1 Manager approval → Mugesh Sign & Upload.'
+                      : 'L1 → your RFQ entry (billing and delivery are asked there) → L1 vendor final → L2 → (optional Mugesh) → SCM Final RFQ → Create PO → SCM Manager sign-off.'
+                    : poCreationBy === 'requester'
+                      ? 'L1 → L2 → Mugesh → SCM RFQ entry → SCM Manager vendor approval → you create the PO → L1 Manager approval → Mugesh Sign & Upload. Billing and delivery are filled on this page.'
+                      : 'L1 → L2 → Mugesh → SCM RFQ entry → SCM Manager vendor approval → Create PO → SCM Manager sign-off. Billing and delivery are filled on this page.'
                   : vendorSelection === 'own'
                     ? 'Enter vendor quotes on this page, pick approvers in order, then SCM Final RFQ → Buyer Final Verify → Create PO → SCM Manager approval.'
                     : 'No inline RFQ. Pick approvers in order, then SCM RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval. Billing and delivery are filled on this page.'}
               </p>
             </div>
             </div>
+
+            {prFlow === 'standard' && (
+              <div className="min-w-0 sm:col-span-2 sm:max-w-[calc(50%-0.5rem)]">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[#7F8C8D]">
+                  PO Creation By <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={poCreationBy}
+                    onChange={(e) => setPoCreationBy(e.target.value === 'requester' ? 'requester' : 'scm')}
+                    className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-gray-200 bg-white pl-4 pr-10 text-sm text-[#2C3E50] focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30"
+                  >
+                    <option value="scm">SCM</option>
+                    <option value="requester">Requester</option>
+                  </select>
+                  <i className="ri-arrow-down-s-line pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-base text-slate-400" />
+                </div>
+                <p className="mt-2 text-xs leading-5 text-gray-500">
+                  {poCreationBy === 'requester'
+                    ? 'After the existing PR approval, you create the PO. L1 Manager approves, then Mugesh signs and uploads.'
+                    : 'After the existing PR approval, SCM creates and signs the PO. This is the current standard path.'}
+                </p>
+              </div>
+            )}
 
             {prFlow === 'functional' && (
               <div className="sm:col-span-2">

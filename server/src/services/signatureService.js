@@ -357,6 +357,9 @@ export function buildSignatureRenderOptions(po = {}) {
     }
   }
 
+  const requesterPoSign = ['l1', 'mugesh', 'requester', 'signed'].includes(
+    String(po.poSignStep || po.po_sign_step || '')
+  );
   const looksSigned = Boolean(
     po.signedAt ||
       po.signed_at ||
@@ -369,15 +372,16 @@ export function buildSignatureRenderOptions(po = {}) {
       dsc
   );
 
-  if (looksSigned && !imageDataUrl && !dsc) {
+  if (looksSigned && !imageDataUrl && !dsc && !requesterPoSign) {
     getDefaultScmManagerSignatureDataUrl();
     imagePath = DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
     imageDataUrl = signatureFileToDataUrl(DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
   }
 
-  if (!name && !imageDataUrl && !dsc) return undefined;
+  if (!name && !imageDataUrl && !dsc && !requesterPoSign) return undefined;
   return {
-    name: name || dsc?.holderName || getPreferredScmManagerName() || 'SCM Manager',
+    name: name || dsc?.holderName || (requesterPoSign ? 'Mugesh' : getPreferredScmManagerName() || 'SCM Manager'),
+    designation: String(po.signerDesignation || po.signer_designation || '').trim(),
     date: po.signedAt || po.signed_at || '',
     comments: po.signerComments || po.signer_comments || '',
     imageDataUrl: imageDataUrl || undefined,

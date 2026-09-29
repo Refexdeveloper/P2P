@@ -33,7 +33,11 @@ type QuoteRow = {
 };
 
 function hasQuotedPrice(q: QuoteRound) {
-  return Number(q.quotedPrice) >= 0 && (Number(q.quotedPrice) > 0 || Boolean(q.submissionId));
+  const price = Number(q.quotedPrice);
+  const hasFile = Boolean(q.quotationFileName) || Boolean(q.quotationFiles?.length);
+  if (hasFile) return true;
+  if (!Number.isFinite(price) || price < 0) return false;
+  return price > 0 || Boolean(q.submissionId);
 }
 
 function linesForQuote(q: QuoteRound): QuoteLineItem[] {
@@ -81,9 +85,28 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
         if (cancelled) return;
         const payload = res.data as {
           tableRows?: QuoteRow[];
+          invitations?: Array<{
+            id?: number;
+            vendorName?: string;
+            isRecommended?: boolean;
+            submissions?: QuoteRound[];
+          }>;
           config?: { recommendationJustification?: string; recommendedInvitationId?: number | null };
         };
-        const tableRows = (payload?.tableRows || []) as QuoteRow[];
+        const fromInvitations: QuoteRow[] = (payload?.invitations || []).map((inv) => ({
+          invitationId: Number(inv.id),
+          vendorName: inv.vendorName || 'Vendor',
+          isRecommended: Boolean(inv.isRecommended),
+          quotes: (inv.submissions || []).map((sub) => ({
+            ...sub,
+            submissionId: sub.submissionId || (sub as { id?: number }).id,
+            round: Number(sub.round) || 1,
+            quotedPrice: Number(sub.quotedPrice) || 0,
+          })),
+        }));
+        const tableRows = (
+          (payload?.tableRows || []).length ? payload.tableRows || [] : fromInvitations
+        ) as QuoteRow[];
         const withQuotes = tableRows.filter((row) => (row.quotes || []).some(hasQuotedPrice));
         setRows(withQuotes);
         const recJust = String(payload?.config?.recommendationJustification || '').trim();

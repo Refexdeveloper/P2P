@@ -57,6 +57,8 @@ export const NAV_ITEMS = [
   { code: 'nav.requester_dashboard', label: 'Dashboard', path: '/requester/dashboard', icon: 'ri-dashboard-line', group: 'Requester', sort: 10 },
   { code: 'nav.create_pr', label: 'Create PR', path: '/requester/create-pr', icon: 'ri-add-circle-line', group: 'Requester', sort: 11 },
   { code: 'nav.rfq_entry', label: 'RFQ Entry', path: '/requester/rfq-entry', icon: 'ri-file-edit-line', group: 'Requester', sort: 12 },
+  { code: 'nav.requester_create_po', label: 'Create PO', path: '/scm/create-po', icon: 'ri-shopping-cart-2-line', group: 'Requester', sort: 13 },
+  { code: 'nav.requester_buyer_final_verify', label: 'Buyer Final Verify', path: '/scm/buyer-final-verify', icon: 'ri-shield-check-line', group: 'Requester', sort: 14 },
   { code: 'nav.track_pr', label: 'Track PR', path: '/requester/track-pr', icon: 'ri-search-line', group: 'Requester', sort: 13 },
   { code: 'nav.requester_vendor_po_acceptance', label: 'Vendor PO Acceptance', path: '/requester/vendor-po-acceptance', icon: 'ri-shake-hands-line', group: 'Requester', sort: 14 },
   { code: 'nav.requester_vendor_invoice', label: 'Vendor Invoice', path: '/requester/vendor-invoice', icon: 'ri-file-invoice-line', group: 'Requester', sort: 16 },
@@ -104,6 +106,8 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.requester_dashboard',
     'nav.create_pr',
     'nav.rfq_entry',
+    'nav.requester_create_po',
+    'nav.requester_buyer_final_verify',
     'nav.track_pr',
     'nav.requester_vendor_po_acceptance',
     'nav.grn',
@@ -113,6 +117,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.category_master',
     'nav.entity_master',
     'nav.department_master',
+    'nav.letterhead_master',
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
@@ -175,6 +180,8 @@ export const REQUESTER_ONLY_NAV_CODES = new Set([
   'nav.requester_dashboard',
   'nav.create_pr',
   'nav.rfq_entry',
+  'nav.requester_create_po',
+  'nav.requester_buyer_final_verify',
   'nav.track_pr',
   'nav.requester_vendor_po_acceptance',
   'nav.requester_vendor_invoice',
@@ -285,10 +292,13 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
         'nav.requester_dashboard',
         'nav.create_pr',
         'nav.rfq_entry',
+        'nav.requester_create_po',
+        'nav.requester_buyer_final_verify',
         'nav.track_pr',
         'nav.requester_vendor_po_acceptance',
         'nav.grn',
-        'nav.requester_vendor_invoice'
+        'nav.requester_vendor_invoice',
+        'nav.letterhead_master'
       );
       const tasksIdx = stored.indexOf('nav.tasks');
       if (tasksIdx >= 0) stored.splice(tasksIdx, 1);
@@ -370,10 +380,13 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.requester_dashboard',
             'nav.create_pr',
             'nav.rfq_entry',
+            'nav.requester_create_po',
+            'nav.requester_buyer_final_verify',
             'nav.track_pr',
             'nav.requester_vendor_po_acceptance',
             'nav.grn',
-            'nav.requester_vendor_invoice'
+            'nav.requester_vendor_invoice',
+            'nav.letterhead_master'
           );
           if (stored.includes('nav.tasks')) {
             const idx = stored.indexOf('nav.tasks');

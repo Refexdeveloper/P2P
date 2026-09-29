@@ -1264,6 +1264,16 @@ export const poApi = {
       method: 'POST',
       body: JSON.stringify({ remarks }),
     }),
+  requesterL1: (poId: number, action: 'approve' | 'send_back' | 'reject', remarks: string) =>
+    request<{ data: unknown; message: string }>(`/api/po/${poId}/requester-l1`, {
+      method: 'POST',
+      body: JSON.stringify({ action, remarks }),
+    }),
+  mugeshSign: (poId: number, body: { fileName: string; fileData: string; remarks?: string }) =>
+    request<{ data: unknown; message: string }>(`/api/po/${poId}/mugesh-sign`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   /** Super Admin: Track PO — send back to Buyer Verify from acceptance/GRN/invoice */
   adminSendBackToBuyerVerify: (poId: number, remarks: string) =>
     request<{ data: unknown; message: string }>(`/api/po/${poId}/admin/send-back-buyer-verify`, {

@@ -117,6 +117,16 @@ export const SEND_BACK_TARGET_DEFS = {
     resetRfqSubmit: false,
     resetRfqFinalize: false,
   },
+  REQUESTER_PO: {
+    key: 'REQUESTER_PO',
+    label: 'Requester Create PO',
+    status: PR_STATUS.PENDING_SCM_PO,
+    stage: STAGE.SCM_PO_CREATE,
+    taskType: 'RFQ_POST_APPROVAL',
+    assignedRole: 'Requester',
+    resetRfqSubmit: false,
+    resetRfqFinalize: false,
+  },
   PO_MANAGER_SIGN: {
     key: 'PO_MANAGER_SIGN',
     label: 'SCM Manager PO Sign',
@@ -138,6 +148,30 @@ export const SEND_BACK_TARGET_DEFS = {
     resetRfqSubmit: false,
     resetRfqFinalize: false,
     poStatus: 'pending_buyer_verify',
+  },
+  PO_MUGESH_SIGN: {
+    key: 'PO_MUGESH_SIGN',
+    label: 'Mugesh Sign & Upload',
+    status: PR_STATUS.APPROVED,
+    stage: STAGE.PO_CREATED,
+    taskType: 'PO_MUGESH_SIGN',
+    assignedRole: 'CFO',
+    resetRfqSubmit: false,
+    resetRfqFinalize: false,
+    poStatus: 'pending_approval',
+    poSignStep: 'mugesh',
+  },
+  PO_REQUESTER_VERIFY: {
+    key: 'PO_REQUESTER_VERIFY',
+    label: 'Requester Buyer Final Verify',
+    status: PR_STATUS.APPROVED,
+    stage: STAGE.PO_CREATED,
+    taskType: 'PO_BUYER_VERIFY',
+    assignedRole: 'Requester',
+    resetRfqSubmit: false,
+    resetRfqFinalize: false,
+    poStatus: 'pending_buyer_verify',
+    poSignStep: 'signed',
   },
 };
 
@@ -200,6 +234,21 @@ const ADMIN_ANY_STEP_KEYS = [
   'PO_BUYER_VERIFY',
 ];
 
+/** Requester-created PO: same early steps, then requester PO steps. No SCM Buyer / SCM Manager. */
+const ADMIN_REQUESTER_PO_STEP_KEYS = [
+  'REQUESTER',
+  'REQUESTER_RFQ',
+  'HOD_PRE',
+  'L2_PRE',
+  'CFO_PRE',
+  'HOD_VENDOR',
+  'L2_VENDOR',
+  'CFO_VENDOR',
+  'REQUESTER_PO',
+  'PO_MUGESH_SIGN',
+  'PO_REQUESTER_VERIFY',
+];
+
 const OWN_ONLY_KEYS = new Set(['REQUESTER_RFQ', 'HOD_VENDOR', 'L2_VENDOR', 'CFO_VENDOR']);
 const SCM_ONLY_KEYS = new Set(['SCM_RFQ', 'SCM_MANAGER', 'L2_PRE', 'CFO_PRE']);
 
@@ -235,9 +284,11 @@ export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 's
  * Admin: every workflow step (Edit PR + RFQ Entry steps + all approval stages).
  * Not limited by current status or own/SCM path — admin may reopen any step.
  */
-export function listAdminSendBackTargets(_status, _vendorSelection = 'scm', prFlow = 'standard') {
+export function listAdminSendBackTargets(_status, _vendorSelection = 'scm', prFlow = 'standard', poCreationBy = 'scm') {
   const functional = prFlow === 'functional';
-  return ADMIN_ANY_STEP_KEYS.map((key) => {
+  const requesterPo = String(poCreationBy || 'scm') === 'requester';
+  const keys = requesterPo ? ADMIN_REQUESTER_PO_STEP_KEYS : ADMIN_ANY_STEP_KEYS;
+  return keys.map((key) => {
     const def = SEND_BACK_TARGET_DEFS[key];
     if (!def) return null;
     return functional ? withFunctionalLabels(def) : def;

@@ -17,6 +17,23 @@ interface LineItem {
   total: number;
 }
 
+interface VendorQuoteRound {
+  submissionId?: number;
+  round: number;
+  quotedPrice: number;
+  leadTime?: number | null;
+  paymentTerms?: string;
+  quotationFileName?: string;
+}
+
+interface VendorQuoteVendor {
+  invitationId: number;
+  vendorName: string;
+  isRecommended?: boolean;
+  recommendationJustification?: string;
+  rounds: VendorQuoteRound[];
+}
+
 interface ApprovalStep {
   step: string;
   approver: string;
@@ -59,11 +76,13 @@ interface PRTask {
   isSass?: boolean;
   requireInvoiceUpload?: boolean;
   isSassInvoiceUpload?: boolean;
+  isMugeshSign?: boolean;
   billingLocation?: string;
   billingGstNo?: string;
   billingAddress?: string;
   placeOfDelivery?: string;
   deliveryPoc?: string;
+  vendorQuoteRounds?: VendorQuoteVendor[];
   lineItems: LineItem[];
   approvalHistory: ApprovalStep[];
   slaHours: number;
@@ -175,7 +194,8 @@ export default function TaskDetailDrawer({
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
   const formatDateTime = (dateStr: string) => formatDisplayDateTime(dateStr);
 
-  const showQuotesTab = Boolean(task.prId) && (isSass || hasQuotes);
+  const savedQuoteVendors = Array.isArray(task.vendorQuoteRounds) ? task.vendorQuoteRounds : [];
+  const showQuotesTab = Boolean(task.prId) && (isSass || isOwnVendor || hasQuotes || savedQuoteVendors.length > 0);
   const showItemsTab = isInvoiceFlow || !hasQuotes;
 
   return (
@@ -366,6 +386,59 @@ export default function TaskDetailDrawer({
                     </div>
                   </div>
 
+                  {savedQuoteVendors.length > 0 && !hasQuotes && (
+                    <div className="space-y-3">
+                      <h4 className={`${softLabel} px-0.5`}>Vendor quotations</h4>
+                      {savedQuoteVendors.map((vendor) => (
+                        <div key={vendor.invitationId} className={softCard}>
+                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                          <div className="relative z-[1] flex items-center justify-between gap-2 border-b border-slate-100/80 px-4 py-3">
+                            <p className="min-w-0 truncate text-sm font-semibold text-[#2C3E50]">
+                              {vendor.vendorName}
+                            </p>
+                            {vendor.isRecommended ? (
+                              <span className="shrink-0 rounded-full bg-[#1E88E5] px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                                Recommended
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="relative z-[1] divide-y divide-slate-100/80">
+                            {[...vendor.rounds]
+                              .sort((a, b) => Number(a.round) - Number(b.round))
+                              .map((quote, quoteIndex) => (
+                                <div
+                                  key={`${vendor.invitationId}-${quote.submissionId || quote.round}-${quoteIndex}`}
+                                  className="flex items-start gap-3 px-4 py-3"
+                                >
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#E3F2FD] text-xs font-bold text-[#1E88E5]">
+                                    Q{Number(quote.round) || 1}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-bold tabular-nums text-[#2C3E50]">
+                                      {formatMoney(Number(quote.quotedPrice) || 0, task.currency)}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-slate-500">
+                                      {[
+                                        quote.leadTime != null ? `${quote.leadTime} days` : '',
+                                        quote.paymentTerms || '',
+                                      ]
+                                        .filter(Boolean)
+                                        .join(' · ') || 'Quoted'}
+                                    </p>
+                                    {quote.quotationFileName ? (
+                                      <p className="mt-1 truncate text-xs font-medium text-[#1565C0]">
+                                        {quote.quotationFileName}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {showQuotesTab && (
                     <button
                       type="button"
@@ -388,7 +461,7 @@ export default function TaskDetailDrawer({
               )}
 
               {task.prId ? (
-                <div className={activeTab === 'quotes' ? '' : 'hidden'}>
+                <div className={activeTab === 'quotes' || activeTab === 'details' ? 'mt-2' : 'hidden'}>
                   <PrVendorQuotationsPanel
                     prId={task.prId}
                     currency={task.currency}
@@ -670,14 +743,18 @@ export default function TaskDetailDrawer({
               >
                 <i
                   className={
-                    task.requireInvoiceUpload || task.isSassInvoiceUpload
+                    task.isMugeshSign || task.requireInvoiceUpload || task.isSassInvoiceUpload
                       ? 'ri-file-upload-line'
                       : 'ri-check-double-line'
                   }
                 ></i>
-                {task.isSassInvoiceUpload || task.requireInvoiceUpload ? 'Upload Invoice' : 'Approve'}
+                {task.isMugeshSign
+                  ? 'Sign & Upload'
+                  : task.isSassInvoiceUpload || task.requireInvoiceUpload
+                    ? 'Upload Invoice'
+                    : 'Approve'}
               </button>
-              {!task.isSassInvoiceUpload && (
+              {!task.isSassInvoiceUpload && !task.isMugeshSign && (
                 <div className="flex gap-2 sm:contents">
                   <button
                     type="button"

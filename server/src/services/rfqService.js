@@ -195,12 +195,13 @@ async function saveQuotationFile(invitationId, round, fileName, base64Data) {
   } catch (err) {
     console.warn('Quotation disk write skipped (will keep DB copy):', err.message);
   }
+  const gcsPath = `rfq-attachments/${storedName}`;
   let gcsOk = false;
   if (useGcsForNewUploads()) {
-    await awaitGcsUpload(`rfq-attachments/${storedName}`, buffer);
+    await awaitGcsUpload(gcsPath, buffer);
     gcsOk = true;
   }
-  return { fileName: safeName, filePath: storedName, buffer, gcsOk };
+  return { fileName: safeName, filePath: gcsOk ? gcsPath : storedName, buffer, gcsOk };
 }
 
 function bufferFromDiskPath(filePath) {
@@ -774,8 +775,14 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
   const previousFiles = new Map();
   const submissionsByEmailRound = new Map();
   const invitationsByEmail = new Map();
+  const invitationsByName = new Map();
+  const rememberQuoteFile = (key, meta) => {
+    if (!key || previousFiles.has(key)) return;
+    previousFiles.set(key, meta);
+  };
   for (const row of existing) {
     const email = String(row.vendor_email || '').toLowerCase();
+    const vendorName = String(row.vendor_name || '').trim().toLowerCase();
     if (email && !invitationsByEmail.has(email)) {
       invitationsByEmail.set(email, {
         id: row.invitation_id,
@@ -783,19 +790,46 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         email,
       });
     }
-    if (!row.quotation_file_name && !row.submission_id) continue;
-    const key = `${email}::${Number(row.round) || 1}`;
-    if (row.quotation_file_name) {
-      previousFiles.set(key, {
-        fileName: row.quotation_file_name,
-        filePath: row.quotation_file_path || null,
-        submissionId: row.submission_id || null,
+    if (vendorName && !invitationsByName.has(vendorName)) {
+      invitationsByName.set(vendorName, {
+        id: row.invitation_id,
+        name: row.vendor_name,
+        email,
       });
     }
+    if (!row.quotation_file_name && !row.submission_id) continue;
+    const round = Number(row.round) || 1;
+    const meta = row.quotation_file_name
+      ? {
+          fileName: row.quotation_file_name,
+          filePath: row.quotation_file_path || null,
+          submissionId: row.submission_id || null,
+        }
+      : null;
+    if (meta) {
+      rememberQuoteFile(`${email}::${round}`, meta);
+      if (vendorName) rememberQuoteFile(`name:${vendorName}::${round}`, meta);
+    }
     if (row.submission_id) {
-      submissionsByEmailRound.set(key, row);
+      submissionsByEmailRound.set(`${email}::${round}`, row);
+      if (vendorName) submissionsByEmailRound.set(`name:${vendorName}::${round}`, row);
     }
   }
+
+  const findPrevQuoteFile = (email, name, round) => {
+    const byEmail = previousFiles.get(`${String(email || '').toLowerCase()}::${round}`);
+    if (byEmail) return byEmail;
+    const vendorName = String(name || '').trim().toLowerCase();
+    if (!vendorName) return null;
+    return previousFiles.get(`name:${vendorName}::${round}`) || null;
+  };
+  const findExistingSubmission = (email, name, round) => {
+    const byEmail = submissionsByEmailRound.get(`${String(email || '').toLowerCase()}::${round}`);
+    if (byEmail) return byEmail;
+    const vendorName = String(name || '').trim().toLowerCase();
+    if (!vendorName) return null;
+    return submissionsByEmailRound.get(`name:${vendorName}::${round}`) || null;
+  };
 
   const hasNewFileData = vendors.some((v) =>
     (Array.isArray(v.quotes) ? v.quotes : []).some((q) => Boolean(q.quotationFileData))
@@ -811,7 +845,9 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         canFastUpdate = false;
         break;
       }
-      const inv = invitationsByEmail.get(email);
+      const inv =
+        invitationsByEmail.get(email) ||
+        invitationsByName.get(String(name || '').trim().toLowerCase());
       if (!inv) {
         canFastUpdate = false;
         break;
@@ -834,23 +870,20 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       if (!round1 || !Number.isFinite(round1.quotedPrice) || round1.quotedPrice < 0) {
         throw new Error(`Enter a round-1 quoted price for ${name}`);
       }
-      const round1Prev = previousFiles.get(`${email}::1`);
-      if (
-        !round1.quotationFileName &&
-        !collectIncomingQuoteFiles(round1).length &&
-        !round1Prev?.fileName
-      ) {
+      const round1Prev = findPrevQuoteFile(email, name, 1);
+      const round1Incoming = collectIncomingQuoteFiles(round1);
+      if (!round1.quotationFileData && !round1Incoming.length && !round1Prev?.fileName && !round1.quotationFileName) {
         throw new Error(`Attach a round-1 quotation file for ${name}`);
       }
       for (const quote of quotes) {
         if (!Number.isFinite(quote.quotedPrice) || quote.quotedPrice < 0) continue;
-        const key = `${email}::${quote.round}`;
-        const prev = previousFiles.get(key);
-        if (!quote.quotationFileName && !prev?.fileName) {
+        const prev = findPrevQuoteFile(email, name, quote.round);
+        const hasIncoming = Boolean(quote.quotationFileData) || collectIncomingQuoteFiles(quote).length > 0;
+        if (!hasIncoming && !quote.quotationFileName && !prev?.fileName) {
           canFastUpdate = false;
           break;
         }
-        if (!submissionsByEmailRound.has(key) && !prev?.fileName) {
+        if (!findExistingSubmission(email, name, quote.round) && !prev?.fileName && !hasIncoming) {
           canFastUpdate = false;
           break;
         }
@@ -860,9 +893,9 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
     }
 
     if (canFastUpdate && resolved.length === vendors.length) {
-      const keepEmails = new Set(resolved.map((r) => r.email));
-      for (const [email, inv] of invitationsByEmail) {
-        if (keepEmails.has(email)) continue;
+      const keepInvitationIds = new Set(resolved.map((r) => r.inv.id));
+      for (const [, inv] of invitationsByEmail) {
+        if (keepInvitationIds.has(inv.id)) continue;
         await pool.query(`DELETE FROM vendor_quotation_submissions WHERE rfq_invitation_id = ?`, [
           inv.id,
         ]);
@@ -873,15 +906,14 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         const latestRound = quotes[quotes.length - 1]?.round || 1;
         await pool.query(
           `UPDATE rfq_invitations
-           SET vendor_name = ?, round = ?, status = 'submitted', updated_at = NOW()
+           SET vendor_name = ?, vendor_email = ?, round = ?, status = 'submitted', updated_at = NOW()
            WHERE id = ?`,
-          [name, latestRound, inv.id]
+          [name, email, latestRound, inv.id]
         );
         for (const quote of quotes) {
           if (!Number.isFinite(quote.quotedPrice) || quote.quotedPrice < 0) continue;
-          const key = `${email}::${quote.round}`;
-          const existingSub = submissionsByEmailRound.get(key);
-          const prev = previousFiles.get(key);
+          const existingSub = findExistingSubmission(email, name, quote.round);
+          const prev = findPrevQuoteFile(email, name, quote.round);
           if (existingSub?.submission_id) {
             await pool.query(
               `UPDATE vendor_quotation_submissions
@@ -1004,6 +1036,22 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
     }
   }
 
+  for (const vendor of vendors) {
+    const { name, email } = await resolveVendorIdentity(vendor);
+    if (!name || !email) {
+      throw new Error('Each Functional Own vendor needs a name and email');
+    }
+    const quotes = (Array.isArray(vendor.quotes) ? vendor.quotes : []).filter(
+      (q) => Math.max(1, Number(q.round) || 1) <= maxRounds
+    );
+    const round1 = quotes.find((q) => Math.max(1, Number(q.round) || 1) === 1);
+    const round1Prev = findPrevQuoteFile(email, name, 1);
+    const hasNewFile = Boolean(round1?.quotationFileData) || collectIncomingQuoteFiles(round1 || {}).length > 0;
+    if (!hasNewFile && !round1Prev?.fileName) {
+      throw new Error(`Attach a round-1 quotation file for ${name}`);
+    }
+  }
+
   if (existing.length) {
     const ids = [...new Set(existing.map((r) => r.invitation_id))];
     const ph = ids.map(() => '?').join(',');
@@ -1036,8 +1084,8 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
     if (!round1 || !Number.isFinite(round1.quotedPrice) || round1.quotedPrice < 0) {
       throw new Error(`Enter a round-1 quoted price for ${name}`);
     }
-    const round1Prev = previousFiles.get(`${email}::1`);
-    if (!round1.quotationFileName || !round1.quotationFileData) {
+    const round1Prev = findPrevQuoteFile(email, name, 1);
+    if (!round1.quotationFileData) {
       const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: round1.quotationFiles });
       if (!round1Prev?.fileName && !extraIncoming.length) {
         throw new Error(`Attach a round-1 quotation file for ${name}`);
@@ -1060,7 +1108,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
 
     for (const quote of quotes) {
       if (!Number.isFinite(quote.quotedPrice) || quote.quotedPrice < 0) continue;
-      const prev = quote._reuse || previousFiles.get(`${email}::${quote.round}`);
+      const prev = quote._reuse || findPrevQuoteFile(email, name, quote.round);
       let fileName = null;
       let filePath = null;
       let fileBuffer = null;
@@ -1447,14 +1495,15 @@ async function userCanViewPrQuotes(user, pr) {
     'Accounts Payable',
     'Accounts Manager',
   ];
-  if (privileged.includes(user.role)) return true;
+  const role = String(user.role || '');
+  if (privileged.includes(role) || /l1 manager/i.test(role)) return true;
   if (Number(pr.requesterId) === Number(user.id)) return true;
   const chain = Array.isArray(pr.approvalUserIds) ? pr.approvalUserIds : [];
   if (chain.some((id) => Number(id) === Number(user.id))) return true;
   if (pr.approvalUserId && Number(pr.approvalUserId) === Number(user.id)) return true;
   const [tasks] = await pool.query(
     `SELECT id FROM workflow_tasks
-     WHERE pr_id = ? AND assigned_user_id = ? AND status IN ('pending', 'in_progress')
+     WHERE pr_id = ? AND assigned_user_id = ? AND status IN ('pending', 'in_progress', 'completed')
      LIMIT 1`,
     [pr.id, user.id]
   );
@@ -2520,6 +2569,17 @@ async function startScmVendorPostRfqWorkflow(prId) {
 
 /** Own path after CFO post-RFQ: notify SCM Buyer to run final RFQ (/scm/rfq-entry) */
 async function notifyScmBuyerForFinalRfq(prId) {
+  const [flagRows] = await pool.query(
+    `SELECT po_creation_by FROM purchase_requests WHERE id = ? LIMIT 1`,
+    [prId]
+  );
+  if (String(flagRows[0]?.po_creation_by || 'scm') === 'requester') {
+    await moveToScmCreatePo(prId, {
+      actorRole: 'L2 Manager',
+      completedStepLabel: 'L2 Manager Approval',
+    });
+    return;
+  }
   const pr = await getPurchaseRequestById(prId);
 
   const dueDate = new Date();
@@ -2544,8 +2604,8 @@ async function notifyScmBuyerForFinalRfq(prId) {
   });
 }
 
-/** Own path after SCM final RFQ: go straight to Create PO */
-async function moveToScmCreatePo(prId) {
+/** Own path after SCM final RFQ, or after L2/Mugesh when the requester creates the PO. */
+async function moveToScmCreatePo(prId, meta = {}) {
   await pool.query(
     `UPDATE purchase_requests SET status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
     [PR_STATUS.PENDING_SCM_PO, STAGE.SCM_PO_CREATE, prId]
@@ -2553,6 +2613,54 @@ async function moveToScmCreatePo(prId) {
 
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 2);
+  const [flagRows] = await pool.query(
+    `SELECT po_creation_by, requester_id FROM purchase_requests WHERE id = ?`,
+    [prId]
+  );
+  const requesterCreates = String(flagRows[0]?.po_creation_by || 'scm') === 'requester';
+  if (requesterCreates) {
+    await pool.query(
+      `UPDATE workflow_tasks
+       SET status = 'completed', completed_at = NOW()
+       WHERE pr_id = ? AND status = 'pending'
+         AND assigned_role IN ('SCM Buyer', 'SCM Manager')`,
+      [prId]
+    );
+    const [openRequester] = await pool.query(
+      `SELECT id FROM workflow_tasks
+       WHERE pr_id = ? AND task_type = 'RFQ_POST_APPROVAL'
+         AND assigned_role = 'Requester' AND status = 'pending'
+       LIMIT 1`,
+      [prId]
+    );
+    if (openRequester.length) return;
+    await pool.query(
+      `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+       VALUES (?, 'RFQ_POST_APPROVAL', 'Requester', ?, 'pending', ?)`,
+      [prId, flagRows[0].requester_id, dueDate.toISOString().split('T')[0]]
+    );
+    const pr = await getPurchaseRequestById(prId);
+    const [reqRows] = await pool.query(`SELECT name, email FROM users WHERE id = ?`, [
+      flagRows[0].requester_id,
+    ]);
+    await queuePostQuotationApprovalMail(pr, 'Requester', {
+      postRfq: true,
+      createPo: true,
+      stageLabel: 'Requester PO Create',
+      approverEmails: reqRows[0]?.email ? [reqRows[0].email] : undefined,
+      approverName: reqRows[0]?.name || pr.requester,
+      ccEmails: [],
+    });
+    queueRequesterStepProgressNotification(pr, {
+      action: 'approve',
+      actorRole: meta.actorRole || 'SCM Buyer',
+      completedStepLabel: meta.completedStepLabel || 'SCM Final RFQ',
+      nextStepLabel: 'Requester Create PO',
+      requesterName: pr.requester,
+    });
+    return;
+  }
+
   await pool.query(
     `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'RFQ_POST_APPROVAL', 'SCM Buyer', ?, 'pending', ?)`,
@@ -2904,10 +3012,37 @@ export async function getVendorComparisonMatrix(user, prId) {
   };
 }
 
+async function pullRequesterPosOffScm() {
+  const [rows] = await pool.query(
+    `SELECT pr.id
+     FROM purchase_requests pr
+     WHERE COALESCE(pr.po_creation_by, 'scm') = 'requester'
+       AND NOT EXISTS (
+         SELECT 1 FROM purchase_orders po
+         WHERE po.pr_id = pr.id
+           AND po.status NOT IN ('cancelled', 'rejected')
+       )
+       AND EXISTS (
+         SELECT 1 FROM workflow_tasks wt
+         WHERE wt.pr_id = pr.id
+           AND wt.status = 'pending'
+           AND wt.assigned_role IN ('SCM Buyer', 'SCM Manager')
+           AND wt.task_type IN ('RFQ_ENTRY', 'RFQ_POST_APPROVAL')
+       )`
+  );
+  for (const row of rows) {
+    await moveToScmCreatePo(row.id, {
+      actorRole: 'L2 Manager',
+      completedStepLabel: 'L2 Manager Approval',
+    });
+  }
+}
+
 export async function listScmRfqEntryPrs(user) {
   if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
     throw new Error('Unauthorized');
   }
+  await pullRequesterPosOffScm();
 
   // SCM vendor: after CFO pre-RFQ. Own vendor: after HOD→L2→CFO post-RFQ (APPROVED again).
   const [rows] = await pool.query(
@@ -2948,6 +3083,7 @@ export async function listScmRfqEntryPrs(user) {
      JOIN users u ON u.id = pr.requester_id
      LEFT JOIN rfq_configs rc ON rc.pr_id = pr.id
      WHERE pr.status = ?
+       AND COALESCE(pr.po_creation_by, 'scm') <> 'requester'
        AND LOWER(REPLACE(REPLACE(COALESCE(pr.purchase_type, ''), '-', '_'), ' ', '_'))
            NOT IN ('sass', 'saas', 'cloud_subscription')
        AND (rc.finalized_at IS NULL)
@@ -3006,6 +3142,9 @@ export async function listScmRfqEntryPrs(user) {
 }
 
 export async function listPostRfqPending(user) {
+  if (user.role === 'SCM Buyer' || user.role === 'SCM Manager' || user.role === 'Super Admin') {
+    await pullRequesterPosOffScm();
+  }
   // SCM Manager / SCM Buyer tasks are role-queued (assigned_user_id NULL).
   // HOD / L2 tasks are assigned to a specific user. Match either pattern.
   const [assignedRows] = await pool.query(
@@ -3020,6 +3159,10 @@ export async function listPostRfqPending(user) {
          wt.assigned_user_id = ?
          OR (wt.assigned_user_id IS NULL AND wt.assigned_role = ?)
        )
+       AND NOT (
+         wt.assigned_role IN ('SCM Buyer', 'SCM Manager')
+         AND COALESCE(pr.po_creation_by, 'scm') = 'requester'
+       )
      GROUP BY pr.id
      ORDER BY MAX(COALESCE(pr.submitted_at, pr.created_at, pr.updated_at)) DESC, pr.id DESC`,
     [user.id, user.role]
@@ -3032,9 +3175,11 @@ export async function listPostRfqPending(user) {
   const userRoleConfig = getPostRfqRoleConfig(user.role);
   const idSet = new Set(assignedRows.map((r) => r.id));
   if (ROLE_QUEUED_POST_RFQ.has(user.role) && userRoleConfig?.status) {
+    const hideRequesterPoQueue = userRoleConfig.status === PR_STATUS.PENDING_SCM_PO;
     const [statusRows] = await pool.query(
       `SELECT id FROM purchase_requests
        WHERE status = ?
+         ${hideRequesterPoQueue ? "AND COALESCE(po_creation_by, 'scm') <> 'requester'" : ''}
          AND LOWER(REPLACE(REPLACE(COALESCE(purchase_type, ''), '-', '_'), ' ', '_'))
              NOT IN ('sass', 'saas', 'cloud_subscription')
        ORDER BY COALESCE(submitted_at, created_at, updated_at) DESC, id DESC`,
@@ -3052,6 +3197,7 @@ export async function listPostRfqPending(user) {
        FROM purchase_requests pr
        JOIN rfq_configs rc ON rc.pr_id = pr.id AND rc.finalized_at IS NOT NULL
        WHERE pr.status = ?
+         AND COALESCE(pr.po_creation_by, 'scm') <> 'requester'
          AND LOWER(REPLACE(REPLACE(COALESCE(pr.purchase_type, ''), '-', '_'), ' ', '_'))
              NOT IN ('sass', 'saas', 'cloud_subscription')
          AND NOT EXISTS (
@@ -3066,6 +3212,7 @@ export async function listPostRfqPending(user) {
     const [pendingMgrRows] = await pool.query(
       `SELECT id FROM purchase_requests
        WHERE status = ?
+         AND COALESCE(po_creation_by, 'scm') <> 'requester'
          AND LOWER(REPLACE(REPLACE(COALESCE(purchase_type, ''), '-', '_'), ' ', '_'))
              NOT IN ('sass', 'saas', 'cloud_subscription')
        ORDER BY COALESCE(submitted_at, created_at, updated_at) DESC, id DESC`,
@@ -3371,7 +3518,15 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 2);
         let roleUser = null;
-        if (nextRole === 'SCM Buyer') {
+        let assignedRole = nextRole;
+        if (nextRole === 'SCM Buyer' && String(pr.po_creation_by || 'scm') === 'requester') {
+          assignedRole = 'Requester';
+          const [reqUsers] = await conn.query(
+            `SELECT id, email, name FROM users WHERE id = ? LIMIT 1`,
+            [pr.requester_id]
+          );
+          roleUser = reqUsers[0] || null;
+        } else if (nextRole === 'SCM Buyer') {
           roleUser = null; // role-queue: Gopi + Satish both act / get mail
         } else {
           const [roleUsers] = await conn.query(
@@ -3383,7 +3538,7 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
         await conn.query(
           `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
            VALUES (?, 'RFQ_POST_APPROVAL', ?, ?, 'pending', ?)`,
-          [prId, nextRole, roleUser?.id || null, dueDate.toISOString().split('T')[0]]
+          [prId, assignedRole, roleUser?.id || null, dueDate.toISOString().split('T')[0]]
         );
         if (roleUser?.email) {
           nextAssignee = { email: roleUser.email, name: roleUser.name, userId: roleUser.id };
@@ -3402,7 +3557,29 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       email: reqRows[0]?.email || '',
     };
 
-    if (nextRole && action === 'approve') {
+    const requesterCreatesPo =
+      nextRole === 'SCM Buyer' && String(pr.po_creation_by || 'scm') === 'requester';
+    if (requesterCreatesPo && action === 'approve') {
+      await queuePostQuotationApprovalMail(updatedPr, 'Requester', {
+        requester,
+        postRfq: true,
+        createPo: true,
+        stageLabel: 'Requester PO Create',
+        approverEmails: requester.email ? [requester.email] : undefined,
+        approverName: requester.name,
+        ccEmails: [],
+      });
+      queueRequesterStepProgressNotification(updatedPr, {
+        action: 'approve',
+        actorRole: workflowRole,
+        actorName: user.name,
+        completedStepLabel: roleConfig?.label || workflowRole,
+        nextStepLabel: 'Requester Create PO',
+        remarks,
+        requesterEmail: requester.email,
+        requesterName: requester.name,
+      });
+    } else if (nextRole && action === 'approve') {
       const nextCfg = POST_RFQ_ROLE_MAP[nextRole];
       const nextLabel = nextCfg?.label || (nextRole === 'SCM Buyer' ? 'SCM PO Create' : nextRole);
       // L2 / CFO / SCM Buyer (and SCM Manager → Create PO) get negotiation + quotation files
@@ -3432,8 +3609,16 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       newStatus === PR_STATUS.APPROVED &&
       pr.vendor_selection === 'own'
     ) {
-      // Own path: CFO done → SCM Buyer final RFQ (queue + mail with quotation files)
-      await notifyScmBuyerForFinalRfq(prId);
+      if (String(pr.po_creation_by || 'scm') === 'requester') {
+        // Requester creates the PO. Do not park this on SCM Final RFQ.
+        await moveToScmCreatePo(prId, {
+          actorRole: workflowRole,
+          completedStepLabel: roleConfig?.label || workflowRole,
+        });
+      } else {
+        // Own path: CFO / L2 done → SCM Buyer final RFQ (queue + mail with quotation files)
+        await notifyScmBuyerForFinalRfq(prId);
+      }
     } else if (action === 'reject' || action === 'return' || action === 'rework') {
       queuePostRfqActionNotification(updatedPr, workflowRole, action, remarks, requester);
     }

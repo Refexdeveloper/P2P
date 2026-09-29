@@ -5,6 +5,7 @@ import {
   resolveSendBackTarget,
 } from '../utils/sendBackTargets.js';
 import { resolveScmBuyerUser, getPreferredScmManagerEmail } from '../utils/scmAssignee.js';
+import { SASS_MUGESH_EMAIL } from './sassWorkflow.js';
 import {
   getL1ManagerForEmail,
   getL2ManagerForEmail,
@@ -54,12 +55,17 @@ async function resolveRoleUser(role, conn = null) {
 
 export async function getSendBackTargetsForPr(prId, { admin = false } = {}) {
   const [rows] = await pool.query(
-    `SELECT status, vendor_selection, pr_flow FROM purchase_requests WHERE id = ?`,
+    `SELECT status, vendor_selection, pr_flow, po_creation_by FROM purchase_requests WHERE id = ?`,
     [prId]
   );
   if (!rows[0]) throw new Error('PR not found');
   if (admin) {
-    return listAdminSendBackTargets(rows[0].status, rows[0].vendor_selection, rows[0].pr_flow);
+    return listAdminSendBackTargets(
+      rows[0].status,
+      rows[0].vendor_selection,
+      rows[0].pr_flow,
+      rows[0].po_creation_by
+    );
   }
   return listSendBackTargets(rows[0].status, rows[0].vendor_selection, rows[0].pr_flow);
 }
@@ -78,7 +84,7 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
   const admin = Boolean(options.admin);
   const allowed = (
     admin
-      ? listAdminSendBackTargets(pr.status, pr.vendor_selection, pr.pr_flow)
+      ? listAdminSendBackTargets(pr.status, pr.vendor_selection, pr.pr_flow, pr.po_creation_by)
       : listSendBackTargets(pr.status, pr.vendor_selection, pr.pr_flow)
   ).map((t) => t.key);
   if (!allowed.includes(target.key)) {
@@ -168,6 +174,14 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
       }
     } else if (target.assignedRole === 'PR Manager') {
       assignee = await resolveL2User(requester?.email || '', pr.department_id);
+    } else if (target.key === 'PO_MUGESH_SIGN') {
+      const [mugeshRows] = await db.query(
+        `SELECT id, email, name FROM users WHERE LOWER(email) = LOWER(?) AND is_active = 1 LIMIT 1`,
+        [SASS_MUGESH_EMAIL]
+      );
+      assignee = mugeshRows[0]
+        ? { userId: mugeshRows[0].id, email: mugeshRows[0].email, name: mugeshRows[0].name }
+        : { userId: null, email: SASS_MUGESH_EMAIL, name: 'Mugesh' };
     } else {
       assignee = await resolveRoleUser(target.assignedRole, db);
     }
@@ -195,7 +209,8 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
 
 export function queueSendBackNotifications(updatedPr, applyResult) {
   const { target, assignee, requester } = applyResult;
-  const rajeevCc = [getPreferredScmManagerEmail()].filter(Boolean);
+  const requesterCreated = String(updatedPr.poCreationBy || updatedPr.po_creation_by || 'scm') === 'requester';
+  const rajeevCc = requesterCreated ? [] : [getPreferredScmManagerEmail()].filter(Boolean);
   const sendBackRemarks = String(applyResult.remarksLine || '').trim();
 
   if (target.key === 'REQUESTER') {
@@ -213,8 +228,11 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
     return;
   }
 
-  // Requester RFQ Entry — same "Sent Back" mail family (admin Notification Logs)
-  if (target.key === 'REQUESTER_RFQ' && (assignee?.email || requester?.email)) {
+  // Requester Create PO / Requester RFQ — mail the requester only. Never SCM Buyer or SCM Manager.
+  if (
+    (target.key === 'REQUESTER_RFQ' || target.key === 'REQUESTER_PO' || target.key === 'PO_REQUESTER_VERIFY') &&
+    (assignee?.email || requester?.email)
+  ) {
     queuePostRfqActionNotification(
       updatedPr,
       applyResult.actorRole || 'Approver',

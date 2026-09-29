@@ -18,6 +18,7 @@ export type CreatePrDraftSnapshot = {
   sassBillingFrequency?: 'monthly' | 'quarterly' | 'yearly' | null;
   sassSubscriptionStartDate?: string;
   vendorSelection: 'own' | 'scm';
+  poCreationBy?: 'scm' | 'requester';
   /** SASS — vendor known on Create PR (no RFQ). */
   sassVendorId?: string | null;
   prFlow: 'standard' | 'functional';

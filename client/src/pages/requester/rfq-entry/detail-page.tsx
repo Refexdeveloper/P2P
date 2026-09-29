@@ -648,7 +648,6 @@ export default function RfqEntryDetailPage() {
   const billingLocations = selectedEntity?.locations?.filter((loc) => loc.location) || [];
   const hasInvitations = tableRows.length > 0;
   const quotedCount = tableRows.filter((r) => r.hasActiveQuote).length;
-  const guideStep = !hasInvitations ? 1 : quotedCount === 0 ? 2 : recommendedId ? 3 : 2;
   const invitedVendorNames = new Set(tableRows.map((r) => r.vendorName.toLowerCase()));
   const recommendedRow = tableRows.find(
     (r) => Number(r.invitationId) === Number(recommendedId)
@@ -2219,76 +2218,6 @@ export default function RfqEntryDetailPage() {
           <i className="ri-checkbox-circle-line mr-1"></i>
           {softSaveHint}
         </p>
-      )}
-
-      {!isFinalized && mode === 'entry' && !loading && (
-        <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            {
-              n: 1,
-              title: 'Add vendors',
-              hint: 'Choose who should quote',
-              done: hasInvitations,
-            },
-            {
-              n: 2,
-              title: 'Get quotes',
-              hint: 'Email them, type a quote, or upload with AI',
-              done: quotedCount > 0,
-            },
-            {
-              n: 3,
-              title: 'Pick one vendor',
-              hint: 'Recommend the winner and send for approval',
-              done: Boolean(recommendedId && canSubmitRfq),
-            },
-          ].map((s) => {
-            const active = guideStep === s.n;
-            return (
-              <div
-                key={s.n}
-                className={`relative min-h-[108px] overflow-hidden rounded-2xl border bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] ${
-                  s.done
-                    ? 'border-emerald-200'
-                    : active
-                      ? 'border-[#90CAF9]'
-                      : 'border-transparent'
-                }`}
-              >
-                <div
-                  className="pointer-events-none absolute inset-0"
-                  style={{
-                    background: s.done
-                      ? 'radial-gradient(120% 90% at 100% 0%, rgba(16,185,129,0.14) 0%, rgba(255,255,255,0) 55%)'
-                      : 'radial-gradient(120% 90% at 100% 0%, rgba(30,136,229,0.12) 0%, rgba(255,255,255,0) 55%)',
-                  }}
-                />
-                <div className="relative z-[1]">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold ${
-                      s.done
-                        ? 'bg-[#D1FAE5] text-[#10B981]'
-                        : active
-                          ? 'bg-[#1E88E5] text-white'
-                          : 'bg-[#E3F2FD] text-[#1E88E5]'
-                    }`}
-                  >
-                    {s.done ? <i className="ri-check-line" /> : s.n}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                      {s.done ? 'Done' : active ? 'Do this now' : `Step ${s.n}`}
-                    </p>
-                    <p className="text-sm font-semibold text-slate-900">{s.title}</p>
-                  </div>
-                </div>
-                <p className="mt-2 pl-10 text-xs text-slate-500">{s.hint}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       )}
 
       {prId && pr && (

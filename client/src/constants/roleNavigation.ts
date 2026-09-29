@@ -23,6 +23,20 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-file-edit-line',
     group: 'Requester',
   },
+  'nav.requester_create_po': {
+    code: 'nav.requester_create_po',
+    label: 'Create PO',
+    path: '/scm/create-po',
+    icon: 'ri-shopping-cart-2-line',
+    group: 'Requester',
+  },
+  'nav.requester_buyer_final_verify': {
+    code: 'nav.requester_buyer_final_verify',
+    label: 'Buyer Final Verify',
+    path: '/scm/buyer-final-verify',
+    icon: 'ri-shield-check-line',
+    group: 'Requester',
+  },
   'nav.track_pr': {
     code: 'nav.track_pr',
     label: 'Track PR',
@@ -314,6 +328,7 @@ const REQUESTER_MASTER_NAV_CODES = [
   'nav.category_master',
   'nav.entity_master',
   'nav.department_master',
+  'nav.letterhead_master',
 ] as const;
 
 const ROLE_DEFAULT_CODES: Record<string, string[]> = {
@@ -321,6 +336,8 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.requester_dashboard',
     'nav.create_pr',
     'nav.rfq_entry',
+    'nav.requester_create_po',
+    'nav.requester_buyer_final_verify',
     'nav.track_pr',
     'nav.requester_vendor_po_acceptance',
     'nav.grn',
@@ -432,6 +449,8 @@ export function ensureNavigation(
       'nav.requester_dashboard',
       'nav.create_pr',
       'nav.rfq_entry',
+      'nav.requester_create_po',
+      'nav.requester_buyer_final_verify',
       'nav.track_pr',
       'nav.requester_vendor_po_acceptance',
       'nav.grn',
@@ -524,6 +543,15 @@ export function ensureNavigation(
   // CFO: use server nav when present; otherwise role defaults
   if (role === 'CFO' && !navigation?.length) {
     merged = getDefaultNavigationForRole('CFO');
+  }
+
+  if (String(email || '').trim().toLowerCase() === 'mugesh.m@refex.co.in') {
+    if (!merged.some((n) => n.code === 'nav.po_approval') && NAV_BY_CODE['nav.po_approval']) {
+      merged = [...merged, NAV_BY_CODE['nav.po_approval']];
+    }
+    if (!merged.some((n) => n.code === 'nav.tasks') && NAV_BY_CODE['nav.tasks']) {
+      merged = [...merged, NAV_BY_CODE['nav.tasks']];
+    }
   }
 
   const emailOverride = EMAIL_NAV_CODES[String(email || '').trim().toLowerCase()];

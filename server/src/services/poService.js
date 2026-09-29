@@ -3,11 +3,13 @@ import path from 'path';
 import crypto from 'crypto';
 import pool from '../config/db.js';
 import { uploadToGcs, downloadFromGcs, gcsEnabled, listGcsKeys, awaitGcsUpload } from './gcsStorage.js';
-import { getPurchaseRequestById } from './prService.js';
+import { getPurchaseRequestById, ensureRequesterCreatePoTasks } from './prService.js';
 import { generatePoPdf, PO_UPLOAD_DIR, resolvePoDocumentPath, ensurePoPdf } from './poPdfService.js';
 import { sendPoVendorNotification, queuePoWorkflowNotification, queueApproverActionConfirmationForUser } from './emailService.js';
 import { formatDate, formatDateTime, PR_STATUS, REQUESTER_PO_DOCUMENT_STATUSES } from '../utils/constants.js';
-import { getL1ManagerForEmail } from './refexOneService.js';
+import { getL1ManagerForEmail, ensureHodApproverUser, lookupEmployeeDesignation } from './refexOneService.js';
+import { SASS_MUGESH_EMAIL } from './sassWorkflow.js';
+import { isMugeshActor } from '../templates/emailUtils.js';
 import { getLetterheadByType, alignPoTypeWithPurchaseType, mergeQuoteNoIntoPoContent } from './poLetterheadService.js';
 import {
   getActiveLetterheadBranding,
@@ -680,6 +682,7 @@ function attachStoredPoSignature(preview, row) {
     signedAt: row.signed_at ? formatDateTime(row.signed_at) : null,
     signedPdfPath: row.signed_pdf_path || null,
     signatureName: row.signature_name || null,
+    signerDesignation: row.signer_designation || '',
     signatureImagePath: row.signature_image_path || null,
     signatureImageData: row.signature_image_data || null,
     signatureDsc: parseSignatureDsc(row.signature_dsc_json),
@@ -1021,7 +1024,8 @@ async function enrichPO(row) {
     status: mapPoStatusUI(
       row.status,
       row.vendor_acceptance_status,
-      row.purchase_type || pr?.purchaseType
+      row.purchase_type || pr?.purchaseType,
+      row.po_sign_step
     ),
     statusRaw: row.status,
     vendorAcceptanceStatus: row.vendor_acceptance_status || null,
@@ -1043,6 +1047,8 @@ async function enrichPO(row) {
     pdfPath: row.pdf_path,
     signedPdfPath: row.signed_pdf_path,
     signatureName: row.signature_name,
+    signerDesignation: row.signer_designation || '',
+    poSignStep: row.po_sign_step || null,
     signatureImagePath: row.signature_image_path || null,
     signatureImageDataUrl:
       row.signed_at || row.signature_image_path || row.signed_pdf_path || row.signature_image_data
@@ -1207,7 +1213,7 @@ async function enrichPOListBatch(rows) {
       subtotal: Number(row.subtotal),
       taxAmount: Number(row.tax_amount),
       grandTotal: Number(row.grand_total),
-      status: mapPoStatusUI(row.status, row.vendor_acceptance_status, purchaseType),
+      status: mapPoStatusUI(row.status, row.vendor_acceptance_status, purchaseType, row.po_sign_step),
       statusRaw: row.status,
       vendorAcceptanceStatus: row.vendor_acceptance_status || null,
       vendorAcceptanceMode: row.vendor_acceptance_mode || null,
@@ -1222,6 +1228,8 @@ async function enrichPOListBatch(rows) {
       pdfPath: row.pdf_path,
       signedPdfPath: row.signed_pdf_path,
       signatureName: row.signature_name,
+      signerDesignation: row.signer_designation || '',
+      poSignStep: row.po_sign_step || null,
       signatureImagePath: row.signature_image_path || null,
       signatureImageDataUrl:
         row.signed_at || row.signature_image_path || row.signed_pdf_path || row.signature_image_data
@@ -1251,7 +1259,9 @@ async function enrichPOListBatch(rows) {
   });
 }
 
-function mapPoStatusUI(status, acceptanceStatus, purchaseType) {
+function mapPoStatusUI(status, acceptanceStatus, purchaseType, poSignStep) {
+  if (status === 'pending_approval' && poSignStep === 'mugesh') return 'Sign & Upload';
+  if (status === 'pending_approval' && poSignStep === 'l1') return 'Pending L1 Manager Approval';
   if (status === 'sent_to_vendor') {
     if (acceptanceStatus === 'accepted') return 'Vendor Accepted';
     if (acceptanceStatus === 'rejected') return 'Vendor Rejected';
@@ -1435,7 +1445,11 @@ async function getFullPoApprovalHistory(row) {
 export async function getPoCreateContext(user, prId) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
-  if (user.role !== 'SCM Buyer' && user.role !== 'Requester') {
+  if (user.role === 'Requester') {
+    if (pr.poCreationBy !== 'requester' || Number(pr.requesterId) !== Number(user.id)) {
+      throw new Error('Only the PR requester can create this PO');
+    }
+  } else if (user.role !== 'SCM Buyer') {
     throw new Error('Unauthorized');
   }
 
@@ -2097,8 +2111,127 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
   };
 }
 
+async function loadPrPoCreation(prId) {
+  if (!prId) return null;
+  const [rows] = await pool.query(
+    `SELECT id, po_creation_by, requester_id FROM purchase_requests WHERE id = ? LIMIT 1`,
+    [prId]
+  );
+  return rows[0] || null;
+}
+
+function prIsRequesterPo(prRow) {
+  return String(prRow?.po_creation_by || 'scm') === 'requester';
+}
+
+async function assertCanPreviewRequesterPo(user, prId) {
+  if (user.role !== 'Requester') return false;
+  const prRow = await loadPrPoCreation(prId);
+  if (!prIsRequesterPo(prRow) || Number(prRow.requester_id) !== Number(user.id)) {
+    throw new Error('Unauthorized to preview purchase orders');
+  }
+  return true;
+}
+
+async function resolveRequesterPoL1(requesterId) {
+  const [reqRows] = await pool.query(
+    `SELECT id, name, email, department_id FROM users WHERE id = ? LIMIT 1`,
+    [requesterId]
+  );
+  const requester = reqRows[0];
+  if (!requester?.email) throw new Error('Requester is not configured for L1 assignment');
+  const l1 = await getL1ManagerForEmail(requester.email);
+  if (!l1?.email) throw new Error('L1 Manager is not configured for this requester');
+  const userId = await ensureHodApproverUser(
+    { email: l1.email, name: l1.name || l1.email },
+    requester.department_id
+  );
+  const [l1Rows] = await pool.query(
+    `SELECT id, name, email FROM users WHERE id = ? LIMIT 1`,
+    [userId]
+  );
+  if (!l1Rows[0]) throw new Error('L1 Manager user is not in the system');
+  return l1Rows[0];
+}
+
+async function resolveMugeshSigner() {
+  const [rows] = await pool.query(
+    `SELECT id, name, email, designation FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1`,
+    [SASS_MUGESH_EMAIL]
+  );
+  if (!rows[0]) throw new Error('Mugesh is not configured as a user');
+  return rows[0];
+}
+
+async function designationForUser(userRow) {
+  const stored = String(userRow?.designation || '').trim();
+  if (stored) return stored.slice(0, 150);
+  const lookedUp = await lookupEmployeeDesignation(userRow?.email);
+  if (!lookedUp) return '';
+  try {
+    await pool.query(`UPDATE users SET designation = ? WHERE id = ? AND (designation IS NULL OR designation = '')`, [
+      lookedUp,
+      userRow.id,
+    ]);
+  } catch (err) {
+    if (err?.code !== 'ER_BAD_FIELD_ERROR') {
+      console.warn('Could not store designation:', err.message);
+    }
+  }
+  return lookedUp.slice(0, 150);
+}
+
+async function assignRequesterPoMugesh(conn, poRow, actor) {
+  const prRow = await loadPrPoCreation(poRow.pr_id);
+  if (!prIsRequesterPo(prRow)) return null;
+  const mugesh = await resolveMugeshSigner();
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 2);
+  const due = dueDate.toISOString().split('T')[0];
+  await conn.query(
+    `UPDATE purchase_orders SET po_sign_step = 'mugesh', status = 'pending_approval', updated_at = NOW() WHERE id = ?`,
+    [poRow.id]
+  );
+  await conn.query(
+    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND status = 'pending'
+       AND task_type IN ('PO_REVISION', 'PO_APPROVAL', 'PO_MUGESH_SIGN')`,
+    [poRow.pr_id]
+  );
+  await conn.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+     VALUES (?, 'PO_MUGESH_SIGN', 'CFO', ?, 'pending', ?)`,
+    [poRow.pr_id, mugesh.id, due]
+  );
+  return { mugesh, actor };
+}
+
+function notifyRequesterPoMugesh(po, mugesh, actor) {
+  if (!mugesh?.email) return;
+  queuePoWorkflowNotification(po, {
+    action: 'assign',
+    stageLabel: 'Mugesh Sign & Upload',
+    recipientEmails: [mugesh.email],
+    recipientName: mugesh.name || 'Mugesh',
+    actorName: actor?.name || 'Requester',
+    actorRole: actor?.role || 'Requester',
+    remarks: `${po.poNumber || 'PO'} sent to Mugesh for sign and upload`,
+    portalUrl: poPortalUrl('/scm/po-approval'),
+    ctaLabel: 'Sign & Upload',
+    bccOps: false,
+    notifyWhatsApp: false,
+    ccEmails: [],
+  });
+}
+
 export async function buildPoPreviewDocument(user, prId, body) {
-  if (user.role !== 'SCM Buyer' && user.role !== 'SCM Manager' && user.role !== 'Super Admin') {
+  const requesterPreview = await assertCanPreviewRequesterPo(user, prId);
+  if (
+    !requesterPreview &&
+    user.role !== 'SCM Buyer' &&
+    user.role !== 'SCM Manager' &&
+    user.role !== 'Super Admin'
+  ) {
     throw new Error('Unauthorized to preview purchase orders');
   }
   if (!body?.lineItems?.length) throw new Error('At least one line item is required for preview');
@@ -2106,11 +2239,21 @@ export async function buildPoPreviewDocument(user, prId, body) {
 }
 
 export async function buildPoPreviewForPo(user, poId, body) {
-  if (user.role !== 'SCM Manager' && user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
-    throw new Error('Unauthorized to preview PO edits');
-  }
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
+  const prRow = rows[0].pr_id ? await loadPrPoCreation(rows[0].pr_id) : null;
+  const requesterOwns =
+    user.role === 'Requester' &&
+    prIsRequesterPo(prRow) &&
+    Number(prRow.requester_id) === Number(user.id);
+  if (
+    !requesterOwns &&
+    user.role !== 'SCM Manager' &&
+    user.role !== 'SCM Buyer' &&
+    user.role !== 'Super Admin'
+  ) {
+    throw new Error('Unauthorized to preview PO edits');
+  }
   if (!body?.lineItems?.length) throw new Error('At least one line item is required for preview');
   if (!rows[0].pr_id) {
     return attachStoredPoSignature(
@@ -2147,7 +2290,14 @@ export async function buildPoPreviewForPo(user, poId, body) {
 }
 
 export async function createPurchaseOrder(user, prId, body) {
-  if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
+  const prFlag = await loadPrPoCreation(prId);
+  const requesterCreates = prIsRequesterPo(prFlag);
+  if (requesterCreates) {
+    const isOwner = user.role === 'Requester' && Number(prFlag.requester_id) === Number(user.id);
+    if (!isOwner && user.role !== 'Super Admin') {
+      throw new Error('Only the PR requester can create this PO');
+    }
+  } else if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
     throw new Error('Only SCM Buyer can create purchase orders');
   }
 
@@ -2319,13 +2469,16 @@ export async function createPurchaseOrder(user, prId, body) {
       );
     }
 
-    if (!skipApproval) {
+    let requesterSign = null;
+    if (!skipApproval && requesterCreates) {
+      requesterSign = await assignRequesterPoMugesh(conn, { id: poId, pr_id: prId }, user);
+    } else if (!skipApproval) {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 2);
       await insertScmManagerPoApprovalTask(conn, prId, dueDate.toISOString().split('T')[0]);
     }
 
-    // Complete SCM Create PO step and mark PR as PO created
+    // Complete Create PO step and mark PR as PO created
     await conn.query(
       `UPDATE purchase_requests
        SET status = 'APPROVED', current_stage = 'PO_CREATED', updated_at = NOW()
@@ -2335,7 +2488,7 @@ export async function createPurchaseOrder(user, prId, body) {
     await conn.query(
       `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
        WHERE pr_id = ? AND task_type = 'RFQ_POST_APPROVAL'
-         AND assigned_role = 'SCM Buyer' AND status = 'pending'`,
+         AND assigned_role IN ('SCM Buyer', 'Requester') AND status = 'pending'`,
       [prId]
     );
 
@@ -2349,7 +2502,9 @@ export async function createPurchaseOrder(user, prId, body) {
         user.id,
         skipApproval
           ? `Legacy/old PO ${poNumber} imported — created only (no approval workflow)`
-          : `PO ${poNumber} created and sent for SCM Manager approval`,
+          : requesterSign
+            ? `PO ${poNumber} created and sent to Mugesh for sign and upload`
+            : `PO ${poNumber} created and sent for SCM Manager approval`,
       ]
     );
 
@@ -2363,7 +2518,9 @@ export async function createPurchaseOrder(user, prId, body) {
       console.warn(`PO PDF after create failed for ${poNumber}:`, pdfErr.message);
     }
 
-    if (!skipApproval) {
+    if (!skipApproval && requesterSign?.mugesh) {
+      notifyRequesterPoMugesh(po, requesterSign.mugesh, user);
+    } else if (!skipApproval) {
       await notifyScmManagerPoApproval(po, {
         actorName: user.name,
         actorRole: user.role,
@@ -2803,12 +2960,14 @@ async function persistDraftLineItems(conn, poId, lineItems) {
 
 /** Save or update a draft PO / WO (PR-linked or manual). */
 export async function savePurchaseOrderDraft(user, body = {}) {
-  if (user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
-    throw new Error('Only SCM Buyer can save PO drafts');
-  }
-
   const poId = Number(body.poId || body.id || 0) || null;
   const prId = Number(body.prId || 0) || null;
+  const prFlag = prId ? await loadPrPoCreation(prId) : null;
+  const requesterDraft =
+    user.role === 'Requester' && prIsRequesterPo(prFlag) && Number(prFlag.requester_id) === Number(user.id);
+  if (!requesterDraft && user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
+    throw new Error('Only SCM Buyer can save PO drafts');
+  }
 
   let existing = null;
   if (poId) {
@@ -3256,6 +3415,25 @@ export async function listPurchaseOrders(
 
   // Cloud Subscription shells are not real POs — never list in SCM PO queues
   sql += ` AND COALESCE(po.purchase_type, 'purchase_order') <> 'sass'`;
+  if (isMugeshActor(user)) {
+    sql += ` AND EXISTS (
+      SELECT 1 FROM purchase_requests pr_own
+      WHERE pr_own.id = po.pr_id AND pr_own.po_creation_by = 'requester'
+    ) AND COALESCE(po.po_sign_step, '') IN ('mugesh', 'signed')`;
+  } else if (user.role === 'SCM Buyer' || user.role === 'SCM Manager') {
+    sql += ` AND NOT EXISTS (
+      SELECT 1 FROM purchase_requests pr_hide
+      WHERE pr_hide.id = po.pr_id AND pr_hide.po_creation_by = 'requester'
+    )`;
+  } else if (user.role === 'Requester') {
+    sql += ` AND EXISTS (
+      SELECT 1 FROM purchase_requests pr_own
+      WHERE pr_own.id = po.pr_id
+        AND pr_own.po_creation_by = 'requester'
+        AND pr_own.requester_id = ?
+    )`;
+    params.push(user.id);
+  }
   sql += ` AND po.po_number NOT LIKE 'CS-%'`;
 
   if (buyerVerifyOnly) {
@@ -3344,6 +3522,9 @@ export async function listTrackPurchaseOrders(
     includeStats = false,
   } = {}
 ) {
+  if (user.role === 'Requester') {
+    await ensureRequesterCreatePoTasks(user);
+  }
   const pageSize = Math.min(100, Math.max(1, Number(limit) || 10));
   const pageNum = Math.max(1, Number(page) || 1);
   const q = String(search || '').trim().toLowerCase();
@@ -3361,8 +3542,16 @@ export async function listTrackPurchaseOrders(
   const fromDate = String(dateFrom || '').trim();
   const toDate = String(dateTo || '').trim();
 
+  const requesterOwnPo =
+    user.role === 'Requester'
+      ? ` AND pr.requester_id = ? AND COALESCE(pr.po_creation_by, 'scm') = 'requester'`
+      : '';
   const readyParams = [PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED];
   const poParams = [];
+  if (user.role === 'Requester') {
+    readyParams.push(user.id);
+    poParams.push(user.id);
+  }
 
   const includeReady =
     statusFilter === 'all' || statusFilter === 'ready';
@@ -3422,6 +3611,11 @@ export async function listTrackPurchaseOrders(
     JOIN users u ON u.id = pr.requester_id
     LEFT JOIN entity_masters e ON e.id = pr.entity_id
     WHERE COALESCE(pr.purchase_type, 'purchase_order') <> 'sass'
+    ${
+      user.role === 'SCM Buyer' || user.role === 'SCM Manager'
+        ? `AND COALESCE(pr.po_creation_by, 'scm') <> 'requester'`
+        : ''
+    }
     AND (
       pr.status = ?
       OR (
@@ -3438,6 +3632,7 @@ export async function listTrackPurchaseOrders(
       )
     )
     AND NOT EXISTS (SELECT 1 FROM purchase_orders po3 WHERE po3.pr_id = pr.id)
+    ${requesterOwnPo}
     ${readyTypeFilter}
     ${readyEntityFilter}
     ${readyDeptFilter}
@@ -3471,6 +3666,12 @@ export async function listTrackPurchaseOrders(
     LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)
     WHERE 1=1
     AND COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') <> 'sass'
+    ${
+      user.role === 'SCM Buyer' || user.role === 'SCM Manager'
+        ? `AND COALESCE(pr.po_creation_by, 'scm') <> 'requester'`
+        : ''
+    }
+    ${requesterOwnPo}
     ${poTypeFilter}
     ${poEntityFilter}
     ${poDeptFilter}
@@ -3637,10 +3838,20 @@ export async function listTrackPurchaseOrders(
 
 /** Fast KPI counts using indexed status / created_by columns (no UNION). */
 async function getTrackListStats(user) {
+  const requesterOwnPo =
+    user.role === 'Requester'
+      ? ` AND pr.requester_id = ? AND COALESCE(pr.po_creation_by, 'scm') = 'requester'`
+      : '';
   const readySql = `
     SELECT COUNT(*) AS cnt
     FROM purchase_requests pr
     WHERE COALESCE(pr.purchase_type, 'purchase_order') <> 'sass'
+    ${
+      user.role === 'SCM Buyer' || user.role === 'SCM Manager'
+        ? `AND COALESCE(pr.po_creation_by, 'scm') <> 'requester'`
+        : ''
+    }
+    ${requesterOwnPo}
     AND (
       pr.status = ?
       OR (
@@ -3662,22 +3873,47 @@ async function getTrackListStats(user) {
   let poSql = `
     SELECT
       COUNT(*) AS po_total,
-      SUM(CASE WHEN status = 'pending_approval' THEN 1 ELSE 0 END) AS pending,
-      SUM(CASE WHEN status IN (
+      SUM(CASE WHEN po.status = 'pending_approval' THEN 1 ELSE 0 END) AS pending,
+      SUM(CASE WHEN po.status IN (
         'pending_buyer_verify', 'approved', 'sent_to_vendor',
         'awaiting_grn', 'grn_completed', 'invoice_entry',
         'pending_accounts_approval', 'approved_for_payment', 'paid'
       ) THEN 1 ELSE 0 END) AS approved,
-      SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
-      SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_count,
-      SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
-    FROM purchase_orders
-    WHERE COALESCE(purchase_type, 'purchase_order') <> 'sass'
+      SUM(CASE WHEN po.status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+      SUM(CASE WHEN po.status = 'draft' THEN 1 ELSE 0 END) AS draft_count,
+      SUM(CASE WHEN po.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count
+    FROM purchase_orders po
+    WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+    ${
+      user.role === 'SCM Buyer' || user.role === 'SCM Manager'
+        ? `AND NOT EXISTS (
+            SELECT 1 FROM purchase_requests pr_hide
+            WHERE pr_hide.id = po.pr_id AND pr_hide.po_creation_by = 'requester'
+          )`
+        : ''
+    }
+    ${
+      user.role === 'Requester'
+        ? `AND EXISTS (
+            SELECT 1 FROM purchase_requests pr_own
+            WHERE pr_own.id = po.pr_id
+              AND pr_own.requester_id = ?
+              AND COALESCE(pr_own.po_creation_by, 'scm') = 'requester'
+          )`
+        : ''
+    }
   `;
+  const readyParams =
+    user.role === 'Requester'
+      ? [user.id, PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED]
+      : [PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED];
   const poParams = [];
+  if (user.role === 'Requester') {
+    poParams.push(user.id);
+  }
 
   const [[readyRows], [poRows]] = await Promise.all([
-    pool.query(readySql, [PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED]),
+    pool.query(readySql, readyParams),
     pool.query(poSql, poParams),
   ]);
 
@@ -3932,21 +4168,37 @@ export async function getPurchaseOrderByNumber(poNumber) {
   return enrichPO(rows[0]);
 }
 
-/** Requester may view signed PO PDF only for their own PR after SCM Manager sign / release. */
+/** Statuses a requester may open on a PO they created (L1 / Mugesh path, no SCM Buyer verify). */
+const REQUESTER_CREATED_PO_STATUSES = new Set([
+  'draft',
+  'pending_approval',
+  ...REQUESTER_PO_DOCUMENT_STATUSES,
+]);
+
+/** Requester may view their own PO. SCM-created POs stay locked until buyer final verification. */
 export async function assertRequesterPoDocumentAccess(user, poId) {
   const po = await getPurchaseOrderById(Number(poId));
   if (!po) throw new Error('PO not found');
   if (user.role !== 'Requester') return po;
   if (!po.prId) throw new Error('Unauthorized');
 
-  const [prRows] = await pool.query(`SELECT requester_id FROM purchase_requests WHERE id = ? LIMIT 1`, [
-    po.prId,
-  ]);
+  const [prRows] = await pool.query(
+    `SELECT requester_id, po_creation_by FROM purchase_requests WHERE id = ? LIMIT 1`,
+    [po.prId]
+  );
   if (!prRows.length || Number(prRows[0].requester_id) !== Number(user.id)) {
     throw new Error('Unauthorized');
   }
 
   const status = String(po.statusRaw || '').trim().toLowerCase();
+  const requesterCreated = String(prRows[0].po_creation_by || 'scm') === 'requester';
+  if (requesterCreated) {
+    if (!REQUESTER_CREATED_PO_STATUSES.has(status)) {
+      throw new Error('This purchase order is not available yet');
+    }
+    return po;
+  }
+
   if (!REQUESTER_PO_DOCUMENT_STATUSES.has(status)) {
     throw new Error('PO document is available only after SCM Buyer final verification');
   }
@@ -4188,16 +4440,26 @@ async function resolveVendorSelectionForPoRelease(poRow) {
 }
 
 export async function finalVerifyPurchaseOrder(user, poId, remarks) {
-  if (user.role !== 'SCM Buyer') throw new Error('Only SCM Buyer can final-verify purchase orders');
-
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
+  const prRow = rows[0].pr_id ? await loadPrPoCreation(rows[0].pr_id) : null;
+  const requesterCreated = prIsRequesterPo(prRow);
+  const requesterOwns =
+    requesterCreated &&
+    user.role === 'Requester' &&
+    Number(prRow.requester_id) === Number(user.id);
+  if (requesterCreated && !requesterOwns && user.role !== 'Super Admin') {
+    throw new Error('Buyer final verification for this PO is assigned to the requester');
+  }
+  if (!requesterCreated && user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
+    throw new Error('Only SCM Buyer can final-verify purchase orders');
+  }
   if (rows[0].status !== 'pending_buyer_verify') {
     throw new Error('PO is not pending buyer final verification');
   }
 
   const verifyRemarks =
-    remarks?.trim() || 'Final verified by SCM Buyer';
+    remarks?.trim() || (requesterOwns ? 'Final verified by requester' : 'Final verified by SCM Buyer');
   const token = rows[0].vendor_acceptance_token || newVendorAcceptanceToken();
 
   // PO and WO both go to vendor acceptance first; PO → awaiting_grn only after accept
@@ -4215,7 +4477,7 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
 
   await pool.query(
     `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-     WHERE pr_id = ? AND task_type = 'PO_BUYER_VERIFY' AND assigned_role = 'SCM Buyer' AND status = 'pending'`,
+     WHERE pr_id = ? AND task_type = 'PO_BUYER_VERIFY' AND status = 'pending'`,
     [rows[0].pr_id]
   );
 
@@ -4245,14 +4507,24 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   }
 
   try {
-    const scmBuyers = await getScmBuyerNotifyEmails();
-    const scmManagers = await getScmManagerNotifyEmails();
     const exclude = new Set(
       [updated.vendorEmail, updated.vendor_email]
         .map((e) => String(e || '').trim().toLowerCase())
         .filter(Boolean)
     );
-    parties.emails = [...new Set([...parties.emails, ...scmBuyers, ...scmManagers])]
+    if (requesterCreated) {
+      const scmBuyers = await getScmBuyerNotifyEmails();
+      const scmManagers = await getScmManagerNotifyEmails();
+      for (const email of [...scmBuyers, ...scmManagers]) {
+        const key = String(email || '').trim().toLowerCase();
+        if (key) exclude.add(key);
+      }
+    } else {
+      const scmBuyers = await getScmBuyerNotifyEmails();
+      const scmManagers = await getScmManagerNotifyEmails();
+      parties.emails = [...new Set([...parties.emails, ...scmBuyers, ...scmManagers])];
+    }
+    parties.emails = [...new Set(parties.emails)]
       .map((e) => String(e || '').trim())
       .filter(
         (e) =>
@@ -4267,10 +4539,11 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
   }
 
   const attachments = await signedPoPdfMailAttachment(updated);
-  const signerName =
-    String(updated.signatureName || rows[0].signature_name || '').trim() ||
-    getPreferredScmManagerName() ||
-    'SCM Manager';
+  const signerName = requesterCreated
+    ? String(updated.signatureName || rows[0].signature_name || 'Mugesh').trim()
+    : String(updated.signatureName || rows[0].signature_name || '').trim() ||
+      getPreferredScmManagerName() ||
+      'SCM Manager';
 
   if (sendPoReleaseMail && parties.emails.length) {
     queuePoWorkflowNotification(updated, {
@@ -4279,7 +4552,9 @@ export async function finalVerifyPurchaseOrder(user, poId, remarks) {
       recipientEmails: parties.emails,
       recipientName: parties.name,
       actorName: signerName,
-      actorRole: 'SCM Manager',
+      actorRole: requesterCreated
+        ? String(updated.signerDesignation || 'Approver')
+        : 'SCM Manager',
       remarks: verifyRemarks,
       portalUrl: '',
       ctaLabel: false,
@@ -4945,11 +5220,18 @@ export async function updatePurchaseOrder(user, poId, body) {
     wantsManagerResubmit &&
     existing.status === 'draft' &&
     ['SCM Buyer', 'Super Admin', 'SCM Manager'].includes(user.role);
+  const requesterPr = existing.pr_id ? await loadPrPoCreation(existing.pr_id) : null;
+  const canRequesterRevise =
+    wantsManagerResubmit &&
+    existing.status === 'draft' &&
+    prIsRequesterPo(requesterPr) &&
+    (user.role === 'Super Admin' ||
+      (user.role === 'Requester' && Number(requesterPr.requester_id) === Number(user.id)));
   // Track PO / admin correction: edit existing PO without changing workflow status
   const canAdminEdit =
     existing.status !== 'cancelled' &&
     (user.role === 'Super Admin' || user.role === 'SCM Manager' || user.role === 'SCM Buyer');
-  if (!canManagerEdit && !canBuyerEdit && !canBuyerRevise && !canAdminEdit) {
+  if (!canManagerEdit && !canBuyerEdit && !canBuyerRevise && !canRequesterRevise && !canAdminEdit) {
     throw new Error('You are not allowed to edit this purchase order');
   }
   const forceAdminContentEdit =
@@ -4957,7 +5239,7 @@ export async function updatePurchaseOrder(user, poId, body) {
   // Prefer workflow-aware paths when they apply; otherwise treat as admin content edit
   const isAdminContentEdit =
     forceAdminContentEdit ||
-    (canAdminEdit && !canManagerEdit && !canBuyerEdit && !canBuyerRevise);
+    (canAdminEdit && !canManagerEdit && !canBuyerEdit && !canBuyerRevise && !canRequesterRevise);
 
   const draft = existing.pr_id
     ? await resolvePoDraftContent(existing.pr_id, {
@@ -5022,6 +5304,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         ? 'PO updated by SCM Buyer during final verify'
         : 'PO updated by SCM Manager before approval');
 
+  let requesterL1Assigned = null;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -5036,7 +5319,7 @@ export async function updatePurchaseOrder(user, poId, body) {
 
     // When buyer sends draft → SCM Manager, assign official PO/WO number (draft placeholders only)
     let nextPoNumber;
-    if (canBuyerRevise) {
+    if (canBuyerRevise || canRequesterRevise) {
       const formOfficial = normalizeRequestedPoNumber(body.poNumber || body.existingPoNumber);
       const preferFormOfficial =
         formOfficial && !isDraftPlaceholderPoNumber(formOfficial) ? formOfficial : null;
@@ -5170,7 +5453,9 @@ export async function updatePurchaseOrder(user, poId, body) {
       }
     }
 
-    if (canBuyerRevise) {
+    if (canRequesterRevise) {
+      requesterL1Assigned = await assignRequesterPoMugesh(conn, existing, user);
+    } else if (canBuyerRevise) {
       await conn.query(
         `UPDATE purchase_orders SET status = 'pending_approval', updated_at = NOW() WHERE id = ?`,
         [poId]
@@ -5268,7 +5553,9 @@ export async function updatePurchaseOrder(user, poId, body) {
     console.warn(`PO PDF after update failed for ${updatedPo?.poNumber || poId}:`, pdfErr.message);
   }
 
-  if (canBuyerRevise) {
+  if (requesterL1Assigned?.mugesh) {
+    notifyRequesterPoMugesh(updatedPo, requesterL1Assigned.mugesh, user);
+  } else if (canBuyerRevise && !canRequesterRevise) {
     await notifyScmManagerPoApproval(updatedPo, {
         actorName: user.name,
         actorRole: user.role,
@@ -5280,6 +5567,289 @@ export async function updatePurchaseOrder(user, poId, body) {
   }
 
   return updatedPo;
+}
+
+export async function decideRequesterPoL1(user, poId, action, remarks) {
+  if (!remarks?.trim()) throw new Error('Remarks are required');
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  const po = rows[0];
+  if (po.status !== 'pending_approval' || String(po.po_sign_step || '') !== 'l1') {
+    throw new Error('PO is not waiting for L1 Manager approval');
+  }
+  const [taskRows] = await pool.query(
+    `SELECT id, assigned_user_id FROM workflow_tasks
+     WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'HOD Approver' AND status = 'pending'
+     ORDER BY id DESC LIMIT 1`,
+    [po.pr_id]
+  );
+  const task = taskRows[0];
+  if (user.role !== 'Super Admin' && Number(task?.assigned_user_id) !== Number(user.id)) {
+    throw new Error('Only the assigned L1 Manager can act on this PO');
+  }
+  const act = String(action || '').trim().toLowerCase();
+  const requesterId = await getPoRequesterId(po);
+
+  if (act === 'approve') {
+    const mugesh = await resolveMugeshSigner();
+    await pool.query(
+      `UPDATE purchase_orders SET po_sign_step = 'mugesh', updated_at = NOW() WHERE id = ?`,
+      [poId]
+    );
+    if (task?.id) {
+      await pool.query(
+        `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW() WHERE id = ?`,
+        [task.id]
+      );
+    }
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 2);
+    await pool.query(
+      `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+       VALUES (?, 'PO_MUGESH_SIGN', 'CFO', ?, 'pending', ?)`,
+      [po.pr_id, mugesh.id, dueDate.toISOString().split('T')[0]]
+    );
+    if (po.pr_id) {
+      await pool.query(
+        `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+         VALUES (?, 'PO_L1_APPROVED', ?, 'approve', ?)`,
+        [po.pr_id, user.id, remarks.trim()]
+      );
+    }
+    const updated = await getPurchaseOrderById(poId);
+    queuePoWorkflowNotification(updated, {
+      action: 'assign',
+      stageLabel: 'Mugesh Sign & Upload',
+      recipientEmails: [mugesh.email],
+      recipientName: mugesh.name || 'Mugesh',
+      actorName: user.name,
+      actorRole: user.role,
+      remarks: remarks.trim(),
+      portalUrl: poPortalUrl('/tasks'),
+      ctaLabel: 'Sign & Upload',
+    });
+    return updated;
+  }
+
+  if (act === 'send_back' || act === 'return') {
+    await pool.query(
+      `UPDATE purchase_orders SET
+         status = 'draft',
+         po_sign_step = 'requester',
+         signed_pdf_path = NULL,
+         signer_id = NULL,
+         signature_name = NULL,
+         signature_image_path = NULL,
+         signer_comments = NULL,
+         signer_designation = NULL,
+         signed_at = NULL,
+         updated_at = NOW()
+       WHERE id = ?`,
+      [poId]
+    );
+    if (task?.id) {
+      await pool.query(
+        `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW() WHERE id = ?`,
+        [task.id]
+      );
+    }
+    if (po.pr_id && requesterId) {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 2);
+      await pool.query(
+        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+         VALUES (?, 'PO_REVISION', 'Requester', ?, 'pending', ?)`,
+        [po.pr_id, requesterId, dueDate.toISOString().split('T')[0]]
+      );
+      await pool.query(
+        `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+         VALUES (?, 'PO_L1_SENT_BACK', ?, 'return', ?)`,
+        [po.pr_id, user.id, remarks.trim()]
+      );
+    }
+    const updated = await getPurchaseOrderById(poId);
+    const [reqRows] = requesterId
+      ? await pool.query(`SELECT email, name FROM users WHERE id = ?`, [requesterId])
+      : [[]];
+    if (reqRows[0]?.email) {
+      queuePoWorkflowNotification(updated, {
+        action: 'sendback',
+        stageLabel: 'Requester PO — Sent Back',
+        recipientEmails: [reqRows[0].email],
+        recipientName: reqRows[0].name || updated.requester || 'Requester',
+        actorName: user.name,
+        actorRole: user.role,
+        remarks: remarks.trim(),
+        portalUrl: poPortalUrl(`/scm/create-po?poId=${poId}&from=tasks`),
+        ctaLabel: 'Revise PO',
+      });
+    }
+    return updated;
+  }
+
+  if (act === 'reject') {
+    await pool.query(
+      `UPDATE purchase_orders SET status = 'rejected', po_sign_step = NULL, updated_at = NOW() WHERE id = ?`,
+      [poId]
+    );
+    if (task?.id) {
+      await pool.query(
+        `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW() WHERE id = ?`,
+        [task.id]
+      );
+    }
+    if (po.pr_id) {
+      await pool.query(
+        `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+         VALUES (?, 'PO_L1_REJECTED', ?, 'reject', ?)`,
+        [po.pr_id, user.id, remarks.trim()]
+      );
+    }
+    return getPurchaseOrderById(poId);
+  }
+
+  throw new Error('Unsupported action');
+}
+
+export async function uploadMugeshSignedPo(user, poId, body = {}) {
+  if (!isMugeshActor(user) && user.role !== 'Super Admin') {
+    throw new Error('Only Mugesh can sign and upload this PO');
+  }
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  const po = rows[0];
+  if (po.status !== 'pending_approval' || String(po.po_sign_step || '') !== 'mugesh') {
+    throw new Error('PO is not waiting for Mugesh sign and upload');
+  }
+  const fileName = String(body.fileName || body.file_name || '').trim();
+  const fileData = body.fileData || body.file_data || '';
+  if (!fileName || !fileData) throw new Error('Signed PO document is required');
+
+  const signerId = isMugeshActor(user) ? user.id : (await resolveMugeshSigner()).id;
+  const [signerRows] = await pool.query(
+    `SELECT id, name, email, designation FROM users WHERE id = ? LIMIT 1`,
+    [signerId]
+  );
+  const signer = signerRows[0];
+  if (!signer) throw new Error('Signer user was not found');
+  const designation = await designationForUser(signer);
+
+  const poNumber = String(po.po_number || `PO-${poId}`).trim();
+  const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
+  const storedName = `${safePoNumber}_signed.pdf`;
+  ensurePoUploadDir();
+  const raw = String(fileData).includes(',') ? String(fileData).split(',').pop() : String(fileData);
+  const buffer = Buffer.from(raw, 'base64');
+  if (!buffer.length) throw new Error('Signed PO document is empty');
+  const fullPath = path.join(PO_UPLOAD_DIR, storedName);
+  fs.writeFileSync(fullPath, buffer);
+  await awaitGcsUpload(`purchase-orders/${storedName}`, buffer);
+
+  let signatureImagePath = null;
+  let signatureImageData = null;
+  const [gallery] = await pool.query(
+    `SELECT image_path FROM user_signatures WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
+    [signer.id]
+  );
+  if (gallery[0]?.image_path) {
+    try {
+      const { signatureFileToDataUrlAsync, parseDataUrlImage } = await import('./signatureService.js');
+      const dataUrl = await signatureFileToDataUrlAsync(gallery[0].image_path);
+      if (dataUrl) {
+        const parsed = parseDataUrlImage(dataUrl);
+        signatureImageData = parsed.buffer;
+        signatureImagePath = gallery[0].image_path;
+      }
+    } catch (err) {
+      console.warn('Mugesh signature image was not attached:', err.message);
+    }
+  }
+
+  await pool.query(
+    `UPDATE purchase_orders SET
+       status = 'pending_buyer_verify',
+       po_sign_step = 'signed',
+       signed_pdf_path = ?,
+       signer_id = ?,
+       signature_name = ?,
+       signature_image_path = ?,
+       signature_image_data = ?,
+       signer_designation = ?,
+       signer_comments = ?,
+       signed_at = NOW(),
+       updated_at = NOW()
+     WHERE id = ?`,
+    [
+      storedName,
+      signer.id,
+      signer.name || 'Mugesh',
+      signatureImagePath,
+      signatureImageData,
+      designation || null,
+      String(body.remarks || '').trim() || null,
+      poId,
+    ]
+  );
+
+  await pool.query(
+    `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND task_type = 'PO_MUGESH_SIGN' AND status = 'pending'`,
+    [po.pr_id]
+  );
+  if (po.pr_id) {
+    await pool.query(
+      `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
+       WHERE pr_id = ? AND status = 'pending'
+         AND assigned_role IN ('SCM Buyer', 'SCM Manager')
+         AND task_type IN ('PO_BUYER_VERIFY', 'PO_APPROVAL', 'RFQ_ENTRY', 'RFQ_POST_APPROVAL')`,
+      [po.pr_id]
+    );
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_MUGESH_SIGNED', ?, 'approve', ?)`,
+      [po.pr_id, user.id, String(body.remarks || '').trim() || 'Signed PO uploaded — sent to requester for buyer final verify']
+    );
+  }
+
+  const updated = await getPurchaseOrderById(poId);
+  const requesterId = await getPoRequesterId(po);
+  if (po.pr_id && requesterId) {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 1);
+    const [openVerify] = await pool.query(
+      `SELECT id FROM workflow_tasks
+       WHERE pr_id = ? AND task_type = 'PO_BUYER_VERIFY' AND assigned_role = 'Requester' AND status = 'pending'
+       LIMIT 1`,
+      [po.pr_id]
+    );
+    if (!openVerify.length) {
+      await pool.query(
+        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+         VALUES (?, 'PO_BUYER_VERIFY', 'Requester', ?, 'pending', ?)`,
+        [po.pr_id, requesterId, dueDate.toISOString().split('T')[0]]
+      );
+    }
+    const [reqRows] = await pool.query(`SELECT email, name FROM users WHERE id = ?`, [requesterId]);
+    const attachments = await signedPoPdfMailAttachment(updated).catch(() => []);
+    if (reqRows[0]?.email) {
+      queuePoWorkflowNotification(updated, {
+        action: 'assign',
+        stageLabel: 'Buyer Final Verify',
+        recipientEmails: [reqRows[0].email],
+        recipientName: reqRows[0].name || updated.requester || 'Requester',
+        actorName: signer.name || 'Mugesh',
+        actorRole: designation || user.role,
+        remarks: String(body.remarks || '').trim() || 'Signed PO is ready for buyer final verification',
+        portalUrl: poPortalUrl('/scm/buyer-final-verify'),
+        ctaLabel: 'Open Buyer Final Verify',
+        bccOps: false,
+        notifyWhatsApp: false,
+        ccEmails: [],
+        attachments,
+      });
+    }
+  }
+  return updated;
 }
 
 async function getPoRequesterId(poRow) {

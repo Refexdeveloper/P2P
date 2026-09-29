@@ -78,6 +78,9 @@ interface TaskItem {
   poId?: number;
   isPoSign?: boolean;
   isPoRevise?: boolean;
+  isRequesterCreatePo?: boolean;
+  isRequesterPoL1?: boolean;
+  isMugeshSign?: boolean;
   vendorSelection?: 'own' | 'scm';
   askBusinessApproval?: boolean;
   requireInvoiceUpload?: boolean;
@@ -160,6 +163,9 @@ export default function TasksPage() {
           poId: t.poId ? Number(t.poId) : undefined,
           isPoSign: Boolean(t.isPoSign),
           isPoRevise: Boolean(t.isPoRevise),
+          isRequesterCreatePo: Boolean(t.isRequesterCreatePo),
+          isRequesterPoL1: Boolean(t.isRequesterPoL1),
+          isMugeshSign: Boolean(t.isMugeshSign),
           vendorSelection: t.vendorSelection === 'own' ? 'own' : 'scm',
           askBusinessApproval: Boolean(t.askBusinessApproval),
           requireInvoiceUpload: Boolean(t.requireInvoiceUpload),
@@ -302,6 +308,20 @@ export default function TasksPage() {
     currentApprover: string;
     justification: string;
     vendorSelection?: 'own' | 'scm';
+    vendorQuoteRounds?: Array<{
+      invitationId: number;
+      vendorName: string;
+      isRecommended?: boolean;
+      recommendationJustification?: string;
+      rounds: Array<{
+        submissionId?: number;
+        round: number;
+        quotedPrice: number;
+        leadTime?: number | null;
+        paymentTerms?: string;
+        quotationFileName?: string;
+      }>;
+    }>;
   purchaseType?: string;
   isSass?: boolean;
   requireInvoiceUpload?: boolean;
@@ -362,6 +382,10 @@ export default function TasksPage() {
   };
 
   const openPostRfqPage = (task: TaskItem, action?: 'approve' | 'reject' | 'return') => {
+    if (task.isRequesterCreatePo || (user?.role === 'Requester' && task.actionPath?.includes('/scm/create-po'))) {
+      navigate(task.actionPath || `/scm/create-po?prId=${task.prId}&from=tasks`);
+      return;
+    }
     // Buyer Create PO queue → go straight to Create PO
     if (
       user?.role === 'SCM Buyer' &&
@@ -383,6 +407,10 @@ export default function TasksPage() {
     if (!task) return;
 
     // Post-RFQ Manager task → vendor comparison page (not PR drawer)
+    if (task.isRequesterCreatePo || (user?.role === 'Requester' && task.actionPath?.includes('/scm/create-po'))) {
+      navigate(task.actionPath || `/scm/create-po?prId=${task.prId}&from=tasks`);
+      return;
+    }
     if (task.isPostRfq || task.actionPath?.includes('/rfq-approval/')) {
       openPostRfqPage(task);
       return;
@@ -441,6 +469,7 @@ export default function TasksPage() {
       billingAddress: '',
       placeOfDelivery: '',
       deliveryPoc: '',
+      vendorQuoteRounds: [],
       lineItems: [],
       approvalHistory: [],
       slaHours: 48,
@@ -520,11 +549,13 @@ export default function TasksPage() {
         isSass,
         requireInvoiceUpload: Boolean(task.requireInvoiceUpload),
         isSassInvoiceUpload: Boolean(task.isSassInvoiceUpload),
+        isMugeshSign: Boolean(task.isMugeshSign),
         billingLocation: String(pr.billingLocation || ''),
         billingGstNo: String(pr.billingGstNo || ''),
         billingAddress: String(pr.billingAddress || ''),
         placeOfDelivery: String(pr.placeOfDelivery || ''),
         deliveryPoc: String(pr.deliveryPoc || ''),
+        vendorQuoteRounds: Array.isArray(pr.vendorQuoteRounds) ? pr.vendorQuoteRounds : [],
         lineItems,
         approvalHistory,
         slaHours: 48,
@@ -549,8 +580,8 @@ export default function TasksPage() {
       openPostRfqPage(task, type);
       return;
     }
-    if (task.isPoRevise) {
-      navigate(task.actionPath || `/scm/create-po?poId=${task.poId || ''}&from=tasks`);
+    if (task.isRequesterCreatePo || task.isPoRevise) {
+      navigate(task.actionPath || `/scm/create-po?poId=${task.poId || ''}&prId=${task.prId}&from=tasks`);
       return;
     }
     if (task.isPoSign && type === 'approve') {
@@ -593,7 +624,19 @@ export default function TasksPage() {
     }
     const action = type === 'approve' ? 'approve' : type === 'return' ? 'return' : 'reject';
     try {
-      if (task.isPoSign && task.poId) {
+      if (task.isMugeshSign && task.poId && type === 'approve') {
+        if (!invoice?.fileName || !invoice?.fileData) {
+          throw new Error('Signed PO document is required');
+        }
+        await poApi.mugeshSign(task.poId, {
+          fileName: invoice.fileName,
+          fileData: invoice.fileData,
+          remarks,
+        });
+      } else if (task.isRequesterPoL1 && task.poId) {
+        const l1Action = type === 'return' ? 'send_back' : type === 'reject' ? 'reject' : 'approve';
+        await poApi.requesterL1(task.poId, l1Action, remarks);
+      } else if (task.isPoSign && task.poId) {
         if (type === 'return') {
           await poApi.sendBack(task.poId, remarks);
         } else if (type === 'reject') {
@@ -883,21 +926,27 @@ export default function TasksPage() {
                 : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
             }`}
             title={
-              task.isSassInvoiceUpload || task.requireInvoiceUpload
-                ? 'Upload Invoice'
-                : task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
-                  ? 'Approve (Vendor Comparison)'
-                  : task.isPoSign
-                    ? 'Sign & Approve'
-                    : task.actionPath?.includes('/scm/buyer-final-verify')
-                      ? 'Verify'
-                      : 'Approve'
+              task.isMugeshSign
+                ? 'Sign & Upload'
+                : task.isRequesterCreatePo
+                  ? 'Create PO'
+                : task.isSassInvoiceUpload || task.requireInvoiceUpload
+                  ? 'Upload Invoice'
+                  : task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
+                    ? 'Approve (Vendor Comparison)'
+                    : task.isPoSign
+                      ? 'Sign & Approve'
+                      : task.actionPath?.includes('/scm/buyer-final-verify')
+                        ? 'Verify'
+                        : 'Approve'
             }
           >
             <i
               className={
-                task.isSassInvoiceUpload || task.requireInvoiceUpload
+                task.isMugeshSign || task.isSassInvoiceUpload || task.requireInvoiceUpload
                   ? 'ri-file-upload-line'
+                  : task.isRequesterCreatePo
+                    ? 'ri-file-add-line'
                   : task.isPoSign
                     ? 'ri-quill-pen-line'
                     : 'ri-check-line'
@@ -906,6 +955,8 @@ export default function TasksPage() {
           </button>
           {!task.actionPath?.includes('/scm/buyer-final-verify') &&
             !task.isSassInvoiceUpload &&
+            !task.isMugeshSign &&
+            !task.isRequesterCreatePo &&
             !task.isSubscriptionRenewal && (
             <>
               <button
@@ -1538,7 +1589,9 @@ export default function TasksPage() {
         amount={modalState.amount}
         currency={modalState.currency || 'INR'}
         prId={
-          tasks.find((t) => t.id === modalState.taskId)?.isPoSign
+          tasks.find((t) => t.id === modalState.taskId)?.isPoSign ||
+          tasks.find((t) => t.id === modalState.taskId)?.isRequesterPoL1 ||
+          tasks.find((t) => t.id === modalState.taskId)?.isMugeshSign
             ? undefined
             : tasks.find((t) => t.id === modalState.taskId)?.prId
         }
@@ -1550,6 +1603,10 @@ export default function TasksPage() {
           modalState.requireInvoiceUpload ||
             (modalState.type === 'approve' &&
               tasks.find((t) => t.id === modalState.taskId)?.requireInvoiceUpload)
+        )}
+        signedUpload={Boolean(
+          modalState.type === 'approve' &&
+            tasks.find((t) => t.id === modalState.taskId)?.isMugeshSign
         )}
         useAdminTargets={Boolean(
           user?.isSuperAdmin ||

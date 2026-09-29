@@ -29,6 +29,8 @@ export type AcceptancePo = {
   createdBy?: string;
   createdByRole?: string;
   signatureName?: string;
+  signerDesignation?: string;
+  signedPdfPath?: string;
   signedAt?: string;
   signerComments?: string;
   vendorAcceptanceStatus?: string | null;
@@ -229,10 +231,27 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                 <Field label="Subtotal" value={formatCurrency(Number(po.subtotal) || 0)} />
                 <Field label={`GST (${po.gstPercentage ?? 18}%)`} value={formatCurrency(Number(po.taxAmount) || 0)} />
                 <Field label="Grand Total" value={formatCurrency(Number(po.grandTotal) || 0)} />
-                <Field
-                  label="Signed By"
-                  value={[po.signatureName, po.signedAt, po.signerComments].filter(Boolean).join(' · ') || '—'}
-                />
+                <Field label="Signed By" value={po.signatureName || '—'} />
+                <Field label="Designation" value={po.signerDesignation || '—'} />
+                <div className="rounded-2xl bg-white px-3.5 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Signed Document</p>
+                  {po.signedPdfPath ? (
+                    <button
+                      type="button"
+                      className="mt-1 text-sm font-semibold text-[#1565C0] underline"
+                      onClick={() => {
+                        void poApi.fetchPdfBlob(po.id).then((blob) => {
+                          const url = URL.createObjectURL(blob);
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                        });
+                      }}
+                    >
+                      Uploaded signed PO
+                    </button>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-800">—</p>
+                  )}
+                </div>
                 {po.specialInstructions ? (
                   <Field label="Special Instructions" value={po.specialInstructions} className="sm:col-span-2 lg:col-span-4" />
                 ) : null}

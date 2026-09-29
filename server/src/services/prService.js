@@ -2,6 +2,7 @@ import pool from '../config/db.js';
 import {
   queuePrRaisedNotification,
   queuePrApprovalPendingNotification,
+  sendPrApprovalPendingNotification,
   queuePostRfqActionNotification,
   queueRequesterStepProgressNotification,
   queueStakeholderStepProgressNotifications,
@@ -663,8 +664,35 @@ async function getTimelineAssignees(prId, requesterId, prStatus = null) {
   };
 }
 
+function mapVendorQuoteRounds(rows = []) {
+  const byInv = new Map();
+  for (const row of rows) {
+    const id = Number(row.invitation_id);
+    if (!id) continue;
+    if (!byInv.has(id)) {
+      byInv.set(id, {
+        invitationId: id,
+        vendorName: row.vendor_name || 'Vendor',
+        isRecommended: Number(row.recommended_invitation_id) === id,
+        recommendationJustification: row.recommendation_justification || '',
+        rounds: [],
+      });
+    }
+    if (!row.submission_id) continue;
+    byInv.get(id).rounds.push({
+      submissionId: Number(row.submission_id),
+      round: Number(row.round) || 1,
+      quotedPrice: Number(row.quoted_price) || 0,
+      leadTime: row.lead_time_days == null ? null : Number(row.lead_time_days),
+      paymentTerms: row.payment_terms || '',
+      quotationFileName: row.quotation_file_name || '',
+    });
+  }
+  return [...byInv.values()].filter((vendor) => vendor.rounds.length);
+}
+
 async function enrichPR(row) {
-  const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows, attachments, sassInvoiceRows, scmRfqEntryRows] = await Promise.all([
+  const [lineItems, approvalHistory, assignees, vendorRows, poRows, rfqMetaRows, attachments, sassInvoiceRows, scmRfqEntryRows, vendorQuoteRows] = await Promise.all([
     getLineItems(row.id),
     getApprovalHistory(row.id, row.pr_flow, row.purchase_type),
     getTimelineAssignees(row.id, row.requester_id, row.status),
@@ -729,6 +757,21 @@ async function enrichPR(row) {
       )
       .then(([rows]) => rows)
       .catch(() => []),
+    pool
+      .query(
+        `SELECT ri.id AS invitation_id, ri.vendor_name,
+                vqs.id AS submission_id, vqs.round, vqs.quoted_price, vqs.lead_time_days,
+                vqs.payment_terms, vqs.quotation_file_name,
+                rc.recommended_invitation_id, rc.recommendation_justification
+         FROM rfq_invitations ri
+         LEFT JOIN vendor_quotation_submissions vqs ON vqs.rfq_invitation_id = ri.id
+         LEFT JOIN rfq_configs rc ON rc.pr_id = ri.pr_id
+         WHERE ri.pr_id = ?
+         ORDER BY ri.id ASC, vqs.round ASC, vqs.id ASC`,
+        [row.id]
+      )
+      .then(([rows]) => rows)
+      .catch(() => []),
   ]);
   const po = poRows[0] || null;
   const sassInvoiceRow = sassInvoiceRows[0] || null;
@@ -788,6 +831,7 @@ async function enrichPR(row) {
     statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type),
     vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
     prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
+    poCreationBy: row.po_creation_by === 'requester' ? 'requester' : 'scm',
     approvalUserId: row.approval_user_id || null,
     approvalUserIds: functionalApprovalChainFromPr(row),
     approvalUserName: row.approval_user_name || '',
@@ -825,6 +869,7 @@ async function enrichPR(row) {
     poId: po?.id || null,
     poStatus: po?.status || '',
     rfqFinalized: Boolean(rfqMetaRows[0]?.finalized_at),
+    vendorQuoteRounds: mapVendorQuoteRounds(vendorQuoteRows),
     submittedDate: formatDate(row.submitted_at || row.created_at),
     createdAt: formatDate(row.created_at),
     /** When PR entered SCM RFQ Entry / SCM Verify (SCM Buyer RFQ_ENTRY task). */
@@ -857,7 +902,7 @@ export async function previewL1Manager(user, departmentName) {
     const [deptRows] = await pool.query('SELECT id FROM departments WHERE name = ? LIMIT 1', [departmentName]);
     departmentId = deptRows[0]?.id || null;
   }
-  const assignment = await resolveHodAssignment(user.email, departmentId);
+  const assignment = await resolveHodAssignment(user.email, departmentId, user.id);
   return {
     nextStep: 'L1 Manager Approval',
     l1Manager: {
@@ -867,27 +912,56 @@ export async function previewL1Manager(user, departmentName) {
   };
 }
 
-async function resolveHodAssignment(requesterEmail, departmentId) {
+async function supervisorMailbox(rawEmail, rawName) {
+  const email = String(rawEmail || '').trim().toLowerCase();
+  const name = String(rawName || '').trim();
+  if (email.includes('@')) {
+    return { email, name: name || email.split('@')[0] };
+  }
+  const local = (email || name).toLowerCase().replace(/\s+/g, '');
+  if (!local) return null;
+  const [rows] = await pool.query(
+    `SELECT email, name FROM users
+     WHERE is_active = 1 AND LOWER(SUBSTRING_INDEX(email, '@', 1)) = ?
+     LIMIT 1`,
+    [local]
+  );
+  if (!rows[0]?.email || !String(rows[0].email).includes('@')) return null;
+  return {
+    email: String(rows[0].email).trim().toLowerCase(),
+    name: name || rows[0].name || local,
+  };
+}
+
+async function resolveHodAssignment(requesterEmail, departmentId, requesterId = null) {
   let l1Manager = null;
   const email = (requesterEmail || '').toLowerCase().trim();
 
-  // Prefer local supervisor first � avoids slow RefexOne /users fetch on every PR submit
-  if (email) {
+  // Prefer the saved supervisor. Match by login email, then by user id, so a
+  // requester whose session email differs from users.email still notifies L1.
+  const lookups = [];
+  if (email) lookups.push(['LOWER(TRIM(email)) = ?', email]);
+  if (requesterId) lookups.push(['id = ?', requesterId]);
+  for (const [whereSql, param] of lookups) {
+    if (l1Manager?.email) break;
     const [localRows] = await pool.query(
-      `SELECT supervisor_email, supervisor_name FROM users WHERE email = ? LIMIT 1`,
-      [email]
+      `SELECT supervisor_email, supervisor_name FROM users WHERE ${whereSql} LIMIT 1`,
+      [param]
     );
-    if (localRows[0]?.supervisor_email) {
-      l1Manager = {
-        email: localRows[0].supervisor_email,
-        name: localRows[0].supervisor_name || localRows[0].supervisor_email.split('@')[0],
-      };
+    if (localRows[0]?.supervisor_email || localRows[0]?.supervisor_name) {
+      l1Manager = await supervisorMailbox(
+        localRows[0].supervisor_email,
+        localRows[0].supervisor_name
+      );
     }
   }
 
-  if (!l1Manager?.email) {
+  if (!l1Manager?.email && email) {
     try {
-      l1Manager = await getL1ManagerForEmail(requesterEmail);
+      const lookedUp = await getL1ManagerForEmail(requesterEmail);
+      if (lookedUp?.email) {
+        l1Manager = (await supervisorMailbox(lookedUp.email, lookedUp.name)) || lookedUp;
+      }
     } catch (err) {
       console.warn('RefexOne L1 manager lookup failed:', err.message);
     }
@@ -905,8 +979,12 @@ async function resolveHodAssignment(requesterEmail, departmentId) {
   };
 }
 
-async function createHodApprovalTask(conn, prId, requesterEmail, departmentId) {
-  const { hodUserId, hodEmail, hodName } = await resolveHodAssignment(requesterEmail, departmentId);
+async function createHodApprovalTask(conn, prId, requesterEmail, departmentId, requesterId = null) {
+  const { hodUserId, hodEmail, hodName } = await resolveHodAssignment(
+    requesterEmail,
+    departmentId,
+    requesterId
+  );
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 1);
 
@@ -1130,7 +1208,6 @@ async function loadFunctionalOwnRfqMailPack(prFlow, vendorMode, prId, purchaseTy
   }
 }
 
-/** Never block HTTP save/submit on SMTP / WhatsApp / large quotation attachment reads. */
 function approvalStepDisplayLabel(actingAsHod, actingRole, isFunctional = false) {
   if (isFunctional) return 'User Approval';
   if (actingAsHod) return 'L1 Manager Approval';
@@ -1139,7 +1216,7 @@ function approvalStepDisplayLabel(actingAsHod, actingRole, isFunctional = false)
   return `${actingRole} Approval`;
 }
 
-function queuePrSubmitNotifications({
+async function queuePrSubmitNotifications({
   pr,
   user,
   departmentId,
@@ -1150,32 +1227,57 @@ function queuePrSubmitNotifications({
   isResubmit = false,
 }) {
   const prId = pr?.id || pr?.prId;
-  setImmediate(() => {
-    (async () => {
-      const mailPack = await loadFunctionalOwnRfqMailPack(
+  let mailPack = { rfqSummary: null, attachments: [] };
+  try {
+    mailPack = await Promise.race([
+      loadFunctionalOwnRfqMailPack(
         prFlow,
         vendorMode,
         prId,
         pr?.purchaseType || pr?.purchase_type
-      );
+      ),
+      new Promise((resolve) =>
+        setTimeout(() => resolve({ rfqSummary: null, attachments: [] }), 5000)
+      ),
+    ]);
+  } catch (err) {
+    console.warn('PR submit mail pack failed:', err.message);
+  }
+
+  const approvalOptions = {
+    approverEmails: hodAssignment?.hodEmail ? [hodAssignment.hodEmail] : undefined,
+    approverName: hodAssignment?.hodName || undefined,
+    stageLabel: nextStep,
+    roleDisplayName: prFlow === 'functional' ? 'Selected Approver' : undefined,
+    rfqSummary: mailPack.rfqSummary,
+    attachments: mailPack.attachments,
+  };
+
+  try {
+    await sendPrApprovalPendingNotification(
+      pr,
+      'HOD Approver',
+      { name: user.name, email: user.email },
+      departmentId,
+      approvalOptions
+    );
+  } catch (err) {
+    console.error('PR submit approver mail failed:', err.message);
+    queuePrApprovalPendingNotification(
+      pr,
+      'HOD Approver',
+      { name: user.name, email: user.email },
+      departmentId,
+      approvalOptions
+    );
+  }
+
+  setImmediate(() => {
+    (async () => {
       queuePrRaisedNotification(
         pr,
         { name: user.name, email: user.email },
         isResubmit ? { isResubmit: true } : {}
-      );
-      queuePrApprovalPendingNotification(
-        pr,
-        'HOD Approver',
-        { name: user.name, email: user.email },
-        departmentId,
-        {
-          approverEmails: hodAssignment?.hodEmail ? [hodAssignment.hodEmail] : undefined,
-          approverName: hodAssignment?.hodName || undefined,
-          stageLabel: nextStep,
-          roleDisplayName: prFlow === 'functional' ? 'Selected Approver' : undefined,
-          rfqSummary: mailPack.rfqSummary,
-          attachments: mailPack.attachments,
-        }
       );
       // Requester FYI � PR raised / resubmitted and moved to first approval step
       queueRequesterStepProgressNotification(pr, {
@@ -1274,6 +1376,33 @@ async function createL2ApprovalTask(conn, prId, requesterEmail, departmentId) {
   );
 
   return assignee;
+}
+
+function resolvePoCreationBy(body, { prFlow, purchaseType, existing } = {}) {
+  const flow = prFlow === 'functional' ? 'functional' : 'standard';
+  const type = String(purchaseType || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  const invoiceFlow =
+    type === 'sass' ||
+    type === 'saas' ||
+    type === 'cloud_subscription' ||
+    type === 'online_purchase';
+  if (flow !== 'standard' || invoiceFlow) return 'scm';
+  const raw = body?.poCreationBy ?? body?.po_creation_by;
+  if (raw == null || String(raw).trim() === '') {
+    return existing === 'requester' ? 'requester' : 'scm';
+  }
+  return String(raw).trim().toLowerCase() === 'requester' ? 'requester' : 'scm';
+}
+
+async function persistPoCreationBy(db, prId, value) {
+  try {
+    await db.query(`UPDATE purchase_requests SET po_creation_by = ? WHERE id = ?`, [value, prId]);
+  } catch (err) {
+    if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
+  }
 }
 
 export async function createPurchaseRequest(user, body) {
@@ -1574,6 +1703,12 @@ export async function createPurchaseRequest(user, body) {
       if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
     }
 
+    await persistPoCreationBy(
+      conn,
+      prId,
+      resolvePoCreationBy(body, { prFlow, purchaseType: normalizedPurchaseType })
+    );
+
     if (isSass && sassVendor) {
       try {
         await conn.query(
@@ -1614,7 +1749,7 @@ export async function createPurchaseRequest(user, body) {
       if (isOnline || isSass || prFlow === 'functional') {
         hodAssignment = await createSelectedUserApprovalTask(conn, prId, selectedApprover.id);
       } else {
-        hodAssignment = await createHodApprovalTask(conn, prId, user.email, departmentId);
+        hodAssignment = await createHodApprovalTask(conn, prId, user.email, departmentId, user.id);
         if (hodAssignment.hodEmail) {
           await conn.query(
             `UPDATE users SET supervisor_email = ?, supervisor_name = ? WHERE id = ?`,
@@ -1680,7 +1815,7 @@ export async function createPurchaseRequest(user, body) {
             ? `User Approval 1 of ${selectedApprovers.length}`
             : 'User Approval'
           : 'L1 Manager Approval';
-      queuePrSubmitNotifications({
+      await queuePrSubmitNotifications({
         pr,
         user,
         departmentId,
@@ -1948,6 +2083,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
       requester: row.requester_name,
       vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
       prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
+      poCreationBy: row.po_creation_by === 'requester' ? 'requester' : 'scm',
       currentStage: row.current_stage,
       items: Number(row.item_count || 0),
       requestType: row.request_type,
@@ -2054,11 +2190,15 @@ export async function listPurchaseRequests(user, filters = {}) {
       );
     }
   } else if (user.role === 'SCM Manager') {
+    sql += ` AND NOT (COALESCE(pr.po_creation_by, 'scm') = 'requester' AND pr.status = ?)`;
+    params.push(PR_STATUS.PENDING_SCM_PO);
     if (filters.pendingOnly) {
       sql += ' AND pr.status = ?';
       params.push(PR_STATUS.PENDING_BUSINESS_APPROVAL);
     }
   } else if (user.role === 'SCM Buyer') {
+    sql += ` AND NOT (COALESCE(pr.po_creation_by, 'scm') = 'requester' AND pr.status IN (?, ?))`;
+    params.push(PR_STATUS.PENDING_SCM_PO, PR_STATUS.APPROVED);
     if (filters.pendingOnly) {
       sql += ' AND pr.status = ?';
       params.push(PR_STATUS.PENDING_SCM_PO);
@@ -2108,6 +2248,7 @@ export async function listPurchaseRequests(user, filters = {}) {
     JOIN users u ON u.id = pr.requester_id
     LEFT JOIN entity_masters e ON e.id = pr.entity_id
     WHERE 1=1
+      AND COALESCE(pr.po_creation_by, 'scm') <> 'requester'
       AND (
         pr.status = ?
         OR (
@@ -3790,6 +3931,16 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
       if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
     }
 
+    await persistPoCreationBy(
+      db,
+      prId,
+      resolvePoCreationBy(body, {
+        prFlow,
+        purchaseType: normalizedPurchaseType,
+        existing: pr.po_creation_by,
+      })
+    );
+
     if (normalizedPurchaseType === 'sass') {
       const { normalizeSubscriptionMode, normalizeBillingFrequency, upsertPendingCloudSubscription } =
         await import('./cloudSubscriptionService.js');
@@ -4085,6 +4236,16 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
       if (err?.code !== 'ER_BAD_FIELD_ERROR') throw err;
     }
 
+    await persistPoCreationBy(
+      conn,
+      prId,
+      resolvePoCreationBy(body, {
+        prFlow: body.prFlow || body.pr_flow || pr.pr_flow,
+        purchaseType: normalizedPurchaseType,
+        existing: pr.po_creation_by,
+      })
+    );
+
     await conn.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
     for (const item of lineItems) {
       await insertPrLineItem(conn, prId, item);
@@ -4145,7 +4306,7 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
 
 const ADMIN_SEND_BACK_ROLES_LOCAL = ADMIN_SEND_BACK_ROLES;
 
-async function reopenPurchaseOrderForAdminSendBack(conn, poId, poStatus) {
+async function reopenPurchaseOrderForAdminSendBack(conn, poId, poStatus, poSignStep = null) {
   try {
     await conn.query(`DELETE FROM payments WHERE po_id = ?`, [poId]);
     await conn.query(`DELETE FROM invoices WHERE po_id = ?`, [poId]);
@@ -4173,6 +4334,7 @@ async function reopenPurchaseOrderForAdminSendBack(conn, poId, poStatus) {
   }
 
   const clearSign = poStatus === 'pending_approval';
+  const signStepSql = poSignStep ? ', po_sign_step = ?' : '';
   await conn.query(
     `UPDATE purchase_orders SET
        status = ?,
@@ -4180,7 +4342,8 @@ async function reopenPurchaseOrderForAdminSendBack(conn, poId, poStatus) {
        signer_id = ${clearSign ? 'NULL' : 'signer_id'},
        signature_name = ${clearSign ? 'NULL' : 'signature_name'},
        signer_comments = ${clearSign ? 'NULL' : 'signer_comments'},
-       signed_pdf_path = ${clearSign ? 'NULL' : 'signed_pdf_path'},
+       signed_pdf_path = ${clearSign ? 'NULL' : 'signed_pdf_path'}
+       ${signStepSql},
        vendor_acceptance_status = NULL,
        vendor_acceptance_mode = NULL,
        vendor_acceptance_remarks = NULL,
@@ -4191,7 +4354,7 @@ async function reopenPurchaseOrderForAdminSendBack(conn, poId, poStatus) {
        cancelled_at = NULL,
        updated_at = NOW()
      WHERE id = ?`,
-    [poStatus, poId]
+    poSignStep ? [poStatus, poSignStep, poId] : [poStatus, poId]
   );
 }
 
@@ -4244,11 +4407,14 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
           );
       const poId = Number(anyPo[0]?.id || 0);
       if (!poId) {
+        const requesterPo = String(pr.po_creation_by || 'scm') === 'requester';
         throw new Error(
-          'This PR has no purchase order. Send it back to SCM Buyer Create PO or an earlier step.'
+          requesterPo
+            ? 'This PR has no purchase order. Send it back to Requester Create PO or an earlier step.'
+            : 'This PR has no purchase order. Send it back to SCM Buyer Create PO or an earlier step.'
         );
       }
-      await reopenPurchaseOrderForAdminSendBack(conn, poId, poStepStatus);
+      await reopenPurchaseOrderForAdminSendBack(conn, poId, poStepStatus, applyResult.target?.poSignStep || null);
     } else {
       await conn.query(
         `UPDATE purchase_orders
@@ -4378,7 +4544,13 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
       if (!firstApproverId) throw new Error('Select L1 Manager / User Approver before resubmitting');
       hodAssignment = await createSelectedUserApprovalTask(conn, prId, firstApproverId);
     } else {
-      hodAssignment = await createHodApprovalTask(conn, prId, user.email, current.department_id);
+      hodAssignment = await createHodApprovalTask(
+        conn,
+        prId,
+        user.email,
+        current.department_id,
+        user.id
+      );
       if (hodAssignment.hodEmail) {
         await conn.query(
           `UPDATE users SET supervisor_email = ?, supervisor_name = ? WHERE id = ?`,
@@ -4400,7 +4572,7 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
         ? `User Approval 1 of ${chainLen}`
         : 'User Approval'
       : 'L1 Manager Approval';
-    queuePrSubmitNotifications({
+    await queuePrSubmitNotifications({
       pr: updatedPr,
       user,
       departmentId: current.department_id,
@@ -4426,7 +4598,61 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
   }
 }
 
+/** L2 already approved a requester-created PO, but the next step was SCM Final RFQ. Hand it to Create PO. */
+export async function ensureRequesterCreatePoTasks(userOrId) {
+  const { userId } = requesterIdentityParams(userOrId);
+  if (!userId) return;
+  const [rows] = await pool.query(
+    `SELECT pr.id
+     FROM purchase_requests pr
+     WHERE pr.requester_id = ?
+       AND COALESCE(pr.po_creation_by, 'scm') = 'requester'
+       AND pr.status = ?
+       AND NOT EXISTS (SELECT 1 FROM purchase_orders po WHERE po.pr_id = pr.id)
+       AND EXISTS (
+         SELECT 1 FROM workflow_tasks wt
+         WHERE wt.pr_id = pr.id
+           AND wt.status = 'pending'
+           AND wt.task_type = 'RFQ_ENTRY'
+           AND wt.assigned_role = 'SCM Buyer'
+       )
+       AND EXISTS (
+         SELECT 1 FROM pr_approvals a
+         WHERE a.pr_id = pr.id AND a.stage = 'RFQ_L2_REVIEW' AND a.action = 'approve'
+       )`,
+    [userId, PR_STATUS.APPROVED]
+  );
+  for (const row of rows) {
+    await pool.query(
+      `UPDATE workflow_tasks
+       SET status = 'completed', completed_at = NOW()
+       WHERE pr_id = ? AND status = 'pending' AND task_type = 'RFQ_ENTRY' AND assigned_role = 'SCM Buyer'`,
+      [row.id]
+    );
+    await pool.query(
+      `UPDATE purchase_requests SET status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
+      [PR_STATUS.PENDING_SCM_PO, STAGE.SCM_PO_CREATE, row.id]
+    );
+    const [open] = await pool.query(
+      `SELECT id FROM workflow_tasks
+       WHERE pr_id = ? AND task_type = 'RFQ_POST_APPROVAL' AND assigned_role = 'Requester' AND status = 'pending'
+       LIMIT 1`,
+      [row.id]
+    );
+    if (!open.length) {
+      const due = new Date();
+      due.setDate(due.getDate() + 2);
+      await pool.query(
+        `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+         VALUES (?, 'RFQ_POST_APPROVAL', 'Requester', ?, 'pending', ?)`,
+        [row.id, userId, due.toISOString().split('T')[0]]
+      );
+    }
+  }
+}
+
 export async function listRequesterTasks(userOrId) {
+  await ensureRequesterCreatePoTasks(userOrId);
   await ensureOwnVendorRequesterRfqTasks(userOrId);
   const { userId, userEmail } = requesterIdentityParams(userOrId);
   const [rows] = await pool.query(
@@ -4472,6 +4698,9 @@ export async function listRequesterTasks(userOrId) {
     const isUserApproval = r.task_type === 'PR_APPROVAL';
     const isVendorAcceptance = r.task_type === 'PO_VENDOR_ACCEPTANCE';
     const isInvoiceUpload = r.task_type === 'INVOICE_UPLOAD';
+    const isCreatePo =
+      r.task_type === 'RFQ_POST_APPROVAL' || r.task_type === 'PO_REVISION';
+    const isBuyerVerify = r.task_type === 'PO_BUYER_VERIFY';
     const isSass = isSassPurchaseType(r.purchase_type);
     const isOnline = isOnlinePurchaseType(r.purchase_type);
     const isInvoiceFlow = isSass || isOnline;
@@ -4488,7 +4717,9 @@ export async function listRequesterTasks(userOrId) {
       prNumber: isVendorAcceptance && r.po_number ? r.po_number : r.pr_number,
       title: isVendorAcceptance
         ? `${r.title} � Vendor PO Acceptance`
-        : isInvoiceUpload
+        : isBuyerVerify
+          ? `${r.title} � Buyer Final Verify`
+          : isInvoiceUpload
           ? `${r.title} � Invoice Upload`
           : r.title,
       department: r.department_name,
@@ -4506,24 +4737,38 @@ export async function listRequesterTasks(userOrId) {
         ? 'User Approval'
           : isVendorAcceptance
             ? 'Vendor PO Acceptance'
+            : isBuyerVerify
+              ? 'Buyer Final Verify'
             : isInvoiceUpload
               ? 'Invoice Upload'
-        : r.task_type === 'RFQ_ENTRY'
+        : isCreatePo
+          ? 'Create PO'
+          : r.task_type === 'RFQ_ENTRY'
           ? 'RFQ Entry'
           : r.task_type.replace(/_/g, ' '),
       actionPath: isUserApproval
         ? `/tasks?prId=${r.pr_id}`
         : isVendorAcceptance
           ? '/requester/vendor-po-acceptance'
+          : isBuyerVerify
+            ? '/scm/buyer-final-verify'
           : isInvoiceUpload
             ? '/requester/vendor-invoice'
+            : isCreatePo
+              ? r.po_id
+                ? `/scm/create-po?poId=${r.po_id}&prId=${r.pr_id}&from=tasks`
+                : `/scm/create-po?prId=${r.pr_id}&from=tasks`
         : `/requester/rfq-entry/${r.pr_id}?taskId=${r.id}`,
       cta: isUserApproval
         ? 'Review & Approve'
         : isVendorAcceptance
           ? 'Open Vendor Acceptance'
+          : isBuyerVerify
+            ? 'Open Buyer Final Verify'
           : isInvoiceUpload
             ? 'Upload Invoice'
+            : isCreatePo
+              ? 'Create PO'
             : 'Start RFQ Entry',
     };
   });
@@ -4751,6 +4996,9 @@ async function listMyApprovalDecisions(user) {
 }
 
 export async function listTasks(user) {
+  if (user.role === 'Requester') {
+    await ensureRequesterCreatePoTasks(user);
+  }
   const roleConfig = ROLE_STAGE_MAP[user.role];
   const postRfqConfig = POST_RFQ_ROLE_MAP[user.role];
   const postRfqStatuses = new Set(Object.values(POST_RFQ_ROLE_MAP).map((c) => c.status));
@@ -4937,13 +5185,20 @@ export async function listTasks(user) {
           ? recommendedQuote
           : pr.totalAmount;
 
-    return buildTaskRow(pr, {
+    const row = buildTaskRow(pr, {
       status,
       isPostRfq,
       decidedAt: !isPending ? decision?.decidedAt : null,
       displayAmount,
       taskSla: isPending ? taskSlaByPr.get(Number(pr.id)) : null,
     });
+    if (isPending && pr.poCreationBy === 'requester' && pr.status === PR_STATUS.PENDING_SCM_PO) {
+      row.isPostRfq = false;
+      row.isRequesterCreatePo = true;
+      row.actionPath = `/scm/create-po?prId=${pr.id}&from=tasks`;
+      row.statusUI = 'Create PO';
+    }
+    return row;
   });
 
   // SCM Buyer final verify after Manager sign-off
@@ -4960,6 +5215,7 @@ export async function listTasks(user) {
        LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
          AND wt.task_type = 'PO_BUYER_VERIFY' AND wt.status = 'pending'
        WHERE po.status = 'pending_buyer_verify'
+         AND COALESCE(pr.po_creation_by, 'scm') <> 'requester'
        ORDER BY po.signed_at DESC, po.updated_at DESC`
     );
     for (const row of buyerVerifyRows) {
@@ -5062,6 +5318,8 @@ export async function listTasks(user) {
        LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
          AND wt.task_type = 'PO_APPROVAL' AND wt.status = 'pending'
        WHERE po.status = 'pending_approval'
+         AND COALESCE(pr.po_creation_by, 'scm') <> 'requester'
+         AND COALESCE(po.po_sign_step, '') NOT IN ('l1', 'mugesh', 'requester', 'signed')
        ORDER BY po.updated_at DESC`
     );
     for (const row of poSignRows) {
@@ -5098,7 +5356,125 @@ export async function listTasks(user) {
     }
   }
 
-  // Cloud Subscription � Mugesh invoice upload (Mugesh only � never L2 / Srivaths)
+  // Requester-created PO: Mugesh Sign & Upload. Not an SCM task.
+  {
+    const [requesterPoRows] = await pool.query(
+      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, po.po_sign_step,
+              COALESCE(NULLIF(TRIM(pr.title), ''), po.po_number) AS title,
+              COALESCE(pr.priority, 'MEDIUM') AS priority,
+              COALESCE(d.name, '') AS department_name,
+              COALESCE(u.name, '') AS requester_name,
+              wt.created_at AS task_created_at, wt.due_date, wt.task_type,
+              e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
+       FROM workflow_tasks wt
+       JOIN purchase_orders po ON po.pr_id = wt.pr_id
+         AND po.status = 'pending_approval'
+         AND po.po_sign_step = CASE WHEN wt.task_type = 'PO_MUGESH_SIGN' THEN 'mugesh' ELSE 'l1' END
+       LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+       LEFT JOIN departments d ON d.id = pr.department_id
+       LEFT JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)
+       WHERE wt.status = 'pending'
+         AND wt.assigned_user_id = ?
+         AND wt.task_type IN ('PO_APPROVAL', 'PO_MUGESH_SIGN')
+       ORDER BY wt.created_at DESC`,
+      [user.id]
+    );
+    for (const row of requesterPoRows) {
+      const isMugesh = row.task_type === 'PO_MUGESH_SIGN' || row.po_sign_step === 'mugesh';
+      const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS * 2);
+      tasks.push({
+        id: isMugesh ? `po-mugesh-${row.po_id}` : `po-l1-${row.po_id}`,
+        taskId: row.po_id,
+        poId: row.po_id,
+        prId: row.pr_id || null,
+        prNumber: row.po_number,
+        title: isMugesh ? `${row.title} — Sign & Upload` : `${row.title} — L1 PO Approval`,
+        requester: row.requester_name,
+        department: row.department_name || '',
+        entityId: row.entity_id || null,
+        entityName: row.entity_name || '',
+        entityCode: row.entity_code || '',
+        totalAmount: Number(row.grand_total),
+        priority: mapPriorityToFrontend(row.priority),
+        status: 'pending_approval',
+        statusUI: isMugesh ? 'Sign & Upload' : 'L1 Manager Approval',
+        submittedDate: sla.submittedDate,
+        dueDate: sla.dueDate,
+        slaRemaining: sla.slaRemaining,
+        isOverdue: sla.isOverdue,
+        lineItems: 0,
+        requestType: 'PO',
+        requesterRole: 'Requester',
+        requesterAvatar: 'R',
+        justification: isMugesh
+          ? 'Upload the signed PO'
+          : 'Requester PO awaiting L1 Manager approval',
+        isPostRfq: false,
+        isRequesterPoL1: !isMugesh,
+        isMugeshSign: isMugesh,
+        actionPath: isMugesh ? '/scm/po-approval' : undefined,
+      });
+    }
+
+    const [requesterReviseRows] = await pool.query(
+      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id,
+              COALESCE(NULLIF(TRIM(pr.title), ''), po.po_number) AS title,
+              COALESCE(pr.priority, 'MEDIUM') AS priority,
+              COALESCE(d.name, '') AS department_name,
+              COALESCE(u.name, '') AS requester_name,
+              wt.created_at AS task_created_at, wt.due_date,
+              e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
+       FROM workflow_tasks wt
+       JOIN purchase_orders po ON po.pr_id = wt.pr_id
+         AND po.status = 'draft'
+         AND po.po_sign_step = 'requester'
+       LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+       LEFT JOIN departments d ON d.id = pr.department_id
+       LEFT JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)
+       WHERE wt.status = 'pending'
+         AND wt.assigned_user_id = ?
+         AND wt.task_type = 'PO_REVISION'
+       ORDER BY wt.created_at DESC`,
+      [user.id]
+    );
+    for (const row of requesterReviseRows) {
+      const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS * 2);
+      tasks.push({
+        id: `po-requester-revise-${row.po_id}`,
+        taskId: row.po_id,
+        poId: row.po_id,
+        prId: row.pr_id || null,
+        prNumber: row.po_number,
+        title: `${row.title} — Revise PO`,
+        requester: row.requester_name,
+        department: row.department_name || '',
+        entityId: row.entity_id || null,
+        entityName: row.entity_name || '',
+        entityCode: row.entity_code || '',
+        totalAmount: Number(row.grand_total),
+        priority: mapPriorityToFrontend(row.priority),
+        status: 'pending_approval',
+        statusUI: 'Sent Back — Revise PO',
+        submittedDate: sla.submittedDate,
+        dueDate: sla.dueDate,
+        slaRemaining: sla.slaRemaining,
+        isOverdue: sla.isOverdue,
+        lineItems: 0,
+        requestType: 'PO',
+        requesterRole: 'L1 Manager',
+        requesterAvatar: 'L',
+        justification: 'L1 Manager sent the PO back — revise and resubmit',
+        isPostRfq: false,
+        isPoRevise: true,
+        isRequesterCreatePo: true,
+        actionPath: `/scm/create-po?poId=${row.po_id}&from=tasks`,
+      });
+    }
+  }
+
+  // Cloud Subscription — Mugesh invoice upload (Mugesh only — never L2 / Srivaths)
   {
     const [invoiceTaskRows] = await pool.query(
       `SELECT wt.id AS task_id, wt.pr_id, wt.created_at AS task_created_at, wt.due_date,

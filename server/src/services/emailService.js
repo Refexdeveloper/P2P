@@ -627,6 +627,35 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
     primaryName = primaryName || fromTask.name;
   }
 
+  if (!emails.length && assignedRole === 'HOD Approver') {
+    const requesterId = pr?.requesterId || pr?.requester_id;
+    if (requesterId) {
+      const [supRows] = await pool.query(
+        `SELECT supervisor_email, supervisor_name FROM users WHERE id = ? LIMIT 1`,
+        [requesterId]
+      );
+      let supEmail = String(supRows[0]?.supervisor_email || '').trim();
+      let supName = supRows[0]?.supervisor_name || '';
+      if (supEmail && !supEmail.includes('@')) {
+        const local = supEmail.toLowerCase();
+        const [matchRows] = await pool.query(
+          `SELECT email, name FROM users
+           WHERE is_active = 1 AND LOWER(SUBSTRING_INDEX(email, '@', 1)) = ?
+           LIMIT 1`,
+          [local]
+        );
+        if (matchRows[0]?.email) {
+          supEmail = String(matchRows[0].email).trim();
+          supName = supName || matchRows[0].name || '';
+        }
+      }
+      if (supEmail.includes('@')) {
+        emails = [supEmail];
+        primaryName = primaryName || supName || supEmail.split('@')[0];
+      }
+    }
+  }
+
   if (!emails.length) {
     const approvers = await getApproverRecipients(assignedRole, departmentId);
     emails = [...new Set(approvers.map((a) => a.email).filter(Boolean))];

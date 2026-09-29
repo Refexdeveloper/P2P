@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireRoles, requireRolesOrPermissions } from '../middleware/auth.js';
+import { isMugeshActor } from '../templates/emailUtils.js';
 import {
   getPoCreateContext,
   getManualPoPrefillByPrNumber,
@@ -35,6 +36,8 @@ import {
   assertVendorAcceptanceActor,
   getCfoPoInsights,
   assertRequesterPoDocumentAccess,
+  decideRequesterPoL1,
+  uploadMugeshSignedPo,
 } from '../services/poService.js';
 import { getPoFulfillmentSummary } from '../services/accountsFulfillmentService.js';
 import { sendStoredFile } from '../utils/sendStoredFile.js';
@@ -165,7 +168,7 @@ router.get(
 );
 
 /** Preview next PO/WO number for an entity (does not consume sequence). */
-router.get('/next-number', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/next-number', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'), async (req, res) => {
   try {
     const entityId = Number(req.query.entityId);
     if (!entityId) return res.status(400).json({ message: 'entityId is required' });
@@ -276,7 +279,8 @@ router.post('/excel-import', poImportRoles, async (req, res) => {
 });
 
 const letterheadRoles = requireRoles('SCM Buyer', 'Super Admin');
-const letterheadReadRoles = requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin');
+const letterheadMasterWriteRoles = requireRoles('SCM Buyer', 'Super Admin', 'Requester');
+const letterheadReadRoles = requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester');
 
 router.get('/letterheads', letterheadReadRoles, async (req, res) => {
   try {
@@ -299,7 +303,7 @@ router.get('/letterheads/:id', letterheadReadRoles, async (req, res) => {
   }
 });
 
-router.post('/letterheads', letterheadRoles, async (req, res) => {
+router.post('/letterheads', letterheadMasterWriteRoles, async (req, res) => {
   try {
     const data = await createLetterheadMaster(req.body);
     res.json({ data, message: 'Letterhead created' });
@@ -308,7 +312,7 @@ router.post('/letterheads', letterheadRoles, async (req, res) => {
   }
 });
 
-router.put('/letterheads/:id', letterheadRoles, async (req, res) => {
+router.put('/letterheads/:id', letterheadMasterWriteRoles, async (req, res) => {
   try {
     const data = await updateLetterheadMaster(Number(req.params.id), req.body);
     res.json({ data, message: 'Letterhead updated' });
@@ -372,7 +376,7 @@ router.get('/pr-reference', requireRoles('SCM Buyer', 'Super Admin'), async (req
   }
 });
 
-router.get('/pr/:prId/context', requireRoles('SCM Buyer'), async (req, res) => {
+router.get('/pr/:prId/context', requireRoles('SCM Buyer', 'Requester'), async (req, res) => {
   try {
     const data = await getPoCreateContext(req.user, Number(req.params.prId));
     res.json({ data });
@@ -381,7 +385,7 @@ router.get('/pr/:prId/context', requireRoles('SCM Buyer'), async (req, res) => {
   }
 });
 
-router.post('/pr/:prId/preview-document', requireRoles('SCM Buyer'), async (req, res) => {
+router.post('/pr/:prId/preview-document', requireRoles('SCM Buyer', 'Requester', 'Super Admin'), async (req, res) => {
   try {
     const po = await buildPoPreviewDocument(req.user, Number(req.params.prId), req.body);
     const html = buildPoHtml(po);
@@ -392,7 +396,7 @@ router.post('/pr/:prId/preview-document', requireRoles('SCM Buyer'), async (req,
   }
 });
 
-router.post('/pr/:prId/preview-pdf', requireRoles('SCM Buyer'), async (req, res) => {
+router.post('/pr/:prId/preview-pdf', requireRoles('SCM Buyer', 'Requester', 'Super Admin'), async (req, res) => {
   try {
     // Same PO payload + HTML path as preview-document → PDF matches preview exactly
     const po = await buildPoPreviewDocument(req.user, Number(req.params.prId), req.body);
@@ -406,17 +410,20 @@ router.post('/pr/:prId/preview-pdf', requireRoles('SCM Buyer'), async (req, res)
   }
 });
 
-router.post('/pr/:prId', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
+router.post('/pr/:prId', requireRoles('SCM Buyer', 'Requester', 'Super Admin'), async (req, res) => {
   try {
     const data = await createPurchaseOrder(req.user, Number(req.params.prId), req.body);
     const statusRaw = String(data.statusRaw || data.status || '').toLowerCase();
     const pendingManager =
       statusRaw === 'pending_approval' || statusRaw === 'pendingapproval';
+    const toMugesh = String(data.poSignStep || '') === 'mugesh';
     res.json({
       data,
-      message: pendingManager
-        ? `PO ${data.poNumber} sent to SCM Manager for sign / approval`
-        : `PO ${data.poNumber} created and sent for SCM Manager approval`,
+      message: toMugesh
+        ? `PO ${data.poNumber} sent to Mugesh for sign and upload`
+        : pendingManager
+          ? `PO ${data.poNumber} sent to SCM Manager for sign / approval`
+          : `PO ${data.poNumber} created and sent for SCM Manager approval`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -442,7 +449,7 @@ router.post('/manual', requireRoles('SCM Buyer', 'Super Admin'), async (req, res
   }
 });
 
-router.post('/draft', requireRoles('SCM Buyer', 'Super Admin'), async (req, res) => {
+router.post('/draft', requireRoles('SCM Buyer', 'Requester', 'Super Admin'), async (req, res) => {
   try {
     const data = await savePurchaseOrderDraft(req.user, req.body || {});
     res.json({ data, message: `Draft saved — ${data.poNumber}` });
@@ -484,7 +491,7 @@ router.get('/pending', requireRoles('SCM Manager'), async (req, res) => {
   }
 });
 
-router.get('/pending-buyer-verify', requireRoles('SCM Buyer'), async (req, res) => {
+router.get('/pending-buyer-verify', requireRoles('SCM Buyer', 'Requester'), async (req, res) => {
   try {
     const data = await listPurchaseOrders(req.user, { buyerVerifyOnly: true });
     res.json({ data });
@@ -502,7 +509,7 @@ router.get('/vendor-acceptance', requireRoles('Requester', 'SCM Buyer', 'SCM Man
   }
 });
 
-router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'), async (req, res) => {
   try {
     const page = req.query.page != null ? Number(req.query.page) : 1;
     const limit = req.query.limit != null ? Number(req.query.limit) : 10;
@@ -538,7 +545,11 @@ router.get('/track', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), as
   }
 });
 
-router.get('/', requireRoles('SCM Buyer', 'SCM Manager'), async (req, res) => {
+router.get('/', async (req, res) => {
+  const mugesh = isMugeshActor(req.user);
+  if (!mugesh && !['SCM Buyer', 'SCM Manager'].includes(req.user.role)) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
   try {
     const pendingOnly = req.query.pending === 'true';
     const buyerVerifyOnly = req.query.buyerVerify === 'true';
@@ -688,7 +699,7 @@ router.get('/:id/comparison', requireRoles('SCM Manager', 'SCM Buyer', 'Super Ad
   }
 });
 
-router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), async (req, res) => {
+router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer', 'Requester', 'Super Admin'), async (req, res) => {
   try {
     const po = await buildPoPreviewForPo(req.user, Number(req.params.id), req.body);
     const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
@@ -700,7 +711,7 @@ router.post('/:id/preview-document', requireRoles('SCM Manager', 'SCM Buyer', 'S
   }
 });
 
-router.post('/:id/preview-pdf', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), async (req, res) => {
+router.post('/:id/preview-pdf', requireRoles('SCM Manager', 'SCM Buyer', 'Requester', 'Super Admin'), async (req, res) => {
   try {
     // Same PO payload + HTML path as preview-document → PDF matches preview exactly
     const po = await buildPoPreviewForPo(req.user, Number(req.params.id), req.body);
@@ -714,18 +725,51 @@ router.post('/:id/preview-pdf', requireRoles('SCM Manager', 'SCM Buyer', 'Super 
   }
 });
 
-router.put('/:id', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), async (req, res) => {
+router.put('/:id', requireRoles('SCM Manager', 'SCM Buyer', 'Requester', 'Super Admin'), async (req, res) => {
   try {
     const data = await updatePurchaseOrder(req.user, Number(req.params.id), req.body);
     const statusRaw = String(data.statusRaw || data.status || '').toLowerCase();
     const sentToManager =
       statusRaw === 'pending_approval' || statusRaw === 'pendingapproval';
+    const toMugesh = String(data.poSignStep || '') === 'mugesh';
     res.json({
       data,
-      message: sentToManager
-        ? `PO ${data.poNumber} sent to SCM Manager for sign / approval`
-        : `PO ${data.poNumber} updated successfully`,
+      message: toMugesh
+        ? `PO ${data.poNumber} sent to Mugesh for sign and upload`
+        : sentToManager
+          ? `PO ${data.poNumber} sent to SCM Manager for sign / approval`
+          : `PO ${data.poNumber} updated successfully`,
     });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/requester-l1', requireRoles('HOD Approver', 'Super Admin'), async (req, res) => {
+  try {
+    const action = req.body?.action || 'approve';
+    const data = await decideRequesterPoL1(
+      req.user,
+      Number(req.params.id),
+      action,
+      req.body?.remarks
+    );
+    const message =
+      action === 'reject'
+        ? 'PO rejected'
+        : action === 'send_back' || action === 'return'
+          ? 'PO sent back to the requester'
+          : 'PO approved and sent to Mugesh for sign and upload';
+    res.json({ data, message });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/mugesh-sign', async (req, res) => {
+  try {
+    const data = await uploadMugeshSignedPo(req.user, Number(req.params.id), req.body || {});
+    res.json({ data, message: 'Signed PO uploaded. Vendor acceptance is with the requester.' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -814,11 +858,13 @@ router.delete('/:id', requireRoles('Super Admin'), async (req, res) => {
   }
 });
 
-router.post('/:id/final-verify', requireRoles('SCM Buyer'), async (req, res) => {
+router.post('/:id/final-verify', requireRoles('SCM Buyer', 'Requester'), async (req, res) => {
   try {
     const data = await finalVerifyPurchaseOrder(req.user, Number(req.params.id), req.body?.remarks);
-    const releaseNote =
-      data?.poReleaseMailSent
+    const requesterVerify = req.user.role === 'Requester';
+    const releaseNote = requesterVerify
+      ? 'PO verified. Buyer final verification is complete. SCM team was not notified.'
+      : data?.poReleaseMailSent
         ? 'PO verified. PO release mail sent to requester, L1, and SCM Manager (Own vendor). Vendor is not emailed.'
         : 'PO verified. PO release mail skipped (SCM vendor / Manual) — requester, L1, and SCM Manager not notified. Vendor is not emailed.';
     res.json({

@@ -352,6 +352,35 @@ async function fetchRefexOneUsersRaw(force = false, { strict = false } = {}) {
   return usersCache.users;
 }
 
+/** Designation from the employee directory. Empty when the directory has none. */
+export async function lookupEmployeeDesignation(email) {
+  const target = String(email || '').trim().toLowerCase();
+  if (!target) return '';
+  let users = [];
+  try {
+    users = await fetchRefexOneUsersRaw(false);
+  } catch {
+    return '';
+  }
+  const raw = (users || []).find(
+    (row) => String(row?.email || '').trim().toLowerCase() === target
+  );
+  if (!raw || typeof raw !== 'object') return '';
+  const keys = [
+    'designation',
+    'job_title',
+    'jobTitle',
+    'employee_designation',
+    'position',
+    'title',
+  ];
+  for (const key of keys) {
+    const value = String(raw[key] || '').trim();
+    if (value) return value.slice(0, 150);
+  }
+  return '';
+}
+
 async function findRefexOneUserInDirectory(email) {
   const normalizedEmail = String(email || '').toLowerCase().trim();
   if (!normalizedEmail) return null;

@@ -1152,6 +1152,7 @@ export default function CreatePOPage() {
   const [cancelError, setCancelError] = useState('');
   const cancelFileRef = useRef<HTMLInputElement>(null);
   const [scmManager, setScmManager] = useState<{ name: string; email: string } | null>(null);
+  const requesterSendsToMugesh = user?.role === 'Requester';
   const [activeTab, setActiveTab] = useState<'details' | 'lineItems' | 'terms' | 'preview'>('details');
   const [draftSaved, setDraftSaved] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
@@ -2009,6 +2010,7 @@ export default function CreatePOPage() {
     if (!needsCreateForm) return;
     let cancelled = false;
     (async () => {
+      if (user?.role === 'Requester') return;
       try {
         const res = await poApi.getScmManager();
         if (!cancelled && res.data) {
@@ -2026,7 +2028,7 @@ export default function CreatePOPage() {
     return () => {
       cancelled = true;
     };
-  }, [needsCreateForm]);
+  }, [needsCreateForm, user?.role]);
 
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;
@@ -3820,7 +3822,9 @@ export default function CreatePOPage() {
           const mgr = scmManager?.name || 'Rajeev V';
           alert(
             updateRes.message ||
-              `${saved?.poNumber || poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
+              (user?.role === 'Requester'
+                ? `${saved?.poNumber || poNumber || docLabel} sent to Mugesh for sign and upload`
+                : `${saved?.poNumber || poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`)
           );
           navigate('/scm/create-po');
           return;
@@ -3847,7 +3851,9 @@ export default function CreatePOPage() {
         const mgr = scmManager?.name || 'Rajeev V';
         alert(
           res.message ||
-            `${data.poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`
+            (user?.role === 'Requester'
+              ? `${data.poNumber || docLabel} sent to Mugesh for sign and upload`
+              : `${data.poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`)
         );
       }
       try {
@@ -3890,10 +3896,14 @@ export default function CreatePOPage() {
                     PO/WO Workspace
                   </h1>
                   <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
-                    Create a purchase order or work order from a ready PR, or start a manual PO
+                    {user?.role === 'Requester'
+                      ? 'Create the purchase order when your PR is ready for you'
+                      : 'Create a purchase order or work order from a ready PR, or start a manual PO'}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {user?.role !== 'Requester' && (
+                  <>
                   <button
                     type="button"
                     onClick={() => navigate('/scm/create-po?manual=1')}
@@ -3918,6 +3928,8 @@ export default function CreatePOPage() {
                     <i className="ri-file-excel-2-line"></i>
                     Sample CSV
                   </button>
+                  </>
+                  )}
                 </div>
               </div>
             </header>
@@ -3943,7 +3955,11 @@ export default function CreatePOPage() {
           <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
             <div>
               <h1 className="text-lg font-bold text-gray-900">{poNumber}</h1>
-              <p className="text-sm text-gray-500">Refex PO document — sent for SCM Manager approval</p>
+              <p className="text-sm text-gray-500">
+                {user?.role === 'Requester'
+                  ? 'Refex PO document — sent to Mugesh for sign and upload'
+                  : 'Refex PO document — sent for SCM Manager approval'}
+              </p>
             </div>
             <div className="flex gap-2">
               <button onClick={() => navigate('/scm/create-po')} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">
@@ -4101,6 +4117,12 @@ export default function CreatePOPage() {
       setCancelSubmitting(false);
     }
   };
+
+  const nextApproverName = requesterSendsToMugesh ? 'Mugesh' : scmManager?.name || 'Rajeev V';
+  const nextApproverEmail = requesterSendsToMugesh
+    ? 'mugesh.m@refex.co.in'
+    : scmManager?.email || '';
+  const nextApproverRole = requesterSendsToMugesh ? 'Mugesh' : 'SCM Manager';
 
   return (
     <DashboardLayout>
@@ -4580,7 +4602,9 @@ export default function CreatePOPage() {
                           importedPoNumber.trim()
                             ? 'Imported number'
                             : poNumber.toUpperCase().startsWith('DRAFT-')
-                              ? 'Draft — edit or auto-assign on send to SCM Manager'
+                              ? requesterSendsToMugesh
+                                ? 'Draft — edit or auto-assign on send to Mugesh'
+                                : 'Draft — edit or auto-assign on send to SCM Manager'
                               : 'PO / WO number'
                         }
                         maxLength={40}
@@ -4588,7 +4612,9 @@ export default function CreatePOPage() {
                       />
                       <p className="text-[11px] text-gray-500 mt-1">
                         {poNumber.toUpperCase().startsWith('DRAFT-')
-                          ? 'Draft number — you can edit the official PO/WO number before / when sending to SCM Manager'
+                          ? requesterSendsToMugesh
+                            ? 'Draft number — you can edit the official PO/WO number before sending to Mugesh'
+                            : 'Draft number — you can edit the official PO/WO number before / when sending to SCM Manager'
                           : importedPoNumber.trim()
                             ? 'Imported / historical number'
                             : 'This number prints on the PDF. Edit anytime before send for approval.'}
@@ -5701,13 +5727,17 @@ export default function CreatePOPage() {
                               poEditStatus !== 'draft'
                             ? 'Admin edit — saves document changes without changing approval status'
                           : poEditStatus === 'draft'
-                            ? `Saving will send this draft to SCM Manager${scmManager?.name ? ` (${scmManager.name})` : ''} for approval`
+                            ? requesterSendsToMugesh
+                              ? 'Saving will send this draft to Mugesh for sign and upload'
+                              : `Saving will send this draft to SCM Manager${scmManager?.name ? ` (${scmManager.name})` : ''} for approval`
                             : 'Updated PO stays pending until you sign from PO Approval'
                         : isManualMode
                           ? `Manual entry — PR details and vendor quotations are stored; ${docLabel} is sent to SCM Manager for sign / approval`
                           : skipApproval
                             ? 'Create PO without manager approval (legacy import)'
-                            : `PO will be sent to SCM Manager${scmManager?.name ? ` — ${scmManager.name}` : ''} for approval`}
+                            : requesterSendsToMugesh
+                              ? 'PO will be sent to Mugesh for sign and upload'
+                              : `PO will be sent to SCM Manager${scmManager?.name ? ` — ${scmManager.name}` : ''} for approval`}
                     </p>
                   </div>
                 </div>
@@ -5882,8 +5912,8 @@ export default function CreatePOPage() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
             <div className="bg-gradient-to-br from-[#1E88E5] to-[#1565C0] px-6 py-5">
               <h3 className="text-lg font-bold text-white">
-                {isEditMode && poEditStatus === 'draft'
-                  ? `Send for approval to ${scmManager?.name || 'Rajeev V'}?`
+                {requesterSendsToMugesh || (isEditMode && poEditStatus === 'draft')
+                  ? `Send for sign and upload to ${nextApproverName}?`
                   : 'Send for SCM Manager approval?'}
               </h3>
               <p className="text-sky-100 text-sm mt-1">
@@ -5893,7 +5923,8 @@ export default function CreatePOPage() {
             <div className="p-6 space-y-4">
               <p className="text-sm text-gray-700 leading-relaxed">
                 Is it okay to send this {docLabel.toLowerCase()} to the{' '}
-                <strong>next level — SCM Manager</strong> for sign &amp; approval?
+                <strong>next level — {nextApproverRole}</strong>
+                {requesterSendsToMugesh ? ' for sign and upload?' : ' for sign & approval?'}
               </p>
 
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
@@ -5924,8 +5955,8 @@ export default function CreatePOPage() {
                       : poNumberTouched &&
                           poNumber.trim() &&
                           poNumber.trim() !== scmConfirmBaselineRef.current
-                        ? `You changed the ${docNoLabel}. This exact number will print on the PDF sent to SCM Manager.`
-                        : `Default ${docNoLabel} will print on the PDF sent to SCM Manager. Change it above only if needed.`}
+                        ? `You changed the ${docNoLabel}. This exact number will print on the PDF sent to ${nextApproverRole}.`
+                        : `Default ${docNoLabel} will print on the PDF sent to ${nextApproverRole}. Change it above only if needed.`}
                   </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-gray-200">
@@ -5946,13 +5977,13 @@ export default function CreatePOPage() {
 
               <div className="rounded-xl border border-[#90CAF9] bg-[#E3F2FD]/80 p-4">
                 <p className="text-[11px] font-bold uppercase tracking-wide text-[#1565C0] mb-2">
-                  SCM Manager
+                  {nextApproverRole}
                 </p>
                 <p className="text-base font-bold text-gray-900">
-                  {scmManager?.name || 'SCM Manager'}
+                  {nextApproverName}
                 </p>
-                {scmManager?.email ? (
-                  <p className="text-sm text-[#1565C0] mt-0.5 break-all">{scmManager.email}</p>
+                {nextApproverEmail ? (
+                  <p className="text-sm text-[#1565C0] mt-0.5 break-all">{nextApproverEmail}</p>
                 ) : null}
                 <p className="text-xs text-gray-500 mt-2">
                   They will receive the approval task and email for{' '}
@@ -5979,7 +6010,7 @@ export default function CreatePOPage() {
                   disabled={submitting}
                   className="flex-1 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] text-sm font-bold disabled:opacity-50"
                 >
-                  {submitting ? 'Sending…' : 'Yes, send to SCM Manager'}
+                  {submitting ? 'Sending…' : `Yes, send to ${nextApproverRole}`}
                 </button>
               </div>
             </div>
@@ -5996,7 +6027,11 @@ export default function CreatePOPage() {
                 <i className="ri-checkbox-circle-fill text-4xl text-white"></i>
               </div>
               <h3 className="text-xl font-bold text-white">{docLabel} Created!</h3>
-              <p className="text-emerald-100 text-sm mt-1">Sent for SCM Manager approval</p>
+              <p className="text-emerald-100 text-sm mt-1">
+                {requesterSendsToMugesh
+                  ? 'Sent to Mugesh for sign and upload'
+                  : 'Sent for SCM Manager approval'}
+              </p>
             </div>
             <div className="p-6">
               <div className="bg-gray-50 rounded-xl p-4 mb-5 space-y-2.5">

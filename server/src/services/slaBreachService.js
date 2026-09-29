@@ -110,6 +110,14 @@ async function slaWorkAlreadyFinished(row) {
 
   if (['REJECTED', 'RETURNED', 'CANCELLED', 'CANCELED'].includes(prStatus)) return true;
 
+  if (['SCM Buyer', 'SCM Manager'].includes(String(row.assigned_role || ''))) {
+    const [ownerRows] = await pool.query(
+      `SELECT po_creation_by FROM purchase_requests WHERE id = ? LIMIT 1`,
+      [row.pr_id]
+    );
+    if (String(ownerRows[0]?.po_creation_by || 'scm') === 'requester') return true;
+  }
+
   if (taskType === 'RFQ_ENTRY') {
     if (PR_PAST_RFQ_ENTRY.has(prStatus)) return true;
   }

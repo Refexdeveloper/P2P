@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   supervisor_email VARCHAR(150) NULL,
   supervisor_name VARCHAR(120) NULL,
   l2_manager_email VARCHAR(150) NULL,
+  designation VARCHAR(150) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
 );
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
   vendor_name VARCHAR(150) NULL,
   vendor_email VARCHAR(150) NULL,
   pr_flow ENUM('standard', 'functional') NOT NULL DEFAULT 'standard',
+  po_creation_by ENUM('scm', 'requester') NOT NULL DEFAULT 'scm',
   approval_user_id INT NULL,
   approval_user_ids JSON NULL,
   billing_location_id INT NULL,
@@ -231,6 +233,8 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   signature_name VARCHAR(150) NULL,
   signature_image_path VARCHAR(500) NULL,
   signer_comments TEXT NULL,
+  signer_designation VARCHAR(150) NULL,
+  po_sign_step VARCHAR(20) NULL,
   signed_at TIMESTAMP NULL,
   vendor_notified_at TIMESTAMP NULL,
   vendor_acceptance_token VARCHAR(64) NULL,

@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
+import pool from '../config/db.js';
 import { uploadToGcs, downloadFromGcs, gcsEnabled, awaitGcsUpload } from './gcsStorage.js';
 import {
   buildPoDocumentHtml,
@@ -36,16 +37,44 @@ function withResolvedSignature(po, options = {}) {
   return { ...options, signature };
 }
 
+function isRequesterCreatedPo(po) {
+  return ['l1', 'mugesh', 'requester', 'signed'].includes(String(po?.poSignStep || po?.po_sign_step || ''));
+}
+
+async function mugeshSignatoryPreview() {
+  const [rows] = await pool.query(
+    `SELECT name, designation FROM users WHERE LOWER(email) = 'mugesh.m@refex.co.in' LIMIT 1`
+  );
+  const row = rows[0];
+  return {
+    name: row?.name || 'Mugesh',
+    designation: String(row?.designation || '').trim(),
+  };
+}
+
 async function withResolvedSignatureAsync(po, options = {}) {
   const base = withResolvedSignature(po, options);
-  if (base.signed === false || base.signature?.imageDataUrl || base.signature?.dsc) {
-    return base;
-  }
-  if (!options.signature) {
+  let resolved = base;
+  if (!(base.signed === false || base.signature?.imageDataUrl || base.signature?.dsc) && !options.signature) {
     const signature = await buildSignatureRenderOptionsAsync(po);
-    if (signature) return { ...base, signature };
+    if (signature) resolved = { ...base, signature };
   }
-  return base;
+  if (!isRequesterCreatedPo(po)) return resolved;
+  if (resolved.signature) {
+    if (!resolved.signature.designation) {
+      const preview = await mugeshSignatoryPreview();
+      resolved = {
+        ...resolved,
+        signature: {
+          ...resolved.signature,
+          name: resolved.signature.name || preview.name,
+          designation: preview.designation,
+        },
+      };
+    }
+    return resolved;
+  }
+  return { ...resolved, signatory: await mugeshSignatoryPreview() };
 }
 
 export function buildPoHtml(po, options = {}) {

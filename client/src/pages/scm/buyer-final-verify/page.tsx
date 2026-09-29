@@ -4,6 +4,7 @@ import DashboardLayout from '../../../components/feature/DashboardLayout';
 import SoftInsightCard from '../../../components/base/SoftInsightCard';
 import { PM_PAGE_BG } from '../../../constants/pmTheme';
 import { poApi } from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
 import { formatPersonRoleSuffix } from '../../../utils/roleDisplay';
 
 const formatCurrency = (amount: number) =>
@@ -91,6 +92,8 @@ function mapApiPo(raw: Record<string, unknown>): VerifyPO {
 
 export default function BuyerFinalVerifyPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const requesterVerify = user?.role === 'Requester';
   const [rows, setRows] = useState<VerifyPO[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -145,7 +148,7 @@ export default function BuyerFinalVerifyPage() {
 
   const openModal = (po: VerifyPO) => {
     setModal({ open: true, po });
-    setRemarks('Final verified by SCM Buyer');
+    setRemarks(requesterVerify ? 'Final verified' : 'Final verified by SCM Buyer');
     setError('');
   };
 
@@ -188,14 +191,22 @@ export default function BuyerFinalVerifyPage() {
               Approved PO verification
             </h1>
             <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
-              Review Manager-signed POs. Own vendor: verify sends PO release mail. SCM vendor / Manual: no PO release mail.
+              {requesterVerify
+                ? 'Review the PO after Mugesh signs. Verify sends it on for vendor acceptance. SCM team is not notified.'
+                : 'Review Manager-signed POs. Own vendor: verify sends PO release mail. SCM vendor / Manual: no PO release mail.'}
             </p>
           </header>
 
           <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3 sm:gap-4">
             <SoftInsightCard title="Pending verification" value={rows.length} icon="ri-shield-check-line" theme="cyan" />
             <SoftInsightCard title="Pending Value" value={formatCurrency(totalValue)} icon="ri-money-rupee-circle-line" theme="blue" />
-            <SoftInsightCard title="Workflow Step" value="After Sign" icon="ri-flow-chart" theme="violet" subtitle="After SCM Manager sign" />
+            <SoftInsightCard
+              title="Workflow Step"
+              value="After Sign"
+              icon="ri-flow-chart"
+              theme="violet"
+              subtitle={requesterVerify ? 'After Mugesh sign' : 'After SCM Manager sign'}
+            />
           </div>
 
           <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5">
