@@ -46,7 +46,7 @@ function withResolvedSignature(po, options = {}) {
       mugeshApproval: true,
       signature: {
         ...resolved.signature,
-        name: 'Mugesh.M',
+        name: 'Mugesh M',
         designation: resolved.signature.designation || MUGESH_PO_DESIGNATION,
         imageDataUrl: mugeshSigned ? resolved.signature.imageDataUrl : undefined,
         dsc: mugeshSigned ? resolved.signature.dsc : undefined,
@@ -56,7 +56,7 @@ function withResolvedSignature(po, options = {}) {
   return {
     ...resolved,
     mugeshApproval: true,
-    signatory: { name: 'Mugesh.M', designation: MUGESH_PO_DESIGNATION },
+    signatory: { name: 'Mugesh M', designation: MUGESH_PO_DESIGNATION },
   };
 }
 
@@ -75,7 +75,7 @@ async function mugeshSignatoryPreview() {
   );
   const row = rows[0];
   return {
-    name: 'Mugesh.M',
+    name: 'Mugesh M',
     designation: String(row?.designation || '').trim() || MUGESH_PO_DESIGNATION,
   };
 }
@@ -97,7 +97,7 @@ async function withResolvedSignatureAsync(po, options = {}) {
       mugeshApproval: true,
       signature: {
         ...resolved.signature,
-        name: 'Mugesh.M',
+        name: 'Mugesh M',
         designation: resolved.signature.designation || preview.designation,
         imageDataUrl: mugeshSigned ? resolved.signature.imageDataUrl : undefined,
         dsc: mugeshSigned ? resolved.signature.dsc : undefined,
@@ -1811,8 +1811,11 @@ export async function ensurePoPdf(po, options = {}) {
   const pdfStale =
     !isSigned && poUpdatedMs > 0 && pdfMtime > 0 && poUpdatedMs > pdfMtime + 500;
   const nameMismatch = !pdfFileMatchesPoNumber(pdfName, poNumber);
-  const canReuse =
-    (pdfFrozen || !options.forceRegenerate) && !isDraft && !pdfStale && !nameMismatch;
+  const canReuse = options.forceRegenerate
+    ? false
+    : pdfFrozen
+      ? !nameMismatch
+      : !isDraft && !pdfStale && !nameMismatch;
 
   if (fs.existsSync(pdfPath) && looksLikePdfFile(pdfPath) && canReuse) {
     return { fullPath: pdfPath, fileName: path.basename(pdfName), isHtml: false };

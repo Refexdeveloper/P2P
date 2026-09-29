@@ -613,6 +613,9 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
     } catch {
       /* keep enrichPO result */
     }
+    const mugeshPo =
+      String(po.poCreationBy || '') === 'requester' ||
+      ['l1', 'mugesh', 'requester', 'signed'].includes(String(po.poSignStep || ''));
     const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || po.signedAt);
     const poNumber = String(po.poNumber || '').trim() || `PO-${po.id}`;
     const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
@@ -632,9 +635,11 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
       fileName: preferredName,
       signed: isSigned,
       signature: signatureOpts,
-      forceRegenerate: isSigned
-        ? false
-        : status === 'draft' || storedLooksStale || vendorBlockIncomplete,
+      forceRegenerate: mugeshPo
+        ? true
+        : isSigned
+          ? false
+          : status === 'draft' || storedLooksStale || vendorBlockIncomplete,
     });
     // Persist regenerated PDF path when previous value was HTML-only or mismatched
     if (!isSigned && po.pdfPath !== fileName) {

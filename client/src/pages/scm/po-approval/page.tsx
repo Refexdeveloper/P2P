@@ -1234,7 +1234,7 @@ export default function POApprovalPage() {
             <h2 className="text-lg font-semibold text-slate-800">Sign & Upload</h2>
             <p className="mt-1 text-sm text-slate-500">{upload.poNumber}</p>
             <p className="mt-2 text-xs text-slate-500">
-              Upload your signature image. It is placed inside this PO. Name: Mugesh.M. Designation: IT Infrastructure Head. After upload, Buyer Final Verify goes to the requester.
+              Upload your signature image. It is placed inside this PO. Name: Mugesh M. Designation: IT Infrastructure Head. After upload, Buyer Final Verify goes to the requester.
             </p>
             <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-400">
               Signature image

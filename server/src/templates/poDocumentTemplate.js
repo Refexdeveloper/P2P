@@ -1525,7 +1525,7 @@ function isMugeshSignName(name) {
 }
 
 function mugeshDisplayName(name) {
-  return isMugeshSignName(name) ? 'Mugesh.M' : String(name || '');
+  return isMugeshSignName(name) ? 'Mugesh M' : String(name || '');
 }
 
 function specialNotesInnerHtml(po, options = {}) {
@@ -1574,7 +1574,7 @@ function specialNotesInnerHtml(po, options = {}) {
       </div>
       <p>${escapeHtml(signature.date)}<br>
       ${mugeshApproval ? '' : `<strong>Authorized Signatory${signature.dsc ? ' (DSC)' : ''}</strong><br>`}
-      Name: ${escapeHtml(mugeshApproval ? 'Mugesh.M' : signature.name)}<br>
+      Name: ${escapeHtml(mugeshApproval ? 'Mugesh M' : signature.name)}<br>
       Designation: ${escapeHtml(
         signature.designation ||
           (isMugeshSignName(signature.name) ? 'IT Infrastructure Head' : 'SCM - Head')
@@ -1582,11 +1582,11 @@ function specialNotesInnerHtml(po, options = {}) {
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>
       <p>${mugeshApproval ? '' : '<strong>Authorized Signatory</strong><br>'}
-      Name: ${escapeHtml(mugeshApproval ? 'Mugesh.M' : mugeshDisplayName(options.signatory.name || ''))}<br>
+      Name: ${escapeHtml(mugeshApproval ? 'Mugesh M' : mugeshDisplayName(options.signatory.name || ''))}<br>
       Designation: ${escapeHtml(options.signatory.designation || (mugeshApproval ? 'IT Infrastructure Head' : 'SCM - Head'))}</p>` : mugeshApproval ? `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>
-      <p>Name: Mugesh.M<br>
+      <p>Name: Mugesh M<br>
       Designation: IT Infrastructure Head</p>` : `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>

@@ -386,7 +386,7 @@ export function buildSignatureRenderOptions(po = {}) {
 
   if (!name && !imageDataUrl && !dsc && !requesterPoSign) return undefined;
   return {
-    name: name || dsc?.holderName || (requesterPoSign ? 'Mugesh.M' : getPreferredScmManagerName() || 'SCM Manager'),
+    name: requesterPoSign ? 'Mugesh M' : (name || dsc?.holderName || getPreferredScmManagerName() || 'SCM Manager'),
     designation:
       String(po.signerDesignation || po.signer_designation || '').trim() ||
       (requesterPoSign ? 'IT Infrastructure Head' : ''),
