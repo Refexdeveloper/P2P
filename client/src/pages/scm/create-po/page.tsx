@@ -3187,7 +3187,8 @@ export default function CreatePOPage() {
 
       const existingDraftId = Number(editPoId || createdPoId || createdPoIdRef.current || 0) || null;
       if (existingDraftId) payload.poId = existingDraftId;
-      else if (numericPrId) payload.prId = numericPrId;
+      if (numericPrId) payload.prId = numericPrId;
+      else if (Number(pr?.id) > 0) payload.prId = Number(pr.id);
 
       await applyMasterVendorToPayload(payload);
 

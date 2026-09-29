@@ -688,6 +688,7 @@ function attachStoredPoSignature(preview, row) {
     signatureDsc: parseSignatureDsc(row.signature_dsc_json),
     signerComments: row.signer_comments || null,
     signerId: row.signer_id || null,
+    poSignStep: row.po_sign_step || preview.poSignStep || null,
   };
 }
 
@@ -2179,10 +2180,35 @@ function prIsRequesterPo(prRow) {
   return String(prRow?.po_creation_by || 'scm') === 'requester';
 }
 
+async function markPrRequesterCreated(prId) {
+  if (!prId) return;
+  await pool.query(
+    `UPDATE purchase_requests SET po_creation_by = 'requester', updated_at = NOW()
+     WHERE id = ? AND COALESCE(po_creation_by, 'scm') <> 'requester'`,
+    [prId]
+  );
+}
+
+/** Owning requester may save, preview, and send this PO to Mugesh. */
+async function requesterOwnsPoWork(user, prRow, poRow = null) {
+  if (user?.role !== 'Requester' || !prRow) return false;
+  if (Number(prRow.requester_id) !== Number(user.id)) return false;
+  if (prIsRequesterPo(prRow)) return true;
+  const step = String(poRow?.po_sign_step || '');
+  const handed =
+    ['requester', 'mugesh', 'l1', 'signed'].includes(step) ||
+    Number(poRow?.created_by) === Number(user.id) ||
+    (prRow.id && (await requesterHasCreatePoTask(prRow.id, user.id)));
+  if (!handed) return false;
+  await markPrRequesterCreated(prRow.id);
+  prRow.po_creation_by = 'requester';
+  return true;
+}
+
 async function assertCanPreviewRequesterPo(user, prId) {
   if (user.role !== 'Requester') return false;
   const prRow = await loadPrPoCreation(prId);
-  if (!prIsRequesterPo(prRow) || Number(prRow.requester_id) !== Number(user.id)) {
+  if (!(await requesterOwnsPoWork(user, prRow))) {
     throw new Error('Unauthorized to preview purchase orders');
   }
   return true;
@@ -2290,17 +2316,19 @@ export async function buildPoPreviewDocument(user, prId, body) {
     throw new Error('Unauthorized to preview purchase orders');
   }
   if (!body?.lineItems?.length) throw new Error('At least one line item is required for preview');
-  return overlayVendorMasterOnPo(await resolvePoDraftContent(prId, body));
+  const preview = await overlayVendorMasterOnPo(await resolvePoDraftContent(prId, body));
+  if (requesterPreview && preview) {
+    preview.poCreationBy = 'requester';
+    preview.poSignStep = preview.poSignStep || 'requester';
+  }
+  return preview;
 }
 
 export async function buildPoPreviewForPo(user, poId, body) {
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
   const prRow = rows[0].pr_id ? await loadPrPoCreation(rows[0].pr_id) : null;
-  const requesterOwns =
-    user.role === 'Requester' &&
-    prIsRequesterPo(prRow) &&
-    Number(prRow.requester_id) === Number(user.id);
+  const requesterOwns = await requesterOwnsPoWork(user, prRow, rows[0]);
   if (
     !requesterOwns &&
     user.role !== 'SCM Manager' &&
@@ -2328,7 +2356,7 @@ export async function buildPoPreviewForPo(user, poId, body) {
       rows[0]
     );
   }
-  return attachStoredPoSignature(
+  const preview = attachStoredPoSignature(
     await overlayVendorMasterOnPo(
       await resolvePoDraftContent(rows[0].pr_id, {
         ...body,
@@ -2342,6 +2370,11 @@ export async function buildPoPreviewForPo(user, poId, body) {
     ),
     rows[0]
   );
+  if (preview && prIsRequesterPo(prRow)) {
+    preview.poCreationBy = 'requester';
+    preview.poSignStep = preview.poSignStep || rows[0].po_sign_step || 'requester';
+  }
+  return preview;
 }
 
 export async function createPurchaseOrder(user, prId, body) {
@@ -3027,26 +3060,32 @@ async function persistDraftLineItems(conn, poId, lineItems) {
 /** Save or update a draft PO / WO (PR-linked or manual). */
 export async function savePurchaseOrderDraft(user, body = {}) {
   const poId = Number(body.poId || body.id || 0) || null;
-  const prId = Number(body.prId || 0) || null;
+  let existing = null;
+  if (poId) {
+    const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+    existing = rows[0] || null;
+    if (!existing) throw new Error('PO not found');
+  }
+  const prId = Number(body.prId || existing?.pr_id || 0) || null;
   let prFlag = prId ? await loadPrPoCreation(prId) : null;
-  if (
-    user.role === 'Requester' &&
-    prFlag &&
-    !prIsRequesterPo(prFlag) &&
-    Number(prFlag.requester_id) === Number(user.id) &&
-    (await requesterHasCreatePoTask(prId, user.id))
-  ) {
-    await pool.query(`UPDATE purchase_requests SET po_creation_by = 'requester' WHERE id = ?`, [prId]);
-    await reopenCancelledPoAsRequesterDraft(prId, user.id);
+  if (prFlag && !(await requesterOwnsPoWork(user, prFlag, existing))) {
+    if (
+      user.role === 'Requester' &&
+      Number(prFlag.requester_id) === Number(user.id) &&
+      (await requesterHasCreatePoTask(prId, user.id))
+    ) {
+      await markPrRequesterCreated(prId);
+      await reopenCancelledPoAsRequesterDraft(prId, user.id);
+      prFlag = await loadPrPoCreation(prId);
+    }
+  } else if (user.role === 'Requester' && prFlag && !prIsRequesterPo(prFlag)) {
     prFlag = await loadPrPoCreation(prId);
   }
-  const requesterDraft =
-    user.role === 'Requester' && prIsRequesterPo(prFlag) && Number(prFlag.requester_id) === Number(user.id);
+  const requesterDraft = await requesterOwnsPoWork(user, prFlag, existing);
   if (!requesterDraft && user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
     throw new Error('Only SCM Buyer can save PO drafts');
   }
 
-  let existing = null;
   if (poId) {
     const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
     existing = rows[0] || null;
@@ -3062,7 +3101,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     );
     if (active.length) throw new Error('A purchase order already exists for this PR');
 
-    if (canEditAnyScmPurchaseOrder(user)) {
+    if (canEditAnyScmPurchaseOrder(user) || requesterDraft) {
       const [draftRows] = await pool.query(
         `SELECT * FROM purchase_orders WHERE pr_id = ? AND status = 'draft' ORDER BY id DESC LIMIT 1`,
         [prId]
@@ -5353,12 +5392,12 @@ export async function updatePurchaseOrder(user, poId, body) {
     existing.status === 'draft' &&
     ['SCM Buyer', 'Super Admin', 'SCM Manager'].includes(user.role);
   const requesterPr = existing.pr_id ? await loadPrPoCreation(existing.pr_id) : null;
+  const requesterOwns = await requesterOwnsPoWork(user, requesterPr, existing);
   const canRequesterRevise =
     wantsManagerResubmit &&
     existing.status === 'draft' &&
-    prIsRequesterPo(requesterPr) &&
-    (user.role === 'Super Admin' ||
-      (user.role === 'Requester' && Number(requesterPr.requester_id) === Number(user.id)));
+    (requesterOwns ||
+      (user.role === 'Super Admin' && prIsRequesterPo(requesterPr)));
   // Track PO / admin correction: edit existing PO without changing workflow status
   const canAdminEdit =
     existing.status !== 'cancelled' &&
@@ -5864,7 +5903,7 @@ export async function uploadMugeshSignedPo(user, poId, body = {}) {
   );
   const signer = signerRows[0];
   if (!signer) throw new Error('Signer user was not found');
-  const designation = await designationForUser(signer);
+  const designation = (await designationForUser(signer)) || 'IT Infrastructure Head';
 
   const poNumber = String(po.po_number || `PO-${poId}`).trim();
   const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');

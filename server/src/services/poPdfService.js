@@ -30,16 +30,38 @@ function withResolvedSignature(po, options = {}) {
       po?.signature_image_data ||
       options.signed
   );
+  let resolved;
   if (forceUnsigned || !hasStoredSign) {
-    return { ...options, signature: options.signature || undefined, signed: false };
+    resolved = { ...options, signature: options.signature || undefined, signed: false };
+  } else {
+    const signature = options.signature || buildSignatureRenderOptions(po);
+    resolved = { ...options, signature };
   }
-  const signature = options.signature || buildSignatureRenderOptions(po);
-  return { ...options, signature };
+  if (!isRequesterCreatedPo(po)) return resolved;
+  if (resolved.signature) {
+    return {
+      ...resolved,
+      signature: {
+        ...resolved.signature,
+        name: resolved.signature.name || 'Mugesh',
+        designation: resolved.signature.designation || MUGESH_PO_DESIGNATION,
+      },
+    };
+  }
+  return {
+    ...resolved,
+    signatory: { name: 'Mugesh', designation: MUGESH_PO_DESIGNATION },
+  };
 }
 
 function isRequesterCreatedPo(po) {
-  return ['l1', 'mugesh', 'requester', 'signed'].includes(String(po?.poSignStep || po?.po_sign_step || ''));
+  return (
+    ['l1', 'mugesh', 'requester', 'signed'].includes(String(po?.poSignStep || po?.po_sign_step || '')) ||
+    String(po?.poCreationBy || po?.po_creation_by || '') === 'requester'
+  );
 }
+
+const MUGESH_PO_DESIGNATION = 'IT Infrastructure Head';
 
 async function mugeshSignatoryPreview() {
   const [rows] = await pool.query(
@@ -48,7 +70,7 @@ async function mugeshSignatoryPreview() {
   const row = rows[0];
   return {
     name: row?.name || 'Mugesh',
-    designation: String(row?.designation || '').trim(),
+    designation: String(row?.designation || '').trim() || MUGESH_PO_DESIGNATION,
   };
 }
 

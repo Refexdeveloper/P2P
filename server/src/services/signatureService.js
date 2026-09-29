@@ -357,9 +357,9 @@ export function buildSignatureRenderOptions(po = {}) {
     }
   }
 
-  const requesterPoSign = ['l1', 'mugesh', 'requester', 'signed'].includes(
-    String(po.poSignStep || po.po_sign_step || '')
-  );
+  const requesterPoSign =
+    ['l1', 'mugesh', 'requester', 'signed'].includes(String(po.poSignStep || po.po_sign_step || '')) ||
+    String(po.poCreationBy || po.po_creation_by || '') === 'requester';
   const looksSigned = Boolean(
     po.signedAt ||
       po.signed_at ||
@@ -381,7 +381,9 @@ export function buildSignatureRenderOptions(po = {}) {
   if (!name && !imageDataUrl && !dsc && !requesterPoSign) return undefined;
   return {
     name: name || dsc?.holderName || (requesterPoSign ? 'Mugesh' : getPreferredScmManagerName() || 'SCM Manager'),
-    designation: String(po.signerDesignation || po.signer_designation || '').trim(),
+    designation:
+      String(po.signerDesignation || po.signer_designation || '').trim() ||
+      (requesterPoSign ? 'IT Infrastructure Head' : ''),
     date: po.signedAt || po.signed_at || '',
     comments: po.signerComments || po.signer_comments || '',
     imageDataUrl: imageDataUrl || undefined,
