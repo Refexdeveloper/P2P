@@ -1347,6 +1347,7 @@ export default function CreatePOPage() {
           : null) ||
         null;
       const entityLoc = matchEntityLocation(matchedEntity, loc.location || '');
+      const billing = String(loc.billingAddress || entityLoc?.billingAddress || '').trim();
       const siteFromLetterhead = letterheadSiteAddresses(loc);
       const siteFromEntity = String(entityLoc?.siteAddress || '').trim();
       const siteChoices = [
@@ -1364,6 +1365,7 @@ export default function CreatePOPage() {
           buyerGstNo: loc.gstNo || '',
           letterheadLocationId: loc.id != null ? String(loc.id) : key,
           siteAddress: site,
+          invoicingAddress: billing ? addressLinesToHtml(billing) : prev.invoicingAddress,
         };
       });
     },
@@ -4087,9 +4089,13 @@ export default function CreatePOPage() {
                               null;
                             if (entityLoc) {
                               const site = String(entityLoc.siteAddress || '').trim();
+                              const billing = String(entityLoc.billingAddress || '').trim();
                               setPoTermsDetails((prev) => ({
                                 ...prev,
                                 siteAddress: site || prev.siteAddress,
+                                invoicingAddress: billing
+                                  ? addressLinesToHtml(billing)
+                                  : prev.invoicingAddress,
                               }));
                               if (site) setDeliveryAddress(site);
                             }

@@ -451,6 +451,21 @@ export async function updateVendor(vendorId, body) {
   return getVendorById(vendorId);
 }
 
+export async function deleteVendor(vendorId) {
+  const [rows] = await pool.query(`SELECT id, vendor_code, name FROM vendors WHERE id = ?`, [vendorId]);
+  if (!rows.length) throw new Error('Vendor not found');
+  await pool.query(`DELETE FROM vendor_documents WHERE vendor_id = ?`, [vendorId]);
+  try {
+    await pool.query(`DELETE FROM vendors WHERE id = ?`, [vendorId]);
+  } catch (err) {
+    if (err?.errno === 1451 || err?.code === 'ER_ROW_IS_REFERENCED_2') {
+      throw new Error('This vendor is already used on a request or quotation and cannot be deleted');
+    }
+    throw err;
+  }
+  return { id: Number(vendorId), vendorCode: rows[0].vendor_code, name: rows[0].name };
+}
+
 export async function getVendorById(vendorId) {
   const [rows] = await pool.query(`SELECT * FROM vendors WHERE id = ?`, [vendorId]);
   if (!rows.length) return null;
