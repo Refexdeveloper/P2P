@@ -13,6 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SIGNATURE_UPLOAD_DIR = path.join(__dirname, '../../uploads/signatures');
 export const SIGNATURE_SEED_DIR = path.join(__dirname, '../../assets/signatures');
 export const DEFAULT_SCM_MANAGER_SIGNATURE_FILE = 'rajeev_v_default.png';
+export const DEFAULT_MUGESH_SIGNATURE_FILE = 'mugesh_m_default.jpg';
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -106,6 +107,10 @@ export async function ensureDefaultScmManagerSignatureFile() {
     }
   }
   return fs.existsSync(dest) ? dest : null;
+}
+
+export function getDefaultMugeshSignatureDataUrl() {
+  return signatureFileToDataUrl(DEFAULT_MUGESH_SIGNATURE_FILE);
 }
 
 export function getDefaultScmManagerSignatureDataUrl() {
@@ -372,10 +377,10 @@ export function buildSignatureRenderOptions(po = {}) {
       dsc
   );
 
-  if (requesterPoSign && String(po.poSignStep || po.po_sign_step || '') !== 'signed') {
-    imageDataUrl = null;
-    imagePath = '';
+  if (requesterPoSign) {
     dsc = null;
+    imagePath = DEFAULT_MUGESH_SIGNATURE_FILE;
+    imageDataUrl = getDefaultMugeshSignatureDataUrl() || imageDataUrl || null;
   }
 
   if (looksSigned && !imageDataUrl && !dsc && !requesterPoSign) {
@@ -404,7 +409,21 @@ export async function buildSignatureRenderOptionsAsync(po = {}) {
   const requesterPoSign =
     ['l1', 'mugesh', 'requester', 'signed'].includes(String(po.poSignStep || po.po_sign_step || '')) ||
     String(po.poCreationBy || po.po_creation_by || '') === 'requester';
-  if (requesterPoSign && String(po.poSignStep || po.po_sign_step || '') !== 'signed') return sync;
+  if (requesterPoSign) {
+    const mugeshImage = await signatureFileToDataUrlAsync(DEFAULT_MUGESH_SIGNATURE_FILE);
+    if (!mugeshImage) return sync;
+    return {
+      ...(sync || {
+        name: 'Mugesh M',
+        designation: 'IT Infrastructure Head',
+        date: po.signedAt || po.signed_at || '',
+        comments: po.signerComments || po.signer_comments || '',
+      }),
+      name: 'Mugesh M',
+      designation: 'IT Infrastructure Head',
+      imageDataUrl: mugeshImage,
+    };
+  }
   const imagePath = po.signatureImagePath || po.signature_image_path || '';
   if (!imagePath) return sync;
   const fromGcs = await signatureFileToDataUrlAsync(imagePath);

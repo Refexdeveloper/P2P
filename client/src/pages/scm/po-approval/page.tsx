@@ -260,7 +260,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                     onClick={onApprove}
                     className={`${PM_BTN_PRIMARY} !px-3 !py-1.5 !text-xs`}
                   >
-                    <i className="ri-quill-pen-line"></i> {mugeshMode ? 'Sign & Upload' : 'Sign & Approve'}
+                    <i className="ri-quill-pen-line"></i> {mugeshMode ? 'Approve' : 'Sign & Approve'}
                   </button>
                   <button
                     type="button"
@@ -661,15 +661,6 @@ export default function POApprovalPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const [upload, setUpload] = useState<{
-    poId: number;
-    poNumber: string;
-    fileName: string;
-    fileData: string;
-    remarks: string;
-    busy: boolean;
-  } | null>(null);
-
   const openModal = (poNumber: string, type: 'approve' | 'reject' | 'sendback') => {
     const po = poList.find((p) => p.poNumber === poNumber);
     const poId = poIdMap[poNumber];
@@ -678,38 +669,7 @@ export default function POApprovalPage() {
   };
 
   const startSign = (poNumber: string) => {
-    if (!mugeshMode) {
-      openModal(poNumber, 'approve');
-      return;
-    }
-    const poId = poIdMap[poNumber];
-    if (!poId) return;
-    setUpload({ poId, poNumber, fileName: '', fileData: '', remarks: '', busy: false });
-  };
-
-  const submitMugeshUpload = async () => {
-    if (!upload?.fileName || !upload.fileData) {
-      showToast('Upload the signed PO document', 'error');
-      return;
-    }
-    if (!upload.remarks.trim()) {
-      showToast('Remarks are required', 'error');
-      return;
-    }
-    setUpload({ ...upload, busy: true });
-    try {
-      await poApi.mugeshSign(upload.poId, {
-        fileName: upload.fileName,
-        fileData: upload.fileData,
-        remarks: upload.remarks.trim(),
-      });
-      setUpload(null);
-      showToast(`${upload.poNumber} signed and uploaded`, 'success');
-      await loadPos();
-    } catch (err) {
-      setUpload({ ...upload, busy: false });
-      showToast(err instanceof Error ? err.message : 'Sign & Upload failed', 'error');
-    }
+    openModal(poNumber, 'approve');
   };
 
   const handleConfirm = async (
@@ -724,8 +684,16 @@ export default function POApprovalPage() {
   ) => {
     try {
       if (modal.type === 'approve') {
-        const res = await poApi.sign(modal.poId, remarks, signature);
-        showToast(res.message || `${modal.poNumber} signed — SCM Buyer final verify next`, 'success');
+        const res = mugeshMode
+          ? await poApi.mugeshSign(modal.poId, { remarks })
+          : await poApi.sign(modal.poId, remarks, signature);
+        showToast(
+          res.message ||
+            (mugeshMode
+              ? `${modal.poNumber} signed — Buyer Final Verify is with the requester`
+              : `${modal.poNumber} signed — SCM Buyer final verify next`),
+          'success'
+        );
         setExpandedRow(null);
         navigate(`/scm/po-pdf-view?poId=${modal.poId}&from=po-approval`);
         return;
@@ -803,11 +771,11 @@ export default function POApprovalPage() {
           <header className="mb-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
             <div className="min-w-0">
               <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl md:text-3xl">
-                {mugeshMode ? 'PO Approval — Sign & Upload' : 'SCM Manager — PO Sign & Approve'}
+                {mugeshMode ? 'PO Approval' : 'SCM Manager — PO Sign & Approve'}
               </h1>
               <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
                 {mugeshMode
-                  ? 'Requester-created POs waiting for your signature. Upload the signed PO. Your name and designation are printed on the document.'
+                  ? 'Requester-created POs. Your default signature, name Mugesh M, and designation IT Infrastructure Head are printed on the PDF.'
                   : 'Sign PO with comments — after sign-off, SCM Buyer final-verifies before the vendor email is sent'}
               </p>
             </div>
@@ -1152,7 +1120,7 @@ export default function POApprovalPage() {
                                     type="button"
                                     onClick={() => startSign(po.poNumber)}
                                     className="cursor-pointer rounded-xl p-1.5 text-emerald-600 transition-colors hover:bg-emerald-50"
-                                    title={mugeshMode ? 'Sign & Upload' : 'Sign & Approve (digital signature)'}
+                                    title={mugeshMode ? 'Approve' : 'Sign & Approve (digital signature)'}
                                   >
                                     <i className="ri-quill-pen-line text-sm"></i>
                                   </button>
@@ -1227,65 +1195,6 @@ export default function POApprovalPage() {
           </div>
         </div>
       </div>
-
-      {upload && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-            <h2 className="text-lg font-semibold text-slate-800">Sign & Upload</h2>
-            <p className="mt-1 text-sm text-slate-500">{upload.poNumber}</p>
-            <p className="mt-2 text-xs text-slate-500">
-              Upload your signature image. It is placed inside this PO. Name: Mugesh M. Designation: IT Infrastructure Head. After upload, Buyer Final Verify goes to the requester.
-            </p>
-            <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Signature image
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/jpg,image/webp"
-                className="mt-1 block w-full text-sm"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    setUpload((prev) =>
-                      prev
-                        ? { ...prev, fileName: file.name, fileData: String(reader.result || '') }
-                        : prev
-                    );
-                  };
-                  reader.readAsDataURL(file);
-                }}
-              />
-            </label>
-            <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Remarks
-              <textarea
-                value={upload.remarks}
-                onChange={(e) => setUpload({ ...upload, remarks: e.target.value })}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                rows={3}
-              />
-            </label>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setUpload(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={upload.busy}
-                onClick={submitMugeshUpload}
-                className="rounded-xl bg-[#1E88E5] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {upload.busy ? 'Uploading…' : 'Sign & Upload'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <POApprovalModal
         isOpen={modal.isOpen}

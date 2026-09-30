@@ -1269,7 +1269,7 @@ export const poApi = {
       method: 'POST',
       body: JSON.stringify({ action, remarks }),
     }),
-  mugeshSign: (poId: number, body: { fileName: string; fileData: string; remarks?: string }) =>
+  mugeshSign: (poId: number, body: { remarks?: string; fileName?: string; fileData?: string }) =>
     request<{ data: unknown; message: string }>(`/api/po/${poId}/mugesh-sign`, {
       method: 'POST',
       body: JSON.stringify(body),

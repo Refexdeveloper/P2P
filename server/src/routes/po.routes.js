@@ -775,7 +775,7 @@ router.post('/:id/requester-l1', requireRoles('HOD Approver', 'Super Admin'), as
 router.post('/:id/mugesh-sign', async (req, res) => {
   try {
     const data = await uploadMugeshSignedPo(req.user, Number(req.params.id), req.body || {});
-    res.json({ data, message: 'Signed PO uploaded. Buyer Final Verify is with the requester.' });
+    res.json({ data, message: 'PO signed with the default signature. Buyer Final Verify is with the requester.' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

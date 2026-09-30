@@ -13,6 +13,7 @@ import { PO_STYLES } from '../templates/poDocumentTemplate.styles.js';
 import {
   buildSignatureRenderOptions,
   buildSignatureRenderOptionsAsync,
+  getDefaultMugeshSignatureDataUrl,
 } from './signatureService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 
@@ -38,7 +39,7 @@ function withResolvedSignature(po, options = {}) {
     resolved = { ...options, signature };
   }
   if (!isRequesterCreatedPo(po)) return resolved;
-  const mugeshSigned = String(po?.poSignStep || po?.po_sign_step || '') === 'signed';
+  const mugeshImage = getDefaultMugeshSignatureDataUrl();
   resolved = { ...resolved, mugeshApproval: true };
   if (resolved.signature) {
     return {
@@ -48,14 +49,19 @@ function withResolvedSignature(po, options = {}) {
         ...resolved.signature,
         name: 'Mugesh M',
         designation: resolved.signature.designation || MUGESH_PO_DESIGNATION,
-        imageDataUrl: mugeshSigned ? resolved.signature.imageDataUrl : undefined,
-        dsc: mugeshSigned ? resolved.signature.dsc : undefined,
+        imageDataUrl: mugeshImage || resolved.signature.imageDataUrl,
+        dsc: undefined,
       },
     };
   }
   return {
     ...resolved,
     mugeshApproval: true,
+    signature: {
+      name: 'Mugesh M',
+      designation: MUGESH_PO_DESIGNATION,
+      imageDataUrl: mugeshImage || undefined,
+    },
     signatory: { name: 'Mugesh M', designation: MUGESH_PO_DESIGNATION },
   };
 }
@@ -88,24 +94,32 @@ async function withResolvedSignatureAsync(po, options = {}) {
     if (signature) resolved = { ...base, signature };
   }
   if (!isRequesterCreatedPo(po)) return resolved;
-  const mugeshSigned = String(po?.poSignStep || po?.po_sign_step || '') === 'signed';
+  const preview = await mugeshSignatoryPreview();
+  const mugeshImage = getDefaultMugeshSignatureDataUrl();
   resolved = { ...resolved, mugeshApproval: true };
   if (resolved.signature) {
-    const preview = await mugeshSignatoryPreview();
-    resolved = {
+    return {
       ...resolved,
       mugeshApproval: true,
       signature: {
         ...resolved.signature,
         name: 'Mugesh M',
         designation: resolved.signature.designation || preview.designation,
-        imageDataUrl: mugeshSigned ? resolved.signature.imageDataUrl : undefined,
-        dsc: mugeshSigned ? resolved.signature.dsc : undefined,
+        imageDataUrl: mugeshImage || resolved.signature.imageDataUrl,
+        dsc: undefined,
       },
     };
-    return resolved;
   }
-  return { ...resolved, mugeshApproval: true, signatory: await mugeshSignatoryPreview() };
+  return {
+    ...resolved,
+    mugeshApproval: true,
+    signature: {
+      name: 'Mugesh M',
+      designation: preview.designation,
+      imageDataUrl: mugeshImage || undefined,
+    },
+    signatory: preview,
+  };
 }
 
 export function buildPoHtml(po, options = {}) {

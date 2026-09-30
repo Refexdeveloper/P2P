@@ -38,7 +38,7 @@ import {
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 import { wrapPortalUrlWithSso } from './refexOneSamlService.js';
-import { buildSignatureRenderOptions, parseDataUrlImage, saveSignatureFile } from './signatureService.js';
+import { buildSignatureRenderOptions, getDefaultMugeshSignatureDataUrl, parseDataUrlImage, saveSignatureFile } from './signatureService.js';
 
 function todayYmd() {
   const d = new Date();
@@ -5971,8 +5971,8 @@ export async function uploadMugeshSignedPo(user, poId, body = {}) {
   if (po.status !== 'pending_approval' || String(po.po_sign_step || '') !== 'mugesh') {
     throw new Error('PO is not waiting for Mugesh sign and upload');
   }
-  const fileData = body.fileData || body.file_data || body.signatureImage || '';
-  if (!fileData) throw new Error('Upload your signature image');
+  const fileData = body.fileData || body.file_data || body.signatureImage || getDefaultMugeshSignatureDataUrl();
+  if (!fileData) throw new Error('Default Mugesh signature is not configured');
   const parsed = parseDataUrlImage(String(fileData));
 
   const signerId = isMugeshActor(user) ? user.id : (await resolveMugeshSigner()).id;
