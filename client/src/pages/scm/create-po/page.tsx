@@ -3668,11 +3668,23 @@ export default function CreatePOPage() {
   if (!numericPrId && !isEditMode && !isManualMode) {
     return (
       <DashboardLayout>
-        <div className="mb-5">
-          <h1 className="text-2xl font-bold text-gray-900">PO/WO Workspace</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Create a purchase order or work order from a ready PR, or start a manual PO
-          </p>
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">PO/WO Workspace</h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Create a purchase order or work order from a ready PR, or start a manual PO
+            </p>
+          </div>
+          
+            <button
+              type="button"
+              onClick={() => navigate('/scm/create-po?manual=1')}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#1E88E5] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1565C0]"
+            >
+              <i className="ri-add-line" aria-hidden />
+              Manual Create PO
+            </button>
+        
         </div>
         <PurchaseRequestsPanel />
       </DashboardLayout>

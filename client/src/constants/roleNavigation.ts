@@ -368,6 +368,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.po_approval',
     'nav.rfq_approval',
     'nav.tasks',
+    'nav.create_po',
     'nav.track_po',
     'nav.payment_authorization',
     'nav.item_master',
@@ -503,6 +504,7 @@ export function ensureNavigation(
       'nav.po_approval',
       'nav.rfq_approval',
       'nav.tasks',
+      'nav.create_po',
       'nav.track_po',
     ]) {
       if (!codes.has(code) && NAV_BY_CODE[code]) {
