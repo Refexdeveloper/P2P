@@ -4289,6 +4289,7 @@ export async function getPurchaseOrderByNumber(poNumber) {
 const REQUESTER_CREATED_PO_STATUSES = new Set([
   'draft',
   'pending_approval',
+  'pending_buyer_verify',
   ...REQUESTER_PO_DOCUMENT_STATUSES,
 ]);
 

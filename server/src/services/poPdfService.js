@@ -39,7 +39,8 @@ function withResolvedSignature(po, options = {}) {
     resolved = { ...options, signature };
   }
   if (!isRequesterCreatedPo(po)) return resolved;
-  const mugeshImage = getDefaultMugeshSignatureDataUrl();
+  const mugeshApproved = String(po?.poSignStep || po?.po_sign_step || '') === 'signed';
+  const mugeshImage = mugeshApproved ? getDefaultMugeshSignatureDataUrl() : null;
   resolved = { ...resolved, mugeshApproval: true };
   if (resolved.signature) {
     return {
@@ -49,7 +50,7 @@ function withResolvedSignature(po, options = {}) {
         ...resolved.signature,
         name: 'Mugesh M',
         designation: resolved.signature.designation || MUGESH_PO_DESIGNATION,
-        imageDataUrl: mugeshImage || resolved.signature.imageDataUrl,
+        imageDataUrl: mugeshImage || undefined,
         dsc: undefined,
       },
     };
@@ -57,11 +58,13 @@ function withResolvedSignature(po, options = {}) {
   return {
     ...resolved,
     mugeshApproval: true,
-    signature: {
-      name: 'Mugesh M',
-      designation: MUGESH_PO_DESIGNATION,
-      imageDataUrl: mugeshImage || undefined,
-    },
+    signature: mugeshApproved
+      ? {
+          name: 'Mugesh M',
+          designation: MUGESH_PO_DESIGNATION,
+          imageDataUrl: mugeshImage || undefined,
+        }
+      : undefined,
     signatory: { name: 'Mugesh M', designation: MUGESH_PO_DESIGNATION },
   };
 }
@@ -95,7 +98,8 @@ async function withResolvedSignatureAsync(po, options = {}) {
   }
   if (!isRequesterCreatedPo(po)) return resolved;
   const preview = await mugeshSignatoryPreview();
-  const mugeshImage = getDefaultMugeshSignatureDataUrl();
+  const mugeshApproved = String(po?.poSignStep || po?.po_sign_step || '') === 'signed';
+  const mugeshImage = mugeshApproved ? getDefaultMugeshSignatureDataUrl() : null;
   resolved = { ...resolved, mugeshApproval: true };
   if (resolved.signature) {
     return {
@@ -105,7 +109,7 @@ async function withResolvedSignatureAsync(po, options = {}) {
         ...resolved.signature,
         name: 'Mugesh M',
         designation: resolved.signature.designation || preview.designation,
-        imageDataUrl: mugeshImage || resolved.signature.imageDataUrl,
+        imageDataUrl: mugeshImage || undefined,
         dsc: undefined,
       },
     };
@@ -113,11 +117,13 @@ async function withResolvedSignatureAsync(po, options = {}) {
   return {
     ...resolved,
     mugeshApproval: true,
-    signature: {
-      name: 'Mugesh M',
-      designation: preview.designation,
-      imageDataUrl: mugeshImage || undefined,
-    },
+    signature: mugeshApproved
+      ? {
+          name: 'Mugesh M',
+          designation: preview.designation,
+          imageDataUrl: mugeshImage || undefined,
+        }
+      : undefined,
     signatory: preview,
   };
 }

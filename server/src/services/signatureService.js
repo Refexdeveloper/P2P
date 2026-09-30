@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SIGNATURE_UPLOAD_DIR = path.join(__dirname, '../../uploads/signatures');
 export const SIGNATURE_SEED_DIR = path.join(__dirname, '../../assets/signatures');
 export const DEFAULT_SCM_MANAGER_SIGNATURE_FILE = 'rajeev_v_default.png';
-export const DEFAULT_MUGESH_SIGNATURE_FILE = 'mugesh_m_default.jpg';
+export const DEFAULT_MUGESH_SIGNATURE_FILE = 'mugesh_m_default.png';
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -379,8 +379,14 @@ export function buildSignatureRenderOptions(po = {}) {
 
   if (requesterPoSign) {
     dsc = null;
-    imagePath = DEFAULT_MUGESH_SIGNATURE_FILE;
-    imageDataUrl = getDefaultMugeshSignatureDataUrl() || imageDataUrl || null;
+    const approved = String(po.poSignStep || po.po_sign_step || '') === 'signed';
+    if (!approved) {
+      imageDataUrl = null;
+      imagePath = '';
+    } else {
+      imagePath = DEFAULT_MUGESH_SIGNATURE_FILE;
+      imageDataUrl = getDefaultMugeshSignatureDataUrl() || null;
+    }
   }
 
   if (looksSigned && !imageDataUrl && !dsc && !requesterPoSign) {
@@ -409,6 +415,7 @@ export async function buildSignatureRenderOptionsAsync(po = {}) {
   const requesterPoSign =
     ['l1', 'mugesh', 'requester', 'signed'].includes(String(po.poSignStep || po.po_sign_step || '')) ||
     String(po.poCreationBy || po.po_creation_by || '') === 'requester';
+  if (requesterPoSign && String(po.poSignStep || po.po_sign_step || '') !== 'signed') return sync;
   if (requesterPoSign) {
     const mugeshImage = await signatureFileToDataUrlAsync(DEFAULT_MUGESH_SIGNATURE_FILE);
     if (!mugeshImage) return sync;
