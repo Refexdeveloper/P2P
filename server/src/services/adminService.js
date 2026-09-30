@@ -58,8 +58,8 @@ function clearUploadDir(dirPath) {
 async function mapUserRow(u, permissionCodes) {
   const permissions =
     permissionCodes !== undefined
-      ? resolvePermissionCodesFromStored(u.role, permissionCodes)
-      : await getUserPermissionCodes(u.id, u.role);
+      ? resolvePermissionCodesFromStored(u.role, permissionCodes, u.email)
+      : await getUserPermissionCodes(u.id, u.role, u.email);
   return {
     id: u.id,
     name: u.name,

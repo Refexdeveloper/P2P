@@ -252,7 +252,8 @@ export async function seedNavigationPermissions() {
  * Resolve effective nav codes from already-loaded stored rows (no DB I/O).
  * Applies the same role heal rules in memory so admin list matches login sidebar.
  */
-export function resolvePermissionCodesFromStored(role, storedCodes = []) {
+export function resolvePermissionCodesFromStored(role, storedCodes = [], email = null) {
+  role = roleForMasterAccess(role, email);
   if (isSuperAdmin(role)) {
     return NAV_ITEMS.map((n) => n.code);
   }
@@ -342,7 +343,23 @@ export function resolvePermissionCodesFromStored(role, storedCodes = []) {
   return stored;
 }
 
+function roleForMasterAccess(role, email) {
+  const mail = String(email || '').trim().toLowerCase();
+  const normalized = String(role || '').trim().toLowerCase();
+  if (
+    mail === 'mounesh.r@refex.co.in' ||
+    mail.startsWith('mounesh.r@') ||
+    normalized === 'head procurement' ||
+    normalized === 'scm head' ||
+    normalized === 'scm - head'
+  ) {
+    return 'SCM Manager';
+  }
+  return role;
+}
+
 export async function getUserPermissionCodes(userId, role, email = null) {
+  role = roleForMasterAccess(role, email);
   if (isSuperAdmin(role)) {
     return NAV_ITEMS.map((n) => n.code);
   }
@@ -548,21 +565,22 @@ export async function getUserNavigation(userId, role, email = null) {
 }
 
 export async function setUserPermissions(userId, permissionCodes) {
-  const [userRows] = await pool.query(`SELECT id, role FROM users WHERE id = ?`, [userId]);
+  const [userRows] = await pool.query(`SELECT id, role, email FROM users WHERE id = ?`, [userId]);
   if (!userRows.length) throw new Error('User not found');
   if (isSuperAdmin(userRows[0].role)) throw new Error('Cannot modify Super Admin permissions');
 
   const validCodes = new Set(NAV_ITEMS.map((n) => n.code));
   let filtered = [...new Set(permissionCodes.filter((c) => validCodes.has(c)))];
   const role = userRows[0].role;
+  const accessRole = roleForMasterAccess(role, userRows[0].email);
   if (ROLE_NAV_WHITELIST[role]) {
     filtered = enforceRoleNavWhitelist(role, filtered);
   } else if (!ROLES_ALLOW_REQUESTER_NAV.has(role)) {
     filtered = filtered.filter((c) => !REQUESTER_ONLY_NAV_CODES.has(c));
   }
   // Keep role-default menus when Admin saves a partial set (avoids 403 on Track PO / RFQ / Create PO)
-  const roleDefaults = ROLE_DEFAULT_PERMISSIONS[role] || [];
-  if (role === 'SCM Buyer' || role === 'SCM Manager') {
+  const roleDefaults = ROLE_DEFAULT_PERMISSIONS[accessRole] || ROLE_DEFAULT_PERMISSIONS[role] || [];
+  if (role === 'SCM Buyer' || role === 'SCM Manager' || accessRole === 'SCM Manager') {
     for (const code of roleDefaults) {
       if (validCodes.has(code) && !filtered.includes(code)) filtered.push(code);
     }

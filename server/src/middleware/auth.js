@@ -51,9 +51,30 @@ export const CREATE_PR_ROLES = [
   'CFO',
 ];
 
+function normalizedRole(role) {
+  return String(role || '').trim().toLowerCase();
+}
+
+/** SCM Manager writes, including Head Procurement and the designated manager account. */
+function isScmManagerActor(user) {
+  const role = normalizedRole(user?.role);
+  if (role === 'scm manager' || role === 'head procurement' || role === 'scm head' || role === 'scm - head') {
+    return true;
+  }
+  const email = String(user?.email || '').trim().toLowerCase();
+  return email === 'mounesh.r@refex.co.in' || email.startsWith('mounesh.r@');
+}
+
+function rolesAllow(roles, user) {
+  const role = normalizedRole(user?.role);
+  if (roles.some((entry) => normalizedRole(entry) === role)) return true;
+  if (roles.some((entry) => normalizedRole(entry) === 'scm manager') && isScmManagerActor(user)) return true;
+  return false;
+}
+
 export function requireRoles(...roles) {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    if (!rolesAllow(roles, req.user)) {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
     next();
@@ -65,7 +86,7 @@ export function requirePermissions(...permissionCodes) {
   return async (req, res, next) => {
     try {
       if (isSuperAdmin(req.user?.role)) return next();
-      const codes = await getUserPermissionCodes(req.user.id, req.user.role);
+      const codes = await getUserPermissionCodes(req.user.id, req.user.role, req.user.email);
       if (permissionCodes.some((code) => codes.includes(code))) return next();
       return res.status(403).json({ message: 'Insufficient permissions' });
     } catch {
@@ -82,9 +103,9 @@ export function requireRolesOrPermissions(roles = [], permissionCodes = []) {
   return async (req, res, next) => {
     try {
       if (isSuperAdmin(req.user?.role)) return next();
-      if (roles.length && roles.includes(req.user?.role)) return next();
+      if (roles.length && rolesAllow(roles, req.user)) return next();
       if (permissionCodes.length) {
-        const codes = await getUserPermissionCodes(req.user.id, req.user.role);
+        const codes = await getUserPermissionCodes(req.user.id, req.user.role, req.user.email);
         if (permissionCodes.some((code) => codes.includes(code))) return next();
       }
       return res.status(403).json({ message: 'Insufficient permissions' });

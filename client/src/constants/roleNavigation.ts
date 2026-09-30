@@ -413,11 +413,27 @@ const EMAIL_NAV_CODES: Record<string, string[]> = {
   'srivaths.varadharajan@refex.co.in': ['nav.tasks', 'nav.cfo_insights'],
 };
 
+function roleForMasterMenus(role?: string | null, email?: string | null) {
+  const mail = String(email || '').trim().toLowerCase();
+  const normalized = String(role || '').trim().toLowerCase();
+  if (
+    mail === 'mounesh.r@refex.co.in' ||
+    mail.startsWith('mounesh.r@') ||
+    normalized === 'head procurement' ||
+    normalized === 'scm head' ||
+    normalized === 'scm - head'
+  ) {
+    return 'SCM Manager';
+  }
+  return role;
+}
+
 export function ensureNavigation(
   role: string | undefined | null,
   navigation?: NavItem[] | null,
   email?: string | null
 ): NavItem[] {
+  role = roleForMasterMenus(role, email);
   const base = navigation?.length
     ? navigation.map((item) => {
         const catalog = NAV_BY_CODE[item.code];
