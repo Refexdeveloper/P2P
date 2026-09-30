@@ -505,8 +505,8 @@ export default function CreatePRPage() {
         ...item,
         gstPercentage: Number.isFinite(Number(item.gstPercentage)) ? Number(item.gstPercentage) : 18,
       }));
-      // Never wipe line items the user just added with an older / empty draft restore.
-      if (preserveRicher && prev.length > next.length) return prev;
+      // Ignore a blank remount. A shorter non-empty list is a removal and must stick.
+      if (preserveRicher && next.length === 0 && prev.length > 0) return prev;
       return next;
     });
     setAttachedFiles((prev) => {
@@ -773,10 +773,17 @@ export default function CreatePRPage() {
                     : 18,
                 }))
               : [];
-          // Prefer local draft line items when they are richer than the server payload.
+          // Local draft wins for both adds and removals. A shorter local list is a delete.
           const local = readCreatePrDraft(user?.id, editPrId);
-          if (local?.lineItems?.length && local.lineItems.length >= fromServer.length) {
-            return local.lineItems.map((item) => ({
+          const localItems = Array.isArray(local?.lineItems) ? local.lineItems : null;
+          const useLocal =
+            localItems != null &&
+            (localItems.length >= fromServer.length ||
+              (localItems.length < fromServer.length &&
+                Boolean(local?.savedAt) &&
+                hasMeaningfulCreatePrDraft(local)));
+          if (useLocal && localItems) {
+            return localItems.map((item) => ({
               ...item,
               gstPercentage: Number.isFinite(Number(item.gstPercentage))
                 ? Number(item.gstPercentage)
@@ -1720,8 +1727,23 @@ export default function CreatePRPage() {
 
   const confirmRemoveLineItem = () => {
     if (!deleteLineItemId) return;
-    setLineItems((prev) => prev.filter((item) => item.id !== deleteLineItemId));
-    if (lineEditor?.item.id === deleteLineItemId) setLineEditor(null);
+    const removedId = deleteLineItemId;
+    setLineItems((prev) => {
+      const next = prev.filter((item) => item.id !== removedId);
+      const snap = snapshotRef.current;
+      if (snap) {
+        const updated: CreatePrDraftSnapshot = {
+          ...snap,
+          lineItems: next,
+          backendPrId: persistPrId ?? snap.backendPrId,
+          savedAt: Date.now(),
+        };
+        snapshotRef.current = updated;
+        writeCreatePrDraft(user?.id, persistPrId ?? editPrId, updated);
+      }
+      return next;
+    });
+    if (lineEditor?.item.id === removedId) setLineEditor(null);
     setDeleteLineItemId(null);
   };
 

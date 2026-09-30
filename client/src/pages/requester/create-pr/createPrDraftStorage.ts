@@ -224,12 +224,29 @@ export function writeCreatePrDraft(
       parseDraft(store.getItem(createPrDraftKey(userId, id))) ||
       (id == null ? null : parseDraft(store.getItem(createPrDraftKey(userId, null))));
     if (existing) {
-      // Never drop saved line items because of an empty autosave race.
-      if ((existing.lineItems?.length || 0) > (payload.lineItems?.length || 0)) {
+      const incomingCount = payload.lineItems?.length || 0;
+      const storedCount = existing.lineItems?.length || 0;
+      const formStillFilled = Boolean(
+        payload.prTitle?.trim() ||
+          payload.businessJustification?.trim() ||
+          payload.entityId ||
+          payload.billingAddress?.trim() ||
+          payload.department?.trim()
+      );
+      // Blank remount can autosave an empty list over a draft the user just filled.
+      // A shorter list on a form that still has details is a real removal — keep it.
+      const blankRemount =
+        incomingCount === 0 &&
+        storedCount > 0 &&
+        !formStillFilled &&
+        Date.now() - existing.savedAt < 120_000;
+      if (blankRemount) {
         payload.lineItems = existing.lineItems;
       }
+      const removedItems = Math.max(0, storedCount - (payload.lineItems?.length || 0));
+      const comparableExisting = draftContentScore(existing) - removedItems * 10;
       if (
-        draftContentScore(payload) < draftContentScore(existing) &&
+        draftContentScore(payload) < comparableExisting &&
         Date.now() - existing.savedAt < 120_000
       ) {
         return;
