@@ -1430,6 +1430,11 @@ function resolveAnnexureIiTitleBar(row = {}) {
   return 'ANNEXURE-II';
 }
 
+/** Long WO default Annexure II uses the Annexure I table. III / IV and other headings stay as text. */
+function isDefaultAnnexureIiTableRow(row = {}) {
+  return /^ANNEXURE-II$/i.test(resolveAnnexureIiTitleBar(row));
+}
+
 function annexureIiItemHtml(row, opts = {}) {
   const {
     includeTitle = true,
@@ -1578,29 +1583,33 @@ function annexureIiPagesHtml(po, docLabel = 'Purchase Order', forPdf) {
   );
   if (!rows.length) return '';
 
-  if (isLongWoDocument(po)) {
-    const body = buildAnnexureIiTableRows(rows, po).join('');
-    return wrapSheet(
-      `
+  const longWo = isLongWoDocument(po);
+  const tableRows = longWo ? rows.filter((row) => isDefaultAnnexureIiTableRow(row)) : [];
+  const textRows = longWo ? rows.filter((row) => !isDefaultAnnexureIiTableRow(row)) : rows;
+
+  const tableSheet = tableRows.length
+    ? wrapSheet(
+        `
       <div class="table-frame">
         <table class="terms terms-compact annexure-table">
           ${annexureIiTheadHtml(docLabel, false)}
           <tbody>
-            ${body}
+            ${buildAnnexureIiTableRows(tableRows, po).join('')}
           </tbody>
           ${tableCloseFoot(3)}
         </table>
       </div>`,
-      'page-annexure',
-      po,
-      forPdf
-    );
-  }
+        'page-annexure',
+        po,
+        forPdf
+      )
+    : '';
 
-  // One sheet per editor row (full table) — packing handles page breaks.
-  return rows
+  const textSheets = textRows
     .map((row, idx) => wrapSheet(annexureIiItemHtml(row, { rowIndex: idx }), 'page-annexure-ii', po, forPdf))
     .join('');
+
+  return `${tableSheet}${textSheets}`;
 }
 
 function annexurePagesHtml(po, annexure, _poTypeLabel, docLabel = 'Purchase Order', forPdf) {
@@ -1853,7 +1862,12 @@ export function buildPoPdfParts(poInput, options = {}) {
   const annexureIi = parseAnnexureIi(po.annexureIiRows || po.annexureIiHtml || po.annexure_ii_html || '').filter(
     (row) => !annexureIiRowIsEmpty(row)
   );
-  const longWoAnnexureIi = isLongWoDocument(po) && annexureIi.length > 0;
+  const longWo = isLongWoDocument(po);
+  const annexureIiTableSource = longWo ? annexureIi.filter((row) => isDefaultAnnexureIiTableRow(row)) : [];
+  const annexureIiTextSource = longWo
+    ? annexureIi.filter((row) => !isDefaultAnnexureIiTableRow(row))
+    : annexureIi;
+  const longWoAnnexureIi = annexureIiTableSource.length > 0;
 
   return {
     docLabel,
@@ -1880,9 +1894,9 @@ export function buildPoPdfParts(poInput, options = {}) {
     annexureOverflowRows: buildAnnexureOverflowPackRows(annexure, po),
     annexureIiThead: longWoAnnexureIi ? annexureIiTheadHtml(docLabel, false) : '',
     annexureIiTheadContinued: longWoAnnexureIi ? annexureIiTheadHtml(docLabel, true) : '',
-    annexureIiTableRows: longWoAnnexureIi ? buildAnnexureIiTableRows(annexureIi, po) : [],
-    annexureIiOverflowRows: longWoAnnexureIi ? buildAnnexureIiOverflowRows(annexureIi, po) : [],
-    annexureIiBlocks: longWoAnnexureIi ? [] : buildAnnexureIiPdfBlocks(annexureIi),
+    annexureIiTableRows: longWoAnnexureIi ? buildAnnexureIiTableRows(annexureIiTableSource, po) : [],
+    annexureIiOverflowRows: longWoAnnexureIi ? buildAnnexureIiOverflowRows(annexureIiTableSource, po) : [],
+    annexureIiBlocks: buildAnnexureIiPdfBlocks(annexureIiTextSource),
     notesHtml: specialNotesInnerHtml(po, options),
     ackHtml: acknowledgmentInnerHtml(po),
   };

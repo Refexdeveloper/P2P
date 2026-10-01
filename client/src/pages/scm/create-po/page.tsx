@@ -838,18 +838,31 @@ function toEditableAnnexureIiRows(rows: AnnexureIiRow[]): EditableAnnexureIiRow[
   }));
 }
 
+function isStandardAnnexureIiTitle(title?: string) {
+  const text = String(title || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return !text || /^ANNEXURE[\s\-–—_.]*II$/i.test(text);
+}
+
 function AnnexureIiTableEditor({
   title,
   rows,
   onChange,
   docLabel = 'Purchase Order',
   editorRevision = '',
+  onAddDefault,
+  addingDefault = false,
 }: {
   title: string;
   rows: AnnexureIiRow[];
   onChange: (next: AnnexureIiRow[]) => void;
   docLabel?: string;
   editorRevision?: string;
+  onAddDefault?: () => void;
+  addingDefault?: boolean;
 }) {
   const [localRows, setLocalRows] = useState<EditableAnnexureIiRow[]>(() => toEditableAnnexureIiRows(rows));
   const lastSig = useRef(serializeAnnexureIi(rows));
@@ -908,19 +921,32 @@ function AnnexureIiTableEditor({
             Each row = one {docLabel} PDF page
           </span>
         </div>
-        <button
-          type="button"
-          onClick={addRow}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] cursor-pointer"
-        >
-          <i className="ri-add-line"></i>
-          Add Row
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {onAddDefault ? (
+            <button
+              type="button"
+              onClick={onAddDefault}
+              disabled={addingDefault}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {addingDefault ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-file-list-3-line"></i>}
+              Add default Annexure II
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={addRow}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#1565C0] bg-[#E3F2FD] border border-[#90CAF9] rounded-lg hover:bg-[#BBDEFB] cursor-pointer"
+          >
+            <i className="ri-add-line"></i>
+            Add Row
+          </button>
+        </div>
       </div>
       <p className="px-5 pt-3 text-xs text-gray-500">
-        Add technical data, scope, specifications, images, and tables. Edit the{' '}
-        <strong>Annexure heading</strong> (ANNEXURE-II / III / IV…) for the PDF top bar, and use{' '}
-        <strong>Section header</strong> for the subtitle (e.g. APPROVED Drawings).
+        {onAddDefault
+          ? 'Add default Annexure II loads the long work order master as a table on the PDF. ANNEXURE-III and any other heading you add stay as text, with the formatting you type.'
+          : 'Add technical data, scope, specifications, images, and tables. Edit the Annexure heading (ANNEXURE-II / III / IV) for the PDF top bar, and use Section header for the subtitle.'}
       </p>
       <div className="divide-y divide-gray-100">
         {localRows.map((row, index) => (
@@ -2036,6 +2062,44 @@ export default function CreatePOPage() {
       );
     } finally {
       setLetterheadLoading(false);
+    }
+  }, [poType, documentType, markDraftEdited]);
+
+  const [addingDefaultAnnexureIi, setAddingDefaultAnnexureIi] = useState(false);
+  const isLongWorkOrder =
+    alignPoTypeWithDocument(poType, documentType) === 'long_wo' ||
+    alignPoTypeWithDocument(poType, documentType) === 'custom_long_wo';
+
+  const addDefaultAnnexureIi = useCallback(async () => {
+    const alignedType = alignPoTypeWithDocument(poType, documentType);
+    if (alignedType !== 'long_wo' && alignedType !== 'custom_long_wo') return;
+    setAddingDefaultAnnexureIi(true);
+    setTemplateLoadError('');
+    try {
+      const res = await poLetterheadApi.get(alignedType);
+      const iiDefaults = (
+        Array.isArray(res.data.annexureIiRows) && res.data.annexureIiRows.length
+          ? res.data.annexureIiRows
+          : Array.isArray(res.data.annexureIiDefaults)
+            ? res.data.annexureIiDefaults
+            : []
+      ) as AnnexureIiRow[];
+      if (!iiDefaults.length) {
+        setTemplateLoadError('Long Work Order master has no default Annexure II yet. Add it in Letterhead Master first.');
+        return;
+      }
+      const current = annexureIiDraftRef.current.length ? annexureIiDraftRef.current : [];
+      const extras = current.filter(
+        (row) => !annexureIiRowIsEmpty(row) && !isStandardAnnexureIiTitle(row.title)
+      );
+      const next = [...iiDefaults, ...extras];
+      markDraftEdited();
+      annexureIiDraftRef.current = next;
+      setAnnexureIiRows(next);
+    } catch (err) {
+      setTemplateLoadError(err instanceof Error ? err.message : 'Could not load default Annexure II');
+    } finally {
+      setAddingDefaultAnnexureIi(false);
     }
   }, [poType, documentType, markDraftEdited]);
 
@@ -5704,6 +5768,8 @@ export default function CreatePOPage() {
                 }}
                 docLabel={docLabel}
                 editorRevision={`${documentType}-${poType}`}
+                onAddDefault={isLongWorkOrder ? () => void addDefaultAnnexureIi() : undefined}
+                addingDefault={addingDefaultAnnexureIi}
               />
             </div>
 
