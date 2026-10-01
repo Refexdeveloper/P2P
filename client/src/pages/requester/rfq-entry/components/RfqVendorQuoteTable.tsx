@@ -137,9 +137,9 @@ function normalizeQuoteFiles(
 
 function filesForRow(row: RfqQuoteTableRow, focusRound: number): RfqQuoteTableFile[] {
   const quote = roundQuote(row, focusRound);
-  const fromQuote = normalizeQuoteFiles(quote?.quotationFiles);
+  const fromQuote = dedupeQuoteFiles(normalizeQuoteFiles(quote?.quotationFiles));
   if (fromQuote.length) return fromQuote;
-  const fromRow = normalizeQuoteFiles(row.quotationFiles);
+  const fromRow = dedupeQuoteFiles(normalizeQuoteFiles(row.quotationFiles));
   if (fromRow.length) return fromRow;
   const meta = fileMetaForRow(row, focusRound);
   if (meta.fileName || row.hasLocalQuotationFile) {
@@ -153,6 +153,18 @@ function filesForRow(row: RfqQuoteTableRow, focusRound: number): RfqQuoteTableFi
     ];
   }
   return [];
+}
+
+function dedupeQuoteFiles(files: RfqQuoteTableFile[]): RfqQuoteTableFile[] {
+  const seen = new Set<string>();
+  const out: RfqQuoteTableFile[] = [];
+  for (const file of files) {
+    const key = file.fileName.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(file);
+  }
+  return out;
 }
 
 function isImageFileName(name: string) {

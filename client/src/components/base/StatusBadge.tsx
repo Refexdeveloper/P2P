@@ -54,6 +54,11 @@ const StatusBadge = ({ status, size = 'md' }: StatusBadgeProps) => {
       'Sent Back — Revise PO': { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Returned' },
       'Pending SCM Manager PO Sign': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Pending PO Sign' },
       'PO Creation In Progress': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'PO In Progress' },
+      'Purchase Order Creation in Progress': {
+        bg: 'bg-amber-100',
+        text: 'text-amber-700',
+        label: 'PO In Progress',
+      },
       Rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rejected' },
       'Returned for Rework': { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Returned' },
     };

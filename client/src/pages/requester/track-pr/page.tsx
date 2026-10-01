@@ -1264,108 +1264,123 @@ export default function TrackPRPage() {
                                 <button
                                   type="button"
                                   onClick={() => toggleRow(pr.key)}
-                                  className="cursor-pointer rounded-xl bg-[#1E88E5] p-2 text-white transition-colors hover:bg-[#1565C0]"
+                                  className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-[#1E88E5] text-white transition-colors hover:bg-[#1565C0]"
                                   title={open ? 'Hide details' : 'View details'}
                                 >
                                   <i className="ri-eye-line"></i>
                                 </button>
-                                {(isAdminEditor ||
-                                  pr.status === 'draft' ||
-                                  pr.status === 'returned' ||
-                                  ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(
-                                    asText(pr.statusRaw).toUpperCase()
-                                  )) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
-                                    className="inline-flex cursor-pointer items-center gap-1 rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
-                                  >
-                                    <i className="ri-edit-line"></i>
-                                    Edit
-                                  </button>
+                                <div className="flex h-8 w-[4.25rem] shrink-0 items-center justify-center">
+                                  {(isAdminEditor ||
+                                    pr.status === 'draft' ||
+                                    pr.status === 'returned' ||
+                                    ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(
+                                      asText(pr.statusRaw).toUpperCase()
+                                    )) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
+                                      className="inline-flex h-8 w-full cursor-pointer items-center justify-center gap-1 rounded-xl bg-[#1E88E5] text-xs font-semibold text-white hover:bg-[#1565C0]"
+                                    >
+                                      <i className="ri-edit-line"></i>
+                                      Edit
+                                    </button>
+                                  )}
+                                </div>
+                                {isAdminEditor && (
+                                  <div className="flex h-8 w-[5.75rem] shrink-0 items-center justify-center">
+                                    {pr.status !== 'draft' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void openAdminSendBack(pr)}
+                                        className="inline-flex h-8 w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 text-xs font-semibold text-orange-700 hover:bg-orange-100"
+                                        title="Send PR back to any workflow step"
+                                      >
+                                        Send Back
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
-                                {isAdminEditor && pr.status !== 'draft' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => void openAdminSendBack(pr)}
-                                    className="cursor-pointer whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100"
-                                    title="Send PR back to any workflow step"
-                                  >
-                                    Send Back
-                                  </button>
+                                {(user?.role === 'Requester' || isSuperAdmin) && (
+                                  <div className="flex h-8 w-[5.25rem] shrink-0 items-center justify-center">
+                                    {isSuperAdmin ? (
+                                      <button
+                                        type="button"
+                                        disabled={deletingId === pr.prId}
+                                        onClick={() => void handleAdminDeletePr(pr)}
+                                        className="inline-flex h-8 w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-xl bg-[#FFE4E6] text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
+                                        title="Permanently delete this purchase request"
+                                      >
+                                        {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
+                                      </button>
+                                    ) : isDraftTrackPr(pr) ? (
+                                      <button
+                                        type="button"
+                                        disabled={deletingId === pr.prId}
+                                        onClick={() => void handleDeleteDraft(pr)}
+                                        className="inline-flex h-8 w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-xl bg-[#FFE4E6] text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
+                                        title="Delete this draft"
+                                      >
+                                        {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 )}
-                                {user?.role === 'Requester' && isDraftTrackPr(pr) && (
-                                  <button
-                                    type="button"
-                                    disabled={deletingId === pr.prId}
-                                    onClick={() => void handleDeleteDraft(pr)}
-                                    className="cursor-pointer whitespace-nowrap rounded-xl bg-[#FFE4E6] px-2.5 py-1.5 text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
-                                    title="Delete this draft"
-                                  >
-                                    {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
-                                  </button>
+                                {isAdminEditor && (
+                                  <div className="flex h-8 w-[5.25rem] shrink-0 items-center justify-center">
+                                    {pr.status !== 'draft' &&
+                                      String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
+                                      String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
+                                      String(pr.purchaseType || '')
+                                        .toLowerCase()
+                                        .replace(/[\s-]+/g, '_') !== 'cloud_subscription' && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          navigate(
+                                            user?.role === 'Requester'
+                                              ? `/requester/rfq-entry/${pr.prId}`
+                                              : `/scm/rfq-entry/${pr.prId}`
+                                          )
+                                        }
+                                        className="inline-flex h-8 w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-transparent bg-white text-xs font-semibold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                        title="Edit RFQ amounts and quotation files"
+                                      >
+                                        Edit RFQ
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
-                                {isSuperAdmin && (
-                                  <button
-                                    type="button"
-                                    disabled={deletingId === pr.prId}
-                                    onClick={() => void handleAdminDeletePr(pr)}
-                                    className="cursor-pointer whitespace-nowrap rounded-xl bg-[#FFE4E6] px-2.5 py-1.5 text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
-                                    title="Permanently delete this purchase request"
-                                  >
-                                    {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
-                                  </button>
-                                )}
-                                {isAdminEditor &&
-                                  pr.status !== 'draft' &&
-                                  String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
-                                  String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
-                                  String(pr.purchaseType || '')
-                                    .toLowerCase()
-                                    .replace(/[\s-]+/g, '_') !== 'cloud_subscription' && (
-                                  <button
-                                    onClick={() =>
-                                      navigate(
-                                        user?.role === 'Requester'
-                                          ? `/requester/rfq-entry/${pr.prId}`
-                                          : `/scm/rfq-entry/${pr.prId}`
-                                      )
-                                    }
-                                    className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
-                                    title="Edit RFQ amounts and quotation files"
-                                  >
-                                    Edit RFQ
-                                  </button>
-                                )}
-                                {String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
+                                <div className="flex h-8 w-[7.5rem] shrink-0 items-center justify-center">
+                                  {String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
                                   String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
                                   String(pr.purchaseType || '')
                                     .toLowerCase()
                                     .replace(/[\s-]+/g, '_') !== 'cloud_subscription' &&
                                   pr.poDocumentAvailable &&
                                   pr.poId ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
-                                    className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
-                                    title={`View PO ${pr.poNumber || ''}`.trim()}
-                                  >
-                                    <i className="ri-file-pdf-2-line" />
-                                    PO Document
-                                  </button>
-                                ) : String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
-                                  String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
-                                  String(pr.purchaseType || '')
-                                    .toLowerCase()
-                                    .replace(/[\s-]+/g, '_') !== 'cloud_subscription' &&
-                                  pr.poId ? (
-                                  <span
-                                    className="whitespace-nowrap rounded-xl bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-600"
-                                    title="PO document available after SCM Buyer final verification"
-                                  >
-                                    {pr.statusUI || 'PO in progress'}
-                                  </span>
-                                ) : null}
+                                    <button
+                                      type="button"
+                                      onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
+                                      className="inline-flex h-8 w-full cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#1E88E5] px-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
+                                      title={`View PO ${pr.poNumber || ''}`.trim()}
+                                    >
+                                      <i className="ri-file-pdf-2-line" />
+                                      PO Document
+                                    </button>
+                                  ) : String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
+                                    String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
+                                    String(pr.purchaseType || '')
+                                      .toLowerCase()
+                                      .replace(/[\s-]+/g, '_') !== 'cloud_subscription' &&
+                                    pr.poId ? (
+                                    <span
+                                      className="block w-full truncate rounded-xl bg-slate-50 px-2 text-center text-[10px] font-medium leading-8 text-slate-600"
+                                      title={pr.statusUI || 'PO document available after SCM Buyer final verification'}
+                                    >
+                                      PO in progress
+                                    </span>
+                                  ) : null}
+                                </div>
                               </div>
                             </td>
                           </tr>

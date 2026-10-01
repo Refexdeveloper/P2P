@@ -292,6 +292,28 @@ async function persistPrimaryQuotationBlob(submissionId, buffer) {
   }
 }
 
+function normQuoteFileName(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+function dedupeNamedFiles(primaryName, extras = []) {
+  const seen = new Set();
+  const primary = normQuoteFileName(primaryName);
+  if (primary) seen.add(primary);
+  const keep = [];
+  const dropIds = [];
+  for (const file of extras || []) {
+    const key = normQuoteFileName(file.fileName);
+    if (!key || seen.has(key)) {
+      if (Number(file.id) > 0) dropIds.push(Number(file.id));
+      continue;
+    }
+    seen.add(key);
+    keep.push(file);
+  }
+  return { keep, dropIds };
+}
+
 function collectIncomingQuoteFiles(quote = {}) {
   const files = [];
   const push = (fileName, fileData) => {
@@ -311,10 +333,36 @@ function collectIncomingQuoteFiles(quote = {}) {
 async function insertExtraQuotationFiles(submissionId, invitationId, round, files) {
   if (!files?.length || !submissionId) return;
   try {
-    for (let i = 0; i < files.length; i++) {
-      const info = await saveQuotationFile(invitationId, round, files[i].fileName, files[i].fileData);
+    const seen = new Set();
+    const [primaryRows] = await pool.query(
+      `SELECT quotation_file_name FROM vendor_quotation_submissions WHERE id = ?`,
+      [submissionId]
+    );
+    const primaryName = normQuoteFileName(primaryRows[0]?.quotation_file_name);
+    if (primaryName) seen.add(primaryName);
+    try {
+      const [existing] = await pool.query(
+        `SELECT file_name FROM vendor_quotation_files WHERE submission_id = ?`,
+        [submissionId]
+      );
+      for (const row of existing) {
+        const key = normQuoteFileName(row.file_name);
+        if (key) seen.add(key);
+      }
+    } catch (err) {
+      if (String(err?.code || '') !== 'ER_NO_SUCH_TABLE') throw err;
+    }
+    const unique = [];
+    for (const file of files) {
+      const key = normQuoteFileName(file.fileName);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      unique.push(file);
+    }
+    for (let i = 0; i < unique.length; i++) {
+      const info = await saveQuotationFile(invitationId, round, unique[i].fileName, unique[i].fileData);
       if (!info.filePath && !info.buffer) {
-        throw new Error(`Failed to save quotation file ${files[i].fileName}`);
+        throw new Error(`Failed to save quotation file ${unique[i].fileName}`);
       }
       await pool.query(
         `INSERT INTO vendor_quotation_files (submission_id, file_name, file_path, file_data, sort_order)
@@ -328,7 +376,7 @@ async function insertExtraQuotationFiles(submissionId, invitationId, round, file
           [submissionId, info.fileName]
         );
         if (!(Number(check[0]?.n) > 0)) {
-          throw new Error(`Quotation file ${files[i].fileName} did not save to the database`);
+          throw new Error(`Quotation file ${unique[i].fileName} did not save to the database`);
         }
       }
     }
@@ -464,9 +512,10 @@ async function listExtraFilesBySubmissionIds(submissionIds) {
     );
     const map = new Map();
     for (const row of rows) {
-      const list = map.get(row.submission_id) || [];
+      const key = Number(row.submission_id);
+      const list = map.get(key) || [];
       list.push({ id: row.id, fileName: row.file_name, isPrimary: false });
-      map.set(row.submission_id, list);
+      map.set(key, list);
     }
     return map;
   } catch (err) {
@@ -523,7 +572,26 @@ export function listQuotationFilesFromSubmission(submission) {
 
 async function attachQuotationFilesToSubmissions(submissions) {
   const extras = await listExtraFilesBySubmissionIds((submissions || []).map((s) => s.id));
-  return (submissions || []).map((s) => withQuotationFiles(s, extras.get(s.id) || []));
+  const dropIds = [];
+  const next = (submissions || []).map((s) => {
+    const { keep, dropIds: extraDrops } = dedupeNamedFiles(
+      s.quotationFileName,
+      extras.get(Number(s.id)) || []
+    );
+    dropIds.push(...extraDrops);
+    return withQuotationFiles(s, keep);
+  });
+  if (dropIds.length) {
+    try {
+      await pool.query(
+        `DELETE FROM vendor_quotation_files WHERE id IN (${dropIds.map(() => '?').join(',')})`,
+        dropIds
+      );
+    } catch (err) {
+      console.warn('Duplicate quotation file cleanup skipped:', err.message);
+    }
+  }
+  return next;
 }
 
 function normalizeQuoteLineItems(rawLines, prLineItems = []) {
@@ -1165,7 +1233,8 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       if (fileBuffer && !useGcsForNewUploads()) await persistPrimaryQuotationBlob(ins.insertId, fileBuffer);
       const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: quote.quotationFiles });
       if (prev?.extras?.length && !extraIncoming.length) {
-        for (const extra of prev.extras) {
+        const { keep } = dedupeNamedFiles(fileName, prev.extras);
+        for (const extra of keep) {
           await pool.query(
             `INSERT INTO vendor_quotation_files (submission_id, file_name, file_path, file_data, sort_order)
              VALUES (?, ?, ?, ?, ?)`,

@@ -326,7 +326,11 @@ export default function RfqEntryDetailPage() {
         : q?.quotationFileName
           ? [{ id: null as number | null, fileName: q.quotationFileName, isPrimary: true }]
           : [];
-    return list.filter((f) => !removed.has(quoteFileKey(f)));
+    return list.filter((f) => !removed.has(quoteFileKey(f))).filter((f, index, all) => {
+      const key = String(f.fileName || '').trim().toLowerCase();
+      if (!key) return false;
+      return all.findIndex((item) => String(item.fileName || '').trim().toLowerCase() === key) === index;
+    });
   };
 
   const removeSavedQuoteFile = (

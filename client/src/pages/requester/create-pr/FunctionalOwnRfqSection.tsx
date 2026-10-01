@@ -69,7 +69,10 @@ function quoteTableFiles(q: FunctionalRfqQuote | undefined): RfqQuoteTableFile[]
     isLocal: true,
     isPrimary: saved.length === 0 && i === 0,
   }));
-  return [...saved, ...locals].filter((f) => f.fileName);
+  return [...saved, ...locals].filter((f) => f.fileName).filter((f, index, all) => {
+    const key = f.fileName.trim().toLowerCase();
+    return all.findIndex((item) => item.fileName.trim().toLowerCase() === key) === index;
+  });
 }
 
 export function filesFromSubmission(sub?: {
@@ -79,13 +82,19 @@ export function filesFromSubmission(sub?: {
 }): SavedQuotationFile[] {
   const extra = Array.isArray(sub?.quotationFiles) ? sub.quotationFiles : [];
   if (extra.length) {
+    const seen = new Set<string>();
     return extra
       .map((f, i) => ({
         id: f.id ?? null,
         fileName: String(f.fileName || ''),
         isPrimary: Boolean(f.isPrimary ?? i === 0),
       }))
-      .filter((f) => f.fileName);
+      .filter((f) => {
+        const key = f.fileName.trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
   }
   if (sub?.quotationFileName) {
     return [{ id: null, fileName: sub.quotationFileName, isPrimary: true }];
