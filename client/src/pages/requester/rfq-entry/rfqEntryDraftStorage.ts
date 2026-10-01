@@ -75,8 +75,7 @@ function draftRichness(snap: RfqEntryDraftSnapshot | null): number {
   for (const vals of Object.values(snap.manualDrafts || {})) {
     if (!vals || typeof vals !== 'object') continue;
     n += Object.keys(vals).length;
-    const lines = vals.quoteLineItems;
-    if (Array.isArray(lines)) n += lines.length * 2;
+    // Line count is not richness. A shorter quotation (removed default lines) must still save.
   }
   return n;
 }

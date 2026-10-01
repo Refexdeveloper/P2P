@@ -591,9 +591,6 @@ function applyQuoteLineItemsToSubmissionBody(body, pr) {
   const prLines = pr?.lineItems || [];
   const { lines, total } = normalizeQuoteLineItems(body.quoteLineItems, prLines);
 
-  if (prLines.length && lines.length < prLines.length) {
-    throw new Error('Enter quoted amount for every line item');
-  }
   if (lines.some((l) => !l.quantity || l.quantity <= 0)) {
     throw new Error('Each line item must have quantity greater than 0');
   }

@@ -448,47 +448,64 @@ export default function RfqEntryDetailPage() {
 
   const parseAmountInput = (raw: string): number | string | '' => parseInrAmountInput(raw);
 
+  const mapSavedQuoteLine = (l: ManualQuoteLine, index: number): ManualQuoteLine => {
+    const id = String(l.lineItemId || `extra-${index}`);
+    const prItem = prLineItems.find((li) => String(li.id) === id);
+    const extra = Boolean(l.extra) || !prItem;
+    const mapped: ManualQuoteLine = {
+      lineItemId: id,
+      description: l.description || prItem?.description || '',
+      category: l.category || prItem?.category || '',
+      estimatedUnitCost: Number(l.estimatedUnitCost ?? prItem?.unitCost) || 0,
+      quantity: Number(l.quantity ?? prItem?.quantity) || (extra ? 1 : 0),
+      quotedUnitPrice: l.quotedUnitPrice === '' ? '' : Number(l.quotedUnitPrice) || 0,
+      gstPercent: l.gstPercent != null ? Number(l.gstPercent) : 18,
+      quotedTotal: 0,
+      extra,
+    };
+    return { ...mapped, quotedTotal: lineQuotedTotal(mapped) };
+  };
+
   const seedQuoteLines = (savedLines: ManualQuoteLine[] = []): ManualQuoteLine[] => {
     const saved = Array.isArray(savedLines) ? savedLines : [];
-    const prIds = new Set(prLineItems.map((li) => String(li.id)));
-    const fromPr = prLineItems.map((li) => {
-      const id = String(li.id);
-      const hit = saved.find((l) => String(l.lineItemId) === id);
-      return {
-        lineItemId: id,
-        description: hit?.description || li.description,
-        category: hit?.category || li.category || '',
-        estimatedUnitCost: Number(hit?.estimatedUnitCost ?? li.unitCost) || 0,
-        quantity: Number(hit?.quantity ?? li.quantity) || 0,
-        quotedUnitPrice: Number(hit?.quotedUnitPrice) || 0,
-        gstPercent: hit?.gstPercent != null ? Number(hit.gstPercent) : 18,
+    // A saved quotation is the list the user kept. Do not put removed PR lines back.
+    if (saved.length) {
+      return saved.map((l, index) => mapSavedQuoteLine(l, index));
+    }
+    return prLineItems.map((li) => {
+      const mapped: ManualQuoteLine = {
+        lineItemId: String(li.id),
+        description: li.description,
+        category: li.category || '',
+        estimatedUnitCost: Number(li.unitCost) || 0,
+        quantity: Number(li.quantity) || 0,
+        quotedUnitPrice: 0,
+        gstPercent: 18,
         quotedTotal: 0,
         extra: false,
       };
+      return { ...mapped, quotedTotal: lineQuotedTotal(mapped) };
     });
-    const extras = saved
-      .filter((l) => l.extra || !prIds.has(String(l.lineItemId)))
-      .map((l) => ({
-        lineItemId: String(l.lineItemId || `extra-${Date.now()}`),
-        description: l.description || '',
-        category: l.category || '',
-        estimatedUnitCost: Number(l.estimatedUnitCost) || 0,
-        quantity: Number(l.quantity) || 1,
-        quotedUnitPrice: Number(l.quotedUnitPrice) || 0,
-        gstPercent: l.gstPercent != null ? Number(l.gstPercent) : 18,
-        quotedTotal: 0,
-        extra: true,
-      }));
-    return [...fromPr, ...extras].map((l) => ({
-      ...l,
-      quotedTotal: lineQuotedTotal(l),
-    }));
+  };
+
+  const removedLineIdSet = (invitationId: number): Set<string> => {
+    const ids = manualDrafts[invitationId]?.removedQuoteLineIds;
+    return new Set(Array.isArray(ids) ? ids.map((id) => String(id)) : []);
+  };
+
+  const withoutRemovedLines = (invitationId: number, lines: ManualQuoteLine[]): ManualQuoteLine[] => {
+    const removed = removedLineIdSet(invitationId);
+    if (!removed.size) return lines;
+    return lines.filter((l) => !removed.has(String(l.lineItemId)));
   };
 
   const getWorkingLines = (invitationId: number, savedLines: ManualQuoteLine[] = []): ManualQuoteLine[] => {
-    const draft = (manualDrafts[invitationId]?.quoteLineItems as ManualQuoteLine[]) || [];
-    if (draft.length) return draft;
-    return seedQuoteLines(savedLines);
+    const draftBag = manualDrafts[invitationId];
+    const base =
+      draftBag && Array.isArray(draftBag.quoteLineItems)
+        ? (draftBag.quoteLineItems as ManualQuoteLine[])
+        : seedQuoteLines(savedLines);
+    return withoutRemovedLines(invitationId, base);
   };
 
   const persistWorkingLines = (invitationId: number, lines: ManualQuoteLine[]) => {
@@ -615,11 +632,32 @@ export default function RfqEntryDetailPage() {
     ]);
   };
 
-  const removeExtraQuoteLine = (invitationId: number, lineItemId: string) => {
-    persistWorkingLines(
-      invitationId,
-      getWorkingLines(invitationId).filter((l) => String(l.lineItemId) !== String(lineItemId))
-    );
+  const removeQuoteLine = (invitationId: number, lineItemId: string, savedLines: ManualQuoteLine[] = []) => {
+    const removeId = String(lineItemId);
+    const nextLines = getWorkingLines(invitationId, savedLines)
+      .filter((l) => String(l.lineItemId) !== removeId)
+      .map((l) => ({ ...l, quotedTotal: lineQuotedTotal(l) }));
+    const total = nextLines.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
+    setManualDrafts((prev) => {
+      const prevDraft = prev[invitationId] || {};
+      const removed = new Set(
+        (Array.isArray(prevDraft.removedQuoteLineIds) ? prevDraft.removedQuoteLineIds : []).map((id) =>
+          String(id)
+        )
+      );
+      removed.add(removeId);
+      const keepManual = Boolean(prevDraft.quotedPriceManual);
+      return {
+        ...prev,
+        [invitationId]: {
+          ...prevDraft,
+          removedQuoteLineIds: [...removed],
+          quoteLineItems: nextLines,
+          ...(keepManual ? {} : { quotedPrice: total }),
+          lineItemsTotal: total,
+        },
+      };
+    });
   };
 
   const getManualQuoteTotal = (invitationId: number) => {
@@ -1178,7 +1216,7 @@ export default function RfqEntryDetailPage() {
     const quote = quoteOverride || getDisplayQuote(row);
     const vals = quoteFieldValues(quote, row);
     const savedLines = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
-    const quoteLineItems = seedQuoteLines(savedLines);
+    const quoteLineItems = withoutRemovedLines(row.invitationId, seedQuoteLines(savedLines));
     const lineTotal = quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
     const savedPrice = Number(vals.quotedPrice) || 0;
     const quotedPriceManual =
@@ -1193,6 +1231,7 @@ export default function RfqEntryDetailPage() {
         quotedPriceManual,
         lineItemsTotal: lineTotal,
         quoteLineItems,
+        removedQuoteLineIds: manualDrafts[row.invitationId]?.removedQuoteLineIds || [],
         leadTime: vals.leadTime ?? '',
         paymentTerms: vals.paymentTerms ?? 'Net 30',
         warranty: vals.warranty ?? '',
@@ -1977,13 +2016,18 @@ export default function RfqEntryDetailPage() {
     const last = (lastRound ? quoteForRound(source, lastRound) : null) || getDisplayQuote(source);
     const vals = quoteFieldValues(last, source);
     const saved = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
-    persistWorkingLines(row.invitationId, seedQuoteLines(saved));
+    const keptLines = withoutRemovedLines(row.invitationId, seedQuoteLines(saved));
+    persistWorkingLines(row.invitationId, keptLines);
     setManualDrafts((prev) => ({
       ...prev,
       [row.invitationId]: {
         ...vals,
         ...(prev[row.invitationId] || {}),
-        quoteLineItems: seedQuoteLines(saved),
+        quoteLineItems: withoutRemovedLines(
+          row.invitationId,
+          (prev[row.invitationId]?.quoteLineItems as ManualQuoteLine[]) || keptLines
+        ),
+        removedQuoteLineIds: prev[row.invitationId]?.removedQuoteLineIds || [],
         leadTime: vals.leadTime ?? 0,
         paymentTerms: vals.paymentTerms ?? 'Net 30',
         warranty: vals.warranty ?? '',
@@ -2058,7 +2102,7 @@ export default function RfqEntryDetailPage() {
     const quote = getDisplayQuote(row);
     const vals = quoteFieldValues(quote, row);
     const saved = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
-    persistWorkingLines(row.invitationId, seedQuoteLines(saved));
+    persistWorkingLines(row.invitationId, withoutRemovedLines(row.invitationId, seedQuoteLines(saved)));
     setQuotePopupId(row.invitationId);
   };
 
@@ -2834,31 +2878,51 @@ export default function RfqEntryDetailPage() {
                                           <tr key={lineId} className="border-t border-gray-100">
                                             <td className="px-4 py-3">
                                               {editable && li.extra ? (
-                                                <input
-                                                  type="text"
-                                                  value={li.description || ''}
-                                                  onChange={(e) =>
-                                                    setManualLineField(
-                                                      row.invitationId,
-                                                      lineId,
-                                                      'description',
-                                                      e.target.value
-                                                    )
-                                                  }
-                                                  className={inputClass}
-                                                  placeholder="Item name"
-                                                />
-                        ) : (
-                          <>
-                                                  <p className="font-medium text-gray-900">{li.description || prItem?.description}</p>
-                                                  {(li.category || prItem?.category) ? (
-                                                    <p className="text-xs text-gray-400">{li.category || prItem?.category}</p>
-                                                  ) : li.extra ? (
-                                                    <p className="text-xs text-[#1E88E5]">Added on this quote</p>
-                                                  ) : (
-                                                    <p className="text-xs text-gray-400">From PR</p>
-                                                  )}
-                                                </>
+                                                <div className="flex items-center gap-2">
+                                                  <input
+                                                    type="text"
+                                                    value={li.description || ''}
+                                                    onChange={(e) =>
+                                                      setManualLineField(
+                                                        row.invitationId,
+                                                        lineId,
+                                                        'description',
+                                                        e.target.value
+                                                      )
+                                                    }
+                                                    className={inputClass}
+                                                    placeholder="Item name"
+                                                  />
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => removeQuoteLine(row.invitationId, lineId, savedLines)}
+                                                    className="shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100"
+                                                  >
+                                                    Remove
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <div className="flex items-start justify-between gap-3">
+                                                  <div className="min-w-0">
+                                                    <p className="font-medium text-gray-900">{li.description || prItem?.description}</p>
+                                                    {(li.category || prItem?.category) ? (
+                                                      <p className="text-xs text-gray-400">{li.category || prItem?.category}</p>
+                                                    ) : li.extra ? (
+                                                      <p className="text-xs text-[#1E88E5]">Added on this quote</p>
+                                                    ) : (
+                                                      <p className="text-xs text-gray-400">From PR</p>
+                                                    )}
+                                                  </div>
+                                                  {editable ? (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => removeQuoteLine(row.invitationId, lineId, savedLines)}
+                                                      className="shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100"
+                                                    >
+                                                      Remove
+                                                    </button>
+                                                  ) : null}
+                                                </div>
                                               )}
                                             </td>
                                             <td className="px-4 py-3">
@@ -2944,11 +3008,10 @@ export default function RfqEntryDetailPage() {
                                                 {li.extra ? (
                                                   <button
                                                     type="button"
-                                                    onClick={() => removeExtraQuoteLine(row.invitationId, lineId)}
-                                                    className="text-red-500 hover:text-red-700"
-                                                    title="Remove line"
+                                                    onClick={() => removeQuoteLine(row.invitationId, lineId, savedLines)}
+                                                    className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100"
                                                   >
-                                                    <i className="ri-delete-bin-line" />
+                                                    Remove
                                                   </button>
                                                 ) : null}
                                               </td>
@@ -2980,7 +3043,7 @@ export default function RfqEntryDetailPage() {
                                   </table>
                                 </div>
                                 <p className="text-xs text-gray-400 mt-2">
-                                  Enter quoted unit amount and GST. Line total = qty × quoted unit + GST. Extra items apply to this quote only.
+                                  PR line items are listed by default. Remove any line that is not part of this quotation. Line total = qty × quoted unit + GST.
                                 </p>
                               </div>
                               );
