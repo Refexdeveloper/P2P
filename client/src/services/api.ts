@@ -880,6 +880,13 @@ export const poApi = {
           approvedAmount: number;
           pendingAmount: number;
           color: string;
+          departments?: Array<{
+            departmentName: string;
+            totalPOCount: number;
+            totalPOAmount: number;
+            approvedAmount: number;
+            pendingAmount: number;
+          }>;
         }>;
         monthlyPOTrend: Array<Record<string, string | number>>;
         monthlySeries: Array<{ key: string; label: string; color: string }>;
@@ -902,6 +909,21 @@ export const poApi = {
         }>;
       };
     }>(`/api/po/stats/cfo${q ? `?${q}` : ''}`);
+  },
+  /** Read-only Financial Insights. No login. Used by the public embed page. */
+  publicInsights: (params?: {
+    department?: string;
+    category?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.department) qs.set('department', params.department);
+    if (params?.category) qs.set('category', params.category);
+    if (params?.dateFrom) qs.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) qs.set('dateTo', params.dateTo);
+    const q = qs.toString();
+    return request<{ data: Record<string, unknown> }>(`/api/po/public/insights${q ? `?${q}` : ''}`);
   },
   getCreateContext: (prId: number) =>
     request<{

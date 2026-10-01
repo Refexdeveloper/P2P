@@ -20,7 +20,7 @@ const statusConfig: Record<string, { bg: string; text: string; dot: string }> = 
   Rejected: { bg: 'bg-red-50', text: 'text-[#E53935]', dot: 'bg-[#E53935]' },
 };
 
-export default function RecentPOTable({ orders }: { orders: Order[] }) {
+export default function RecentPOTable({ orders, linkable = true }: { orders: Order[]; linkable?: boolean }) {
   const navigate = useNavigate();
 
   const openDetail = (po: Order) => {
@@ -79,7 +79,7 @@ export default function RecentPOTable({ orders }: { orders: Order[] }) {
             ) : (
               orders.map((po) => {
                 const cfg = statusConfig[po.status] ?? statusConfig['Pending Approval'];
-                const clickable = Boolean(po.poId || po.poNumber);
+                const clickable = linkable && Boolean(po.poId || po.poNumber);
                 const edge = clickable
                   ? 'border-transparent group-hover:border-[#90CAF9]'
                   : 'border-transparent';

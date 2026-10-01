@@ -104,6 +104,10 @@ const routes: RouteObject[] = [
     element: <VendorInvoiceSubmitPage />,
   },
   {
+    path: '/public/insights',
+    element: <DashboardPage publicView />,
+  },
+  {
     path: '/dashboard',
     element: <ProtectedRoute><DashboardPage /></ProtectedRoute>,
   },

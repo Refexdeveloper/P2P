@@ -128,7 +128,7 @@ export default function DashboardFilters({
     [entities, lockEntity, lockedEntityLabel]
   );
   const departmentOptions = useMemo(
-    () => [{ value: '', label: 'All Departments' }, ...departments.map((d) => ({ value: d, label: d }))],
+    () => [{ value: '', label: 'All Functions' }, ...departments.map((d) => ({ value: d, label: d }))],
     [departments]
   );
   const categoryOptions = useMemo(
@@ -203,7 +203,7 @@ export default function DashboardFilters({
                   label="Department"
                   value={sheetDraft.department}
                   options={departmentOptions}
-                  placeholder="All Departments"
+                  placeholder="All Functions"
                   onChange={(department) => setSheetDraft((prev) => ({ ...prev, department }))}
                 />
                 <FilterSheetSelect
@@ -338,7 +338,7 @@ export default function DashboardFilters({
             className={`${fieldClass} min-w-[150px]`}
             aria-label="Department"
           >
-            <option value="">All Departments</option>
+            <option value="">All Functions</option>
             {departments.map((d) => (
               <option key={d} value={d}>
                 {d}

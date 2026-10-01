@@ -6943,6 +6943,45 @@ export async function getCfoPoInsights(user = null, filters = {}) {
     queryParams
   );
 
+  const prAlreadyJoined = Boolean(poScope.join) || needsPrJoin;
+  const departmentJoin = prAlreadyJoined
+    ? 'LEFT JOIN departments d_ent ON d_ent.id = pr.department_id'
+    : `LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+       LEFT JOIN departments d_ent ON d_ent.id = pr.department_id`;
+  const [departmentRows] = await pool.query(
+    `SELECT
+       COALESCE(e.id, 0) AS entity_id,
+       COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned') AS entity_name,
+       COALESCE(NULLIF(TRIM(d_ent.name), ''), 'Unassigned') AS department_name,
+       COUNT(*) AS total_po_count,
+       COALESCE(SUM(po.grand_total), 0) AS total_po_amount,
+       COALESCE(SUM(CASE WHEN po.status IN (${approvedSql}) THEN po.grand_total ELSE 0 END), 0) AS approved_amount,
+       COALESCE(SUM(CASE WHEN po.status IN (${pendingSql}) THEN po.grand_total ELSE 0 END), 0) AS pending_amount
+     FROM purchase_orders po
+     LEFT JOIN entity_masters e ON e.id = po.entity_id
+     ${joinSql}
+     ${departmentJoin}
+     WHERE po.status NOT IN (${excludedSql})${whereSql}
+     GROUP BY COALESCE(e.id, 0),
+              COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned'),
+              COALESCE(NULLIF(TRIM(d_ent.name), ''), 'Unassigned')
+     ORDER BY total_po_amount DESC`,
+    queryParams
+  );
+  const departmentsByEntity = new Map();
+  for (const row of departmentRows) {
+    const key = `${Number(row.entity_id) || 0}|${row.entity_name}`;
+    const list = departmentsByEntity.get(key) || [];
+    list.push({
+      departmentName: row.department_name,
+      totalPOCount: Number(row.total_po_count || 0),
+      totalPOAmount: Number(row.total_po_amount || 0),
+      approvedAmount: Number(row.approved_amount || 0),
+      pendingAmount: Number(row.pending_amount || 0),
+    });
+    departmentsByEntity.set(key, list);
+  }
+
   const entityWisePOSummary = entityRows.map((row, idx) => ({
     entityId: Number(row.entity_id) || null,
     entityName: row.entity_name,
@@ -6952,6 +6991,7 @@ export async function getCfoPoInsights(user = null, filters = {}) {
     approvedAmount: Number(row.approved_amount || 0),
     pendingAmount: Number(row.pending_amount || 0),
     color: CFO_PO_ENTITY_COLORS[idx % CFO_PO_ENTITY_COLORS.length],
+    departments: departmentsByEntity.get(`${Number(row.entity_id) || 0}|${row.entity_name}`) || [],
   }));
 
   const topEntities = entityWisePOSummary.slice(0, 4);

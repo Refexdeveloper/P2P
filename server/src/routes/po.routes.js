@@ -130,6 +130,21 @@ router.get('/vendor-accept/:token/pdf', async (req, res) => {
   }
 });
 
+/** Public read-only Financial Insights for embedding. No login. Does not expose write actions. */
+router.get('/public/insights', async (req, res) => {
+  try {
+    const data = await getCfoPoInsights(null, {
+      department: typeof req.query.department === 'string' ? req.query.department : '',
+      category: typeof req.query.category === 'string' ? req.query.category : '',
+      dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : '',
+      dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : '',
+    });
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.use(authenticate);
 
 /** Read PO details / documents — SCM, approvers, requester, and Financial Insights users. */

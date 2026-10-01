@@ -78,11 +78,14 @@ export default function Dashboard({
   onBack,
   backLabel = 'Back to dashboard',
   showCharts = false,
+  publicView = false,
 }: {
   embedded?: boolean;
   onBack?: () => void;
   backLabel?: string;
   showCharts?: boolean;
+  /** Open without login so the page can be embedded. Read-only. */
+  publicView?: boolean;
 } = {}) {
   const { user } = useAuth();
   const [data, setData] = useState<Insights>(EMPTY);
@@ -98,7 +101,7 @@ export default function Dashboard({
   const [hidden, setHidden] = useState<Record<string, boolean>>(readHidden);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const customizeRef = useRef<HTMLDivElement>(null);
-  const lockedEntityId = user?.entityId ? String(user.entityId) : null;
+  const lockedEntityId = publicView || !user?.entityId ? null : String(user.entityId);
 
   useEffect(() => {
     if (!lockedEntityId) return;
@@ -113,23 +116,46 @@ export default function Dashboard({
       setError(null);
       try {
       const [insightsRes, masterEnt, masterDept, masterCat] = await Promise.all([
-        poApi.cfoInsights({
-          department: active.department || undefined,
-          category: active.category || undefined,
-          dateFrom: active.dateFrom || undefined,
-          dateTo: active.dateTo || undefined,
-        }),
-        masterApi.listEntities({ status: 'active', pageSize: 500 }).catch(() => ({ data: [] as Array<{ id: number; name: string }> })),
-        masterApi.listDepartments({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
-        masterApi.listCategories({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
+        publicView
+          ? poApi.publicInsights({
+              department: active.department || undefined,
+              category: active.category || undefined,
+              dateFrom: active.dateFrom || undefined,
+              dateTo: active.dateTo || undefined,
+            })
+          : poApi.cfoInsights({
+              department: active.department || undefined,
+              category: active.category || undefined,
+              dateFrom: active.dateFrom || undefined,
+              dateTo: active.dateTo || undefined,
+            }),
+        publicView
+          ? Promise.resolve({ data: [] as Array<{ id: number; name: string }> })
+          : masterApi.listEntities({ status: 'active', pageSize: 500 }).catch(() => ({ data: [] as Array<{ id: number; name: string }> })),
+        publicView
+          ? Promise.resolve({ data: [] as Array<{ name: string }> })
+          : masterApi.listDepartments({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
+        publicView
+          ? Promise.resolve({ data: [] as Array<{ name: string }> })
+          : masterApi.listCategories({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
       ]);
-      const next = insightsRes.data || EMPTY;
+      const next = (insightsRes.data || EMPTY) as Insights;
       setData(next);
       setEntities(
         (masterEnt.data || []).map((e) => ({ id: String(e.id), name: String(e.name || '') })).filter((e) => e.name)
       );
       setDepartments([...new Set((masterDept.data || []).map((d) => String(d.name || '').trim()).filter(Boolean))]);
       setCategories([...new Set((masterCat.data || []).map((c) => String(c.name || '').trim()).filter(Boolean))]);
+      if (publicView) {
+        const names = new Set<string>();
+        for (const entity of next.entityWisePOSummary || []) {
+          for (const dept of entity.departments || []) {
+            const name = String(dept.departmentName || '').trim();
+            if (name && name !== 'Unassigned') names.add(name);
+          }
+        }
+        setDepartments([...names].sort((a, b) => a.localeCompare(b)));
+      }
       setUpdatedAt(new Date());
       } catch (err) {
           setData(EMPTY);
@@ -309,12 +335,14 @@ export default function Dashboard({
               </button>
             ) : null}
             <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">
-              {greetingForNow()}, {user?.name || 'User'}
+              {publicView ? 'Financial Insights' : `${greetingForNow()}, ${user?.name || 'User'}`}
             </h1>
             <p className="text-sm text-slate-500 mt-2">
-              {getUserDesignation(user)
-                ? `Financial Insights · ${getUserDesignation(user)}`
-                : 'Financial Insights'}
+              {publicView
+                ? 'Public view'
+                : getUserDesignation(user)
+                  ? `Financial Insights · ${getUserDesignation(user)}`
+                  : 'Financial Insights'}
             </p>
           </div>
           <div className="flex items-center gap-2 relative" ref={customizeRef}>
@@ -403,10 +431,10 @@ export default function Dashboard({
             <div id="cfo-detail-tables" className="mb-4">
               <EntityPOSummaryTable entities={filteredEntities} />
         </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-              <RecentPOTable orders={filteredOrders} />
+            <div className="mb-4 flex flex-col gap-4">
+              <RecentPOTable orders={filteredOrders} linkable={!publicView} />
               <TopVendorsTable vendors={filteredVendors} />
-        </div>
+            </div>
           </>
         ) : null}
 
@@ -419,6 +447,6 @@ export default function Dashboard({
       </div>
   );
 
-  if (embedded) return content;
+  if (embedded || publicView) return content;
   return <DashboardLayout>{content}</DashboardLayout>;
 }
