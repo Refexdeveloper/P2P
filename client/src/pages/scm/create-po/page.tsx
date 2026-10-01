@@ -929,8 +929,8 @@ function AnnexureIiTableEditor({
               disabled={addingDefault}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-[#1E88E5] rounded-lg hover:bg-[#1565C0] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {addingDefault ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-file-list-3-line"></i>}
-              Add default Annexure II
+              {addingDefault ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-refresh-line"></i>}
+              Reload from Master
             </button>
           ) : null}
           <button
@@ -945,7 +945,7 @@ function AnnexureIiTableEditor({
       </div>
       <p className="px-5 pt-3 text-xs text-gray-500">
         {onAddDefault
-          ? 'Add default Annexure II loads the long work order master as a table on the PDF. ANNEXURE-III and any other heading you add stay as text, with the formatting you type.'
+          ? 'Reload from Master puts the long work order Annexure II table back. ANNEXURE-III and any other heading you added stay as text.'
           : 'Add technical data, scope, specifications, images, and tables. Edit the Annexure heading (ANNEXURE-II / III / IV) for the PDF top bar, and use Section header for the subtitle.'}
       </p>
       <div className="divide-y divide-gray-100">
@@ -2066,24 +2066,25 @@ export default function CreatePOPage() {
   }, [poType, documentType, markDraftEdited]);
 
   const [addingDefaultAnnexureIi, setAddingDefaultAnnexureIi] = useState(false);
-  const isLongWorkOrder =
-    alignPoTypeWithDocument(poType, documentType) === 'long_wo' ||
-    alignPoTypeWithDocument(poType, documentType) === 'custom_long_wo';
+  const [annexureIiReloadTick, setAnnexureIiReloadTick] = useState(0);
 
   const addDefaultAnnexureIi = useCallback(async () => {
     const alignedType = alignPoTypeWithDocument(poType, documentType);
-    if (alignedType !== 'long_wo' && alignedType !== 'custom_long_wo') return;
+    if (alignedType !== 'long_wo' && alignedType !== 'custom_long_wo') {
+      setTemplateLoadError('Select Long Work Order, then click Reload from Master on Annexure II.');
+      return;
+    }
     setAddingDefaultAnnexureIi(true);
     setTemplateLoadError('');
     try {
       const res = await poLetterheadApi.get(alignedType);
-      const iiDefaults = (
+      const iiDefaults = parseAnnexureIi(
         Array.isArray(res.data.annexureIiRows) && res.data.annexureIiRows.length
           ? res.data.annexureIiRows
           : Array.isArray(res.data.annexureIiDefaults)
             ? res.data.annexureIiDefaults
             : []
-      ) as AnnexureIiRow[];
+      );
       if (!iiDefaults.length) {
         setTemplateLoadError('Long Work Order master has no default Annexure II yet. Add it in Letterhead Master first.');
         return;
@@ -2096,6 +2097,7 @@ export default function CreatePOPage() {
       markDraftEdited();
       annexureIiDraftRef.current = next;
       setAnnexureIiRows(next);
+      setAnnexureIiReloadTick((tick) => tick + 1);
     } catch (err) {
       setTemplateLoadError(err instanceof Error ? err.message : 'Could not load default Annexure II');
     } finally {
@@ -5767,8 +5769,8 @@ export default function CreatePOPage() {
                   setAnnexureIiRows(next);
                 }}
                 docLabel={docLabel}
-                editorRevision={`${documentType}-${poType}`}
-                onAddDefault={isLongWorkOrder ? () => void addDefaultAnnexureIi() : undefined}
+                editorRevision={`${documentType}-${poType}-${annexureIiReloadTick}`}
+                onAddDefault={() => void addDefaultAnnexureIi()}
                 addingDefault={addingDefaultAnnexureIi}
               />
             </div>
