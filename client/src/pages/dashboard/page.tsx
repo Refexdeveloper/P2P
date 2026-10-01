@@ -291,7 +291,6 @@ export default function Dashboard({
       `KPI,Approved PO Amount,${kpis.approvedPOAmount}`,
       `KPI,Pending PO Amount,${kpis.pendingPOAmount}`,
       `KPI,Vendor Payments,${kpis.totalVendorPayments}`,
-      `KPI,Budget Utilization,${kpis.budgetUtilization}`,
       ...filteredEntities.map((e) => `Entity,${e.entityName.replace(/,/g, ' ')},${e.totalPOAmount}`),
     ];
     exportCsv(`cfo-dashboard-${todayIso()}.csv`, lines);
@@ -321,8 +320,8 @@ export default function Dashboard({
   }, [entities, data.entityWisePOSummary, lockedEntityId, user?.entityName]);
 
   const content = (
-      <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full px-4 py-6 font-sans text-[#0F172A] sm:px-6 lg:px-7`} style={{ background: PM_PAGE_BG }}>
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+      <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full px-5 py-8 font-sans text-[#0F172A] sm:px-8 lg:px-10`} style={{ background: PM_PAGE_BG }}>
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
           <div>
             {embedded && onBack ? (
               <button
@@ -428,10 +427,10 @@ export default function Dashboard({
 
         {showTables || visible('tables') ? (
           <>
-            <div id="cfo-detail-tables" className="mb-4">
+            <div id="cfo-detail-tables" className="mb-8">
               <EntityPOSummaryTable entities={filteredEntities} />
         </div>
-            <div className="mb-4 flex flex-col gap-4">
+            <div className="mb-8 flex flex-col gap-8">
               <RecentPOTable orders={filteredOrders} linkable={!publicView} />
               <TopVendorsTable vendors={filteredVendors} />
             </div>

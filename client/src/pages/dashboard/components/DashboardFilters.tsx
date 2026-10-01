@@ -281,7 +281,7 @@ export default function DashboardFilters({
 
   return (
     <>
-      <div className="mb-5 min-[992px]:hidden">
+      <div className="mb-8 min-[992px]:hidden">
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
@@ -298,7 +298,7 @@ export default function DashboardFilters({
 
       {sheet}
 
-      <div className="relative mb-5 hidden overflow-visible rounded-2xl border border-transparent bg-white px-4 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] min-[992px]:block">
+      <div className="relative mb-8 hidden overflow-visible rounded-2xl border border-transparent bg-white px-5 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] min-[992px]:block">
         <div
           className="pointer-events-none absolute inset-0"
           style={{

@@ -134,7 +134,6 @@ export default function KPIWidgets({
   const approvedShare = kpis.totalPOAmount > 0 ? (kpis.approvedPOAmount / kpis.totalPOAmount) * 100 : 0;
   const pendingShare = kpis.totalPOAmount > 0 ? (kpis.pendingPOAmount / kpis.totalPOAmount) * 100 : 0;
   const payShare = kpis.totalPOAmount > 0 ? (kpis.totalVendorPayments / kpis.totalPOAmount) * 100 : 0;
-  const budgetPct = Number(kpis.budgetUtilization || 0);
 
   const cards: Array<{
     title: string;
@@ -186,20 +185,10 @@ export default function KPIWidgets({
       icon: 'ri-bank-line',
       themeKey: 'open',
     },
-    {
-      title: 'Budget Utilization',
-      value: `${budgetPct.toFixed(1)}%`,
-      titleAttr: `${budgetPct}% approved / total PO`,
-      subtitle: 'Of allocated budget',
-      trend: 'Approved / total PO',
-      trendPositive: budgetPct <= 90,
-      icon: 'ri-pie-chart-2-line',
-      themeKey: budgetPct > 90 ? 'delayed' : 'subtasks',
-    },
   ];
 
   return (
-    <div className="mb-5 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-5">
+    <div className="mb-8 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6">
       {cards.map((card) => (
         <PremiumKpiCard
           key={card.title}

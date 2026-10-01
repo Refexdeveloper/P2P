@@ -405,6 +405,12 @@ function renderTableBlock(block, parts) {
       body
     );
   }
+  if (block.type === 'annexure-ii-table') {
+    return annexureTableHtml(
+      block.continued ? parts.annexureIiTheadContinued : parts.annexureIiThead,
+      body
+    );
+  }
   return '';
 }
 
@@ -494,6 +500,7 @@ const SECTION_ORDER = {
   'terms-table': 2,
   'annexure-table': 3,
   'annexure-ii': 4,
+  'annexure-ii-table': 4,
   notes: 5,
   ack: 6,
   html: 4,
@@ -707,7 +714,7 @@ function splitTrailingImageFromOverflowRow(pages, pageIndex) {
   for (let bi = page.length - 1; bi >= 0; bi -= 1) {
     const block = page[bi];
     if (!block?.rows?.length) continue;
-    if (block.type !== 'annexure-table' && block.type !== 'terms-table') continue;
+    if (block.type !== 'annexure-table' && block.type !== 'annexure-ii-table' && block.type !== 'terms-table') continue;
 
     const rowHtml = block.rows[block.rows.length - 1];
     if (!/<img\b/i.test(rowHtml) && !/<figure\b/i.test(rowHtml)) continue;
@@ -723,22 +730,25 @@ function splitTrailingImageFromOverflowRow(pages, pageIndex) {
     const imagePart = imgMatch[1];
     if (!before) continue; // image-only row — cannot peel further
 
+    const annexIiIdx = rowHtml.match(/data-annexure-ii="(\d+)"/)?.[1];
     const annexIdx = rowHtml.match(/data-annexure="(\d+)"/)?.[1];
     const termIdx = rowHtml.match(/data-term="(\d+)"/)?.[1];
     const baseId = rowHtml.match(/data-block="([^"]+)"/)?.[1] || 'row';
     const contId = `${baseId}-img`;
     const attr =
-      annexIdx != null
-        ? `data-annexure="${annexIdx}"`
-        : termIdx != null
-          ? `data-term="${termIdx}"`
-          : '';
+      annexIiIdx != null
+        ? `data-annexure-ii="${annexIiIdx}"`
+        : annexIdx != null
+          ? `data-annexure="${annexIdx}"`
+          : termIdx != null
+            ? `data-term="${termIdx}"`
+            : '';
 
-    const snoTd = block.type === 'annexure-table' ? `<td class="sno-col"></td>` : '';
-    const headTd =
-      block.type === 'annexure-table'
-        ? `<td class="head-col"></td>`
-        : `<th class="head-col terms-head-continued"></th>`;
+    const isAnnexureCols = block.type === 'annexure-table' || block.type === 'annexure-ii-table';
+    const snoTd = isAnnexureCols ? `<td class="sno-col"></td>` : '';
+    const headTd = isAnnexureCols
+      ? `<td class="head-col"></td>`
+      : `<th class="head-col terms-head-continued"></th>`;
 
     const keptRow = rowHtml.replace(tdMatch[1], before);
     const contRow = `
@@ -1063,6 +1073,7 @@ function shrinkOverflowImagesOnPage(pages, pageIndex, maxHeightPx = 120) {
 function buildMeasureHtml(parts) {
   const termRows = collectMeasureRows(parts.termRows, parts.termOverflowRows).join('');
   const annexRows = collectMeasureRows(parts.annexureSimpleRows, parts.annexureOverflowRows).join('');
+  const annexIiTableRows = collectMeasureRows(parts.annexureIiTableRows, parts.annexureIiOverflowRows).join('');
   const annexIi = (parts.annexureIiBlocks || [])
     .map((block, i) => {
       const html = typeof block === 'string' ? block : block.html;
@@ -1094,6 +1105,11 @@ function buildMeasureHtml(parts) {
         ${
           collectMeasureRows(parts.annexureSimpleRows, parts.annexureOverflowRows).length
             ? `<div class="table-frame"><table class="terms annexure-table po-table" id="measure-annexure">${parts.annexureThead}<tbody>${annexRows}</tbody></table></div>`
+            : ''
+        }
+        ${
+          annexIiTableRows
+            ? `<div class="table-frame"><table class="terms annexure-table po-table" id="measure-annexure-ii">${parts.annexureIiThead}<tbody>${annexIiTableRows}</tbody></table></div>`
             : ''
         }
         ${annexIi}
@@ -1144,8 +1160,12 @@ function resolveFlowableRows(simpleRows, overflowRows, heights, contentMaxPx, sc
     const simple = simpleRows[i];
     const blockId = rowBlockId(simple, `row-${i}`);
     const rowH = packRowHeight(heights, blockId, 48, scale);
-    const idx = simple.match(/data-(?:term|annexure)="(\d+)"/)?.[1] ?? String(i);
-    const rowAttr = simple.includes('data-annexure=') ? 'data-annexure' : 'data-term';
+    const idx = simple.match(/data-(?:term|annexure-ii|annexure)="(\d+)"/)?.[1] ?? String(i);
+    const rowAttr = simple.includes('data-annexure-ii=')
+      ? 'data-annexure-ii'
+      : simple.includes('data-annexure=')
+        ? 'data-annexure'
+        : 'data-term';
     const expanded = (overflowRows || []).filter((r) => r.includes(`${rowAttr}="${idx}"`));
     const hasImage = /<img\b/i.test(simple) || /<figure\b/i.test(simple);
     // Prefer pre-split chunks when images are present or the measured row is tall.
@@ -1322,6 +1342,20 @@ function packPoPages(parts, heights, scale = 1) {
     });
   }
 
+  const annexureIiPackRows =
+    (parts.resolvedAnnexureIiRows?.length ? parts.resolvedAnnexureIiRows : null) ||
+    parts.annexureIiTableRows ||
+    [];
+  if (annexureIiPackRows.length) {
+    packTableSection({
+      rows: annexureIiPackRows,
+      tableType: 'annexure-ii-table',
+      theadH: heights.annexureIiThead || heights.annexureThead || 48,
+      defaultRowH: 36,
+      forceNewSection: true,
+    });
+  }
+
   let prevAnnexureIiRow = -1;
   (parts.annexureIiBlocks || []).forEach((block, i) => {
     const html = typeof block === 'string' ? block : block.html;
@@ -1487,6 +1521,7 @@ async function paginatePoHtml(browser, po, options) {
       totals: 0,
       termsThead: document.querySelector('#measure-terms thead')?.getBoundingClientRect().height || 48,
       annexureThead: document.querySelector('#measure-annexure thead')?.getBoundingClientRect().height || 48,
+      annexureIiThead: document.querySelector('#measure-annexure-ii thead')?.getBoundingClientRect().height || 48,
       notes: h('[data-block="notes"]'),
       ack: h('[data-block="ack"]'),
     };
@@ -1500,6 +1535,10 @@ async function paginatePoHtml(browser, po, options) {
       if (block) map[block] = el.getBoundingClientRect().height;
     });
     document.querySelectorAll('#measure-annexure tbody tr').forEach((el) => {
+      const block = el.getAttribute('data-block');
+      if (block) map[block] = el.getBoundingClientRect().height;
+    });
+    document.querySelectorAll('#measure-annexure-ii tbody tr').forEach((el) => {
       const block = el.getAttribute('data-block');
       if (block) map[block] = el.getBoundingClientRect().height;
     });
@@ -1528,6 +1567,14 @@ async function paginatePoHtml(browser, po, options) {
       layout.contentMaxPx,
       1,
       'data-annexure'
+    ),
+    resolvedAnnexureIiRows: resolveFlowableRows(
+      parts.annexureIiTableRows,
+      parts.annexureIiOverflowRows,
+      heights,
+      layout.contentMaxPx,
+      1,
+      'data-annexure-ii'
     ),
   };
 
