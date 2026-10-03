@@ -48,8 +48,6 @@ function countActiveFilters(
   if (value.department) n += 1;
   if (value.vendor) n += 1;
   if (value.poStatus) n += 1;
-  if (value.amountMin) n += 1;
-  if (value.amountMax) n += 1;
   if (value.dateFrom !== base.dateFrom || value.dateTo !== base.dateTo) n += 1;
   return n;
 }
@@ -244,44 +242,6 @@ export default function DashboardFilters({
                     sheetDraft.poStatus ? () => setSheetDraft((prev) => ({ ...prev, poStatus: '' })) : undefined
                   }
                 />
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <FieldLabel
-                      label="Min amount"
-                      onRemove={
-                        sheetDraft.amountMin
-                          ? () => setSheetDraft((prev) => ({ ...prev, amountMin: '' }))
-                          : undefined
-                      }
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      value={sheetDraft.amountMin}
-                      onChange={(e) => setSheetDraft((prev) => ({ ...prev, amountMin: e.target.value }))}
-                      className="h-11 w-full rounded-2xl border border-[#E6E8F0] bg-white px-3 text-[13px] text-slate-700"
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel
-                      label="Max amount"
-                      onRemove={
-                        sheetDraft.amountMax
-                          ? () => setSheetDraft((prev) => ({ ...prev, amountMax: '' }))
-                          : undefined
-                      }
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      value={sheetDraft.amountMax}
-                      onChange={(e) => setSheetDraft((prev) => ({ ...prev, amountMax: e.target.value }))}
-                      className="h-11 w-full rounded-2xl border border-[#E6E8F0] bg-white px-3 text-[13px] text-slate-700"
-                      placeholder="Any"
-                    />
-                  </div>
-                </div>
               </div>
 
               <div className="sticky bottom-0 z-10 flex gap-3 border-t border-[#EEF0F5] bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
@@ -421,36 +381,6 @@ export default function DashboardFilters({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="w-[120px] shrink-0">
-            <FieldLabel
-              label="Min amount"
-              onRemove={value.amountMin ? () => onChange({ ...value, amountMin: '', category: '' }) : undefined}
-            />
-            <input
-              type="number"
-              min="0"
-              value={value.amountMin}
-              onChange={(e) => onChange({ ...value, amountMin: e.target.value, category: '' })}
-              className={fieldClass}
-              placeholder="0"
-              aria-label="Min amount"
-            />
-          </div>
-          <div className="w-[120px] shrink-0">
-            <FieldLabel
-              label="Max amount"
-              onRemove={value.amountMax ? () => onChange({ ...value, amountMax: '', category: '' }) : undefined}
-            />
-            <input
-              type="number"
-              min="0"
-              value={value.amountMax}
-              onChange={(e) => onChange({ ...value, amountMax: e.target.value, category: '' })}
-              className={fieldClass}
-              placeholder="Any"
-              aria-label="Max amount"
-            />
           </div>
           {activeCount > 0 ? (
             <div className="shrink-0 pb-0.5">

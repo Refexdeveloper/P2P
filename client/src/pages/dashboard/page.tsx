@@ -172,21 +172,21 @@ export default function Dashboard({
     filters.poStatus,
     filters.vendor,
     filters.entityId,
-    filters.amountMin,
-    filters.amountMax,
   ].join('|');
+  const listFilterKeyRef = useRef(listFilterKey);
 
   useEffect(() => {
-    setPoPage(1);
-    void load(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listFilterKey]);
-
-  useEffect(() => {
-    if (poPage === 1) return;
+    const filtersChanged = listFilterKeyRef.current !== listFilterKey;
+    if (filtersChanged) {
+      listFilterKeyRef.current = listFilterKey;
+      if (poPage !== 1) {
+        setPoPage(1);
+        return;
+      }
+    }
     void load(poPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [poPage]);
+  }, [listFilterKey, poPage]);
 
   useEffect(() => {
     localStorage.setItem(CUSTOMIZE_KEY, JSON.stringify(hidden));
@@ -337,11 +337,11 @@ export default function Dashboard({
               </button>
             ) : null}
             <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">
-              {publicView ? 'Financial Insights' : `${greetingForNow()}, ${user?.name || 'User'}`}
+              {publicView ? `${greetingForNow()}, Dinesh Agarwal` : `${greetingForNow()}, ${user?.name || 'User'}`}
             </h1>
             <p className="text-sm text-slate-500 mt-2">
               {publicView
-                ? 'Public view'
+                ? 'Group Chief Executive Officer'
                 : getUserDesignation(user)
                   ? `Financial Insights · ${getUserDesignation(user)}`
                   : 'Financial Insights'}
