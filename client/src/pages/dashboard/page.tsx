@@ -431,7 +431,7 @@ export default function Dashboard({
               <EntityPOSummaryTable entities={filteredEntities} />
         </div>
             <div className="mb-8 flex flex-col gap-8">
-              <RecentPOTable orders={filteredOrders} linkable={!publicView} />
+              <RecentPOTable orders={filteredOrders} publicView={publicView} />
               <TopVendorsTable vendors={filteredVendors} />
             </div>
           </>

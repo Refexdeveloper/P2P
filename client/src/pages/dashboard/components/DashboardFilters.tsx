@@ -77,7 +77,9 @@ export default function DashboardFilters({
   lockedEntityLabel?: string;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [morePos, setMorePos] = useState<{ top: number; right: number } | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState(value);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetDraft, setSheetDraft] = useState(value);
@@ -86,13 +88,30 @@ export default function DashboardFilters({
     setDraft(value);
   }, [value]);
 
+  const placeMoreMenu = () => {
+    const rect = moreRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMorePos({ top: rect.bottom + 8, right: Math.max(12, window.innerWidth - rect.right) });
+  };
+
   useEffect(() => {
+    if (!moreOpen) return;
+    placeMoreMenu();
     const onDoc = (e: MouseEvent) => {
-      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+      const target = e.target as Node;
+      if (moreRef.current?.contains(target) || moreMenuRef.current?.contains(target)) return;
+      setMoreOpen(false);
     };
+    const onReflow = () => placeMoreMenu();
     document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
+    window.addEventListener('resize', onReflow);
+    window.addEventListener('scroll', onReflow, true);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('resize', onReflow);
+      window.removeEventListener('scroll', onReflow, true);
+    };
+  }, [moreOpen]);
 
   useEffect(() => {
     if (!sheetOpen) return;
@@ -200,7 +219,7 @@ export default function DashboardFilters({
                   onChange={(entityId) => setSheetDraft((prev) => ({ ...prev, entityId }))}
                 />
                 <FilterSheetSelect
-                  label="Department"
+                  label="Business / Functions"
                   value={sheetDraft.department}
                   options={departmentOptions}
                   placeholder="All Functions"
@@ -331,12 +350,12 @@ export default function DashboardFilters({
           </select>
         </div>
         <div className="shrink-0">
-          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Department</p>
+          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Business / Functions</p>
           <select
             value={value.department}
             onChange={(e) => onChange({ ...value, department: e.target.value })}
             className={`${fieldClass} min-w-[150px]`}
-            aria-label="Department"
+            aria-label="Business / Functions"
           >
             <option value="">All Functions</option>
             {departments.map((d) => (
@@ -372,8 +391,13 @@ export default function DashboardFilters({
             <i className="ri-filter-3-line"></i>
             More Filters{extraCount ? ` (${extraCount})` : ''}
           </button>
-          {moreOpen ? (
-            <div className="absolute right-0 top-full mt-2 z-30 w-[320px] bg-white border border-[#EEF0F5] rounded-2xl shadow-lg p-4 space-y-3">
+          {moreOpen && morePos && typeof document !== 'undefined'
+            ? createPortal(
+            <div
+              ref={moreMenuRef}
+              className="fixed z-[10050] w-[320px] space-y-3 rounded-2xl border border-[#EEF0F5] bg-white p-4 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)]"
+              style={{ top: morePos.top, right: morePos.right }}
+            >
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">More filters</p>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1">Vendor</label>
@@ -450,8 +474,10 @@ export default function DashboardFilters({
                   Apply Filters
                 </button>
               </div>
-            </div>
-          ) : null}
+            </div>,
+            document.body
+          )
+            : null}
         </div>
       </div>
       </div>

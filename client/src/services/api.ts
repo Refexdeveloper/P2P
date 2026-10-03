@@ -925,6 +925,13 @@ export const poApi = {
     const q = qs.toString();
     return request<{ data: Record<string, unknown> }>(`/api/po/public/insights${q ? `?${q}` : ''}`);
   },
+  /** Read-only PO + PR for the public insights expand row. Draft and cancelled are excluded. */
+  publicInsightPo: (poId: number) =>
+    request<{ data: { po: Record<string, unknown>; pr: Record<string, unknown> | null } }>(
+      `/api/po/public/insights/po/${poId}`
+    ),
+  publicInsightPdfUrl: (poId: number) => `${API_BASE_URL}/api/po/public/insights/po/${poId}/pdf`,
+  publicInsightDocumentUrl: (poId: number) => `${API_BASE_URL}/api/po/public/insights/po/${poId}/document`,
   getCreateContext: (prId: number) =>
     request<{
       data: { pr: Record<string, unknown>; vendor: Record<string, unknown>; draftPoId?: number | null };

@@ -51,7 +51,6 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
                 ['Total PO Amount', 'right'],
                 ['Approved Amount', 'right'],
                 ['Pending Amount', 'right'],
-                ['Utilization', 'left'],
               ].map(([h, align]) => (
                 <th
                   key={h}
@@ -68,7 +67,7 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
             {!entities.length ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={5}
                   className="rounded-2xl border border-transparent bg-white px-5 py-16 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
                 >
                   <div className="flex flex-col items-center gap-2">
@@ -79,10 +78,6 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
               </tr>
             ) : (
               entities.map((entity) => {
-                const utilPct =
-                  entity.totalPOAmount > 0
-                    ? Math.round((entity.approvedAmount / entity.totalPOAmount) * 100)
-                    : 0;
                 const rowKey = `${entity.entityId || 0}-${entity.code}-${entity.entityName}`;
                 const open = expandedKey === rowKey;
                 const departments = entity.departments || [];
@@ -121,24 +116,13 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
                     <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-right transition-[border-color] sm:py-5 ${edge}`}>
                       <span className="text-sm font-semibold tabular-nums text-[#22C55E]">{formatCurrency(entity.approvedAmount)}</span>
                     </td>
-                    <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 text-right transition-[border-color] sm:py-5 ${edge}`}>
+                    <td className={`rounded-r-2xl whitespace-nowrap border border-l-0 bg-white px-3 py-4 text-right transition-[border-color] sm:rounded-r-[18px] sm:py-5 ${edge} ${shadow}`}>
                       <span className="text-sm font-semibold tabular-nums text-[#F97316]">{formatCurrency(entity.pendingAmount)}</span>
-                    </td>
-                    <td className={`rounded-r-2xl border border-l-0 bg-white px-3 py-4 transition-[border-color] sm:rounded-r-[18px] sm:py-5 ${edge} ${shadow}`}>
-                      <div className="flex min-w-[110px] items-center gap-2">
-                        <div className="h-2 flex-1 rounded-full bg-slate-100">
-                          <div
-                            className="h-2 rounded-full transition-all"
-                            style={{ width: `${utilPct}%`, backgroundColor: entity.color }}
-                          />
-                        </div>
-                        <span className="whitespace-nowrap text-xs font-bold text-slate-500">{utilPct}%</span>
-                      </div>
                     </td>
                   </tr>
                   {open ? (
                     <tr key={`${rowKey}-departments`}>
-                      <td colSpan={6} className="rounded-2xl bg-[#F5F7FA] px-3 py-3 sm:px-4">
+                      <td colSpan={5} className="rounded-2xl bg-[#F5F7FA] px-3 py-3 sm:px-4">
                         <div className="overflow-hidden rounded-xl border border-white bg-white">
                           <table className="w-full text-sm">
                             <thead>
@@ -205,10 +189,9 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
                 <td className="whitespace-nowrap border border-x-0 border-[#BBDEFB] bg-[#E3F2FD]/50 px-3 py-3 text-right text-sm font-bold tabular-nums text-[#22C55E]">
                   {formatCurrency(entities.reduce((s, e) => s + e.approvedAmount, 0))}
                 </td>
-                <td className="whitespace-nowrap border border-x-0 border-[#BBDEFB] bg-[#E3F2FD]/50 px-3 py-3 text-right text-sm font-bold tabular-nums text-[#F97316]">
+                <td className="rounded-r-2xl whitespace-nowrap border border-l-0 border-[#BBDEFB] bg-[#E3F2FD]/50 px-3 py-3 text-right text-sm font-bold tabular-nums text-[#F97316] sm:rounded-r-[18px]">
                   {formatCurrency(entities.reduce((s, e) => s + e.pendingAmount, 0))}
                 </td>
-                <td className="rounded-r-2xl border border-l-0 border-[#BBDEFB] bg-[#E3F2FD]/50 px-3 py-3 sm:rounded-r-[18px]" />
               </tr>
             )}
           </tbody>

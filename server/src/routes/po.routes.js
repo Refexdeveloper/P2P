@@ -41,6 +41,7 @@ import {
   sendBackMugeshPoToRequester,
 } from '../services/poService.js';
 import { getPoFulfillmentSummary } from '../services/accountsFulfillmentService.js';
+import { getPurchaseRequestById } from '../services/prService.js';
 import { sendStoredFile } from '../utils/sendStoredFile.js';
 import { adminDeletePurchaseOrder } from '../services/adminDeleteService.js';
 import {
@@ -130,6 +131,90 @@ router.get('/vendor-accept/:token/pdf', async (req, res) => {
   }
 });
 
+async function loadPublicInsightPo(poId) {
+  const id = Number(poId);
+  if (!id) return null;
+  const po = await getPurchaseOrderById(id);
+  if (!po) return null;
+  const status = String(po.statusRaw || po.status || '').toLowerCase();
+  if (status === 'draft' || status === 'cancelled') return null;
+  return po;
+}
+
+async function sendPoHtml(res, po) {
+  let doc = po;
+  try {
+    const { overlayVendorMasterOnPo } = await import('../services/poService.js');
+    doc = await overlayVendorMasterOnPo(po);
+  } catch {
+    /* keep enrichPO result */
+  }
+  const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
+  const html = buildPoHtml(doc, {
+    signature: await buildSignatureRenderOptionsAsync(doc),
+  });
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+}
+
+async function sendPoPdf(res, po) {
+  let doc = po;
+  try {
+    const { overlayVendorMasterOnPo } = await import('../services/poService.js');
+    doc = await overlayVendorMasterOnPo(po);
+  } catch {
+    /* keep enrichPO result */
+  }
+  const mugeshPo =
+    String(doc.poCreationBy || '') === 'requester' ||
+    ['l1', 'mugesh', 'requester', 'signed'].includes(String(doc.poSignStep || ''));
+  const isSigned = Boolean(doc.signedPdfPath || doc.signatureImagePath || doc.signedAt);
+  const poNumber = String(doc.poNumber || '').trim() || `PO-${doc.id}`;
+  const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
+  const preferredName = isSigned
+    ? doc.signedPdfPath || `${safePoNumber}_signed.pdf`
+    : `${safePoNumber}_draft.pdf`;
+  const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
+  const signatureOpts = await buildSignatureRenderOptionsAsync(doc);
+  const status = String(doc.statusRaw || doc.status || '').toLowerCase();
+  const storedLooksStale =
+    Boolean(doc.pdfPath) &&
+    !String(doc.pdfPath).includes(poNumber) &&
+    !String(doc.pdfPath).startsWith(safePoNumber);
+  const vendorBlockIncomplete = !isSigned && !String(doc.vendorAddress || '').trim();
+  const { fullPath, fileName, buffer } = await ensurePoPdf(doc, {
+    fileName: preferredName,
+    signed: isSigned,
+    signature: signatureOpts,
+    forceRegenerate: mugeshPo
+      ? true
+      : isSigned
+        ? false
+        : status === 'draft' || storedLooksStale || vendorBlockIncomplete,
+  });
+  if (!isSigned && doc.pdfPath !== fileName) {
+    try {
+      const pool = (await import('../config/db.js')).default;
+      await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, doc.id]);
+    } catch {
+      /* non-fatal */
+    }
+  }
+  res.setHeader('Content-Type', 'application/pdf');
+  const downloadBase = safePoNumber || `PO-${doc.id}`;
+  const downloadName = `${downloadBase}${isSigned ? '_signed' : ''}.pdf`;
+  res.setHeader('Content-Disposition', `inline; filename="${downloadName}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  if (buffer?.length) {
+    res.setHeader('Content-Length', buffer.length);
+    return res.end(buffer);
+  }
+  if (!fullPath || !fs.existsSync(fullPath)) {
+    return res.status(404).json({ message: 'PO PDF not found' });
+  }
+  fs.createReadStream(fullPath).pipe(res);
+}
+
 /** Public read-only Financial Insights for embedding. No login. Does not expose write actions. */
 router.get('/public/insights', async (req, res) => {
   try {
@@ -142,6 +227,45 @@ router.get('/public/insights', async (req, res) => {
     res.json({ data });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+/** Public expand row: PO, PR, approval history, and the PO document. Draft and cancelled stay private. */
+router.get('/public/insights/po/:id', async (req, res) => {
+  try {
+    const po = await loadPublicInsightPo(req.params.id);
+    if (!po) return res.status(404).json({ message: 'PO not found' });
+    let pr = null;
+    if (po.prId) {
+      try {
+        pr = await getPurchaseRequestById(po.prId);
+      } catch {
+        pr = null;
+      }
+    }
+    res.json({ data: { po, pr } });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/public/insights/po/:id/document', async (req, res) => {
+  try {
+    const po = await loadPublicInsightPo(req.params.id);
+    if (!po) return res.status(404).json({ message: 'PO not found' });
+    await sendPoHtml(res, po);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/public/insights/po/:id/pdf', async (req, res) => {
+  try {
+    const po = await loadPublicInsightPo(req.params.id);
+    if (!po) return res.status(404).json({ message: 'PO not found' });
+    await sendPoPdf(res, po);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 });
 
@@ -598,18 +722,7 @@ router.get('/:id/document', canReadPo, async (req, res) => {
         ? await assertRequesterPoDocumentAccess(req.user, Number(req.params.id))
         : await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
-    try {
-      const { overlayVendorMasterOnPo } = await import('../services/poService.js');
-      po = await overlayVendorMasterOnPo(po);
-    } catch {
-      /* keep enrichPO result */
-    }
-    const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
-    const html = buildPoHtml(po, {
-      signature: await buildSignatureRenderOptionsAsync(po),
-    });
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(html);
+    await sendPoHtml(res, po);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -622,62 +735,7 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
         ? await assertRequesterPoDocumentAccess(req.user, Number(req.params.id))
         : await getPurchaseOrderById(Number(req.params.id));
     if (!po) return res.status(404).json({ message: 'PO not found' });
-    try {
-      const { overlayVendorMasterOnPo } = await import('../services/poService.js');
-      po = await overlayVendorMasterOnPo(po);
-    } catch {
-      /* keep enrichPO result */
-    }
-    const mugeshPo =
-      String(po.poCreationBy || '') === 'requester' ||
-      ['l1', 'mugesh', 'requester', 'signed'].includes(String(po.poSignStep || ''));
-    const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || po.signedAt);
-    const poNumber = String(po.poNumber || '').trim() || `PO-${po.id}`;
-    const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
-    const preferredName = isSigned
-      ? po.signedPdfPath || `${safePoNumber}_signed.pdf`
-      : `${safePoNumber}_draft.pdf`;
-    const { buildSignatureRenderOptionsAsync } = await import('../services/signatureService.js');
-    const signatureOpts = await buildSignatureRenderOptionsAsync(po);
-    const status = String(po.statusRaw || po.status || '').toLowerCase();
-    const storedLooksStale =
-      Boolean(po.pdfPath) &&
-      !String(po.pdfPath).includes(poNumber) &&
-      !String(po.pdfPath).startsWith(safePoNumber);
-    const vendorBlockIncomplete = !isSigned && !String(po.vendorAddress || '').trim();
-    // Signed PDF after buyer final verify is already on disk. View must not rebuild it.
-    const { fullPath, fileName, buffer } = await ensurePoPdf(po, {
-      fileName: preferredName,
-      signed: isSigned,
-      signature: signatureOpts,
-      forceRegenerate: mugeshPo
-        ? true
-        : isSigned
-          ? false
-          : status === 'draft' || storedLooksStale || vendorBlockIncomplete,
-    });
-    // Persist regenerated PDF path when previous value was HTML-only or mismatched
-    if (!isSigned && po.pdfPath !== fileName) {
-      try {
-        const pool = (await import('../config/db.js')).default;
-        await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, po.id]);
-      } catch {
-        /* non-fatal */
-      }
-    }
-    res.setHeader('Content-Type', 'application/pdf');
-    const downloadBase = safePoNumber || `PO-${po.id}`;
-    const downloadName = `${downloadBase}${isSigned ? '_signed' : ''}.pdf`;
-    res.setHeader('Content-Disposition', `inline; filename="${downloadName}"`);
-    res.setHeader('Cache-Control', 'private, no-store');
-    if (buffer?.length) {
-      res.setHeader('Content-Length', buffer.length);
-      return res.end(buffer);
-    }
-    if (!fullPath || !fs.existsSync(fullPath)) {
-      return res.status(404).json({ message: 'PO PDF not found' });
-    }
-    fs.createReadStream(fullPath).pipe(res);
+    await sendPoPdf(res, po);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

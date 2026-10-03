@@ -55,6 +55,8 @@ type Props = {
   colSpan?: number;
   /** Full-page layout (Financial Insights PO detail) — no table row wrapper */
   standalone?: boolean;
+  /** Public insights page — load PO, PR, and documents without a login. */
+  publicInsights?: boolean;
 };
 
 const formatCurrency = (amount: number) =>
@@ -320,6 +322,18 @@ function sniffPreview(buffer: ArrayBuffer, contentType: string, fileName: string
 }
 
 async function loadAuthPreview(doc: DocRow, poId: number | null): Promise<FilePreview> {
+  if (doc.url.includes('/public/insights/po/')) {
+    const res = await fetch(doc.url);
+    if (!res.ok) throw new Error('Could not open document');
+    const type = res.headers.get('content-type') || '';
+    if (type.includes('text/html') || doc.kind === 'PO Template') {
+      const html = await res.text();
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      return { url: URL.createObjectURL(blob), fileName: doc.fileName, kind: 'html' };
+    }
+    const blob = new Blob([await res.arrayBuffer()], { type: type || 'application/pdf' });
+    return { url: URL.createObjectURL(blob), fileName: doc.fileName, kind: 'pdf' };
+  }
   if ((doc.kind === 'PO PDF' || doc.kind === 'PO Template') && poId) {
     if (doc.kind === 'PO Template') {
       const token = localStorage.getItem('p2p_token');
@@ -359,7 +373,12 @@ async function loadAuthPreview(doc: DocRow, poId: number | null): Promise<FilePr
   return { url: URL.createObjectURL(sniffed.blob), fileName: doc.fileName, kind: sniffed.kind };
 }
 
-export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = false }: Props) {
+export default function TrackPoExpandedRow({
+  row,
+  colSpan = 10,
+  standalone = false,
+  publicInsights = false,
+}: Props) {
   const expandWrapRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const [tab, setTab] = useState<
@@ -409,11 +428,15 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
       setError('');
       try {
         const tasks: Promise<unknown>[] = [];
-        if (row.prId) tasks.push(prApi.get(row.prId));
-        if (row.poId) tasks.push(poApi.get(row.poId));
-        if (row.prId) tasks.push(rfqApi.getComparison(row.prId));
-        else if (row.poId) tasks.push(poApi.getComparison(row.poId));
-        if (row.poId) tasks.push(poApi.fulfillment(row.poId));
+        if (publicInsights && row.poId) {
+          tasks.push(poApi.publicInsightPo(row.poId));
+        } else {
+          if (row.prId) tasks.push(prApi.get(row.prId));
+          if (row.poId) tasks.push(poApi.get(row.poId));
+          if (row.prId) tasks.push(rfqApi.getComparison(row.prId));
+          else if (row.poId) tasks.push(poApi.getComparison(row.poId));
+          if (row.poId) tasks.push(poApi.fulfillment(row.poId));
+        }
 
         const results = await Promise.allSettled(tasks);
         if (cancelled) return;
@@ -427,25 +450,32 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
         };
         let idx = 0;
 
-        if (row.prId) {
+        if (publicInsights && row.poId) {
+          const bundleRes = results[idx++];
+          if (bundleRes.status === 'fulfilled') {
+            const bundle = (bundleRes.value as { data: { po?: Record<string, unknown>; pr?: Record<string, unknown> | null } }).data;
+            poData = bundle?.po || null;
+            prData = bundle?.pr || null;
+          }
+        } else if (row.prId) {
           const prRes = results[idx++];
           if (prRes.status === 'fulfilled') {
             prData = (prRes.value as { data: Record<string, unknown> }).data;
           }
         }
-        if (row.poId) {
+        if (!publicInsights && row.poId) {
           const poRes = results[idx++];
           if (poRes.status === 'fulfilled') {
             poData = (poRes.value as { data: Record<string, unknown> }).data;
           }
         }
-        if (row.prId || row.poId) {
+        if (!publicInsights && (row.prId || row.poId)) {
           const cmpRes = results[idx++];
           if (cmpRes.status === 'fulfilled') {
             cmpData = (cmpRes.value as { data: VendorComparisonData }).data;
           }
         }
-        if (row.poId) {
+        if (!publicInsights && row.poId) {
           const fulRes = results[idx++];
           if (fulRes.status === 'fulfilled') {
             const data = (fulRes.value as { data: typeof fulfillment }).data;
@@ -479,7 +509,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     return () => {
       cancelled = true;
     };
-  }, [row.prId, row.poId]);
+  }, [row.prId, row.poId, publicInsights]);
 
   useEffect(() => {
     return () => {
@@ -503,7 +533,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
         name: `${poNumber} PDF`,
         extra: String(po?.signedPdfPath || po?.pdfPath || ''),
         fileName: `${poNumber}.pdf`,
-        url: poApi.getPdfUrl(row.poId),
+        url: publicInsights ? poApi.publicInsightPdfUrl(row.poId) : poApi.getPdfUrl(row.poId),
       });
       docs.push({
         key: `po-html-${row.poId}`,
@@ -511,7 +541,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
         name: `${poNumber} HTML template`,
         extra: 'Live PO document template',
         fileName: `${poNumber}.html`,
-        url: poApi.getDocumentUrl(row.poId),
+        url: publicInsights ? poApi.publicInsightDocumentUrl(row.poId) : poApi.getDocumentUrl(row.poId),
       });
       const acceptanceName = String(po?.vendorAcceptanceFileName || '').trim();
       if (acceptanceName) {
@@ -585,7 +615,7 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     }
 
     return docs;
-  }, [row.poId, row.poNumber, po, comparison, invoice]);
+  }, [row.poId, row.poNumber, po, comparison, invoice, publicInsights]);
 
   const detailFields = [
     ['PR Number', String(pr?.prNumber || row.prNumber || '—')],

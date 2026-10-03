@@ -1,5 +1,6 @@
-import { useNavigate } from 'react-router-dom';
+import { Fragment, useState } from 'react';
 import { formatCompactInr } from '../cfoFormat';
+import TrackPoExpandedRow from '../../scm/track-po/components/TrackPoExpandedRow';
 
 type Order = {
   poId?: number | null;
@@ -20,18 +21,14 @@ const statusConfig: Record<string, { bg: string; text: string; dot: string }> = 
   Rejected: { bg: 'bg-red-50', text: 'text-[#E53935]', dot: 'bg-[#E53935]' },
 };
 
-export default function RecentPOTable({ orders, linkable = true }: { orders: Order[]; linkable?: boolean }) {
-  const navigate = useNavigate();
-
-  const openDetail = (po: Order) => {
-    if (po.poId) {
-      navigate(`/dashboard/po/${po.poId}`);
-      return;
-    }
-    if (po.poNumber) {
-      navigate(`/dashboard/po?poNumber=${encodeURIComponent(po.poNumber)}`);
-    }
-  };
+export default function RecentPOTable({
+  orders,
+  publicView = false,
+}: {
+  orders: Order[];
+  publicView?: boolean;
+}) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/80 bg-white/95 shadow-lg shadow-slate-200/40 backdrop-blur-sm lg:rounded-3xl">
@@ -79,20 +76,22 @@ export default function RecentPOTable({ orders, linkable = true }: { orders: Ord
             ) : (
               orders.map((po) => {
                 const cfg = statusConfig[po.status] ?? statusConfig['Pending Approval'];
-                const clickable = linkable && Boolean(po.poId || po.poNumber);
-                const edge = clickable
-                  ? 'border-transparent group-hover:border-[#90CAF9]'
-                  : 'border-transparent';
+                const rowKey = `${po.poId || po.poNumber}`;
+                const open = expandedKey === rowKey;
+                const edge = open ? 'border-[#90CAF9]' : 'border-transparent group-hover:border-[#90CAF9]';
                 const shadow = 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]';
                 return (
+                  <Fragment key={rowKey}>
                   <tr
-                    key={po.poNumber}
-                    onClick={() => clickable && openDetail(po)}
-                    className={`group ${clickable ? 'cursor-pointer' : ''}`}
-                    title={clickable ? 'View full PO details and documents' : undefined}
+                    onClick={() => setExpandedKey(open ? null : rowKey)}
+                    className="group cursor-pointer"
+                    title="Show PO details, documents, PR, and approval history"
                   >
                     <td className={`whitespace-nowrap rounded-l-2xl border border-r-0 bg-white px-3 py-4 transition-[border-color] sm:rounded-l-[18px] sm:py-5 ${edge} ${shadow}`}>
-                      <span className="text-sm font-bold text-[#1E88E5]">{po.poNumber}</span>
+                      <div className="flex items-center gap-2">
+                        <i className={`ri-arrow-${open ? 'down' : 'right'}-s-line text-base text-slate-400`} aria-hidden />
+                        <span className="text-sm font-bold text-[#1E88E5]">{po.poNumber}</span>
+                      </div>
                     </td>
                     <td className={`max-w-[180px] border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${edge}`} title={po.entity}>
                       <p className="truncate text-sm text-[#2C3E50]">{po.entity}</p>
@@ -113,6 +112,28 @@ export default function RecentPOTable({ orders, linkable = true }: { orders: Ord
                       </span>
                     </td>
                   </tr>
+                  {open && po.poId ? (
+                    <TrackPoExpandedRow
+                      colSpan={6}
+                      publicInsights={publicView}
+                      row={{
+                        prId: Number(po.prId) || 0,
+                        poId: po.poId,
+                        prNumber: po.prId ? `PR-${po.prId}` : '',
+                        poNumber: po.poNumber,
+                        title: po.poNumber,
+                        department: '',
+                        requester: '',
+                        vendorName: po.vendorName,
+                        amount: po.poAmount,
+                        statusLabel: po.status,
+                        entityName: po.entity,
+                        requiredDate: '',
+                        createdAt: po.poDate,
+                      }}
+                    />
+                  ) : null}
+                  </Fragment>
                 );
               })
             )}
