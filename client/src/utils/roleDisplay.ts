@@ -7,6 +7,9 @@ const ROLE_DISPLAY_NAMES: Record<string, string> = {
 
 const MUGESH_EMAIL = 'mugesh.m@refex.co.in';
 const SRIVATHS_EMAIL = 'srivaths.varadharajan@refex.co.in';
+const DINESH_EMAIL = 'dinesh@refex.co.in';
+export const DINESH_DISPLAY_NAME = 'Dinesh Agarwal';
+export const DINESH_DESIGNATION = 'Group Chief Executive Officer';
 
 function personEmail(userOrEmail?: { email?: string | null; name?: string | null } | string | null): string {
   if (!userOrEmail) return '';
@@ -36,6 +39,21 @@ export function isMugeshUser(userOrEmail?: { email?: string | null; name?: strin
   const name = personName(userOrEmail);
   if (!email && name && (name === 'mugesh' || name.startsWith('mugesh '))) return true;
   return false;
+}
+
+/** True when this login is Dinesh — show Dinesh Agarwal, Group Chief Executive Officer. */
+export function isDineshUser(
+  userOrEmail?: { email?: string | null; name?: string | null } | string | null
+): boolean {
+  return personEmail(userOrEmail) === DINESH_EMAIL;
+}
+
+/** Name shown for the signed-in user. Dinesh’s login always reads Dinesh Agarwal. */
+export function getUserDisplayName(
+  user?: { email?: string | null; name?: string | null } | null
+): string {
+  if (isDineshUser(user)) return DINESH_DISPLAY_NAME;
+  return String(user?.name || '').trim();
 }
 
 /** True when this user is Srivaths (L2) — show CTO, never CFO / Group CEO. */
@@ -74,6 +92,7 @@ export function getUserDesignation(
   user?: { role?: string | null; email?: string | null; name?: string | null; displayRole?: string | null } | null
 ): string {
   if (!user) return '';
+  if (isDineshUser(user)) return DINESH_DESIGNATION;
   if (user.displayRole != null && user.displayRole !== undefined) {
     return user.displayRole;
   }
@@ -89,6 +108,7 @@ export function formatRoleDisplayName(
   userOrEmail?: { email?: string | null; name?: string | null } | string | null
 ): string {
   if (isMugeshUser(userOrEmail)) return '';
+  if (isDineshUser(userOrEmail)) return DINESH_DESIGNATION;
   if (isSrivathsUser(userOrEmail)) return 'CTO';
   if (!role) return '';
   return ROLE_DISPLAY_NAMES[role] || role;

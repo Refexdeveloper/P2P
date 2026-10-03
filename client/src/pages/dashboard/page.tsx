@@ -8,7 +8,7 @@ import DashboardFilters, { DashboardFiltersValue, EMPTY_DASHBOARD_FILTERS } from
 import BuyerInsightCharts from './components/BuyerInsightCharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { masterApi, poApi } from '../../services/api';
-import { getUserDesignation } from '../../utils/roleDisplay';
+import { DINESH_DESIGNATION, DINESH_DISPLAY_NAME, getUserDesignation, isDineshUser } from '../../utils/roleDisplay';
 import { PM_PAGE_BG } from '../../constants/pmTheme';
 import { parseLooseDate } from './cfoFormat';
 
@@ -337,11 +337,13 @@ export default function Dashboard({
               </button>
             ) : null}
             <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">
-              {publicView ? `${greetingForNow()}, Dinesh Agarwal` : `${greetingForNow()}, ${user?.name || 'User'}`}
+              {publicView || isDineshUser(user)
+                ? `${greetingForNow()}, ${DINESH_DISPLAY_NAME}`
+                : `${greetingForNow()}, ${user?.name || 'User'}`}
             </h1>
             <p className="text-sm text-slate-500 mt-2">
-              {publicView
-                ? 'Group Chief Executive Officer'
+              {publicView || isDineshUser(user)
+                ? DINESH_DESIGNATION
                 : getUserDesignation(user)
                   ? `Financial Insights · ${getUserDesignation(user)}`
                   : 'Financial Insights'}
