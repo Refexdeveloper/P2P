@@ -415,6 +415,8 @@ function isMastersNavCode(code?: string) {
 
 const EMAIL_NAV_CODES: Record<string, string[]> = {
   'srivaths.varadharajan@refex.co.in': ['nav.tasks', 'nav.cfo_insights'],
+  'dinesh@refex.co.in': ['nav.cfo_insights', 'nav.tasks'],
+  'tapas.s@refex.co.in': ['nav.accounts_dashboard', 'nav.invoice_verification', 'nav.payment'],
 };
 
 export function ensureNavigation(

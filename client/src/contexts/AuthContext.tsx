@@ -57,6 +57,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const EMAIL_HOME_OVERRIDES: Record<string, string> = {
   'srivaths.varadharajan@refex.co.in': '/tasks',
   'accounts_rgml_refexev@refex.co.in': '/accounts/invoice-verification',
+  'tapas.s@refex.co.in': '/accounts/dashboard',
 };
 
 /** Starting page for each role after login */

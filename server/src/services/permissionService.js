@@ -6,11 +6,14 @@ export const SUPER_ADMIN_ROLE = 'Super Admin';
 /** Known users who must always resolve to a specific P2P role (Srivaths = CTO in UI; system role CFO). */
 const EMAIL_ROLE_OVERRIDES = {
   'srivaths.varadharajan@refex.co.in': 'CFO',
+  'tapas.s@refex.co.in': 'Accounts Payable',
 };
 
-/** Per-user nav override — Financial Insights + My Tasks (no PR Approvals). */
+/** Per-user nav override. Dinesh: insights only. Tapas: accounts module. */
 const EMAIL_NAV_PERMISSIONS = {
   'srivaths.varadharajan@refex.co.in': ['nav.cfo_insights', 'nav.tasks'],
+  'dinesh@refex.co.in': ['nav.cfo_insights', 'nav.tasks'],
+  'tapas.s@refex.co.in': ['nav.accounts_dashboard', 'nav.invoice_verification', 'nav.payment'],
 };
 
 export function getEmailNavPermissionOverride(email) {
