@@ -12,6 +12,7 @@ export default function FilterSheetSelect({
   placeholder = 'All',
   disabled = false,
   onChange,
+  onClear,
 }: {
   label: string;
   value: string;
@@ -19,6 +20,7 @@ export default function FilterSheetSelect({
   placeholder?: string;
   disabled?: boolean;
   onChange: (next: string) => void;
+  onClear?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -115,7 +117,19 @@ export default function FilterSheetSelect({
 
   return (
     <div className="min-w-0">
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <div className="mb-1.5 flex min-h-[16px] items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+        {onClear && value ? (
+          <button
+            type="button"
+            onClick={onClear}
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#E53935] hover:underline"
+          >
+            <i className="ri-close-line" />
+            Remove
+          </button>
+        ) : null}
+      </div>
       <button
         ref={buttonRef}
         type="button"

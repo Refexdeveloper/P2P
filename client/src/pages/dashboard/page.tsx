@@ -95,7 +95,6 @@ export default function Dashboard({
   const [resetValue, setResetValue] = useState<DashboardFiltersValue>(EMPTY_DASHBOARD_FILTERS);
   const [entities, setEntities] = useState<Array<{ id: string; name: string }>>([]);
   const [departments, setDepartments] = useState<string[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
   const [showTables, setShowTables] = useState(true);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [hidden, setHidden] = useState<Record<string, boolean>>(readHidden);
@@ -110,34 +109,36 @@ export default function Dashboard({
     setResetValue(apply);
   }, [lockedEntityId]);
 
-  const load = async (filterOverride?: Partial<DashboardFiltersValue>) => {
+  const [poPage, setPoPage] = useState(1);
+  const PO_PAGE_SIZE = 5;
+
+  const load = async (page = poPage, filterOverride?: Partial<DashboardFiltersValue>) => {
     const active = { ...filters, ...filterOverride };
       setLoading(true);
       setError(null);
       try {
-      const [insightsRes, masterEnt, masterDept, masterCat] = await Promise.all([
+      const insightQuery = {
+        department: active.department || undefined,
+        dateFrom: active.dateFrom || undefined,
+        dateTo: active.dateTo || undefined,
+        poStatus: active.poStatus || undefined,
+        vendor: active.vendor || undefined,
+        entityId: active.entityId || undefined,
+        amountMin: active.amountMin || undefined,
+        amountMax: active.amountMax || undefined,
+        poPage: page,
+        poPageSize: PO_PAGE_SIZE,
+      };
+      const [insightsRes, masterEnt, masterDept] = await Promise.all([
         publicView
-          ? poApi.publicInsights({
-              department: active.department || undefined,
-              category: active.category || undefined,
-              dateFrom: active.dateFrom || undefined,
-              dateTo: active.dateTo || undefined,
-            })
-          : poApi.cfoInsights({
-              department: active.department || undefined,
-              category: active.category || undefined,
-              dateFrom: active.dateFrom || undefined,
-              dateTo: active.dateTo || undefined,
-            }),
+          ? poApi.publicInsights(insightQuery)
+          : poApi.cfoInsights(insightQuery),
         publicView
           ? Promise.resolve({ data: [] as Array<{ id: number; name: string }> })
           : masterApi.listEntities({ status: 'active', pageSize: 500 }).catch(() => ({ data: [] as Array<{ id: number; name: string }> })),
         publicView
           ? Promise.resolve({ data: [] as Array<{ name: string }> })
           : masterApi.listDepartments({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
-        publicView
-          ? Promise.resolve({ data: [] as Array<{ name: string }> })
-          : masterApi.listCategories({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
       ]);
       const next = (insightsRes.data || EMPTY) as Insights;
       setData(next);
@@ -145,7 +146,6 @@ export default function Dashboard({
         (masterEnt.data || []).map((e) => ({ id: String(e.id), name: String(e.name || '') })).filter((e) => e.name)
       );
       setDepartments([...new Set((masterDept.data || []).map((d) => String(d.name || '').trim()).filter(Boolean))]);
-      setCategories([...new Set((masterCat.data || []).map((c) => String(c.name || '').trim()).filter(Boolean))]);
       if (publicView) {
         const names = new Set<string>();
         for (const entity of next.entityWisePOSummary || []) {
@@ -165,10 +165,28 @@ export default function Dashboard({
     }
   };
 
+  const listFilterKey = [
+    filters.department,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.poStatus,
+    filters.vendor,
+    filters.entityId,
+    filters.amountMin,
+    filters.amountMax,
+  ].join('|');
+
   useEffect(() => {
-    void load();
+    setPoPage(1);
+    void load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.department, filters.category, filters.dateFrom, filters.dateTo]);
+  }, [listFilterKey]);
+
+  useEffect(() => {
+    if (poPage === 1) return;
+    void load(poPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poPage]);
 
   useEffect(() => {
     localStorage.setItem(CUSTOMIZE_KEY, JSON.stringify(hidden));
@@ -214,22 +232,7 @@ export default function Dashboard({
     return list;
   }, [data.entityWisePOSummary, data.topVendorsByPOAmount, selectedEntityName, filters]);
 
-  const filteredOrders = useMemo(() => {
-    return data.recentPurchaseOrders.filter((po) => {
-      if (selectedEntityName && po.entity !== selectedEntityName) return false;
-      if (filters.department && (po as { department?: string }).department && (po as { department?: string }).department !== filters.department) {
-        return false;
-      }
-      if (filters.vendor && po.vendorName !== filters.vendor) return false;
-      if (filters.poStatus && po.status !== filters.poStatus) return false;
-      if (!inDateRange(po.poDate, filters.dateFrom, filters.dateTo)) return false;
-      const min = Number(filters.amountMin);
-      const max = Number(filters.amountMax);
-      if (Number.isFinite(min) && filters.amountMin !== '' && po.poAmount < min) return false;
-      if (Number.isFinite(max) && filters.amountMax !== '' && po.poAmount > max) return false;
-      return true;
-    });
-  }, [data.recentPurchaseOrders, selectedEntityName, filters]);
+  const purchaseOrderTotal = data.purchaseOrderTotal ?? data.recentPurchaseOrders.length;
 
   const filteredVendors = useMemo(() => {
     return data.topVendorsByPOAmount.filter((v) => {
@@ -253,7 +256,7 @@ export default function Dashboard({
     const entityApproved = filteredEntities.reduce((s, e) => s + e.approvedAmount, 0);
     const entityPending = filteredEntities.reduce((s, e) => s + e.pendingAmount, 0);
     const narrowed =
-      Boolean(filters.entityId || filters.vendor || filters.amountMin || filters.amountMax || filters.department || filters.category);
+      Boolean(filters.entityId || filters.vendor || filters.amountMin || filters.amountMax || filters.department);
 
     let totalPOAmount = narrowed ? entityTotal : data.kpis.totalPOAmount;
     let approvedPOAmount = narrowed ? entityApproved : data.kpis.approvedPOAmount;
@@ -395,7 +398,6 @@ export default function Dashboard({
           resetValue={resetValue}
           entities={companyOptions}
           departments={departments}
-          categories={categories}
           vendors={[...new Set(data.topVendorsByPOAmount.map((v) => v.vendorName))]}
           onChange={setFilters}
           lockEntity={Boolean(lockedEntityId)}
@@ -412,6 +414,13 @@ export default function Dashboard({
             kpis={kpis}
             previousTotal={previousTotal}
             previousMonthLabel={previousMonthLabel}
+            activeStatus={filters.poStatus}
+            onStatus={(poStatus) => {
+              setFilters((prev) => ({ ...prev, poStatus }));
+              window.requestAnimationFrame(() => {
+                document.getElementById('cfo-purchase-orders')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              });
+            }}
           />
         ) : null}
 
@@ -431,7 +440,16 @@ export default function Dashboard({
               <EntityPOSummaryTable entities={filteredEntities} />
         </div>
             <div className="mb-8 flex flex-col gap-8">
-              <RecentPOTable orders={filteredOrders} publicView={publicView} />
+              <div id="cfo-purchase-orders">
+                <RecentPOTable
+                  orders={data.recentPurchaseOrders}
+                  publicView={publicView}
+                  page={poPage}
+                  pageSize={PO_PAGE_SIZE}
+                  total={purchaseOrderTotal}
+                  onPageChange={setPoPage}
+                />
+              </div>
               <TopVendorsTable vendors={filteredVendors} />
             </div>
           </>

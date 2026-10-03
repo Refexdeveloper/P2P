@@ -53,6 +53,8 @@ function PremiumKpiCard({
   trendPositive,
   icon,
   themeKey,
+  active = false,
+  onClick,
 }: {
   title: string;
   value: string;
@@ -62,19 +64,25 @@ function PremiumKpiCard({
   trendPositive?: boolean;
   icon: string;
   themeKey: ThemeKey;
+  active?: boolean;
+  onClick?: () => void;
 }) {
   const theme = KPI_THEME[themeKey];
+  const Tag = onClick ? 'button' : 'div';
 
   return (
-    <div
+    <Tag
+      type={onClick ? 'button' : undefined}
       title={titleAttr}
-      className="
-        group relative box-border flex h-full min-h-[148px] w-full cursor-default flex-col overflow-hidden
-        rounded-2xl border border-transparent bg-white p-4 text-left sm:min-h-[160px] sm:rounded-[18px] sm:p-5
+      onClick={onClick}
+      className={`
+        group relative box-border flex h-full min-h-[148px] w-full flex-col overflow-hidden
+        rounded-2xl border bg-white p-4 text-left sm:min-h-[160px] sm:rounded-[18px] sm:p-5
         shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]
         transition-[box-shadow,border-color,transform] duration-200 ease-out
-        hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]
-      "
+        ${onClick ? 'cursor-pointer hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]' : 'cursor-default'}
+        ${active ? 'border-[#1E88E5] ring-2 ring-[#1E88E5]/30' : 'border-transparent'}
+      `}
     >
       <div
         className="pointer-events-none absolute inset-0"
@@ -116,7 +124,7 @@ function PremiumKpiCard({
           <i className={`${icon} text-lg sm:text-xl`} aria-hidden />
         </div>
       </div>
-    </div>
+    </Tag>
   );
 }
 
@@ -124,10 +132,14 @@ export default function KPIWidgets({
   kpis,
   previousTotal,
   previousMonthLabel,
+  activeStatus = '',
+  onStatus,
 }: {
   kpis: Kpis;
   previousTotal: number;
   previousMonthLabel?: string;
+  activeStatus?: string;
+  onStatus?: (status: '' | 'Approved' | 'Pending Approval') => void;
 }) {
   const vs = previousMonthLabel || 'prior month';
   const mom = monthOverMonth(kpis.totalPOAmount, previousTotal, vs);
@@ -144,6 +156,7 @@ export default function KPIWidgets({
     trendPositive: boolean;
     icon: string;
     themeKey: ThemeKey;
+    status: '' | 'Approved' | 'Pending Approval' | null;
   }> = [
     {
       title: 'Total PO Amount',
@@ -154,6 +167,7 @@ export default function KPIWidgets({
       trendPositive: mom.flat || mom.up,
       icon: 'ri-folder-3-line',
       themeKey: 'total',
+      status: '',
     },
     {
       title: 'Approved PO Amount',
@@ -164,6 +178,7 @@ export default function KPIWidgets({
       trendPositive: true,
       icon: 'ri-checkbox-circle-line',
       themeKey: 'completed',
+      status: 'Approved',
     },
     {
       title: 'Pending PO Amount',
@@ -174,6 +189,7 @@ export default function KPIWidgets({
       trendPositive: false,
       icon: 'ri-notification-3-line',
       themeKey: 'active',
+      status: 'Pending Approval',
     },
     {
       title: 'Vendor Payments',
@@ -184,6 +200,7 @@ export default function KPIWidgets({
       trendPositive: payShare >= 50,
       icon: 'ri-bank-line',
       themeKey: 'open',
+      status: null,
     },
   ];
 
@@ -200,6 +217,12 @@ export default function KPIWidgets({
           trendPositive={card.trendPositive}
           icon={card.icon}
           themeKey={card.themeKey}
+          active={card.status !== null && activeStatus === card.status}
+          onClick={
+            card.status === null || !onStatus
+              ? undefined
+              : () => onStatus(activeStatus === card.status ? '' : card.status)
+          }
         />
       ))}
     </div>

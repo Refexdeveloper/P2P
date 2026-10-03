@@ -852,12 +852,26 @@ export const poApi = {
     category?: string;
     dateFrom?: string;
     dateTo?: string;
+    poStatus?: string;
+    vendor?: string;
+    entityId?: string;
+    amountMin?: string;
+    amountMax?: string;
+    poPage?: number;
+    poPageSize?: number;
   }) => {
     const qs = new URLSearchParams();
     if (params?.department) qs.set('department', params.department);
     if (params?.category) qs.set('category', params.category);
     if (params?.dateFrom) qs.set('dateFrom', params.dateFrom);
     if (params?.dateTo) qs.set('dateTo', params.dateTo);
+    if (params?.poStatus) qs.set('poStatus', params.poStatus);
+    if (params?.vendor) qs.set('vendor', params.vendor);
+    if (params?.entityId) qs.set('entityId', params.entityId);
+    if (params?.amountMin) qs.set('amountMin', params.amountMin);
+    if (params?.amountMax) qs.set('amountMax', params.amountMax);
+    if (params?.poPage) qs.set('poPage', String(params.poPage));
+    if (params?.poPageSize) qs.set('poPageSize', String(params.poPageSize));
     const q = qs.toString();
     return request<{
       data: {
@@ -901,6 +915,9 @@ export const poApi = {
           poDate: string;
           status: string;
         }>;
+        purchaseOrderTotal?: number;
+        purchaseOrderPage?: number;
+        purchaseOrderPageSize?: number;
         topVendorsByPOAmount: Array<{
           vendorName: string;
           entity: string;
@@ -916,12 +933,26 @@ export const poApi = {
     category?: string;
     dateFrom?: string;
     dateTo?: string;
+    poStatus?: string;
+    vendor?: string;
+    entityId?: string;
+    amountMin?: string;
+    amountMax?: string;
+    poPage?: number;
+    poPageSize?: number;
   }) => {
     const qs = new URLSearchParams();
     if (params?.department) qs.set('department', params.department);
     if (params?.category) qs.set('category', params.category);
     if (params?.dateFrom) qs.set('dateFrom', params.dateFrom);
     if (params?.dateTo) qs.set('dateTo', params.dateTo);
+    if (params?.poStatus) qs.set('poStatus', params.poStatus);
+    if (params?.vendor) qs.set('vendor', params.vendor);
+    if (params?.entityId) qs.set('entityId', params.entityId);
+    if (params?.amountMin) qs.set('amountMin', params.amountMin);
+    if (params?.amountMax) qs.set('amountMax', params.amountMax);
+    if (params?.poPage) qs.set('poPage', String(params.poPage));
+    if (params?.poPageSize) qs.set('poPageSize', String(params.poPageSize));
     const q = qs.toString();
     return request<{ data: Record<string, unknown> }>(`/api/po/public/insights${q ? `?${q}` : ''}`);
   },

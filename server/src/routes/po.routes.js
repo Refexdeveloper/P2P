@@ -215,15 +215,26 @@ async function sendPoPdf(res, po) {
   fs.createReadStream(fullPath).pipe(res);
 }
 
+function insightListFilters(query = {}) {
+  return {
+    department: typeof query.department === 'string' ? query.department : '',
+    category: typeof query.category === 'string' ? query.category : '',
+    dateFrom: typeof query.dateFrom === 'string' ? query.dateFrom : '',
+    dateTo: typeof query.dateTo === 'string' ? query.dateTo : '',
+    poStatus: typeof query.poStatus === 'string' ? query.poStatus : '',
+    vendor: typeof query.vendor === 'string' ? query.vendor : '',
+    entityId: typeof query.entityId === 'string' ? query.entityId : '',
+    amountMin: typeof query.amountMin === 'string' ? query.amountMin : '',
+    amountMax: typeof query.amountMax === 'string' ? query.amountMax : '',
+    poPage: query.poPage,
+    poPageSize: query.poPageSize,
+  };
+}
+
 /** Public read-only Financial Insights for embedding. No login. Does not expose write actions. */
 router.get('/public/insights', async (req, res) => {
   try {
-    const data = await getCfoPoInsights(null, {
-      department: typeof req.query.department === 'string' ? req.query.department : '',
-      category: typeof req.query.category === 'string' ? req.query.category : '',
-      dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : '',
-      dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : '',
-    });
+    const data = await getCfoPoInsights(null, insightListFilters(req.query));
     res.json({ data });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -294,12 +305,7 @@ router.get(
   requireRolesOrPermissions(['CFO', 'Super Admin', 'SCM Manager', 'SCM Buyer'], ['nav.cfo_insights']),
   async (req, res) => {
     try {
-      const data = await getCfoPoInsights(req.user, {
-        department: typeof req.query.department === 'string' ? req.query.department : '',
-        category: typeof req.query.category === 'string' ? req.query.category : '',
-        dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : '',
-        dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : '',
-      });
+      const data = await getCfoPoInsights(req.user, insightListFilters(req.query));
       res.json({ data });
     } catch (err) {
       res.status(500).json({ message: err.message });

@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { formatCompactInr } from '../cfoFormat';
 import TrackPoExpandedRow from '../../scm/track-po/components/TrackPoExpandedRow';
 
@@ -14,6 +14,7 @@ type Order = {
 };
 
 const formatCurrency = formatCompactInr;
+const PAGE_SIZE = 5;
 
 const statusConfig: Record<string, { bg: string; text: string; dot: string }> = {
   Approved: { bg: 'bg-green-50', text: 'text-[#43A047]', dot: 'bg-[#43A047]' },
@@ -24,11 +25,36 @@ const statusConfig: Record<string, { bg: string; text: string; dot: string }> = 
 export default function RecentPOTable({
   orders,
   publicView = false,
+  page = 1,
+  pageSize = PAGE_SIZE,
+  total,
+  onPageChange,
 }: {
   orders: Order[];
   publicView?: boolean;
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  onPageChange?: (page: number) => void;
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [localPage, setLocalPage] = useState(1);
+  const serverPaged = typeof onPageChange === 'function';
+  const rowTotal = serverPaged ? total ?? orders.length : orders.length;
+  const pageCount = Math.max(1, Math.ceil(rowTotal / pageSize));
+  const currentPage = Math.min(Math.max(1, serverPaged ? page : localPage), pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageOrders = serverPaged ? orders : orders.slice(pageStart, pageStart + pageSize);
+
+  useEffect(() => {
+    setExpandedKey(null);
+  }, [currentPage, orders]);
+
+  const goToPage = (next: number) => {
+    setExpandedKey(null);
+    if (onPageChange) onPageChange(next);
+    else setLocalPage(next);
+  };
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/80 bg-white/95 shadow-lg shadow-slate-200/40 backdrop-blur-sm lg:rounded-3xl">
@@ -38,8 +64,12 @@ export default function RecentPOTable({
             <i className="ri-file-list-3-line text-lg" aria-hidden />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-800 sm:text-base">Recent Purchase Orders</h3>
-            <p className="text-[11px] text-slate-500 sm:text-xs">{orders.length} records</p>
+            <h3 className="text-sm font-semibold text-slate-800 sm:text-base">Purchase Orders</h3>
+            <p className="text-[11px] text-slate-500 sm:text-xs">
+              {rowTotal
+                ? `${pageStart + 1}–${Math.min(pageStart + pageOrders.length, rowTotal)} of ${rowTotal}`
+                : '0 records'}
+            </p>
           </div>
         </div>
       </div>
@@ -69,12 +99,12 @@ export default function RecentPOTable({
                 >
                   <div className="flex flex-col items-center gap-2">
                     <i className="ri-file-search-line text-4xl text-slate-200" />
-                    <p className="text-sm text-slate-400">No recent purchase orders.</p>
+                    <p className="text-sm text-slate-400">No purchase orders for these filters.</p>
                   </div>
                 </td>
               </tr>
             ) : (
-              orders.map((po) => {
+              pageOrders.map((po) => {
                 const cfg = statusConfig[po.status] ?? statusConfig['Pending Approval'];
                 const rowKey = `${po.poId || po.poNumber}`;
                 const open = expandedKey === rowKey;
@@ -139,6 +169,31 @@ export default function RecentPOTable({
             )}
           </tbody>
         </table>
+        {rowTotal > pageSize ? (
+          <div className="mt-1 flex items-center justify-between gap-3 px-2 pb-1">
+            <button
+              type="button"
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-sm font-semibold text-[#1E88E5] hover:bg-[#E3F2FD] disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              <i className="ri-arrow-left-s-line" />
+              Previous
+            </button>
+            <p className="text-xs font-semibold text-slate-500">
+              Page {currentPage} of {pageCount}
+            </p>
+            <button
+              type="button"
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage >= pageCount}
+              className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-sm font-semibold text-[#1E88E5] hover:bg-[#E3F2FD] disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              Next
+              <i className="ri-arrow-right-s-line" />
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

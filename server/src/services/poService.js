@@ -7063,6 +7063,53 @@ export async function getCfoPoInsights(user = null, filters = {}) {
     guard += 1;
   }
 
+  const poPageSize = Math.min(50, Math.max(1, Number(filters.poPageSize) || 5));
+  const poPage = Math.max(1, Number(filters.poPage) || 1);
+  const poOffset = (poPage - 1) * poPageSize;
+  const listWhere = [];
+  const listParams = [...queryParams];
+  const poStatus = String(filters.poStatus || '').trim();
+  if (poStatus === 'Approved') {
+    listWhere.push(` AND po.status IN (${approvedSql})`);
+  } else if (poStatus === 'Pending Approval' || poStatus === 'Pending') {
+    listWhere.push(` AND po.status IN (${pendingSql})`);
+  } else if (poStatus === 'Rejected') {
+    listWhere.push(` AND po.status = 'rejected'`);
+  }
+  const vendorName = String(filters.vendor || '').trim();
+  if (vendorName) {
+    listWhere.push(' AND po.vendor_name = ?');
+    listParams.push(vendorName);
+  }
+  const entityId = Number(filters.entityId);
+  if (entityId) {
+    listWhere.push(' AND po.entity_id = ?');
+    listParams.push(entityId);
+  }
+  const amountMin = String(filters.amountMin ?? '').trim();
+  const amountMax = String(filters.amountMax ?? '').trim();
+  if (amountMin !== '' && Number.isFinite(Number(amountMin))) {
+    listWhere.push(' AND po.grand_total >= ?');
+    listParams.push(Number(amountMin));
+  }
+  if (amountMax !== '' && Number.isFinite(Number(amountMax))) {
+    listWhere.push(' AND po.grand_total <= ?');
+    listParams.push(Number(amountMax));
+  }
+  const listSql = listWhere.join('');
+  const poFromSql = `
+     FROM purchase_orders po
+     LEFT JOIN entity_masters e ON e.id = po.entity_id
+     LEFT JOIN purchase_requests pr_recent ON pr_recent.id = po.pr_id
+     LEFT JOIN departments d_recent ON d_recent.id = pr_recent.department_id
+     ${joinSql}
+     WHERE po.status NOT IN ('draft', 'cancelled')${whereSql}${listSql}`;
+
+  const [[poCountRow]] = await pool.query(
+    `SELECT COUNT(*) AS total ${poFromSql}`,
+    listParams
+  );
+  const purchaseOrderTotal = Number(poCountRow?.total || 0);
   const [recentRows] = await pool.query(
     `SELECT
        po.id AS po_id,
@@ -7074,15 +7121,10 @@ export async function getCfoPoInsights(user = null, filters = {}) {
        COALESCE(po.po_date, po.created_at) AS po_date,
        COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), '—') AS entity_name,
        COALESCE(NULLIF(TRIM(d_recent.name), ''), '') AS department_name
-     FROM purchase_orders po
-     LEFT JOIN entity_masters e ON e.id = po.entity_id
-     LEFT JOIN purchase_requests pr_recent ON pr_recent.id = po.pr_id
-     LEFT JOIN departments d_recent ON d_recent.id = pr_recent.department_id
-     ${joinSql}
-     WHERE po.status NOT IN ('draft', 'cancelled')${whereSql}
+     ${poFromSql}
      ORDER BY COALESCE(po.po_date, po.created_at) DESC, po.id DESC
-     LIMIT 12`,
-    queryParams
+     LIMIT ? OFFSET ?`,
+    [...listParams, poPageSize, poOffset]
   );
 
   const recentPurchaseOrders = recentRows.map((row) => ({
@@ -7142,6 +7184,9 @@ export async function getCfoPoInsights(user = null, filters = {}) {
     monthlyPOTrend,
     monthlySeries: seriesKeys.map(({ key, label, color }) => ({ key, label, color })),
     recentPurchaseOrders,
+    purchaseOrderTotal,
+    purchaseOrderPage: poPage,
+    purchaseOrderPageSize: poPageSize,
     topVendorsByPOAmount,
   };
 }

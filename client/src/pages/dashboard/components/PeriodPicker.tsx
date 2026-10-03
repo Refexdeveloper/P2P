@@ -34,6 +34,7 @@ export default function PeriodPicker({
   portalZIndex = 9999,
   themeAccent = false,
   hideLabel = false,
+  onClear,
 }: {
   dateFrom: string;
   dateTo: string;
@@ -43,6 +44,7 @@ export default function PeriodPicker({
   themeAccent?: boolean;
   /** Hide the “Period” label so the control aligns with sibling inputs in a toolbar. */
   hideLabel?: boolean;
+  onClear?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -330,7 +332,21 @@ export default function PeriodPicker({
   return (
     <div className={`relative shrink-0 ${fullWidth ? 'w-full' : ''}`} ref={rootRef}>
       {!hideLabel ? (
-        <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Period</p>
+        <div className="mb-1.5 flex min-h-[16px] items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">Period</p>
+          {onClear ? (
+            <button
+              type="button"
+              onClick={onClear}
+              className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#E53935] hover:underline"
+            >
+              <i className="ri-close-line" />
+              Remove
+            </button>
+          ) : (
+            <span className="invisible text-[10px]">Remove</span>
+          )}
+        </div>
       ) : null}
       <button
         ref={buttonRef}

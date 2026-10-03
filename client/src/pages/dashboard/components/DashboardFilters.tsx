@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import PeriodPicker from './PeriodPicker';
 import FilterSheetSelect from './FilterSheetSelect';
@@ -28,7 +28,7 @@ const EMPTY: DashboardFiltersValue = {
 };
 
 const fieldClass =
-  'h-11 px-3 border border-slate-200 rounded-2xl bg-white text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]';
+  'h-11 w-full px-3 border border-slate-200 rounded-2xl bg-white text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]';
 
 const PO_STATUSES = [
   { value: '', label: 'All statuses' },
@@ -46,7 +46,6 @@ function countActiveFilters(
   let n = 0;
   if (!lockEntity && value.entityId && value.entityId !== (base.entityId || '')) n += 1;
   if (value.department) n += 1;
-  if (value.category) n += 1;
   if (value.vendor) n += 1;
   if (value.poStatus) n += 1;
   if (value.amountMin) n += 1;
@@ -55,11 +54,30 @@ function countActiveFilters(
   return n;
 }
 
+function FieldLabel({ label, onRemove }: { label: string; onRemove?: () => void }) {
+  return (
+    <div className="mb-1.5 flex min-h-[16px] items-center justify-between gap-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      {onRemove ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#E53935] hover:underline"
+        >
+          <i className="ri-close-line" />
+          Remove
+        </button>
+      ) : (
+        <span className="invisible text-[10px]">Remove</span>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardFilters({
   value,
   entities,
   departments,
-  categories,
   vendors,
   resetValue,
   onChange,
@@ -69,49 +87,14 @@ export default function DashboardFilters({
   value: DashboardFiltersValue;
   entities: Array<{ id: string; name: string }>;
   departments: string[];
-  categories: string[];
   vendors: string[];
   resetValue?: DashboardFiltersValue;
   onChange: (next: DashboardFiltersValue) => void;
   lockEntity?: boolean;
   lockedEntityLabel?: string;
 }) {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [morePos, setMorePos] = useState<{ top: number; right: number } | null>(null);
-  const moreRef = useRef<HTMLDivElement>(null);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
-  const [draft, setDraft] = useState(value);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetDraft, setSheetDraft] = useState(value);
-
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-
-  const placeMoreMenu = () => {
-    const rect = moreRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setMorePos({ top: rect.bottom + 8, right: Math.max(12, window.innerWidth - rect.right) });
-  };
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    placeMoreMenu();
-    const onDoc = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (moreRef.current?.contains(target) || moreMenuRef.current?.contains(target)) return;
-      setMoreOpen(false);
-    };
-    const onReflow = () => placeMoreMenu();
-    document.addEventListener('mousedown', onDoc);
-    window.addEventListener('resize', onReflow);
-    window.addEventListener('scroll', onReflow, true);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      window.removeEventListener('resize', onReflow);
-      window.removeEventListener('scroll', onReflow, true);
-    };
-  }, [moreOpen]);
 
   useEffect(() => {
     if (!sheetOpen) return;
@@ -135,9 +118,10 @@ export default function DashboardFilters({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetOpen]);
 
-  const extraCount = [value.vendor, value.poStatus, value.amountMin, value.amountMax].filter(Boolean).length;
   const clearTo = resetValue || EMPTY;
   const activeCount = countActiveFilters(value, clearTo, lockEntity);
+  const periodChanged = value.dateFrom !== clearTo.dateFrom || value.dateTo !== clearTo.dateTo;
+  const sheetPeriodChanged = sheetDraft.dateFrom !== clearTo.dateFrom || sheetDraft.dateTo !== clearTo.dateTo;
 
   const companyOptions = useMemo(
     () => [
@@ -150,10 +134,6 @@ export default function DashboardFilters({
     () => [{ value: '', label: 'All Functions' }, ...departments.map((d) => ({ value: d, label: d }))],
     [departments]
   );
-  const categoryOptions = useMemo(
-    () => [{ value: '', label: 'All Categories' }, ...categories.map((c) => ({ value: c, label: c }))],
-    [categories]
-  );
   const vendorOptions = useMemo(
     () => [{ value: '', label: 'All Vendors' }, ...vendors.map((v) => ({ value: v, label: v }))],
     [vendors]
@@ -161,14 +141,15 @@ export default function DashboardFilters({
 
   const closeSheet = () => setSheetOpen(false);
   const applySheet = () => {
-    onChange(sheetDraft);
+    onChange({ ...sheetDraft, category: '' });
     setSheetOpen(false);
   };
   const clearSheet = () => {
-    onChange(clearTo);
-    setSheetDraft(clearTo);
+    onChange({ ...clearTo, category: '' });
+    setSheetDraft({ ...clearTo, category: '' });
     setSheetOpen(false);
   };
+  const clearAll = () => onChange({ ...clearTo, category: '' });
 
   const sheet =
     sheetOpen && typeof document !== 'undefined'
@@ -201,11 +182,21 @@ export default function DashboardFilters({
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4">
                 <PeriodPicker
                   dateFrom={sheetDraft.dateFrom}
                   dateTo={sheetDraft.dateTo}
                   onChange={({ dateFrom, dateTo }) => setSheetDraft((prev) => ({ ...prev, dateFrom, dateTo }))}
+                  onClear={
+                    sheetPeriodChanged
+                      ? () =>
+                          setSheetDraft((prev) => ({
+                            ...prev,
+                            dateFrom: clearTo.dateFrom,
+                            dateTo: clearTo.dateTo,
+                          }))
+                      : undefined
+                  }
                   fullWidth
                   portalZIndex={10060}
                   themeAccent
@@ -217,6 +208,11 @@ export default function DashboardFilters({
                   placeholder="All Companies"
                   disabled={lockEntity}
                   onChange={(entityId) => setSheetDraft((prev) => ({ ...prev, entityId }))}
+                  onClear={
+                    !lockEntity && sheetDraft.entityId
+                      ? () => setSheetDraft((prev) => ({ ...prev, entityId: '' }))
+                      : undefined
+                  }
                 />
                 <FilterSheetSelect
                   label="Business / Functions"
@@ -224,13 +220,11 @@ export default function DashboardFilters({
                   options={departmentOptions}
                   placeholder="All Functions"
                   onChange={(department) => setSheetDraft((prev) => ({ ...prev, department }))}
-                />
-                <FilterSheetSelect
-                  label="Category"
-                  value={sheetDraft.category}
-                  options={categoryOptions}
-                  placeholder="All Categories"
-                  onChange={(category) => setSheetDraft((prev) => ({ ...prev, category }))}
+                  onClear={
+                    sheetDraft.department
+                      ? () => setSheetDraft((prev) => ({ ...prev, department: '' }))
+                      : undefined
+                  }
                 />
                 <FilterSheetSelect
                   label="Vendor"
@@ -238,6 +232,7 @@ export default function DashboardFilters({
                   options={vendorOptions}
                   placeholder="All Vendors"
                   onChange={(vendor) => setSheetDraft((prev) => ({ ...prev, vendor }))}
+                  onClear={sheetDraft.vendor ? () => setSheetDraft((prev) => ({ ...prev, vendor: '' })) : undefined}
                 />
                 <FilterSheetSelect
                   label="PO Status"
@@ -245,12 +240,20 @@ export default function DashboardFilters({
                   options={PO_STATUSES}
                   placeholder="All statuses"
                   onChange={(poStatus) => setSheetDraft((prev) => ({ ...prev, poStatus }))}
+                  onClear={
+                    sheetDraft.poStatus ? () => setSheetDraft((prev) => ({ ...prev, poStatus: '' })) : undefined
+                  }
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                      Min amount
-                    </p>
+                    <FieldLabel
+                      label="Min amount"
+                      onRemove={
+                        sheetDraft.amountMin
+                          ? () => setSheetDraft((prev) => ({ ...prev, amountMin: '' }))
+                          : undefined
+                      }
+                    />
                     <input
                       type="number"
                       min="0"
@@ -261,9 +264,14 @@ export default function DashboardFilters({
                     />
                   </div>
                   <div>
-                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                      Max amount
-                    </p>
+                    <FieldLabel
+                      label="Max amount"
+                      onRemove={
+                        sheetDraft.amountMax
+                          ? () => setSheetDraft((prev) => ({ ...prev, amountMax: '' }))
+                          : undefined
+                      }
+                    />
                     <input
                       type="number"
                       min="0"
@@ -325,162 +333,138 @@ export default function DashboardFilters({
               'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
           }}
         />
-        <div className="relative z-[1]">
-      <div className="flex items-end gap-3 flex-wrap">
-        <PeriodPicker
-          dateFrom={value.dateFrom}
-          dateTo={value.dateTo}
-          onChange={({ dateFrom, dateTo }) => onChange({ ...value, dateFrom, dateTo })}
-        />
-        <div className="shrink-0">
-          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Company</p>
-          <select
-            value={value.entityId}
-            onChange={(e) => onChange({ ...value, entityId: e.target.value })}
-            disabled={lockEntity}
-            className={`${fieldClass} min-w-[160px] ${lockEntity ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : ''}`}
-            aria-label="Company"
-          >
-            <option value="">{lockEntity ? lockedEntityLabel || 'Assigned entity' : 'All Companies'}</option>
-            {entities.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="shrink-0">
-          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Business / Functions</p>
-          <select
-            value={value.department}
-            onChange={(e) => onChange({ ...value, department: e.target.value })}
-            className={`${fieldClass} min-w-[150px]`}
-            aria-label="Business / Functions"
-          >
-            <option value="">All Functions</option>
-            {departments.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="shrink-0">
-          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Category</p>
-          <select
-            value={value.category}
-            onChange={(e) => onChange({ ...value, category: e.target.value })}
-            className={`${fieldClass} min-w-[140px]`}
-            aria-label="Category"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="relative shrink-0 ml-auto pb-0.5" ref={moreRef}>
-          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5 invisible">More</p>
-          <button
-            type="button"
-            onClick={() => setMoreOpen((v) => !v)}
-            className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-2xl px-3 text-[13px] font-semibold text-[#1E88E5] hover:bg-[#E3F2FD]"
-          >
-            <i className="ri-filter-3-line"></i>
-            More Filters{extraCount ? ` (${extraCount})` : ''}
-          </button>
-          {moreOpen && morePos && typeof document !== 'undefined'
-            ? createPortal(
-            <div
-              ref={moreMenuRef}
-              className="fixed z-[10050] w-[320px] space-y-3 rounded-2xl border border-[#EEF0F5] bg-white p-4 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.28)]"
-              style={{ top: morePos.top, right: morePos.right }}
+        <div className="relative z-[1] flex flex-wrap items-end gap-3">
+          <PeriodPicker
+            dateFrom={value.dateFrom}
+            dateTo={value.dateTo}
+            onChange={({ dateFrom, dateTo }) => onChange({ ...value, dateFrom, dateTo, category: '' })}
+            onClear={
+              periodChanged
+                ? () => onChange({ ...value, dateFrom: clearTo.dateFrom, dateTo: clearTo.dateTo, category: '' })
+                : undefined
+            }
+          />
+          <div className="min-w-[160px] shrink-0">
+            <FieldLabel
+              label="Company"
+              onRemove={
+                !lockEntity && value.entityId ? () => onChange({ ...value, entityId: '', category: '' }) : undefined
+              }
+            />
+            <select
+              value={value.entityId}
+              onChange={(e) => onChange({ ...value, entityId: e.target.value, category: '' })}
+              disabled={lockEntity}
+              className={`${fieldClass} min-w-[160px] ${lockEntity ? 'cursor-not-allowed bg-slate-50 text-slate-600' : ''}`}
+              aria-label="Company"
             >
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">More filters</p>
-              <div>
-                <label className="block text-[11px] text-slate-500 mb-1">Vendor</label>
-                <select
-                  value={draft.vendor}
-                  onChange={(e) => setDraft({ ...draft, vendor: e.target.value })}
-                  className={`${fieldClass} w-full`}
-                >
-                  <option value="">All Vendors</option>
-                  {vendors.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] text-slate-500 mb-1">PO Status</label>
-                <select
-                  value={draft.poStatus}
-                  onChange={(e) => setDraft({ ...draft, poStatus: e.target.value })}
-                  className={`${fieldClass} w-full`}
-                >
-                  <option value="">All statuses</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Pending Approval">Pending</option>
-                  <option value="Rejected">Rejected</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] text-slate-500 mb-1">Min amount</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={draft.amountMin}
-                    onChange={(e) => setDraft({ ...draft, amountMin: e.target.value })}
-                    className={`${fieldClass} w-full`}
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-500 mb-1">Max amount</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={draft.amountMax}
-                    onChange={(e) => setDraft({ ...draft, amountMax: e.target.value })}
-                    className={`${fieldClass} w-full`}
-                    placeholder="Any"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(clearTo);
-                    setDraft(clearTo);
-                    setMoreOpen(false);
-                  }}
-                  className="h-9 px-3 text-[12px] font-medium text-slate-600 hover:bg-slate-50 rounded-lg"
-                >
-                  Reset Filters
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(draft);
-                    setMoreOpen(false);
-                  }}
-                  className="h-9 rounded-lg bg-[#1E88E5] px-4 text-[12px] font-semibold text-white hover:bg-[#1565C0]"
-                >
-                  Apply Filters
-                </button>
-              </div>
-            </div>,
-            document.body
-          )
-            : null}
+              <option value="">{lockEntity ? lockedEntityLabel || 'Assigned entity' : 'All Companies'}</option>
+              {entities.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[160px] shrink-0">
+            <FieldLabel
+              label="Business / Functions"
+              onRemove={value.department ? () => onChange({ ...value, department: '', category: '' }) : undefined}
+            />
+            <select
+              value={value.department}
+              onChange={(e) => onChange({ ...value, department: e.target.value, category: '' })}
+              className={`${fieldClass} min-w-[160px]`}
+              aria-label="Business / Functions"
+            >
+              <option value="">All Functions</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[160px] shrink-0">
+            <FieldLabel
+              label="Vendor"
+              onRemove={value.vendor ? () => onChange({ ...value, vendor: '', category: '' }) : undefined}
+            />
+            <select
+              value={value.vendor}
+              onChange={(e) => onChange({ ...value, vendor: e.target.value, category: '' })}
+              className={`${fieldClass} min-w-[160px]`}
+              aria-label="Vendor"
+            >
+              <option value="">All Vendors</option>
+              {vendors.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[150px] shrink-0">
+            <FieldLabel
+              label="PO Status"
+              onRemove={value.poStatus ? () => onChange({ ...value, poStatus: '', category: '' }) : undefined}
+            />
+            <select
+              value={value.poStatus}
+              onChange={(e) => onChange({ ...value, poStatus: e.target.value, category: '' })}
+              className={`${fieldClass} min-w-[150px]`}
+              aria-label="PO Status"
+            >
+              {PO_STATUSES.map((status) => (
+                <option key={status.label} value={status.value}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="w-[120px] shrink-0">
+            <FieldLabel
+              label="Min amount"
+              onRemove={value.amountMin ? () => onChange({ ...value, amountMin: '', category: '' }) : undefined}
+            />
+            <input
+              type="number"
+              min="0"
+              value={value.amountMin}
+              onChange={(e) => onChange({ ...value, amountMin: e.target.value, category: '' })}
+              className={fieldClass}
+              placeholder="0"
+              aria-label="Min amount"
+            />
+          </div>
+          <div className="w-[120px] shrink-0">
+            <FieldLabel
+              label="Max amount"
+              onRemove={value.amountMax ? () => onChange({ ...value, amountMax: '', category: '' }) : undefined}
+            />
+            <input
+              type="number"
+              min="0"
+              value={value.amountMax}
+              onChange={(e) => onChange({ ...value, amountMax: e.target.value, category: '' })}
+              className={fieldClass}
+              placeholder="Any"
+              aria-label="Max amount"
+            />
+          </div>
+          {activeCount > 0 ? (
+            <div className="shrink-0 pb-0.5">
+              <button
+                type="button"
+                onClick={clearAll}
+                className="inline-flex h-11 items-center gap-1.5 rounded-2xl px-3 text-[13px] font-semibold text-[#E53935] hover:bg-red-50"
+              >
+                <i className="ri-close-circle-line" />
+                Clear all
+              </button>
+            </div>
+          ) : null}
         </div>
-      </div>
-      </div>
       </div>
     </>
   );
