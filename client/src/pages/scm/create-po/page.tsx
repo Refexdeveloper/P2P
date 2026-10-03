@@ -4549,6 +4549,16 @@ export default function CreatePOPage() {
                                 status: 'active',
                               } as EntityRecord);
                             setManualEntitySnapshot(selected);
+                            if (
+                              String(selected.code || '').trim().toUpperCase() === 'RGML' ||
+                              String(selected.name || '').toLowerCase().includes('green mobility')
+                            ) {
+                              setManualPrDetails((prev) => {
+                                const current = prev.department.trim();
+                                if (current && current.toUpperCase() !== 'CBG') return prev;
+                                return { ...prev, department: 'IT & Technology' };
+                              });
+                            }
                             setPr((prev) =>
                               prev
                                 ? {

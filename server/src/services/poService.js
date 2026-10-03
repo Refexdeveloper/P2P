@@ -6952,7 +6952,13 @@ export async function getCfoPoInsights(user = null, filters = {}) {
     `SELECT
        COALESCE(e.id, 0) AS entity_id,
        COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned') AS entity_name,
-       COALESCE(NULLIF(TRIM(d_ent.name), ''), 'CBG') AS department_name,
+       CASE
+         WHEN NULLIF(TRIM(d_ent.name), '') IS NOT NULL THEN TRIM(d_ent.name)
+         WHEN UPPER(TRIM(COALESCE(e.code, ''))) = 'RGML'
+           OR LOWER(COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), '')) LIKE '%green mobility%'
+         THEN 'IT & Technology'
+         ELSE 'CBG'
+       END AS department_name,
        COUNT(*) AS total_po_count,
        COALESCE(SUM(po.grand_total), 0) AS total_po_amount,
        COALESCE(SUM(CASE WHEN po.status IN (${approvedSql}) THEN po.grand_total ELSE 0 END), 0) AS approved_amount,
@@ -6964,7 +6970,13 @@ export async function getCfoPoInsights(user = null, filters = {}) {
      WHERE po.status NOT IN (${excludedSql})${whereSql}
      GROUP BY COALESCE(e.id, 0),
               COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned'),
-              COALESCE(NULLIF(TRIM(d_ent.name), ''), 'CBG')
+              CASE
+                WHEN NULLIF(TRIM(d_ent.name), '') IS NOT NULL THEN TRIM(d_ent.name)
+                WHEN UPPER(TRIM(COALESCE(e.code, ''))) = 'RGML'
+                  OR LOWER(COALESCE(NULLIF(TRIM(e.name), ''), NULLIF(TRIM(po.entity), ''), '')) LIKE '%green mobility%'
+                THEN 'IT & Technology'
+                ELSE 'CBG'
+              END
      ORDER BY total_po_amount DESC`,
     queryParams
   );

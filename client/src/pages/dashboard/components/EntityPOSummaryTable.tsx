@@ -23,7 +23,15 @@ type Entity = {
 
 const formatCurrency = formatCompactInr;
 
-export default function EntityPOSummaryTable({ entities }: { entities: Entity[] }) {
+export default function EntityPOSummaryTable({
+  entities,
+  activeDepartment = '',
+  onDepartmentSelect,
+}: {
+  entities: Entity[];
+  activeDepartment?: string;
+  onDepartmentSelect?: (departmentName: string, entity: Entity) => void;
+}) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   return (
     <div className="overflow-hidden rounded-2xl border border-white/80 bg-white/95 shadow-lg shadow-slate-200/40 backdrop-blur-sm lg:rounded-3xl">
@@ -143,8 +151,20 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
                             </thead>
                             <tbody>
                               {departments.length ? (
-                                departments.map((dept) => (
-                                  <tr key={dept.departmentName} className="border-b border-slate-50 last:border-0">
+                                departments.map((dept) => {
+                                  const selected =
+                                    activeDepartment.trim().toLowerCase() === dept.departmentName.trim().toLowerCase();
+                                  return (
+                                  <tr
+                                    key={dept.departmentName}
+                                    className={`border-b border-slate-50 last:border-0 ${
+                                      onDepartmentSelect ? 'cursor-pointer hover:bg-[#E3F2FD]/60' : ''
+                                    } ${selected ? 'bg-[#E3F2FD]' : ''}`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onDepartmentSelect?.(dept.departmentName, entity);
+                                    }}
+                                  >
                                     <td className="px-3 py-2.5 font-semibold text-[#172B4D]">{dept.departmentName}</td>
                                     <td className="px-3 py-2.5 text-right tabular-nums text-[#2C3E50]">{dept.totalPOCount}</td>
                                     <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-[#2C3E50]">
@@ -157,7 +177,8 @@ export default function EntityPOSummaryTable({ entities }: { entities: Entity[] 
                                       {formatCurrency(dept.pendingAmount)}
                                     </td>
                                   </tr>
-                                ))
+                                  );
+                                })
                               ) : (
                                 <tr>
                                   <td colSpan={5} className="px-3 py-4 text-sm text-slate-500">

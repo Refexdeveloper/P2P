@@ -324,7 +324,7 @@ export default function Dashboard({
 
   const content = (
       <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full px-5 py-8 font-sans text-[#0F172A] sm:px-8 lg:px-10`} style={{ background: PM_PAGE_BG }}>
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
+            <div className="mb-8 flex flex-wrap items-start justify-between gap-5" id="cfo-insights-top">
           <div>
             {embedded && onBack ? (
               <button
@@ -437,7 +437,28 @@ export default function Dashboard({
         {showTables || visible('tables') ? (
           <>
             <div id="cfo-detail-tables" className="mb-8">
-              <EntityPOSummaryTable entities={filteredEntities} />
+              <EntityPOSummaryTable
+                entities={filteredEntities}
+                activeDepartment={filters.department}
+                onDepartmentSelect={(departmentName, entity) => {
+                  const same =
+                    filters.department.trim().toLowerCase() === departmentName.trim().toLowerCase();
+                  setFilters((prev) => ({
+                    ...prev,
+                    department: same ? '' : departmentName,
+                    entityId: entity.entityId ? String(entity.entityId) : prev.entityId,
+                    poStatus: '',
+                  }));
+                  setDepartments((prev) =>
+                    prev.some((name) => name.toLowerCase() === departmentName.toLowerCase())
+                      ? prev
+                      : [...prev, departmentName].sort((a, b) => a.localeCompare(b))
+                  );
+                  window.requestAnimationFrame(() => {
+                    document.getElementById('cfo-insights-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  });
+                }}
+              />
         </div>
             <div className="mb-8 flex flex-col gap-8">
               <div id="cfo-purchase-orders">
