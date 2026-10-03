@@ -13,6 +13,24 @@ interface Props {
 export default function InvoiceTable({ invoices, onAction }: Props) {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const didAutoExpand = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      if (el.clientWidth > 0) setPanelWidth(el.clientWidth);
+    };
+    update();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
 
   useEffect(() => {
     if (didAutoExpand.current || !invoices.length) return;
@@ -54,7 +72,7 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
             'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(248,250,252,0) 55%)',
         }}
       />
-      <div className="relative z-[1] overflow-x-auto px-0 pb-3 pt-1">
+      <div ref={scrollRef} data-invoice-scroll className="relative z-[1] overflow-x-auto px-0 pb-3 pt-1">
       <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
         <thead>
           <tr>
@@ -209,8 +227,16 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
               {isExpanded && (
                 <tr>
                   <td colSpan={9} className="bg-transparent p-0">
-                    <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
-                      <InvoiceExpandedRow invoice={invoice} onAction={onAction} />
+                    <div
+                      className="sticky left-0 z-[5] box-border min-w-0 overflow-hidden"
+                      style={{
+                        width: panelWidth ? `${panelWidth}px` : '100%',
+                        maxWidth: panelWidth ? `${panelWidth}px` : '100%',
+                      }}
+                    >
+                      <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
+                        <InvoiceExpandedRow invoice={invoice} onAction={onAction} />
+                      </div>
                     </div>
                   </td>
                 </tr>

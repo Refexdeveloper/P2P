@@ -3,6 +3,14 @@ import { Link } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import SoftInsightCard, { INSIGHT_THEME_CYCLE } from '../../../components/base/SoftInsightCard';
 import { accountsApi } from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
+
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
@@ -40,6 +48,7 @@ type Dash = {
 };
 
 export default function AccountsDashboardPage() {
+  const { user } = useAuth();
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -94,10 +103,10 @@ export default function AccountsDashboardPage() {
       <div className="p-8 space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Accounts Dashboard</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              GRN → Invoice upload → Manager approval → Payment · PO status updates at each step
-            </p>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {greetingForNow()}, {user?.name || 'User'}
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">Accounts Dashboard</p>
           </div>
           <button
             type="button"
@@ -131,7 +140,7 @@ export default function AccountsDashboardPage() {
 
             <div className="grid grid-cols-1 items-stretch gap-3 sm:gap-4 lg:grid-cols-3">
               <SoftInsightCard
-                title="Pending payment value"
+                title="Pending amount"
                 value={formatCurrency(data?.invoices.pendingPaymentValue || 0)}
                 icon="ri-time-line"
                 theme="orange"

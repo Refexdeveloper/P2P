@@ -1129,7 +1129,7 @@ export async function getAccountsDashboard() {
        SUM(CASE WHEN status = 'pending_manager_approval' THEN 1 ELSE 0 END) AS pendingManagerApproval,
        SUM(CASE WHEN status = 'approved_for_payment' THEN 1 ELSE 0 END) AS readyForPayment,
        SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS paidInvoices,
-       COALESCE(SUM(CASE WHEN status = 'approved_for_payment' THEN invoice_grand_total ELSE 0 END), 0) AS pendingPaymentValue,
+       COALESCE(SUM(CASE WHEN status IN ('pending_verification', 'pending_manager_approval', 'approved_for_payment') THEN invoice_grand_total ELSE 0 END), 0) AS pendingPaymentValue,
        COALESCE(SUM(CASE WHEN status = 'paid' THEN invoice_grand_total ELSE 0 END), 0) AS paidValue
      FROM invoices`
   );

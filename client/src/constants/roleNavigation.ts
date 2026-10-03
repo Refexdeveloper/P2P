@@ -242,7 +242,7 @@ const NAV_BY_CODE: Record<string, NavItem> = {
   },
   'nav.accounts_dashboard': {
     code: 'nav.accounts_dashboard',
-    label: 'Accounts Dashboard',
+    label: 'Dashboard',
     path: '/accounts/dashboard',
     icon: 'ri-dashboard-line',
     group: 'Accounts',
@@ -251,14 +251,14 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     code: 'nav.invoice_verification',
     label: '3-Way Match',
     path: '/accounts/invoice-verification',
-    icon: 'ri-file-check-2-line',
+    icon: 'ri-file-search-line',
     group: 'Accounts',
   },
   'nav.payment': {
     code: 'nav.payment',
     label: 'Payment',
     path: '/accounts/payment',
-    icon: 'ri-money-rupee-circle-line',
+    icon: 'ri-bank-card-line',
     group: 'Accounts',
   },
   'nav.payment_authorization': {
@@ -558,13 +558,7 @@ export function ensureNavigation(
 
   const emailOverride = EMAIL_NAV_CODES[String(email || '').trim().toLowerCase()];
   if (emailOverride?.length) {
-    const allowed = new Set(emailOverride);
-    merged = merged.filter((n) => allowed.has(n.code));
-    for (const code of emailOverride) {
-      if (!merged.some((n) => n.code === code) && NAV_BY_CODE[code]) {
-        merged.push(NAV_BY_CODE[code]);
-      }
-    }
+    merged = emailOverride.map((code) => NAV_BY_CODE[code]).filter(Boolean);
     const order = emailOverride;
     const rank = new Map(order.map((code, i) => [code, i]));
     merged = [...merged].sort((a, b) => {

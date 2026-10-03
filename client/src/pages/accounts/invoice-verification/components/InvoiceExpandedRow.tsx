@@ -481,8 +481,8 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
       {tab === 'files' && filesPanel}
 
       {tab === 'lineitems' && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <table className="w-full min-w-0 table-fixed text-sm [&_td]:break-words [&_th]:break-words">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3">Description</th>
