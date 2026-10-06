@@ -2,7 +2,7 @@ import { createContext, useContext, useState, ReactNode, useEffect, useCallback 
 import { ensureNavigation } from '../constants/roleNavigation';
 import { authApi, AuthUser, NavItem } from '../services/api';
 import { goToRefexOne } from '../utils/refexOneUrl';
-import { DINESH_DESIGNATION, DINESH_DISPLAY_NAME, getUserDesignation, isDineshUser, isSrivathsUser } from '../utils/roleDisplay';
+import { DINESH_DESIGNATION, DINESH_DISPLAY_NAME, MEET_DESIGNATION, getUserDesignation, isDineshUser, isMeetUser, isSrivathsUser } from '../utils/roleDisplay';
 
 export type UserRole =
   | 'Requester'
@@ -140,7 +140,9 @@ function mapAuthUser(u: AuthUser): User {
     role,
     displayRole: isDineshUser(u)
       ? DINESH_DESIGNATION
-      : u.displayRole ?? getUserDesignation({ role, email: u.email, name: u.name }),
+      : isMeetUser(u)
+        ? MEET_DESIGNATION
+        : u.displayRole ?? getUserDesignation({ role, email: u.email, name: u.name }),
     departmentId: u.departmentId,
     departmentName: u.departmentName,
     entityId: u.entityId ?? null,

@@ -405,7 +405,11 @@ export function buildSignatureRenderOptions(po = {}) {
     name: requesterPoSign ? 'Mugesh M' : (name || dsc?.holderName || getPreferredScmManagerName() || 'SCM Manager'),
     designation:
       String(po.signerDesignation || po.signer_designation || '').trim() ||
-      (requesterPoSign ? 'IT Infrastructure Head' : ''),
+      (requesterPoSign
+        ? 'IT Infrastructure Head'
+        : String(name || '').trim().toLowerCase().startsWith('meet')
+          ? 'Chief Operating Officer'
+          : ''),
     date: po.signedAt || po.signed_at || '',
     comments: po.signerComments || po.signer_comments || '',
     imageDataUrl: imageDataUrl || undefined,

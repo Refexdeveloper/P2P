@@ -710,7 +710,10 @@ export async function runStartupMigrations() {
     const meetId = await ensureScmManagerApprover(RGML_SCM_MANAGER_EMAIL, RGML_SCM_MANAGER_NAME);
     if (meetId) {
       const { seedUserPermissionsForRole, ROLE_DEFAULT_PERMISSIONS } = await import('./permissionService.js');
-      await pool.query(`UPDATE users SET role = 'SCM Manager', is_active = 1 WHERE id = ?`, [meetId]);
+      await pool.query(
+        `UPDATE users SET role = 'SCM Manager', is_active = 1, designation = 'Chief Operating Officer' WHERE id = ?`,
+        [meetId]
+      );
       await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [meetId]);
       const meetPerms = ROLE_DEFAULT_PERMISSIONS['SCM Manager'] || [];
       for (const code of meetPerms) {

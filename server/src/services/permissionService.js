@@ -27,6 +27,7 @@ export function resolveUserDisplayRole(userRow = {}) {
   const name = String(userRow.name || '').trim();
   if (isSrivathsActor({ email, name })) return 'CTO';
   if (email === 'dinesh@refex.co.in') return 'Group Chief Executive Officer';
+  if (email === 'meet.g@refex.co.in') return 'Chief Operating Officer';
   if (isMugeshActor({ email, name })) return '';
   const role = String(userRow.role || '').trim();
   if (role === 'HOD Approver') return 'L1 Manager';

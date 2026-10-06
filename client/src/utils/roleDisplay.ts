@@ -8,8 +8,10 @@ const ROLE_DISPLAY_NAMES: Record<string, string> = {
 const MUGESH_EMAIL = 'mugesh.m@refex.co.in';
 const SRIVATHS_EMAIL = 'srivaths.varadharajan@refex.co.in';
 const DINESH_EMAIL = 'dinesh@refex.co.in';
+const MEET_EMAIL = 'meet.g@refex.co.in';
 export const DINESH_DISPLAY_NAME = 'Dinesh Agarwal';
 export const DINESH_DESIGNATION = 'Group Chief Executive Officer';
+export const MEET_DESIGNATION = 'Chief Operating Officer';
 
 function personEmail(userOrEmail?: { email?: string | null; name?: string | null } | string | null): string {
   if (!userOrEmail) return '';
@@ -39,6 +41,13 @@ export function isMugeshUser(userOrEmail?: { email?: string | null; name?: strin
   const name = personName(userOrEmail);
   if (!email && name && (name === 'mugesh' || name.startsWith('mugesh '))) return true;
   return false;
+}
+
+/** True when this login is Meet — designation is Chief Operating Officer. */
+export function isMeetUser(
+  userOrEmail?: { email?: string | null; name?: string | null } | string | null
+): boolean {
+  return personEmail(userOrEmail) === MEET_EMAIL;
 }
 
 /** True when this login is Dinesh — show Dinesh Agarwal, Group Chief Executive Officer. */
@@ -93,6 +102,7 @@ export function getUserDesignation(
 ): string {
   if (!user) return '';
   if (isDineshUser(user)) return DINESH_DESIGNATION;
+  if (isMeetUser(user)) return MEET_DESIGNATION;
   if (user.displayRole != null && user.displayRole !== undefined) {
     return user.displayRole;
   }
@@ -109,6 +119,7 @@ export function formatRoleDisplayName(
 ): string {
   if (isMugeshUser(userOrEmail)) return '';
   if (isDineshUser(userOrEmail)) return DINESH_DESIGNATION;
+  if (isMeetUser(userOrEmail)) return MEET_DESIGNATION;
   if (isSrivathsUser(userOrEmail)) return 'CTO';
   if (!role) return '';
   return ROLE_DISPLAY_NAMES[role] || role;

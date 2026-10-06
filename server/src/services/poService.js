@@ -4572,6 +4572,7 @@ export async function signPurchaseOrder(user, poId, {
     signed: true,
     signature: {
       name: signName,
+      designation: isMeetSigner ? 'Chief Operating Officer' : undefined,
       date: formatDateTime(new Date()),
       comments: remarks.trim(),
       imageDataUrl,
@@ -4582,7 +4583,7 @@ export async function signPurchaseOrder(user, poId, {
   await pool.query(
     `UPDATE purchase_orders SET status = 'pending_buyer_verify', signed_pdf_path = ?, signer_id = ?,
      signature_name = ?, signature_image_path = ?, signature_image_data = ?, signer_comments = ?, signed_at = NOW(),
-     signature_dsc_json = ?, updated_at = NOW()
+     signature_dsc_json = ?, signer_designation = COALESCE(?, signer_designation), updated_at = NOW()
      WHERE id = ?`,
     [
       fileName,
@@ -4592,6 +4593,7 @@ export async function signPurchaseOrder(user, poId, {
       signatureImageData,
       remarks.trim(),
       dscDetails ? JSON.stringify({ ...dscDetails, signedAt: new Date().toISOString() }) : null,
+      isMeetSigner ? 'Chief Operating Officer' : null,
       poId,
     ]
   );

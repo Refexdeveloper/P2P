@@ -1638,6 +1638,18 @@ function isMugeshSignName(name) {
   return String(name || '').trim().toLowerCase().startsWith('mugesh');
 }
 
+function isMeetSignName(name) {
+  return String(name || '').trim().toLowerCase().startsWith('meet');
+}
+
+function signatoryDesignation(signatureOrSignatory, mugeshApproval) {
+  const given = String(signatureOrSignatory?.designation || '').trim();
+  if (given) return given;
+  if (mugeshApproval || isMugeshSignName(signatureOrSignatory?.name)) return 'IT Infrastructure Head';
+  if (isMeetSignName(signatureOrSignatory?.name)) return 'Chief Operating Officer';
+  return 'SCM - Head';
+}
+
 function mugeshDisplayName(name) {
   return isMugeshSignName(name) ? 'Mugesh M' : String(name || '');
 }
@@ -1689,15 +1701,12 @@ function specialNotesInnerHtml(po, options = {}) {
       <p>${escapeHtml(signature.date)}<br>
       ${mugeshApproval ? '' : `<strong>Authorized Signatory${signature.dsc ? ' (DSC)' : ''}</strong><br>`}
       Name: ${escapeHtml(mugeshApproval ? 'Mugesh M' : signature.name)}<br>
-      Designation: ${escapeHtml(
-        signature.designation ||
-          (isMugeshSignName(signature.name) ? 'IT Infrastructure Head' : 'SCM - Head')
-      )}</p>` : options.signatory ? `
+      Designation: ${escapeHtml(signatoryDesignation(signature, mugeshApproval))}</p>` : options.signatory ? `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>
       <p>${mugeshApproval ? '' : '<strong>Authorized Signatory</strong><br>'}
       Name: ${escapeHtml(mugeshApproval ? 'Mugesh M' : mugeshDisplayName(options.signatory.name || ''))}<br>
-      Designation: ${escapeHtml(options.signatory.designation || (mugeshApproval ? 'IT Infrastructure Head' : 'SCM - Head'))}</p>` : mugeshApproval ? `
+      Designation: ${escapeHtml(signatoryDesignation(options.signatory, mugeshApproval))}</p>` : mugeshApproval ? `
       <p><strong>FOR ${escapeHtml(entityLabel)},</strong></p>
       <div class="sig-space"></div>
       <p>Name: Mugesh M<br>
