@@ -14,6 +14,7 @@ export const SIGNATURE_UPLOAD_DIR = path.join(__dirname, '../../uploads/signatur
 export const SIGNATURE_SEED_DIR = path.join(__dirname, '../../assets/signatures');
 export const DEFAULT_SCM_MANAGER_SIGNATURE_FILE = 'rajeev_v_default.png';
 export const DEFAULT_MUGESH_SIGNATURE_FILE = 'mugesh_m_default.png';
+export const DEFAULT_MEET_SIGNATURE_FILE = 'meet_g_default.jpg';
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -111,6 +112,10 @@ export async function ensureDefaultScmManagerSignatureFile() {
 
 export function getDefaultMugeshSignatureDataUrl() {
   return signatureFileToDataUrl(DEFAULT_MUGESH_SIGNATURE_FILE);
+}
+
+export function getDefaultMeetSignatureDataUrl() {
+  return signatureFileToDataUrl(DEFAULT_MEET_SIGNATURE_FILE);
 }
 
 export function getDefaultScmManagerSignatureDataUrl() {

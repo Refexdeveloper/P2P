@@ -14,6 +14,8 @@ interface POApprovalModalProps {
   sendBackHint?: string;
   sendBackPlaceholder?: string;
   sendBackConfirmLabel?: string;
+  /** Saved signature is printed. Draw and upload are not shown. */
+  presetSignature?: { name: string; imageSrc: string } | null;
 }
 
 export default function POApprovalModal({
@@ -28,6 +30,7 @@ export default function POApprovalModal({
   sendBackHint,
   sendBackPlaceholder,
   sendBackConfirmLabel,
+  presetSignature = null,
 }: POApprovalModalProps) {
   const [remarks, setRemarks] = useState('');
   const [signature, setSignature] = useState<SignaturePayload | null>(null);
@@ -50,7 +53,7 @@ export default function POApprovalModal({
       signature?.signatureId ||
       (signature?.dsc?.holderName && signature?.dsc?.serial)
     );
-    if (type === 'approve' && !hasSignature) {
+    if (type === 'approve' && !presetSignature && !hasSignature) {
       setError('Fill DSC holder name and certificate serial no., or draw / upload a signature');
       return;
     }
@@ -123,14 +126,24 @@ export default function POApprovalModal({
             <p className="text-sm font-medium text-gray-800">{prTitle}</p>
           </div>
 
-          {isApprove && (
+          {isApprove && presetSignature ? (
+            <div className="rounded-lg border border-[#90CAF9] bg-[#E3F2FD]/70 p-3">
+              <p className="text-sm font-semibold text-[#0D47A1]">{presetSignature.name}</p>
+              <p className="text-xs text-[#1565C0] mt-0.5">Your saved signature is printed on the PO.</p>
+              <img
+                src={presetSignature.imageSrc}
+                alt={`${presetSignature.name} signature`}
+                className="mt-3 max-h-24 w-auto bg-white rounded-md border border-[#BBDEFB] px-3 py-2"
+              />
+            </div>
+          ) : isApprove ? (
             <SignatureCapture
               onChange={(payload) => {
                 setSignature(payload);
                 setError('');
               }}
             />
-          )}
+          ) : null}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">

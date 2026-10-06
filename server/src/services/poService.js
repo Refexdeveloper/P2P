@@ -4521,8 +4521,20 @@ export async function signPurchaseOrder(user, poId, {
   let imageDataUrl = null;
   let signatureImagePath = null;
   let signatureImageData = null;
+  const isMeetSigner = String(user.email || '').trim().toLowerCase() === 'meet.g@refex.co.in';
 
-  if (signatureId) {
+  if (isMeetSigner) {
+    const { getDefaultMeetSignatureDataUrl, DEFAULT_MEET_SIGNATURE_FILE } = await import(
+      './signatureService.js'
+    );
+    const defaultUrl = getDefaultMeetSignatureDataUrl();
+    if (!defaultUrl) throw new Error('Meet default signature file is missing');
+    imageDataUrl = defaultUrl;
+    const { ext, buffer } = parseDataUrlImage(defaultUrl);
+    signatureImageData = buffer;
+    signatureImagePath = await saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
+    if (!signatureImagePath) signatureImagePath = DEFAULT_MEET_SIGNATURE_FILE;
+  } else if (signatureId) {
     const gallery = await getUserSignatureImage(user.id, Number(signatureId));
     imageDataUrl = gallery.dataUrl;
     const { ext, buffer } = parseDataUrlImage(gallery.dataUrl);
@@ -4538,8 +4550,6 @@ export async function signPurchaseOrder(user, poId, {
     }
   } else if (dscDetails) {
     // DSC stamp is generated on the client and sent as signatureImage; allow text-only if missing
-  } else if (String(user.email || '').trim().toLowerCase() === 'meet.g@refex.co.in') {
-    throw new Error('Upload or draw your signature before signing');
   } else {
     // Fall back to Rajeev default handwritten signature
     const { getDefaultScmManagerSignatureDataUrl, DEFAULT_SCM_MANAGER_SIGNATURE_FILE } =

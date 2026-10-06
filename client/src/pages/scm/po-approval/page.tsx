@@ -12,9 +12,33 @@ import type { POData } from '../../../mocks/po-data';
 import { PM_BTN_PRIMARY, PM_BTN_SECONDARY, PM_PAGE_BG } from '../../../constants/pmTheme';
 import { useAuth } from '../../../contexts/AuthContext';
 import { isMugeshUser } from '../../../utils/roleDisplay';
+import meetSignature from '../../../assets/signatures/meet_g_default.jpg';
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+
+function htmlToPlain(html: string): string {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function lineItemDescription(li: Record<string, unknown>) {
+  const name = htmlToPlain(String(li.itemName || ''));
+  const description = htmlToPlain(String(li.description || ''));
+  if (name && description && name.toLowerCase() !== description.toLowerCase()) {
+    return `${name}\n${description}`;
+  }
+  return name || description || '—';
+}
 
 const softWash = {
   background:
@@ -442,7 +466,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                       {po.lineItems.map((item, idx) => (
                         <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3 text-sm text-gray-500 text-center">{idx + 1}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.description}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-pre-line">{item.description}</td>
                           <td className="px-4 py-3 text-sm text-gray-700 text-center">{item.quantity}</td>
                           <td className="px-4 py-3 text-sm text-gray-700 text-right">{formatCurrency(item.unitPrice)}</td>
                           <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">{formatCurrency(item.total)}</td>
@@ -451,19 +475,16 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                     </tbody>
                     <tfoot className="bg-[#E3F2FD]/50 border-t-2 border-[#90CAF9]">
                       <tr>
-                        <td colSpan={3} className="px-4 py-3 text-sm font-bold text-gray-700 text-right">Subtotal</td>
+                        <td colSpan={4} className="px-4 py-3 text-sm font-bold text-gray-700 text-right">Subtotal</td>
                         <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">{formatCurrency(po.subtotal)}</td>
-                        <td></td>
                       </tr>
                       <tr>
-                        <td colSpan={3} className="px-4 py-2 text-sm text-gray-600 text-right">GST ({po.gstPercentage}%)</td>
+                        <td colSpan={4} className="px-4 py-2 text-sm text-gray-600 text-right">GST ({po.gstPercentage}%)</td>
                         <td className="px-4 py-2 text-sm text-gray-700 text-right">{formatCurrency(po.taxAmount)}</td>
-                        <td></td>
                       </tr>
                       <tr>
-                        <td colSpan={3} className="px-4 py-3 text-base font-bold text-gray-900 text-right">Grand Total</td>
+                        <td colSpan={4} className="px-4 py-3 text-base font-bold text-gray-900 text-right">Grand Total</td>
                         <td className="px-4 py-3 text-base font-bold text-[#1E88E5] text-right">{formatCurrency(po.grandTotal)}</td>
-                        <td></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -569,6 +590,7 @@ export default function POApprovalPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const mugeshMode = isMugeshUser(user);
+  const meetMode = String(user?.email || '').trim().toLowerCase() === 'meet.g@refex.co.in';
   const [searchParams] = useSearchParams();
   const [poList, setPoList] = useState<POData[]>([]);
   const [poIdMap, setPoIdMap] = useState<Record<string, number>>({});
@@ -609,7 +631,7 @@ export default function POApprovalPage() {
     createdBy: String(raw.createdBy || 'SCM Buyer'),
     lineItems: ((raw.lineItems as Array<Record<string, unknown>>) || []).map((li) => ({
       id: String(li.id),
-      description: String(li.description || ''),
+      description: lineItemDescription(li),
       quantity: Number(li.quantity) || 0,
       unitPrice: Number(li.unitPrice) || 0,
       total: Number(li.total) || 0,
@@ -1209,6 +1231,7 @@ export default function POApprovalPage() {
             : undefined
         }
         onConfirm={handleConfirm}
+        presetSignature={meetMode ? { name: 'Meet G', imageSrc: meetSignature } : null}
         onClose={() => setModal(prev => ({ ...prev, isOpen: false }))}
       />
 
