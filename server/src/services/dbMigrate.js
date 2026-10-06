@@ -149,6 +149,7 @@ const MIGRATIONS = [
   )`,
   `ALTER TABLE purchase_requests ADD COLUMN entity_id INT NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN entity_id INT NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN approval_manager_id INT NULL`,
   `ALTER TABLE purchase_requests MODIFY COLUMN pr_number VARCHAR(40) NOT NULL`,
   `ALTER TABLE purchase_orders MODIFY COLUMN po_number VARCHAR(40) NOT NULL`,
   `CREATE TABLE IF NOT EXISTS document_number_sequences (
@@ -703,6 +704,46 @@ export async function runStartupMigrations() {
       getPreferredScmManagerEmail,
     } = await import('../utils/scmAssignee.js');
     const managerId = await ensurePreferredScmManagerUser();
+    const { ensureScmManagerApprover, RGML_SCM_MANAGER_EMAIL, RGML_SCM_MANAGER_NAME } = await import(
+      '../utils/scmAssignee.js'
+    );
+    const meetId = await ensureScmManagerApprover(RGML_SCM_MANAGER_EMAIL, RGML_SCM_MANAGER_NAME);
+    if (meetId) {
+      const { seedUserPermissionsForRole, ROLE_DEFAULT_PERMISSIONS } = await import('./permissionService.js');
+      await pool.query(`UPDATE users SET role = 'SCM Manager', is_active = 1 WHERE id = ?`, [meetId]);
+      await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [meetId]);
+      const meetPerms = ROLE_DEFAULT_PERMISSIONS['SCM Manager'] || [];
+      for (const code of meetPerms) {
+        await pool.query(
+          `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
+          [meetId, code]
+        );
+      }
+      await seedUserPermissionsForRole(meetId, 'SCM Manager');
+      await pool.query(
+        `UPDATE purchase_orders po
+         LEFT JOIN entity_masters em ON em.id = po.entity_id
+         SET po.approval_manager_id = ?
+         WHERE po.status = 'pending_approval'
+           AND po.approval_manager_id IS NULL
+           AND (
+             UPPER(IFNULL(em.code, '')) = 'RGML'
+             OR LOWER(IFNULL(em.name, '')) LIKE '%green mobility%'
+             OR LOWER(IFNULL(po.entity, '')) LIKE '%rgml%'
+             OR LOWER(IFNULL(po.entity, '')) LIKE '%green mobility%'
+           )`,
+        [meetId]
+      );
+      await pool.query(
+        `UPDATE workflow_tasks wt
+         JOIN purchase_orders po ON po.pr_id = wt.pr_id
+         SET wt.assigned_user_id = po.approval_manager_id
+         WHERE wt.task_type = 'PO_APPROVAL'
+           AND wt.assigned_role = 'SCM Manager'
+           AND wt.status = 'pending'
+           AND po.approval_manager_id IS NOT NULL`
+      );
+    }
     const reassignedMgr = await reassignPendingScmManagerTasks();
     if (managerId) {
       const { seedUserPermissionsForRole } = await import('./permissionService.js');

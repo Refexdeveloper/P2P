@@ -127,6 +127,24 @@ export async function reassignPendingScmBuyerTasks(conn = null) {
 /** Default SCM Manager for login, task assignment, and mail. */
 export const DEFAULT_SCM_MANAGER_EMAIL = 'rajeev.v@refex.co.in';
 export const DEFAULT_SCM_MANAGER_NAME = 'Rajeev V';
+/** RGML entity POs go to Meet unless the buyer picks Rajeev. */
+export const RGML_SCM_MANAGER_EMAIL = 'meet.g@refex.co.in';
+export const RGML_SCM_MANAGER_NAME = 'Meet G';
+
+export const SCM_MANAGER_APPROVER_OPTIONS = [
+  { email: RGML_SCM_MANAGER_EMAIL, name: RGML_SCM_MANAGER_NAME },
+  { email: DEFAULT_SCM_MANAGER_EMAIL, name: DEFAULT_SCM_MANAGER_NAME },
+];
+
+export function isRgmlEntity(code, name) {
+  const c = String(code || '').trim().toUpperCase();
+  const n = String(name || '').trim().toLowerCase();
+  return c === 'RGML' || n.includes('rgml') || n.includes('green mobility');
+}
+
+export function defaultScmManagerEmailForEntity(code, name) {
+  return isRgmlEntity(code, name) ? RGML_SCM_MANAGER_EMAIL : DEFAULT_SCM_MANAGER_EMAIL;
+}
 
 export function getPreferredScmManagerEmail() {
   return String(process.env.SCM_MANAGER_EMAIL || DEFAULT_SCM_MANAGER_EMAIL)
@@ -239,7 +257,7 @@ export async function ensurePreferredScmManagerUser(conn = null) {
   return result.insertId;
 }
 
-/** Point every pending SCM Manager workflow task at Rajeev's user id. */
+/** Fill only unassigned pending SCM Manager tasks with Rajeev. Assigned tasks stay. */
 export async function reassignPendingScmManagerTasks(conn = null) {
   const manager = await resolveScmManagerUser(conn);
   if (!manager?.id) return { manager: null, updated: 0 };
@@ -248,18 +266,62 @@ export async function reassignPendingScmManagerTasks(conn = null) {
     `UPDATE workflow_tasks
      SET assigned_user_id = ?
      WHERE assigned_role = 'SCM Manager'
-       AND status = 'pending'`,
+       AND status = 'pending'
+       AND assigned_user_id IS NULL`,
     [manager.id]
   );
   return { manager, updated: result?.affectedRows || 0 };
 }
 
-export async function insertScmManagerPoApprovalTask(db, prId, dueDateStr) {
-  const manager = await resolveScmManagerUser(db);
+export async function ensureScmManagerApprover(email, name, conn = null) {
+  const db = conn || pool;
+  const normalized = String(email || '').trim().toLowerCase();
+  const [byEmail] = await db.query(`SELECT id, name FROM users WHERE LOWER(email) = ? LIMIT 1`, [normalized]);
+  if (byEmail[0]) {
+    await db.query(
+      `UPDATE users SET role = 'SCM Manager', is_active = 1 WHERE id = ? AND (role <> 'SCM Manager' OR is_active <> 1)`,
+      [byEmail[0].id]
+    );
+    if (!String(byEmail[0].name || '').trim()) {
+      await db.query(`UPDATE users SET name = ? WHERE id = ?`, [name, byEmail[0].id]);
+    }
+    return byEmail[0].id;
+  }
+  const hash = await bcrypt.hash('demo1234', 10);
+  const [result] = await db.query(
+    `INSERT INTO users (name, email, password_hash, role, is_active) VALUES (?, ?, ?, 'SCM Manager', 1)`,
+    [name, normalized, hash]
+  );
+  return result.insertId;
+}
+
+export async function resolveScmManagerByEmail(email, conn = null) {
+  const db = conn || pool;
+  const normalized = String(email || '').trim().toLowerCase();
+  const known = SCM_MANAGER_APPROVER_OPTIONS.find((row) => row.email === normalized);
+  if (!known) return resolveScmManagerUser(db);
+  await ensureScmManagerApprover(known.email, known.name, db);
+  const [rows] = await db.query(
+    `SELECT id, email, name, role FROM users WHERE LOWER(email) = ? AND is_active = 1 LIMIT 1`,
+    [known.email]
+  );
+  return rows[0] ? mapBuyerRow(rows[0]) : null;
+}
+
+export async function resolveScmManagerForPo({ email, entityCode, entityName } = {}, conn = null) {
+  const requested = String(email || '').trim().toLowerCase();
+  const chosen = SCM_MANAGER_APPROVER_OPTIONS.some((row) => row.email === requested)
+    ? requested
+    : defaultScmManagerEmailForEntity(entityCode, entityName);
+  return resolveScmManagerByEmail(chosen, conn);
+}
+
+export async function insertScmManagerPoApprovalTask(db, prId, dueDateStr, manager) {
+  const resolved = manager?.id ? manager : await resolveScmManagerUser(db);
   await db.query(
     `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'PO_APPROVAL', 'SCM Manager', ?, 'pending', ?)`,
-    [prId, manager?.id || null, dueDateStr]
+    [prId, resolved?.id || null, dueDateStr]
   );
-  return manager;
+  return resolved;
 }

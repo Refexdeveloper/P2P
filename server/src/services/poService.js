@@ -29,6 +29,7 @@ import {
   resolveScmBuyerUser,
   getScmBuyerNotifyEmails,
   resolveScmManagerUser,
+  resolveScmManagerForPo,
   getScmManagerNotifyEmails,
   getPreferredScmManagerName,
   getPreferredScmManagerEmail,
@@ -405,24 +406,56 @@ async function poPdfMailAttachment(po, { signed = false } = {}) {
  * Always notify SCM Manager (Rajeev) that a PO awaits sign.
  * Safe for manual POs (no PR) and PR-linked POs. Never throws.
  */
+async function lookupEntityIdentity(db, entityId, entityText) {
+  const id = Number(entityId || 0);
+  if (id > 0) {
+    const [rows] = await db.query(`SELECT code, name FROM entity_masters WHERE id = ? LIMIT 1`, [id]);
+    if (rows[0]) return { code: rows[0].code || '', name: rows[0].name || entityText || '' };
+  }
+  return { code: '', name: String(entityText || '') };
+}
+
+async function assignPoApprovalManager(db, { poId, prId, body, entityId, entityName, managerId, dueDateStr }) {
+  let manager = null;
+  if (managerId) {
+    const [rows] = await db.query(
+      `SELECT id, email, name, role FROM users WHERE id = ? AND is_active = 1 LIMIT 1`,
+      [managerId]
+    );
+    if (rows[0]) manager = rows[0];
+  }
+  if (!manager) {
+    const identity = await lookupEntityIdentity(db, entityId, entityName);
+    manager = await resolveScmManagerForPo(
+      { email: body?.scmManagerEmail, entityCode: identity.code, entityName: identity.name },
+      db
+    );
+  }
+  if (poId && manager?.id) {
+    await db.query(`UPDATE purchase_orders SET approval_manager_id = ? WHERE id = ?`, [manager.id, poId]);
+  }
+  if (prId) await insertScmManagerPoApprovalTask(db, prId, dueDateStr, manager);
+  return manager;
+}
+
 export async function notifyScmManagerPoApproval(po, options = {}) {
   if (!po?.id && !po?.poNumber) return { sent: false, reason: 'missing_po' };
   try {
-    const managerEmails = await getScmManagerNotifyEmails();
-    const managers = await resolveRoleEmails('SCM Manager');
-    const emails = [
-      ...new Set(
-        [...managerEmails, ...managers.map((m) => m.email)]
-          .map((e) => String(e || '').trim())
-          .filter(Boolean)
-      ),
-    ];
+    const manager = options.manager?.email
+      ? options.manager
+      : await resolveScmManagerForPo(
+          {
+            email: options.scmManagerEmail,
+            entityCode: po.entityCode || po.entity_code,
+            entityName: po.entity || po.entityName,
+          }
+        );
+    const emails = [String(manager?.email || '').trim()].filter(Boolean);
     if (!emails.length) {
       console.warn(`SCM Manager notify skipped — no emails for ${po.poNumber || po.id}`);
       return { sent: false, reason: 'no_recipients', to: [] };
     }
-    const managerName =
-      managers[0]?.name || (await resolveScmManagerUser())?.name || getPreferredScmManagerName() || 'Rajeev V';
+    const managerName = manager?.name || getPreferredScmManagerName() || 'Rajeev V';
     const attachments = await poPdfMailAttachment(po).catch(() => []);
     const extraTo = (options.extraTo || [])
       .map((e) => String(e || '').trim())
@@ -2493,6 +2526,7 @@ export async function createPurchaseOrder(user, prId, body) {
   if (!entityIdForNumber) {
     throw new Error('PR has no entity. Set entity on the PR before creating a PO.');
   }
+  let approvalManager = null;
 
   const purchaseType = normalizePurchaseType(body.purchaseType || pr.purchaseType);
   const docLabel = purchaseTypeLabel(purchaseType);
@@ -2575,7 +2609,14 @@ export async function createPurchaseOrder(user, prId, body) {
     } else if (!skipApproval) {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 2);
-      await insertScmManagerPoApprovalTask(conn, prId, dueDate.toISOString().split('T')[0]);
+      approvalManager = await assignPoApprovalManager(conn, {
+        poId,
+        prId,
+        body,
+        entityId: entityIdForNumber,
+        entityName: resolvedEntity || pr.entityName || pr.entity || '',
+        dueDateStr: dueDate.toISOString().split('T')[0],
+      });
     }
 
     // Complete Create PO step and mark PR as PO created
@@ -2624,6 +2665,7 @@ export async function createPurchaseOrder(user, prId, body) {
       await notifyScmManagerPoApproval(po, {
         actorName: user.name,
         actorRole: user.role,
+        manager: approvalManager,
         remarks: `PO ${poNumber} created and sent for SCM Manager approval`,
       });
     }
@@ -2844,6 +2886,16 @@ export async function createManualPurchaseOrder(user, body = {}) {
       );
     }
 
+    let manualManager = null;
+    if (!skipApproval) {
+      manualManager = await assignPoApprovalManager(conn, {
+        poId,
+        body,
+        entityId: entityIdForNumber,
+        entityName: resolvedEntity || '',
+      });
+    }
+
     await conn.commit();
 
     const [poRows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
@@ -2863,6 +2915,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
       await notifyScmManagerPoApproval(po, {
         actorName: user.name,
         actorRole: user.role,
+        manager: manualManager,
         remarks: `Manual ${poNumber} created and sent for approval`,
       });
     }
@@ -3542,6 +3595,48 @@ export async function listPurchaseOrders(
       SELECT 1 FROM purchase_requests pr_hide
       WHERE pr_hide.id = po.pr_id AND pr_hide.po_creation_by = 'requester'
     )`;
+    if (user.role === 'SCM Manager') {
+      sql += ` AND (
+        po.approval_manager_id = ?
+        OR (
+          po.approval_manager_id IS NULL
+          AND (
+            (
+              LOWER(?) = 'rajeev.v@refex.co.in'
+              AND NOT (
+                LOWER(IFNULL(po.entity, '')) LIKE '%rgml%'
+                OR LOWER(IFNULL(po.entity, '')) LIKE '%green mobility%'
+                OR EXISTS (
+                  SELECT 1 FROM entity_masters em
+                  WHERE em.id = po.entity_id
+                    AND (
+                      UPPER(IFNULL(em.code, '')) = 'RGML'
+                      OR LOWER(IFNULL(em.name, '')) LIKE '%green mobility%'
+                    )
+                )
+              )
+            )
+            OR (
+              LOWER(?) = 'meet.g@refex.co.in'
+              AND (
+                LOWER(IFNULL(po.entity, '')) LIKE '%rgml%'
+                OR LOWER(IFNULL(po.entity, '')) LIKE '%green mobility%'
+                OR EXISTS (
+                  SELECT 1 FROM entity_masters em
+                  WHERE em.id = po.entity_id
+                    AND (
+                      UPPER(IFNULL(em.code, '')) = 'RGML'
+                      OR LOWER(IFNULL(em.name, '')) LIKE '%green mobility%'
+                    )
+                )
+              )
+            )
+          )
+        )
+      )`;
+      const managerEmail = String(user.email || '').trim().toLowerCase();
+      params.push(user.id, managerEmail, managerEmail);
+    }
   } else if (user.role === 'Requester') {
     sql += ` AND EXISTS (
       SELECT 1 FROM purchase_requests pr_own
@@ -4388,6 +4483,12 @@ export async function signPurchaseOrder(user, poId, {
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
   if (rows[0].status !== 'pending_approval') throw new Error('PO is not pending approval');
+  if (
+    rows[0].approval_manager_id &&
+    Number(rows[0].approval_manager_id) !== Number(user.id)
+  ) {
+    throw new Error('This PO is assigned to another SCM Manager');
+  }
 
   const dscDetails =
     dsc && typeof dsc === 'object'
@@ -4437,6 +4538,8 @@ export async function signPurchaseOrder(user, poId, {
     }
   } else if (dscDetails) {
     // DSC stamp is generated on the client and sent as signatureImage; allow text-only if missing
+  } else if (String(user.email || '').trim().toLowerCase() === 'meet.g@refex.co.in') {
+    throw new Error('Upload or draw your signature before signing');
   } else {
     // Fall back to Rajeev default handwritten signature
     const { getDefaultScmManagerSignatureDataUrl, DEFAULT_SCM_MANAGER_SIGNATURE_FILE } =
@@ -4823,11 +4926,18 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
     [rows[0].pr_id]
   );
 
-  if (rows[0].pr_id) {
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 2);
-    await insertScmManagerPoApprovalTask(pool, rows[0].pr_id, dueDate.toISOString().split('T')[0]);
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 2);
+  const sentBackManager = await assignPoApprovalManager(pool, {
+    poId,
+    prId: rows[0].pr_id || null,
+    entityId: rows[0].entity_id,
+    entityName: rows[0].entity,
+    managerId: rows[0].approval_manager_id,
+    dueDateStr: dueDate.toISOString().split('T')[0],
+  });
 
+  if (rows[0].pr_id) {
     await pool.query(
       `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
        VALUES (?, 'PO_BUYER_SENT_BACK', ?, 'return', ?)`,
@@ -4836,19 +4946,12 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
   }
 
   const updated = await getPurchaseOrderById(poId);
-  const managers = await resolveRoleEmails('SCM Manager');
-  const rajeevEmail = getPreferredScmManagerEmail();
-  const managerEmails = [
-    ...new Set([
-      ...managers.map((m) => m.email).filter(Boolean),
-      rajeevEmail,
-    ].filter(Boolean)),
-  ];
+  const managerEmails = [String(sentBackManager?.email || getPreferredScmManagerEmail() || '').trim()].filter(Boolean);
   queuePoWorkflowNotification(updated, {
     action: 'sendback',
     stageLabel: 'SCM Manager PO Approval — Sent Back',
     recipientEmails: managerEmails,
-    recipientName: managers[0]?.name || getPreferredScmManagerName() || 'SCM Manager',
+    recipientName: sentBackManager?.name || getPreferredScmManagerName() || 'SCM Manager',
     actorName: user.name,
     actorRole: user.role,
     remarks: remarks.trim(),
@@ -5382,6 +5485,7 @@ export async function updatePurchaseOrder(user, poId, body) {
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
   const existing = rows[0];
+  let resubmitManager = null;
 
   const canManagerEdit = user.role === 'SCM Manager' && existing.status === 'pending_approval';
   const canBuyerEdit = user.role === 'SCM Buyer' && existing.status === 'pending_buyer_verify';
@@ -5647,9 +5751,22 @@ export async function updatePurchaseOrder(user, poId, body) {
         );
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 2);
-        await insertScmManagerPoApprovalTask(conn, existing.pr_id, dueDate.toISOString().split('T')[0]);
+        resubmitManager = await assignPoApprovalManager(conn, {
+          poId,
+          prId: existing.pr_id,
+          body,
+          entityId: (await resolveEntityIdFromPoBody(body, existing)) || existing.entity_id,
+          entityName: resolvedEntity || existing.entity || '',
+          dueDateStr: dueDate.toISOString().split('T')[0],
+        });
       } else if (existing.manual_context_json) {
-        // Clear send-back marker on manual PO after resubmit to Rajeev
+        resubmitManager = await assignPoApprovalManager(conn, {
+          poId,
+          body,
+          entityId: (await resolveEntityIdFromPoBody(body, existing)) || existing.entity_id,
+          entityName: resolvedEntity || existing.entity || '',
+        });
+        // Clear send-back marker on manual PO after resubmit
         try {
           const ctx =
             typeof existing.manual_context_json === 'string'
@@ -5732,6 +5849,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     await notifyScmManagerPoApproval(updatedPo, {
         actorName: user.name,
         actorRole: user.role,
+      manager: resubmitManager,
       remarks:
         body?.resubmitForApproval || body?.changeSummary
           ? `Revised after send-back — sent to SCM Manager for sign`

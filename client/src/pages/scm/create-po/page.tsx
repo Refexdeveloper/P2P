@@ -1069,6 +1069,22 @@ function AnnexureIiTableEditor({
   );
 }
 
+const SCM_PO_APPROVERS = [
+  { name: 'Meet G', email: 'meet.g@refex.co.in' },
+  { name: 'Rajeev V', email: 'rajeev.v@refex.co.in' },
+] as const;
+
+function isRgmlEntityCode(code?: string | null, name?: string | null) {
+  const c = String(code || '').trim().toUpperCase();
+  const n = String(name || '').trim().toLowerCase();
+  return c === 'RGML' || n.includes('rgml') || n.includes('green mobility');
+}
+
+function defaultScmApprover(code?: string | null, name?: string | null) {
+  const email = isRgmlEntityCode(code, name) ? 'meet.g@refex.co.in' : 'rajeev.v@refex.co.in';
+  return SCM_PO_APPROVERS.find((row) => row.email === email) || SCM_PO_APPROVERS[1];
+}
+
 export default function CreatePOPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -2146,28 +2162,20 @@ export default function CreatePOPage() {
   }, [documentType, poType]);
 
   useEffect(() => {
-    if (!needsCreateForm) return;
-    let cancelled = false;
-    (async () => {
-      if (user?.role === 'Requester') return;
-      try {
-        const res = await poApi.getScmManager();
-        if (!cancelled && res.data) {
-          setScmManager({
-            name: res.data.name || 'SCM Manager',
-            email: res.data.email || '',
-          });
-        }
-      } catch {
-        if (!cancelled) {
-          setScmManager({ name: 'Rajeev V', email: 'rajeev.v@refex.co.in' });
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [needsCreateForm, user?.role]);
+    if (!needsCreateForm || user?.role === 'Requester') return;
+    const code = isManualPoFlow ? selectedManualEntity?.code : pr?.entityCode;
+    const name = isManualPoFlow ? selectedManualEntity?.name : pr?.entityName;
+    const next = defaultScmApprover(code, name);
+    setScmManager({ name: next.name, email: next.email });
+  }, [
+    needsCreateForm,
+    user?.role,
+    isManualPoFlow,
+    selectedManualEntity?.code,
+    selectedManualEntity?.name,
+    pr?.entityCode,
+    pr?.entityName,
+  ]);
 
   const loadExistingPo = useCallback(async () => {
     if (!isEditMode || !editPoId) return;
@@ -3888,6 +3896,7 @@ export default function CreatePOPage() {
         // Official number from confirm popup (default or user-edited) → PDF for SCM Manager.
         // Omit DRAFT-* so the server assigns if somehow still a draft.
         poNumber: isDraftLikePoNumber(poNumber) ? undefined : poNumber.trim() || undefined,
+        scmManagerEmail: user?.role === 'Requester' ? undefined : scmManager?.email || undefined,
       };
 
       if (isManualPoFlow) {
@@ -6174,12 +6183,33 @@ export default function CreatePOPage() {
                 <p className="text-[11px] font-bold uppercase tracking-wide text-[#1565C0] mb-2">
                   {nextApproverRole}
                 </p>
-                <p className="text-base font-bold text-gray-900">
-                  {nextApproverName}
-                </p>
-                {nextApproverEmail ? (
-                  <p className="text-sm text-[#1565C0] mt-0.5 break-all">{nextApproverEmail}</p>
-                ) : null}
+                {requesterSendsToMugesh ? (
+                  <>
+                    <p className="text-base font-bold text-gray-900">{nextApproverName}</p>
+                    {nextApproverEmail ? (
+                      <p className="text-sm text-[#1565C0] mt-0.5 break-all">{nextApproverEmail}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <label className="block">
+                    <span className="sr-only">SCM Manager approver</span>
+                    <select
+                      value={scmManager?.email || 'rajeev.v@refex.co.in'}
+                      onChange={(e) => {
+                        const picked = SCM_PO_APPROVERS.find((row) => row.email === e.target.value);
+                        if (picked) setScmManager({ name: picked.name, email: picked.email });
+                      }}
+                      disabled={submitting}
+                      className="w-full px-3.5 py-2.5 border border-[#64B5F6] rounded-lg text-sm font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#1E88E5]"
+                    >
+                      {SCM_PO_APPROVERS.map((row) => (
+                        <option key={row.email} value={row.email}>
+                          {row.name} — {row.email}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <p className="text-xs text-gray-500 mt-2">
                   They will receive the approval task and email for{' '}
                   <span className="font-semibold text-gray-700">

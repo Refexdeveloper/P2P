@@ -75,7 +75,13 @@ export async function listPrAttachments(prId, db = pool) {
      ORDER BY id ASC`,
     [prId]
   );
-  return rows.map(mapAttachmentRow);
+  const seen = new Set();
+  return rows.map(mapAttachmentRow).filter((row) => {
+    const key = `${String(row.fileName || '').trim().toLowerCase()}|${Number(row.size) || 0}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function savePrAttachments(prId, userId, files, db = pool) {
@@ -88,6 +94,19 @@ export async function savePrAttachments(prId, userId, files, db = pool) {
       Boolean(file?.data || file?.base64 || file?.file);
     if (!hasPayload) continue;
     const { fileName, buffer, mimeType, size } = normalizeIncomingFile(file);
+    const [already] = await db.query(
+      `SELECT id, pr_id, file_name, file_size, mime_type, uploaded_at
+       FROM pr_attachments
+       WHERE pr_id = ? AND file_name = ? AND file_size = ?
+       ORDER BY id ASC
+       LIMIT 1`,
+      [prId, fileName, size]
+    );
+    if (already[0]) {
+      saved.push(mapAttachmentRow(already[0]));
+      continue;
+    }
+
     const storedName = `${prId}_${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
     let gcsOk = false;
@@ -242,14 +261,8 @@ export async function loadPrAttachmentsForMail(prId) {
       continue;
     }
 
-    let filename = `PR_${safeFile}`;
-    let n = 2;
-    while (seen.has(filename.toLowerCase())) {
-      const ext = path.extname(safeFile);
-      const base = path.basename(safeFile, ext);
-      filename = `PR_${base}_${n}${ext}`;
-      n += 1;
-    }
+    const filename = `PR_${safeFile}`;
+    if (seen.has(filename.toLowerCase())) continue;
     seen.add(filename.toLowerCase());
     attachments.push({
       filename,

@@ -7,6 +7,7 @@ export const SUPER_ADMIN_ROLE = 'Super Admin';
 const EMAIL_ROLE_OVERRIDES = {
   'srivaths.varadharajan@refex.co.in': 'CFO',
   'tapas.s@refex.co.in': 'Accounts Payable',
+  'meet.g@refex.co.in': 'SCM Manager',
 };
 
 /** Per-user nav override. Dinesh: insights only. Tapas: accounts module. */
@@ -49,12 +50,41 @@ export async function syncEmailNavPermissions(userId, email) {
 export async function applyEmailRoleOverride(userRow) {
   const email = String(userRow.email || '').trim().toLowerCase();
   const targetRole = EMAIL_ROLE_OVERRIDES[email];
-  if (!targetRole || userRow.role === targetRole) return userRow;
+  if (!targetRole) return userRow;
 
-  await pool.query(`UPDATE users SET role = ? WHERE id = ?`, [targetRole, userRow.id]);
+  let next = userRow;
+  if (userRow.role !== targetRole) {
+    await pool.query(`UPDATE users SET role = ? WHERE id = ?`, [targetRole, userRow.id]);
+    next = { ...userRow, role: targetRole };
+  }
+
+  // Meet must keep the full SCM Manager menu (PO Approval, sign, upload), even if SSO
+  // first created him with another role's permissions.
+  if (email === 'meet.g@refex.co.in') {
+    const defaults = ROLE_DEFAULT_PERMISSIONS['SCM Manager'] || [];
+    const [rows] = await pool.query(
+      `SELECT permission_code FROM user_permissions WHERE user_id = ?`,
+      [userRow.id]
+    );
+    const have = new Set(rows.map((row) => row.permission_code));
+    const missing = defaults.some((code) => !have.has(code));
+    if (missing || userRow.role !== targetRole) {
+      await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [userRow.id]);
+      for (const code of defaults) {
+        await pool.query(
+          `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
+          [userRow.id, code]
+        );
+      }
+    }
+    return next;
+  }
+
+  if (userRow.role === targetRole) return userRow;
+
   await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [userRow.id]);
   await seedUserPermissionsForRole(userRow.id, targetRole);
-  return { ...userRow, role: targetRole };
+  return next;
 }
 
 export const NAV_ITEMS = [

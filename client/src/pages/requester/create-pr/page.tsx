@@ -82,6 +82,10 @@ function mapServerAttachments(atts: PrAttachmentRecord[] | undefined | null): At
     }));
 }
 
+function attachmentIdentity(file: AttachedFile) {
+  return `${String(file.name || '').trim().toLowerCase()}|${Number(file.size) || 0}`;
+}
+
 function mergeAttachedFiles(prev: AttachedFile[], incoming: AttachedFile[]): AttachedFile[] {
   const byExisting = new Map<number, AttachedFile>();
   const pending: AttachedFile[] = [];
@@ -92,7 +96,15 @@ function mergeAttachedFiles(prev: AttachedFile[], incoming: AttachedFile[]): Att
       pending.push(file);
     }
   }
-  return [...byExisting.values(), ...pending];
+  const seen = new Set<string>();
+  const unique: AttachedFile[] = [];
+  for (const file of [...byExisting.values(), ...pending]) {
+    const key = attachmentIdentity(file);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(file);
+  }
+  return unique;
 }
 
 interface ReturnFeedback {
@@ -263,6 +275,10 @@ export default function CreatePRPage() {
   const [masterItems, setMasterItems] = useState<ItemRecord[]>([]);
   const [masterCategories, setMasterCategories] = useState<CategoryRecord[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const attachedFilesRef = useRef<AttachedFile[]>([]);
+  attachedFilesRef.current = attachedFiles;
+  /** Stops autosave from uploading the same FSD file again while the first upload is still running. */
+  const uploadedAttachmentKeysRef = useRef<Set<string>>(new Set());
   const [isDragging, setIsDragging] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -1776,6 +1792,7 @@ export default function CreatePRPage() {
   };
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) addFiles(Array.from(e.target.files));
+    e.target.value = '';
   };
   const addFiles = (files: File[]) => {
     const allowed = /\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png)$/i;
@@ -1788,7 +1805,7 @@ export default function CreatePRPage() {
       size: f.size,
       file: f,
     }));
-    if (newFiles.length) setAttachedFiles((prev) => [...prev, ...newFiles]);
+    if (newFiles.length) setAttachedFiles((prev) => mergeAttachedFiles(prev, newFiles));
     if (rejected.length) {
       const msg = rejected
         .map((f) =>
@@ -2147,13 +2164,22 @@ export default function CreatePRPage() {
   };
 
   const uploadNewAttachments = async (prId: number) => {
-    const pending = attachedFiles.filter((item) => item.file);
-    if (!pending.length) return;
+    const pending = attachedFilesRef.current.filter((item) => item.file);
+    const toSend = pending.filter((item) => {
+      const file = item.file as File;
+      const key = `${file.name}|${file.size}|${file.lastModified}`;
+      if (uploadedAttachmentKeysRef.current.has(key)) return false;
+      uploadedAttachmentKeysRef.current.add(key);
+      return true;
+    });
+    if (!toSend.length) return;
     const uploaded: AttachedFile[] = [];
     const failed: string[] = [];
-    for (const item of pending) {
+    for (const item of toSend) {
+      const file = item.file as File;
+      const key = `${file.name}|${file.size}|${file.lastModified}`;
       try {
-        const res = await prApi.uploadAttachmentFile(prId, item.file as File);
+        const res = await prApi.uploadAttachmentFile(prId, file);
         const rec = res.data;
         if (rec?.id) {
           uploaded.push({
@@ -2164,13 +2190,14 @@ export default function CreatePRPage() {
           });
         }
       } catch (err) {
+        uploadedAttachmentKeysRef.current.delete(key);
         const reason = err instanceof Error ? err.message : 'upload failed';
         failed.push(`${item.name}: ${reason}`);
         console.warn('PR attachment upload failed:', err);
       }
     }
     let next = mergeAttachedFiles(
-      attachedFiles.filter((item) => !item.file || !failed.some((f) => f.startsWith(item.name))),
+      attachedFilesRef.current.filter((item) => !item.file || !failed.some((f) => f.startsWith(item.name))),
       uploaded
     );
     try {
