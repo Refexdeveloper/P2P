@@ -26,7 +26,6 @@ const SLA_DAILY_HOUR = Number(process.env.SLA_DAILY_HOUR ?? 8);
 /** Local evening hour (0–23) when User/L1/L2 evening SLA reminders are sent. */
 const SLA_EVENING_HOUR = Number(process.env.SLA_EVENING_HOUR ?? 18);
 const SLA_DAILY_TZ = String(process.env.SLA_DAILY_TZ || process.env.TZ || 'Asia/Kolkata').trim();
-const SLOT_WINDOW_HOURS = 2;
 
 let started = false;
 let running = false;
@@ -85,7 +84,8 @@ function slotHour(slot) {
 }
 
 /**
- * True when the scheduler should fire this slot (once per calendar day per slot).
+ * Morning from 08:00 and evening from 18:00, once each per calendar day.
+ * A later wake still sends that slot if it has not gone out yet today.
  * Morning and evening are independent — both can run on the same day.
  */
 function shouldRunReminderSlotNow(slot, now = new Date()) {
@@ -93,9 +93,7 @@ function shouldRunReminderSlotNow(slot, now = new Date()) {
   const today = calendarDateInTz(now);
   if (lastSlotRunDate[normalized] === today) return false;
   if (String(process.env.SLA_DAILY_FORCE || '').trim() === '1') return true;
-  const hour = hourInTz(now);
-  const start = slotHour(normalized);
-  return hour >= start && hour < start + SLOT_WINDOW_HOURS;
+  return hourInTz(now) >= slotHour(normalized);
 }
 
 /** @deprecated use shouldRunReminderSlotNow(MORNING) */
@@ -282,6 +280,10 @@ export async function processSlaBreaches() {
 
         const roleLabel = formatRoleDisplayName(row.assigned_role);
         const stageLabel = `SLA Breached — ${roleLabel} action required`;
+        const startDate = formatSlaDate(row.task_created_at);
+        const slaDue = formatSlaDate(
+          getTaskSlaDeadlineMs(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS)
+        );
 
         queueSlaBreachNotification(pr, row.assigned_role, requester, row.department_id, {
           approverEmails,
@@ -292,6 +294,9 @@ export async function processSlaBreaches() {
           slaBreach: true,
           stageLabel,
           taskId: row.task_id,
+          startDate: startDate === '—' ? '' : startDate,
+          slaDue: slaDue === '—' ? '' : slaDue,
+          waitingDays: getSlaWaitingDays(row.task_created_at),
         });
 
         await pool.query(
@@ -314,7 +319,9 @@ export async function processSlaBreaches() {
 }
 
 /**
- * Morning / evening SLA-breach reminders for User Approval / L1 / L2 only.
+ * Morning and evening SLA-breach reminders for User Approval / L1 / L2.
+ * Sends once each day at those times while the task is still pending.
+ * Stops when the task is no longer pending (approved, sent back, or rejected).
  * Excludes SCM Buyer and SCM Manager (they keep one-time SLA mail only).
  *
  * Dedupes by (task, calendar day, slot):

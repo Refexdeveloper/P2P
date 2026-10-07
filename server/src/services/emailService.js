@@ -751,6 +751,9 @@ export async function sendPrApprovalPendingNotification(pr, assignedRole, reques
     rfqEntry: options.rfqEntry || false,
     createPo: options.createPo || false,
     slaBreach: options.slaBreach || false,
+    startDate: options.startDate || '',
+    slaDue: options.slaDue || '',
+    waitingDays: options.waitingDays,
     appBaseUrl: getAppBaseUrl(),
     roleDisplayName: options.roleDisplayName || null,
   });

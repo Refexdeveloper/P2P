@@ -593,6 +593,9 @@ export function buildPrApprovalPendingEmail({
   rfqEntry = false,
   createPo = false,
   slaBreach = false,
+  startDate = '',
+  slaDue = '',
+  waitingDays = null,
   appBaseUrl = null,
   roleDisplayName: roleDisplayNameOverride = null,
 }) {
@@ -887,6 +890,29 @@ export function buildPrApprovalPendingEmail({
             </div>
             <div style="font-size:16px;color:#334155;margin-top:6px;font-weight:600;">${escapeHtml(pr.title)}</div>
             ${
+              isSlaBreach
+                ? `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;border:1px solid #fed7aa;border-radius:12px;background:#fff7ed;">
+              <tr>
+                <td width="50%" style="padding:12px 14px;vertical-align:top;">
+                  <div style="font-size:10px;color:#9a3412;text-transform:uppercase;font-weight:700;">Start Date</div>
+                  <div style="font-size:15px;color:#0f172a;font-weight:700;margin-top:4px;">${escapeHtml(startDate || '—')}</div>
+                </td>
+                <td width="50%" style="padding:12px 14px;vertical-align:top;">
+                  <div style="font-size:10px;color:#9a3412;text-transform:uppercase;font-weight:700;">SLA Due</div>
+                  <div style="font-size:15px;color:#c2410c;font-weight:700;margin-top:4px;">${escapeHtml(slaDue || '—')}</div>
+                </td>
+              </tr>
+              ${
+                waitingDays != null
+                  ? `<tr><td colspan="2" style="padding:0 14px 12px;font-size:13px;color:#9a3412;font-weight:700;">${escapeHtml(
+                      Number(waitingDays) === 1 ? '1 day waiting' : `${Math.max(0, Number(waitingDays) || 0)} days waiting`
+                    )} · SLA exceeded — awaiting action</td></tr>`
+                  : ''
+              }
+            </table>`
+                : ''
+            }
+            ${
               sendBackRemarks
                 ? `<div style="margin-top:14px;padding:12px 14px;background:#fff7ed;border:1px solid #fdba74;border-radius:10px;">
               <div style="font-size:10px;color:#c2410c;text-transform:uppercase;font-weight:800;letter-spacing:0.06em;">Send-back reason</div>
@@ -1045,6 +1071,8 @@ export function buildPrApprovalPendingEmail({
     isSassRequest ? `Purchase Type: ${purchaseTypeEmailLabel(pr)}` : '',
     `Role: ${roleDisplayName}`,
     `Stage: ${stageText}`,
+    isSlaBreach ? `Start Date: ${startDate || '—'}` : '',
+    isSlaBreach ? `SLA Due: ${slaDue || '—'}` : '',
     sendBackRemarks ? `Send-back reason: ${String(sendBackRemarks)}` : '',
     `Requester: ${requester?.name || pr.requester}`,
     lineOwnVendor ? 'Vendor Path: Own Vendor' : `PR Amount: ${money(pr.totalAmount, pr)}`,
