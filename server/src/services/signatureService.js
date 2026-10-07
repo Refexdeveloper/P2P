@@ -14,7 +14,7 @@ export const SIGNATURE_UPLOAD_DIR = path.join(__dirname, '../../uploads/signatur
 export const SIGNATURE_SEED_DIR = path.join(__dirname, '../../assets/signatures');
 export const DEFAULT_SCM_MANAGER_SIGNATURE_FILE = 'rajeev_v_default.png';
 export const DEFAULT_MUGESH_SIGNATURE_FILE = 'mugesh_m_default.png';
-export const DEFAULT_MEET_SIGNATURE_FILE = 'meet_g_default.jpg';
+export const DEFAULT_MEET_SIGNATURE_FILE = 'meet_g_default.png';
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -394,6 +394,12 @@ export function buildSignatureRenderOptions(po = {}) {
     }
   }
 
+  const meetSign = !requesterPoSign && String(name || '').trim().toLowerCase().startsWith('meet');
+  if (meetSign) {
+    imagePath = DEFAULT_MEET_SIGNATURE_FILE;
+    imageDataUrl = getDefaultMeetSignatureDataUrl() || imageDataUrl;
+  }
+
   if (looksSigned && !imageDataUrl && !dsc && !requesterPoSign) {
     getDefaultScmManagerSignatureDataUrl();
     imagePath = DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
@@ -403,13 +409,11 @@ export function buildSignatureRenderOptions(po = {}) {
   if (!name && !imageDataUrl && !dsc && !requesterPoSign) return undefined;
   return {
     name: requesterPoSign ? 'Mugesh M' : (name || dsc?.holderName || getPreferredScmManagerName() || 'SCM Manager'),
-    designation:
-      String(po.signerDesignation || po.signer_designation || '').trim() ||
-      (requesterPoSign
-        ? 'IT Infrastructure Head'
-        : String(name || '').trim().toLowerCase().startsWith('meet')
-          ? 'Chief Operating Officer'
-          : ''),
+    designation: requesterPoSign
+      ? 'IT Infrastructure Head'
+      : String(name || '').trim().toLowerCase().startsWith('meet')
+        ? 'COO-RGML'
+        : String(po.signerDesignation || po.signer_designation || '').trim(),
     date: po.signedAt || po.signed_at || '',
     comments: po.signerComments || po.signer_comments || '',
     imageDataUrl: imageDataUrl || undefined,

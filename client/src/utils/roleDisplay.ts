@@ -11,7 +11,7 @@ const DINESH_EMAIL = 'dinesh@refex.co.in';
 const MEET_EMAIL = 'meet.g@refex.co.in';
 export const DINESH_DISPLAY_NAME = 'Dinesh Agarwal';
 export const DINESH_DESIGNATION = 'Group Chief Executive Officer';
-export const MEET_DESIGNATION = 'Chief Operating Officer';
+export const MEET_DESIGNATION = 'COO-RGML';
 
 function personEmail(userOrEmail?: { email?: string | null; name?: string | null } | string | null): string {
   if (!userOrEmail) return '';
@@ -43,11 +43,14 @@ export function isMugeshUser(userOrEmail?: { email?: string | null; name?: strin
   return false;
 }
 
-/** True when this login is Meet — designation is Chief Operating Officer. */
+/** True when this login is Meet — designation is COO-RGML. */
 export function isMeetUser(
   userOrEmail?: { email?: string | null; name?: string | null } | string | null
 ): boolean {
-  return personEmail(userOrEmail) === MEET_EMAIL;
+  if (personEmail(userOrEmail) === MEET_EMAIL) return true;
+  const name =
+    typeof userOrEmail === 'string' ? userOrEmail.trim().toLowerCase() : personName(userOrEmail);
+  return name === 'meet' || name.startsWith('meet.') || name.startsWith('meet ');
 }
 
 /** True when this login is Dinesh — show Dinesh Agarwal, Group Chief Executive Officer. */

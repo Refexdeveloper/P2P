@@ -12,7 +12,7 @@ import type { POData } from '../../../mocks/po-data';
 import { PM_BTN_PRIMARY, PM_BTN_SECONDARY, PM_PAGE_BG } from '../../../constants/pmTheme';
 import { useAuth } from '../../../contexts/AuthContext';
 import { isMugeshUser } from '../../../utils/roleDisplay';
-import meetSignature from '../../../assets/signatures/meet_g_default.jpg';
+import meetSignature from '../../../assets/signatures/meet_g_default.png';
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);

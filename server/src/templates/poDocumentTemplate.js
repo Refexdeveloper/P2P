@@ -1643,10 +1643,10 @@ function isMeetSignName(name) {
 }
 
 function signatoryDesignation(signatureOrSignatory, mugeshApproval) {
+  if (isMeetSignName(signatureOrSignatory?.name)) return 'COO-RGML';
   const given = String(signatureOrSignatory?.designation || '').trim();
   if (given) return given;
   if (mugeshApproval || isMugeshSignName(signatureOrSignatory?.name)) return 'IT Infrastructure Head';
-  if (isMeetSignName(signatureOrSignatory?.name)) return 'Chief Operating Officer';
   return 'SCM - Head';
 }
 

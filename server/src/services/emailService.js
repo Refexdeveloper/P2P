@@ -261,12 +261,18 @@ async function notifyWorkflowWhatsApp({
   }
 }
 
+const DROPPED_NOTIFY_EMAILS = new Set(['sathishkumar.r@refex.co.in']);
+
+function dropExcludedNotifyEmails(list) {
+  return (list || []).filter((email) => {
+    const value = String(email || '').trim().toLowerCase();
+    return value && !DROPPED_NOTIFY_EMAILS.has(value);
+  });
+}
+
 function getNotificationRecipients() {
-  const configured = process.env.PR_NOTIFY_EMAIL || 'sathishkumar.r@refex.co.in';
-  return configured
-    .split(',')
-    .map((email) => email.trim())
-    .filter(Boolean);
+  const configured = process.env.PR_NOTIFY_EMAIL || '';
+  return dropExcludedNotifyEmails(configured.split(',').map((email) => email.trim()));
 }
 
 function getFromAddress() {
@@ -477,6 +483,9 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
   text = sanitizeEmailCfoMentions(text);
 
   const toList = (recipients || []).filter(Boolean);
+  const ccList = dropExcludedNotifyEmails(mailOptions.cc);
+  const bccList = dropExcludedNotifyEmails(mailOptions.bcc);
+  mailOptions = { ...mailOptions, cc: ccList, bcc: bccList };
   const logCtx = {
     emailType: mailOptions.emailType || 'generic',
     prId: mailOptions.prId || null,
@@ -1729,11 +1738,13 @@ export async function sendPoVendorNotification(po, {
     throw new Error('Requester email is required to send Vendor Signed PO upload mail');
   }
   const toLower = to.toLowerCase();
-  const cc = [...new Set(
-    (ccEmails || [])
-      .map((e) => String(e || '').trim())
-      .filter((e) => e && e.toLowerCase() !== toLower)
-  )];
+  const cc = dropExcludedNotifyEmails(
+    [...new Set(
+      (ccEmails || [])
+        .map((e) => String(e || '').trim())
+        .filter((e) => e && e.toLowerCase() !== toLower)
+    )]
+  );
   const logId = await createEmailLog({
     emailType: 'po_vendor',
     status: 'queued',
@@ -1831,7 +1842,7 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
     throw new Error('This email was already sent. Use Admin → Notify SCM Manager for a new PO approval mail.');
   }
 
-  const extra = parseEmailList(extraTo);
+  const extra = dropExcludedNotifyEmails(parseEmailList(extraTo));
   const originalTo = parseEmailList(log.toAddresses);
   const meta = log.meta && typeof log.meta === 'object' ? { ...log.meta } : {};
   const pr = await loadPrForRetrigger(log.prId);
@@ -1839,8 +1850,8 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
   const requester = await loadRequesterForRetrigger(pr);
 
   let to = [...new Set([...originalTo, ...extra])];
-  const cc = parseEmailList(log.ccAddresses);
-  const bcc = parseEmailList(log.bccAddresses);
+  const cc = dropExcludedNotifyEmails(parseEmailList(log.ccAddresses));
+  const bcc = dropExcludedNotifyEmails(parseEmailList(log.bccAddresses));
   let subject = log.subject;
   let html = `<p>${String(log.subject || 'P2P notification').replace(/</g, '&lt;')}</p>`;
   let text = log.subject || 'P2P notification';

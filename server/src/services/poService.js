@@ -4572,7 +4572,7 @@ export async function signPurchaseOrder(user, poId, {
     signed: true,
     signature: {
       name: signName,
-      designation: isMeetSigner ? 'Chief Operating Officer' : undefined,
+      designation: isMeetSigner ? 'COO-RGML' : undefined,
       date: formatDateTime(new Date()),
       comments: remarks.trim(),
       imageDataUrl,
@@ -4593,7 +4593,7 @@ export async function signPurchaseOrder(user, poId, {
       signatureImageData,
       remarks.trim(),
       dscDetails ? JSON.stringify({ ...dscDetails, signedAt: new Date().toISOString() }) : null,
-      isMeetSigner ? 'Chief Operating Officer' : null,
+      isMeetSigner ? 'COO-RGML' : null,
       poId,
     ]
   );
@@ -4630,7 +4630,7 @@ export async function signPurchaseOrder(user, poId, {
       recipientEmails: buyerEmails,
       recipientName: scmBuyer?.name || 'SCM Buyer',
       actorName: signName || user.name,
-      actorRole: user.role,
+      actorRole: isMeetSigner ? 'COO-RGML' : user.role,
       remarks: remarks.trim(),
       portalUrl: poPortalUrl('/scm/buyer-final-verify'),
       ctaLabel: 'Open Buyer Final Verify',

@@ -711,7 +711,7 @@ export async function runStartupMigrations() {
     if (meetId) {
       const { seedUserPermissionsForRole, ROLE_DEFAULT_PERMISSIONS } = await import('./permissionService.js');
       await pool.query(
-        `UPDATE users SET role = 'SCM Manager', is_active = 1, designation = 'Chief Operating Officer' WHERE id = ?`,
+        `UPDATE users SET role = 'SCM Manager', is_active = 1, designation = 'COO-RGML' WHERE id = ?`,
         [meetId]
       );
       await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [meetId]);

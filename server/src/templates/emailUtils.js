@@ -73,6 +73,7 @@ export function escapeHtml(value) {
 /** Friendly role labels for emails (keep system role codes unchanged) */
 const MUGESH_EMAIL = 'mugesh.m@refex.co.in';
 const SRIVATHS_EMAIL = 'srivaths.varadharajan@refex.co.in';
+const MEET_EMAIL = 'meet.g@refex.co.in';
 
 function actorEmailAndName(actorOrEmail) {
   if (!actorOrEmail) return { email: '', name: '' };
@@ -90,6 +91,13 @@ export function isMugeshActor(actorOrEmail) {
   const { email, name } = actorEmailAndName(actorOrEmail);
   if (email && (email === MUGESH_EMAIL || email.includes('mugesh.m@'))) return true;
   if (name && (name === 'mugesh' || name.startsWith('mugesh ') || name.startsWith('mugesh.'))) return true;
+  return false;
+}
+
+export function isMeetActor(actorOrEmail) {
+  const { email, name } = actorEmailAndName(actorOrEmail);
+  if (email === MEET_EMAIL || email.startsWith('meet.g@')) return true;
+  if (name === 'meet' || name.startsWith('meet.') || name.startsWith('meet ')) return true;
   return false;
 }
 
@@ -122,6 +130,7 @@ export function isSrivathsActor(actorOrEmail) {
  */
 export function formatRoleDisplayName(role, actorOrEmail = null) {
   if (isMugeshActor(actorOrEmail)) return '';
+  if (isMeetActor(actorOrEmail)) return 'COO-RGML';
   if (isSrivathsActor(actorOrEmail)) return 'CTO';
   const raw = String(role || '').trim();
   if (!raw) return '';
@@ -136,6 +145,7 @@ export function formatRoleDisplayName(role, actorOrEmail = null) {
 /** "Name (Role)" for mail intros — Srivaths is CTO; Mugesh has no designation. */
 export function formatActorWithRole(actorName, actorRole) {
   const name = String(actorName || '').trim();
+  if (isMeetActor(name)) return name ? `${name} (COO-RGML)` : 'COO-RGML';
   if (isSrivathsActor(name)) return name ? `${name} (CTO)` : 'CTO';
   if (isMugeshActor(name) || /^cfo$/i.test(String(actorRole || '').trim())) {
     return name || 'Mugesh';

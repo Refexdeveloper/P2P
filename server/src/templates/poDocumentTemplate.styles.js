@@ -1601,8 +1601,10 @@ export const PO_STYLES = `
     max-width: 260px;
     object-fit: contain;
     display: block;
-    border-bottom: 1px solid #ccc;
-    padding-bottom: 4px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
   }
   .sig-space .dsc-box {
     margin-top: 8px;

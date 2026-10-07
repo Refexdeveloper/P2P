@@ -133,7 +133,7 @@ export default function POApprovalModal({
               <img
                 src={presetSignature.imageSrc}
                 alt={`${presetSignature.name} signature`}
-                className="mt-3 max-h-24 w-auto bg-white rounded-md border border-[#BBDEFB] px-3 py-2"
+                className="mt-3 max-h-24 w-auto bg-transparent"
               />
             </div>
           ) : isApprove ? (
