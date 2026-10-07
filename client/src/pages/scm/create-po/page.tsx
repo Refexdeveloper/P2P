@@ -513,6 +513,31 @@ function manualEntityPayload(
   };
 }
 
+function matchLetterheadForEntity(
+  options: LetterheadMasterRecord[],
+  entityCode?: string | null,
+  entityName?: string | null
+) {
+  const code = String(entityCode || '').trim().toLowerCase();
+  const name = String(entityName || '').trim().toLowerCase();
+  if (!code && !name) return null;
+  const label = code && name ? `${code} — ${name}` : '';
+  return (
+    options.find((row) => {
+      const entity = String(row.entity || '').trim().toLowerCase();
+      const letterheadName = String(row.name || '').trim().toLowerCase();
+      if (code && (entity === code || letterheadName === code)) return true;
+      if (name && (entity === name || letterheadName === name)) return true;
+      if (label && (entity === label || letterheadName === label)) return true;
+      if (code && (entity.startsWith(`${code} `) || entity.startsWith(`${code}—`) || entity.startsWith(`${code}-`))) {
+        return true;
+      }
+      if (name.length >= 4 && (entity.includes(name) || letterheadName.includes(name))) return true;
+      return false;
+    }) || null
+  );
+}
+
 function matchEntityFromLetterhead(
   letterhead: LetterheadMasterRecord | null,
   options: EntityRecord[]
@@ -1286,7 +1311,7 @@ export default function CreatePOPage() {
   const appliedPrReferenceRef = useRef('');
   const [masterVendors, setMasterVendors] = useState<VendorRecord[]>([]);
   const csvAppliedRef = useRef(false);
-  const brandingAutoApplied = useRef(false);
+  const letterheadAutoKeyRef = useRef('');
   const skipNextLetterheadLoad = useRef(Boolean(poIdParam));
   const letterheadLockedRef = useRef(false);
   letterheadLockedRef.current = letterheadLocked;
@@ -1654,10 +1679,6 @@ export default function CreatePOPage() {
         if (cancelled) return;
         const options = res.data || [];
         setLetterheadOptions(options);
-        if (!isEditMode && !isManualMode && options.length && !brandingAutoApplied.current) {
-          brandingAutoApplied.current = true;
-          applyLetterheadBranding(options[0]);
-        }
       } catch {
         if (!cancelled) setLetterheadOptions([]);
       }
@@ -1665,7 +1686,61 @@ export default function CreatePOPage() {
     return () => {
       cancelled = true;
     };
-  }, [needsCreateForm, isEditMode, isManualMode, applyLetterheadBranding]);
+  }, [needsCreateForm, isEditMode, isManualMode]);
+
+  /** Use the requester's PR entity for the letterhead. Leave it blank when that entity has no letterhead. */
+  useEffect(() => {
+    if (!needsCreateForm) return;
+    if (isEditMode && poEditStatus !== 'draft') return;
+    if (!letterheadOptions.length || !entityOptions.length) return;
+    if (!isManualPoFlow && (numericPrId || isEditMode) && !pr) return;
+
+    const manualSelected =
+      manualEntityId === ''
+        ? null
+        : entityOptions.find((ent) => Number(ent.id) === Number(manualEntityId)) || null;
+    const requestedId = isManualPoFlow ? (manualSelected ? Number(manualSelected.id) : 0) : Number(pr?.entityId || 0);
+    const requestedCode = String(isManualPoFlow ? manualSelected?.code || '' : pr?.entityCode || '')
+      .trim()
+      .toLowerCase();
+    const requestedName = String(isManualPoFlow ? manualSelected?.name || '' : pr?.entityName || '')
+      .trim()
+      .toLowerCase();
+    const requested =
+      (requestedId > 0
+        ? entityOptions.find((ent) => Number(ent.id) === requestedId)
+        : null) ||
+      entityOptions.find((ent) => {
+        if (requestedCode && ent.code.trim().toLowerCase() === requestedCode) return true;
+        if (requestedName && ent.name.trim().toLowerCase() === requestedName) return true;
+        return false;
+      }) ||
+      null;
+    const key = requested
+      ? `${requested.id}|${letterheadOptions.map((row) => row.id).join(',')}`
+      : `none|${letterheadOptions.map((row) => row.id).join(',')}`;
+    if (letterheadAutoKeyRef.current === key) return;
+    letterheadAutoKeyRef.current = key;
+
+    if (!requested) {
+      applyLetterheadBranding(null);
+      return;
+    }
+    const match = matchLetterheadForEntity(letterheadOptions, requested.code, requested.name);
+    if (match) applyLetterheadBranding(match);
+    else applyLetterheadBranding(null);
+  }, [
+    needsCreateForm,
+    isEditMode,
+    poEditStatus,
+    isManualPoFlow,
+    numericPrId,
+    pr,
+    manualEntityId,
+    entityOptions,
+    letterheadOptions,
+    applyLetterheadBranding,
+  ]);
 
   /** Keep logos/entity in sync with Letterhead Master when id is set (do not reset location pick). */
   useEffect(() => {
@@ -1862,21 +1937,18 @@ export default function CreatePOPage() {
             setLineItems(mapped);
           }
           const entityId = Number(prData.entityId || 0);
-          if (entityId > 0) {
+          const fromList =
+            entityId > 0 ? entityOptions.find((e) => Number(e.id) === entityId) || null : null;
+          if (fromList) {
+            setManualEntityId(fromList.id);
+            setManualEntitySnapshot(fromList);
+            if (fromList.name) setEntity(fromList.name);
+          } else if (entityId > 0 && entityOptions.length === 0) {
             setManualEntityId(entityId);
-            const fromList = entityOptions.find((e) => Number(e.id) === entityId);
-            const snapshot: EntityRecord =
-              fromList ||
-              ({
-                id: entityId,
-                code: text(prData.entityCode),
-                name: text(prData.entityName) || `Entity #${entityId}`,
-                costCenter: text(prData.entityCostCenter),
-                description: '',
-                status: 'active',
-              } as EntityRecord);
-            setManualEntitySnapshot(snapshot);
-            if (snapshot.name) setEntity(snapshot.name);
+            setManualEntitySnapshot(null);
+          } else {
+            setManualEntityId('');
+            setManualEntitySnapshot(null);
           }
           setDocumentType(docType);
           if (!userEditedDraftRef.current) {
@@ -2032,11 +2104,18 @@ export default function CreatePOPage() {
     };
   }, [needsCreateForm, loadEntityOptions]);
 
-  // After entity master loads, keep edit-mode selection label populated
+  // After entity master loads, keep a real entity selected and clear one that is not in the list
   useEffect(() => {
-    if (!isEditMode || manualEntityId === '' || !entityOptions.length) return;
+    if (manualEntityId === '' || !entityOptions.length) return;
     const match = entityOptions.find((e) => Number(e.id) === Number(manualEntityId));
-    if (match) setManualEntitySnapshot(match);
+    if (match) {
+      if (isEditMode) setManualEntitySnapshot(match);
+      else setManualEntitySnapshot((prev) => (prev && Number(prev.id) === Number(match.id) ? prev : match));
+      return;
+    }
+    if (isEditMode) return;
+    setManualEntityId('');
+    setManualEntitySnapshot(null);
   }, [isEditMode, manualEntityId, entityOptions]);
 
   const reloadClausesFromMaster = useCallback(async () => {
@@ -2313,6 +2392,9 @@ export default function CreatePOPage() {
         prNumber: String(po.prNumber || ''),
         title: String(po.prTitle || ''),
         department: String(po.department || ''),
+        entityId: Number(po.prEntityId || 0) || null,
+        entityName: String(po.prEntityName || ''),
+        entityCode: String(po.prEntityCode || ''),
         requester: String(po.requester || ''),
         recommendedVendor: String(po.vendorName || ''),
         vendorEmail: String(po.vendorEmail || ''),
@@ -2499,8 +2581,17 @@ export default function CreatePOPage() {
         setManualVendorName('');
         setManualVendorEmail('');
         setManualVendorId('');
-        setManualEntityId('');
-        setManualEntitySnapshot(null);
+        const assignedId = Number(user?.entityId || 0);
+        const assigned =
+          assignedId > 0 ? ents.find((ent) => Number(ent.id) === assignedId) || null : null;
+        if (assigned) {
+          setManualEntityId(assigned.id);
+          setManualEntitySnapshot(assigned);
+          if (assigned.name) setEntity(assigned.name);
+        } else {
+          setManualEntityId('');
+          setManualEntitySnapshot(null);
+        }
         setManualPrDetails({
           prNumber: '',
           title: '',
@@ -2653,7 +2744,7 @@ export default function CreatePOPage() {
     } finally {
       if (!redirectedToDraft) setLoading(false);
     }
-  }, [numericPrId, isEditMode, isManualMode, navigate, fromParam, user?.role]);
+  }, [numericPrId, isEditMode, isManualMode, navigate, fromParam, user?.role, user?.entityId]);
 
   useEffect(() => {
     loadContext();
@@ -2889,7 +2980,12 @@ export default function CreatePOPage() {
     entity: manualEntityFields ? manualEntityFields.entity : entity,
     entityId: manualEntityFields
       ? manualEntityFields.entityId || undefined
-      : pr?.entityId || undefined,
+      : (() => {
+          const id = Number(pr?.entityId || 0);
+          if (!id) return undefined;
+          if (!entityOptions.length) return id;
+          return entityOptions.some((ent) => Number(ent.id) === id) ? id : undefined;
+        })(),
     headerLogo,
     footerLogo,
     terms: synced.terms,
@@ -3190,14 +3286,14 @@ export default function CreatePOPage() {
     patchLineItems((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const resolvedManualEntityId = isManualPoFlow
-    ? Number(manualEntityId || 0) || ''
-    : Number(
-        manualEntityId ||
-          pr?.entityId ||
-          matchEntityFromLetterhead(selectedLetterhead, entityOptions)?.id ||
-          0
-      ) || '';
+  const listedEntityId = (raw: number | '' | null | undefined) => {
+    const id = Number(raw || 0);
+    if (!id) return 0;
+    if (!entityOptions.length) return id;
+    return entityOptions.some((ent) => Number(ent.id) === id) ? id : 0;
+  };
+  const resolvedManualEntityId =
+    listedEntityId(isManualPoFlow ? manualEntityId : manualEntityId || pr?.entityId || 0) || '';
 
   const flushLiveEditors = () => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();

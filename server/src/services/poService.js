@@ -1043,6 +1043,9 @@ async function enrichPO(row) {
     letterheadId: row.letterhead_id || null,
     entityId: row.entity_id || null,
     entity: row.entity || '',
+    prEntityId: pr?.entityId || null,
+    prEntityName: pr?.entityName || '',
+    prEntityCode: pr?.entityCode || '',
     headerLogo: row.header_logo || '',
     footerLogo: row.footer_logo || '',
     termsClauses: quoteMerged.terms,
@@ -3779,7 +3782,7 @@ export async function listTrackPurchaseOrders(
     ? ` AND COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') = ?`
     : '';
   const readyEntityFilter = entityFilter ? ` AND pr.entity_id = ?` : '';
-  const poEntityFilter = entityFilter ? ` AND COALESCE(po.entity_id, pr.entity_id) = ?` : '';
+  const poEntityFilter = entityFilter ? ` AND COALESCE(pr.entity_id, po.entity_id) = ?` : '';
   const readyDeptFilter = deptFilter ? ` AND d.name = ?` : '';
   const poDeptFilter = deptFilter ? ` AND d.name = ?` : '';
   const readyCatFilter = categoryFilter
@@ -3866,8 +3869,8 @@ export async function listTrackPurchaseOrders(
       po.grand_total AS amount,
       CAST(po.status AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS status_raw,
       CAST(COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS purchase_type,
-      COALESCE(po.entity_id, pr.entity_id) AS entity_id,
-      COALESCE(po.entity, e.name, '') COLLATE utf8mb4_unicode_ci AS entity_name,
+      COALESCE(pr.entity_id, po.entity_id) AS entity_id,
+      COALESCE(pr_e.name, NULLIF(po.entity, ''), e.name, '') COLLATE utf8mb4_unicode_ci AS entity_name,
       po.expected_delivery_date AS required_date,
       COALESCE(po.po_date, po.created_at) AS po_date,
       po.created_at AS sort_at
@@ -3875,7 +3878,8 @@ export async function listTrackPurchaseOrders(
     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
     LEFT JOIN departments d ON d.id = pr.department_id
     LEFT JOIN users u ON u.id = pr.requester_id
-    LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)
+    LEFT JOIN entity_masters pr_e ON pr_e.id = pr.entity_id
+    LEFT JOIN entity_masters e ON e.id = COALESCE(pr.entity_id, po.entity_id)
     WHERE 1=1
     AND COALESCE(po.purchase_type, pr.purchase_type, 'purchase_order') <> 'sass'
     ${

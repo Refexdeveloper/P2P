@@ -750,7 +750,7 @@ export default function PRBucketExpandedRow({
                       pr.entityCode && pr.entityName
                         ? `${pr.entityCode} — ${pr.entityName}`
                         : pr.entityName || pr.entityCode || '';
-                    const entityValue = poSummary?.entity?.trim() || prEntity || '';
+                    const entityValue = prEntity || poSummary?.entity?.trim() || '';
                     return entityValue ? (
                       <HighlightInfoCard
                         label={poSummary?.entity?.trim() ? 'Entity / Location' : 'PR Entity'}
