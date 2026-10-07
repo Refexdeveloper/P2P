@@ -51,7 +51,7 @@ export default function MasterImportExport({
             : 'Import completed')
       );
       if (result?.errors?.length) {
-        setError(result.errors.slice(0, 5).join(' | '));
+        setError(result.errors.slice(0, 20).join(' | '));
       }
       onImported?.();
     });
@@ -95,7 +95,7 @@ export default function MasterImportExport({
         onChange={(e) => handleFile(e.target.files?.[0] || null)}
       />
       {message && <span className="text-xs text-emerald-700">{message}</span>}
-      {error && <span className="text-xs text-red-600 max-w-md truncate" title={error}>{error}</span>}
+      {error && <span className="text-xs text-red-600 max-w-xl whitespace-normal">{error}</span>}
     </div>
   );
 }

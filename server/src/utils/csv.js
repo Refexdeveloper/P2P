@@ -16,19 +16,58 @@ export function rowsToCsv(headers, rows) {
   return `\uFEFF${lines.join('\n')}`;
 }
 
-export function parseCsv(text) {
-  const raw = String(text || '').replace(/^\uFEFF/, '').trim();
-  if (!raw) return [];
+function countDelim(line, delim) {
+  let n = 0;
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        i += 1;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (!inQuotes && ch === delim) n += 1;
+  }
+  return n;
+}
 
+function detectCsvDelimiter(raw) {
+  const header = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !/^sep=/i.test(line)) || '';
+  let best = ',';
+  let bestCount = countDelim(header, ',');
+  for (const delim of [';', '\t']) {
+    const count = countDelim(header, delim);
+    if (count > bestCount) {
+      best = delim;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function parseRecords(raw, delim, honorQuotes) {
   const rows = [];
   let i = 0;
   let field = '';
   let row = [];
   let inQuotes = false;
 
+  const pushRow = () => {
+    row.push(field);
+    field = '';
+    if (row.some((cell) => String(cell).trim() !== '')) rows.push(row);
+    row = [];
+  };
+
   while (i < raw.length) {
     const ch = raw[i];
-    if (inQuotes) {
+    if (honorQuotes && inQuotes) {
       if (ch === '"') {
         if (raw[i + 1] === '"') {
           field += '"';
@@ -39,17 +78,21 @@ export function parseCsv(text) {
         i += 1;
         continue;
       }
-      field += ch;
-      i += 1;
-      continue;
+      if ((ch === '\n' || ch === '\r') && raw.slice(i).indexOf('"') === -1) {
+        inQuotes = false;
+      } else {
+        field += ch;
+        i += 1;
+        continue;
+      }
     }
 
-    if (ch === '"') {
+    if (honorQuotes && ch === '"') {
       inQuotes = true;
       i += 1;
       continue;
     }
-    if (ch === ',') {
+    if (ch === delim) {
       row.push(field);
       field = '';
       i += 1;
@@ -57,18 +100,29 @@ export function parseCsv(text) {
     }
     if (ch === '\n' || ch === '\r') {
       if (ch === '\r' && raw[i + 1] === '\n') i += 1;
-      row.push(field);
-      field = '';
-      if (row.some((c) => String(c).trim() !== '')) rows.push(row);
-      row = [];
+      pushRow();
       i += 1;
       continue;
     }
     field += ch;
     i += 1;
   }
-  row.push(field);
-  if (row.some((c) => String(c).trim() !== '')) rows.push(row);
+  pushRow();
+  return rows;
+}
+
+export function parseCsv(text) {
+  const raw = String(text || '').replace(/^\uFEFF/, '').replace(/^\s*sep=.\s*\r?\n/i, '').trim();
+  if (!raw) return [];
+
+  const delim = detectCsvDelimiter(raw);
+  let table = parseRecords(raw, delim, true);
+  const quoteCount = (raw.match(/"/g) || []).length;
+  if (quoteCount % 2 === 1) {
+    const retry = parseRecords(raw, delim, false);
+    if (retry.length > table.length) table = retry;
+  }
+  const rows = table;
 
   if (!rows.length) return [];
 

@@ -96,12 +96,25 @@ async function attachDocumentsToVendors(vendors) {
 
 async function generateVendorCode() {
   const year = new Date().getFullYear();
+  const prefix = `VND-${year}-`;
   const [rows] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM vendors WHERE YEAR(created_at) = ?`,
-    [year]
+    `SELECT vendor_code FROM vendors WHERE vendor_code LIKE ?`,
+    [`${prefix}%`]
   );
-  const seq = String(Number(rows[0].cnt) + 1).padStart(4, '0');
-  return `VND-${year}-${seq}`;
+  let max = 0;
+  for (const row of rows) {
+    const match = String(row.vendor_code || '').match(/-(\d+)$/);
+    if (match) max = Math.max(max, Number(match[1]) || 0);
+  }
+  for (let seq = max + 1; seq < max + 1000; seq += 1) {
+    const code = `${prefix}${String(seq).padStart(4, '0')}`;
+    const [exists] = await pool.query(
+      `SELECT id FROM vendors WHERE vendor_code = ? LIMIT 1`,
+      [code]
+    );
+    if (!exists.length) return code;
+  }
+  throw new Error('Could not assign a new vendor code');
 }
 
 async function getVendorDocuments(vendorId) {
@@ -367,13 +380,20 @@ export async function createVendor(user, body) {
   if (!name) throw new Error('Vendor name is required');
   if (!email) throw new Error('Email is required');
 
-  const [existing] = await pool.query(`SELECT id FROM vendors WHERE email = ?`, [email]);
-  if (existing.length) throw new Error('A vendor with this email already exists');
-
-  const vendorCode = await generateVendorCode();
+  const allowDuplicateEmail = body.allowDuplicateEmail === true;
+  if (!allowDuplicateEmail) {
+    const [existing] = await pool.query(`SELECT id FROM vendors WHERE LOWER(email) = LOWER(?)`, [email]);
+    if (existing.length) throw new Error('A vendor with this email already exists');
+  }
 
   const msme = String(body.msme || '').trim() || null;
-  const [result] = await pool.query(
+  let preferredCode = String(body.vendorCode || '').trim();
+  let result;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const vendorCode = preferredCode || await generateVendorCode();
+    preferredCode = '';
+    try {
+      [result] = await pool.query(
     `INSERT INTO vendors (
       vendor_code, name, vendor_type, gst_number, pan_number, email, phone, address,
       category, contact_name, msme, msme_type, documents_complete,
@@ -399,7 +419,16 @@ export async function createVendor(user, body) {
       body.branch?.trim() || null,
       user?.id || null,
     ]
-  );
+      );
+      break;
+    } catch (err) {
+      const duplicateCode = err?.code === 'ER_DUP_ENTRY' && /vendor_code/i.test(String(err.message || ''));
+      if (!duplicateCode || attempt === 4) {
+        if (duplicateCode) throw new Error('Could not assign a new vendor code. Try again.');
+        throw err;
+      }
+    }
+  }
 
   const vendorId = result.insertId;
   await saveBodyDocuments(vendorId, body);
@@ -416,8 +445,8 @@ export async function updateVendor(vendorId, body) {
   if (!name) throw new Error('Vendor name is required');
   if (!email) throw new Error('Email is required');
 
-  const [existing] = await pool.query(`SELECT id FROM vendors WHERE email = ? AND id != ?`, [email, vendorId]);
-  if (existing.length) throw new Error('A vendor with this email already exists');
+  const [existing] = await pool.query(`SELECT id FROM vendors WHERE LOWER(email) = LOWER(?) AND id != ?`, [email, vendorId]);
+  if (existing.length && body.allowDuplicateEmail !== true) throw new Error('A vendor with this email already exists');
 
   const msme = String(body.msme || '').trim() || null;
   await pool.query(
@@ -591,70 +620,153 @@ export function getVendorImportTemplateCsv() {
   ]);
 }
 
+function collapseCsvRow(row) {
+  const out = {};
+  for (const [key, value] of Object.entries(row || {})) {
+    const collapsed = String(key || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!collapsed) continue;
+    if (out[collapsed] == null || String(out[collapsed]).trim() === '') out[collapsed] = value;
+  }
+  return out;
+}
+
+function clipText(value, max) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text.slice(0, max);
+}
+
+function compactId(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function sameVendorName(a, b) {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+
+function placeholderImportEmail(name, rowNum) {
+  const slug = String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, 40) || 'vendor';
+  return `${slug}.row${rowNum}@vendor-import.local`;
+}
+
+async function loadVendorCodeState() {
+  const year = new Date().getFullYear();
+  const prefix = `VND-${year}-`;
+  const [rows] = await pool.query(
+    `SELECT vendor_code FROM vendors WHERE vendor_code LIKE ?`,
+    [`${prefix}%`]
+  );
+  const used = new Set(rows.map((row) => String(row.vendor_code || '')));
+  let next = 1;
+  for (const code of used) {
+    const match = code.match(/-(\d+)$/);
+    if (match) next = Math.max(next, (Number(match[1]) || 0) + 1);
+  }
+  return { prefix, used, next };
+}
+
+function takeVendorCode(state, preferred) {
+  const wanted = String(preferred || '').trim();
+  if (wanted && !state.used.has(wanted)) {
+    state.used.add(wanted);
+    return wanted;
+  }
+  let code = `${state.prefix}${String(state.next).padStart(4, '0')}`;
+  while (state.used.has(code)) {
+    state.next += 1;
+    code = `${state.prefix}${String(state.next).padStart(4, '0')}`;
+  }
+  state.used.add(code);
+  state.next += 1;
+  return code;
+}
+
+const VENDOR_IMPORT_ALIASES = {
+  vendorCode: ['vendorcode', 'code'],
+  name: ['name', 'vendorname', 'vendor', 'suppliername', 'companyname'],
+  vendorType: ['vendortype', 'type'],
+  email: ['email', 'mail', 'emailaddress', 'emailid', 'mailid', 'emailaddresss'],
+  phone: ['phone', 'mobile', 'officephone', 'phonenumber', 'mobilenumber', 'alternatephone', 'contactno', 'contactnumber'],
+  gstNumber: ['gstnumber', 'gst', 'gstno', 'gstin'],
+  panNumber: ['pannumber', 'pan', 'panno'],
+  address: ['address', 'registeredaddress', 'officeaddress', 'vendoraddress'],
+  category: ['category', 'product'],
+  contactName: ['contactname', 'contactperson'],
+  msme: ['msme', 'msmeno', 'msmenumber', 'udyam', 'udyamno'],
+  msmeType: ['msmetype', 'msmecategory'],
+  documentsComplete: ['documentscomplete', 'docscomplete'],
+  accountNumber: ['accountnumber', 'account', 'accountno', 'bankaccount'],
+  ifscCode: ['ifsccode', 'ifsc'],
+  bankName: ['bankname', 'bank'],
+  branch: ['branch'],
+  status: ['status'],
+};
+
 export async function importVendorsFromCsv(user, csvText) {
-  const parsed = parseCsv(csvText);
+  const raw = String(csvText || '');
+  if (raw.startsWith('PK')) {
+    throw new Error('This is an Excel file. Save it as CSV, then import that file.');
+  }
+  const parsed = parseCsv(raw);
   if (!parsed.length) throw new Error('CSV has no data rows');
 
   let created = 0;
   let updated = 0;
   const errors = [];
+  const codes = await loadVendorCodeState();
 
   for (let i = 0; i < parsed.length; i++) {
     const rowNum = i + 2;
-    const mapped = normalizeHeaderKey(parsed[i], {
-      vendorCode: ['vendorcode', 'vendor_code', 'code'],
-      name: ['name', 'vendorname', 'vendor'],
-      vendorType: ['vendortype', 'vendor_type', 'type'],
-      email: ['email', 'mail'],
-      phone: ['phone', 'mobile', 'contact'],
-      gstNumber: ['gstnumber', 'gst', 'gst_number'],
-      panNumber: ['pannumber', 'pan', 'pan_number'],
-      address: ['address'],
-      category: ['category'],
-      contactName: ['contactname', 'contact_name', 'contactperson'],
-      msme: ['msme'],
-      msmeType: ['msmetype', 'msme_type', 'msmecategory'],
-      documentsComplete: ['documentscomplete', 'documents_complete', 'docscomplete'],
-      accountNumber: ['accountnumber', 'account_number', 'account'],
-      ifscCode: ['ifsccode', 'ifsc', 'ifsc_code'],
-      bankName: ['bankname', 'bank', 'bank_name'],
-      branch: ['branch'],
-      status: ['status'],
-    });
+    const mapped = normalizeHeaderKey(collapseCsvRow(parsed[i]), VENDOR_IMPORT_ALIASES);
     try {
       if (!mapped.name) throw new Error('name is required');
-      if (!mapped.email) throw new Error('email is required');
+      const emailWasEmpty = !String(mapped.email || '').trim();
+      const email = emailWasEmpty ? placeholderImportEmail(mapped.name, rowNum) : clipText(mapped.email, 150);
 
       const payload = {
-        name: mapped.name,
-        vendorName: mapped.name,
-        vendorType: mapped.vendorType === 'Individual' ? 'Individual' : 'Company',
-        email: mapped.email,
-        phone: mapped.phone || '',
-        gstNumber: mapped.gstNumber || '',
-        panNumber: mapped.panNumber || '',
-        address: mapped.address || '',
-        category: mapped.category || '',
-        contactName: mapped.contactName || '',
-        msme: mapped.msme || '',
+        name: clipText(mapped.name, 150),
+        vendorName: clipText(mapped.name, 150),
+        vendorType: String(mapped.vendorType || '').trim().toLowerCase() === 'individual' ? 'Individual' : 'Company',
+        email,
+        phone: clipText(mapped.phone, 20),
+        gstNumber: compactId(mapped.gstNumber).slice(0, 15),
+        panNumber: compactId(mapped.panNumber).slice(0, 10),
+        address: clipText(mapped.address, 2000),
+        category: clipText(mapped.category, 100),
+        contactName: clipText(mapped.contactName, 150),
+        msme: clipText(mapped.msme, 150),
         msmeType: mapped.msmeType || '',
         documentsComplete: mapped.documentsComplete || 'no',
-        accountNumber: mapped.accountNumber || '',
-        ifscCode: mapped.ifscCode || '',
-        bankName: mapped.bankName || '',
-        branch: mapped.branch || '',
+        accountNumber: clipText(mapped.accountNumber, 50),
+        ifscCode: compactId(mapped.ifscCode).slice(0, 11),
+        bankName: clipText(mapped.bankName, 100),
+        branch: clipText(mapped.branch, 100),
       };
+      const status = String(mapped.status || '').trim().toLowerCase();
 
-      const [existing] = await pool.query(`SELECT id FROM vendors WHERE email = ?`, [mapped.email]);
-      if (existing.length) {
-        await updateVendor(existing[0].id, payload);
-        if (mapped.status === 'inactive' || mapped.status === 'active') {
-          await pool.query(`UPDATE vendors SET status = ? WHERE id = ?`, [mapped.status, existing[0].id]);
+      const [existing] = await pool.query(
+        `SELECT id, name FROM vendors WHERE LOWER(email) = LOWER(?)`,
+        [email]
+      );
+      const sameName = existing.find((row) => sameVendorName(row.name, payload.name));
+      if (sameName) {
+        await updateVendor(sameName.id, { ...payload, allowDuplicateEmail: true });
+        if (status === 'inactive' || status === 'active') {
+          await pool.query(`UPDATE vendors SET status = ? WHERE id = ?`, [status, sameName.id]);
         }
         updated += 1;
       } else {
-        const createdVendor = await createVendor(user, payload);
-        if (mapped.status === 'inactive') {
+        const vendorCode = takeVendorCode(codes, mapped.vendorCode);
+        const createdVendor = await createVendor(user, {
+          ...payload,
+          vendorCode,
+          allowDuplicateEmail: existing.length > 0,
+        });
+        if (status === 'inactive') {
           await pool.query(`UPDATE vendors SET status = 'inactive' WHERE id = ?`, [createdVendor.id]);
         }
         created += 1;
