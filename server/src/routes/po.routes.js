@@ -168,6 +168,7 @@ async function sendPoPdf(res, po) {
   const mugeshPo =
     String(doc.poCreationBy || '') === 'requester' ||
     ['l1', 'mugesh', 'requester', 'signed'].includes(String(doc.poSignStep || ''));
+  const meetPo = String(doc.signatureName || '').trim().toLowerCase().startsWith('meet');
   const isSigned = Boolean(doc.signedPdfPath || doc.signatureImagePath || doc.signedAt);
   const poNumber = String(doc.poNumber || '').trim() || `PO-${doc.id}`;
   const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
@@ -186,7 +187,7 @@ async function sendPoPdf(res, po) {
     fileName: preferredName,
     signed: isSigned,
     signature: signatureOpts,
-    forceRegenerate: mugeshPo
+    forceRegenerate: mugeshPo || meetPo
       ? true
       : isSigned
         ? false
