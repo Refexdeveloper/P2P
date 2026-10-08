@@ -752,7 +752,7 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                               {pr.poId && (
                                 <button
                                   type="button"
-                                  onClick={() => navigate(`/scm/po-pdf-view?poId=${pr.poId}`)}
+                                  onClick={() => navigate(`/scm/po-pdf-view?poId=${pr.poId}&from=purchase-requests`)}
                                   className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
                                 >
                                   View PDF

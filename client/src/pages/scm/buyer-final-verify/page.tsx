@@ -342,7 +342,7 @@ export default function BuyerFinalVerifyPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => navigate(`/scm/po-pdf-view?poId=${po.id}`)}
+                                  onClick={() => navigate(`/scm/po-pdf-view?poId=${po.id}&from=buyer-final-verify`)}
                                   className="cursor-pointer rounded-xl bg-[#1E88E5] p-2 text-white hover:bg-[#1565C0]"
                                   title="View signed PO"
                                 >

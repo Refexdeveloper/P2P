@@ -995,7 +995,7 @@ export default function POApprovalPage() {
                               }}
                               onViewPdf={() => {
                                 const id = poIdMap[po.poNumber];
-                                if (id) navigate(`/scm/po-pdf-view?poId=${id}`);
+                                if (id) navigate(`/scm/po-pdf-view?poId=${id}&from=po-approval`);
                               }}
                             />
                           </tbody>
@@ -1116,7 +1116,7 @@ export default function POApprovalPage() {
                                 type="button"
                                 onClick={() => {
                                   const id = poIdMap[po.poNumber];
-                                  if (id) navigate(`/scm/po-pdf-view?poId=${id}`);
+                                  if (id) navigate(`/scm/po-pdf-view?poId=${id}&from=po-approval`);
                                 }}
                                 className="cursor-pointer rounded-xl p-1.5 text-[#1E88E5] transition-colors hover:bg-[#E3F2FD]"
                                 title="View PDF"
@@ -1185,7 +1185,7 @@ export default function POApprovalPage() {
                             }}
                             onViewPdf={() => {
                               const id = poIdMap[po.poNumber];
-                              if (id) navigate(`/scm/po-pdf-view?poId=${id}`);
+                              if (id) navigate(`/scm/po-pdf-view?poId=${id}&from=po-approval`);
                             }}
                           />
                         )}

@@ -9,6 +9,7 @@ export default function POPDFViewPage() {
   const { user } = useAuth();
   const poIdParam = searchParams.get('poId');
   const poNumber = searchParams.get('poNumber');
+  const from = searchParams.get('from');
   const [po, setPO] = useState<Record<string, unknown> | null>(null);
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [metaLoading, setMetaLoading] = useState(true);
@@ -48,50 +49,12 @@ export default function POPDFViewPage() {
         setMetaLoading(false);
 
         const poId = Number(data.id);
-        const token = localStorage.getItem('p2p_token');
-        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
-
-        const htmlPromise = fetch(poApi.getDocumentUrl(poId), { headers: authHeaders })
-          .then(async (htmlRes) => {
-            if (!htmlRes.ok) return null;
-            const html = await htmlRes.text();
-            return URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-          })
-          .catch(() => null);
-
-        const pdfPromise = fetch(poApi.getPdfUrl(poId), { headers: authHeaders })
-          .then(async (pdfRes) => {
-            if (!pdfRes.ok) return null;
-            const blob = await pdfRes.blob();
-            return URL.createObjectURL(blob);
-          })
-          .catch(() => null);
-
-        const htmlUrl = await htmlPromise;
-        if (cancelled) {
-          if (htmlUrl) URL.revokeObjectURL(htmlUrl);
-          return;
-        }
-        if (htmlUrl) {
-          objectUrl = htmlUrl;
-          setDocUrl(htmlUrl);
-          setUsingHtmlPreview(true);
-        }
-
         setPdfLoading(true);
-        const pdfUrl = await pdfPromise;
-        if (cancelled) {
-          if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-          return;
-        }
-        if (pdfUrl) {
-          if (objectUrl) URL.revokeObjectURL(objectUrl);
-          objectUrl = pdfUrl;
-          setDocUrl(pdfUrl);
-          setUsingHtmlPreview(false);
-        } else if (!htmlUrl) {
-          throw new Error('Could not load PO document');
-        }
+        const preview = await poApi.fetchPreviewBlob(poId);
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(preview.blob);
+        setDocUrl(objectUrl);
+        setUsingHtmlPreview(preview.isHtml);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load PO');
@@ -108,7 +71,8 @@ export default function POPDFViewPage() {
     void load();
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      const url = objectUrl;
+      if (url) window.setTimeout(() => URL.revokeObjectURL(url), 2000);
     };
   }, [poIdParam, poNumber]);
 
@@ -121,15 +85,27 @@ export default function POPDFViewPage() {
   }
 
   const goBack = () => {
+    if (from === 'po-approval') {
+      navigate('/scm/po-approval');
+      return;
+    }
+    if (from === 'buyer-verify' || from === 'buyer-final-verify') {
+      navigate('/scm/buyer-final-verify');
+      return;
+    }
+    if (from === 'track-po') {
+      navigate('/scm/track-po');
+      return;
+    }
+    if (from === 'create-po' || from === 'purchase-requests') {
+      navigate('/scm/purchase-requests');
+      return;
+    }
     if (user?.role === 'Requester') {
       navigate('/requester/track-pr');
       return;
     }
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/scm/purchase-requests');
-    }
+    navigate('/scm/purchase-requests');
   };
 
   if (error || !po) {
