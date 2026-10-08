@@ -1526,7 +1526,7 @@ export default function CreatePRPage() {
       try {
         const [itemsRes, catsRes, deptRes] = await Promise.all([
           masterApi.listItems({ status: 'active' }),
-          masterApi.listCategories({ status: 'active', requestType }),
+          masterApi.listCategories({ status: 'active' }),
           masterApi.listDepartments({ status: 'active' }),
         ]);
         if (cancelled) return;

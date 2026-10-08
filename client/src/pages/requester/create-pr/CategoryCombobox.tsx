@@ -47,12 +47,24 @@ export default function CategoryCombobox({
       }}
       onClear={onClear}
       onCreate={async (name) => {
-        const res = await masterApi.chatCreateCategory({
-          name,
-          requestType: requestType || 'All',
-        });
-        onCreated(res.data);
-        onSelect(res.data);
+        try {
+          const res = await masterApi.chatCreateCategory({
+            name,
+            requestType: requestType || 'All',
+          });
+          onCreated(res.data);
+          onSelect(res.data);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : '';
+          if (!/already exists/i.test(message)) throw err;
+          const listed = await masterApi.listCategories({ search: name });
+          const hit = (listed.data || []).find(
+            (category) => category.name.trim().toLowerCase() === name.trim().toLowerCase()
+          );
+          if (!hit) throw err;
+          onCreated(hit);
+          onSelect(hit);
+        }
       }}
     />
   );

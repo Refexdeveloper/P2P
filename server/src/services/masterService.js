@@ -59,6 +59,24 @@ export async function createCategory(body) {
   const description = String(body.description || '').trim();
   const status = body.status === 'inactive' ? 'inactive' : 'active';
 
+  const [existing] = await pool.query(
+    `SELECT * FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+    [name]
+  );
+  if (existing.length) {
+    const row = existing[0];
+    const visibleType = row.request_type === 'All' || row.request_type === requestType ? row.request_type : 'All';
+    if (row.status !== 'active' || visibleType !== row.request_type) {
+      await pool.query(
+        `UPDATE categories SET status = 'active', request_type = ?, updated_at = NOW() WHERE id = ?`,
+        [visibleType, row.id]
+      );
+      row.status = 'active';
+      row.request_type = visibleType;
+    }
+    return mapCategory(row);
+  }
+
   try {
     const [result] = await pool.query(
       `INSERT INTO categories (name, request_type, description, status) VALUES (?, ?, ?, ?)`,
@@ -68,6 +86,11 @@ export async function createCategory(body) {
     return mapCategory(rows[0]);
   } catch (err) {
     if (String(err.message || '').includes('Duplicate')) {
+      const [again] = await pool.query(
+        `SELECT * FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+        [name]
+      );
+      if (again.length) return mapCategory(again[0]);
       throw new Error('Category name already exists');
     }
     throw err;
