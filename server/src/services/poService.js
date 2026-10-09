@@ -610,6 +610,72 @@ export const EMPTY_PO_TERMS_DETAILS = {
   letterheadLocationId: '',
 };
 
+/** Buyer GST from the PO, otherwise entity-location or letterhead master. */
+async function fillBuyerGstFromMaster(entityId, entityName, terms, letterheadId) {
+  const current = String(terms?.buyerGstNo || '').trim();
+  if (current) return terms;
+  const locationName = String(terms?.locationName || '').trim();
+  const locationId = Number(terms?.letterheadLocationId) || 0;
+  if (locationId) {
+    const [loc] = await pool.query(
+      `SELECT gst_no FROM letterhead_locations WHERE id = ? AND TRIM(COALESCE(gst_no, '')) <> '' LIMIT 1`,
+      [locationId]
+    );
+    const locGst = String(loc[0]?.gst_no || '').trim();
+    if (locGst) return { ...terms, buyerGstNo: locGst };
+  }
+  let id = Number(entityId) || 0;
+  if (!id && entityName) {
+    const [ents] = await pool.query(
+      `SELECT id FROM entity_masters WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1`,
+      [String(entityName).trim()]
+    );
+    id = Number(ents[0]?.id) || 0;
+  }
+  if (id && locationName) {
+    const [named] = await pool.query(
+      `SELECT gst_no FROM entity_locations
+       WHERE entity_id = ? AND LOWER(TRIM(location)) = LOWER(?) AND TRIM(COALESCE(gst_no, '')) <> ''
+       LIMIT 1`,
+      [id, locationName]
+    );
+    const namedGst = String(named[0]?.gst_no || '').trim();
+    if (namedGst) return { ...terms, buyerGstNo: namedGst };
+  }
+  const lhId = Number(letterheadId) || 0;
+  if (lhId && locationName) {
+    const [namedLh] = await pool.query(
+      `SELECT gst_no FROM letterhead_locations
+       WHERE letterhead_id = ? AND LOWER(TRIM(location)) = LOWER(?) AND TRIM(COALESCE(gst_no, '')) <> ''
+       LIMIT 1`,
+      [lhId, locationName]
+    );
+    const namedLhGst = String(namedLh[0]?.gst_no || '').trim();
+    if (namedLhGst) return { ...terms, buyerGstNo: namedLhGst };
+  }
+  if (id) {
+    const [rows] = await pool.query(
+      `SELECT gst_no FROM entity_locations
+       WHERE entity_id = ? AND TRIM(COALESCE(gst_no, '')) <> ''
+       ORDER BY sort_order ASC, id ASC LIMIT 1`,
+      [id]
+    );
+    const gst = String(rows[0]?.gst_no || '').trim();
+    if (gst) return { ...terms, buyerGstNo: gst };
+  }
+  if (lhId) {
+    const [lh] = await pool.query(
+      `SELECT gst_no FROM letterhead_locations
+       WHERE letterhead_id = ? AND TRIM(COALESCE(gst_no, '')) <> ''
+       ORDER BY sort_order ASC, id ASC LIMIT 1`,
+      [lhId]
+    );
+    const lhGst = String(lh[0]?.gst_no || '').trim();
+    if (lhGst) return { ...terms, buyerGstNo: lhGst };
+  }
+  return terms;
+}
+
 export function normalizePoTermsDetails(raw) {
   let src = raw;
   if (typeof raw === 'string') {
@@ -816,7 +882,12 @@ async function enrichPO(row) {
   const approvalHistory = await getFullPoApprovalHistory(row);
   const quoteMerged = mergeQuoteNoIntoPoContent(
     parseClauseJson(row.terms_clauses),
-    normalizePoTermsDetails(row.po_terms_details)
+    await fillBuyerGstFromMaster(
+      row.entity_id,
+      row.entity,
+      normalizePoTermsDetails(row.po_terms_details),
+      row.letterhead_id
+    )
   );
 
   return {
@@ -1333,7 +1404,15 @@ async function resolvePoDraftContent(prId, body) {
 
   const quoteMerged = mergeQuoteNoIntoPoContent(resolvedTerms, resolvedPoTermsDetails);
   resolvedTerms = quoteMerged.terms;
-  Object.assign(resolvedPoTermsDetails, quoteMerged.poTermsDetails);
+  Object.assign(
+    resolvedPoTermsDetails,
+    await fillBuyerGstFromMaster(
+      body?.entityId || pr?.entityId,
+      resolvedEntity,
+      quoteMerged.poTermsDetails,
+      resolvedLetterheadId
+    )
+  );
 
   const mappedLineItems = lineItems.map((item) => {
     const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage ?? item.tax_percentage ?? gstPercentage) || 0));
@@ -1508,7 +1587,15 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
 
   const quoteMerged = mergeQuoteNoIntoPoContent(resolvedTerms, resolvedPoTermsDetails);
   resolvedTerms = quoteMerged.terms;
-  Object.assign(resolvedPoTermsDetails, quoteMerged.poTermsDetails);
+  Object.assign(
+    resolvedPoTermsDetails,
+    await fillBuyerGstFromMaster(
+      body?.entityId,
+      resolvedEntity,
+      quoteMerged.poTermsDetails,
+      resolvedLetterheadId
+    )
+  );
 
   const mappedLineItems = lineItems.map((item) => {
     const taxPercentage = Math.min(
@@ -4119,18 +4206,19 @@ export async function cancelPurchaseOrder(user, poId, body = {}) {
   return updated;
 }
 
-/** Restore a cancelled PO as an editable draft (keeps PO number + line items). */
+/** Restore a cancelled or rejected PO as an editable draft (keeps PO number + line items). */
 export async function retrieveCancelledPurchaseOrder(user, poId) {
   if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
-    throw new Error('You are not allowed to retrieve cancelled purchase orders');
+    throw new Error('You are not allowed to retrieve this purchase order');
   }
 
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
   const row = rows[0];
-  if (row.status !== 'cancelled') {
-    throw new Error('Only cancelled POs can be retrieved as draft');
+  if (row.status !== 'cancelled' && row.status !== 'rejected') {
+    throw new Error('Only cancelled or rejected POs can be retrieved as draft');
   }
+  const wasRejected = row.status === 'rejected';
 
   if (row.pr_id) {
     const [otherDraft] = await pool.query(
@@ -4204,7 +4292,9 @@ export async function retrieveCancelledPurchaseOrder(user, poId) {
       [
         row.pr_id,
         user.id,
-        `Cancelled PO ${row.po_number} retrieved as draft for revision`,
+        wasRejected
+          ? `Rejected PO ${row.po_number} retrieved as draft for revision and resend`
+          : `Cancelled PO ${row.po_number} retrieved as draft for revision`,
       ]
     );
   }

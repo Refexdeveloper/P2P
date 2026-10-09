@@ -524,8 +524,11 @@ export default function TrackPoPage() {
 
   const handleRetrieveCancelled = async (row: TrackRow) => {
     if (!row.poId) return;
+    const rejected = row.status === 'rejected';
     const ok = window.confirm(
-      `Retrieve ${row.poNumber || 'this cancelled PO'} as a draft?\n\nYou can edit and resubmit it for approval.`
+      rejected
+        ? `Retrieve ${row.poNumber || 'this rejected PO'} as a draft?\n\nYou can edit it and send it again for approval.`
+        : `Retrieve ${row.poNumber || 'this cancelled PO'} as a draft?\n\nYou can edit and resubmit it for approval.`
     );
     if (!ok) return;
     setRetrievingKey(row.key);
@@ -969,6 +972,7 @@ export default function TrackPoPage() {
                                     row.poId &&
                                     row.status !== 'draft' &&
                                     row.status !== 'cancelled' &&
+                                    row.status !== 'rejected' &&
                                     !(user?.role === 'SCM Buyer' && row.status === 'pending') && (
                                       <button
                                         type="button"
@@ -987,13 +991,17 @@ export default function TrackPoPage() {
                                       SCM Manager
                                     </span>
                                   )}
-                                  {row.status === 'cancelled' && row.poId && (
+                                  {(row.status === 'cancelled' || row.status === 'rejected') && row.poId && (
                                     <button
                                       type="button"
                                       disabled={retrievingKey === row.key}
                                       onClick={() => void handleRetrieveCancelled(row)}
                                       className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
-                                      title="Retrieve cancelled PO as draft"
+                                      title={
+                                        row.status === 'rejected'
+                                          ? 'Retrieve rejected PO as draft, then resend for approval'
+                                          : 'Retrieve cancelled PO as draft'
+                                      }
                                     >
                                       {retrievingKey === row.key ? 'Retrieving…' : 'Retrieve'}
                                     </button>

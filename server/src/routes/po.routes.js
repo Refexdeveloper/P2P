@@ -777,7 +777,7 @@ router.post('/:id/cancel', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin
 router.post('/:id/retrieve', requireRoles('SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
   try {
     const data = await retrieveCancelledPurchaseOrder(req.user, Number(req.params.id));
-    res.json({ data, message: 'Cancelled PO retrieved as draft' });
+    res.json({ data, message: 'PO retrieved as draft. Edit it, then send again for approval.' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

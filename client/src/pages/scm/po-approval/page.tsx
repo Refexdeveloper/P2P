@@ -110,10 +110,12 @@ interface ExpandedRowProps {
   onSendBack: () => void;
   onEdit: () => void;
   onViewPdf: () => void;
+  onRetrieve?: () => void;
+  retrieving?: boolean;
   isPending: boolean;
 }
 
-function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onViewPdf, isPending }: ExpandedRowProps) {
+function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onViewPdf, onRetrieve, retrieving, isPending }: ExpandedRowProps) {
   const expandWrapRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'items' | 'comparison' | 'history'>('details');
@@ -266,6 +268,17 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                     <i className="ri-close-circle-line"></i> Reject PO
                   </button>
                 </>
+              )}
+              {isRejected(po.status) && onRetrieve && (
+                <button
+                  type="button"
+                  disabled={retrieving}
+                  onClick={onRetrieve}
+                  className={`${PM_BTN_PRIMARY} !px-3 !py-1.5 !text-xs disabled:opacity-50`}
+                  title="Retrieve rejected PO as draft, then resend for approval"
+                >
+                  <i className="ri-refresh-line"></i> {retrieving ? 'Retrieving…' : 'Retrieve & Resend'}
+                </button>
               )}
             </div>
           </div>
@@ -563,6 +576,7 @@ export default function POApprovalPage() {
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [retrievingPo, setRetrievingPo] = useState<string | null>(null);
   const [modal, setModal] = useState<{
     isOpen: boolean;
     type: 'approve' | 'reject' | 'sendback';
@@ -645,6 +659,25 @@ export default function POApprovalPage() {
   const showToast = (text: string, type: 'success' | 'error') => {
     setToast({ text, type });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleRetrieveRejected = async (poNumber: string) => {
+    const poId = poIdMap[poNumber];
+    if (!poId) return;
+    const ok = window.confirm(
+      `Retrieve ${poNumber} as a draft?\n\nYou can edit it and send it again for approval.`
+    );
+    if (!ok) return;
+    setRetrievingPo(poNumber);
+    try {
+      await poApi.retrieve(poId);
+      showToast(`${poNumber} retrieved as draft. Edit it, then send again for approval.`, 'success');
+      navigate(`/scm/create-po?poId=${poId}&from=po-approval`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to retrieve rejected PO', 'error');
+    } finally {
+      setRetrievingPo(null);
+    }
   };
 
   const openModal = (poNumber: string, type: 'approve' | 'reject' | 'sendback') => {
@@ -938,6 +971,8 @@ export default function POApprovalPage() {
                                 const id = poIdMap[po.poNumber];
                                 if (id) navigate(`/scm/po-pdf-view?poId=${id}`);
                               }}
+                              onRetrieve={() => void handleRetrieveRejected(po.poNumber)}
+                              retrieving={retrievingPo === po.poNumber}
                             />
                           </tbody>
                         </table>
@@ -1103,6 +1138,17 @@ export default function POApprovalPage() {
                                   </button>
                                 </>
                               )}
+                              {isRejected(po.status) && (
+                                <button
+                                  type="button"
+                                  disabled={retrievingPo === po.poNumber}
+                                  onClick={() => void handleRetrieveRejected(po.poNumber)}
+                                  className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
+                                  title="Retrieve rejected PO as draft, then resend for approval"
+                                >
+                                  {retrievingPo === po.poNumber ? 'Retrieving…' : 'Retrieve'}
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1123,6 +1169,8 @@ export default function POApprovalPage() {
                               const id = poIdMap[po.poNumber];
                               if (id) navigate(`/scm/po-pdf-view?poId=${id}`);
                             }}
+                            onRetrieve={() => void handleRetrieveRejected(po.poNumber)}
+                            retrieving={retrievingPo === po.poNumber}
                           />
                         )}
                       </Fragment>

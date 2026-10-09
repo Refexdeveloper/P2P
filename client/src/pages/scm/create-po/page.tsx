@@ -1857,12 +1857,15 @@ export default function CreatePOPage() {
         statusRaw.includes('buyer_verify');
       const allowBuyerVerifyEdit = fromBuyerVerify && isBuyerVerifyStatus;
       const isCancelled = statusRaw === 'cancelled' || statusRaw === 'canceled';
-      const allowAdminAnyEdit = isAdminPoEditor && !isCancelled;
+      const isRejectedPo = statusRaw === 'rejected';
+      const allowAdminAnyEdit = isAdminPoEditor && !isCancelled && !isRejectedPo;
       if (!isPendingApproval && !allowBuyerVerifyEdit && !isBuyerVerifyStatus && !isDraft && !allowAdminAnyEdit) {
         setLoadError(
           isCancelled
             ? 'Cancelled POs cannot be edited. Retrieve the PO as a draft first.'
-            : 'Only draft, pending, or buyer-verify POs can be edited'
+            : isRejectedPo
+              ? 'Rejected POs cannot be edited yet. Retrieve the PO as a draft, then resend it for approval.'
+              : 'Only draft, pending, or buyer-verify POs can be edited'
         );
         setPr(null);
         return;

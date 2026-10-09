@@ -521,6 +521,37 @@ function invoicingAddressPlainHtml(raw) {
   return escapeHtml(text).replace(/\n/g, '<br>');
 }
 
+/** Drop a leading company name and any "FOR {company}" closer so the signature prints it once. */
+function stripEntityCloserLines(raw, entityLabel) {
+  const entity = String(entityLabel || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[,.\s]+$/g, '');
+  const lines = richTextToPlainLines(raw)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const isCloser = (line) => {
+    const normalized = line.replace(/[,.\s]+$/g, '').trim().toLowerCase();
+    if (!normalized) return false;
+    if (/^for\s+/.test(normalized)) return true;
+    return Boolean(entity) && normalized === entity;
+  };
+  while (lines.length && isCloser(lines[0])) lines.shift();
+  while (lines.length && isCloser(lines[lines.length - 1])) lines.pop();
+  return lines.join('\n');
+}
+
+function invoicingAddressBlockHtml(raw, entityLabel, gstNo) {
+  const body = invoicingAddressPlainHtml(stripEntityCloserLines(raw, entityLabel));
+  const gst = String(gstNo || '').trim();
+  const gstHtml = gst ? `<p><span class="lbl">GST No:</span> ${escapeHtml(gst)}</p>` : '';
+  if (!body && !gstHtml) return '';
+  return `<div><p><span class="lbl">Invoicing address:</span></p>${
+    body ? `<div class="inv-addr-plain">${body}</div>` : ''
+  }${gstHtml}</div>`;
+}
+
 function isQuoteNoHeader(raw) {
   const text = stripHtmlToText(raw)
     .replace(/\//g, ' ')
@@ -695,7 +726,7 @@ function applyClausePlaceholders(html, po) {
     .replace(/\$aos_quotes_pm_email_c/gi, placeholderText(td.projectManagerEmail))
     .replace(
       /\$aos_quotes_invoicing_address_c/gi,
-      invoicingAddressPlainHtml(td.invoicingAddress) || '—'
+      invoicingAddressPlainHtml(stripEntityCloserLines(td.invoicingAddress, po.entity)) || '—'
     )
     .replace(/\$aos_quotes_original_address_c/gi, placeholderText(td.mailingAddress))
     // SugarCRM Work Order (AOS Invoices) placeholders
@@ -727,7 +758,7 @@ function applyClausePlaceholders(html, po) {
     .replace(/\$aos_invoices_projectmanageremail_c/gi, placeholderText(td.projectManagerEmail))
     .replace(
       /\$aos_invoices_invoice_address_c/gi,
-      invoicingAddressPlainHtml(td.invoicingAddress) || '—'
+      invoicingAddressPlainHtml(stripEntityCloserLines(td.invoicingAddress, po.entity)) || '—'
     )
     .replace(/\$aos_invoices_mailing_address_c/gi, placeholderText(td.mailingAddress));
   if (isWorkOrder) {
@@ -1529,12 +1560,7 @@ function specialNotesInnerHtml(po, options = {}) {
       ${siteAddress ? `<p><span class="lbl">Site Address:</span> ${escapeHtml(siteAddress).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.siteContactPerson || td.siteContactPhone || td.siteContactEmail ? `<p><span class="lbl">Contact person at the site:</span> Name: ${escapeHtml(td.siteContactPerson || '—')}, Phone: ${escapeHtml(td.siteContactPhone || '—')}, Email: ${escapeHtml(td.siteContactEmail || '—')}</p>` : ''}
       ${td.projectManagerHo || td.projectManagerContact || td.projectManagerEmail ? `<p><span class="lbl">Project Manager at the head office:</span> ${escapeHtml(td.projectManagerHo || '—')}, Phone: ${escapeHtml(td.projectManagerContact || '—')}, Email: ${escapeHtml(td.projectManagerEmail || '—')}</p>` : ''}
-      ${(() => {
-        const raw = String(td.invoicingAddress || '').trim();
-        const body = invoicingAddressPlainHtml(raw);
-        if (!body) return '';
-        return `<div><p><span class="lbl">Invoicing address:</span></p><p>${escapeHtml(entityLabel)},</p><div class="inv-addr-plain">${body}</div></div>`;
-      })()}
+    ${invoicingAddressBlockHtml(td.invoicingAddress, entityLabel, td.buyerGstNo || po.buyerGstNo)}
       ${td.mailingAddress ? `<p><span class="lbl">Original invoice to be sent at:</span></p><p><strong>Refex Group of Companies,</strong></p><p>${escapeHtml(td.mailingAddress).replace(/\n/g, '<br>')}</p>` : ''}
       ${td.reasonForCancellation ? `<p><span class="lbl">Reason For Cancellation:</span> ${escapeHtml(td.reasonForCancellation).replace(/\n/g, '<br>')}</p>` : ''}
       ${po.specialInstructions ? `<p><span class="lbl">Note:</span> ${escapeHtml(po.specialInstructions).replace(/\n/g, '<br>')}</p>` : ''}

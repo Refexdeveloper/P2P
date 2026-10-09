@@ -332,8 +332,11 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
 
   const handleRetrieveCancelled = async (pr: BucketRow) => {
     if (!pr.poId) return;
+    const rejected = pr.status === 'PO Rejected';
     const ok = window.confirm(
-      `Retrieve ${pr.poNumber || 'this cancelled PO'} as a draft?\n\nYou can edit and resubmit it for approval.`
+      rejected
+        ? `Retrieve ${pr.poNumber || 'this rejected PO'} as a draft?\n\nYou can edit it and send it again for approval.`
+        : `Retrieve ${pr.poNumber || 'this cancelled PO'} as a draft?\n\nYou can edit and resubmit it for approval.`
     );
     if (!ok) return;
     setRetrievingKey(pr.key);
@@ -720,7 +723,8 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                               {isSuperAdmin &&
                                 pr.poId &&
                                 pr.status !== 'Draft' &&
-                                pr.status !== 'Cancelled' && (
+                                pr.status !== 'Cancelled' &&
+                                pr.status !== 'PO Rejected' && (
                                   <button
                                     type="button"
                                     onClick={() => openAdminEditPo(pr.poId!)}
@@ -738,13 +742,17 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                                   SCM Manager
                                 </span>
                               )}
-                              {pr.status === 'Cancelled' && pr.poId && (
+                              {(pr.status === 'Cancelled' || pr.status === 'PO Rejected') && pr.poId && (
                                 <button
                                   type="button"
                                   disabled={retrievingKey === pr.key}
                                   onClick={() => void handleRetrieveCancelled(pr)}
                                   className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
-                                  title="Retrieve cancelled PO as draft"
+                                  title={
+                                    pr.status === 'PO Rejected'
+                                      ? 'Retrieve rejected PO as draft, then resend for approval'
+                                      : 'Retrieve cancelled PO as draft'
+                                  }
                                 >
                                   {retrievingKey === pr.key ? 'Retrieving…' : 'Retrieve'}
                                 </button>
