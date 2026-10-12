@@ -283,8 +283,26 @@
 .tfx-first { border-left: 3px solid #0f6b7a !important; }
 
 @media (max-width: 991px) {
-  .tfx-hero { min-height: 250px; }
-  .tfx-hero-content { padding: 60px 16px 0 20px; }
+  .tfx-hero { min-height: 250px; background-position: 30% center; }
+  .tfx-hero-content {
+    padding: 60px 16px 0 20px;
+    max-width: 78%;
+    background: none;
+    box-shadow: none;
+    border: 0;
+  }
+  .tfx-hero-content .tfx-hi,
+  .tfx-hero-content h1,
+  .tfx-hero-content p,
+  .tfx-hero-content .tfx-shimmer {
+    text-shadow: 0 0 10px #fff, 0 1px 0 #fff, 0 0 2px #fff;
+  }
+  .tfx-hero-content .tfx-shimmer {
+    background: none;
+    -webkit-text-fill-color: #0e1726;
+    color: #0e1726;
+    animation: none;
+  }
   .tfx-kpis { margin-top: -40px; padding: 0 12px; }
 }
 

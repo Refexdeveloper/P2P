@@ -126,12 +126,12 @@ export function isSrivathsActor(actorOrEmail) {
 
 /**
  * Display label for a system role in emails.
- * Never print "CFO" — Mugesh has no designation; Srivaths is CTO.
+ * Never print "CFO" — Mugesh has no designation; Srivaths is Group CTO.
  */
 export function formatRoleDisplayName(role, actorOrEmail = null) {
   if (isMugeshActor(actorOrEmail)) return '';
   if (isMeetActor(actorOrEmail)) return 'COO-RGML';
-  if (isSrivathsActor(actorOrEmail)) return 'CTO';
+  if (isSrivathsActor(actorOrEmail)) return 'Group CTO';
   const raw = String(role || '').trim();
   if (!raw) return '';
   if (/^cfo$/i.test(raw)) return 'Mugesh';
@@ -142,11 +142,11 @@ export function formatRoleDisplayName(role, actorOrEmail = null) {
   return map[raw] || raw;
 }
 
-/** "Name (Role)" for mail intros — Srivaths is CTO; Mugesh has no designation. */
+/** "Name (Role)" for mail intros — Srivaths is Group CTO; Mugesh has no designation. */
 export function formatActorWithRole(actorName, actorRole) {
   const name = String(actorName || '').trim();
   if (isMeetActor(name)) return name ? `${name} (COO-RGML)` : 'COO-RGML';
-  if (isSrivathsActor(name)) return name ? `${name} (CTO)` : 'CTO';
+  if (isSrivathsActor(name)) return name ? `${name} (Group CTO)` : 'Group CTO';
   if (isMugeshActor(name) || /^cfo$/i.test(String(actorRole || '').trim())) {
     return name || 'Mugesh';
   }
@@ -163,7 +163,7 @@ export function formatActorWithRole(actorName, actorRole) {
 export function sanitizeEmailCfoMentions(value) {
   if (value == null || typeof value !== 'string' || !value) return value;
   return value
-    .replace(/\b(srivaths[^(\n<]*)\s*\(\s*(?:CFO|Group\s*CEO)\s*\)/gi, '$1 (CTO)')
+    .replace(/\b(srivaths[^(\n<]*)\s*\(\s*(?:CFO|Group\s*CEO|CTO)\s*\)/gi, '$1 (Group CTO)')
     // Drop designation in parentheses first: "mugesh.m (CFO)" → "mugesh.m"
     .replace(/\s*\(\s*Group\s*CEO\s*\)/gi, '')
     .replace(/\s*\(\s*CFO\s*\)/gi, '')

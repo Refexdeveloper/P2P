@@ -53,7 +53,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/** Srivaths (L2 / CTO) login lands on My Tasks */
+/** Srivaths (L2 / Group CTO) login lands on My Tasks */
 const EMAIL_HOME_OVERRIDES: Record<string, string> = {
   'srivaths.varadharajan@refex.co.in': '/tasks',
   'accounts_rgml_refexev@refex.co.in': '/accounts/invoice-verification',
@@ -142,7 +142,9 @@ function mapAuthUser(u: AuthUser): User {
       ? DINESH_DESIGNATION
       : isMeetUser(u)
         ? MEET_DESIGNATION
-        : u.displayRole ?? getUserDesignation({ role, email: u.email, name: u.name }),
+        : isSrivathsUser(u)
+          ? getUserDesignation({ role, email: u.email, name: u.name })
+          : u.displayRole ?? getUserDesignation({ role, email: u.email, name: u.name }),
     departmentId: u.departmentId,
     departmentName: u.departmentName,
     entityId: u.entityId ?? null,

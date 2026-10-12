@@ -213,7 +213,7 @@ export interface AuthUser {
   email: string;
   name: string;
   role: string;
-  /** UI designation (e.g. CTO for Srivaths) — may differ from system role */
+  /** UI designation (e.g. Group CTO for Srivaths) — may differ from system role */
   displayRole?: string;
   departmentId?: number | null;
   departmentName?: string | null;

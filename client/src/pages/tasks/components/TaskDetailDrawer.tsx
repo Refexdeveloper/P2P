@@ -274,6 +274,7 @@ export default function TaskDetailDrawer({
               <div className="dfx-badges mt-2 flex flex-wrap items-center gap-1.5">
                 {isOnlinePurchase && <span className="dfx-pill">ONLINE PURCHASE</span>}
                 {isSass && !isOnlinePurchase && <span className="dfx-pill">CLOUD SUBSCRIPTION</span>}
+                {task.requestType ? <span className="dfx-pill">{task.requestType}</span> : null}
                 <StatusBadge status={task.status} size="sm" />
                 <PriorityBadge priority={(task.priority || 'medium').toLowerCase()} size="sm" />
               </div>

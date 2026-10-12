@@ -7,6 +7,7 @@ const ROLE_DISPLAY_NAMES: Record<string, string> = {
 
 const MUGESH_EMAIL = 'mugesh.m@refex.co.in';
 const SRIVATHS_EMAIL = 'srivaths.varadharajan@refex.co.in';
+const SRIVATHS_DESIGNATION = 'Group CTO';
 const DINESH_EMAIL = 'dinesh@refex.co.in';
 const MEET_EMAIL = 'meet.g@refex.co.in';
 export const DINESH_DISPLAY_NAME = 'Dinesh Agarwal';
@@ -68,7 +69,7 @@ export function getUserDisplayName(
   return String(user?.name || '').trim();
 }
 
-/** True when this user is Srivaths (L2) — show CTO, never CFO / Group CEO. */
+/** True when this user is Srivaths (L2) — show Group CTO, never CFO / Group CEO. */
 export function isSrivathsUser(
   userOrEmail?: { email?: string | null; name?: string | null } | string | null
 ): boolean {
@@ -106,6 +107,7 @@ export function getUserDesignation(
   if (!user) return '';
   if (isDineshUser(user)) return DINESH_DESIGNATION;
   if (isMeetUser(user)) return MEET_DESIGNATION;
+  if (isSrivathsUser(user)) return SRIVATHS_DESIGNATION;
   if (user.displayRole != null && user.displayRole !== undefined) {
     return user.displayRole;
   }
@@ -114,7 +116,7 @@ export function getUserDesignation(
 
 /**
  * Display label for a system role.
- * Mugesh: no designation. Srivaths: CTO (system role may still be CFO).
+ * Mugesh: no designation. Srivaths: Group CTO (system role may still be CFO).
  */
 export function formatRoleDisplayName(
   role?: string | null,
@@ -123,7 +125,7 @@ export function formatRoleDisplayName(
   if (isMugeshUser(userOrEmail)) return '';
   if (isDineshUser(userOrEmail)) return DINESH_DESIGNATION;
   if (isMeetUser(userOrEmail)) return MEET_DESIGNATION;
-  if (isSrivathsUser(userOrEmail)) return 'CTO';
+  if (isSrivathsUser(userOrEmail)) return SRIVATHS_DESIGNATION;
   if (!role) return '';
   return ROLE_DISPLAY_NAMES[role] || role;
 }

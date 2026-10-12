@@ -3,7 +3,7 @@ import { isMugeshActor, isSrivathsActor } from '../templates/emailUtils.js';
 
 export const SUPER_ADMIN_ROLE = 'Super Admin';
 
-/** Known users who must always resolve to a specific P2P role (Srivaths = CTO in UI; system role CFO). */
+/** Known users who must always resolve to a specific P2P role (Srivaths = Group CTO in UI; system role CFO). */
 const EMAIL_ROLE_OVERRIDES = {
   'srivaths.varadharajan@refex.co.in': 'CFO',
   'tapas.s@refex.co.in': 'Accounts Payable',
@@ -21,11 +21,11 @@ export function getEmailNavPermissionOverride(email) {
   return EMAIL_NAV_PERMISSIONS[String(email || '').trim().toLowerCase()] || null;
 }
 
-/** UI designation for header/profile — Srivaths is CTO, Mugesh has none. */
+/** UI designation for header/profile — Srivaths is Group CTO, Mugesh has none. */
 export function resolveUserDisplayRole(userRow = {}) {
   const email = String(userRow.email || '').trim().toLowerCase();
   const name = String(userRow.name || '').trim();
-  if (isSrivathsActor({ email, name })) return 'CTO';
+  if (isSrivathsActor({ email, name })) return 'Group CTO';
   if (email === 'dinesh@refex.co.in') return 'Group Chief Executive Officer';
   if (email === 'meet.g@refex.co.in') return 'COO-RGML';
   if (isMugeshActor({ email, name })) return '';
