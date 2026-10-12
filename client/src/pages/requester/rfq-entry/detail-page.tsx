@@ -1683,6 +1683,35 @@ export default function RfqEntryDetailPage() {
     }
   };
 
+  /** Admin edit from Track PR — save payment terms and delivery even after a PO exists. */
+  const handleAdminSave = async () => {
+    if (!prId) return;
+    setSavingDraft(true);
+    setError('');
+    try {
+      await persistBilling();
+      if (!isFinalized) {
+        await rfqApi.saveConfig(Number(prId), {
+          fieldDefinitions: fields,
+          recommendedInvitationId: recommendedId,
+          maxRounds: config?.maxRounds ?? null,
+          recommendationJustification: recommendationJustification.trim() || undefined,
+        });
+      }
+      skipDirtyOnceRef.current = true;
+      clearDirty();
+      setSoftSaveHint('Saved');
+      showToast('Payment terms and delivery details saved');
+      window.setTimeout(() => setSoftSaveHint(''), 4000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save';
+      setError(msg);
+      showToast(msg, 'err');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   /** Ask to save before leaving RFQ Entry (sidebar / reload). */
   useEffect(() => {
     if (isFinalized) return;
@@ -2242,17 +2271,21 @@ export default function RfqEntryDetailPage() {
               Send Back
             </button>
           )}
-          {!isFinalized && (
+          {(adminEdit || !isFinalized) && (
             <button
               type="button"
-              onClick={() => void handleSaveDraft()}
+              onClick={() => void (adminEdit ? handleAdminSave() : handleSaveDraft())}
               disabled={savingDraft || submitting || loading}
-              className={`px-5 py-2.5 border text-sm font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-50 ${
-                isDirty ? 'border-amber-400 text-amber-900 bg-amber-50' : 'border-gray-300 text-gray-700'
+              className={`px-5 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50 ${
+                adminEdit
+                  ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
+                  : isDirty
+                    ? 'border border-amber-400 text-amber-900 bg-amber-50 hover:bg-amber-100'
+                    : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
             >
               <i className="ri-save-line mr-1.5"></i>
-              {savingDraft ? 'Saving…' : isDirty ? 'Save Draft*' : 'Save Draft'}
+              {savingDraft ? 'Saving…' : adminEdit ? 'Save' : isDirty ? 'Save Draft*' : 'Save Draft'}
             </button>
           )}
           {!isFinalized && hasInvitations && (
@@ -2278,7 +2311,7 @@ export default function RfqEntryDetailPage() {
         </div>
       </div>
 
-      {softSaveHint && !isFinalized && (
+      {softSaveHint && (adminEdit || !isFinalized) && (
         <p className="mb-3 text-xs text-emerald-600 font-medium">
           <i className="ri-checkbox-circle-line mr-1"></i>
           {softSaveHint}
