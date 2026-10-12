@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface AddableSelectOption {
   id: number | string;
@@ -45,17 +46,6 @@ export default function AddableSelect({
   const onCloseAddRef = useRef(onCloseAdd);
   onCloseAddRef.current = onCloseAdd;
 
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (!boxRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-        onCloseAddRef.current();
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return options;
@@ -68,6 +58,55 @@ export default function AddableSelect({
   const selected = options.find((opt) => opt.label === value);
 
   const compact = variant === 'compact';
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(
+    null
+  );
+
+  const placeMenu = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const gap = 4;
+    const spaceBelow = window.innerHeight - rect.bottom - gap - 12;
+    const spaceAbove = rect.top - gap - 12;
+    const preferBelow = spaceBelow >= 220 || spaceBelow >= spaceAbove;
+    const maxHeight = Math.max(160, Math.min(320, preferBelow ? spaceBelow : spaceAbove));
+    const top = preferBelow ? rect.bottom + gap : Math.max(8, rect.top - gap - maxHeight);
+    setMenuBox({
+      top,
+      left: rect.left,
+      width: rect.width,
+      maxHeight,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open || disabled) {
+      setMenuBox(null);
+      return;
+    }
+    placeMenu();
+    const onMove = () => placeMenu();
+    window.addEventListener('resize', onMove);
+    window.addEventListener('scroll', onMove, true);
+    return () => {
+      window.removeEventListener('resize', onMove);
+      window.removeEventListener('scroll', onMove, true);
+    };
+  }, [open, disabled, adding, filtered.length]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (boxRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+      onCloseAddRef.current();
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
 
   return (
     <div ref={boxRef} className="min-w-0">
@@ -87,6 +126,7 @@ export default function AddableSelect({
       )}
       <div className="relative">
         <button
+          ref={triggerRef}
           type="button"
           disabled={disabled}
           onClick={() => {
@@ -131,86 +171,104 @@ export default function AddableSelect({
           ></i>
         </button>
 
-        {open && !disabled && (
-          <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-            <div className="p-2 border-b border-gray-100">
-              <input
-                autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={`Search ${label.toLowerCase()}...`}
-                className={`w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 ${
-                  compact ? 'focus:ring-slate-400' : 'focus:ring-[#1E88E5]'
-                }`}
-              />
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              {filtered.length === 0 ? (
-                <p className="px-3 py-3 text-xs text-gray-400">No saved options yet</p>
-              ) : (
-                filtered.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      onSelect(opt);
-                      setOpen(false);
-                      onCloseAdd();
-                      setQuery('');
-                    }}
-                    className={`w-full text-left px-3 py-2.5 text-sm cursor-pointer border-b border-gray-50 last:border-0 ${
-                      compact
-                        ? opt.label === value
-                          ? 'bg-slate-100 text-slate-800'
-                          : 'text-gray-800 hover:bg-slate-50'
-                        : opt.label === value
-                          ? 'bg-[#E3F2FD] text-[#1565C0]'
-                          : 'text-gray-800 hover:bg-[#E3F2FD]'
+        {open && !disabled && menuBox
+          ? createPortal(
+              <div
+                ref={menuRef}
+                style={{
+                  position: 'fixed',
+                  top: menuBox.top,
+                  left: menuBox.left,
+                  width: menuBox.width,
+                  maxHeight: menuBox.maxHeight,
+                  zIndex: 80,
+                }}
+                className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg"
+              >
+                <div className="shrink-0 border-b border-gray-100 p-2">
+                  <input
+                    autoFocus
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={`Search ${label.toLowerCase()}...`}
+                    className={`w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 ${
+                      compact ? 'focus:ring-slate-400' : 'focus:ring-[#1E88E5]'
                     }`}
-                  >
-                    <span className="block font-medium whitespace-pre-wrap">{opt.label}</span>
-                    {opt.email || opt.phone ? (
-                      <span className="mt-1 flex flex-col gap-0.5 text-[11px] text-gray-500 font-normal">
-                        {opt.email ? (
-                          <span className="inline-flex items-center gap-1 truncate">
-                            <i className="ri-mail-line text-gray-400"></i>
-                            {opt.email}
+                  />
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {filtered.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-gray-400">No saved options yet</p>
+                  ) : (
+                    filtered.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          onSelect(opt);
+                          setOpen(false);
+                          onCloseAdd();
+                          setQuery('');
+                        }}
+                        className={`w-full cursor-pointer border-b border-gray-50 px-3 py-2.5 text-left text-sm last:border-0 ${
+                          compact
+                            ? opt.label === value
+                              ? 'bg-slate-100 text-slate-800'
+                              : 'text-gray-800 hover:bg-slate-50'
+                            : opt.label === value
+                              ? 'bg-[#E3F2FD] text-[#1565C0]'
+                              : 'text-gray-800 hover:bg-[#E3F2FD]'
+                        }`}
+                      >
+                        <span className="block font-medium whitespace-pre-wrap">{opt.label}</span>
+                        {opt.email || opt.phone ? (
+                          <span className="mt-1 flex flex-col gap-0.5 text-[11px] font-normal text-gray-500">
+                            {opt.email ? (
+                              <span className="inline-flex items-center gap-1 truncate">
+                                <i className="ri-mail-line text-gray-400"></i>
+                                {opt.email}
+                              </span>
+                            ) : null}
+                            {opt.phone ? (
+                              <span className="inline-flex items-center gap-1">
+                                <i className="ri-phone-line text-gray-400"></i>
+                                {opt.phone}
+                              </span>
+                            ) : null}
                           </span>
+                        ) : opt.subLabel ? (
+                          <span className="mt-0.5 block text-[11px] text-gray-500">{opt.subLabel}</span>
                         ) : null}
-                        {opt.phone ? (
-                          <span className="inline-flex items-center gap-1">
-                            <i className="ri-phone-line text-gray-400"></i>
-                            {opt.phone}
-                          </span>
-                        ) : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <div className="shrink-0 border-t border-gray-100 bg-gray-50">
+                  {!adding ? (
+                    <button
+                      type="button"
+                      onClick={onOpenAdd}
+                      className={`inline-flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold ${
+                        compact
+                          ? 'text-slate-700 hover:bg-slate-100'
+                          : 'text-[#1565C0] hover:bg-[#E3F2FD]'
+                      }`}
+                    >
+                      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#E3F2FD] text-[#1565C0]">
+                        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
+                          <path d="M8 2.5v11M2.5 8h11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                        </svg>
                       </span>
-                    ) : opt.subLabel ? (
-                      <span className="block text-[11px] text-gray-500 mt-0.5">{opt.subLabel}</span>
-                    ) : null}
-                  </button>
-                ))
-              )}
-            </div>
-            <div className="border-t border-gray-100 bg-gray-50">
-              {!adding ? (
-                <button
-                  type="button"
-                  onClick={onOpenAdd}
-                  className={`w-full px-3 py-2 text-left text-sm font-semibold cursor-pointer inline-flex items-center gap-1.5 ${
-                    compact
-                      ? 'text-slate-700 hover:bg-slate-100'
-                      : 'text-[#1565C0] hover:bg-[#E3F2FD]'
-                  }`}
-                >
-                  <i className="ri-add-line"></i>
-                  Add new
-                </button>
-              ) : (
-                <div className="p-3 space-y-2 bg-white">{addForm}</div>
-              )}
-            </div>
-          </div>
-        )}
+                      Add new
+                    </button>
+                  ) : (
+                    <div className="max-h-52 space-y-2 overflow-y-auto bg-white p-3">{addForm}</div>
+                  )}
+                </div>
+              </div>,
+              document.body
+            )
+          : null}
       </div>
     </div>
   );

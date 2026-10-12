@@ -362,9 +362,18 @@ export default function PrBillingDeliverySection({
                     type="button"
                     onClick={() => void saveSiteContact()}
                     disabled={savingLookup}
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] hover:bg-[#1565C0] rounded-md disabled:opacity-60 cursor-pointer"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] hover:bg-[#1565C0] rounded-md disabled:opacity-60 cursor-pointer"
                   >
-                    {savingLookup ? 'Saving...' : 'Add'}
+                    {savingLookup ? (
+                      'Saving...'
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
+                          <path d="M8 2.5v11M2.5 8h11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                        </svg>
+                        Add
+                      </>
+                    )}
                   </button>
                 </div>
               </>
@@ -448,9 +457,18 @@ export default function PrBillingDeliverySection({
                     type="button"
                     onClick={() => void saveProjectManager()}
                     disabled={savingLookup}
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] hover:bg-[#1565C0] rounded-md disabled:opacity-60 cursor-pointer"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-[#1E88E5] hover:bg-[#1565C0] rounded-md disabled:opacity-60 cursor-pointer"
                   >
-                    {savingLookup ? 'Saving...' : 'Add'}
+                    {savingLookup ? (
+                      'Saving...'
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
+                          <path d="M8 2.5v11M2.5 8h11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                        </svg>
+                        Add
+                      </>
+                    )}
                   </button>
                 </div>
               </>
