@@ -1011,7 +1011,23 @@ export default function TasksPage() {
             <span className="tfx-role-inline"> · {roleLabel}</span>
           </p>
         </div>
-        <div className="tfx-mobile-filters min-[992px]:hidden">
+        <div className="tfx-period hidden min-[992px]:block">
+          <p className="tfx-period-lbl">Period</p>
+          <PeriodPicker
+            hideLabel
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            fullWidth
+            onChange={({ dateFrom: from, dateTo: to }) => {
+              setDateFrom(from);
+              setDateTo(to);
+            }}
+          />
+        </div>
+      </section>
+
+      <section className="tfx-kpis mb-4">
+        <div className="tfx-mobile-filters mb-3 min-[992px]:hidden">
           <TasksMobileFilters
             value={{
               search: searchTerm,
@@ -1031,22 +1047,6 @@ export default function TasksPage() {
             }}
           />
         </div>
-        <div className="tfx-period hidden min-[992px]:block">
-          <p className="tfx-period-lbl">Period</p>
-          <PeriodPicker
-            hideLabel
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            fullWidth
-            onChange={({ dateFrom: from, dateTo: to }) => {
-              setDateFrom(from);
-              setDateTo(to);
-            }}
-          />
-        </div>
-      </section>
-
-      <section className="tfx-kpis mb-4">
         {loading ? (
           <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (

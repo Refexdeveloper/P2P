@@ -48,7 +48,7 @@
   transition: transform .3s, box-shadow .3s;
 }
 .tfx-period:hover { transform: translateY(-3px); box-shadow: 0 16px 32px -10px rgba(16,80,110,.3); }
-.tfx-mobile-filters { position: absolute; z-index: 3; top: 16px; right: 16px; }
+.tfx-mobile-filters { position: relative; z-index: 5; width: 100%; }
 
 .tfx-bubbles { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
 .tfx-bubbles i {
