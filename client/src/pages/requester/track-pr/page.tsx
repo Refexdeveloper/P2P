@@ -1299,7 +1299,7 @@ export default function TrackPRPage() {
                                         navigate(
                                           user?.role === 'Requester'
                                             ? `/requester/rfq-entry/${pr.prId}`
-                                            : `/scm/rfq-entry/${pr.prId}`
+                                            : `/scm/rfq-entry/${pr.prId}?adminEdit=1`
                                         )
                                       }
                                       className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-[#d7eef2] bg-white px-2.5 text-xs font-semibold text-[#0f6b7a] hover:border-[#a9dbe2]"

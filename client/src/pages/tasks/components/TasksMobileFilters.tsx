@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import FilterSheetSelect from '../../dashboard/components/FilterSheetSelect';
 
 export type TasksFilterValue = {
   search: string;
   status: string;
-  priority: string;
-  sortBy: string;
   dateFrom: string;
   dateTo: string;
 };
@@ -20,26 +17,9 @@ const STATUS_OPTIONS = [
   { value: 'overdue', label: 'Overdue' },
 ];
 
-const PRIORITY_OPTIONS = [
-  { value: 'all', label: 'All Priorities' },
-  { value: 'high', label: 'High Priority' },
-  { value: 'medium', label: 'Medium Priority' },
-  { value: 'low', label: 'Low Priority' },
-];
-
-const SORT_OPTIONS = [
-  { value: 'sla', label: 'Sort: SLA Urgency' },
-  { value: 'amount_high', label: 'Sort: Amount (High to Low)' },
-  { value: 'amount_low', label: 'Sort: Amount (Low to High)' },
-  { value: 'priority', label: 'Sort: Priority' },
-  { value: 'date', label: 'Sort: Newest First' },
-];
-
 const EMPTY: TasksFilterValue = {
   search: '',
   status: 'all',
-  priority: 'all',
-  sortBy: 'date',
   dateFrom: '',
   dateTo: '',
 };
@@ -48,8 +28,6 @@ function countActive(value: TasksFilterValue) {
   let n = 0;
   if (value.search.trim()) n += 1;
   if (value.status !== 'all') n += 1;
-  if (value.priority !== 'all') n += 1;
-  if (value.sortBy !== 'date') n += 1;
   return n;
 }
 
@@ -93,8 +71,6 @@ export default function TasksMobileFilters({
     onApply({
       search: draft.search.trim(),
       status: draft.status,
-      priority: draft.priority,
-      sortBy: draft.sortBy,
       dateFrom: value.dateFrom,
       dateTo: value.dateTo,
     });
@@ -178,22 +154,6 @@ export default function TasksMobileFilters({
                     })}
                   </div>
                 </div>
-
-                <FilterSheetSelect
-                  label="Priority"
-                  value={draft.priority}
-                  options={PRIORITY_OPTIONS}
-                  placeholder="All Priorities"
-                  onChange={(priority) => setDraft((prev) => ({ ...prev, priority }))}
-                />
-
-                <FilterSheetSelect
-                  label="Sort"
-                  value={draft.sortBy}
-                  options={SORT_OPTIONS}
-                  placeholder="Sort: Newest First"
-                  onChange={(sortBy) => setDraft((prev) => ({ ...prev, sortBy }))}
-                />
               </div>
 
               <div className="sticky bottom-0 z-10 flex gap-3 border-t border-[#EEF0F5] bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">

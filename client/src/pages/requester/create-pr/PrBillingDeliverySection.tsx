@@ -276,8 +276,8 @@ export default function PrBillingDeliverySection({
             disabled={disabled}
             rows={3}
             placeholder="Auto-filled from Entity Master location (editable)"
-            className={`h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 resize-none ${
-              errors.billingAddress ? 'border-red-400 bg-red-50' : 'border-transparent'
+            className={`min-h-[88px] w-full resize-y rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 ${
+              errors.billingAddress ? 'border-red-400 bg-red-50' : 'border-gray-200'
             }`}
           />
           {errors.billingAddress && <p className="text-xs text-red-500 mt-1">{errors.billingAddress}</p>}
@@ -478,7 +478,7 @@ export default function PrBillingDeliverySection({
 
         <div data-field="placeOfDelivery">
           <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
-            Site / Place of Delivery
+            Delivery Address
           </label>
           <textarea
             value={value.placeOfDelivery}
@@ -489,7 +489,7 @@ export default function PrBillingDeliverySection({
             disabled={disabled}
             rows={3}
             placeholder="Site address (auto-filled from Entity Master location)"
-            className={`${inputClass} resize-y`}
+            className="min-h-[88px] w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-[#0F172A] outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
           />
         </div>
 
@@ -529,7 +529,7 @@ export default function PrBillingDeliverySection({
             disabled={disabled}
             rows={4}
             placeholder={"e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed..."}
-            className={`${inputClass} resize-none min-h-[96px]`}
+            className="min-h-[96px] w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-[#0F172A] outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
           />
           <p className="text-xs text-gray-400 mt-1.5">
             Suggestions: {PR_PAYMENT_TERM_OPTIONS.slice(0, 4).join(' · ')}

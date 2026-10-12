@@ -276,8 +276,6 @@ export default function TasksPage() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<string>('pending_approval');
-  const [priorityFilter, setPriorityFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('date');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [taskPage, setTaskPage] = useState(1);
@@ -733,10 +731,6 @@ export default function TasksPage() {
       result = result.filter((t) => t.status === filter);
     }
 
-    if (priorityFilter !== 'all') {
-      result = result.filter((t) => t.priority === priorityFilter);
-    }
-
     if (dateFrom || dateTo) {
       const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
       const toTs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
@@ -749,36 +743,10 @@ export default function TasksPage() {
       });
     }
 
-    const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
-
-    switch (sortBy) {
-      case 'sla':
-        result.sort((a, b) => {
-          if (a.isOverdue && !b.isOverdue) return -1;
-          if (!a.isOverdue && b.isOverdue) return 1;
-          return a.slaRemaining - b.slaRemaining;
-        });
-        break;
-      case 'amount_high':
-        result.sort((a, b) => b.totalAmount - a.totalAmount);
-        break;
-      case 'amount_low':
-        result.sort((a, b) => a.totalAmount - b.totalAmount);
-        break;
-      case 'priority':
-        result.sort(
-          (a, b) =>
-            (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2)
-        );
-        break;
-      case 'date':
-        result.sort(
-          (a, b) =>
-            new Date(b.submittedDate).getTime() -
-            new Date(a.submittedDate).getTime()
-        );
-        break;
-    }
+    result.sort(
+      (a, b) =>
+        new Date(b.submittedDate).getTime() - new Date(a.submittedDate).getTime()
+    );
 
     // Push completed tasks to the bottom
     result.sort((a, b) => {
@@ -792,7 +760,7 @@ export default function TasksPage() {
     });
 
     return result;
-  }, [processedTasks, searchTerm, filter, priorityFilter, sortBy, dateFrom, dateTo]);
+  }, [processedTasks, searchTerm, filter, dateFrom, dateTo]);
 
   const isScmManager = user?.role === 'SCM Manager';
   const taskPageSize =
@@ -812,7 +780,7 @@ export default function TasksPage() {
 
   useEffect(() => {
     setTaskPage(1);
-  }, [filter, searchTerm, priorityFilter, sortBy, dateFrom, dateTo]);
+  }, [filter, searchTerm, dateFrom, dateTo]);
 
   const stats = useMemo(() => {
     const pending = processedTasks.filter(
@@ -1032,16 +1000,12 @@ export default function TasksPage() {
             value={{
               search: searchTerm,
               status: filter,
-              priority: priorityFilter,
-              sortBy,
               dateFrom,
               dateTo,
             }}
             onApply={(next) => {
               setSearchTerm(next.search);
               setFilter(next.status);
-              setPriorityFilter(next.priority);
-              setSortBy(next.sortBy);
               setDateFrom(next.dateFrom);
               setDateTo(next.dateTo);
             }}
@@ -1141,35 +1105,11 @@ export default function TasksPage() {
             </div>
 
           <div className="flex flex-wrap items-center gap-2 px-3 pb-3 sm:px-4">
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="tfx-input h-10 min-w-[170px] cursor-pointer rounded-xl border bg-white px-3 text-sm outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
-            >
-              <option value="all">All Priorities</option>
-              <option value="high">High Priority</option>
-              <option value="medium">Medium Priority</option>
-              <option value="low">Low Priority</option>
-            </select>
-
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="tfx-input h-10 min-w-[200px] cursor-pointer rounded-xl border bg-white px-3 text-sm outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
-            >
-              <option value="sla">Sort: SLA Urgency</option>
-              <option value="amount_high">Sort: Amount (High to Low)</option>
-              <option value="amount_low">Sort: Amount (Low to High)</option>
-              <option value="priority">Sort: Priority</option>
-              <option value="date">Sort: Newest First</option>
-            </select>
-
-            {(searchTerm || priorityFilter !== 'all' || dateFrom || dateTo) && (
+            {(searchTerm || dateFrom || dateTo) && (
               <button
                 type="button"
                 onClick={() => {
                   setSearchTerm('');
-                  setPriorityFilter('all');
                   setDateFrom('');
                   setDateTo('');
                 }}
@@ -1572,11 +1512,10 @@ export default function TasksPage() {
                 ? 'PRs you approve as User Approval or L2 Manager show here'
                 : 'PRs appear here after the previous approver completes their step'}
             </p>
-            {(searchTerm || priorityFilter !== 'all' || filter !== 'all' || dateFrom || dateTo) && (
+            {(searchTerm || filter !== 'all' || dateFrom || dateTo) && (
               <button
                 onClick={() => {
                   setSearchTerm('');
-                  setPriorityFilter('all');
                   setFilter('all');
                   setDateFrom('');
                   setDateTo('');

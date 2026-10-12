@@ -171,6 +171,16 @@ export default function RfqEntryDetailPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const isScm = location.pathname.startsWith('/scm/rfq-entry');
+  const adminEdit =
+    searchParams.get('adminEdit') === '1' &&
+    (user?.role === 'Super Admin' ||
+      Boolean(user?.isSuperAdmin) ||
+      user?.role === 'SCM Manager' ||
+      user?.role === 'SCM Buyer' ||
+      user?.role === 'HOD Approver' ||
+      user?.role === 'PR Manager' ||
+      user?.role === 'CFO');
+  const showScmBilling = !isScm || adminEdit;
   const listPath = isScm ? '/scm/rfq-entry' : '/requester/rfq-entry';
   const taskId = searchParams.get('taskId');
   const canEditExistingQuote =
@@ -737,6 +747,7 @@ export default function RfqEntryDetailPage() {
         Boolean(loadedPr?.hasPurchaseOrder) && poStatus !== 'cancelled' && poStatus !== 'rejected';
       if (
         isScm &&
+        !adminEdit &&
         (purchaseType === 'sass' ||
           purchaseType === 'saas' ||
           purchaseType === 'cloud_subscription' ||
@@ -812,7 +823,7 @@ export default function RfqEntryDetailPage() {
     } finally {
       if (!soft) setLoading(false);
     }
-  }, [prId, isScm, navigate]);
+  }, [prId, isScm, adminEdit, navigate]);
 
   useEffect(() => {
     loadRfq();
@@ -967,7 +978,7 @@ export default function RfqEntryDetailPage() {
   ]);
 
   useEffect(() => {
-    if (isScm) return;
+    if (!showScmBilling) return;
     (async () => {
       try {
         const res = await masterApi.listEntities({ status: 'active' });
@@ -976,7 +987,7 @@ export default function RfqEntryDetailPage() {
         setEntities([]);
       }
     })();
-  }, [isScm]);
+  }, [showScmBilling]);
 
   useEffect(() => {
     if (!hasInvitations || isFinalized) return;
@@ -985,14 +996,15 @@ export default function RfqEntryDetailPage() {
   }, [hasInvitations, isFinalized, loadRfq]);
 
   useEffect(() => {
-    if (isScm || !prId || isFinalized || !billingHydratedRef.current || !draftHydratedRef.current) {
+    if (!prId || !billingHydratedRef.current) return;
+    if (!showScmBilling || (!adminEdit && (isFinalized || !draftHydratedRef.current))) {
       return;
     }
     const timer = window.setTimeout(() => {
       void persistBilling().catch(() => undefined);
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [billing, scopeOfWork, isScm, prId, isFinalized]);
+  }, [billing, scopeOfWork, showScmBilling, adminEdit, prId, isFinalized]);
 
   /** Soft-persist in-progress quote forms so refresh doesn't lose work */
   useEffect(() => {
@@ -1599,7 +1611,7 @@ export default function RfqEntryDetailPage() {
   };
 
   const persistBilling = async () => {
-    if (!prId || isScm) return;
+    if (!prId || !showScmBilling) return;
     const b = billingRef.current;
     await prApi.updateBilling(Number(prId), {
       billingLocationId: b.billingLocationId || undefined,
@@ -2283,7 +2295,7 @@ export default function RfqEntryDetailPage() {
         </div>
       )}
 
-      {!isScm && pr && (
+      {showScmBilling && pr && (
         <div className="mb-5 space-y-5">
           <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
             <div
@@ -2310,7 +2322,7 @@ export default function RfqEntryDetailPage() {
                 <textarea
                   value={scopeOfWork}
                   onChange={(e) => setScopeOfWork(e.target.value)}
-                  disabled={isFinalized}
+                  disabled={isFinalized && !adminEdit}
                   rows={5}
                   placeholder="Describe the full scope of work, deliverables, and any technical requirements..."
                   className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
@@ -2324,7 +2336,7 @@ export default function RfqEntryDetailPage() {
                 <textarea
                   value={billing.paymentTerms}
                   onChange={(e) => setBilling((prev) => ({ ...prev, paymentTerms: e.target.value }))}
-                  disabled={isFinalized}
+                  disabled={isFinalized && !adminEdit}
                   rows={4}
                   placeholder={"e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed..."}
                   className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
@@ -2339,7 +2351,7 @@ export default function RfqEntryDetailPage() {
             value={billing}
             selectedEntity={selectedEntity}
             billingLocations={billingLocations}
-            disabled={isFinalized}
+            disabled={isFinalized && !adminEdit}
             hidePaymentTerms
             hint="For Standard + Own vendor, fill billing and delivery here (not on Create PR)."
             onChange={(patch) => {
