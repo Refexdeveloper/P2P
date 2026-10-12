@@ -49,11 +49,11 @@ function linesForQuote(q: QuoteRound): QuoteLineItem[] {
 
 const softWash = {
   background:
-    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+    'radial-gradient(120% 90% at 100% 0%, rgba(15, 107, 122, 0.12) 0%, rgba(255,255,255,0) 55%)',
 } as const;
 
 const softCard =
-  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
+  'relative overflow-hidden rounded-2xl border border-[#e9f0f3] bg-white shadow-[0_10px_24px_-16px_rgba(13,95,110,0.28)]';
 
 interface Props {
   prId: number;
@@ -204,15 +204,15 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
       {(recommendedVendorName || recommendationJustification) && (
         <section className={softCard}>
           <div className="pointer-events-none absolute inset-0" style={softWash} />
-          <div className="relative z-[1] flex items-start gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/50 px-4 py-3.5 sm:px-5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+          <div className="relative z-[1] flex items-start gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#e6f6f8]/50 px-4 py-3.5 sm:px-5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#e6f6f8] text-[#0f6b7a]">
               <i className="ri-award-fill text-base" aria-hidden />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+              <p className="text-[13px] font-extrabold uppercase tracking-[0.06em] text-[#0f172a]">
                 Vendor Recommendation
               </p>
-              <p className="mt-0.5 truncate text-sm font-semibold text-[#2C3E50]">
+              <p className="mt-0.5 truncate text-xs font-normal text-slate-500">
                 {recommendedVendorName || 'Recommended vendor'}
               </p>
             </div>
@@ -232,12 +232,12 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
       {rows.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
           <div>
-            <h4 className="text-sm font-semibold text-slate-800">Vendor quotations</h4>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <h4 className="text-base font-extrabold text-[#0f172a]">Vendor quotations</h4>
+            <p className="mt-0.5 text-xs font-normal text-slate-500">
               Round prices, line items, and quotation files
             </p>
           </div>
-          <span className="rounded-full bg-[#E3F2FD] px-2.5 py-1 text-[11px] font-semibold text-[#1E88E5]">
+          <span className="rounded-full bg-[#e6f6f8] px-2.5 py-1 text-[11px] font-semibold text-[#0f6b7a]">
             {rows.length} vendor{rows.length === 1 ? '' : 's'} · up to Q{maxRound}
           </span>
         </div>
@@ -251,22 +251,22 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
           <div
             key={row.invitationId}
             className={`${softCard} ${
-              isRecommended ? 'ring-2 ring-[#90CAF9]/80' : ''
+              isRecommended ? 'ring-2 ring-[#a9dbe2]/80' : ''
             }`}
           >
             <div className="pointer-events-none absolute inset-0" style={softWash} />
-            <div className="relative z-[1] flex items-center justify-between gap-2 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3 sm:px-5">
+            <div className="relative z-[1] flex items-center justify-between gap-2 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#e6f6f8]/40 px-4 py-3 sm:px-5">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[#2C3E50]">{row.vendorName}</p>
+                <p className="truncate text-base font-extrabold text-[#0f172a]">{row.vendorName}</p>
                 {latest && (
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs font-normal text-slate-500">
                     Latest Q{latest.round}: {formatMoney(Number(latest.quotedPrice))}
                     {latest.paymentTerms ? ` · ${latest.paymentTerms}` : ''}
                   </p>
                 )}
               </div>
               {isRecommended && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#1E88E5] px-2.5 py-1 text-[10px] font-bold uppercase text-white">
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-br from-[#138899] to-[#0b5361] px-2.5 py-1 text-[10px] font-bold uppercase text-white">
                   <i className="ri-checkbox-circle-fill text-[10px]" />
                   Recommended
                 </span>
@@ -285,17 +285,17 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                       <span
                         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${
                           isRecommended && quote === latest
-                            ? 'bg-[#1E88E5] text-white'
-                            : 'bg-[#E3F2FD] text-[#1E88E5]'
+                            ? 'bg-gradient-to-br from-[#138899] to-[#0b5361] text-white'
+                            : 'bg-[#e6f6f8] text-[#0f6b7a]'
                         }`}
                       >
                         Q{round}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold tabular-nums text-[#2C3E50]">
+                        <p className="text-sm font-semibold tabular-nums text-[#0f172a]">
                           {formatMoney(Number(quote.quotedPrice))}
                         </p>
-                        <p className="truncate text-xs text-slate-500">
+                        <p className="truncate text-xs font-normal text-slate-500">
                           {[quote.leadTime ? `${quote.leadTime} days` : '', quote.paymentTerms]
                             .filter(Boolean)
                             .join(' · ') || 'Quoted'}
@@ -310,8 +310,8 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                           onClick={() => setExpandedRound(open ? null : key)}
                           className={`inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                             open
-                              ? 'bg-[#1E88E5] text-white'
-                              : 'border border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]'
+                              ? 'bg-[#0f6b7a] text-white'
+                              : 'border border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2]'
                           }`}
                         >
                           <i className={open ? 'ri-arrow-up-s-line' : 'ri-list-check-2'} />
@@ -337,7 +337,7 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                                 <button
                                   type="button"
                                   onClick={() => void openFile(file)}
-                                  className="inline-flex cursor-pointer items-center gap-1 self-start rounded-lg bg-[#E3F2FD] px-2 py-1 text-[10px] font-semibold text-[#1E88E5] transition-colors hover:bg-[#BBDEFB]"
+                                  className="inline-flex cursor-pointer items-center gap-1 self-start rounded-lg bg-[#e6f6f8] px-2 py-1 text-[10px] font-semibold text-[#0f6b7a] transition-colors hover:bg-[#c5e6eb]"
                                 >
                                   <i className="ri-eye-line" />
                                   Preview
@@ -386,7 +386,7 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                                 return (
                                   <tr key={`${key}-${idx}`} className="border-t border-slate-100/80">
                                     <td className="px-2.5 py-2 text-slate-500">{idx + 1}</td>
-                                    <td className="px-2.5 py-2 font-medium text-[#2C3E50]">
+                                    <td className="px-2.5 py-2 font-medium text-[#0f172a]">
                                       {String(li.description || '—')}
                                     </td>
                                     <td className="px-2.5 py-2 text-center tabular-nums">{qty}</td>
@@ -396,7 +396,7 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                                     <td className="px-2.5 py-2 text-center text-slate-600">
                                       {gst != null ? `${gst}%` : '—'}
                                     </td>
-                                    <td className="px-2.5 py-2 text-right font-semibold tabular-nums text-[#1E88E5]">
+                                    <td className="px-2.5 py-2 text-right font-semibold tabular-nums text-[#0f6b7a]">
                                       {formatMoney(total)}
                                     </td>
                                   </tr>
@@ -411,7 +411,7 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                                 >
                                   Round total
                                 </td>
-                                <td className="px-2.5 py-2 text-right text-sm font-bold tabular-nums text-[#1E88E5]">
+                                <td className="px-2.5 py-2 text-right text-sm font-bold tabular-nums text-[#0f6b7a]">
                                   {formatMoney(Number(quote.quotedPrice) || 0)}
                                 </td>
                               </tr>
@@ -439,7 +439,7 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                   URL.revokeObjectURL(preview.url);
                   setPreview(null);
                 }}
-                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl bg-white text-slate-500 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:text-[#1E88E5]"
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl bg-white text-slate-500 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:text-[#0f6b7a]"
               >
                 <i className="ri-close-line text-lg" />
               </button>

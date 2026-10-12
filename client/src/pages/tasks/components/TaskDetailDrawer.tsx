@@ -307,7 +307,7 @@ export default function TaskDetailDrawer({
               </span>
               <div className="min-w-0">
                 <small>Total Amount</small>
-                <b className="tabular-nums">{hideLinePricing ? 'Own Vendor' : money(task.totalAmount)}</b>
+                <b className="tabular-nums">{money(task.totalAmount)}</b>
               </div>
             </div>
             <div className="dfx-stat" style={{ '--i': 1 } as CSSProperties}>
@@ -412,11 +412,7 @@ export default function TaskDetailDrawer({
                         {task.expectedDeliveryTimeline || '—'}
                       </Field>
                       <Field label="Total Amount" icon="ri-money-rupee-circle-line" index={9}>
-                        {hideLinePricing ? (
-                          'Own Vendor'
-                        ) : (
-                          <span className="tabular-nums">{money(task.totalAmount)}</span>
-                        )}
+                        <span className="tabular-nums">{money(task.totalAmount)}</span>
                       </Field>
                       <Field label="Current Stage" icon="ri-flag-2-line" index={10}>
                         {task.currentApprover || '—'}

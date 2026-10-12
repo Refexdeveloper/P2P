@@ -48,7 +48,21 @@ export default function ScmRfqEntryListPage() {
     setListLoading(true);
     try {
       const res = await rfqApi.listScmEntryPending();
-      setEntryList(res.data);
+      const checks = await Promise.all(
+        res.data.map(async (item) => {
+          try {
+            const detail = await rfqApi.getByPr(item.prId);
+            const pr = detail.data?.pr as { poStatus?: string; hasPurchaseOrder?: boolean } | undefined;
+            const poStatus = String(pr?.poStatus || '').toLowerCase();
+            const poStillActive =
+              Boolean(pr?.hasPurchaseOrder) && poStatus !== 'cancelled' && poStatus !== 'rejected';
+            return poStillActive ? null : item;
+          } catch {
+            return item;
+          }
+        })
+      );
+      setEntryList(checks.filter((item): item is ScmRfqEntryItem => Boolean(item)));
       setListError('');
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Failed to load RFQ list');

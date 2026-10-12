@@ -1,10 +1,10 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatusBadge from '../../../components/base/StatusBadge';
 import PriorityBadge from '../../../components/base/PriorityBadge';
 import PrDocumentsPanel from '../../../components/feature/PrDocumentsPanel';
-import { PM_BTN_PRIMARY, PM_PAGE_BG } from '../../../constants/pmTheme';
+import '../../../styles/track-pr-fx.css';
 import { prApi, RequesterPrListMeta, accountsApi, type PrAttachmentRecord } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import CloudSubscriptionPanel from './CloudSubscriptionPanel';
@@ -783,16 +783,13 @@ const formatCurrency = (amount: number) =>
 
 const softWash = {
   background:
-    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+    'radial-gradient(120% 90% at 100% 0%, rgba(15, 107, 122, 0.10) 0%, rgba(255,255,255,0) 55%)',
 } as const;
 const softCard =
-  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
-const softLabel = 'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
+  'relative overflow-hidden rounded-2xl border border-white bg-white shadow-[0_10px_28px_-18px_rgba(13,95,110,0.35)] sm:rounded-[18px]';
+const softLabel = 'text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#0f172a]';
 const softInput =
-  'h-11 w-full rounded-2xl border border-transparent bg-white px-3.5 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15';
-const midCell =
-  'border border-x-0 border-transparent bg-white px-3 py-4 align-middle transition-[border-color] sm:py-5';
-
+  'h-11 w-full rounded-2xl border border-[#e7f1f4] bg-white px-3.5 text-sm text-slate-700 shadow-none outline-none focus:border-[#a9dbe2] focus:ring-2 focus:ring-[#0f6b7a]/15';
 export default function TrackPRPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -1014,36 +1011,36 @@ export default function TrackPRPage() {
   return (
     <DashboardLayout>
       {toast && (
-        <div className="fixed right-4 top-4 z-50 rounded-xl bg-[#1E88E5] px-4 py-2 text-sm text-white shadow-lg">
+        <div className="fixed right-4 top-4 z-50 rounded-xl bg-[#0f6b7a] px-4 py-2 text-sm text-white shadow-lg">
           {toast}
         </div>
       )}
-      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
-        <div className="space-y-5 p-2 pb-6 sm:p-4 lg:p-6">
-        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-0 sm:pb-4">
-          <div className="min-w-0">
-            <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl">
+      <div className="tpr-page min-h-full font-sans text-[#0F172A]">
+        <div className="space-y-4">
+        <header className="tpr-hero flex items-center">
+          <div className="relative z-[1] min-w-0 max-w-[640px] px-5 py-5 sm:px-7 sm:py-6">
+            <h1 className="text-xl font-extrabold leading-tight tracking-tight text-[#0f172a] sm:text-[28px]">
               Track Purchase Requisitions
             </h1>
-            <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
+            <p className="mt-1 text-xs font-normal text-slate-500 sm:text-sm">
               PRs you requested, approved, or were involved in — with SLA tracking (1 day per stage)
             </p>
+            <button
+              type="button"
+              onClick={() => navigate('/requester/create-pr?new=1')}
+              className="mt-3 inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#138899] to-[#0b5361] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_20px_-12px_rgba(13,95,110,0.8)] transition-transform hover:-translate-y-0.5"
+            >
+              <i className="ri-add-line text-lg"></i>
+              Create New PR
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/requester/create-pr?new=1')}
-            className={PM_BTN_PRIMARY}
-          >
-            <i className="ri-add-line text-lg"></i>
-            Create New PR
-          </button>
         </header>
 
         {error && (
           <div className="rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">{error}</div>
         )}
 
-        <div className={`${softCard} p-4 sm:p-5`}>
+        <div className={`${softCard} tpr-filters p-4 sm:p-5`}>
           <div className="pointer-events-none absolute inset-0" style={softWash} />
           <div className="relative z-[1] space-y-3">
             <div className="flex flex-wrap items-center gap-3">
@@ -1094,7 +1091,7 @@ export default function TrackPRPage() {
                   setDateFrom('');
                   setDateTo('');
                 }}
-                className="h-11 cursor-pointer whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]"
+                className="h-11 cursor-pointer whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#0f6b7a]/40 hover:bg-[#e6f6f8]"
               >
                 Clear filters
               </button>
@@ -1107,8 +1104,8 @@ export default function TrackPRPage() {
                   onClick={() => setStatusFilter(chip.id)}
                   className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
                     statusFilter === chip.id
-                      ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
-                      : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
+                      ? 'bg-[#0f6b7a] text-white shadow-sm hover:bg-[#0b5361]'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:border-[#0f6b7a]/40 hover:bg-[#e6f6f8]'
                   }`}
                 >
                   {chip.label}
@@ -1137,100 +1134,77 @@ export default function TrackPRPage() {
           </div>
         </div>
 
-        <div className={`${softCard} overflow-x-clip`}>
+        <div className={`${softCard} tpr-table-card`}>
           <div className="pointer-events-none absolute inset-0" style={softWash} />
           {loading ? (
             <div className="relative z-[1] px-6 py-12 text-center text-sm text-slate-500">
-              <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#1E88E5]"></i>
+              <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#0f6b7a]"></i>
               Loading your purchase requests...
             </div>
           ) : (
             <>
-              <div className="relative z-[1] overflow-x-auto px-0 pb-3 pt-1">
-                <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+              <div className="relative z-[1] overflow-x-auto px-2 pb-3 pt-1 sm:px-3">
+                <table className="tpr-table text-sm">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        PR Number
-                      </th>
-                      <th className="w-[240px] max-w-[240px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Title
-                      </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Type
-                      </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Amount
-                      </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Status
-                      </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        SLA
-                      </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Submitted
-                      </th>
-                      <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Actions
-                      </th>
+                      <th>PR Number</th>
+                      <th>Title</th>
+                      <th>Type</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>SLA</th>
+                      <th>Submitted</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedData.map((pr) => {
+                    {paginatedData.map((pr, rowIndex) => {
                       const { breached, onTime, currentBreach } = getSLASummary(pr.approvalHistory);
                       const totalActioned = breached + onTime;
                       const open = expandedRow === pr.key;
-                      const rowBorder = open
-                        ? 'border-[#90CAF9]'
-                        : 'border-transparent group-hover:border-[#90CAF9]';
-                      const rowShadow = open
-                        ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
-                        : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
                       return (
                         <Fragment key={pr.key}>
-                          <tr className="group cursor-pointer" onClick={() => toggleRow(pr.key)}>
-                            <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
-                              <div
-                                className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
-                              >
+                          <tr
+                            className={`tpr-row cursor-pointer${open ? ' is-open' : ''}`}
+                            style={{ '--i': rowIndex } as CSSProperties}
+                            onClick={() => toggleRow(pr.key)}
+                          >
+                            <td>
+                              <div className="flex items-center gap-2.5">
                                 <button
                                   type="button"
-                                  className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors ${
+                                  className={`tpr-chev flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl ${
                                     open
-                                      ? 'bg-[#1E88E5] text-white'
-                                      : 'bg-[#E3F2FD] text-[#1E88E5] hover:bg-[#BBDEFB]'
+                                      ? 'bg-[#0f6b7a] text-white'
+                                      : 'bg-[#e6f6f8] text-[#0f6b7a] hover:bg-[#c5e6eb]'
                                   }`}
                                   aria-expanded={open}
                                   aria-label={open ? 'Collapse details' : 'Expand details'}
                                 >
-                                  <i className={`ri-arrow-${open ? 'down' : 'right'}-s-line text-base`}></i>
+                                  <i className="ri-arrow-right-s-line text-base"></i>
                                 </button>
-                                <span className="text-sm font-bold text-[#1E88E5]">{pr.id}</span>
+                                <span className="text-sm font-bold text-[#0f6b7a]">{pr.id}</span>
                               </div>
                             </td>
-                            <td
-                              className={`w-[240px] max-w-[240px] ${midCell} ${rowBorder}`}
-                              title={pr.title}
-                            >
-                              <p className="truncate text-sm font-semibold text-[#2C3E50]">{pr.title}</p>
-                              <div className="mt-0.5 flex min-w-0 items-center gap-2">
-                                <p className="truncate text-xs text-slate-500">{pr.department}</p>
+                            <td title={pr.title}>
+                              <p className="text-sm font-semibold text-[#2C3E50]">{pr.title}</p>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                                <p className="text-xs text-slate-500">{pr.department}</p>
                                 <PriorityBadge priority={pr.priority} />
                               </div>
                             </td>
-                            <td className={`whitespace-nowrap ${midCell} ${rowBorder}`}>
-                              <span className="inline-flex rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[11px] font-semibold text-[#1E88E5]">
+                            <td>
+                              <span className="inline-flex rounded-full bg-[#e6f6f8] px-2 py-0.5 text-[11px] font-semibold text-[#0f6b7a]">
                                 {pr.requestType}
                               </span>
                             </td>
-                            <td className={`whitespace-nowrap ${midCell} text-sm font-bold tabular-nums text-[#2C3E50] ${rowBorder}`}>
+                            <td className="text-sm font-bold tabular-nums text-[#2C3E50]">
                               {formatCurrency(pr.amount)}
                             </td>
-                            <td className={`whitespace-nowrap ${midCell} ${rowBorder}`}>
+                            <td>
                               <StatusBadge status={pr.statusUI || pr.status} size="sm" />
                             </td>
-                            <td className={`whitespace-nowrap ${midCell} ${rowBorder}`}>
+                            <td>
                               {totalActioned === 0 && !currentBreach ? (
                                 <span className="text-xs text-slate-400">—</span>
                               ) : (
@@ -1253,146 +1227,151 @@ export default function TrackPRPage() {
                                 </div>
                               )}
                             </td>
-                            <td className={`whitespace-nowrap ${midCell} text-sm text-slate-500 ${rowBorder}`}>
+                            <td className="text-sm text-slate-500">
                               {pr.submittedDate || '—'}
                             </td>
-                            <td
-                              className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <div className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <div className="tpr-actions">
                                 <button
                                   type="button"
                                   onClick={() => toggleRow(pr.key)}
-                                  className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-[#1E88E5] text-white transition-colors hover:bg-[#1565C0]"
+                                  className="tpr-act inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl bg-[#0f6b7a] text-white hover:bg-[#0b5361]"
                                   title={open ? 'Hide details' : 'View details'}
                                 >
                                   <i className="ri-eye-line"></i>
                                 </button>
-                                <div className="flex h-8 w-[4.25rem] shrink-0 items-center justify-center">
-                                  {(isAdminEditor ||
-                                    pr.status === 'draft' ||
-                                    pr.status === 'returned' ||
-                                    ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(
-                                      asText(pr.statusRaw).toUpperCase()
-                                    )) && (
+                                {(isAdminEditor ||
+                                  pr.status === 'draft' ||
+                                  pr.status === 'returned' ||
+                                  ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(
+                                    asText(pr.statusRaw).toUpperCase()
+                                  )) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
+                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center gap-1 rounded-xl bg-[#0f6b7a] px-2.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
+                                  >
+                                    <i className="ri-edit-line"></i>
+                                    Edit
+                                  </button>
+                                )}
+                                {isAdminEditor && pr.status !== 'draft' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void openAdminSendBack(pr)}
+                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 px-2.5 text-xs font-semibold text-orange-700 hover:bg-orange-100"
+                                    title="Send PR back to any workflow step"
+                                  >
+                                    Send Back
+                                  </button>
+                                )}
+                                {isSuperAdmin ? (
+                                  <button
+                                    type="button"
+                                    disabled={deletingId === pr.prId}
+                                    onClick={() => void handleAdminDeletePr(pr)}
+                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-xl bg-[#FFE4E6] px-2.5 text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
+                                    title="Permanently delete this purchase request"
+                                  >
+                                    {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
+                                  </button>
+                                ) : user?.role === 'Requester' && isDraftTrackPr(pr) ? (
+                                  <button
+                                    type="button"
+                                    disabled={deletingId === pr.prId}
+                                    onClick={() => void handleDeleteDraft(pr)}
+                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-xl bg-[#FFE4E6] px-2.5 text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
+                                    title="Delete this draft"
+                                  >
+                                    {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
+                                  </button>
+                                ) : null}
+                                {isAdminEditor &&
+                                  pr.status !== 'draft' &&
+                                  String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
+                                  String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
+                                  String(pr.purchaseType || '')
+                                    .toLowerCase()
+                                    .replace(/[\s-]+/g, '_') !== 'cloud_subscription' && (
                                     <button
                                       type="button"
-                                      onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
-                                      className="inline-flex h-8 w-full cursor-pointer items-center justify-center gap-1 rounded-xl bg-[#1E88E5] text-xs font-semibold text-white hover:bg-[#1565C0]"
+                                      onClick={() =>
+                                        navigate(
+                                          user?.role === 'Requester'
+                                            ? `/requester/rfq-entry/${pr.prId}`
+                                            : `/scm/rfq-entry/${pr.prId}`
+                                        )
+                                      }
+                                      className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-[#d7eef2] bg-white px-2.5 text-xs font-semibold text-[#0f6b7a] hover:border-[#a9dbe2]"
+                                      title="Edit RFQ amounts and quotation files"
                                     >
-                                      <i className="ri-edit-line"></i>
-                                      Edit
+                                      Edit RFQ
                                     </button>
                                   )}
-                                </div>
-                                {isAdminEditor && (
-                                  <div className="flex h-8 w-[5.75rem] shrink-0 items-center justify-center">
-                                    {pr.status !== 'draft' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => void openAdminSendBack(pr)}
-                                        className="inline-flex h-8 w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 text-xs font-semibold text-orange-700 hover:bg-orange-100"
-                                        title="Send PR back to any workflow step"
-                                      >
-                                        Send Back
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                                {(user?.role === 'Requester' || isSuperAdmin) && (
-                                  <div className="flex h-8 w-[5.25rem] shrink-0 items-center justify-center">
-                                    {isSuperAdmin ? (
-                                      <button
-                                        type="button"
-                                        disabled={deletingId === pr.prId}
-                                        onClick={() => void handleAdminDeletePr(pr)}
-                                        className="inline-flex h-8 w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-xl bg-[#FFE4E6] text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
-                                        title="Permanently delete this purchase request"
-                                      >
-                                        {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
-                                      </button>
-                                    ) : isDraftTrackPr(pr) ? (
-                                      <button
-                                        type="button"
-                                        disabled={deletingId === pr.prId}
-                                        onClick={() => void handleDeleteDraft(pr)}
-                                        className="inline-flex h-8 w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-xl bg-[#FFE4E6] text-xs font-semibold text-[#F43F5E] hover:bg-rose-100 disabled:opacity-50"
-                                        title="Delete this draft"
-                                      >
-                                        {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                )}
-                                {isAdminEditor && (
-                                  <div className="flex h-8 w-[5.25rem] shrink-0 items-center justify-center">
-                                    {pr.status !== 'draft' &&
-                                      String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
-                                      String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
-                                      String(pr.purchaseType || '')
-                                        .toLowerCase()
-                                        .replace(/[\s-]+/g, '_') !== 'cloud_subscription' && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          navigate(
-                                            user?.role === 'Requester'
-                                              ? `/requester/rfq-entry/${pr.prId}`
-                                              : `/scm/rfq-entry/${pr.prId}`
-                                          )
-                                        }
-                                        className="inline-flex h-8 w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-transparent bg-white text-xs font-semibold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
-                                        title="Edit RFQ amounts and quotation files"
-                                      >
-                                        Edit RFQ
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                                <div className="flex h-8 w-[7.5rem] shrink-0 items-center justify-center">
-                                  {String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
+                                {String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
+                                String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
+                                String(pr.purchaseType || '')
+                                  .toLowerCase()
+                                  .replace(/[\s-]+/g, '_') !== 'cloud_subscription' &&
+                                pr.poDocumentAvailable &&
+                                pr.poId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
+                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
+                                    title={`View PO ${pr.poNumber || ''}`.trim()}
+                                  >
+                                    <i className="ri-file-pdf-2-line" />
+                                    PO Document
+                                  </button>
+                                ) : String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
                                   String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
                                   String(pr.purchaseType || '')
                                     .toLowerCase()
                                     .replace(/[\s-]+/g, '_') !== 'cloud_subscription' &&
-                                  pr.poDocumentAvailable &&
                                   pr.poId ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
-                                      className="inline-flex h-8 w-full cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#1E88E5] px-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
-                                      title={`View PO ${pr.poNumber || ''}`.trim()}
-                                    >
-                                      <i className="ri-file-pdf-2-line" />
-                                      PO Document
-                                    </button>
-                                  ) : String(pr.purchaseType || '').toLowerCase() !== 'sass' &&
-                                    String(pr.purchaseType || '').toLowerCase() !== 'saas' &&
-                                    String(pr.purchaseType || '')
-                                      .toLowerCase()
-                                      .replace(/[\s-]+/g, '_') !== 'cloud_subscription' &&
-                                    pr.poId ? (
-                                    <span
-                                      className="block w-full truncate rounded-xl bg-slate-50 px-2 text-center text-[10px] font-medium leading-8 text-slate-600"
-                                      title={pr.statusUI || 'PO document available after SCM Buyer final verification'}
-                                    >
-                                      PO in progress
-                                    </span>
-                                  ) : null}
-                                </div>
+                                  <span
+                                    className="inline-flex h-8 items-center rounded-xl bg-slate-50 px-2.5 text-[10px] font-medium text-slate-600"
+                                    title={pr.statusUI || 'PO document available after SCM Buyer final verification'}
+                                  >
+                                    PO in progress
+                                  </span>
+                                ) : null}
                               </div>
                             </td>
                           </tr>
 
                           {expandedRow === pr.key && (
                             <tr>
-                              <td colSpan={8} className="max-w-0 bg-transparent p-0">
+                              <td colSpan={8} className="bg-transparent p-0">
                                 {expandLoadingKey === pr.key && (
                                   <div className="px-4 py-2 text-xs text-slate-500">Loading PR details…</div>
                                 )}
-                                <div className="relative my-1 overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5 sm:py-5">
+                                <div className="tpr-panel relative my-1 overflow-hidden rounded-2xl border border-[#e7f3f6] bg-[#f4fbfd] px-3 py-3 shadow-[0_12px_28px_-18px_rgba(13,95,110,0.35)] sm:rounded-[18px] sm:px-4 sm:py-4">
                                   <div className="relative z-[1]">
+                                  <div className="tpr-expand-hero mb-4 flex items-center gap-3 px-4 py-4 sm:px-5">
+                                    <span className="tpr-hero-ic">
+                                      <i className="ri-file-list-3-line" aria-hidden />
+                                    </span>
+                                    <div className="min-w-0">
+                                      <p className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#0f6b7a]">
+                                        PR Number
+                                      </p>
+                                      <p className="truncate text-lg font-extrabold text-[#0f172a]">{pr.id}</p>
+                                      <p className="mt-0.5 truncate text-sm font-semibold text-[#0f172a]">{pr.title}</p>
+                                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                        {pr.department ? (
+                                          <span className="text-xs font-normal text-slate-500">{pr.department}</span>
+                                        ) : null}
+                                        <PriorityBadge priority={pr.priority} />
+                                        {pr.requestType ? (
+                                          <span className="inline-flex rounded-full bg-[#e6f6f8] px-2 py-0.5 text-[11px] font-semibold text-[#0f6b7a]">
+                                            {pr.requestType}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  </div>
                                   {(() => {
                                     const prDocCount = pr.attachments?.length || 0;
                                     const hasSassInvoice = Boolean(pr.sassInvoice?.hasFile && pr.sassInvoice?.id);
@@ -1411,8 +1390,8 @@ export default function TrackPRPage() {
                                               onClick={() => setExpandTab('overview')}
                                               className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all ${
                                                 activeTab === 'overview'
-                                                  ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
-                                                  : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
+                                                  ? 'bg-[#0f6b7a] text-white shadow-sm hover:bg-[#0b5361]'
+                                                  : 'border border-slate-200 bg-white text-slate-700 hover:border-[#0f6b7a]/40 hover:bg-[#e6f6f8]'
                                               }`}
                                             >
                                               <i className="ri-information-line mr-1"></i>
@@ -1423,8 +1402,8 @@ export default function TrackPRPage() {
                                               onClick={() => setExpandTab('documents')}
                                               className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all ${
                                                 activeTab === 'documents'
-                                                  ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
-                                                  : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
+                                                  ? 'bg-[#0f6b7a] text-white shadow-sm hover:bg-[#0b5361]'
+                                                  : 'border border-slate-200 bg-white text-slate-700 hover:border-[#0f6b7a]/40 hover:bg-[#e6f6f8]'
                                               }`}
                                             >
                                               <i className="ri-file-list-3-line mr-1"></i>
@@ -1436,10 +1415,10 @@ export default function TrackPRPage() {
                                         {activeTab === 'documents' && showDocumentsTab ? (
                                           <div className="space-y-4">
                                             {hasSassInvoice && pr.sassInvoice ? (
-                                              <div className="bg-white rounded-lg border border-[#90CAF9] p-4">
+                                              <div className="bg-white rounded-lg border border-[#a9dbe2] p-4">
                                                 <div className="flex items-start gap-3 mb-3">
-                                                  <div className="w-10 h-10 rounded-lg bg-[#E3F2FD] flex items-center justify-center shrink-0">
-                                                    <i className="ri-file-invoice-line text-xl text-[#1E88E5]"></i>
+                                                  <div className="w-10 h-10 rounded-lg bg-[#e6f6f8] flex items-center justify-center shrink-0">
+                                                    <i className="ri-file-invoice-line text-xl text-[#0f6b7a]"></i>
                                                   </div>
                                                   <div className="min-w-0">
                                                     <h4 className="text-sm font-semibold text-gray-900">
@@ -1455,7 +1434,7 @@ export default function TrackPRPage() {
                                                 </div>
                                                 <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                                                   <div className="w-9 h-9 rounded-lg bg-white border border-gray-200 flex items-center justify-center shrink-0">
-                                                    <i className="ri-file-pdf-line text-[#1E88E5]"></i>
+                                                    <i className="ri-file-pdf-line text-[#0f6b7a]"></i>
                                                   </div>
                                                   <div className="min-w-0 flex-1">
                                                     <p className="text-sm font-medium text-gray-900 truncate">
@@ -1479,7 +1458,7 @@ export default function TrackPRPage() {
                                                           window.setTimeout(() => setToast(''), 4000);
                                                         });
                                                     }}
-                                                    className="px-3 py-1.5 border border-[#90CAF9] text-[#1565C0] bg-white rounded-lg text-xs font-semibold hover:bg-[#E3F2FD] whitespace-nowrap"
+                                                    className="px-3 py-1.5 border border-[#a9dbe2] text-[#0b5361] bg-white rounded-lg text-xs font-semibold hover:bg-[#e6f6f8] whitespace-nowrap"
                                                   >
                                                     Open
                                                   </button>
@@ -1500,33 +1479,39 @@ export default function TrackPRPage() {
                                     <div className="lg:col-span-2 space-y-4">
                                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                         {[
-                                          ['PR Number', pr.id],
-                                          ['Department', pr.department || '—'],
-                                          ['Request Type', pr.requestType || '—'],
-                                          ['Request Category', pr.requestCategory || '—'],
-                                          ['Required Date', pr.requiredDate || '—'],
-                                          ['Total Amount', formatCurrency(pr.amount)],
-                                        ].map(([label, value]) => (
-                                          <div key={label} className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]">
-                                            <div className="pointer-events-none absolute inset-0" style={softWash} />
-                                            <div className="relative z-[1]">
-                                              <p className={softLabel}>{label}</p>
-                                              <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">{value}</p>
+                                          ['PR Number', pr.id, 'ri-hashtag'],
+                                          ['Department', pr.department || '—', 'ri-building-2-line'],
+                                          ['Request Type', pr.requestType || '—', 'ri-price-tag-3-line'],
+                                          ['Request Category', pr.requestCategory || '—', 'ri-folder-3-line'],
+                                          ['Required Date', pr.requiredDate || '—', 'ri-calendar-event-line'],
+                                          ['Total Amount', formatCurrency(pr.amount), 'ri-money-rupee-circle-line'],
+                                        ].map(([label, value, icon], fieldIndex) => (
+                                          <div key={label} className="tpr-field flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)]" style={{ '--i': fieldIndex } as CSSProperties}>
+                                            <span className="tpr-field-ic">
+                                              <i className={icon} aria-hidden />
+                                            </span>
+                                            <div className="min-w-0">
+                                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">{label}</p>
+                                              <p className="mt-1 break-words text-sm font-semibold text-[#0f172a]">{value}</p>
                                             </div>
                                           </div>
                                         ))}
-                                        <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2">
-                                          <div className="pointer-events-none absolute inset-0" style={softWash} />
-                                          <div className="relative z-[1]">
-                                            <p className={softLabel}>Project Detail</p>
-                                            <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">{pr.projectDetail || '—'}</p>
+                                        <div className="flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)] sm:col-span-2">
+                                          <span className="tpr-field-ic">
+                                            <i className="ri-briefcase-4-line" aria-hidden />
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">Project Detail</p>
+                                            <p className="mt-1 break-words text-sm font-semibold text-[#0f172a]">{pr.projectDetail || '—'}</p>
                                           </div>
                                         </div>
-                                        <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]">
-                                          <div className="pointer-events-none absolute inset-0" style={softWash} />
-                                          <div className="relative z-[1]">
-                                            <p className={softLabel}>Priority</p>
-                                            <div className="mt-1.5"><PriorityBadge priority={pr.priority} /></div>
+                                        <div className="flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)]">
+                                          <span className="tpr-field-ic">
+                                            <i className="ri-flag-2-line" aria-hidden />
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">Priority</p>
+                                            <div className="mt-1"><PriorityBadge priority={pr.priority} /></div>
                                           </div>
                                         </div>
                                         <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2">
@@ -1618,10 +1603,10 @@ export default function TrackPRPage() {
                                         <div className="pointer-events-none absolute inset-0" style={softWash} />
                                         <div className="relative z-[1] mb-5 flex flex-wrap items-center justify-between gap-3">
                                           <div>
-                                            <h3 className="text-sm font-semibold text-[#2C3E50]">
+                                            <h3 className="text-base font-extrabold text-[#0f172a]">
                                               Approval Workflow & SLA Tracking
                                             </h3>
-                                            <p className="mt-0.5 text-xs text-slate-400">
+                                            <p className="mt-0.5 text-xs font-normal text-slate-500">
                                               SLA Target: 1 business day per approval stage
                                             </p>
                                           </div>
@@ -1836,7 +1821,7 @@ export default function TrackPRPage() {
                       type="button"
                       onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                       disabled={currentPage === 1}
-                      className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Previous
                     </button>
@@ -1847,8 +1832,8 @@ export default function TrackPRPage() {
                         onClick={() => setCurrentPage(page)}
                         className={`flex h-8 min-w-[2rem] cursor-pointer items-center justify-center rounded-xl text-xs font-semibold ${
                           currentPage === page
-                            ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
-                            : 'border border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]'
+                            ? 'bg-[#0f6b7a] text-white shadow-sm hover:bg-[#0b5361]'
+                            : 'border border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2]'
                         }`}
                       >
                         {page}
@@ -1858,7 +1843,7 @@ export default function TrackPRPage() {
                       type="button"
                       onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                       disabled={currentPage === totalPages}
-                      className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Next
                     </button>

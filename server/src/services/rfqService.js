@@ -1593,7 +1593,7 @@ export async function getRfqByPrId(user, prId) {
     const [openPo] = await pool.query(
       `SELECT id FROM purchase_orders
        WHERE pr_id = ?
-         AND status NOT IN ('draft', 'cancelled', 'rejected')
+         AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'rejected')
        LIMIT 1`,
       [prId]
     );
@@ -3156,7 +3156,7 @@ export async function listScmRfqEntryPrs(user) {
        AND NOT EXISTS (
          SELECT 1 FROM purchase_orders po_done
          WHERE po_done.pr_id = pr.id
-           AND po_done.status NOT IN ('draft', 'cancelled', 'rejected')
+           AND LOWER(COALESCE(po_done.status, '')) NOT IN ('cancelled', 'rejected')
        )
        AND (
          LOWER(TRIM(COALESCE(pr.vendor_selection, 'scm'))) = 'scm'

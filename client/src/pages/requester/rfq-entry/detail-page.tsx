@@ -731,12 +731,17 @@ export default function RfqEntryDetailPage() {
       )
         .toLowerCase()
         .replace(/[\s-]+/g, '_');
+      const loadedPr = data.pr as { poStatus?: string; hasPurchaseOrder?: boolean };
+      const poStatus = String(loadedPr?.poStatus || '').toLowerCase();
+      const poStillActive =
+        Boolean(loadedPr?.hasPurchaseOrder) && poStatus !== 'cancelled' && poStatus !== 'rejected';
       if (
         isScm &&
         (purchaseType === 'sass' ||
           purchaseType === 'saas' ||
           purchaseType === 'cloud_subscription' ||
-          Boolean((data as { rfqClosed?: boolean }).rfqClosed))
+          Boolean((data as { rfqClosed?: boolean }).rfqClosed) ||
+          poStillActive)
       ) {
         navigate('/scm/rfq-entry', { replace: true });
         return;

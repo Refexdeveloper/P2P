@@ -1,0 +1,162 @@
+/* Track PR — teal banner hero matching the procurement artwork. */
+
+.tpr-page {
+  background: #eef8fb;
+}
+
+.tpr-hero,
+.tpr-expand-hero {
+  position: relative;
+  overflow: hidden;
+  background-color: #e5f7fc;
+  background-image:
+    linear-gradient(90deg, rgba(229, 247, 252, 0.96) 0%, rgba(229, 247, 252, 0.82) 34%, rgba(229, 247, 252, 0.2) 58%, rgba(229, 247, 252, 0) 72%),
+    url('/images/track-pr-banners.jpg');
+  background-repeat: no-repeat;
+  background-size: 100% 100%, auto 210%;
+  background-position: left center, right top;
+}
+
+.tpr-hero {
+  min-height: 148px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 16px 32px -22px rgba(13, 95, 110, 0.45);
+}
+
+.tpr-expand-hero {
+  min-height: 118px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+}
+
+.tpr-hero-ic {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 24px;
+  background: linear-gradient(135deg, #138899, #0b5361);
+  box-shadow: 0 10px 20px -10px rgba(13, 95, 110, 0.7);
+}
+
+.tpr-field-ic {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 16px;
+  color: #0f6b7a;
+  background: #e6f6f8;
+}
+
+@keyframes tpr-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tpr-pop {
+  0% { opacity: 0; transform: scale(.7); }
+  70% { transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes tpr-panel {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.tpr-rise { animation: tpr-up .55s cubic-bezier(.2,.8,.2,1) both; }
+.tpr-hero { animation: tpr-up .6s cubic-bezier(.2,.8,.2,1) both; }
+.tpr-hero-ic { animation: tpr-pop .5s cubic-bezier(.3,1.6,.5,1) .15s both; }
+
+.tpr-table-card { animation: tpr-up .55s cubic-bezier(.2,.8,.2,1) .12s both; }
+.tpr-filters { animation: tpr-up .55s cubic-bezier(.2,.8,.2,1) .06s both; }
+
+.tpr-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+  table-layout: auto;
+}
+.tpr-table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  background: transparent;
+  white-space: nowrap;
+}
+.tpr-table th:first-child { padding-left: 16px; }
+.tpr-table th:last-child { text-align: right; padding-right: 16px; }
+
+.tpr-row td {
+  background: #fff;
+  padding: 14px 12px;
+  vertical-align: middle;
+  border-top: 1px solid #e7f3f6;
+  border-bottom: 1px solid #e7f3f6;
+  transition: background .25s, border-color .25s;
+}
+.tpr-row td:first-child {
+  border-left: 1px solid #e7f3f6;
+  border-radius: 16px 0 0 16px;
+  padding-left: 14px;
+}
+.tpr-row td:last-child {
+  border-right: 1px solid #e7f3f6;
+  border-radius: 0 16px 16px 0;
+  padding-right: 14px;
+}
+.tpr-row {
+  animation: tpr-up .45s cubic-bezier(.2,.8,.2,1) both;
+  animation-delay: calc(.08s + var(--i, 0) * .045s);
+}
+.tpr-row:hover td { background: #f4fbfd; border-color: #c5e6eb; }
+.tpr-row.is-open td { background: #f3fbfd; border-color: #a9dbe2; }
+
+.tpr-chev {
+  transition: transform .35s cubic-bezier(.3,1.6,.5,1), background .25s, color .25s;
+}
+.tpr-row.is-open .tpr-chev { transform: rotate(90deg); }
+
+.tpr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.tpr-actions .tpr-act {
+  transition: transform .25s, background .25s, box-shadow .25s;
+}
+.tpr-actions .tpr-act:hover { transform: translateY(-2px); }
+
+.tpr-panel { animation: tpr-panel .4s cubic-bezier(.2,.8,.2,1) both; }
+.tpr-field {
+  animation: tpr-up .4s cubic-bezier(.2,.8,.2,1) both;
+  animation-delay: calc(.05s + var(--i, 0) * .04s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tpr-page *, .tpr-page *::before, .tpr-page *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .tpr-hero,
+  .tpr-expand-hero {
+    background-image:
+      linear-gradient(90deg, rgba(229, 247, 252, 0.97) 0%, rgba(229, 247, 252, 0.9) 62%, rgba(229, 247, 252, 0.45) 100%),
+      url('/images/track-pr-banners.jpg');
+    background-position: left center, 78% top;
+  }
+  .tpr-hero { min-height: 168px; }
+}
