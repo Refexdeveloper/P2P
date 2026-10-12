@@ -1,3 +1,5 @@
+import { getUnauthenticatedSsoUrl, goToRefexOneSamlSso } from '../utils/refexOneUrl';
+
 const LIVE_API = 'https://p2p-backend-645830234926.asia-south1.run.app';
 /** API base URL — set VITE_API_URL in client/.env (see .env.example). */
 export const API_BASE_URL = String(import.meta.env.VITE_API_URL || LIVE_API).replace(/\/$/, '');
@@ -12,6 +14,37 @@ export class ApiError extends Error {
 
 function getToken(): string | null {
   return localStorage.getItem('p2p_token');
+}
+
+let refexReloginStarted = false;
+
+function isInvalidSession(status: number, message: string) {
+  return status === 401 && /invalid or expired token/i.test(message);
+}
+
+/** A stored P2P session failed its check — send the user through Refex One login again. */
+function beginRefexOneRelogin() {
+  if (refexReloginStarted || typeof window === 'undefined') return;
+  const path = window.location.pathname;
+  if (
+    path === '/login' ||
+    path === '/admin/login' ||
+    path.startsWith('/auth/refexone') ||
+    path.startsWith('/vendor/')
+  ) {
+    return;
+  }
+  refexReloginStarted = true;
+  localStorage.removeItem('p2p_token');
+  localStorage.removeItem('p2p_user');
+  try {
+    sessionStorage.removeItem('p2p_sso_token');
+    localStorage.removeItem('p2p_sso_token');
+  } catch {
+    /* ignore */
+  }
+  const returnPath = `${path}${window.location.search || ''}`;
+  goToRefexOneSamlSso(getUnauthenticatedSsoUrl(returnPath));
 }
 
 function errorMessageFromResponse(text: string, fallback: string) {
@@ -125,21 +158,25 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       data = JSON.parse(text) as Record<string, unknown>;
     } catch {
       if (!res.ok) {
-        throw new ApiError(
-          res.status,
-          errorMessageFromResponse(text, `Request failed (${res.status})`)
-        );
+        const message = errorMessageFromResponse(text, `Request failed (${res.status})`);
+        if (isInvalidSession(res.status, message)) {
+          beginRefexOneRelogin();
+          return new Promise(() => {}) as Promise<T>;
+        }
+        throw new ApiError(res.status, message);
       }
     }
   }
   if (!res.ok) {
-    throw new ApiError(
-      res.status,
-      errorMessageFromResponse(
-        (data.message as string) || text,
-        `Request failed (${res.status})`
-      )
+    const message = errorMessageFromResponse(
+      (data.message as string) || text,
+      `Request failed (${res.status})`
     );
+    if (isInvalidSession(res.status, message)) {
+      beginRefexOneRelogin();
+      return new Promise(() => {}) as Promise<T>;
+    }
+    throw new ApiError(res.status, message);
   }
   return data as T;
 }

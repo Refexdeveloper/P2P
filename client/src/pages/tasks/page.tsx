@@ -377,6 +377,7 @@ export default function TasksPage() {
   });
 
   const showToast = (text: string, type: 'success' | 'error') => {
+    if (/invalid or expired token/i.test(text)) return;
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 6000);
   };
