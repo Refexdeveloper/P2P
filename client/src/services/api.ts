@@ -22,6 +22,23 @@ function isInvalidSession(status: number, message: string) {
   return status === 401 && /invalid or expired token/i.test(message);
 }
 
+/** On the login screens, surface the error. Elsewhere, start Refex One login and wait. */
+function holdForRefexRelogin() {
+  if (typeof window !== 'undefined') {
+    const path = window.location.pathname;
+    if (
+      path === '/login' ||
+      path === '/admin/login' ||
+      path.startsWith('/auth/refexone') ||
+      path.startsWith('/vendor/')
+    ) {
+      return false;
+    }
+  }
+  beginRefexOneRelogin();
+  return true;
+}
+
 /** A stored P2P session failed its check — send the user through Refex One login again. */
 function beginRefexOneRelogin() {
   if (refexReloginStarted || typeof window === 'undefined') return;
@@ -148,7 +165,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const isCredentialLogin =
+    path.startsWith('/api/auth/login') || path.startsWith('/api/auth/refexone');
+  if (token && !isCredentialLogin) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   const text = await res.text();
@@ -160,8 +179,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       if (!res.ok) {
         const message = errorMessageFromResponse(text, `Request failed (${res.status})`);
         if (isInvalidSession(res.status, message)) {
-          beginRefexOneRelogin();
-          return new Promise(() => {}) as Promise<T>;
+          if (holdForRefexRelogin()) return new Promise(() => {}) as Promise<T>;
+          throw new ApiError(res.status, message);
         }
         throw new ApiError(res.status, message);
       }
@@ -173,8 +192,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       `Request failed (${res.status})`
     );
     if (isInvalidSession(res.status, message)) {
-      beginRefexOneRelogin();
-      return new Promise(() => {}) as Promise<T>;
+      if (holdForRefexRelogin()) return new Promise(() => {}) as Promise<T>;
+      throw new ApiError(res.status, message);
     }
     throw new ApiError(res.status, message);
   }

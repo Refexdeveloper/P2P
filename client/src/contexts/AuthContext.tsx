@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { ensureNavigation } from '../constants/roleNavigation';
 import { authApi, AuthUser, NavItem } from '../services/api';
-import { goToRefexOne } from '../utils/refexOneUrl';
+import { clearSsoBounce, goToRefexOne } from '../utils/refexOneUrl';
 import { DINESH_DESIGNATION, DINESH_DISPLAY_NAME, MEET_DESIGNATION, getUserDesignation, isDineshUser, isMeetUser, isSrivathsUser } from '../utils/roleDisplay';
 
 export type UserRole =
@@ -184,31 +184,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const bootstrap = async () => {
-      const storedToken = localStorage.getItem('p2p_token');
-      const storedUser = localStorage.getItem('p2p_user');
-      if (storedToken && storedUser) {
-        setToken(storedToken);
-        try {
-          const parsed = JSON.parse(storedUser) as AuthUser;
-          // Re-map so Masters nav is injected even from stale localStorage
-          setUser(mapAuthUser(parsed));
-        } catch {
-          setUser(JSON.parse(storedUser));
-        }
-        try {
-          const res = await authApi.me();
-          persistUser(mapAuthUser(res.user));
-        } catch {
-          localStorage.removeItem('p2p_token');
-          localStorage.removeItem('p2p_user');
-          setToken(null);
-          setUser(null);
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      // Auto SSO: RefexOne / SAML opens P2P with token on any route
+      // Auto SSO: RefexOne / SAML opens P2P with token on any route.
+      // A fresh token in the URL must win over a stored session that no longer works.
       const params = new URLSearchParams(window.location.search);
       const hash = window.location.hash.replace(/^#/, '');
       const hashParams = new URLSearchParams(
@@ -241,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const res = await authApi.me();
           const mapped = mapAuthUser(res.user);
           persistUser(mapped, p2pToken);
+          clearSsoBounce();
           try {
             sessionStorage.removeItem('p2p_sso_token');
             localStorage.removeItem('p2p_sso_token');
@@ -255,12 +233,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           redirectByRole(mapped.role, mapped.navigation, clean, mapped.email);
         } catch {
           localStorage.removeItem('p2p_token');
+          localStorage.removeItem('p2p_user');
+          setToken(null);
+          setUser(null);
         }
       } else if (refexToken) {
         try {
           const res = await authApi.loginWithRefexOneToken(refexToken);
           const mapped = mapAuthUser(res.user);
           persistUser(mapped, res.token);
+          clearSsoBounce();
           ['access_token', 'accessToken', 'token', 'refexone_token', 'refexoneToken'].forEach((key) => {
             params.delete(key);
           });
@@ -269,6 +251,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           redirectByRole(mapped.role, mapped.navigation, clean, mapped.email);
         } catch {
           // Login / launch page will show a clearer error
+        }
+      }
+
+      const storedToken = localStorage.getItem('p2p_token');
+      const storedUser = localStorage.getItem('p2p_user');
+      if (storedToken && storedUser && storedToken !== p2pToken) {
+        setToken(storedToken);
+        try {
+          const parsed = JSON.parse(storedUser) as AuthUser;
+          setUser(mapAuthUser(parsed));
+        } catch {
+          setUser(null);
+        }
+        try {
+          const res = await authApi.me();
+          persistUser(mapAuthUser(res.user));
+          clearSsoBounce();
+        } catch {
+          localStorage.removeItem('p2p_token');
+          localStorage.removeItem('p2p_user');
+          setToken(null);
+          setUser(null);
         }
       }
 
@@ -281,6 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const completeLogin = (authUser: AuthUser, newToken: string, redirectPath?: string) => {
     const mapped = mapAuthUser(authUser);
     persistUser(mapped, newToken);
+    clearSsoBounce();
     redirectByRole(mapped.role, mapped.navigation, redirectPath, mapped.email);
   };
 

@@ -81,3 +81,30 @@ export function goToRefexOne(): void {
 export function goToRefexOneSamlSso(url?: string): void {
   window.location.replace(url || getUnauthenticatedSsoUrl());
 }
+
+const SSO_BOUNCE_KEY = 'p2p_sso_bounce';
+
+/** True when this tab already returned from Refex One without a P2P session. */
+export function ssoBouncePending(): boolean {
+  try {
+    return sessionStorage.getItem(SSO_BOUNCE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markSsoBounce(): void {
+  try {
+    sessionStorage.setItem(SSO_BOUNCE_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearSsoBounce(): void {
+  try {
+    sessionStorage.removeItem(SSO_BOUNCE_KEY);
+  } catch {
+    /* ignore */
+  }
+}

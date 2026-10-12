@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { resolvePostLoginPath, useAuth } from '../../../contexts/AuthContext';
 import { authApi } from '../../../services/api';
-import { getUnauthenticatedSsoUrl, goToRefexOneSamlSso } from '../../../utils/refexOneUrl';
+import {
+  clearSsoBounce,
+  getUnauthenticatedSsoUrl,
+  goToRefexOneSamlSso,
+  markSsoBounce,
+  ssoBouncePending,
+} from '../../../utils/refexOneUrl';
 
 /**
  * RefexOne app-launcher entry.
@@ -102,10 +108,17 @@ export default function RefexOneLaunchPage() {
       })();
 
     if (!found) {
-      setStatus('No RefexOne session on this link — opening RefexOne SSO…');
+      if (ssoBouncePending()) {
+        setStatus('');
+        setError('Refex One opened P2P without a session. Sign in with your Refex One email and password.');
+        return;
+      }
+      setStatus('Opening Refex One sign-in…');
+      markSsoBounce();
       goToRefexOneSamlSso(getUnauthenticatedSsoUrl('/'));
       return;
     }
+    clearSsoBounce();
 
     let cancelled = false;
     (async () => {

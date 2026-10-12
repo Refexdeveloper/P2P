@@ -1,7 +1,12 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getRoleHomePath, useAuth } from '../../contexts/AuthContext';
-import { getUnauthenticatedSsoUrl, goToRefexOneSamlSso } from '../../utils/refexOneUrl';
+import {
+  getUnauthenticatedSsoUrl,
+  goToRefexOneSamlSso,
+  markSsoBounce,
+  ssoBouncePending,
+} from '../../utils/refexOneUrl';
 
 export default function Home() {
   const { user, isLoading } = useAuth();
@@ -10,6 +15,11 @@ export default function Home() {
   useEffect(() => {
     if (isLoading) return;
     if (!user) {
+      if (ssoBouncePending()) {
+        navigate('/auth/refexone', { replace: true });
+        return;
+      }
+      markSsoBounce();
       goToRefexOneSamlSso(getUnauthenticatedSsoUrl('/'));
       return;
     }
